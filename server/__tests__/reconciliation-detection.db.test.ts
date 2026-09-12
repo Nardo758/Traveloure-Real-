@@ -24,6 +24,16 @@
  *        the job not having run; the old version wrote a stdout line and no durable trace, so
  *        "no drift today" and "the scheduler died three weeks ago" were the same picture.
  *
+ *   N23  THE READY-MADE RAIL (punchlist V-3, ready-made-reconciliation-rail lane). The SAME
+ *        failure one table over: `ready_made_purchases` appeared nowhere in the job, so a store
+ *        purchase whose delivery never completed had no detector at all. Five kinds, each seeded
+ *        as real rows against an injected Stripe view — plus the negatives that matter more than
+ *        the positives: a healthy purchase raises nothing, a purchase inside the fulfilment grace
+ *        raises nothing, a buyer-deleted clone raises nothing, a re-detected drift records no
+ *        second row, and the three rails never indict each other's PaymentIntents. This rail has
+ *        NO repair at all — not even the cart rail's one narrow exception — so every positive case
+ *        re-reads its seeded row and asserts it was left exactly as found.
+ *
  * Every assertion is a DATABASE FACT read back after the call. The Stripe half is INJECTED (the
  * `StripeReader` seam), so all nine classifications are exercised deterministically with no
  * network and no Stripe key — the job's decision logic IS the thing under test, and a suite that
@@ -45,8 +55,14 @@ const ids = {
   user: `recon-${RUN}-user`,
   service: `recon-${RUN}-svc`,
   trip: `recon-${RUN}-trip`,
+  // The ready-made rail needs a listing, and a listing needs its own source trip — `ready_made_trips`
+  // carries a UNIQUE index on `source_trip_id` (one listing per source trip).
+  rmSourceTrip: `recon-${RUN}-rm-src`,
+  listing: `recon-${RUN}-listing`,
 };
 const createdBookingIds: string[] = [];
+const createdPurchaseIds: string[] = [];
+const createdBuyerIds: string[] = [];
 const createdItemIds: string[] = [];
 const createdRefundIds: string[] = [];
 const dedupeKeys: string[] = [];
@@ -93,6 +109,14 @@ before(async () => {
     INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
     VALUES (${ids.trip}, ${ids.user}, 'Reconciliation fixture trip', 'Kyoto', CURRENT_DATE + 30, CURRENT_DATE + 35)
   `);
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
+    VALUES (${ids.rmSourceTrip}, ${ids.user}, 'Ready-made source trip', 'Kyoto', CURRENT_DATE + 60, CURRENT_DATE + 64)
+  `);
+  await db.execute(sql`
+    INSERT INTO ready_made_trips (id, author_id, source_trip_id, market, title, duration_days, price_cents, status)
+    VALUES (${ids.listing}, ${ids.user}, ${ids.rmSourceTrip}, 'Kyoto', 'Reconciliation fixture listing', 5, 12500, 'approved')
+  `);
 });
 
 after(async () => {
@@ -105,11 +129,19 @@ after(async () => {
   for (const id of createdBookingIds) {
     await db.execute(sql`DELETE FROM service_bookings WHERE id = ${id}`).catch(() => {});
   }
+  for (const id of createdPurchaseIds) {
+    await db.execute(sql`DELETE FROM ready_made_purchases WHERE id = ${id}`).catch(() => {});
+  }
+  await db.execute(sql`DELETE FROM ready_made_trips WHERE id = ${ids.listing}`).catch(() => {});
+  for (const id of createdBuyerIds) {
+    await db.execute(sql`DELETE FROM users WHERE id = ${id}`).catch(() => {});
+  }
   for (const id of createdItemIds) {
     await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${id}`).catch(() => {});
   }
   await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${ids.trip}`).catch(() => {});
   await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`).catch(() => {});
+  await db.execute(sql`DELETE FROM trips WHERE id = ${ids.rmSourceTrip}`).catch(() => {});
   await db.execute(sql`DELETE FROM provider_services WHERE id = ${ids.service}`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ${ids.user}`).catch(() => {});
   // Runs this suite opened are cleaned last (exceptions FK-cascade off them anyway).
@@ -158,6 +190,62 @@ async function makeReadyItem(): Promise<string> {
   `);
   createdItemIds.push(id);
   return id;
+}
+
+/**
+ * A ready-made purchase exactly as `POST /api/ready-made/:id/purchase/confirm` leaves it: born
+ * `paid` (the row is inserted only AFTER Stripe says succeeded), carrying a NOT-NULL, UNIQUE
+ * PaymentIntent id. Each purchase gets its OWN buyer because `idx_rmp_buyer_trip_active` is a
+ * partial UNIQUE on (buyer_id, ready_made_trip_id) for live statuses — one live purchase of a
+ * listing per buyer.
+ */
+async function makePurchase(opts: {
+  paymentIntentId: string;
+  status?: string;
+  cloneTripId?: string | null;
+  pricePaidCents?: number;
+  /** How long ago the purchase was captured — the fulfilment-grace fixture knob. */
+  ageMinutes?: number;
+}): Promise<string> {
+  const buyerId = `recon-${RUN}-buyer-${createdPurchaseIds.length}`;
+  await db.execute(sql`
+    INSERT INTO users (id, email, first_name, last_name)
+    VALUES (${buyerId}, ${`recon-${RUN}-b${createdPurchaseIds.length}@t.test`}, 'Recon', 'Buyer')
+  `);
+  createdBuyerIds.push(buyerId);
+
+  const id = `recon-${RUN}-rmp-${createdPurchaseIds.length}`;
+  const ageMinutes = opts.ageMinutes ?? 120;
+  await db.execute(sql`
+    INSERT INTO ready_made_purchases (
+      id, buyer_id, ready_made_trip_id, price_paid_cents, currency,
+      stripe_payment_intent_id, clone_trip_id, status, purchased_at
+    ) VALUES (
+      ${id}, ${buyerId}, ${ids.listing}, ${opts.pricePaidCents ?? 12500}, 'USD',
+      ${opts.paymentIntentId}, ${opts.cloneTripId ?? null}, ${opts.status ?? "paid"},
+      NOW() - make_interval(mins => ${ageMinutes})
+    )
+  `);
+  createdPurchaseIds.push(id);
+  return id;
+}
+
+/** A PaymentIntent shaped exactly as `POST /api/ready-made/:id/purchase` writes it: the metadata
+ *  `type`/`listingId`/`buyerId` triple, and deliberately NO `bookingIds` — which is what keeps the
+ *  three rails from judging each other's payments. */
+function rmPi(opts: { id: string; status?: string; amountDollars?: number }): any {
+  const cents = Math.round((opts.amountDollars ?? 125) * 100);
+  return {
+    id: opts.id,
+    object: "payment_intent",
+    status: opts.status ?? "succeeded",
+    amount: cents,
+    amount_received: opts.status === "succeeded" || !opts.status ? cents : 0,
+    currency: "usd",
+    latest_charge: `ch_${opts.id}`,
+    created: Math.floor(Date.now() / 1000),
+    metadata: { type: "ready_made_purchase", listingId: ids.listing, buyerId: `recon-${RUN}-buyer` },
+  };
 }
 
 /** A PaymentIntent shaped exactly as `createPaymentIntent` writes it (cents + `bookingIds`). */
@@ -227,6 +315,14 @@ async function bookingRow(id: string): Promise<any> {
   return r.rows[0] as any;
 }
 
+async function purchaseRow(id: string): Promise<any> {
+  const r = await db.execute(sql`
+    SELECT status, clone_trip_id, stripe_payment_intent_id, price_paid_cents
+    FROM ready_made_purchases WHERE id = ${id}
+  `);
+  return r.rows[0] as any;
+}
+
 async function diaryRows(eventType: string, itemId?: string | null): Promise<any[]> {
   const r = await db.execute(sql`
     SELECT event_type, actor_type, from_status, to_status, item_id
@@ -246,6 +342,21 @@ async function scan(view: Parameters<typeof reader>[0], bookingIds: string[]) {
     triggeredBy: "test",
     stripeReader: reader(view),
     onlyBookingIds: bookingIds,
+    // Every cart/legacy pass scopes the ready-made rail to NOTHING, so the third rail cannot
+    // change a count those cases already assert.
+    onlyPurchaseIds: [],
+  });
+}
+
+/** The mirror of `scan` for the ready-made rail: the cart rail is scoped to nothing, so each N23
+ *  case owns its pass exactly as the N20 cases own theirs. */
+async function scanReadyMade(view: Parameters<typeof reader>[0], purchaseIds: string[]) {
+  dedupeKeys.push(`%${RUN}%`);
+  return runStripeReconciliation({
+    triggeredBy: "test",
+    stripeReader: reader(view),
+    onlyBookingIds: [],
+    onlyPurchaseIds: purchaseIds,
   });
 }
 
@@ -577,4 +688,266 @@ test("N22b: a pass that could not consult Stripe is recorded as SKIPPED, not sil
   } finally {
     if (saved !== undefined) process.env.STRIPE_SECRET_KEY = saved;
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// matrix-id: N23 — THE READY-MADE RAIL (punchlist V-3)
+//
+// `ready_made_purchases` appeared nowhere in the job, so §17's founding failure repeated itself
+// one table over: a ready-made PaymentIntent carries `metadata.type='ready_made_purchase'` and no
+// `bookingIds`, its row is not a `service_bookings` row, and every cart-rail query therefore
+// matched zero rows and errored on nothing. A Stripe success whose delivery never completed had
+// NO detector at all.
+//
+// The negatives are the point. N23f proves a healthy purchase raises nothing; N23g proves the
+// fulfilment grace keeps a purchase that is being delivered out of the report; N23h proves a
+// re-detected drift records no second row; N23i proves the three rails do not indict each other's
+// PaymentIntents; and every positive case re-reads its seeded row to prove DETECT-DON'T-REPAIR —
+// this rail has NO repair at all, not even the cart rail's one narrow exception.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("N23a: a succeeded ready-made PaymentIntent with NO purchase row is rm_pi_succeeded_no_purchase", async () => {
+  // The live shape: the buyer's card was charged and their browser never got to call
+  // /purchase/confirm — which is the ONLY thing that writes the row, since the
+  // payment_intent.succeeded webhook keys on metadata.bookingIds a ready-made PI never carries.
+  const intent = rmPi({ id: `pi_${RUN}_n23a`, amountDollars: 249 });
+
+  const result = await scanReadyMade({ paymentIntents: [intent] }, []);
+
+  const rows = await exceptionsForRun(result.runId!);
+  const hit = rows.find((r) => r.kind === "rm_pi_succeeded_no_purchase");
+  assert.ok(hit, "DB FACT: money with no purchase behind it is a persisted row, not a log line");
+  assert.equal(hit.rail, "ready_made", "classified onto its own rail, not cart or legacy");
+  assert.equal(hit.severity, "critical");
+  assert.equal(hit.payment_intent_id, intent.id);
+  assert.equal(Number(hit.actual_amount), 249, "the captured amount is recorded for the human who follows up");
+  assert.equal(hit.details.metadataListingId, ids.listing, "and the server-written metadata that identifies it");
+
+  assert.equal(
+    rows.filter((r) => r.kind === "pi_succeeded_no_booking").length,
+    0,
+    "DB FACT: a ready-made PaymentIntent is NOT also reported as cart-rail drift",
+  );
+});
+
+test("N23b: a purchase still `paid` with no clone is rm_purchase_paid_not_cloned — and is NOT fulfilled by the job", async () => {
+  // V-3's named case: captured and never delivered. The buyer has no trip and the author has no
+  // earning, and `fulfillReadyMadePurchase` is idempotent — which is exactly why the temptation to
+  // call it has to be refused in writing (§17: the ready-made rail has no ratified recovery layer).
+  const piId = `pi_${RUN}_n23b`;
+  const purchaseId = await makePurchase({ paymentIntentId: piId, status: "paid", cloneTripId: null, ageMinutes: 120 });
+  const intent = rmPi({ id: piId });
+
+  const result = await scanReadyMade({ paymentIntents: [intent] }, [purchaseId]);
+
+  const rows = await exceptionsForRun(result.runId!);
+  const hit = rows.find((r) => r.kind === "rm_purchase_paid_not_cloned");
+  assert.ok(hit, "DB FACT: paid-but-undelivered is recorded");
+  assert.equal(hit.booking_id, purchaseId);
+  assert.equal(
+    Number(hit.expected_amount),
+    125,
+    "the amount is SERVER-DERIVED from the purchase row's own price_paid_cents (§14/§17 rule 3)",
+  );
+
+  const row = await purchaseRow(purchaseId);
+  assert.equal(row.status, "paid", "DB FACT: DETECT, DON'T REPAIR — the job did not fulfil it");
+  assert.equal(row.clone_trip_id, null, "DB FACT: and minted no clone trip");
+  assert.equal(result.promoted, 0, "no repair of any kind was performed on this rail");
+});
+
+test("N23c: price_paid_cents that disagrees with the captured amount is rm_amount_mismatch", async () => {
+  const piId = `pi_${RUN}_n23c`;
+  const purchaseId = await makePurchase({ paymentIntentId: piId, status: "cloned", ageMinutes: 120 }); // row says $125
+  const intent = rmPi({ id: piId, amountDollars: 200 }); // Stripe captured $200
+
+  const result = await scanReadyMade({ paymentIntents: [intent] }, [purchaseId]);
+
+  const rows = await exceptionsForRun(result.runId!);
+  const hit = rows.find((r) => r.kind === "rm_amount_mismatch");
+  assert.ok(hit, "DB FACT: the money disagreement is recorded");
+  assert.equal(Number(hit.expected_amount), 125, "expected = the purchase row's own column, never the listing's price today");
+  assert.equal(Number(hit.actual_amount), 200, "actual = what Stripe captured");
+  assert.equal(hit.details.deltaCents, -7500);
+});
+
+test("N23d: a live purchase whose PaymentIntent is not succeeded is rm_purchase_pi_not_succeeded", async () => {
+  const piId = `pi_${RUN}_n23d`;
+  const purchaseId = await makePurchase({ paymentIntentId: piId, status: "cloned", ageMinutes: 120 });
+  const intent = rmPi({ id: piId, status: "requires_payment_method" });
+
+  const result = await scanReadyMade({ paymentIntents: [intent] }, [purchaseId]);
+
+  const rows = await exceptionsForRun(result.runId!);
+  const hit = rows.find((r) => r.kind === "rm_purchase_pi_not_succeeded");
+  assert.ok(hit, "DB FACT: a purchase standing on an unpaid PaymentIntent is recorded");
+  assert.equal(hit.details.paymentIntentStatus, "requires_payment_method");
+
+  const row = await purchaseRow(purchaseId);
+  assert.equal(row.status, "cloned", "DB FACT: detect-only — the purchase was not revoked");
+
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_amount_mismatch").length,
+    0,
+    "and the amount check does not fire on a non-succeeded intent (it only judges captured money)",
+  );
+});
+
+test("N23e: a Stripe refund against a still-live purchase is rm_refund_not_reversed — nothing is reversed by the job", async () => {
+  // The shape a refund issued straight from the Stripe dashboard leaves behind: the buyer has the
+  // money back AND the trip, and the author's escrowed earning was never reversed.
+  const piId = `pi_${RUN}_n23e`;
+  const purchaseId = await makePurchase({ paymentIntentId: piId, status: "cloned", ageMinutes: 120 });
+  const refundId = `re_${RUN}_n23e`;
+  createdRefundIds.push(refundId);
+
+  const result = await scanReadyMade(
+    {
+      paymentIntents: [rmPi({ id: piId })],
+      refunds: [{ id: refundId, payment_intent: piId, charge: `ch_${piId}`, amount: 12500, currency: "usd" }],
+    },
+    [purchaseId],
+  );
+
+  const rows = await exceptionsForRun(result.runId!);
+  const hit = rows.find((r) => r.kind === "rm_refund_not_reversed");
+  assert.ok(hit, "DB FACT: money went back and the ledger still treats the purchase as live — recorded");
+  assert.equal(hit.details.stripeRefundId, refundId);
+  assert.equal(hit.booking_id, purchaseId);
+
+  const row = await purchaseRow(purchaseId);
+  assert.equal(row.status, "cloned", "DB FACT: the job did not flip the purchase to refunded");
+});
+
+test("N23e2: the SAME refund against an already-refunded purchase is NOT drift", async () => {
+  // The platform's own admin refund flips the status BEFORE calling Stripe, so this is the normal
+  // path — a detector that reported it would make every legitimate refund noise.
+  const piId = `pi_${RUN}_n23e2`;
+  const purchaseId = await makePurchase({ paymentIntentId: piId, status: "refunded", ageMinutes: 120 });
+  const refundId = `re_${RUN}_n23e2`;
+  createdRefundIds.push(refundId);
+
+  const result = await scanReadyMade(
+    {
+      paymentIntents: [rmPi({ id: piId })],
+      refunds: [{ id: refundId, payment_intent: piId, charge: `ch_${piId}`, amount: 12500, currency: "usd" }],
+    },
+    [purchaseId],
+  );
+
+  const rows = await exceptionsForRun(result.runId!);
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_refund_not_reversed").length,
+    0,
+    "DB FACT: a reversal the purchase row already carries is not reported",
+  );
+});
+
+test("N23f: a healthy ready-made purchase raises NOTHING, and the run is still recorded", async () => {
+  const piId = `pi_${RUN}_n23f`;
+  const purchaseId = await makePurchase({
+    paymentIntentId: piId,
+    status: "cloned",
+    cloneTripId: ids.trip,
+    ageMinutes: 120,
+  });
+
+  const result = await scanReadyMade({ paymentIntents: [rmPi({ id: piId })] }, [purchaseId]);
+
+  assert.equal(result.exceptions.length, 0, "a delivered, correctly-priced, succeeded purchase is not drift");
+  const rows = await exceptionsForRun(result.runId!);
+  assert.equal(rows.length, 0, "DB FACT: zero exception rows");
+
+  const record = await runRow(result.runId!);
+  assert.equal(record.status, "completed", "DB FACT: and the clean pass is durably recorded");
+  assert.ok(record.finished_at);
+  assert.equal(result.checkedReadyMadePurchases, 1, "what the rail actually examined is reported");
+});
+
+test("N23g: a purchase INSIDE the fulfilment grace is not reported — the detector does not cry wolf on its own timing", async () => {
+  // /purchase/confirm INSERTs the row and calls fulfillReadyMadePurchase in the same request, so
+  // `paid` with no clone is the NORMAL state for the milliseconds in between.
+  const piId = `pi_${RUN}_n23g`;
+  const purchaseId = await makePurchase({ paymentIntentId: piId, status: "paid", cloneTripId: null, ageMinutes: 1 });
+
+  const result = await scanReadyMade({ paymentIntents: [rmPi({ id: piId })] }, [purchaseId]);
+
+  const rows = await exceptionsForRun(result.runId!);
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_purchase_paid_not_cloned").length,
+    0,
+    "DB FACT: a purchase that is still being delivered is not indicted",
+  );
+});
+
+test("N23g2: a `cloned` purchase whose clone trip was DELETED is not reported — that is the buyer's own act", async () => {
+  // clone_trip_id is ON DELETE SET NULL and a buyer may delete their own trip. Reporting it would
+  // turn ordinary housekeeping into a drift alert (§13) — the kind names a FAILED DELIVERY, and a
+  // delivered-then-deleted product is not one.
+  const piId = `pi_${RUN}_n23g2`;
+  const purchaseId = await makePurchase({ paymentIntentId: piId, status: "cloned", cloneTripId: null, ageMinutes: 120 });
+
+  const result = await scanReadyMade({ paymentIntents: [rmPi({ id: piId })] }, [purchaseId]);
+
+  const rows = await exceptionsForRun(result.runId!);
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_purchase_paid_not_cloned").length,
+    0,
+    "DB FACT: only status='paid' with no clone is a failed delivery",
+  );
+});
+
+test("N23h: APPEND-ONLY — the same ready-made drift on a second pass records no second row", async () => {
+  const piId = `pi_${RUN}_n23h`;
+  const purchaseId = await makePurchase({ paymentIntentId: piId, status: "paid", cloneTripId: null, ageMinutes: 120 });
+  const view = { paymentIntents: [rmPi({ id: piId })] };
+
+  const first = await scanReadyMade(view, [purchaseId]);
+  const second = await scanReadyMade(view, [purchaseId]);
+
+  assert.equal(first.newExceptions, 1, "the first pass records the drift");
+  assert.equal(second.newExceptions, 0, "the second records NO duplicate (ON CONFLICT DO NOTHING)");
+  assert.equal(second.exceptions.length, 1, "but still DETECTS it — 'still drifting' stays visible");
+
+  const secondRun = await runRow(second.runId!);
+  assert.equal(Number(secondRun.exceptions_detected), 1, "DB FACT: the run row records detected…");
+  assert.equal(Number(secondRun.exceptions_new), 0, "…separately from newly-recorded");
+
+  const all = await db.execute(sql`
+    SELECT count(*)::int AS n FROM reconciliation_exceptions
+    WHERE booking_id = ${purchaseId} AND kind = 'rm_purchase_paid_not_cloned'
+  `);
+  assert.equal((all.rows[0] as any).n, 1, "DB FACT: exactly ONE row for a drift seen twice");
+});
+
+test("N23i: ONE JOB, THREE RAILS — a cart PaymentIntent is not judged by the ready-made rail, and vice versa", async () => {
+  // The disjoint-id-space failure this lane exists to close must not be traded for a cross-rail
+  // one: each rail keys on metadata its own purchase route writes server-side.
+  const cartPiId = `pi_${RUN}_n23i_cart`;
+  const bookingId = await makeBooking({ paymentIntentId: cartPiId, status: "confirmed" });
+  const rmPiId = `pi_${RUN}_n23i_rm`;
+  const purchaseId = await makePurchase({ paymentIntentId: rmPiId, status: "paid", cloneTripId: null, ageMinutes: 120 });
+
+  dedupeKeys.push(`%${RUN}%`);
+  const result = await runStripeReconciliation({
+    triggeredBy: "test",
+    stripeReader: reader({ paymentIntents: [pi({ id: cartPiId, bookingIds: [bookingId] }), rmPi({ id: rmPiId })] }),
+    onlyBookingIds: [bookingId],
+    onlyPurchaseIds: [purchaseId],
+  });
+
+  const rows = await exceptionsForRun(result.runId!);
+  assert.equal(
+    rows.filter((r) => r.rail === "cart").length,
+    0,
+    "DB FACT: the aligned cart booking is clean, and the ready-made PI raised no cart-rail kind",
+  );
+  const rm = rows.filter((r) => r.rail === "ready_made");
+  assert.equal(rm.length, 1, "exactly the ready-made drift");
+  assert.equal(rm[0].kind, "rm_purchase_paid_not_cloned");
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_pi_succeeded_no_purchase").length,
+    0,
+    "DB FACT: the CART PaymentIntent is not reported as a ready-made purchase with no row",
+  );
 });
