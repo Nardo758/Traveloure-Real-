@@ -1293,8 +1293,6 @@ export interface IStorage {
 
   getTransportBookingOptionById(optionId: string): Promise<any | null>;
 
-  updateTransportBookingOptionStatus(optionId: string, data: Record<string, any>): Promise<void>;
-
   createAffiliateClick(data: any): Promise<void>;
 
   getBookingOptionsByLegId(legId: string): Promise<any[]>;
@@ -8010,12 +8008,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(transportBookingOptions.id, optionId))
       .limit(1);
     return row ?? null;
-  }
-
-  async updateTransportBookingOptionStatus(optionId: string, data: Record<string, any>): Promise<void> {
-    await db.update(transportBookingOptions)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(transportBookingOptions.id, optionId));
   }
 
   async createAffiliateClick(data: any): Promise<void> {
