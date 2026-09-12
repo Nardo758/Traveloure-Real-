@@ -36,13 +36,19 @@
  *
  * THERE IS NO REPAIR ON THIS RAIL — NOT EVEN THE CART RAIL'S ONE NARROW EXCEPTION. That exception
  * exists because `promotePaidCheckout` is a RATIFIED recovery layer whose logic is merely arriving
- * late (§15c). The ready-made rail has NO ratified recovery layer of its own: the purchase row is
- * created by the buyer's own browser calling `/purchase/confirm`, and the Stripe webhook
- * (`handlePaymentSucceeded`) keys on `metadata.bookingIds`, which a ready-made PaymentIntent never
- * carries — so the webhook no-ops on it. `fulfillReadyMadePurchase` is idempotent and would be
- * TEMPTING to call here; it is deliberately NOT called. A detector that fulfils is a second,
- * unreviewed delivery path, and "the ready-made rail has no recovery layer" is a FINDING for a
- * human, recorded in the lane's ledger row — not a gap for the detector to quietly fill.
+ * late (§15c). `fulfillReadyMadePurchase` is idempotent and would be TEMPTING to call here; it is
+ * deliberately NOT called. A detector that fulfils is a second, unreviewed delivery path.
+ *
+ * THE FINDING THIS LANE RECORDED HAS SINCE BEEN RULED AND FIXED — AND THE FIX IS NOT HERE
+ * (ledger 2026-09-12-readymade-recovery-path). This header used to read "the ready-made rail has NO
+ * ratified recovery layer of its own", because the purchase row was created only by the buyer's own
+ * browser calling `/purchase/confirm` while `handlePaymentSucceeded` keyed on `metadata.bookingIds`
+ * and no-opped. That gap is closed ON THE WEBHOOK: it now recognises
+ * `metadata.type === 'ready_made_purchase'` and drives the ONE shared
+ * `recordAndFulfilReadyMadePurchase`. §17 is unchanged by that — the JOB still only detects, and
+ * whether the drift job may ALSO fulfil a ready-made purchase is a separate decision nobody has
+ * made. Expect `rm_pi_succeeded_no_purchase` to fire far less often now; if it still fires, that is
+ * INFORMATION (an unresolvable PaymentIntent, a delivery that never arrived), not noise.
  *
  * DETECT, DON'T REPAIR — and the ONE exception
  * ────────────────────────────────────────────
@@ -954,11 +960,14 @@ async function scanReadyMadeRail(args: {
           metadataBuyerId: pi.metadata?.buyerId ?? null,
           note:
             "A ready-made PaymentIntent SUCCEEDED and no ready_made_purchases row carries its id. " +
-            "The row is written only by POST /api/ready-made/:id/purchase/confirm — the BUYER'S " +
-            "OWN browser call — and nothing else recovers it: the payment_intent.succeeded webhook " +
-            "keys on metadata.bookingIds, which this PaymentIntent does not carry. The buyer may " +
-            "have been charged with no purchase, no cloned trip and no author earning. " +
-            "NOT REPAIRED (§17): a human decides refund vs. manual fulfilment.",
+            "The buyer may have been charged with no purchase, no cloned trip and no author " +
+            "earning. Two writers should have produced that row: POST /api/ready-made/:id/purchase/" +
+            "confirm (the buyer's own browser) and, since ledger 2026-09-12-readymade-recovery-path, " +
+            "the payment_intent.succeeded webhook, which drives the SAME fulfilment. So this " +
+            "finding now means one of: the delivery never arrived or failed, or the PaymentIntent " +
+            "is UNRESOLVABLE (a deleted listing, a buyer whose account is gone) — which the webhook " +
+            "deliberately refuses to invent into a purchase (§13). " +
+            "NOT REPAIRED BY THIS JOB (§17): a human decides refund vs. manual fulfilment.",
         },
       });
       continue;

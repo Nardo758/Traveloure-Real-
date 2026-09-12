@@ -1279,7 +1279,14 @@ jobs:
       #
       # The suite existed since ruling 40 and had NO CI job of its own; it does now, which is the
       # difference between a guard and a script somebody once ran (DECISIONS.md tag rule).
-      - name: Reconciliation detection (N20–N23)
+      # N24 (ledger 2026-09-12-readymade-recovery-path) adds the RECOVERY half of the ready-made
+      # rail: the payment_intent.succeeded webhook now drives the SAME fulfilment the buyer's own
+      # confirm drives, so a closed tab between capture and confirm no longer loses the purchase.
+      # It proves the four exactly-once facts (row, clone, author earning, platform-revenue row)
+      # and the refusals — a client-supplied PaymentIntent fulfils nothing, an unresolvable one
+      # creates nothing, a partial capture creates nothing. The JOB is unchanged and still only
+      # detects (§17), which N23's cases above continue to assert.
+      - name: Reconciliation detection + ready-made recovery (N20–N24)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/reconciliation-detection.db.test.ts
   roles-needed-reachability-guard:
     name: roles-needed-reachability-guard (ledger 2026-09-04-roles-needed)

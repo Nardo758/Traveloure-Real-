@@ -8114,10 +8114,16 @@ export const RECONCILIATION_EXCEPTION_KINDS = [
   // and "a booking is unpromoted" and "a purchase was never cloned" are different facts about
   // different tables (the legacy rail sets the same precedent with its own two names).
   /** A PaymentIntent Stripe says SUCCEEDED, self-identified as a ready-made purchase by its own
-   *  metadata, with NO `ready_made_purchases` row on that PaymentIntent id. The row is inserted
-   *  only by `POST /api/ready-made/:id/purchase/confirm`, which the BUYER'S BROWSER calls after
-   *  the charge — so a closed tab between capture and confirm is money taken with nothing
-   *  recorded, no clone, and no author earning. The most serious classification on this rail. */
+   *  metadata, with NO `ready_made_purchases` row on that PaymentIntent id — money taken with
+   *  nothing recorded, no clone, and no author earning. The most serious classification on this
+   *  rail. The row now has TWO writers (ledger 2026-09-12-readymade-recovery-path):
+   *  `POST /api/ready-made/:id/purchase/confirm` (the buyer's own browser) and the
+   *  `payment_intent.succeeded` webhook, both driving the ONE shared
+   *  `recordAndFulfilReadyMadePurchase`. Before that, the confirm call was the ONLY writer and a
+   *  closed tab between capture and confirm lost the purchase outright. So this kind should now
+   *  fire far less often; when it does it means the delivery never arrived, or the PaymentIntent
+   *  is UNRESOLVABLE (deleted listing / missing buyer), which is deliberately never invented into
+   *  a purchase (§13). */
   "rm_pi_succeeded_no_purchase",
   /** A purchase is `paid` with NO `clone_trip_id` — captured and never delivered. `status='paid'`
    *  means `fulfillReadyMadePurchase`'s atomic paid→cloned claim never took, so the buyer has no

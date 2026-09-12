@@ -12,7 +12,7 @@
  */
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue, tripCollaborators } from "@shared/schema";
+import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue, tripCollaborators, users } from "@shared/schema";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getBand, getExpertSplitRates, PROCESSING_FEE_RATE } from "./commission";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
@@ -197,6 +197,262 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   }
 
   return { purchase: claimed, cloneTripId: cloneTrip.id, alreadyFulfilled: false };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE RECOVERY PATH — ONE fulfilment implementation, TWO callers
+// (ledger 2026-09-12-readymade-recovery-path; CLAUDE.md §15b/§15c, ruling 40/§17)
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// WHAT WAS BROKEN. The `ready_made_purchases` row was written by exactly ONE thing in the whole
+// platform: the buyer's OWN BROWSER calling `POST /api/ready-made/:id/purchase/confirm` after the
+// Stripe sheet returned. The `payment_intent.succeeded` webhook — the platform's authoritative
+// late signal — keys on `metadata.bookingIds`, which a ready-made PaymentIntent never carries, so
+// it read the delivery and did nothing at all. A tab closed between capture and confirm meant:
+// money taken, NO purchase row, NO clone, NO author earning, and not one line in any log. The cart
+// rail has three recovery layers (client confirm / webhook / TTL sweep — §15b/§15c); this rail had
+// ZERO. The V-3 detector lane (ledger 2026-09-12-readymade-reconciliation-rail) made the hole
+// VISIBLE as `rm_pi_succeeded_no_purchase` and deliberately did not fill it, because a detector
+// that fulfils is a fourth unreviewed writer on the money path (§17). This is the fill, and it is
+// on the WEBHOOK, where authorization arriving late belongs.
+//
+// THE SHAPE IS §15c's, ONE TABLE OVER. `fulfillReadyMadePurchase` above is THE fulfilment
+// implementation and it is UNCHANGED by this lane — the webhook becomes its second caller, exactly
+// as `handlePaymentSucceeded` and `POST /api/bookings/confirm-payment` both drive the ONE
+// `promotePaidCheckout`. What the webhook additionally needs — turning a succeeded PaymentIntent
+// into the purchase ROW that fulfilment takes an id of — is the confirm route's own INSERT, so that
+// too becomes ONE implementation with two callers rather than a second author of
+// `ready_made_purchases` (§18 rule 1). The confirm route keeps its session gate, its IDOR
+// cross-check and its response shape verbatim; it hands the retrieved intent to the function below
+// instead of re-typing the insert.
+//
+// NO NEW WRITE WAS ADDED TO THE PURCHASE PATH TO MAKE THIS WORK (§17 rule 4's reasoning). The
+// linkage is the metadata `POST /api/ready-made/:id/purchase` already writes server-side —
+// `{ type: 'ready_made_purchase', listingId, buyerId }` — which is why this recovery works for
+// PaymentIntents that ALREADY EXIST, not only for future ones.
+//
+// IDEMPOTENCY IS STRUCTURAL AND STAYS THAT WAY (§15).
+// `ready_made_purchases.stripe_payment_intent_id` is NOT NULL and UNIQUE, so the
+// INSERT … ON CONFLICT DO NOTHING *is* the guard — never a check-then-insert, which is the TOCTOU
+// bug this codebase has already paid for. Downstream, `fulfillReadyMadePurchase`'s atomic
+// `paid → cloned` conditional is the second guard: the loser deletes its own orphan clone and only
+// the WINNER credits the author. So a double signal — a webhook delivery racing the buyer's own
+// confirm, or two deliveries of the same event — yields ONE row, ONE clone trip, ONE author earning
+// and ONE platform-revenue row.
+//
+// §15b — IRREVERSIBLE EFFECTS FOLLOW AUTHORIZATION. This runs only after Stripe's own word that the
+// money is captured, and it re-runs nothing non-idempotent that the confirm path may already have
+// done: every effect below is either the ON CONFLICT insert, the atomic claim, or guarded by
+// `insertPlatformRevenueOnce`'s unique index.
+//
+// §13 — AN UNRESOLVABLE PAYMENTINTENT IS NOT INVENTED INTO A PURCHASE. A deleted listing, a buyer
+// whose account is gone, or metadata that names neither: this creates NOTHING and says why. It is
+// left exactly where it already was — in the detector's `rm_pi_succeeded_no_purchase` bucket, for a
+// human to decide refund vs. manual fulfilment. An unresolvable PaymentIntent has no honest
+// fulfilment, and the worst possible answer is a purchase row pointing at a listing nobody sold.
+
+/**
+ * Which server-verified signal is recording this purchase.
+ *
+ * There is deliberately NO client actor. `buyer_confirm` is the confirm ROUTE — which holds a
+ * session user and has itself RETRIEVED the PaymentIntent from Stripe with the platform's own
+ * secret key; the only thing the browser supplies on that path is an id string, and the route
+ * cross-checks the retrieved metadata against the session user and the route's listing before it
+ * ever gets here. See `SERVER_VERIFIED_ACTORS` for the capability that separates the two.
+ */
+export type ReadyMadePurchaseActor = "webhook" | "buyer_confirm";
+
+/**
+ * §15c's authorization clause, verbatim and unweakened: **only a SIGNATURE-VERIFIED Stripe
+ * delivery may resolve a purchase from PaymentIntent metadata alone.**
+ *
+ * The capability at stake here is RECOVERY: creating a `ready_made_purchases` row for a buyer who
+ * is not present, identified by nothing but `metadata.buyerId`. That is Stripe's word about who
+ * paid, and it is trustworthy exactly when the PaymentIntent object arrived through a
+ * signature-verified `payment_intent.succeeded` delivery. Any other actor MUST name the buyer and
+ * the listing its own authenticated context already established, and Stripe's metadata must agree —
+ * so a PaymentIntent id lifted from somebody else's checkout resolves nothing and fulfils nothing.
+ *
+ * This is the ready-made rail's N17c. Do not add an actor to this set to make a caller simpler.
+ */
+const SERVER_VERIFIED_ACTORS: ReadonlySet<ReadyMadePurchaseActor> = new Set<ReadyMadePurchaseActor>([
+  "webhook",
+]);
+
+/** The metadata `POST /api/ready-made/:id/purchase` stamps server-side on every ready-made PI. */
+export const READY_MADE_INTENT_TYPE = "ready_made_purchase";
+
+/**
+ * The slice of a Stripe PaymentIntent this rail reads. Narrowed deliberately: a webhook delivery
+ * and a `paymentIntents.retrieve` both satisfy it, and a test can construct one without a network.
+ */
+export interface ReadyMadeIntentView {
+  id: string;
+  status: string;
+  amount: number;
+  amount_received?: number | null;
+  currency?: string | null;
+  metadata?: Record<string, string | undefined> | null;
+}
+
+export type ReadyMadeRecordRefusal =
+  | "not_a_ready_made_intent"
+  | "payment_not_succeeded"
+  | "amount_not_fully_captured"
+  | "metadata_incomplete"
+  | "metadata_mismatch"
+  | "unverified_actor_without_expectation"
+  | "listing_not_found"
+  | "buyer_not_found"
+  | "purchase_row_unresolvable";
+
+export type ReadyMadeRecordResult =
+  | { ok: true; purchaseId: string; createdRow: boolean; fulfilment: FulfillResult }
+  | { ok: false; reason: ReadyMadeRecordRefusal; message: string };
+
+/**
+ * Record a ready-made purchase from a server-verified PaymentIntent and drive the ONE fulfilment.
+ *
+ * `intent` is the PaymentIntent as STRIPE stated it — a signature-verified delivery object, or the
+ * confirm route's own `paymentIntents.retrieve`. NEVER a client-shaped body: the only amounts read
+ * from it are `amount`/`amount_received`, which are what Stripe authorized and captured (§14 — the
+ * charge was server-derived from the listing at PI creation, and `price_paid_cents` records what
+ * was actually taken, never a client number and never the listing's possibly-since-changed price).
+ *
+ * `expect` is what the caller's own authenticated context says this purchase must be. It is
+ * REQUIRED for any actor outside `SERVER_VERIFIED_ACTORS`.
+ */
+export async function recordAndFulfilReadyMadePurchase(opts: {
+  intent: ReadyMadeIntentView;
+  actor: ReadyMadePurchaseActor;
+  expect?: { listingId?: string | null; buyerId?: string | null };
+}): Promise<ReadyMadeRecordResult> {
+  const { intent, actor, expect } = opts;
+
+  // ── 1. Is this ours at all? ─────────────────────────────────────────────────────────────────
+  if (intent?.metadata?.type !== READY_MADE_INTENT_TYPE) {
+    return {
+      ok: false,
+      reason: "not_a_ready_made_intent",
+      message: `PaymentIntent ${intent?.id ?? "<none>"} is not a ready-made purchase`,
+    };
+  }
+
+  // ── 2. Stripe's own word that the money is captured (§15b: authorization BEFORE effects) ────
+  if (intent.status !== "succeeded") {
+    return {
+      ok: false,
+      reason: "payment_not_succeeded",
+      message: `Payment not completed (status: ${intent.status})`,
+    };
+  }
+  // §14: verify what was CAPTURED against what was AUTHORIZED — both Stripe's own figures, the
+  // amount locked server-side from the listing price at PI creation. A partial capture is not a
+  // paid purchase, and fulfilling one would hand over the product for less than was agreed. It is
+  // deliberately NOT compared against the listing's CURRENT price: a listing may legitimately be
+  // repriced after a sale, and refusing then would strand a buyer who paid exactly what they were
+  // quoted (the same reasoning the detector's `rm_amount_mismatch` note states).
+  const captured = Number(intent.amount_received ?? intent.amount);
+  if (!Number.isFinite(captured) || captured !== Number(intent.amount)) {
+    return {
+      ok: false,
+      reason: "amount_not_fully_captured",
+      message: `PaymentIntent ${intent.id} captured ${captured} of ${intent.amount} — not a completed purchase`,
+    };
+  }
+
+  // ── 3. Resolve the purchase from metadata the PURCHASE ROUTE wrote server-side ──────────────
+  const listingId = intent.metadata?.listingId ?? null;
+  const buyerId = intent.metadata?.buyerId ?? null;
+  if (!listingId || !buyerId) {
+    return {
+      ok: false,
+      reason: "metadata_incomplete",
+      message: `PaymentIntent ${intent.id} carries no listingId/buyerId — nothing to resolve`,
+    };
+  }
+
+  // §15c's clause, enforced structurally: an actor that is not a signature-verified delivery may
+  // not resolve a buyer from metadata alone — it must name the buyer and listing its own
+  // authenticated context already established, and Stripe's metadata must agree.
+  if (!SERVER_VERIFIED_ACTORS.has(actor) && (!expect?.buyerId || !expect?.listingId)) {
+    return {
+      ok: false,
+      reason: "unverified_actor_without_expectation",
+      message: `actor '${actor}' may not resolve a ready-made purchase from PaymentIntent metadata alone`,
+    };
+  }
+  if (
+    (expect?.listingId != null && expect.listingId !== listingId) ||
+    (expect?.buyerId != null && expect.buyerId !== buyerId)
+  ) {
+    return {
+      ok: false,
+      reason: "metadata_mismatch",
+      message: "PaymentIntent does not match this purchase",
+    };
+  }
+
+  // §13: a PaymentIntent naming a listing or a buyer that no longer exists is NOT invented into a
+  // purchase. Creating nothing leaves it exactly where the detector already reports it
+  // (`rm_pi_succeeded_no_purchase`) — a human decides refund vs. manual fulfilment.
+  const [listing] = await db
+    .select({ id: readyMadeTrips.id })
+    .from(readyMadeTrips)
+    .where(eq(readyMadeTrips.id, listingId))
+    .limit(1);
+  if (!listing) {
+    return {
+      ok: false,
+      reason: "listing_not_found",
+      message: `listing ${listingId} named by PaymentIntent ${intent.id} does not exist`,
+    };
+  }
+  const [buyer] = await db.select({ id: users.id }).from(users).where(eq(users.id, buyerId)).limit(1);
+  if (!buyer) {
+    return {
+      ok: false,
+      reason: "buyer_not_found",
+      message: `buyer ${buyerId} named by PaymentIntent ${intent.id} does not exist`,
+    };
+  }
+
+  // ── 4. The row. The UNIQUE stripe_payment_intent_id IS the guard (§15) ──────────────────────
+  // One purchase per payment, ever — a second delivery, a retry, or the buyer's own confirm
+  // arriving alongside inserts nothing and falls through to the idempotent fulfilment below.
+  const inserted = await db
+    .insert(readyMadePurchases)
+    .values({
+      buyerId,
+      readyMadeTripId: listingId,
+      pricePaidCents: intent.amount, // what Stripe captured — never re-read the listing, never a client number
+      currency: (intent.currency ?? "usd").toUpperCase(),
+      stripePaymentIntentId: intent.id,
+      status: "paid",
+    } as any)
+    .onConflictDoNothing({ target: readyMadePurchases.stripePaymentIntentId })
+    .returning({ id: readyMadePurchases.id });
+
+  const purchaseId =
+    inserted[0]?.id ??
+    (
+      await db
+        .select({ id: readyMadePurchases.id })
+        .from(readyMadePurchases)
+        .where(eq(readyMadePurchases.stripePaymentIntentId, intent.id))
+        .limit(1)
+    )[0]?.id;
+  if (!purchaseId) {
+    return {
+      ok: false,
+      reason: "purchase_row_unresolvable",
+      message: "Failed to record purchase",
+    };
+  }
+
+  // ── 5. The ONE fulfilment, unchanged and idempotent (§18 rule 1) ────────────────────────────
+  const fulfilment = await fulfillReadyMadePurchase(purchaseId);
+  return { ok: true, purchaseId, createdRow: Boolean(inserted[0]?.id), fulfilment };
 }
 
 /**
