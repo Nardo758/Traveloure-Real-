@@ -677,6 +677,14 @@ class StripePaymentService {
    * Both rails now run: the cart rail through the ONE shared promotion (`promotePaidCheckout`,
    * the same implementation `POST /api/bookings/confirm-payment` drives — #213), then the legacy
    * rail unchanged. The two id spaces do not overlap, and each path no-ops on ids it does not own.
+   *
+   * THREE RAILS AS OF ledger 2026-09-12-readymade-recovery-path. The store's `ready_made_purchases`
+   * was the SAME failure one table over: a ready-made PaymentIntent carries no `bookingIds` and its
+   * row is not a `service_bookings` row, so this handler read the delivery and did nothing, leaving
+   * the buyer's own browser as the rail's ONLY writer. It is now recognised by
+   * `metadata.type === 'ready_made_purchase'` and driven through the ONE shared
+   * `recordAndFulfilReadyMadePurchase` the confirm route drives. Handled FIRST and returned, since
+   * a ready-made PI belongs to neither of the booking rails below.
    */
   async handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     const { userId, bookingIds, isDeposit, isBalance } = paymentIntent.metadata;
@@ -704,6 +712,48 @@ class StripePaymentService {
       }
       // A balance PI belongs to a service_bookings row already born on the cart rail; the legacy
       // `bookings` loop below never owns it, so return here rather than fall through.
+      return;
+    }
+
+    // ── READY-MADE STORE RAIL (ready_made_purchases) — the recovery layer this rail never had ──
+    // (ledger 2026-09-12-readymade-recovery-path; §15c's "one implementation, two callers" applied
+    // one table over.) A ready-made PaymentIntent carries NO `bookingIds` and its row is not a
+    // `service_bookings` row, so every branch of this handler matched zero rows and this webhook
+    // silently no-opped on it. The purchase row was written ONLY by the buyer's own browser calling
+    // `/purchase/confirm`; a tab closed between capture and confirm meant money taken with no
+    // purchase, no clone and no author earning — the hole the V-3 detector reports as
+    // `rm_pi_succeeded_no_purchase`. The webhook is authorization arriving late, so it drives the
+    // SAME `recordAndFulfilReadyMadePurchase` the confirm route drives, never a second fulfilment.
+    //
+    // The `webhook` actor is what licenses resolving the buyer from `metadata.buyerId` alone: this
+    // object came from a signature-verified Stripe delivery (§15c/§17b's SERVER_VERIFIED_ACTORS).
+    // Idempotent by construction — the UNIQUE `stripe_payment_intent_id` and the atomic
+    // `paid → cloned` claim — so a second delivery, or a race with the buyer's own confirm, creates
+    // exactly one row, one clone and one author earning. Never fails the webhook: the purchase row
+    // is the money truth and the detector still reports anything this could not resolve (§13).
+    // A ready-made PI belongs to no other rail, so this returns rather than falling through.
+    if (paymentIntent.metadata?.type === 'ready_made_purchase') {
+      try {
+        const { recordAndFulfilReadyMadePurchase } = await import('./ready-made-purchase.service');
+        const outcome = await recordAndFulfilReadyMadePurchase({
+          intent: paymentIntent as any,
+          actor: 'webhook',
+        });
+        if (outcome.ok) {
+          logger.info(
+            { paymentIntentId: paymentIntent.id, purchaseId: outcome.purchaseId, createdRow: outcome.createdRow },
+            `[webhook] ready-made purchase ${outcome.createdRow ? 'RECOVERED' : 'already recorded'} ` +
+            `(clone=${outcome.fulfilment.cloneTripId ?? 'none'})`,
+          );
+        } else {
+          logger.warn(
+            { paymentIntentId: paymentIntent.id, reason: outcome.reason },
+            `[webhook] ready-made purchase NOT recorded: ${outcome.message} — left for the drift detector`,
+          );
+        }
+      } catch (rmErr: any) {
+        console.error('[webhook] ready-made purchase recovery failed:', rmErr?.message ?? rmErr);
+      }
       return;
     }
 

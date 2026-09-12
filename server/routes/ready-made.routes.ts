@@ -1359,32 +1359,38 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
       return res.status(400).json({ message: "PaymentIntent does not match this purchase" });
     }
 
-    // Record the purchase — the UNIQUE stripe_payment_intent_id is the replay guard (§15):
-    // a duplicate confirm inserts nothing and falls through to fulfil idempotently.
-    const inserted = await db
-      .insert(readyMadePurchases)
-      .values({
-        buyerId: userId,
-        readyMadeTripId: req.params.id,
-        pricePaidCents: intent.amount, // what Stripe actually captured — never re-read the listing
-        currency: (intent.currency ?? "usd").toUpperCase(),
-        stripePaymentIntentId: intent.id,
-        status: "paid",
-      } as any)
-      .onConflictDoNothing({ target: readyMadePurchases.stripePaymentIntentId })
-      .returning({ id: readyMadePurchases.id });
-
-    const purchaseId =
-      inserted[0]?.id ??
-      (await db
-        .select({ id: readyMadePurchases.id })
-        .from(readyMadePurchases)
-        .where(eq(readyMadePurchases.stripePaymentIntentId, intent.id))
-        .limit(1))[0]?.id;
-    if (!purchaseId) return res.status(500).json({ message: "Failed to record purchase" });
-
-    // Fulfil: clone into the buyer's editable trip + credit the author (idempotent, §15 claim).
-    const result = await (await import("../services/ready-made-purchase.service")).fulfillReadyMadePurchase(purchaseId);
+    // Record the purchase and fulfil, through the ONE shared implementation the WEBHOOK also
+    // drives (ledger 2026-09-12-readymade-recovery-path; §15c's "one implementation, two callers"
+    // one table over). The row's UNIQUE stripe_payment_intent_id is still the replay guard (§15):
+    // a duplicate confirm — or a webhook delivery that got here first — inserts nothing and falls
+    // through to fulfil idempotently. This route's own gates above are UNCHANGED and stay the
+    // outer layer; `expect` re-states them to the shared implementation so the inner layer refuses
+    // a mismatch on its own too (the §18/§19 two-layer placement).
+    const recorded = await (
+      await import("../services/ready-made-purchase.service")
+    ).recordAndFulfilReadyMadePurchase({
+      intent: intent as any,
+      actor: "buyer_confirm",
+      expect: { listingId: req.params.id, buyerId: userId },
+    });
+    if (!recorded.ok) {
+      // The route already answered 402/400 for the not-succeeded and mismatch cases above, so
+      // anything reaching here is a state the shared implementation refused on its own — a listing
+      // or buyer that vanished between PI creation and confirm, or a row it could not resolve.
+      // §13: nothing was created, and the drift detector still reports the PaymentIntent.
+      console.error(`[ready-made] purchase confirm refused (${recorded.reason}): ${recorded.message}`);
+      if (recorded.reason === "payment_not_succeeded") {
+        return res.status(402).json({ message: recorded.message, stripeStatus: intent.status });
+      }
+      if (recorded.reason === "metadata_mismatch" || recorded.reason === "amount_not_fully_captured") {
+        return res.status(400).json({ message: recorded.message });
+      }
+      if (recorded.reason === "listing_not_found" || recorded.reason === "buyer_not_found") {
+        return res.status(404).json({ message: recorded.message });
+      }
+      return res.status(500).json({ message: "Failed to record purchase" });
+    }
+    const result = recorded.fulfilment;
 
     res.json({
       purchase: result.purchase,

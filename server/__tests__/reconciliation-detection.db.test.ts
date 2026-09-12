@@ -41,8 +41,27 @@
  *
  * DISPOSABLE DB ONLY. Every row this file writes is created by this file and deleted in after().
  *
+ *   N24  THE RECOVERY PATH (ledger 2026-09-12-readymade-recovery-path). N23 reported the hole this
+ *        rail had — the purchase row was written ONLY by the buyer's own browser, because the
+ *        `payment_intent.succeeded` webhook keys on `metadata.bookingIds` a ready-made PaymentIntent
+ *        never carries — and deliberately did not fill it (§17: a detector that fulfils is a fourth
+ *        unreviewed writer). The fill is on the WEBHOOK, driving the SAME
+ *        `recordAndFulfilReadyMadePurchase` the confirm route drives. N24 proves the four
+ *        exactly-once facts and, more importantly, the refusals: a client-supplied PaymentIntent
+ *        fulfils nothing, two deliveries make one clone and one earning, a delivery racing the
+ *        buyer's own confirm makes one of each, an unresolvable PaymentIntent creates NOTHING, and
+ *        a PaymentIntent that did not succeed fulfils nothing. The JOB is unchanged and still only
+ *        detects.
+ *
  * Run solo: npx tsx --test server/__tests__/reconciliation-detection.db.test.ts
  */
+// N24 imports the real stripe-payment.service (to prove the WIRING, not just the helper), whose
+// module graph constructs a Stripe client at load time and throws without a key. A DUMMY TEST-MODE
+// key satisfies the constructor; nothing in this file makes a network call — every PaymentIntent is
+// a literal and the Stripe reader is injected. Same technique as checkout-payment-promotion.
+// N22b deletes and restores this variable itself, so setting it here does not weaken that case.
+process.env.STRIPE_SECRET_KEY ||= "sk_test_dummy_key_for_reconciliation_suite";
+
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -66,6 +85,8 @@ const createdBuyerIds: string[] = [];
 const createdItemIds: string[] = [];
 const createdRefundIds: string[] = [];
 const dedupeKeys: string[] = [];
+/** Clone trips minted by N24's REAL fulfilment runs (the detector never mints one). */
+const createdCloneTripIds: string[] = [];
 
 // ── Disposable-DB guard (identical posture to checkout-claim-sweep.db.test.ts) ────────────────
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -122,6 +143,19 @@ before(async () => {
 after(async () => {
   for (const k of dedupeKeys) {
     await db.execute(sql`DELETE FROM reconciliation_exceptions WHERE dedupe_key LIKE ${k}`).catch(() => {});
+  }
+  // N24's recovery cases run the REAL fulfilment, which mints a clone trip and writes an earning
+  // and a platform-revenue row. Those are cleaned FIRST: the clone trips must go before their
+  // buyers (below), and the ledger rows reference purchase ids that are deleted a few lines down.
+  for (const id of createdPurchaseIds) {
+    await db.execute(sql`DELETE FROM expert_earnings WHERE reference_id = ${id}`).catch(() => {});
+    await db.execute(sql`DELETE FROM platform_revenue WHERE source_id = ${id}`).catch(() => {});
+  }
+  for (const id of createdCloneTripIds) {
+    await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${id}`).catch(() => {});
+    await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${id}`).catch(() => {});
+    await db.execute(sql`DELETE FROM trip_collaborators WHERE trip_id = ${id}`).catch(() => {});
+    await db.execute(sql`DELETE FROM trips WHERE id = ${id}`).catch(() => {});
   }
   for (const id of createdRefundIds) {
     await db.execute(sql`DELETE FROM refunds WHERE stripe_refund_id = ${id}`).catch(() => {});
@@ -707,9 +741,11 @@ test("N22b: a pass that could not consult Stripe is recorded as SKIPPED, not sil
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
 test("N23a: a succeeded ready-made PaymentIntent with NO purchase row is rm_pi_succeeded_no_purchase", async () => {
-  // The live shape: the buyer's card was charged and their browser never got to call
-  // /purchase/confirm — which is the ONLY thing that writes the row, since the
-  // payment_intent.succeeded webhook keys on metadata.bookingIds a ready-made PI never carries.
+  // The live shape: the buyer's card was charged and nothing recorded it. When this case was
+  // written, /purchase/confirm — the buyer's own browser call — was the ONLY writer of the row,
+  // because the payment_intent.succeeded webhook keyed on metadata.bookingIds a ready-made PI never
+  // carries. The webhook is now a second writer (N24), so a row missing here means the delivery
+  // never arrived or the PaymentIntent is unresolvable. The DETECTION is unchanged either way.
   const intent = rmPi({ id: `pi_${RUN}_n23a`, amountDollars: 249 });
 
   const result = await scanReadyMade({ paymentIntents: [intent] }, []);
@@ -950,4 +986,330 @@ test("N23i: ONE JOB, THREE RAILS — a cart PaymentIntent is not judged by the r
     0,
     "DB FACT: the CART PaymentIntent is not reported as a ready-made purchase with no row",
   );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// matrix-id: N24 — THE RECOVERY PATH (ledger 2026-09-12-readymade-recovery-path; §15b/§15c)
+//
+// N23 reported the hole and refused to fill it: the `ready_made_purchases` row was written ONLY
+// by the buyer's own browser calling `POST /api/ready-made/:id/purchase/confirm`, because the
+// `payment_intent.succeeded` webhook keys on `metadata.bookingIds` — which a ready-made
+// PaymentIntent never carries — so `handlePaymentSucceeded` read the delivery and did nothing.
+// Money taken, no purchase, no clone, no author earning, nothing in any log. The cart rail has
+// three recovery layers; this rail had zero.
+//
+// The fill is §15c's shape one table over: ONE fulfilment implementation
+// (`fulfillReadyMadePurchase`, UNCHANGED), and the webhook becomes its second caller through the
+// shared `recordAndFulfilReadyMadePurchase`. §17 is untouched — the DRIFT JOB still only detects,
+// and N23's cases above still prove it repairs nothing.
+//
+// THE NEGATIVES ARE THE POINT, and they are what these cases mostly assert: a client-supplied
+// PaymentIntent fulfils nothing (this rail's N17c), two deliveries make ONE clone and ONE author
+// earning, a delivery racing the buyer's own confirm makes one of each, an UNRESOLVABLE
+// PaymentIntent creates NOTHING and stays the detector's problem, and a PaymentIntent that did not
+// succeed — or that was only partially captured — fulfils nothing.
+//
+// STATED NEGATIVE SPACE: there is NO purchase-confirmation EMAIL on this rail anywhere in the
+// repo (the fulfilment writes a purchase row, a clone trip, an author earning and a
+// platform-revenue row, and sends nothing), so the fourth "exactly once" fact asserted here is the
+// platform-revenue row, not an email. This lane deliberately did not ADD one: an email is a new
+// non-idempotent effect and a product decision nobody has ratified.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+/** A buyer of this suite's own making. Each recovery case needs its own, because
+ *  `idx_rmp_buyer_trip_active` is a partial UNIQUE on (buyer_id, ready_made_trip_id). */
+async function makeBuyer(tag: string): Promise<string> {
+  const id = `recon-${RUN}-rcv-${tag}`;
+  await db.execute(sql`
+    INSERT INTO users (id, email, first_name, last_name)
+    VALUES (${id}, ${`recon-${RUN}-rcv-${tag}@t.test`}, 'Recovery', 'Buyer')
+  `);
+  createdBuyerIds.push(id);
+  return id;
+}
+
+/** A ready-made PaymentIntent addressed at a SPECIFIC buyer/listing — the shape
+ *  `POST /api/ready-made/:id/purchase` writes server-side. `rmPi` above hard-codes a placeholder
+ *  buyer because the DETECTOR never resolves one; the recovery path does. */
+function rmPiFor(opts: {
+  id: string;
+  buyerId: string | null;
+  listingId?: string | null;
+  status?: string;
+  amountCents?: number;
+  amountReceivedCents?: number;
+}): any {
+  const cents = opts.amountCents ?? 12500;
+  const status = opts.status ?? "succeeded";
+  return {
+    id: opts.id,
+    object: "payment_intent",
+    status,
+    amount: cents,
+    amount_received: opts.amountReceivedCents ?? (status === "succeeded" ? cents : 0),
+    currency: "usd",
+    latest_charge: `ch_${opts.id}`,
+    created: Math.floor(Date.now() / 1000),
+    metadata: {
+      type: "ready_made_purchase",
+      ...(opts.listingId === null ? {} : { listingId: opts.listingId ?? ids.listing }),
+      ...(opts.buyerId === null ? {} : { buyerId: opts.buyerId }),
+    },
+  };
+}
+
+async function purchaseByPi(paymentIntentId: string): Promise<any | undefined> {
+  const r = await db.execute(sql`
+    SELECT id, buyer_id, status, clone_trip_id, price_paid_cents, currency
+    FROM ready_made_purchases WHERE stripe_payment_intent_id = ${paymentIntentId}
+  `);
+  const row = r.rows[0] as any;
+  if (row) {
+    createdPurchaseIds.push(row.id);
+    if (row.clone_trip_id) createdCloneTripIds.push(row.clone_trip_id);
+  }
+  return row;
+}
+
+async function countPurchasesForPi(paymentIntentId: string): Promise<number> {
+  const r = await db.execute(sql`
+    SELECT count(*)::int AS n FROM ready_made_purchases WHERE stripe_payment_intent_id = ${paymentIntentId}
+  `);
+  return (r.rows[0] as any).n;
+}
+
+async function countClonesFor(buyerId: string): Promise<number> {
+  const r = await db.execute(sql`SELECT count(*)::int AS n FROM trips WHERE user_id = ${buyerId}`);
+  return (r.rows[0] as any).n;
+}
+
+async function countEarningsFor(purchaseId: string): Promise<number> {
+  const r = await db.execute(sql`
+    SELECT count(*)::int AS n FROM expert_earnings
+    WHERE reference_id = ${purchaseId} AND type = 'ready_made_sale'
+  `);
+  return (r.rows[0] as any).n;
+}
+
+async function countRevenueFor(purchaseId: string): Promise<number> {
+  const r = await db.execute(sql`
+    SELECT count(*)::int AS n FROM platform_revenue WHERE source_id = ${purchaseId}
+  `);
+  return (r.rows[0] as any).n;
+}
+
+/** Drive the REAL webhook entry point, exactly as a signature-verified delivery reaches it. */
+async function deliver(intent: any): Promise<void> {
+  const { stripePaymentService } = await import("../services/stripe-payment.service");
+  await stripePaymentService.handlePaymentSucceeded(intent as any);
+}
+
+test("N24a: THE WIRING — a succeeded ready-made PaymentIntent with no purchase row is RECOVERED by the webhook", async () => {
+  // The exact case N23a reports as `rm_pi_succeeded_no_purchase`: the buyer's card was charged and
+  // their browser never got to call /purchase/confirm. Driven through the REAL
+  // `handlePaymentSucceeded`, because the caller is what ruling 39 recorded as inert for this rail.
+  const buyerId = await makeBuyer("a");
+  const piId = `pi_${RUN}_n24a`;
+
+  await deliver(rmPiFor({ id: piId, buyerId }));
+
+  const row = await purchaseByPi(piId);
+  assert.ok(row, "DB FACT: the purchase the buyer paid for now exists");
+  assert.equal(row.buyer_id, buyerId, "DB FACT: the buyer is Stripe's own metadata, not a guess");
+  assert.equal(row.status, "cloned", "DB FACT: fulfilled, not merely recorded");
+  assert.ok(row.clone_trip_id, "DB FACT: the buyer has the trip they bought");
+  assert.equal(await countEarningsFor(row.id), 1, "DB FACT: the author was credited exactly once");
+  assert.equal(await countRevenueFor(row.id), 1, "DB FACT: one platform-revenue row");
+  assert.equal(await countClonesFor(buyerId), 1, "DB FACT: exactly one clone trip");
+});
+
+test("N24b: TWO DELIVERIES — one row, one clone, one author earning, one revenue row", async () => {
+  // Stripe re-delivers. The UNIQUE stripe_payment_intent_id is the guard on the row (§15: the
+  // statement IS the guard, never a check-then-insert) and the atomic paid→cloned claim is the
+  // guard on everything downstream — only the claim winner credits the author.
+  const buyerId = await makeBuyer("b");
+  const piId = `pi_${RUN}_n24b`;
+  const intent = rmPiFor({ id: piId, buyerId });
+
+  await deliver(intent);
+  await deliver(intent);
+
+  assert.equal(await countPurchasesForPi(piId), 1, "DB FACT: one purchase per payment, ever");
+  const row = await purchaseByPi(piId);
+  assert.equal(row.status, "cloned");
+  assert.equal(await countClonesFor(buyerId), 1, "DB FACT: the second delivery minted no second trip");
+  assert.equal(await countEarningsFor(row.id), 1, "DB FACT: the author is paid ONCE — the money one");
+  assert.equal(await countRevenueFor(row.id), 1, "DB FACT: no double bookkeeping");
+});
+
+test("N24c: THE RACE — a delivery landing alongside the buyer's own confirm produces ONE of each", async () => {
+  // The ordering this lane creates and must therefore prove: the webhook is authorization arriving
+  // late, and it can arrive EARLY — in the same milliseconds as the confirm call. Both drive the
+  // ONE shared implementation, so the loser of the insert falls through to the idempotent fulfil
+  // and the loser of the paid→cloned claim deletes its own orphan clone.
+  const { recordAndFulfilReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const buyerId = await makeBuyer("c");
+  const piId = `pi_${RUN}_n24c`;
+  const intent = rmPiFor({ id: piId, buyerId });
+
+  const [webhookOutcome, confirmOutcome] = await Promise.all([
+    recordAndFulfilReadyMadePurchase({ intent, actor: "webhook" }),
+    recordAndFulfilReadyMadePurchase({
+      intent,
+      actor: "buyer_confirm",
+      expect: { listingId: ids.listing, buyerId },
+    }),
+  ]);
+
+  assert.equal(webhookOutcome.ok, true, "both callers succeed — a race is not an error");
+  assert.equal(confirmOutcome.ok, true);
+  assert.equal(await countPurchasesForPi(piId), 1, "DB FACT: exactly one purchase row");
+  const row = await purchaseByPi(piId);
+  assert.equal(row.status, "cloned");
+  assert.equal(await countClonesFor(buyerId), 1, "DB FACT: the losing fulfil removed its own orphan");
+  assert.equal(await countEarningsFor(row.id), 1, "DB FACT: the author is credited exactly once");
+  assert.equal(await countRevenueFor(row.id), 1);
+  assert.equal(
+    (webhookOutcome as any).purchaseId,
+    (confirmOutcome as any).purchaseId,
+    "both callers resolved the SAME purchase — never two",
+  );
+});
+
+test("N24d: A CLIENT-SUPPLIED PaymentIntent FULFILS NOTHING — §15c's clause, this rail's N17c", async () => {
+  // §15c: only a SIGNATURE-VERIFIED Stripe delivery may resolve a purchase from PaymentIntent
+  // metadata ALONE. Any other actor must name the buyer and listing its own authenticated context
+  // established, and Stripe's metadata must agree — so a PaymentIntent id lifted from somebody
+  // else's checkout resolves nothing. Two shapes, both must create NOTHING.
+  const { recordAndFulfilReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const victimId = await makeBuyer("d-victim");
+  const attackerId = await makeBuyer("d-attacker");
+  const piId = `pi_${RUN}_n24d`;
+  const intent = rmPiFor({ id: piId, buyerId: victimId });
+
+  const noExpectation = await recordAndFulfilReadyMadePurchase({ intent, actor: "buyer_confirm" });
+  assert.equal(noExpectation.ok, false);
+  assert.equal((noExpectation as any).reason, "unverified_actor_without_expectation");
+
+  const wrongBuyer = await recordAndFulfilReadyMadePurchase({
+    intent,
+    actor: "buyer_confirm",
+    expect: { listingId: ids.listing, buyerId: attackerId },
+  });
+  assert.equal(wrongBuyer.ok, false);
+  assert.equal((wrongBuyer as any).reason, "metadata_mismatch");
+
+  assert.equal(await countPurchasesForPi(piId), 0, "DB FACT: no purchase row was born");
+  assert.equal(await countClonesFor(attackerId), 0, "DB FACT: the attacker got no trip");
+  assert.equal(await countClonesFor(victimId), 0, "DB FACT: and nothing was fulfilled for the victim either");
+});
+
+test("N24e: AN UNRESOLVABLE PaymentIntent CREATES NOTHING, and stays the detector's finding (§13)", async () => {
+  // A deleted listing, a buyer whose account is gone, metadata naming neither. An unresolvable
+  // PaymentIntent has no HONEST fulfilment, so the recovery invents none — and the drift job still
+  // reports it as `rm_pi_succeeded_no_purchase`, which is exactly where a human should find it.
+  const { recordAndFulfilReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const buyerId = await makeBuyer("e");
+
+  const ghostListing = await recordAndFulfilReadyMadePurchase({
+    intent: rmPiFor({ id: `pi_${RUN}_n24e_l`, buyerId, listingId: `recon-${RUN}-no-such-listing` }),
+    actor: "webhook",
+  });
+  assert.equal(ghostListing.ok, false);
+  assert.equal((ghostListing as any).reason, "listing_not_found");
+
+  const ghostBuyer = await recordAndFulfilReadyMadePurchase({
+    intent: rmPiFor({ id: `pi_${RUN}_n24e_b`, buyerId: `recon-${RUN}-no-such-buyer` }),
+    actor: "webhook",
+  });
+  assert.equal(ghostBuyer.ok, false);
+  assert.equal((ghostBuyer as any).reason, "buyer_not_found");
+
+  const noMetadata = await recordAndFulfilReadyMadePurchase({
+    intent: rmPiFor({ id: `pi_${RUN}_n24e_m`, buyerId: null, listingId: null }),
+    actor: "webhook",
+  });
+  assert.equal(noMetadata.ok, false);
+  assert.equal((noMetadata as any).reason, "metadata_incomplete");
+
+  assert.equal(await countPurchasesForPi(`pi_${RUN}_n24e_l`), 0, "DB FACT: nothing invented");
+  assert.equal(await countPurchasesForPi(`pi_${RUN}_n24e_b`), 0);
+  assert.equal(await countPurchasesForPi(`pi_${RUN}_n24e_m`), 0);
+  assert.equal(await countClonesFor(buyerId), 0);
+
+  // …and the DETECTOR still names it. The two halves of this rail, in one assertion.
+  const scanned = await scanReadyMade(
+    { paymentIntents: [rmPiFor({ id: `pi_${RUN}_n24e_l`, buyerId, listingId: `recon-${RUN}-no-such-listing` })] },
+    [],
+  );
+  const rows = await exceptionsForRun(scanned.runId!);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].kind, "rm_pi_succeeded_no_purchase", "DB FACT: still a FINDING, never a silent gap");
+});
+
+test("N24f: A PaymentIntent THAT DID NOT SUCCEED — or was only partly captured — fulfils nothing (§14)", async () => {
+  // §15b: irreversible effects follow the AUTHORIZATION. A PI that is not `succeeded` is not
+  // authorization, and a `succeeded` PI whose captured amount is less than the amount locked at
+  // creation is not a completed purchase — handing over the product for either would be delivering
+  // against money the platform does not hold.
+  const { recordAndFulfilReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const buyerId = await makeBuyer("f");
+
+  const notSucceeded = await recordAndFulfilReadyMadePurchase({
+    intent: rmPiFor({ id: `pi_${RUN}_n24f_s`, buyerId, status: "requires_payment_method" }),
+    actor: "webhook",
+  });
+  assert.equal(notSucceeded.ok, false);
+  assert.equal((notSucceeded as any).reason, "payment_not_succeeded");
+
+  const partial = await recordAndFulfilReadyMadePurchase({
+    intent: rmPiFor({ id: `pi_${RUN}_n24f_p`, buyerId, amountCents: 12500, amountReceivedCents: 5000 }),
+    actor: "webhook",
+  });
+  assert.equal(partial.ok, false);
+  assert.equal((partial as any).reason, "amount_not_fully_captured");
+
+  assert.equal(await countPurchasesForPi(`pi_${RUN}_n24f_s`), 0, "DB FACT: no row for an unpaid intent");
+  assert.equal(await countPurchasesForPi(`pi_${RUN}_n24f_p`), 0, "DB FACT: no row for a partial capture");
+  assert.equal(await countClonesFor(buyerId), 0, "DB FACT: and no product handed over");
+});
+
+test("N24g: RAIL SEPARATION — a cart PaymentIntent is never recovered as a ready-made purchase", async () => {
+  // The disjoint-id-space failure this whole family exists to close must not be traded for a
+  // cross-rail one on the RECOVERY side either: the branch keys on the metadata the ready-made
+  // purchase route writes server-side, and nothing else.
+  const { recordAndFulfilReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const cartPiId = `pi_${RUN}_n24g`;
+  const bookingId = await makeBooking({ paymentIntentId: cartPiId, status: "payment_pending" });
+
+  const outcome = await recordAndFulfilReadyMadePurchase({
+    intent: pi({ id: cartPiId, bookingIds: [bookingId] }) as any,
+    actor: "webhook",
+  });
+  assert.equal(outcome.ok, false);
+  assert.equal((outcome as any).reason, "not_a_ready_made_intent");
+  assert.equal(await countPurchasesForPi(cartPiId), 0, "DB FACT: no store purchase behind a cart payment");
+});
+
+test("N24h: §14 — price_paid_cents is what STRIPE CAPTURED, not the listing's price at recovery time", async () => {
+  // The amount is server-derived at PaymentIntent CREATION from the listing (§14) and the row
+  // records what was actually taken. A listing may legitimately be repriced after a sale, and the
+  // detector's own `rm_amount_mismatch` note says so — so a recovery that re-read the listing would
+  // record a number the buyer never paid, and then indict itself on the next scan.
+  const buyerId = await makeBuyer("h");
+  const piId = `pi_${RUN}_n24h`;
+  const capturedCents = 9900;
+
+  await db.execute(sql`UPDATE ready_made_trips SET price_cents = 44400 WHERE id = ${ids.listing}`);
+  try {
+    await deliver(rmPiFor({ id: piId, buyerId, amountCents: capturedCents }));
+  } finally {
+    await db.execute(sql`UPDATE ready_made_trips SET price_cents = 12500 WHERE id = ${ids.listing}`);
+  }
+
+  const row = await purchaseByPi(piId);
+  assert.ok(row, "recovered");
+  assert.equal(row.price_paid_cents, capturedCents, "DB FACT: what Stripe captured, never the current price");
+  assert.equal(row.currency, "USD");
+  assert.equal(row.status, "cloned");
 });
