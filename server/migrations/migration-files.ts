@@ -1518,4 +1518,14 @@ export const MIGRATION_FILES = [
   // is the ordinary pre-mint case (§13). Column AND index are declared in `shared/models/chat.ts`
   // (which `shared/schema.ts` re-exports) in the same commit — the deploy-push durability rule.
   "290_conversations_trip_id.sql",
+  // Ledger `2026-09-12-offering-contract-snapshot` (lane OC-B1 of the offering-commerce plan;
+  // §14.1 of the contract design): `service_bookings.offering_contract_snapshot` — ONE additive
+  // NULLABLE jsonb column recording the behaviour-changing terms a traveler committed under, so
+  // OC-D1/D2/D3 branch on what was true THEN rather than on a listing that has since changed.
+  // NO DEFAULT and NO CHECK (publish-trap posture — the vocabularies inside the jsonb are
+  // app-enforced), declared in `shared/schema.ts` in the same commit (deploy-push durability rule),
+  // and NO backfill: NULL is the honest "never snapshotted" for every row committed before the
+  // lane. Nothing reads it to make a decision — B1 records, B2 decides — so no checkout behaviour,
+  // idempotency key or claim transition moves.
+  "291_service_bookings_offering_contract_snapshot.sql",
 ] as const;

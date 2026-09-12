@@ -1408,6 +1408,24 @@ export const serviceBookings = pgTable("service_bookings", {
   // Visa / specialty service metadata collected during booking intake
   bookingMetadata: jsonb("booking_metadata").default({}),
 
+  // OC-B1 (migration 291, ledger `2026-09-12-offering-contract-snapshot`)
+  // THE TERMS THIS BOOKING WAS COMMITTED UNDER. The resolved `OfferingCommerceContract` — or the
+  // machine-readable reason it could not be resolved — plus the listing facts that produced it and
+  // the listing's cancellation policy type AT THAT MOMENT. Composed server-side at birth by
+  // `server/services/offering-contract-snapshot.ts`; §19 — it is NOT in
+  // `insertServiceBookingSchema` (below), so no request body can reach it, and nothing in it is
+  // client-supplied.
+  //
+  // NULL = NEVER SNAPSHOTTED, and that is a fact rather than a gap (§13): every row committed
+  // before this lane, and every row with no `provider_services` listing behind it (a transport
+  // booking references `transport_booking_options`), carries NULL and is read the way it WAS
+  // charged — through `travelerChargeForRow`'s own presence-discriminator.
+  //
+  // DECLARED HERE because the deploy push is authoritative over objects `shared/schema.ts` does not
+  // carry; no DEFAULT and no CHECK (publish-trap posture — the vocabularies are app-enforced).
+  // Nothing reads it to make a decision in this lane: B1 records, OC-B2 decides.
+  offeringContractSnapshot: jsonb("offering_contract_snapshot"),
+
   // Attribution (S4): source vocabulary is direct | link | cross_sell, DERIVED SERVER-SIDE at
   // checkout (payments.routes.ts) — 'link' only when acquisitionRef resolves to a real
   // short_links.code (migration 139). App-enforced, no DB CHECK. acquisitionRef is a soft
@@ -2687,6 +2705,14 @@ export const insertServiceBookingSchema = createInsertSchema(serviceBookings).om
   // (§19a), never born on the row. Stripped here (layer 1) and in createServiceBooking (layer 2).
   stripeDepositIntentId: true,
   stripeBalanceIntentId: true,
+  // OC-B1: the offering-contract snapshot is SERVER-COMPOSED at birth and is the record of what
+  // the traveler committed under. Under a denylist (`.omit()`) schema a freshly-added column is
+  // client-settable BY DEFAULT (§19's standing class), so a crafted body could birth a row already
+  // claiming an archetype, a charge mode and a completion rule nobody resolved — and every later
+  // reader (OC-D1/D3) would branch on it. Named here (layer 1) and stamped in
+  // `createServiceBooking`/`createServiceBookingAtomic` (layer 2, which also covers the internal
+  // `as any` callers a type-level omit cannot reach).
+  offeringContractSnapshot: true,
   confirmedAt: true,
   completedAt: true,
   cancelledAt: true,

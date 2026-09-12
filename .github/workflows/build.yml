@@ -259,6 +259,20 @@ jobs:
       # a seller-facing sentence naming a fix, with the reason set DERIVED by driving the resolver.
       - name: Offering activation gate pin
         run: npx tsx --test server/__tests__/offering-activation-gate.test.ts
+      # 2026-09-12-offering-contract-snapshot (lane OC-B1): the terms a booking was committed under,
+      # recorded on `service_bookings.offering_contract_snapshot` (migration 291). B1 RECORDS and
+      # OC-B2/D3 DECIDE, so the lane's largest claim is a negative one — no checkout behaviour moved
+      # — and K1/K2 pin it by DERIVING the Stripe idempotency-key template set and the claim
+      # predicates from the file set with comments stripped, never from a literal call count. S1-S6
+      # pin that a resolvable listing round-trips the ONE resolver's answer verbatim and an
+      # unresolvable one (the 61 kept demo listings) records the REFUSAL with no archetype anywhere
+      # in the blob; L1-L2 pin the pre-lane row's untouched era discriminator and the additive,
+      # CHECK-free, backfill-free migration; W1-W3 pin one write / one author / one classification;
+      # A1 pins the §19 allowlist posture on a freshly-added privileged column.
+      # (Pure — no query is issued — but it imports `shared/schema.ts`, so it belongs in an `npm ci`
+      # job and never a Node-built-ins guard job. DATABASE_URL is the job env above.)
+      - name: Offering contract snapshot pin
+        run: npx tsx --test server/__tests__/offering-contract-snapshot.test.ts
 
   legacy-rail-traveler-charge:
     name: legacy-rail-traveler-charge (2026-09-08-legacy-rail-fee — the same fix on the legacy rail)
