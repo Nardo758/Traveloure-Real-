@@ -56,6 +56,10 @@ import { resolveTravelSurcharge, type TravelSurchargeResult } from "../services/
 // Stripe call (the B1 pickup_out_of_range placement). §13: NULL field ⇒ no constraint; §14: pure
 // validation, no amount/rate off req.body.
 import { resolveBookingEligibility } from "../services/booking-eligibility.service";
+// The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`): reads the
+// listing's own `expert_offering_type_key`, falls back to the legacy uuid for a row the backfill
+// has not reached. It decides only WHICH lines are concierge lines — never a rate, never an amount.
+import { resolveBookingConciergeItems } from "../services/booking-concierge.service";
 import {
   stampBalanceAuthorization,
   promoteBalancePayment,
@@ -1251,18 +1255,17 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         }
       }
 
-      // Phase 3.4: Preload expert offering type keys to detect booking_concierge services.
-      // Maps expertOfferingTypeId (UUID) → offeringTypeKey string.
-      const distinctOfferingTypeIds = Array.from(new Set(
-        cartData.filter(i => i.service?.expertOfferingTypeId).map(i => i.service!.expertOfferingTypeId as string)
-      ));
-      const offeringTypeKeyMap = new Map<string, string>();
-      if (distinctOfferingTypeIds.length > 0) {
-        const typeRows = await storage.getExpertOfferingTypeKeysByIds(distinctOfferingTypeIds);
-        for (const row of typeRows) {
-          offeringTypeKeyMap.set(row.id, row.key);
-        }
-      }
+      // Phase 3.4: which lines sell `booking_concierge`. Ledger `2026-09-12-offering-key-is-canonical`:
+      // the listing's OWN key (migration 292) answers this, through the ONE resolver every money
+      // surface calls — the per-site `expertOfferingTypeId → offeringTypeKey` map this block used to
+      // build is gone, and with it the chance of this quote and the charge loop below disagreeing
+      // about the same cart (§18 rule 1). The resolver keeps the legacy id→key lookup as its
+      // fallback for a row the backfill has not reached, so no answer moves. No rate and no amount
+      // is decided there.
+      const conciergeLines = await resolveBookingConciergeItems(
+        cartData.map(i => i.service ?? null),
+        ids => storage.getExpertOfferingTypeKeysByIds(ids),
+      );
       // Phase 3.4: Load the Booking Concierge facilitation fee RATE once.
       // expert_concierge_booking is rate_type='percent' since migration 066 (a
       // fraction, e.g. 0.05 = 5 % — NOT a dollar amount and NOT a split fraction).
@@ -1271,11 +1274,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // Money gate: if any cart item is booking_concierge, use the strict loader
       // which throws "Booking Concierge fee band not configured" if the band is
       // missing or zero — preventing a $0 charge on a misconfigured prod DB.
-      const hasAnyBookingConciergeItem = cartData.some(i =>
-        i.service?.expertOfferingTypeId
-          ? offeringTypeKeyMap.get(i.service.expertOfferingTypeId) === "booking_concierge"
-          : false,
-      );
+      const hasAnyBookingConciergeItem = conciergeLines.hasAny;
       const conciergeBookingRate = hasAnyBookingConciergeItem
         ? await requireConciergeBookingRate()
         : await getConciergeBookingRate();
@@ -1445,9 +1444,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
         // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
         // conciergeBookingRate is a RATE (0.05 = 5 %), not a dollar amount; multiply by price.
-        const isBookingConcierge = item.service.expertOfferingTypeId
-          ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
-          : false;
+        const isBookingConcierge = conciergeLines.isBookingConcierge(item.service);
         checkoutBasePlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
         if (isBookingConcierge) {
           checkoutConciergeFeeTotal += itemPrice * conciergeBookingRate;
@@ -1513,9 +1510,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const insuranceFeeAmt = calcInsuranceFee(price, itemCategoryRates2, feeCategory2);
         // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
         // conciergeBookingRate is a RATE (fraction), so multiply by item price.
-        const isBookingConcierge2 = item.service.expertOfferingTypeId
-          ? offeringTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
-          : false;
+        // The SAME resolution the quote loop above read — one decision per cart, so the amount
+        // quoted and the amount charged can never disagree about which lines are concierge lines.
+        const isBookingConcierge2 = conciergeLines.isBookingConcierge(item.service);
         const conciergeFeeAmt = isBookingConcierge2 ? price * conciergeBookingRate : 0;
         const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt + conciergeFeeAmt;
         // ── B1 (ruling 81): the travel surcharge for THIS line, server-derived (§14) from the SAME
@@ -2149,28 +2146,20 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         }
       }
 
-      // Preload offering type keys to detect booking_concierge items (mirrors checkout logic).
-      const distinctPreviewOfferingTypeIds = Array.from(new Set(
-        cartData.filter(i => i.service?.expertOfferingTypeId).map(i => i.service!.expertOfferingTypeId as string)
-      ));
-      const previewOfferingTypeKeyMap = new Map<string, string>();
-      if (distinctPreviewOfferingTypeIds.length > 0) {
-        const typeRows = await storage.getExpertOfferingTypeKeysByIds(distinctPreviewOfferingTypeIds);
-        for (const row of typeRows) {
-          previewOfferingTypeKeyMap.set(row.id, row.key);
-        }
-      }
+      // Which lines sell `booking_concierge` — the SAME resolver /api/checkout calls (ledger
+      // `2026-09-12-offering-key-is-canonical`), so the preview cannot classify a cart one way and
+      // the charge another. Reads the listing's own key first; the legacy id is its fallback.
+      const previewConciergeLines = await resolveBookingConciergeItems(
+        cartData.map(i => i.service ?? null),
+        ids => storage.getExpertOfferingTypeKeysByIds(ids),
+      );
 
       // Load the concierge rate once. Task 1108: if the cart actually CONTAINS a
       // booking_concierge item, use the SAME strict loader checkout uses — a misconfigured
       // band must surface here as a machine-readable 503, not as a misleading $0 fee that
       // 500s later at POST /api/checkout. Carts without concierge items keep the lenient
       // loader (a zero rate is never applied to them anyway).
-      const previewHasConciergeItem = cartData.some(i =>
-        i.service?.expertOfferingTypeId
-          ? previewOfferingTypeKeyMap.get(i.service.expertOfferingTypeId) === "booking_concierge"
-          : false,
-      );
+      const previewHasConciergeItem = previewConciergeLines.hasAny;
       let previewConciergeRate: number;
       if (previewHasConciergeItem) {
         try {
@@ -2257,9 +2246,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemRates, feeCategory);
         previewPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
         // Concierge facilitation fee: charged ON TOP of the normal split (mirrors checkout).
-        const isBookingConciergePreview = item.service.expertOfferingTypeId
-          ? previewOfferingTypeKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
-          : false;
+        const isBookingConciergePreview = previewConciergeLines.isBookingConcierge(item.service);
         if (isBookingConciergePreview) {
           previewConciergeFeeTotal += itemPrice * previewConciergeRate;
         }

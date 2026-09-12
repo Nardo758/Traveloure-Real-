@@ -1539,4 +1539,14 @@ export const MIGRATION_FILES = [
   // rather than assigned a key nobody chose (§13). Not a merge of the two catalogs and not a new
   // service table — one pointer, aimed at exactly one catalog.
   "292_provider_services_expert_offering_type_key.sql",
+  // Ledger `2026-09-12-offering-key-is-canonical` (lane 1 of two). DATA ONLY — one guarded UPDATE
+  // copying `expert_offering_type_id`'s answer onto `expert_offering_type_key` by joining
+  // `expert_offering_types` on its id, so the KEY (which the offering catalogs are read by) can
+  // answer for every row the legacy uuid can. Sanctioned by the ruling and NOT the backfill D-13
+  // forbids: it invents no offering, it copies losslessly an answer the seller already gave.
+  // Guarded by `expert_offering_type_key IS NULL` (a hand-set key is never clobbered), idempotent,
+  // no ALTER/CHECK/DROP (so no `preflight-prod-constraints.cjs` manifest entry). The DROP of the
+  // legacy column is LANE 2 and deliberately does not ride this deploy — a drop is unrecoverable
+  // and a stamped migration never re-runs.
+  "293_backfill_provider_services_expert_offering_type_key.sql",
 ] as const;

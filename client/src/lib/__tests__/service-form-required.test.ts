@@ -36,7 +36,7 @@ function completeProvider(over: Partial<ServiceFormRequiredInput> = {}): Service
     categoryId: "cat-arts",
     offeringCategoryUnresolved: false,
     serviceOfferingTypeId: "off-tea",
-    expertOfferingTypeId: "",
+    expertOfferingTypeKey: "",
     needsMeetingPoint: true,
     meetingPoint: "Hanamikoji-dori, Gion",
     deliveryMethod: "in-person",
@@ -78,7 +78,7 @@ test("N3: an EXPERT does not inherit the provider-only publish gates", () => {
   const expert = completeProvider({
     role: "expert",
     serviceOfferingTypeId: "",
-    expertOfferingTypeId: "tier-1",
+    expertOfferingTypeKey: "advisory_consult",
     basePrice: 0,
     deliveryMethod: "pdf",
     needsMeetingPoint: false,

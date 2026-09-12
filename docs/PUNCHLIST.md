@@ -86,6 +86,25 @@
   counts. Plan and lane briefs: `docs/superpowers/specs/2026-09-11-offering-commerce-contract-implementation-plan.md`.
   **OC-B2 (checkout authority) is HELD until a real seller catalog exists** — production has six non-demo listings.
 
+- **LANE 2 of `2026-09-12-offering-key-is-canonical` — DROP `provider_services.expert_offering_type_id`.**
+  Lane 1 landed the backfill (migration 293), repointed every reader to the canonical
+  `expert_offering_type_key`, and made the legacy uuid unwritable on every rail. Lane 2 removes the
+  column: delete its declaration from `shared/schema.ts` (**that** is what makes the Replit deploy
+  push drop it), add the `DROP COLUMN` migration and register it, delete the `lane2-removal-target`
+  fallback arm in `server/services/booking-concierge.service.ts` (and `storage.getExpertOfferingTypeKeysByIds`
+  with its last caller), and repair K7 to assert the reader set is now EMPTY rather than deleting it.
+  **PRECONDITION — run this read-only query against PRODUCTION first and read the output; the drop
+  is refused unless it returns 0** (the `preview-category-key-repair.cjs` posture, `docs/RELEASE.md`
+  step 3): a drop is unrecoverable, and a stamped migration never re-runs, so a row still answering
+  only through the uuid loses its offering permanently — and on the money path that silently stops a
+  Booking Concierge line being charged its facilitation fee.
+  `SELECT count(*) FROM provider_services WHERE expert_offering_type_id IS NOT NULL AND expert_offering_type_key IS NULL;`
+  Migration 293 must have applied on that database first (a non-zero count usually means it has not).
+  **Also read, but NOT blocking** — the rows where the two columns already disagree, which the
+  backfill deliberately never touched and where the key is canonical by ruling; a human should see
+  them before the id is gone:
+  `SELECT ps.id, ps.expert_offering_type_key, eot.offering_type_key AS legacy_key FROM provider_services ps JOIN expert_offering_types eot ON eot.id = ps.expert_offering_type_id WHERE ps.expert_offering_type_key IS NOT NULL AND ps.expert_offering_type_key <> eot.offering_type_key;`
+
 - **L25 plan-work rail** — ruling 11 (ratified 2026-09-08): a planning-tier listing bought at checkout writes the advisor row on authorization, inside the booking's transaction, through the existing single author. One more caller, never a new insert site.
 - **Booking-agent claim lane** — ruling `2026-09-08-assignment-is-claimed`: retire auto-assignment, requests are claimed from the pooled queue, matching only orders the queue, existing assignees keep theirs.
 - **L16 Ask AI drawer** — its brief exists (`docs/design/ASK_AI_DRAWER_BRIEF.md`) and its blocker (the conversation trip link, migration 290) has landed.

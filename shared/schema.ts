@@ -1229,7 +1229,21 @@ export const providerServices = pgTable("provider_services", {
   // Per-category dynamic attributes (jsonb, data-driven fields per category_field_schema)
   categoryAttributes: jsonb("category_attributes"),
 
-  // Expert 5-tier connection (FK managed at DB level by migration 057)
+  // Expert 5-tier connection (FK managed at DB level by migration 057).
+  // LEGACY, READ-ONLY, AND BEING DROPPED (decision-maker ruling, ledger
+  // `2026-09-12-offering-key-is-canonical`). `expertOfferingTypeKey` below names the SAME offering
+  // and is CANONICAL, because the offering catalogs are read BY KEY — `impactClassFor` and the
+  // commerce-contract resolver take a key, and this uuid existed only to be translated back into
+  // one. Two columns for one fact is the derivation-drift class §18 rule 1 names: they are free to
+  // disagree the moment something writes one without the other.
+  // NOTHING WRITES IT ANY MORE: it is `.omit()`ed from `insertProviderServiceSchema` below (so
+  // neither `/api/provider/services` rail can set it), the authoring form sends only the key, and
+  // migration 293 copies its answer onto the key for every row that carries one. The remaining
+  // reader is the deliberate fallback inside `server/services/booking-concierge.service.ts`, for a
+  // database the backfill has not reached.
+  // LANE 2 removes this declaration (which is what makes the deploy push drop the column), adds the
+  // DROP migration and deletes that fallback — after the production check on its punchlist entry
+  // passes: ZERO rows with `expert_offering_type_id IS NOT NULL AND expert_offering_type_key IS NULL`.
   expertOfferingTypeId: uuid("expert_offering_type_id"),
   // THE LISTING'S OWN EXPERT OFFERING, BY KEY (migration 292, ledger
   // `2026-09-12-listing-names-its-expert-offering`; punchlist D-13 answered, V-12 closed). The
@@ -2576,7 +2590,7 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // clamped, so this was a false-audit-trail write, not an approval bypass; the real admin
 // approve/reject writers below unconditionally overwrite all four the moment a real review
 // happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true }).extend({
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true, expertOfferingTypeId: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // deliveryMethod vocabulary — UNLIKE the publish-trap fields below, a DB CHECK exists here
