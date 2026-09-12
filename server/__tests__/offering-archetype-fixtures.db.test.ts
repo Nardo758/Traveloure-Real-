@@ -40,6 +40,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { createBookingRequestSchema } from "@shared/schema";
 import { resolveServiceOwnerShareRate } from "../services/commission";
+import { hasPublishedPrice } from "../services/buy-action-payload";
 import { resolveOfferingCommerceContract } from "../services/offering-commerce-contract";
 import {
   checkOfferingActivationGate,
@@ -180,10 +181,18 @@ async function createFixtureListing(fx: ArchetypeFixture): Promise<{
   return { serviceId: service.id, gateRefusal };
 }
 
+/** What the rail answers for a listing it cannot price (V-11). */
+class PricelessListingRefused extends Error {
+  constructor(readonly serviceId: string) {
+    super(`no_published_price: ${serviceId}`);
+  }
+}
+
 /**
  * Commit a booking the way `POST /api/bookings` does — the route's OWN objects, imported, never a
- * reconstruction: the §19 pick-based allowlist, then the storage writer with the amount derived
- * from the catalog row and the identities from the caller's own server-side facts (§14).
+ * reconstruction: the §19 pick-based allowlist, the V-11 price gate, then the storage writer with
+ * the amount derived from the catalog row and the identities from the caller's own server-side
+ * facts (§14).
  */
 async function commitBooking(serviceId: string): Promise<string> {
   const input = createBookingRequestSchema.parse({
@@ -193,6 +202,10 @@ async function commitBooking(serviceId: string): Promise<string> {
   });
   const service = await storage.getProviderServiceById(input.serviceId!);
   assert.ok(service, "fixture listing must exist");
+  // V-11 (ledger `2026-09-12-booking-birth-holes`): the rail's OWN price gate, imported. A listing
+  // that publishes no price is REFUSED rather than committed at `0.00` — N1 below is the proof,
+  // and this helper carries the gate so the C loop cannot commit a row the real rail would not.
+  if (!hasPublishedPrice(service!.price)) throw new PricelessListingRefused(serviceId);
   const totalAmount = Number(service!.price) || 0;
   const ownerShareRate = await resolveServiceOwnerShareRate({
     ownerUserId: service!.userId ?? null,
@@ -427,18 +440,28 @@ test("N1 · P5 is NOT sellable through generic checkout — the spine charges a 
   assert.equal(r.contract.chargeMode, "after_quote");
   assert.equal(r.contract.commitmentMode, "quote_approve");
 
-  // And the generic spine has no quote rail to read, so its own amount derivation
-  // (`Number(service.price) || 0`) prices the booking at ZERO. The row is committed here to prove
-  // it: no refusal exists anywhere on that path, which is exactly what §9.2 forbids relying on.
-  const bookingId = await commitBooking(serviceIdFor.get("P5")!);
-  const row = await readBooking(bookingId);
-  assert.equal(
-    Number(row.total_amount),
-    0,
-    "a custom-quote listing carries no price, so generic checkout commits it at 0.00",
+  // THE REFUSAL IS NOW REAL (punchlist V-11, ledger `2026-09-12-booking-birth-holes`). When this
+  // suite landed, the generic spine had no quote rail to read and its own amount derivation
+  // (`Number(service.price) || 0`) priced the booking at ZERO — this assertion committed the row to
+  // prove it, because no refusal existed anywhere on that path and §9.2's "do not send this through
+  // generic checkout" had nothing standing behind it. `POST /api/bookings` now consults the ONE
+  // price predicate before it derives an amount, so the rail refuses instead of stating a price
+  // nobody set (§13). The assertion is REPAIRED to the invariant, not deleted: what it guards is
+  // that a `server_quote` listing never becomes a committed booking on this rail.
+  await assert.rejects(
+    () => commitBooking(serviceIdFor.get("P5")!),
+    (err: unknown) => err instanceof PricelessListingRefused,
+    "a custom-quote listing must be REFUSED by generic checkout, never committed at 0.00",
   );
-  // The row's own snapshot contradicts the charge it just took — recorded, not repaired here.
-  assert.equal(row.offering_contract_snapshot.resolution.contract.priceAuthority, "server_quote");
+  const committed = await db.execute(sql`
+    SELECT count(*)::int AS n FROM service_bookings WHERE service_id = ${serviceIdFor.get("P5")!}
+  `);
+  assert.equal((committed.rows[0] as any).n, 0, "and no row exists — a refusal is not a $0 purchase");
+
+  // WHAT IS STILL BROKEN, AND IS NOT THIS LANE'S TO FIX: the quote rail the contract describes
+  // (`chargeMode: after_quote`, `commitmentMode: quote_approve`) does not exist, so a P5 listing is
+  // publishable and unsellable. That is an honest refusal rather than a silent $0 sale — and it is
+  // still a hole in the product, recorded here rather than papered over.
 });
 
 test("N2 · the catch-all category MISCLASSIFIES an expert's physical action as a provider's P1", () => {

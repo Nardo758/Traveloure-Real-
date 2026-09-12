@@ -1814,8 +1814,28 @@ committed `--self-test` fixtures (§18d). It knows those **two** classes and not
 a `status`, an authorization grant (`#PS16`) is still invisible to it. That stated blind spot is the
 reason the answer is `#PS18`, not a wider grep.
 
-Proven by `server/__tests__/booking-birth-provenance.db.test.ts` (**B1–B6**, 7 proofs); sweep 9/9,
-promotion 11/11 incl. **N17c**, detection 15/15 and ruling 42's P1–P6 untouched and green.
+**§19d — AN ALLOWLIST STOPS AT THE COLUMN; A FREE-FORM JSONB NEEDS ITS OWN ADMISSION LAYER
+(punchlist V-10, ledger `2026-09-12-booking-birth-holes`).** `createBookingRequestSchema` is the
+pick-based allowlist ruling 46 required — and two of the five keys it admits are FREE-FORM jsonb
+(`bookingDetails`, `bookingMetadata`), so everything the server later stores INSIDE them was
+client-settable at birth. `booking_details.travelerCharge` is that class's money instance: its mere
+PRESENCE is the era discriminator `travelerChargeBasis` reads, and three live readers compute a
+different amount on each branch (the cancellation quote, the REFUND CEILING clamp, the checkout
+re-drive). A planted key moves a row's refund ceiling **without touching a single money COLUMN**,
+which is why §14's `req.body` grep and §19's column-level strips both look straight past it. Strip
+placement, and it is the part that does not generalise: layer 1 is the admission schema; layer 2 is
+**`storage.createServiceBookingAtomic`**, the client-facing birth rail's writer — deliberately NOT
+`createServiceBooking`, which is the CHECKOUT CLAIM's writer and legitimately COMPOSES that key
+server-side on every purchase, so a blanket strip there would erase a real money fact and re-read
+the platform as pre-A3. **When one writer is shared by a client rail and a server composer, the
+strip goes on the client rail's writer and the server composer keeps a named, asserted exemption**
+(B8). The key list (`shared/booking-details-admission.ts`) is a DENYLIST, because an allowlist needs
+a ratified `booking_details` shape nobody has decided — stated, pinned by B7, and extended by hand
+until that shape exists.
+
+Proven by `server/__tests__/booking-birth-provenance.db.test.ts` (**B1–B9**, 10 proofs — B7/B8 are
+§19d, B9 is V-11's priceless-listing refusal); sweep 9/9, promotion 11/11 incl. **N17c**, detection
+15/15 and ruling 42's P1–P6 untouched and green.
 
 ### §16 — Affiliate-outbound rule (agent-booking, ratified Jul 23, 2026)
 
