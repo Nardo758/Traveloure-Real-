@@ -1260,6 +1260,53 @@ jobs:
       # REQUESTED). Ruling 46's suite had no CI job of its own until this lane; it does now.
       - name: Booking-birth provenance (B1–B9)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/booking-birth-provenance.db.test.ts
+
+  reconciliation-detection:
+    name: reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # §17's own suite. It proves the daily drift job DETECTS and does not REPAIR, across all
+      # THREE booking rails — cart checkout (`service_bookings`), the still-live legacy `bookings`,
+      # and, as of the V-3 lane, the store's `ready_made_purchases`. N23 is the new rail: five kinds
+      # seeded as real rows against an injected Stripe view, plus the negatives that carry the
+      # weight — a healthy purchase raises nothing, a purchase inside the fulfilment grace raises
+      # nothing, a buyer-deleted clone raises nothing, a re-detected drift records no second row,
+      # and the three rails never indict each other's PaymentIntents.
+      #
+      # The suite existed since ruling 40 and had NO CI job of its own; it does now, which is the
+      # difference between a guard and a script somebody once ran (DECISIONS.md tag rule).
+      - name: Reconciliation detection (N20–N23)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/reconciliation-detection.db.test.ts
   roles-needed-reachability-guard:
     name: roles-needed-reachability-guard (ledger 2026-09-04-roles-needed)
     runs-on: ubuntu-latest

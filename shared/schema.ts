@@ -8105,6 +8105,37 @@ export const RECONCILIATION_EXCEPTION_KINDS = [
    *  (§17 DETECT, DON'T REPAIR). It is a `warning`, not `critical` — the row may be perfectly fine;
    *  what is not fine is that nothing can tell. */
   "payment_provenance_unverified",
+  // ── READY-MADE rail (`ready_made_purchases`) ──────────────────────────────────────────────
+  // The store lane (CLAUDE.md "ready_made_trips is the single store lane") was invisible to this
+  // job for the same reason cart checkout once was: disjoint id spaces. A ready-made PaymentIntent
+  // carries `metadata.type='ready_made_purchase'` and NO `bookingIds`, and its purchase row lives
+  // in `ready_made_purchases` — so every cart-rail query matched zero rows and errored on nothing.
+  // Kinds are `rm_`-prefixed rather than reusing the cart vocabulary: a kind names WHAT IS KNOWN,
+  // and "a booking is unpromoted" and "a purchase was never cloned" are different facts about
+  // different tables (the legacy rail sets the same precedent with its own two names).
+  /** A PaymentIntent Stripe says SUCCEEDED, self-identified as a ready-made purchase by its own
+   *  metadata, with NO `ready_made_purchases` row on that PaymentIntent id. The row is inserted
+   *  only by `POST /api/ready-made/:id/purchase/confirm`, which the BUYER'S BROWSER calls after
+   *  the charge — so a closed tab between capture and confirm is money taken with nothing
+   *  recorded, no clone, and no author earning. The most serious classification on this rail. */
+  "rm_pi_succeeded_no_purchase",
+  /** A purchase is `paid` with NO `clone_trip_id` — captured and never delivered. `status='paid'`
+   *  means `fulfillReadyMadePurchase`'s atomic paid→cloned claim never took, so the buyer has no
+   *  trip and the author has no earning. Reported only after a fulfilment GRACE, because the row
+   *  is legitimately `paid`-with-no-clone for the milliseconds between the confirm INSERT and the
+   *  fulfil that follows it in the same request. */
+  "rm_purchase_paid_not_cloned",
+  /** `price_paid_cents` on the row and the amount Stripe captured disagree. */
+  "rm_amount_mismatch",
+  /** A purchase row is live (`paid`/`cloned`) but its PaymentIntent is not succeeded at Stripe.
+   *  Only ever raised for a PaymentIntent this pass actually saw — an unseen PI is older than the
+   *  window, not drift (the cart rail's own discipline). */
+  "rm_purchase_pi_not_succeeded",
+  /** Stripe holds a refund against a ready-made PaymentIntent whose purchase is still `paid` or
+   *  `cloned` — the money went back and the buyer still holds the product, with the author's
+   *  earning unreversed. Typically a refund issued straight from the Stripe dashboard, which no
+   *  platform code path knows about. */
+  "rm_refund_not_reversed",
   // ── LEGACY rail (`bookings` — still live via /booking-demo and process-cart) ───────────────
   "stripe_charge_no_booking",
   "booking_no_stripe_charge",
@@ -8121,7 +8152,7 @@ export const reconciliationExceptions = pgTable(
     id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     runId: varchar("run_id").notNull().references(() => reconciliationRuns.id, { onDelete: "cascade" }),
     detectedAt: timestamp("detected_at").defaultNow().notNull(),
-    /** cart (service_bookings) | legacy (bookings) */
+    /** cart (service_bookings) | legacy (bookings) | ready_made (ready_made_purchases) */
     rail: varchar("rail", { length: 20 }).notNull(),
     kind: varchar("kind", { length: 60 }).notNull(),
     /** critical | warning */

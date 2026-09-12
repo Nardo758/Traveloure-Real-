@@ -15,6 +15,35 @@
  * verbatim in behaviour and simply re-expressed as two of the classifications below. The cart rail
  * gains seven more.
  *
+ * ONE JOB, *THREE* RAILS (ready-made-reconciliation-rail lane; punchlist V-3)
+ * ─────────────────────────────────────────────────────────────────────────
+ * `ready_made_purchases` — the store lane's purchase table (CLAUDE.md: "`ready_made_trips` is the
+ * single store lane") — appeared NOWHERE in this file, so §17's own history repeated itself one
+ * table over: a ready-made PaymentIntent carries `metadata.type='ready_made_purchase'` and NO
+ * `bookingIds`, and its row is not a `service_bookings` row, so every cart-rail query matched zero
+ * rows and errored on nothing. A Stripe success whose delivery never completed had no detector at
+ * all, while the cart rail had three recovery layers and a scan.
+ *
+ * The rail is added in the SHAPE the existing two already take — a third `ReconciliationRail`
+ * value, a third `scan*Rail` function, the same append-only exception rows, the same run row — and
+ * NOT as a second job or a parallel scanner.
+ *
+ * ITS LINKAGE IS CLEANER THAN THE CART RAIL'S, and no new write was needed for it (§17 rule 4):
+ * `ready_made_purchases.stripe_payment_intent_id` is **NOT NULL and UNIQUE**, the row is inserted
+ * only AFTER Stripe says `succeeded` (so born-`paid` is correct and there is no provisional state
+ * to reason about), and the PaymentIntent self-identifies through metadata `createPaymentIntent`
+ * wrote server-side at `POST /api/ready-made/:id/purchase`.
+ *
+ * THERE IS NO REPAIR ON THIS RAIL — NOT EVEN THE CART RAIL'S ONE NARROW EXCEPTION. That exception
+ * exists because `promotePaidCheckout` is a RATIFIED recovery layer whose logic is merely arriving
+ * late (§15c). The ready-made rail has NO ratified recovery layer of its own: the purchase row is
+ * created by the buyer's own browser calling `/purchase/confirm`, and the Stripe webhook
+ * (`handlePaymentSucceeded`) keys on `metadata.bookingIds`, which a ready-made PaymentIntent never
+ * carries — so the webhook no-ops on it. `fulfillReadyMadePurchase` is idempotent and would be
+ * TEMPTING to call here; it is deliberately NOT called. A detector that fulfils is a second,
+ * unreviewed delivery path, and "the ready-made rail has no recovery layer" is a FINDING for a
+ * human, recorded in the lane's ledger row — not a gap for the detector to quietly fill.
+ *
  * DETECT, DON'T REPAIR — and the ONE exception
  * ────────────────────────────────────────────
  * This job writes exception rows. It NEVER voids, refunds, cancels or invents a booking. Repair
@@ -82,6 +111,23 @@ const STRIPE_PAGE_LIMIT = 100;
  *  see `loadCartBookings`. */
 const CART_SCAN_LIMIT = 1000;
 
+/** Cap on ready-made purchases examined per pass. Same posture as `CART_SCAN_LIMIT`: hitting it is
+ *  logged as an error rather than absorbed, because a detector that silently stops looking is
+ *  worse than no detector. */
+const READY_MADE_SCAN_LIMIT = 1000;
+
+/**
+ * How long a ready-made purchase may sit `paid` with no clone before it is reported as undelivered.
+ *
+ * NOT a fee, a rate or a margin (§8) — it is a LIVENESS window, the same kind of constant as
+ * `holdWindowDays` and `ADMIN_REFUND_OUTER_BOUND_DAYS`. `POST /purchase/confirm` INSERTs the row
+ * and then calls `fulfillReadyMadePurchase` in the same request, so `paid`-with-no-clone is the
+ * NORMAL state for the milliseconds in between. Reporting inside that gap would indict a purchase
+ * that is being delivered while the scan reads it — the detector crying wolf on its own arithmetic,
+ * exactly what `amountTolerance` exists to avoid one classification over.
+ */
+const READY_MADE_FULFILMENT_GRACE_MS = 15 * 60 * 1000;
+
 /**
  * Money comparison tolerance, in DOLLARS. NOT a fee, a rate or a margin (§8) — it is the exact
  * accumulated rounding error of the checkout arithmetic. Each booking row persists two
@@ -108,7 +154,7 @@ const TERMINAL_STATUSES = ["expired", "failed", "payment_failed", "cancelled", "
 
 // ── Types ────────────────────────────────────────────────────────────────────────────────────
 
-export type ReconciliationRail = "cart" | "legacy";
+export type ReconciliationRail = "cart" | "legacy" | "ready_made";
 export type ReconciliationSeverity = "critical" | "warning";
 
 export interface ReconciliationException {
@@ -140,6 +186,19 @@ export interface ReconciliationResult {
   checkedRefunds: number;
   checkedCartBookings: number;
   checkedBookings: number;
+  /**
+   * Ready-made purchase rows examined this pass.
+   *
+   * §13 — STATED, NOT HIDDEN: this count is NOT persisted on the `reconciliation_runs` row, which
+   * carries `scanned_cart_bookings` and `scanned_legacy_bookings` and no third column. Adding one
+   * is a migration PLUS an edit to the two admin SELECTs that name their columns explicitly, and
+   * this lane deliberately took neither (a sibling lane owns `admin.routes.ts`). What the run row
+   * DOES carry is unaffected and is what §17 rule 2 requires: every pass is recorded, and
+   * `exceptions_detected` / `exceptions_new` already include this rail's kinds, so "still drifting"
+   * stays visible. The per-rail tally lives in this response (the manual `run-now` read) and in the
+   * pass's log line; persisting it is a named follow-up in the lane's ledger row.
+   */
+  checkedReadyMadePurchases: number;
   ranAt: string;
   /** Back-compat with the pre-existing admin page/endpoint shape, which renders `mismatches`.
    *  Legacy-rail entries only ever carried these two kinds; now every kind lands here. */
@@ -254,6 +313,10 @@ export async function runStripeReconciliation(opts?: {
    *  checkout on demand) and what lets the behavioural suite assert exact per-pass counts
    *  without a neighbouring row in the same database changing them. */
   onlyBookingIds?: string[];
+  /** Restrict the READY-MADE scan to these purchase ids. Same purpose as `onlyBookingIds` one
+   *  rail over: operational scoping, and what lets the behavioural suite assert exact per-pass
+   *  counts without a neighbouring row in the same database changing them. */
+  onlyPurchaseIds?: string[];
   /** Skip the DB write of the run + exception rows. Never used in production; the promotion
    *  path is unaffected. */
   dryRun?: boolean;
@@ -276,6 +339,7 @@ export async function runStripeReconciliation(opts?: {
     checkedRefunds: 0,
     checkedCartBookings: 0,
     checkedBookings: 0,
+    checkedReadyMadePurchases: 0,
     ranAt,
     mismatches: [],
   };
@@ -314,6 +378,16 @@ export async function runStripeReconciliation(opts?: {
     // ── LEGACY RAIL (behaviour preserved verbatim; still live per CLAUDE.md §15c) ────────────
     const legacy = await scanLegacyRail({ charges, windowStart, exceptions });
     base.checkedBookings = legacy.scannedBookings;
+
+    // ── READY-MADE RAIL (the store lane; punchlist V-3) ──────────────────────────────────────
+    const readyMade = await scanReadyMadeRail({
+      paymentIntents,
+      refunds,
+      windowStart,
+      onlyPurchaseIds: opts?.onlyPurchaseIds,
+      exceptions,
+    });
+    base.checkedReadyMadePurchases = readyMade.scannedPurchases;
 
     base.exceptions = exceptions;
     base.mismatches = exceptions.map((e) => ({
@@ -355,6 +429,7 @@ export async function runStripeReconciliation(opts?: {
           refunds: base.checkedRefunds,
           cartBookings: base.checkedCartBookings,
           legacyBookings: base.checkedBookings,
+          readyMadePurchases: base.checkedReadyMadePurchases,
         },
         "[RECONCILIATION] clean pass — no drift (run RECORDED so silence is distinguishable from a dead job)",
       );
@@ -423,6 +498,11 @@ async function scanCartRail(args: {
     if (linked.length === 0) {
       // A legacy-rail PaymentIntent legitimately has no service_bookings row; do not indict it.
       if (legacyOwnsIntent(pi)) continue;
+      // Nor does a READY-MADE one (ready-made-reconciliation-rail lane, punchlist V-3). Its row
+      // lives in `ready_made_purchases` and its own rail judges it below; without this the third
+      // rail would have been bought at the price of reporting every store purchase as cart drift —
+      // the cross-rail version of the disjoint-id-space failure §17 exists to close.
+      if (isReadyMadeIntent(pi)) continue;
       exceptions.push({
         rail: "cart",
         kind: "pi_succeeded_no_booking",
@@ -769,6 +849,264 @@ async function scanLegacyRail(args: {
   return { scannedBookings: dbBookings.length };
 }
 
+
+// ── READY-MADE RAIL (`ready_made_purchases` — the store lane; punchlist V-3) ──────────────────
+//
+// DETECT, DON'T REPAIR, WITH NO EXCEPTION AT ALL (§17). The cart rail's one narrow repair exists
+// because `promotePaidCheckout` is a ratified recovery layer arriving late. This rail has no
+// ratified recovery layer to arrive late: nothing but the buyer's own `/purchase/confirm` call
+// creates the row, and the `payment_intent.succeeded` webhook keys on `metadata.bookingIds`, which
+// a ready-made PaymentIntent never carries. So this scanner promotes nothing, fulfils nothing,
+// refunds nothing and revokes nothing — it writes exception rows and stops.
+//
+// THE EXPECTED AMOUNT IS THE ROW'S OWN `price_paid_cents` (§17 rule 3). It is deliberately NOT the
+// listing's current `price_cents`: the price is LOCKED at PaymentIntent creation (§14 — the
+// purchase route derives the charge from the listing at that moment), so an author editing their
+// price afterwards is an ordinary event and comparing against it would report every price edit as
+// drift. No rate, no fee, no literal anywhere in this rail (§8).
+
+/** Statuses in which the buyer still holds the product and the money has not been reversed. */
+const READY_MADE_LIVE_STATUSES = ["paid", "cloned"];
+
+interface ReadyMadePurchaseRow {
+  id: string;
+  buyerId: string | null;
+  readyMadeTripId: string | null;
+  status: string | null;
+  /** NOT NULL + UNIQUE in the schema — the anchor that makes this rail's linkage exact. */
+  stripePaymentIntentId: string;
+  pricePaidCents: number;
+  currency: string | null;
+  cloneTripId: string | null;
+  purchasedAt: Date | null;
+}
+
+function mapReadyMadeRow(r: any): ReadyMadePurchaseRow {
+  return {
+    id: String(r.id),
+    buyerId: r.buyer_id ?? null,
+    readyMadeTripId: r.ready_made_trip_id ?? null,
+    status: r.status ?? null,
+    stripePaymentIntentId: String(r.stripe_payment_intent_id ?? ""),
+    pricePaidCents: Number(r.price_paid_cents ?? 0),
+    currency: r.currency == null ? null : String(r.currency),
+    cloneTripId: r.clone_trip_id ?? null,
+    purchasedAt: r.purchased_at ? new Date(String(r.purchased_at)) : null,
+  };
+}
+
+/** A ready-made PaymentIntent self-identifies through metadata `POST /api/ready-made/:id/purchase`
+ *  wrote SERVER-SIDE — the same "linkage that already exists" the cart rail keys on (§17 rule 4).
+ *  The cart rail's `bookingIds` and the legacy rail's singular `bookingId` are absent from it, so
+ *  the three rails cannot indict each other's PaymentIntents. */
+function isReadyMadeIntent(pi: Stripe.PaymentIntent): boolean {
+  return pi.metadata?.type === "ready_made_purchase";
+}
+
+async function scanReadyMadeRail(args: {
+  paymentIntents: Stripe.PaymentIntent[];
+  refunds: Stripe.Refund[];
+  windowStart: Date;
+  onlyPurchaseIds?: string[];
+  exceptions: ReconciliationException[];
+}): Promise<{ scannedPurchases: number }> {
+  const { paymentIntents, refunds, windowStart, onlyPurchaseIds, exceptions } = args;
+
+  const readyMadeIntents = paymentIntents.filter(isReadyMadeIntent);
+  // A refund can name a PaymentIntent whose purchase row predates the window — load by BOTH, the
+  // same reason the cart rail loads by PI id as well as by creation time.
+  const refundIntentIds = refunds
+    .map((rf) => (typeof rf.payment_intent === "string" ? rf.payment_intent : null))
+    .filter((v): v is string => Boolean(v));
+
+  const rows = await loadReadyMadePurchases({
+    windowStart,
+    paymentIntentIds: [...readyMadeIntents.map((pi) => pi.id), ...refundIntentIds],
+    onlyPurchaseIds,
+  });
+
+  const byPi = new Map(rows.map((r) => [r.stripePaymentIntentId, r]));
+  const piById = new Map(paymentIntents.map((pi) => [pi.id, pi]));
+  const scope = onlyPurchaseIds ? new Set(onlyPurchaseIds) : null;
+  const inScope = (id: string) => !scope || scope.has(id);
+
+  // ── R1. Stripe-first: a succeeded ready-made PaymentIntent must have a purchase behind it ────
+  for (const pi of readyMadeIntents) {
+    if (pi.status !== PI_SUCCEEDED) continue;
+    const row = byPi.get(pi.id);
+
+    if (!row) {
+      // Money taken and NOTHING recorded — no purchase, no clone, no author earning. The live
+      // shape of this is a buyer whose browser never got to call `/purchase/confirm`.
+      exceptions.push({
+        rail: "ready_made",
+        kind: "rm_pi_succeeded_no_purchase",
+        severity: "critical",
+        dedupeKey: `ready_made:rm_pi_succeeded_no_purchase:${pi.id}`,
+        paymentIntentId: pi.id,
+        chargeId: typeof pi.latest_charge === "string" ? pi.latest_charge : null,
+        actualAmount: centsToDollars(pi.amount_received || pi.amount),
+        currency: pi.currency ?? null,
+        details: {
+          // Recorded because they are the only handles a human has on an unrecorded purchase —
+          // both are written server-side by the purchase route, never by a client.
+          metadataListingId: pi.metadata?.listingId ?? null,
+          metadataBuyerId: pi.metadata?.buyerId ?? null,
+          note:
+            "A ready-made PaymentIntent SUCCEEDED and no ready_made_purchases row carries its id. " +
+            "The row is written only by POST /api/ready-made/:id/purchase/confirm — the BUYER'S " +
+            "OWN browser call — and nothing else recovers it: the payment_intent.succeeded webhook " +
+            "keys on metadata.bookingIds, which this PaymentIntent does not carry. The buyer may " +
+            "have been charged with no purchase, no cloned trip and no author earning. " +
+            "NOT REPAIRED (§17): a human decides refund vs. manual fulfilment.",
+        },
+      });
+      continue;
+    }
+    if (!inScope(row.id)) continue;
+
+    // R2. AMOUNT — server-derived from the purchase row's own column (§17 rule 3), never from
+    // Stripe and never from a rate. Both sides are integer cents, so there is nothing to round
+    // and no tolerance to justify: any difference is a real disagreement.
+    const actualCents = Math.round(Number(pi.amount_received || pi.amount));
+    if (row.pricePaidCents !== actualCents) {
+      exceptions.push({
+        rail: "ready_made",
+        kind: "rm_amount_mismatch",
+        severity: "critical",
+        dedupeKey: `ready_made:rm_amount_mismatch:${pi.id}:${row.pricePaidCents}:${actualCents}`,
+        bookingId: row.id,
+        paymentIntentId: pi.id,
+        expectedAmount: centsToDollars(row.pricePaidCents),
+        actualAmount: centsToDollars(actualCents),
+        currency: pi.currency ?? null,
+        details: {
+          purchaseStatus: row.status,
+          deltaCents: row.pricePaidCents - actualCents,
+          // Currency is reported as a FACT, never folded into the amount test: "the sums differ"
+          // and "the denominations differ" are different findings and the kind names the first.
+          rowCurrency: row.currency,
+          paymentIntentCurrency: pi.currency ?? null,
+          note:
+            "ready_made_purchases.price_paid_cents and the amount Stripe captured disagree. The " +
+            "expected figure is the purchase row's own column (§14/§17 rule 3), NOT the listing's " +
+            "current price — a listing's price may legitimately change after a sale, since the " +
+            "price is locked at PaymentIntent creation.",
+        },
+      });
+    }
+  }
+
+  // ── R3/R4. DB-first: a live purchase must be DELIVERED and must stand on a succeeded PI ──────
+  const now = Date.now();
+  for (const row of rows) {
+    if (!inScope(row.id)) continue;
+    if (!READY_MADE_LIVE_STATUSES.includes(row.status ?? "")) continue;
+
+    // R3 — PAID, NEVER DELIVERED (V-3's named case). `cloned` is deliberately NOT tested for a
+    // missing clone id: `clone_trip_id` is ON DELETE SET NULL and a buyer deleting their own trip
+    // is an ordinary act, so a `cloned` row with a NULL id is a deleted product, not a failed
+    // delivery — indicting it would report the buyer's own housekeeping as drift (§13).
+    if (row.status === "paid" && !row.cloneTripId) {
+      const ageMs = row.purchasedAt ? now - row.purchasedAt.getTime() : null;
+      // A row with no `purchased_at` cannot be aged, and the column is NOT NULL DEFAULT now() —
+      // so this is unreachable rather than tolerated. If it ever happens, the honest answer is to
+      // say nothing rather than guess the row is old enough to indict (§13).
+      if (ageMs !== null && ageMs > READY_MADE_FULFILMENT_GRACE_MS) {
+        exceptions.push({
+          rail: "ready_made",
+          kind: "rm_purchase_paid_not_cloned",
+          severity: "critical",
+          dedupeKey: `ready_made:rm_purchase_paid_not_cloned:${row.id}`,
+          bookingId: row.id,
+          paymentIntentId: row.stripePaymentIntentId,
+          expectedAmount: centsToDollars(row.pricePaidCents),
+          currency: row.currency,
+          details: {
+            purchaseStatus: row.status,
+            readyMadeTripId: row.readyMadeTripId,
+            // The buyer is the one person a human MUST reach on an undelivered purchase. This is
+            // an admin-only surface under the §2 blanket guard, not a public payload — LD 40's
+            // rule is about what a PUBLIC response carries, and none of this is one.
+            buyerId: row.buyerId,
+            purchasedAt: row.purchasedAt?.toISOString() ?? null,
+            graceMinutes: Math.round(READY_MADE_FULFILMENT_GRACE_MS / 60000),
+            note:
+              "A ready-made purchase is still `paid` with no clone trip well past the fulfilment " +
+              "grace: fulfillReadyMadePurchase's atomic paid→cloned claim never took, so the buyer " +
+              "paid and has no trip and the author has no earning. NOT REPAIRED (§17) — the " +
+              "fulfilment is idempotent and could be re-driven, but this job is a detector and " +
+              "the ready-made rail has no ratified recovery layer for it to stand in for.",
+          },
+        });
+      }
+    }
+
+    // R4 — the purchase is live but Stripe does not say the money moved. Only judged for a PI this
+    // pass actually SAW: "not in this window's listing" is not "not succeeded at Stripe", and
+    // guessing about unseen PaymentIntents is the discipline the sweep established.
+    const pi = piById.get(row.stripePaymentIntentId);
+    if (pi && pi.status !== PI_SUCCEEDED) {
+      exceptions.push({
+        rail: "ready_made",
+        kind: "rm_purchase_pi_not_succeeded",
+        severity: "critical",
+        dedupeKey: `ready_made:rm_purchase_pi_not_succeeded:${row.id}:${pi.id}:${pi.status}`,
+        bookingId: row.id,
+        paymentIntentId: pi.id,
+        expectedAmount: centsToDollars(row.pricePaidCents),
+        actualAmount: centsToDollars(pi.amount_received || pi.amount),
+        currency: pi.currency ?? null,
+        details: {
+          purchaseStatus: row.status,
+          paymentIntentStatus: pi.status,
+          note:
+            "A live ready-made purchase stands on a PaymentIntent that is not succeeded at Stripe. " +
+            "The row is written only after /purchase/confirm retrieves a `succeeded` intent, so a " +
+            "PaymentIntent that is no longer succeeded is a fact a human has to look at.",
+        },
+      });
+    }
+  }
+
+  // ── R5. REFUND drift: Stripe reversed money the purchase row still treats as live ────────────
+  for (const rf of refunds) {
+    const piId = typeof rf.payment_intent === "string" ? rf.payment_intent : null;
+    if (!piId) continue;
+    const row = byPi.get(piId);
+    // Not ours to judge: a refund against a cart-rail, legacy or non-purchase PaymentIntent has no
+    // ready_made_purchases row and belongs to another rail's classification (or to none).
+    if (!row || !inScope(row.id)) continue;
+    if (!READY_MADE_LIVE_STATUSES.includes(row.status ?? "")) continue;
+
+    exceptions.push({
+      rail: "ready_made",
+      kind: "rm_refund_not_reversed",
+      severity: "critical",
+      dedupeKey: `ready_made:rm_refund_not_reversed:${rf.id}`,
+      bookingId: row.id,
+      paymentIntentId: piId,
+      chargeId: typeof rf.charge === "string" ? rf.charge : null,
+      expectedAmount: centsToDollars(row.pricePaidCents),
+      actualAmount: centsToDollars(rf.amount),
+      currency: rf.currency ?? null,
+      details: {
+        stripeRefundId: rf.id,
+        purchaseStatus: row.status,
+        cloneTripId: row.cloneTripId,
+        note:
+          "Stripe holds a refund against this ready-made PaymentIntent and the purchase is still " +
+          "live (paid/cloned) — the buyer has the money back AND the trip, and the author's " +
+          "escrowed earning was never reversed. The platform's own admin refund flips the status " +
+          "BEFORE it calls Stripe, so this shape is typically a refund issued straight from the " +
+          "Stripe dashboard. DETECT-ONLY: nothing here reverses the earning or revokes the clone.",
+      },
+    });
+  }
+
+  return { scannedPurchases: rows.length };
+}
+
 // ── DB access ────────────────────────────────────────────────────────────────────────────────
 
 async function loadCartBookings(args: {
@@ -810,6 +1148,52 @@ async function loadCartBookings(args: {
     );
   }
   return (rows.rows as any[]).map(mapCartRow);
+}
+
+/**
+ * Ready-made purchases created inside the window, OR carrying a PaymentIntent id the window's
+ * Stripe listing named (a PaymentIntent can be refunded a week after the purchase — the row is
+ * older than the window and the money event is inside it, and a window-only query would miss
+ * exactly that drift). Same two-sided predicate as `loadCartBookings`, one table over.
+ */
+async function loadReadyMadePurchases(args: {
+  windowStart: Date;
+  paymentIntentIds: string[];
+  onlyPurchaseIds?: string[];
+}): Promise<ReadyMadePurchaseRow[]> {
+  const { windowStart, paymentIntentIds, onlyPurchaseIds } = args;
+  if (onlyPurchaseIds && onlyPurchaseIds.length === 0) return [];
+
+  const clauses = [sql`purchased_at >= ${windowStart.toISOString()}`];
+  if (paymentIntentIds.length > 0) {
+    const unique = Array.from(new Set(paymentIntentIds));
+    clauses.push(
+      sql`stripe_payment_intent_id IN (${sql.join(unique.map((v) => sql`${v}`), sql`, `)})`,
+    );
+  }
+
+  const rows = await db.execute(sql`
+    SELECT id, buyer_id, ready_made_trip_id, status, stripe_payment_intent_id,
+           price_paid_cents, currency, clone_trip_id, purchased_at
+    FROM ready_made_purchases
+    WHERE (${sql.join(clauses, sql` OR `)})
+      ${
+        onlyPurchaseIds
+          ? sql`AND id IN (${sql.join(onlyPurchaseIds.map((v) => sql`${v}`), sql`, `)})`
+          : sql``
+      }
+    ORDER BY purchased_at ASC
+    LIMIT ${READY_MADE_SCAN_LIMIT}
+  `);
+  if (rows.rows.length === READY_MADE_SCAN_LIMIT) {
+    // Same posture as the cart rail's cap: say it loudly rather than report a tail nobody looked at.
+    logger.error(
+      { limit: READY_MADE_SCAN_LIMIT },
+      "[RECONCILIATION] ready-made scan hit its row cap — the WINDOW WAS NOT FULLY EXAMINED. " +
+        "Raise READY_MADE_SCAN_LIMIT or paginate; do not read this pass as clean.",
+    );
+  }
+  return (rows.rows as any[]).map(mapReadyMadeRow);
 }
 
 async function loadKnownRefundIds(stripeRefundIds: string[]): Promise<Set<string>> {
