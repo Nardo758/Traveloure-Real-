@@ -117,10 +117,23 @@ async function resolveCategoryId(key: string): Promise<string> {
   const existing = (found.rows[0] as any)?.id as string | undefined;
   if (existing) return existing;
   const id = `arcf-${RUN}-cat-${key}`;
-  await db.execute(sql`
-    INSERT INTO service_categories (id, name, slug, category_key)
-    VALUES (${id}, ${`ARCF ${RUN} ${key}`}, ${`arcf-${RUN}-${key}`}, ${key})
+  // `commission_band_key` is NOT NULL and is a BAND SELECTOR — a rate-bearing field (§18). It is
+  // therefore COPIED from a row the taxonomy migrations already seeded rather than written as a
+  // literal here (§8: no fee/commission literal outside `fee_bands`/config). Nothing in this suite
+  // reads it; it exists only because the column refuses NULL.
+  const inserted = await db.execute(sql`
+    INSERT INTO service_categories (id, name, slug, category_key, commission_band_key)
+    SELECT ${id}, ${`ARCF ${RUN} ${key}`}, ${`arcf-${RUN}-${key}`}, ${key}, sc.commission_band_key
+      FROM service_categories sc
+     WHERE sc.commission_band_key IS NOT NULL
+     LIMIT 1
+    RETURNING id
   `);
+  assert.ok(
+    inserted.rows[0],
+    `cannot create a disposable '${key}' category: this database carries no service_categories row ` +
+      "with a commission band to copy, so the taxonomy migrations have not been applied",
+  );
   createdCategoryIds.push(id);
   return id;
 }
