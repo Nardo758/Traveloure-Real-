@@ -152,6 +152,10 @@ import { drainPendingEventsIntoTrip } from "./services/pending-events.service";
 // slot set (see its docblock in checkout-claim.service.ts) — used here so
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
 import { deriveClaimedSlotIds } from "./services/checkout-claim.service";
+// OC-B1 (ledger `2026-09-12-offering-contract-snapshot`): the terms a booking was committed under.
+// Stamped in the two creators below so every caller is covered — the same placement rationale as
+// the PS15 PI strip beside it. It never fails a booking (see the module header).
+import { safeOfferingContractSnapshot } from "./services/offering-contract-snapshot";
 import { createServiceReviewWithAggregate } from "./services/review-mutation.service";
 import { resolveOccasionTemplate } from "./services/occasion-templates";
 import { logger } from "./infrastructure/logger";
@@ -3002,15 +3006,22 @@ export class DatabaseStorage implements IStorage {
     // that legitimately needs a PI gets it from the claim machine, one state transition later.
     // Lane 7 (ruling 72): the deposit/balance PI linkage columns join stripePaymentIntentId in the
     // §19a strip — they are written only by the shared promotion / balance-authorization paths.
+    //
+    // OC-B1 joins the same strip: `offeringContractSnapshot` is SERVER-COMPOSED at birth and is the
+    // record of what the traveler committed under, so a caller-supplied one would be a forged set
+    // of terms that OC-D1/D3 would later branch on. Layer 1 is the `.omit()` on
+    // `insertServiceBookingSchema`; this covers the `as any` callers a type-level omit cannot reach.
     const {
       stripePaymentIntentId: _clientSuppliedPi,
       stripeDepositIntentId: _clientSuppliedDepositPi,
       stripeBalanceIntentId: _clientSuppliedBalancePi,
+      offeringContractSnapshot: _clientSuppliedContractSnapshot,
       ...safeBooking
     } = booking as InsertServiceBooking & {
       stripePaymentIntentId?: unknown;
       stripeDepositIntentId?: unknown;
       stripeBalanceIntentId?: unknown;
+      offeringContractSnapshot?: unknown;
     };
     if (_clientSuppliedPi !== undefined && _clientSuppliedPi !== null) {
       // Ops-visible, never silent: reaching here means a caller tried to birth an authorized-looking
@@ -3022,7 +3033,22 @@ export class DatabaseStorage implements IStorage {
       );
     }
     const trackingNumber = await this.generateTrackingNumber('TRV');
-    const [newBooking] = await db.insert(serviceBookings).values({ ...safeBooking, trackingNumber }).returning();
+    // OC-B1: composed BEFORE the insert and carried INTO it, so the row and the terms it was
+    // committed under land in ONE write — never a second write that could disagree with the first
+    // (§15). NULL when there is no `provider_services` listing to describe (a transport booking) or
+    // when composition failed; NULL means NEVER SNAPSHOTTED, which is a fact (§13).
+    const offeringContractSnapshot = await safeOfferingContractSnapshot({
+      serviceId: (safeBooking as { serviceId?: string | null }).serviceId ?? null,
+      ownerUserId: (safeBooking as { providerId?: string | null }).providerId ?? null,
+    });
+    const [newBooking] = await db
+      .insert(serviceBookings)
+      .values({
+        ...safeBooking,
+        trackingNumber,
+        ...(offeringContractSnapshot ? { offeringContractSnapshot } : {}),
+      })
+      .returning();
     
     // Auto-register in content tracking system
     await this.registerContent({
@@ -3054,11 +3080,13 @@ export class DatabaseStorage implements IStorage {
       stripePaymentIntentId: _pi,
       stripeDepositIntentId: _dpi,
       stripeBalanceIntentId: _bpi,
+      offeringContractSnapshot: _contractSnapshot,
       ...safeBooking
     } = booking as InsertServiceBooking & {
       stripePaymentIntentId?: unknown;
       stripeDepositIntentId?: unknown;
       stripeBalanceIntentId?: unknown;
+      offeringContractSnapshot?: unknown;
     };
     if (_pi !== undefined && _pi !== null) {
       console.error(
@@ -3069,6 +3097,14 @@ export class DatabaseStorage implements IStorage {
 
     const trackingNumber = await this.generateTrackingNumber('TRV');
 
+    // OC-B1: composed OUTSIDE the transaction and carried into the same INSERT (see
+    // createServiceBooking). Outside, because the reads it makes belong to no part of the atomic
+    // insert-plus-counter guarantee and must not lengthen it.
+    const offeringContractSnapshot = await safeOfferingContractSnapshot({
+      serviceId: (safeBooking as { serviceId?: string | null }).serviceId ?? null,
+      ownerUserId: (safeBooking as { providerId?: string | null }).providerId ?? null,
+    });
+
     // ── Atomic: insert + counter in one transaction ──────────────────────────
     // If the counter UPDATE throws (e.g. the service row was deleted mid-flight) the
     // transaction rolls back and no booking row is committed, so the route returns 500
@@ -3076,7 +3112,11 @@ export class DatabaseStorage implements IStorage {
     const newBooking = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(serviceBookings)
-        .values({ ...safeBooking, trackingNumber })
+        .values({
+          ...safeBooking,
+          trackingNumber,
+          ...(offeringContractSnapshot ? { offeringContractSnapshot } : {}),
+        })
         .returning();
       await tx
         .update(providerServices)

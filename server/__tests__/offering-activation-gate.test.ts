@@ -23,7 +23,7 @@
  *    transition test; T3 pins that the gate has exactly one caller module.
  *
  * NEGATIVE SPACE: this proves placement and copy. It does not exercise the DB assembly in
- * `resolveActivationInput`, and it says nothing about what production rows actually resolve to —
+ * `loadOfferingListingInput` (extracted by lane OC-B1), and it says nothing about what production rows actually resolve to —
  * `scripts/audit-offering-classification.ts`, run against production, is that instrument.
  */
 import { test } from "node:test";

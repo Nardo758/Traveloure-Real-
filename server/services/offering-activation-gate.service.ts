@@ -51,16 +51,19 @@
  * `service_type` outside the declared vocabulary. Those are all facts the seller stated and can
  * change. `GATE_REFUSING_REASONS` below is that set, written down once.
  */
-import { eq } from "drizzle-orm";
-
-import { db } from "../db";
 import { logger } from "../infrastructure/logger";
-import { providerServices, serviceCategories, serviceProviderForms, users } from "@shared/schema";
 import {
   resolveOfferingCommerceContract,
-  type OfferingListingInput,
   type UnresolvableReason,
 } from "./offering-commerce-contract";
+// §18 rule 1: the listing→contract-input assembly is ONE implementation, shared with the OC-B1
+// commitment snapshot (`offering-contract-snapshot.ts`). It was private here until a second moment
+// needed exactly the same reading; a private twin is how a gate and a snapshot start describing the
+// same listing differently.
+import {
+  loadOfferingListingInput,
+  type OfferingListingOverrides,
+} from "./offering-listing-input";
 
 export interface ActivationGateRefusal {
   status: number;
@@ -73,19 +76,11 @@ export interface ActivationGateRefusal {
 }
 
 /**
- * The fields a write may change that the contract reads. `undefined` = not part of this write;
- * `null` = being cleared. Same convention as `resolveAttestationShape`.
+ * The fields a write may change that the contract reads. The shape lives with the loader that reads
+ * them (`offering-listing-input.ts`); this alias keeps the gate's own call sites reading in its
+ * vocabulary without restating the list.
  */
-export interface ActivationOverrides {
-  serviceType?: string | null;
-  deliveryMethod?: string | null;
-  productShape?: string | null;
-  priceType?: string | null;
-  bookingMode?: string | null;
-  categoryId?: string | null;
-  depositEnabled?: boolean | null;
-  meetingPoint?: string | null;
-}
+export type ActivationOverrides = OfferingListingOverrides;
 
 /**
  * SELLER-FACING sentences. The refusal reason is machine-readable AND said out loud — a refusal is
@@ -126,98 +121,6 @@ const GATE_REFUSING_REASONS: ReadonlySet<UnresolvableReason> = new Set<Unresolva
 ]);
 
 /**
- * Assemble the shape the listing will HAVE after this write — the live row overlaid with the
- * write's own fields — so the gate cannot be walked past by omitting a field from the body. On a
- * create there is no live row and the overrides are the whole of it.
- */
-async function resolveActivationInput(opts: {
-  serviceId?: string | null;
-  ownerUserId: string;
-  overrides?: ActivationOverrides;
-}): Promise<OfferingListingInput> {
-  let serviceType: string | null = null;
-  let deliveryMethod: string | null = null;
-  let productShape: string | null = null;
-  let priceType: string | null = null;
-  let bookingMode: string | null = null;
-  let categoryId: string | null = null;
-  let depositEnabled: boolean | null = null;
-  let meetingPoint: string | null = null;
-
-  if (opts.serviceId) {
-    const [row] = await db
-      .select({
-        serviceType: providerServices.serviceType,
-        deliveryMethod: providerServices.deliveryMethod,
-        productShape: providerServices.productShape,
-        priceType: providerServices.priceType,
-        bookingMode: providerServices.bookingMode,
-        categoryId: providerServices.categoryId,
-        depositEnabled: providerServices.depositEnabled,
-        meetingPoint: providerServices.meetingPoint,
-      })
-      .from(providerServices)
-      .where(eq(providerServices.id, opts.serviceId));
-    serviceType = row?.serviceType ?? null;
-    deliveryMethod = row?.deliveryMethod ?? null;
-    productShape = row?.productShape ?? null;
-    priceType = row?.priceType ?? null;
-    bookingMode = row?.bookingMode ?? null;
-    categoryId = row?.categoryId ?? null;
-    depositEnabled = row?.depositEnabled ?? null;
-    meetingPoint = row?.meetingPoint ?? null;
-  }
-
-  const o = opts.overrides ?? {};
-  if (o.serviceType !== undefined) serviceType = o.serviceType;
-  if (o.deliveryMethod !== undefined) deliveryMethod = o.deliveryMethod;
-  if (o.productShape !== undefined) productShape = o.productShape;
-  if (o.priceType !== undefined) priceType = o.priceType;
-  if (o.bookingMode !== undefined) bookingMode = o.bookingMode;
-  if (o.categoryId !== undefined) categoryId = o.categoryId;
-  if (o.depositEnabled !== undefined) depositEnabled = o.depositEnabled;
-  if (o.meetingPoint !== undefined) meetingPoint = o.meetingPoint;
-
-  let categoryKey: string | null = null;
-  if (categoryId) {
-    const [cat] = await db
-      .select({ categoryKey: serviceCategories.categoryKey })
-      .from(serviceCategories)
-      .where(eq(serviceCategories.id, categoryId));
-    categoryKey = cat?.categoryKey ?? null;
-  }
-
-  // The owner's role decides `sellerClass`. Anyone who is not an expert and owns a row on the
-  // provider table is selling as a provider — that is what the row IS, not a guess about them.
-  const [owner] = await db
-    .select({ role: users.role })
-    .from(users)
-    .where(eq(users.id, opts.ownerUserId));
-
-  // `instant_booking` UNCOERCED: a missing form row and a stored `false` resolve to the same
-  // booking mode but are different facts, and the contract's `commitmentModeSource` is the one
-  // reader that can tell them apart (ledger `2026-09-11-booking-mode-provenance`).
-  const [form] = await db
-    .select({ instantBooking: serviceProviderForms.instantBooking })
-    .from(serviceProviderForms)
-    .where(eq(serviceProviderForms.userId, opts.ownerUserId));
-
-  return {
-    kind: "listing",
-    sellerClass: owner?.role === "expert" ? "expert" : "provider",
-    serviceType,
-    deliveryMethod,
-    productShape,
-    priceType,
-    bookingMode,
-    ownerInstantBooking: form ? form.instantBooking ?? null : undefined,
-    categoryKey,
-    depositEnabled,
-    hasMeetingPoint: !!(meetingPoint ?? "").toString().trim(),
-  };
-}
-
-/**
  * THE GATE. Returns `null` when the write may proceed to `active`; otherwise the exact 422 to send.
  *
  * CALL IT ONLY ON A TRANSITION INTO ACTIVE. The caller owns that condition, exactly as it does for
@@ -230,7 +133,13 @@ export async function checkOfferingActivationGate(opts: {
   ownerUserId: string;
   overrides?: ActivationOverrides;
 }): Promise<ActivationGateRefusal | null> {
-  const input = await resolveActivationInput(opts);
+  // The shape the listing will HAVE after this write — the live row overlaid with the write's own
+  // fields — so the gate cannot be walked past by omitting a field from the body. On a create there
+  // is no live row and the overrides are the whole of it.
+  const input = await loadOfferingListingInput(opts);
+  // No stored row and no owner to describe one: there is nothing to judge, and inventing a listing
+  // to judge would be the fabrication this whole lane refuses (§13).
+  if (!input) return null;
   const resolution = resolveOfferingCommerceContract(input);
   if (resolution.resolved) return null;
 
