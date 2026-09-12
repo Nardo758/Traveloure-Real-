@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
 import { users } from "./models/auth";
+import { withoutServerAuthoredBookingDetails } from "./booking-details-admission";
 
 // Re-export auth models
 export * from "./models/auth";
@@ -2744,13 +2745,35 @@ export const insertServiceBookingSchema = createInsertSchema(serviceBookings).om
 // elsewhere. (Note for the guard's negative space: `scripts/check-money-endpoints.cjs` detects
 // body-parsed schemas by the `insert*Schema` NAME, so a derived schema like this one is outside its
 // parse pass — B6 is what covers it.)
-export const createBookingRequestSchema = insertServiceBookingSchema.pick({
-  serviceId: true,
-  tripId: true,
-  contractId: true,
-  bookingDetails: true,
-  bookingMetadata: true,
-});
+//
+// ── V-10 (ledger `2026-09-12-booking-birth-holes`): THE ALLOWLIST STOPS AT THE COLUMN ──────────
+// Two of the five keys admitted below are FREE-FORM jsonb, so the pick above says nothing about
+// what is INSIDE them — and `booking_details.travelerCharge` is the ERA DISCRIMINATOR three money
+// readers branch on (see `shared/booking-details-admission.ts` for the full statement). LAYER 1 of
+// the strip is here, at the one place a request body becomes these two fields; layer 2 is in
+// `storage.createServiceBookingAtomic`, this rail's writer.
+//
+// `.extend()` and not `.transform()`: the schema must stay a ZodObject so `.shape` remains
+// readable (B6 pins the key set off it) and so the parsed output still spreads into
+// `InsertServiceBooking`. The field schemas keep the column's own `unknown` shape — this is a
+// STRIP, never a validation: an ordinary body is unchanged and no caller is rejected.
+const clientSuppliedBookingJsonb = z
+  .unknown()
+  .optional()
+  .transform((value) => (value === undefined ? value : withoutServerAuthoredBookingDetails(value)));
+
+export const createBookingRequestSchema = insertServiceBookingSchema
+  .pick({
+    serviceId: true,
+    tripId: true,
+    contractId: true,
+    bookingDetails: true,
+    bookingMetadata: true,
+  })
+  .extend({
+    bookingDetails: clientSuppliedBookingJsonb,
+    bookingMetadata: clientSuppliedBookingJsonb,
+  });
 
 export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, providerReply: true, providerRepliedAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
   rating: z.number().int().min(1, "Rating must be at least 1 star").max(5, "Rating cannot exceed 5 stars"),

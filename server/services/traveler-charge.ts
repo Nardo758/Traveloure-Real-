@@ -68,8 +68,14 @@ export function composeTravelerCharge(parts: TravelerChargeParts): number {
  * Its PRESENCE is the discriminator (§13): a row without it was charged under the pre-A3
  * composition and must be read back that way, never re-derived as if it had been fixed. There is
  * no backfill — inventing a concierge portion for a historical row would manufacture a fact.
+ *
+ * MOVED to `shared/booking-details-admission.ts` and RE-EXPORTED here (ledger
+ * `2026-09-12-booking-birth-holes`, punchlist V-10) so the ADMISSION layer that strips the key
+ * from a request body and the COMPOSITION that writes it name the same string. Two spellings of
+ * one key would fail OPEN — the strip would miss the spelling the composer used. Every existing
+ * importer of this name is unchanged.
  */
-export const TRAVELER_CHARGE_SNAPSHOT_KEY = "travelerCharge";
+export { TRAVELER_CHARGE_SNAPSHOT_KEY } from "@shared/booking-details-admission";
 
 export type TravelerRowChargeBasis = "a3_snapshot" | "pre_a3_legacy";
 

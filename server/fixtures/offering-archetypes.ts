@@ -127,7 +127,9 @@ export interface ArchetypeFixture {
   /**
    * Whether the generic checkout spine may sell this. §9.2 rules P5 out by name: "do not send this
    * through generic checkout until that rail exists" (register D-8). The suite proves the refusal
-   * rather than assuming it.
+   * rather than assuming it — and as of punchlist V-11 (ledger `2026-09-12-booking-birth-holes`)
+   * the refusal is REAL: `POST /api/bookings` consults the one price predicate before deriving an
+   * amount, so a priceless listing is refused instead of committed at `0.00`.
    */
   genericCheckout: "bookable" | "refused_by_ruling";
 }
