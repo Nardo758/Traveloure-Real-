@@ -15,6 +15,7 @@ import { storage } from "../storage";
 import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue, tripCollaborators, users } from "@shared/schema";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getBand, getExpertSplitRates, PROCESSING_FEE_RATE } from "./commission";
+import { READY_MADE_TRIP_BAND } from "./fee-band-requirements";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 import { resolveTripTimezone } from "./trip-timezone";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
@@ -27,7 +28,7 @@ export interface FulfillResult {
 
 /** Platform take for a ready-made sale — the migration-133 `ready_made_trip` band (§8, no literal). */
 export async function resolveReadyMadeTakeRate(): Promise<number> {
-  const band = await getBand("ready_made_trip");
+  const band = await getBand(READY_MADE_TRIP_BAND);
   if (band && band.rateType === "percent" && band.rate > 0 && band.rate < 1) return band.rate;
   // Same fallback posture as the resolver's data-model default: survive a missing band with the
   // expert_standard band (admin-editable; ruling 25) rather than refusing a paid buyer their clone.

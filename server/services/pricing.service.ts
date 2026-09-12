@@ -6,7 +6,7 @@
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { resolveCommissionRates } from './commission';
-import { PLATFORM_DEPOSIT_BAND } from './fee-band-requirements';
+import { PLATFORM_DEPOSIT_BAND, declaredFallbackValue } from './fee-band-requirements';
 
 interface FeeBreakdown {
   serviceAmount: number;
@@ -19,9 +19,14 @@ interface FeeBreakdown {
 class PricingService {
   // FEE-3: deposit rate now resolves from fee_bands.platform_deposit (Phase 1.3).
   // Migration 033 seeded this band from booking_fee_configs.platform_deposit_rate's
-  // live value, so behavior is neutral on day-one. 0.25 stays the safe fallback if
+  // live value, so behavior is neutral on day-one. The documented fallback stays in force if
   // both reads fail. Cached for 60 s to bound DB load.
-  private static readonly DEFAULT_DEPOSIT_RATE = 0.25;
+  //
+  // The fallback VALUE is declared once, beside its band, in `fee-band-requirements.ts`
+  // (ledger `2026-09-12-fee-band-admin-gaps`) — so the rate this resolver falls back to is
+  // the rate /admin/fee-bands tells an operator it will fall back to (§18 rule 1). Value
+  // unchanged.
+  private static readonly DEFAULT_DEPOSIT_RATE = declaredFallbackValue(PLATFORM_DEPOSIT_BAND);
   private static readonly RATE_CACHE_TTL_MS = 60_000;
   private depositRateCache: { value: number; expiresAt: number } | null = null;
 
