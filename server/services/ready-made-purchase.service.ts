@@ -19,11 +19,29 @@ import { READY_MADE_TRIP_BAND } from "./fee-band-requirements";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 import { resolveTripTimezone } from "./trip-timezone";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
+import { logger } from "../infrastructure/logger";
+
+/**
+ * Why a re-run could not credit the author. §13: an earning that genuinely cannot be created is
+ * NOT invented — the caller is told which fact was missing, and the skip is logged at ERROR.
+ */
+export type ReadyMadeCreditSkip = "listing_gone" | "author_gone" | "no_payable_share";
+
+/** What the author-credit leg did on this pass. `existing` is the ordinary answer on a re-run. */
+export type ReadyMadeAuthorCredit =
+  | { earning: "created" | "existing"; revenue: "created" | "existing" | "failed" }
+  | { earning: "skipped"; reason: ReadyMadeCreditSkip; message: string };
 
 export interface FulfillResult {
   purchase: typeof readyMadePurchases.$inferSelect;
   cloneTripId: string | null;
   alreadyFulfilled: boolean;
+  /**
+   * Present whenever this pass ran the money leg — the fresh fulfilment AND the re-entrant
+   * already-`cloned` path. Absent on a terminal purchase (refunded/revoked), where there is
+   * deliberately nothing to ensure.
+   */
+  authorCredit?: ReadyMadeAuthorCredit;
 }
 
 /** Platform take for a ready-made sale — the migration-133 `ready_made_trip` band (§8, no literal). */
@@ -33,6 +51,130 @@ export async function resolveReadyMadeTakeRate(): Promise<number> {
   // Same fallback posture as the resolver's data-model default: survive a missing band with the
   // expert_standard band (admin-editable; ruling 25) rather than refusing a paid buyer their clone.
   return (await getExpertSplitRates()).platformFeeRate;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE AUTHOR CREDIT — ONE implementation, reached by BOTH passes
+// (punchlist V-3b, ledger 2026-09-12-readymade-earning-retry; CLAUDE.md §15/§15b/§15c)
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// WHAT WAS BROKEN, and it was NOT a concurrency bug. The author credit below used to sit inline
+// after the atomic `paid → cloned` claim, as a PLAIN INSERT reached only by the claim winner. That
+// is perfectly safe when two callers race — exactly one wins the claim, exactly one credits. It is
+// unreachable after a CRASH: a process dying between the claim and the insert leaves a purchase
+// that is `cloned` (the buyer has their trip; the clone and its items are already committed) and
+// has NO author earning — and every later fulfil short-circuited on `status === 'cloned'` and
+// returned. Delivered buyer, unpaid author, nothing in any log, no detector.
+//
+// A UNIQUE INDEX ALONE DOES NOT FIX THAT. Migration 294's partial index prevents a DOUBLE credit;
+// it does not create the credit that never happened. The fix is §15c's posture stated verbatim —
+// "the promotion is the money leg only … the one effect it does retry is an atomic conditional
+// flip and therefore safe": an already-`cloned` purchase now re-enters and ENSURES both money
+// rows, each of which is uniqueness-guarded and therefore safe to retry.
+//   * the author earning   → migration 294's partial unique index, via `insertExpertEarningOnce`
+//   * the platform revenue → migration 244's `metadata->>'paymentIntentId'` index, via the
+//                            `insertPlatformRevenueOnce` this call already used
+//
+// THE CLONE IS NOT IN THIS HELPER AND MUST NEVER BE. It is not uniqueness-guarded and a second one
+// is a real second trip in the buyer's account. The retry is the MONEY LEG ONLY (§15c), which is
+// why this function takes an already-claimed purchase and never touches `trips`.
+//
+// NO AMOUNT MOVED. The share is the same expression it always was — `price_paid_cents` (what
+// Stripe captured, §14) times one minus the `fee_bands`-resolved take (§8, no literal). Same
+// inputs, same number; this lane made an existing credit RELIABLE, it repriced nothing.
+//
+// §13 — AN EARNING THAT CANNOT HONESTLY BE CREATED IS NOT INVENTED. A listing that is gone, an
+// author whose account is gone, or a share that resolves to nothing: this creates NOTHING, returns
+// the reason, and logs at ERROR with the purchase id. It is deliberately NOT thrown: the buyer's
+// clone is already delivered and committed, and throwing here would turn a bookkeeping gap into a
+// 500 on a webhook that would then retry forever without ever being able to succeed. The drift
+// job's ready-made rail keeps reporting whatever this could not resolve (§17 — detect, never
+// repair), and the caller carries `authorCredit` so the skip is visible rather than swallowed.
+async function ensureReadyMadeAuthorCredit(
+  purchase: typeof readyMadePurchases.$inferSelect,
+): Promise<ReadyMadeAuthorCredit> {
+  const [listing] = await db
+    .select({ id: readyMadeTrips.id, authorId: readyMadeTrips.authorId, title: readyMadeTrips.title })
+    .from(readyMadeTrips)
+    .where(eq(readyMadeTrips.id, purchase.readyMadeTripId))
+    .limit(1);
+  if (!listing) {
+    const message = `listing ${purchase.readyMadeTripId} is gone — the author of purchase ${purchase.id} cannot be credited`;
+    logger.error({ purchaseId: purchase.id, listingId: purchase.readyMadeTripId }, `[ready-made] ${message}`);
+    return { earning: "skipped", reason: "listing_gone", message };
+  }
+  if (!listing.authorId) {
+    const message = `listing ${listing.id} names no author — purchase ${purchase.id} has nobody to credit`;
+    logger.error({ purchaseId: purchase.id, listingId: listing.id }, `[ready-made] ${message}`);
+    return { earning: "skipped", reason: "author_gone", message };
+  }
+  // `expert_earnings.expert_id` is a NOT NULL FK into `users`. A row naming a deleted account would
+  // fail the insert AFTER the claim — the very shape of hole this lane closes — so it is checked,
+  // reported and skipped instead of thrown (§13).
+  const [author] = await db.select({ id: users.id }).from(users).where(eq(users.id, listing.authorId)).limit(1);
+  if (!author) {
+    const message = `author ${listing.authorId} of listing ${listing.id} no longer exists — purchase ${purchase.id} cannot be credited`;
+    logger.error({ purchaseId: purchase.id, listingId: listing.id, authorId: listing.authorId }, `[ready-made] ${message}`);
+    return { earning: "skipped", reason: "author_gone", message };
+  }
+
+  const takeRate = await resolveReadyMadeTakeRate();
+  const expertShare = (purchase.pricePaidCents / 100) * (1 - takeRate);
+  if (!Number.isFinite(expertShare) || expertShare <= 0) {
+    const message = `purchase ${purchase.id} resolves no payable author share — nothing credited`;
+    logger.error({ purchaseId: purchase.id, pricePaidCents: purchase.pricePaidCents }, `[ready-made] ${message}`);
+    return { earning: "skipped", reason: "no_payable_share", message };
+  }
+
+  // §15: the STATEMENT is the guard. Migration 294's partial unique index makes this insert
+  // idempotent, so the re-entrant pass credits the author exactly once whether or not the
+  // interrupted pass got this far. Born HELD on the escrow spine with the ratified 7-day
+  // `ready_made_sale` window (D7: refundable only while in escrow) — unchanged by this lane.
+  const { inserted: earningCreated } = await storage.insertExpertEarningOnce({
+    expertId: listing.authorId,
+    type: "ready_made_sale",
+    amount: expertShare.toFixed(2),
+    currency: purchase.currency || "USD",
+    referenceId: purchase.id,
+    referenceType: "ready_made_purchase",
+    description: `Ready-made trip sale: ${listing.title} (payment ${purchase.stripePaymentIntentId})`,
+    status: "held",
+    availableAt: availableAtFor("ready_made_sale"),
+  } as any);
+
+  // Record platform revenue for this sale — mirrors the booking_commission pattern
+  // (server/services/booking.service.ts:721-729). §15: guarded by insertPlatformRevenueOnce with
+  // metadata.paymentIntentId so the migration-244 DB unique index (not just the advisory
+  // read-then-write check) blocks a double-write on any Stripe retry, concurrent duplicate
+  // submission, or — since this lane — a re-entrant fulfilment. Non-fatal so a bookkeeping failure
+  // never blocks the buyer's fulfilled clone.
+  let revenue: "created" | "existing" | "failed" = "failed";
+  try {
+    const grossAmount = purchase.pricePaidCents / 100;
+    const platformFee = grossAmount - expertShare;
+    const processingFees = platformFee * PROCESSING_FEE_RATE;
+    const netAmount = platformFee - processingFees;
+    const { inserted } = await storage.insertPlatformRevenueOnce({
+      sourceType: "ready_made_commission",
+      sourceId: purchase.id,
+      grossAmount: String(grossAmount),
+      platformFee: String(platformFee),
+      netAmount: String(netAmount),
+      processingFees: String(processingFees),
+      currency: purchase.currency || "USD",
+      expertId: listing.authorId,
+      expertEarnings: String(expertShare),
+      description: `Ready-made trip sale commission: ${listing.title}`,
+      metadata: { paymentIntentId: purchase.stripePaymentIntentId },
+      status: "recorded",
+      transactionDate: new Date(),
+    } as any);
+    revenue = inserted ? "created" : "existing";
+  } catch (err) {
+    console.error(`Failed to record platform revenue for ready-made purchase ${purchase.id}:`, err);
+  }
+
+  return { earning: earningCreated ? "created" : "existing", revenue };
 }
 
 /**
@@ -49,10 +191,17 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   if (!purchase) throw new Error(`ready_made_purchase ${purchaseId} not found`);
 
   if (purchase.status === "cloned") {
-    return { purchase, cloneTripId: purchase.cloneTripId ?? null, alreadyFulfilled: true };
+    // V-3b (ledger 2026-09-12-readymade-earning-retry): this used to return here, which is what
+    // made a fulfilment interrupted AFTER the claim and BEFORE the credit unrecoverable — the
+    // buyer had their trip and the author was never paid. §15c: the MONEY LEG re-runs (both rows
+    // are uniqueness-guarded and therefore safe to retry); the CLONE does not, because it is not
+    // guarded and a second one is a real second trip.
+    const authorCredit = await ensureReadyMadeAuthorCredit(purchase);
+    return { purchase, cloneTripId: purchase.cloneTripId ?? null, alreadyFulfilled: true, authorCredit };
   }
   if (purchase.status !== "paid") {
-    // refunded/revoked purchases are terminal — never fulfil them.
+    // refunded/revoked purchases are terminal — never fulfil them, and never re-credit: the refund
+    // ledger REVERSED the author's earning, and ensuring it here would fight that reversal.
     return { purchase, cloneTripId: purchase.cloneTripId ?? null, alreadyFulfilled: true };
   }
 
@@ -151,53 +300,12 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
     return { purchase: winner, cloneTripId: winner?.cloneTripId ?? null, alreadyFulfilled: true };
   }
 
-  // Only the claim winner credits the author (the template-confirm §15 pattern). Born HELD on the
-  // escrow spine; D7: releasable after the 7-day ready_made_sale window, refund only before release.
-  const takeRate = await resolveReadyMadeTakeRate();
-  const expertShare = (purchase.pricePaidCents / 100) * (1 - takeRate);
-  await storage.createExpertEarning({
-    expertId: listing.authorId,
-    type: "ready_made_sale",
-    amount: expertShare.toFixed(2),
-    currency: purchase.currency || "USD",
-    referenceId: purchase.id,
-    referenceType: "ready_made_purchase",
-    description: `Ready-made trip sale: ${listing.title} (payment ${purchase.stripePaymentIntentId})`,
-    status: "held",
-    availableAt: availableAtFor("ready_made_sale"),
-  } as any);
+  // The claim winner credits the author through the SAME implementation the re-entrant path above
+  // calls — a second copy of this decision is the derivation-drift class §18 rule 1 names, and it
+  // is how a fresh fulfilment and a recovery would start disagreeing about what an author is owed.
+  const authorCredit = await ensureReadyMadeAuthorCredit(claimed);
 
-  // Record platform revenue for this sale — mirrors the booking_commission pattern
-  // (server/services/booking.service.ts:721-729). §15: guarded by insertPlatformRevenueOnce
-  // with metadata.paymentIntentId so the migration-244 DB unique index (not just the
-  // advisory read-then-write check) blocks a double-write on any Stripe retry or
-  // concurrent duplicate submission. Non-fatal so a bookkeeping failure never blocks
-  // the buyer's fulfilled clone.
-  try {
-    const grossAmount = purchase.pricePaidCents / 100;
-    const platformFee = grossAmount - expertShare;
-    const processingFees = platformFee * PROCESSING_FEE_RATE;
-    const netAmount = platformFee - processingFees;
-    await storage.insertPlatformRevenueOnce({
-      sourceType: "ready_made_commission",
-      sourceId: purchase.id,
-      grossAmount: String(grossAmount),
-      platformFee: String(platformFee),
-      netAmount: String(netAmount),
-      processingFees: String(processingFees),
-      currency: purchase.currency || "USD",
-      expertId: listing.authorId,
-      expertEarnings: String(expertShare),
-      description: `Ready-made trip sale commission: ${listing.title}`,
-      metadata: { paymentIntentId: purchase.stripePaymentIntentId },
-      status: "recorded",
-      transactionDate: new Date(),
-    } as any);
-  } catch (err) {
-    console.error(`Failed to record platform revenue for ready-made purchase ${purchase.id}:`, err);
-  }
-
-  return { purchase: claimed, cloneTripId: cloneTrip.id, alreadyFulfilled: false };
+  return { purchase: claimed, cloneTripId: cloneTrip.id, alreadyFulfilled: false, authorCredit };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

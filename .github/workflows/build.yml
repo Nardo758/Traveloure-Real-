@@ -1312,7 +1312,15 @@ jobs:
       # and the refusals — a client-supplied PaymentIntent fulfils nothing, an unresolvable one
       # creates nothing, a partial capture creates nothing. The JOB is unchanged and still only
       # detects (§17), which N23's cases above continue to assert.
-      - name: Reconciliation detection + ready-made recovery (N20–N24)
+      # N25 (ledger 2026-09-12-readymade-earning-retry, punchlist V-3c) adds the half AFTER the
+      # purchase row: a fulfilment interrupted between the atomic `paid → cloned` claim and the
+      # author-credit INSERT left a DELIVERED purchase with no earning and no retry, because
+      # every later fulfil returned at `status === 'cloned'`. Migration 294's PARTIAL unique
+      # index makes the credit safe to retry and the fulfilment now ENSURES the money leg
+      # (§15c's "money leg only"); the CLONE stays strictly once-only. N25a fails on the
+      # pre-fix code, and N25c proves the partial predicate leaves the five other earnings
+      # rails free to repeat a reference_id.
+      - name: Reconciliation detection + ready-made recovery and retry (N20–N25)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/reconciliation-detection.db.test.ts
   roles-needed-reachability-guard:
     name: roles-needed-reachability-guard (ledger 2026-09-04-roles-needed)
