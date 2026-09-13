@@ -18,6 +18,7 @@ import { getBand, getExpertSplitRates, PROCESSING_FEE_RATE } from "./commission"
 import { READY_MADE_TRIP_BAND } from "./fee-band-requirements";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 import { resolveTripTimezone } from "./trip-timezone";
+import { buildClonedItineraryItem } from "./itinerary-item-clone";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
 import { logger } from "../infrastructure/logger";
 
@@ -273,12 +274,17 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
     .from(itineraryItems)
     .where(eq(itineraryItems.tripId, listing.sourceTripId));
   if (sourceItems.length > 0) {
+    // WHAT A CLONE CARRIES IS AN ALLOWLIST, AND IT LIVES IN ONE PLACE (punchlist V-14 + V-15,
+    // ledger `2026-09-13-clone-carries-content-not-state`; §19). This used to be a SPREAD minus
+    // four names — a denylist, which under §19 means every column added after it was written was
+    // carried BY DEFAULT: `bookingId` (migration 159), `confirmationNumber` and `actualCost` put
+    // the AUTHOR's booking on a different user's plan item, and the one explicit override was
+    // INERT because it named `routing_status` where drizzle reads `routingStatus`, so an author
+    // row in `ready_for_checkout` landed in the BUYER's cart (LD 39). `buildClonedItineraryItem`
+    // copies the author's CONTENT and nothing else; the `as any` is gone, so the next misspelled
+    // key is a compile error rather than a silent drop.
     await db.insert(itineraryItems).values(
-      sourceItems.map(({ id: _id, tripId: _tripId, createdAt: _c, updatedAt: _u, ...rest }: any) => ({
-        ...rest,
-        tripId: cloneTrip.id,
-        routing_status: "in_planning", // §3.1: explicit override — cloned items must never inherit author-side routing state
-      })),
+      sourceItems.map((item) => buildClonedItineraryItem(item, cloneTrip.id)),
     );
   }
 

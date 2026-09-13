@@ -1271,6 +1271,59 @@ jobs:
       - name: Booking-birth provenance (B1–B9)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/booking-birth-provenance.db.test.ts
 
+  ready-made-clone-fields:
+    name: ready-made-clone-fields (V-14/V-15; ledger 2026-09-13-clone-carries-content-not-state)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # WHAT A BUYER'S CLONE CARRIES. The ready-made fulfilment built the buyer's items by SPREADING
+      # the author's row minus four names — a denylist, so every column added after it was written
+      # was carried BY DEFAULT. `booking_id` (migration 159), `confirmation_number` and `actual_cost`
+      # put the AUTHOR's transaction on a different user's plan item (V-15), and the one explicit
+      # override was INERT because it named `routing_status` where drizzle reads `routingStatus`, so
+      # an author row left `ready_for_checkout` landed in the BUYER's cart (V-14, LD 39). C1-C4 are
+      # the negatives — they fail on the pre-fix service — C5/C6 prove the buyer still receives the
+      # plan they paid for, and C7 pins the allowlist EXHAUSTIVE against `getTableColumns`, so a
+      # column added tomorrow fails here until a human classifies it. No server boot, so no
+      # ALLOW_TEST_ACCOUNTS and no reason for its own workflow file.
+      - name: A clone carries content, not state (C1-C7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/ready-made-clone-fields.db.test.ts
+      # The pure layer beside it: the builder itself, exercised directly. This file previously
+      # MIRRORED the production spread into its own fixture and asserted on the snake_case key, so
+      # it was green for the whole life of both defects; it now calls the one implementation.
+      - name: The clone builder, exercised directly
+        run: npx tsx --test --test-force-exit server/services/__tests__/ready-made-clone-routing.test.ts
+
   reconciliation-detection:
     name: reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)
     runs-on: ubuntu-latest
