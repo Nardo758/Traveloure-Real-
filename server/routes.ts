@@ -8275,7 +8275,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existingTripId) {
         const trip = await storage.getTrip(existingTripId);
         if (trip && trip.userId === userId) {
-          return res.json({ tripId: existingTripId, created: false, trip });
+          // The SAME materialization the fresh-mint branch runs (ledger
+          // `2026-09-13-guest-cart-becomes-plan`). A second resolve therefore creates NOTHING —
+          // every line it already materialized is keyed and invisible to the reader — while a
+          // line added to the cart AFTER the plan was minted still becomes an item.
+          const planItems = await cartProjection.materializeCartLinesAsItems(
+            userId,
+            existingTripId,
+            experienceSlug,
+          );
+          return res.json({
+            tripId: existingTripId,
+            created: false,
+            trip,
+            planItems: cartProjection.describePlanItemMaterialization(planItems, externalItems.length),
+          });
         }
       }
 
@@ -8380,6 +8394,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // verbatim — same rows, same column, same result as the raw db.update this replaced.
       await cartProjection.attachTripToCartItems(userId, trip.id, experienceSlug);
 
+      // 7b. THE CART'S LINES BECOME THE PLAN'S ITEMS (ledger `2026-09-13-guest-cart-becomes-plan`;
+      // punchlist D-15). Until this, resolve-trip minted a trip and backfilled `tripId` and created
+      // ZERO `itinerary_items` — so a traveler who signed in and resolved landed on an EMPTY plan,
+      // and under LD 41(b) an AI action on an empty plan is the FREE DRAFT, which drafts from
+      // scratch: their chosen items were not merely unoptimized, they were absent, and the AI never
+      // saw them. The write goes through the ONE projection module (LD 39) — never from here — and
+      // runs AFTER step 7 because it selects on the `tripId` step 7 just stamped.
+      const planItems = await cartProjection.materializeCartLinesAsItems(
+        userId,
+        trip.id,
+        experienceSlug,
+      );
+
       // 8. Link to user_experience idempotently (via client-supplied id or slug-resolved id)
       if (resolvedUserExperienceId) {
         await db
@@ -8393,7 +8420,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           );
       }
 
-      res.json({ tripId: trip.id, created: true, trip });
+      res.json({
+        tripId: trip.id,
+        created: true,
+        trip,
+        planItems: cartProjection.describePlanItemMaterialization(planItems, externalItems.length),
+      });
     } catch (err) {
       console.error("Error resolving cart trip:", err);
       res.status(500).json({ message: "Failed to resolve trip" });

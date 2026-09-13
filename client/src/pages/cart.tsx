@@ -1782,15 +1782,23 @@ export default function CartPage() {
         {!user && !authLoading && (totalItemCount > 0 || guestPendingIds.length > 0) && flowStep === "cart" && (
           <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800" data-testid="banner-guest-nudge">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            {/* Ledger `2026-09-13-guest-cart-becomes-plan` (punchlist D-15): the affordance now
+                says what signing in actually DOES. A guest is not missing optimization — a guest
+                is missing a PLAN, and on sign-in the cart's lines become that plan's items
+                (`POST /api/cart/resolve-trip` materializes them through the LD 39 projection
+                module), which is what makes Optimize meaningful at all. The sign-in gate is
+                checked BEFORE anything is minted (LD 42 D5) — this button opens the modal and
+                creates nothing. §13: it promises a plan, which is what happens, and never
+                promises an optimized one, which is a paid run the traveler has not asked for. */}
             <p className="text-sm text-amber-800 dark:text-amber-200 flex-1">
-              Your plan is saved in this browser only.{" "}
+              Your cart is saved in this browser only.{" "}
               <button
                 type="button"
                 className="font-semibold underline hover:no-underline"
                 onClick={() => openSignInModal()}
                 data-testid="button-sign-in-nudge"
               >
-                Sign in to save it permanently
+                Sign in to keep it and turn it into a plan
               </button>
             </p>
           </div>

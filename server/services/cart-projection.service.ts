@@ -46,7 +46,7 @@
  * CART ROWS ONLY. It never writes `routing_status` — the transition endpoints own that, and
  * they call in here afterwards.
  */
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { db } from "../db";
 import { cartItems, itineraryItems, providerServices, trips } from "@shared/schema";
 import { storage } from "../storage";
@@ -320,4 +320,294 @@ async function deleteProjectionFor(itemId: string): Promise<number> {
     .where(and(isNotNull(cartItems.itineraryItemId), eq(cartItems.itineraryItemId, itemId)))
     .returning({ id: cartItems.id });
   return removed.length;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 3 — MATERIALIZATION: the cart line that has no item yet GETS one.
+// Ledger `2026-09-13-guest-cart-becomes-plan`; the gap named by
+// `2026-09-13-guest-optimization-is-a-plan-gap` / punchlist D-15.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// WHY THIS LIVES IN THIS MODULE AND NOT AT THE ROUTE
+// --------------------------------------------------
+// LD 39 makes this file the single writer of `cart_items`, and `cart_items.itineraryItemId` is
+// the projection-source key: NULL = "not a projection" (a guest add, a direct add-to-cart),
+// NON-NULL = "the materialized projection of one item". A GUEST ADD IS EXACTLY A NULL-KEYED
+// ROW, and this is the one operation that gives it an item. Writing it at the route would be a
+// second author of the cart<->item relationship — the drift class s18 rule 1 names.
+//
+// THE DIRECTION, STATED, BECAUSE IT IS THE OPPOSITE OF SECTION 2's
+// ---------------------------------------------------------------
+// `syncItemProjection` writes the CART ROW FROM THE ITEM: the item is the source of truth and
+// the cart is the derived view. This function runs ONCE, at the moment a plan is born around a
+// cart that predates it, and it ESTABLISHES that relationship rather than inverting it: after it
+// the item is authoritative and every later sync is an ordinary re-derivation. It does NOT teach
+// Section 2 to read NULL-keyed rows — Section 2's statements are still all keyed on
+// `itinerary_item_id`, and this function never calls into it.
+//
+// THE ADMISSION TEST IS SECTION 2's OWN OUTPUT SHAPE, AND THAT IS THE WHOLE DESIGN
+// -------------------------------------------------------------------------------
+// The instant a cart row is linked, `syncItemProjection` becomes entitled to REWRITE it from the
+// item — that is what the key means. So a line may only be materialized when the round trip is
+// FAITHFUL: the projection Section 2 would write must reproduce the line the traveler actually
+// has. Section 2 writes `quantity: 1`, `customVenueId: null`, and — for an item with no
+// `providerServiceId` — a `contentType: "itinerary_item"` content shape. Therefore:
+//
+//   • quantity > 1   — REFUSED. `resolveItemBaseAmount` prices a line `rate * quantity`, so a
+//                      silent 3 -> 1 is a silent change to what the traveler is charged. What a
+//                      multi-unit line SHOULD become is punchlist D-14 (`quantity` is units of
+//                      the listing, NOT a party count) and is deliberately NOT decided here.
+//   • custom venue   — REFUSED. `itinerary_items` has no column pointing at `custom_venues`, so
+//                      the line's own subject could not survive the round trip.
+//   • content line   — REFUSED. A gem/hotel/activity row names a piece of CONTENT, not a
+//                      listing; the round trip would rewrite its `contentType`/`contentId` and
+//                      lose the link back to the source. `/api/cart/convert-to-itinerary` is
+//                      that shape's existing home, and it MOVES the row (it deletes the cart
+//                      line) rather than projecting it.
+//   • no price       — REFUSED, through the SAME `hasPublishedPrice` Section 2 consults (s18
+//                      rule 1): Section 2 would delete the projection on its very next run, so
+//                      linking such a line would destroy the traveler's own cart row.
+//
+// AND MATERIALIZE <=> LINK, NEVER ONE WITHOUT THE OTHER. An item born `ready_for_checkout` with
+// no cart row behind it would make the next `syncItemProjection` INSERT a second cart line for a
+// service the traveler already has — a duplicate on the money path. So the insert and the link
+// are ONE transaction, and the link is an ATOMIC CONDITIONAL (`WHERE itinerary_item_id IS NULL`)
+// so two concurrent resolves cannot both materialize the same line (s15's posture: the statement
+// is the guard, never a check-then-write).
+//
+// s13 — WHAT IS REFUSED IS NAMED, NOT DROPPED. Every skipped line comes back with its reason so
+// the surface can say what the plan does not hold. Nothing is deleted, nothing is defaulted, and
+// a cart holding only external/affiliate descriptors (which have no `cart_items` rows at all)
+// materializes NOTHING and says so rather than pretending the plan carries them.
+
+/** Why one cart line did not become a plan item. Reported, never silent (s13). */
+export type CartLineSkipReason =
+  | "quantity_gt_one"
+  | "custom_venue"
+  | "content_line"
+  | "no_subject"
+  | "service_missing"
+  | "no_published_price"
+  | "raced";
+
+export type MaterializeCartLinesResult = {
+  /** Items created by THIS call. A second call over the same cart returns 0. */
+  created: number;
+  itemIds: string[];
+  skipped: Array<{ cartItemId: string; reason: CartLineSkipReason }>;
+};
+
+/** One line lost the atomic link to a concurrent resolve, so its transaction rolls back. */
+class CartLineRacedError extends Error {}
+
+function toYmd(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
+/**
+ * The plan's own day for a line, from the ONLY two dates that exist: the line's `scheduledDate`
+ * and the trip's `startDate`. s13: `itinerary_items.dayNumber` is NOT NULL, so "the traveler
+ * never said a day" has no representation in the column — day 1 is this codebase's existing
+ * unplaced convention (`/api/cart/convert-to-itinerary` writes the same literal), and the item's
+ * own `scheduledDate` stays NULL in that case so no DATE is ever claimed on their behalf.
+ */
+function resolvePlanDayNumber(scheduled: Date | null, tripStart: string | null): number {
+  if (!scheduled || !tripStart) return 1;
+  const startMs = Date.parse(`${tripStart}T00:00:00Z`);
+  const dayMs = Date.parse(`${toYmd(scheduled)}T00:00:00Z`);
+  if (!Number.isFinite(startMs) || !Number.isFinite(dayMs)) return 1;
+  const diff = Math.round((dayMs - startMs) / 86400000);
+  return diff >= 0 ? diff + 1 : 1;
+}
+
+/**
+ * Give every NULL-keyed cart line on this plan an `itinerary_items` row, and link it.
+ *
+ * The owner is derived from the TRIP ROW (s14 posture — the principal comes from the record,
+ * never from a request) and the call is refused outright when the trip is not this caller's.
+ *
+ * Idempotent by construction: an already-keyed row is invisible to the SELECT, so a second
+ * resolve creates nothing, and a plan that already holds items is ADDED TO, never duplicated
+ * into, because the rows that produced those items are already keyed.
+ *
+ * Never throws into the caller's trip mint — a plan that exists with an unmaterialized line is
+ * recoverable (the next resolve materializes it); a mint that rolls back because a projection
+ * failed is not (s15b's "an ancillary effect may not break the operation that authorizes it").
+ */
+export async function materializeCartLinesAsItems(
+  userId: string,
+  tripId: string,
+  experienceSlug?: string,
+): Promise<MaterializeCartLinesResult> {
+  const out: MaterializeCartLinesResult = { created: 0, itemIds: [], skipped: [] };
+
+  const [trip] = await db
+    .select({ id: trips.id, userId: trips.userId, startDate: trips.startDate })
+    .from(trips)
+    .where(eq(trips.id, tripId))
+    .limit(1);
+  if (!trip || !trip.userId || trip.userId !== userId) {
+    // Not this caller's plan — or an owner-less authoring draft, the `trips.userId` NULL case the
+    // sync path already refuses above. Writing items into it would file one person's cart onto
+    // another's plan.
+    logger.warn(
+      { tripId, userId },
+      "cart-projection: refusing to materialize into a trip the caller does not own",
+    );
+    return out;
+  }
+
+  // THIS PLAN'S LINES, and the caller's UNATTACHED ones. The fresh-mint branch of
+  // `/api/cart/resolve-trip` stamps `tripId` on every line before calling here, so the NULL arm is
+  // inert there; on the REUSE branch (an existing plan) the route returns early WITHOUT that
+  // backfill, so a line added to the cart AFTER the plan was minted carries no `tripId` at all and
+  // would otherwise never become an item. The arm is deliberately NARROWER than
+  // `attachTripToCartItems`, which re-points EVERY one of the caller's rows: a line already bound
+  // to a DIFFERENT plan is left where the traveler put it.
+  const ownerAndTrip = and(
+    eq(cartItems.userId, userId),
+    or(eq(cartItems.tripId, tripId), isNull(cartItems.tripId)),
+    isNull(cartItems.itineraryItemId),
+  );
+  const lines = await db
+    .select()
+    .from(cartItems)
+    .where(experienceSlug ? and(ownerAndTrip, eq(cartItems.experienceSlug, experienceSlug)) : ownerAndTrip);
+
+  for (const line of lines) {
+    const skip = (reason: CartLineSkipReason) => {
+      out.skipped.push({ cartItemId: line.id, reason });
+    };
+
+    if (line.customVenueId) { skip("custom_venue"); continue; }
+    if (!line.serviceId) { skip(line.contentId ? "content_line" : "no_subject"); continue; }
+    if ((line.quantity ?? 1) > 1) { skip("quantity_gt_one"); continue; }
+
+    const [svc] = await db
+      .select({
+        id: providerServices.id,
+        serviceName: providerServices.serviceName,
+        shortDescription: providerServices.shortDescription,
+        location: providerServices.location,
+        latitude: providerServices.latitude,
+        longitude: providerServices.longitude,
+        pricingUnit: providerServices.pricingUnit,
+        price: providerServices.price,
+      })
+      .from(providerServices)
+      .where(eq(providerServices.id, line.serviceId))
+      .limit(1);
+    if (!svc) { skip("service_missing"); continue; }
+    if (!hasPublishedPrice(svc.price)) { skip("no_published_price"); continue; }
+
+    const meta = (line.contentMeta ?? {}) as Record<string, unknown>;
+    // The SAME predicate Section 2 projects a stay through, so the round trip reproduces the
+    // night range the money path reads. s13: an unparseable range yields NOTHING.
+    const stay = svc.pricingUnit === "per_night" ? stayContentMeta(meta.checkIn, meta.checkOut) : null;
+    // s13: `provider_services.location` defaults to the literal "Unknown" — that is the ABSENCE
+    // of a location, not a place name, and must never be copied onto a plan item (the same call
+    // `/api/cart/convert-to-itinerary` already makes).
+    const locationName = svc.location && svc.location !== "Unknown" ? svc.location : null;
+    const scheduled = line.scheduledDate ? new Date(line.scheduledDate) : null;
+
+    try {
+      const itemId = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(itineraryItems)
+          .values({
+            tripId,
+            // NOT NULL. The LISTING'S OWN NAME — the one fact the column forces us to carry, and
+            // the same source `/api/cart/convert-to-itinerary` reads. Never invented.
+            title: svc.serviceName,
+            description: svc.shortDescription ?? null,
+            // The listing's own pricing unit is the listing's own statement about what it is.
+            // Everything else takes the column default (`activity`) rather than a guess.
+            ...(svc.pricingUnit === "per_night" ? { itemType: "accommodation" } : {}),
+            dayNumber: resolvePlanDayNumber(scheduled, trip.startDate ?? null),
+            // The line's own facts, and only those. No invented date, no invented title, and no
+            // party size — `quantity` is units of the listing and is never promoted into one
+            // (punchlist D-14), which is also why a multi-unit line is refused above.
+            scheduledDate: scheduled ? toYmd(scheduled) : null,
+            slotId: line.slotId ?? null,
+            providerServiceId: svc.id,
+            ...(stay ? { checkIn: stay.checkIn, checkOut: stay.checkOut } : {}),
+            locationName,
+            latitude: svc.latitude ?? null,
+            longitude: svc.longitude ?? null,
+            notes: line.notes ?? null,
+            // NO `estimatedCost`: the plan reads this listing's price through the service link,
+            // and a copied number is a second, staleable statement of an amount (s8/s14 posture).
+            // LD 12 / LD 42 D23: the TRAVELER chose these lines — not an AI draft, not expert
+            // work. `origin` decides what the optimizer may rewrite and what the item row's
+            // provenance chip says, so it is stamped server-side here and settable nowhere else.
+            origin: "traveler",
+            suggestedBy: "user",
+            status: "planned",
+            // LD 39: the cart IS the `ready_for_checkout` projection of this table, so a line
+            // sitting in the cart IS that state — this is a READ of the row that already exists,
+            // not a routing TRANSITION (those belong to routing.routes.ts, which is why
+            // `storage.createItineraryItem` strips the column and is deliberately not used here).
+            // Born `in_planning` instead would make the very next sync DELETE the cart line.
+            routingStatus: "ready_for_checkout",
+          })
+          .returning({ id: itineraryItems.id });
+
+        // THE ATOMIC LINK (s15 posture): a concurrent resolve that already keyed this row wins
+        // and this transaction rolls back — one item per line, never two.
+        const linked = await tx
+          .update(cartItems)
+          // `tripId` rides the SAME statement because Section 2 writes `tripId: item.tripId` on
+          // every sync anyway — stamping it here means the row is consistent the moment it is
+          // linked, rather than only after the first later sync.
+          .set({ itineraryItemId: created.id, tripId })
+          .where(and(eq(cartItems.id, line.id), isNull(cartItems.itineraryItemId)))
+          .returning({ id: cartItems.id });
+        if (linked.length === 0) throw new CartLineRacedError();
+        return created.id;
+      });
+      out.created += 1;
+      out.itemIds.push(itemId);
+    } catch (err) {
+      if (err instanceof CartLineRacedError) { skip("raced"); continue; }
+      // A failure here must never break the trip mint that authorized it (s15b). The line stays
+      // NULL-keyed, nothing partial is left behind (the transaction rolled back), and the next
+      // resolve picks it up.
+      logger.error(
+        { err, cartItemId: line.id, tripId },
+        "cart-projection: failed to materialize a cart line into a plan item",
+      );
+      skip("raced");
+    }
+  }
+
+  return out;
+}
+
+/**
+ * What `POST /api/cart/resolve-trip` tells the traveler about the plan it just built.
+ *
+ * s13 — THE ABSENCES ARE ANSWERS, AND THEY ARE DIFFERENT ONES.
+ *   • `created` is always present: 0 is a real count, not a missing one.
+ *   • `skipped` is present ONLY when a platform line did not become an item, and it names WHY —
+ *     so the surface can say what the plan does not hold instead of quietly holding less than the
+ *     cart does.
+ *   • `externalItemsNotProjected` is present ONLY when the caller sent external/affiliate
+ *     descriptors. Those have no `cart_items` rows at all (they live in the client's
+ *     sessionStorage), so there is nothing to materialize and the plan says so rather than
+ *     pretending to carry them.
+ * A resolve that materialized everything answers `{ created: n }` and nothing else.
+ */
+export function describePlanItemMaterialization(
+  result: MaterializeCartLinesResult,
+  externalItemCount: number,
+): {
+  created: number;
+  skipped?: Array<{ cartItemId: string; reason: CartLineSkipReason }>;
+  externalItemsNotProjected?: number;
+} {
+  return {
+    created: result.created,
+    ...(result.skipped.length > 0 ? { skipped: result.skipped } : {}),
+    ...(externalItemCount > 0 ? { externalItemsNotProjected: externalItemCount } : {}),
+  };
 }
