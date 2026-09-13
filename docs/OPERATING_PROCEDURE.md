@@ -63,7 +63,11 @@ to dispatch, relay and decision.
    commit**. `docs/DECISIONS.md` resolves as a **union** (its driver runs locally, not on
    GitHub — a GitHub conflict badge on a ledger-appending PR is usually this and nothing
    else; verify with `git merge-tree --write-tree`). CLAUDE.md keeps Locked Decisions in
-   numeric order. `build.yml` keeps **both** sides' appended jobs and `TSC_BASELINE: '132'`.
+   numeric order. `build.yml` keeps **both** sides' appended jobs, and its `TSC_BASELINE` is
+   whatever `build.yml` on `main` says — **read it, never restate it here**. It only ever moves
+   DOWN, the gate fails on UNDER as well as over, and a sibling lane can lower it mid-flight, so
+   take main's value on merge and re-validate against that. (This line carried a stale `'132'`
+   while CI enforced `130`; a copy of a moving number is the drift §18 rule 1 names.)
 2. Validate on the merge commit: `npx tsc --noEmit -p tsconfig.json 2>&1 | grep -c "error TS"`
    ≤ `TSC_BASELINE`; `npm run build`; `node scripts/check-decision-guards.cjs`; the guards the
    lane touches with their `--self-test`; the lane's suites plus the slip suites it borders;
