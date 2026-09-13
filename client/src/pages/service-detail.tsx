@@ -55,7 +55,16 @@ import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useTripContext } from "@/lib/trip-context";
 import { resolveTargetTripId } from "@/lib/trip-target";
-import { addLabel, addedTitle } from "@/lib/plan-vocabulary";
+import { addedTitle } from "@/lib/plan-vocabulary";
+// Punchlist V-13 (ledger `2026-09-13-service-detail-buy-action`; ruling 9 / lane L23). This page
+// used to AUTHOR its own three CTAs — "Book on Traveloure" / "Add to Cart" / "Contact Provider",
+// the same three for every archetype — while `GET /api/services/:id` was already shipping the one
+// resolver's answer as `buyAction`. It now renders that answer and authors no buy label at all;
+// `addLabel` is deliberately no longer imported, because the ADD button's words are the
+// descriptor's (§18 rule 1 — a second opinion about which verb to show is how the page came to
+// offer purchases the server refuses). `addedTitle` stays: a toast is not a buy button.
+import { serviceDetailBuyRender } from "@/lib/service-buy-action";
+import type { BuyAction } from "@shared/buy-action";
 import { trackEvent } from "@/lib/analytics";
 // Ledger 2026-09-04-which-event-picker (migration 277; CLAUDE.md Locked Decision 29) — the
 // "Which event?" question, asked between the add click and the write. Every decision it makes
@@ -264,6 +273,18 @@ interface Service {
   // comment on GET /api/services/:id) — it only ever appears on the confirmed-booking surface.
   responseWindowHours?: number | null;
   scopeStatement?: string | null;
+  /**
+   * THE BUY BUTTON AND THE LANDING RULE, RESOLVED SERVER-SIDE (ruling 9, lane L23; punchlist
+   * V-13). `resolveBuyAction` is the SOLE author — a listing carries no CTA of its own — and
+   * `GET /api/services/:id` composes it through `buildListingBuyAction` on every product-shape
+   * branch (`server/routes/content.routes.ts`), reading the buyer off the SESSION (§14). The page
+   * renders it and never re-derives which verb applies.
+   *
+   * Optional because a payload is allowed not to state it (the builder returns `BuyAction |
+   * undefined`). §13: absent means NOT STATED, and `serviceDetailBuyRender` then offers no buy
+   * control and says so — it never falls back to the fixed buttons this field replaced.
+   */
+  buyAction?: BuyAction | null;
 }
 
 // Ruling 22: ordered route stops (service_route_points child rows, migration 192).
@@ -998,6 +1019,32 @@ export default function ServiceDetailPage() {
     ? `This provider is away until ${format(new Date(service.away.until), "MMM d, yyyy")}`
     : undefined;
 
+  // ── THE BUY CONTROLS (punchlist V-13; ruling 9 / lane L23) ────────────────────────────────
+  // `buyAction` arrives RESOLVED on the payload — primary, any secondary, the ask steps, the
+  // landing store and any refusal reason — and this page renders it. It decides nothing: which
+  // verb applies is `resolveBuyAction`'s answer, taken server-side with the buyer read off the
+  // SESSION (§14), and the mapping from a resolved kind onto this page's concrete controls lives
+  // in the pure, unit-pinned `@/lib/service-buy-action`.
+  //
+  // THE LANDING IS OBEYED, NOT PRINTED. Row 11 lands on `booking_request`, which is why the
+  // request control is NOT an add — it opens the provider conversation rail and writes nothing.
+  // Rows 12/13 land on `checkout`, and this page's Book control does NOT go to a Stripe sheet:
+  // it writes the plan/cart row and sends the traveler to the slip, where the item is routed to
+  // checkout (LD 39 — the cart is the `ready_for_checkout` projection of the plan store). So the
+  // landing is read for behaviour and deliberately never rendered as prose; printing "goes to
+  // checkout" would be a §13 claim this page does not keep.
+  //
+  // VACATION MODE IS STILL THE PAGE'S OWN FACT. `buildListingBuyActions` is called with
+  // `isLive: true` for every approved+active listing, so the descriptor cannot say "this provider
+  // is away" — the `isAway` disabling below stays exactly as it was, on top of the descriptor.
+  const buy = serviceDetailBuyRender(service.buyAction);
+  // Which of the page's two plan writes an add control drives, and what blocks it. Unchanged
+  // behaviour, lifted out of the old room/service button ternary so the descriptor — not the
+  // product shape — decides WHICH controls exist, while the shape still decides what they write.
+  const addKind: "service" | "room" = isRoom ? "room" : "service";
+  const addPending = isRoom ? addRoomToCartMutation.isPending : addToCartMutation.isPending;
+  const addBlocked = isAway || addPending || (isRoom && !roomStayAvailable);
+
   return (
     <Layout>
       <div className="min-h-screen bg-[var(--earn-ground)] pb-16" style={{ fontFamily: '"Inter", system-ui, sans-serif' }}>
@@ -1665,87 +1712,127 @@ export default function ServiceDetailPage() {
                   )}
                 </div>
 
+                {/* ── THE BUY CONTROLS ARE THE RESOLVER'S, NOT THIS PAGE'S ────────────────────
+                    Punchlist V-13 (ledger `2026-09-13-service-detail-buy-action`; ruling 9). Until
+                    this lane these three buttons were FIXED: every archetype got "Book on
+                    Traveloure", "Add to Cart" and "Contact Provider" whatever the listing was, so a
+                    custom-quote listing with a NULL price was invited to press a Book the server
+                    refuses, and an `instant` listing with no published calendar was offered a Book
+                    that row 11 rules a REQUEST. Each control below now renders ONLY when the
+                    shipped descriptor names its kind, and its words are the descriptor's label. The
+                    page keeps no verb of its own. */}
                 <div className="grid gap-2 py-[17px]">
-                  {isRoom ? (
-                    <>
-                      <Button
-                        className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
-                        onClick={() => beginAdd("room", true)}
-                        disabled={isAway || !roomStayAvailable || addRoomToCartMutation.isPending}
-                        title={awayTitle}
-                        data-testid="button-book-now"
-                      >
-                        {addRoomToCartMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Booking...
-                          </>
-                        ) : (
-                          <>
-                            <BookOpen className="w-4 h-4 mr-2" />
-                            Book on Traveloure
-                          </>
-                        )}
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)]/90 border border-[color:var(--earn-navy)] text-white font-bold text-[12px]"
-                        onClick={() => beginAdd("room", false)}
-                        disabled={isAway || !roomStayAvailable || addRoomToCartMutation.isPending}
-                        title={awayTitle}
-                        data-testid="button-add-to-cart"
-                      >
-                        <ShoppingCart className="w-4 h-4 mr-2" />
-                        {/* Ledger 2026-09-03-slip-convergence: with a target resolved this
-                            button adds to the PLAN, not the cart — say so rather than promising
-                            a cart row the traveler will not find (§13). The noun is UNIVERSAL
-                            (2026-09-03-plan-vocabulary): travelers build Experiences as well as
-                            Trips, so it never says "Trip". */}
-                        {addLabel(!!targetTripId)}
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button
-                        className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
-                        onClick={() => beginAdd("service", true)}
-                        disabled={isAway || addToCartMutation.isPending}
-                        title={awayTitle}
-                        data-testid="button-book-now"
-                      >
-                        {addToCartMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Booking...
-                          </>
-                        ) : (
-                          <>
-                            <BookOpen className="w-4 h-4 mr-2" />
-                            Book on Traveloure
-                          </>
-                        )}
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)]/90 border border-[color:var(--earn-navy)] text-white font-bold text-[12px]"
-                        onClick={() => beginAdd("service", false)}
-                        disabled={isAway || addToCartMutation.isPending}
-                        title={awayTitle}
-                        data-testid="button-add-to-cart"
-                      >
-                        <ShoppingCart className="w-4 h-4 mr-2" />
-                        {/* Ledger 2026-09-03-slip-convergence: with a target resolved this
-                            button adds to the PLAN, not the cart — say so rather than promising
-                            a cart row the traveler will not find (§13). The noun is UNIVERSAL
-                            (2026-09-03-plan-vocabulary): travelers build Experiences as well as
-                            Trips, so it never says "Trip". */}
-                        {addLabel(!!targetTripId)}
-                      </Button>
-                    </>
+                  {buy.book && (
+                    <Button
+                      className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
+                      onClick={() => beginAdd(addKind, true)}
+                      disabled={addBlocked}
+                      title={awayTitle}
+                      data-testid="button-book-now"
+                    >
+                      {addPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Booking...
+                        </>
+                      ) : (
+                        <>
+                          <BookOpen className="w-4 h-4 mr-2" />
+                          {buy.book.label}
+                        </>
+                      )}
+                    </Button>
                   )}
 
+                  {buy.request && (
+                    // Row 11's landing is `booking_request`, NOT `checkout` and NOT a plan — so
+                    // this control deliberately writes nothing. There is no platform request rail
+                    // on `main` (the quote lane is unbuilt), and inventing one is out of this
+                    // lane's scope; the honest live rail is the LD 40 conversation the page
+                    // already opens with `{ serviceId }`, and the sentence below says exactly
+                    // that so the verb is not a promise about a record nobody creates (§13).
+                    <Button
+                      className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
+                      onClick={() =>
+                        askExpert({
+                          serviceId: service.id,
+                          subject: service.serviceName,
+                          returnTo: `/services/${service.id}`,
+                          fallbackName: providerVerification?.displayName ?? null,
+                        })
+                      }
+                      disabled={isAway}
+                      title={awayTitle}
+                      data-testid="button-request-to-book"
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      {buy.request.label}
+                    </Button>
+                  )}
+
+                  {buy.add && (
+                    <Button
+                      variant="outline"
+                      className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)]/90 border border-[color:var(--earn-navy)] text-white font-bold text-[12px]"
+                      onClick={() => beginAdd(addKind, false)}
+                      disabled={addBlocked}
+                      title={awayTitle}
+                      data-testid="button-add-to-cart"
+                    >
+                      <ShoppingCart className="w-4 h-4 mr-2" />
+                      {/* The label is the descriptor's. `addLabel(!!targetTripId)` used to author
+                          it here; ruling 9 makes the resolver the one author, and it already knows
+                          the buyer's principal — a guest's add still lands in the guest cart, the
+                          sanctioned fallback until G2 (LD 39, where the cart IS the plan store's
+                          `ready_for_checkout` projection). */}
+                      {buy.add.label}
+                    </Button>
+                  )}
+
+                  {/* §13 — A REFUSAL IS A SENTENCE, NEVER A GREYED-OUT BUTTON. The text is the
+                      page's wording of the resolver's OWN `refusal.reason`, keyed on that union so
+                      a rename fails to compile rather than leaving stale copy behind. */}
+                  {buy.refusal && (
+                    <p
+                      className="text-[11px] leading-[1.5] text-[color:var(--earn-muted)] rounded-[8px] border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-3 py-2.5"
+                      data-testid="text-buy-refusal"
+                    >
+                      {buy.refusal}
+                    </p>
+                  )}
+
+                  {/* What a request actually does here, said out loud rather than implied by the
+                      verb. Rendered only beside the request control it describes. */}
+                  {buy.request && (
+                    <p
+                      className="text-[11px] leading-[1.5] text-[color:var(--earn-muted)]"
+                      data-testid="text-buy-request-note"
+                    >
+                      A request opens a message with the provider about dates and price. Nothing is
+                      booked and nothing is charged here.
+                    </p>
+                  )}
+
+                  {/* The descriptor's `ask` steps — but only the ones this page actually performs.
+                      `which_plan` and `party` have no surface here and are declared as such in
+                      `@/lib/service-buy-action`, so they are never printed as a question the
+                      traveler will be asked (§13). */}
+                  {!buy.noBuyControl && buy.asks.length > 0 && (
+                    <p
+                      className="text-[11px] leading-[1.5] text-[color:var(--earn-muted)]"
+                      data-testid="text-buy-ask"
+                    >
+                      Before this is booked: {buy.asks.map((a) => a.label).join(" · ")}
+                    </p>
+                  )}
+
+                  {/* CONTACT IS NOT A BUY BUTTON, so ruling 9 does not author it and V-13 did not
+                      move it. It is the LD 40 contact rail — `{ serviceId }` as the address, the
+                      recipient resolved server-side — and it renders unconditionally, as it always
+                      has. Where the descriptor names `message` in either slot (rows 1, 10 and the
+                      §13 fallback row 14), `buy.namesMessage` is true and THIS control is that
+                      rendering; a second message button beside it would be two affordances for one
+                      rail. Its label stays the page's, because a contact label is not a buy label. */}
                   <Button
                     variant="ghost"
                     className="w-full min-h-[42px] rounded-[8px] border border-[color:var(--earn-border)] bg-white hover:bg-[var(--earn-ground)] text-[color:var(--earn-navy)] font-bold text-[12px]"

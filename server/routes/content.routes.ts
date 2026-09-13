@@ -2389,7 +2389,19 @@ router.get("/api/services/:id", async (req, res) => {
 
     // L23 (brief §11.5, ruling 9 — register §A4): the buy button and the landing rule are authored
     // by ONE resolver and SHIPPED on the payload; the page renders `buyAction` and never re-derives
-    // it (the `optimizer-run-authorization` posture). `isLive` is true by construction — the F2
+    // it (the `optimizer-run-authorization` posture).
+    //
+    // THAT SENTENCE WAS FALSE FOR SIX DAYS AND IS NOW TRUE (punchlist V-13, ledger
+    // `2026-09-13-service-detail-buy-action`). `client/src/pages/service-detail.tsx` shipped with
+    // three FIXED CTAs and never read this field, so a custom-quote listing was offered a "Book"
+    // the booking and cart rails refuse. It now renders the descriptor's `primary`/`secondary`
+    // labels, prints its `refusal.reason` as a sentence, and authors no buy verb of its own.
+    // Precisely: it OBEYS `landing` (row 11's `booking_request` is why its request control writes
+    // nothing) and deliberately does not PRINT it — rows 12/13 land on `checkout` while the page's
+    // Book writes the plan/cart row and sends the traveler to the slip to route it (LD 39), so
+    // rendering "goes to checkout" would be a §13 claim the page does not keep.
+    //
+    // `isLive` is true by construction — the F2
     // gate at the top of this handler already refused anything not approved+active. The buyer comes
     // from the SESSION (§14) and this read stays unauthenticated: no session ⇒ `guest`, which is a
     // complete answer, not a missing one. The plan CHIP is client state the server does not hold,

@@ -524,6 +524,16 @@ jobs:
       # becomes a booking verb and carries its reason instead.
       - name: Buy-action resolver pin
         run: npx tsx --test shared/__tests__/buy-action.test.ts
+      # 2026-09-13-service-detail-buy-action (punchlist V-13): the FIRST client consumer of that
+      # descriptor. `service-detail.tsx` drew three fixed CTAs for every archetype and never read
+      # `buyAction`, so a custom-quote listing was invited to press a Book both the booking and the
+      # cart rails refuse. V1-V9 drive the REAL resolver and map its answer, so a changed decision
+      # table shows up here as a changed button rather than passing against a stale fixture; V2/V3
+      # are the two wrong labels V-13 observed in a browser, V6 is §13's absent-descriptor rule.
+      # S1-S3 pin the shipped page (comments stripped) — it calls the mapper, authors no buy verb,
+      # and the three OTHER `ld23-buy-action-gap` authors are deliberately untouched.
+      - name: Service-detail buy-action render pin
+        run: npx tsx --test client/src/lib/__tests__/service-buy-action.test.ts
       # 2026-09-11-booking-mode-provenance (lane OC-A0b, punchlist V-9): `resolveBookingMode` always
       # answers, and `request` is the right answer for an unset listing — the lane deliberately did
       # NOT change it. What it added is WHICH of three facts produced that answer, because "the
