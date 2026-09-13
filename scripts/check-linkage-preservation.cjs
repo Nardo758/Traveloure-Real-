@@ -51,6 +51,10 @@ const ALLOW = 'linkage-none-ok';
 const WRITE_SITE_PATTERNS = [
   { re: /\.createItineraryItem\s*\(/, label: 'createItineraryItem(' },
   { re: /\bdb\.insert\(itineraryItems\)/, label: 'db.insert(itineraryItems)' },
+  // `bulkInsertItineraryItems` was DELETED 2026-09-13 (punchlist V-17, §18c: no consumer + a
+  // state-bearing effect ⇒ delete, don't gate). The pattern STAYS as a fence — it matches
+  // nothing today, and that is the point: re-adding the method puts its call sites back under
+  // this guard immediately rather than silently.
   { re: /\.bulkInsertItineraryItems\s*\(/, label: 'bulkInsertItineraryItems(' },
 ];
 

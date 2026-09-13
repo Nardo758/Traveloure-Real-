@@ -1305,8 +1305,6 @@ export interface IStorage {
 
   deleteInPlanningItineraryItemsByTrip(tripId: string): Promise<{ deleted: number; preserved: number }>;
 
-  bulkInsertItineraryItems(items: any[]): Promise<void>;
-
   updateComparisonOptimizedAt(comparisonId: string, variantId: string): Promise<void>;
 
   getItineraryComparisonByTripId(tripId: string): Promise<any | null>;
@@ -8104,12 +8102,6 @@ export class DatabaseStorage implements IStorage {
     return { deleted: deleted.length, preserved: Number(remaining?.n ?? 0) };
   }
 
-  async bulkInsertItineraryItems(items: any[]): Promise<void> {
-    if (!items.length) return;
-    for (const item of items) {
-      await db.insert(itineraryItems).values(item);
-    }
-  }
 
   async updateComparisonOptimizedAt(comparisonId: string, variantId: string): Promise<void> {
     await db.update(itineraryComparisons)
