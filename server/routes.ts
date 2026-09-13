@@ -27,7 +27,7 @@ import { storage, type BookingStatusNotification } from "./storage";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
-import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9)
+import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
 import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
 import { parseAiJsonObjectOrThrow } from "./utils/ai-json";
 import {
@@ -6523,6 +6523,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (!service) {
           return res.status(404).json({ message: "Service not found" });
         }
+        // The SECOND live add-to-cart rail (ledger `2026-09-13-cart-priceless-gap`). It takes the
+        // same `serviceId` and calls the same single cart writer as `POST /api/cart`, so it is
+        // reachable with a priceless listing in exactly the same way and carries the same
+        // refusal -- same predicate, same sentence, same status code (s18 rule 1).
+        if (!hasPublishedPrice(service.price)) {
+          return res.status(400).json({
+            message: PRICELESS_LISTING_REFUSAL.message,
+            reason: PRICELESS_LISTING_REFUSAL.reason,
+          });
+        }
       }
       if (customVenueId) {
         const venue = await storage.getCustomVenue(customVenueId);
@@ -6643,11 +6653,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       //
       // A PRICED LISTING IS UNTOUCHED: everything below this gate runs exactly as before, and for
       // any listing that passes it `Number(service.price) || 0` is `Number(service.price)`.
+      // The sentence and the reason now live in ONE place (ledger `2026-09-13-cart-priceless-gap`)
+      // because the cart rails refuse the same thing; the RESPONSE is byte-identical to V-11's.
       if (!hasPublishedPrice(service.price)) {
-        const reason: BuyRefusalReason = "no_published_price";
+        const reason: BuyRefusalReason = PRICELESS_LISTING_REFUSAL.reason;
         return res.status(400).json({
-          message:
-            "This listing publishes no price, so it cannot be booked through this rail. A custom-quote listing is requested and quoted before anything is committed.",
+          message: PRICELESS_LISTING_REFUSAL.message,
           reason,
         });
       }
@@ -8111,6 +8122,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     const cartHasConcierge = cartConciergeLines.hasAny;
     const cartConciergeRate = cartHasConcierge ? await getConciergeBookingRate() : 0;
 
+    // -- s13 ON THE TOTALS (ledger `2026-09-13-cart-priceless-gap`) ---------------------------
+    // The add rails now refuse a priceless listing, but rows added BEFORE this landed are still
+    // on disk, and a seller may unpublish a price after an add. Those rows are NOT deleted (see
+    // the ledger row: a row that was added was added, and we cannot know it was priceless then),
+    // so this read must not keep telling the old lie. `resolveItemBaseAmount` reads
+    // `parseFloat(service.price || "0")`, which prices such a line at 0 -- indistinguishable
+    // from a genuinely free one. It still contributes nothing to the total, because there is no
+    // number to contribute; what changes is that the response NAMES the lines it could not
+    // price, so the surface can say "this line has no price" instead of "$0.00".
+    //
+    // SCOPED TO THE V-11 CLASS ONLY: a row that names a `provider_services` listing whose price
+    // is absent or non-positive, through the SAME `hasPublishedPrice` the add rails use (s18
+    // rule 1). A content row (a gem, a hotel card) names no listing and is deliberately NOT in
+    // this set -- it has no catalog price to publish, which is a different fact.
+    //
+    // PRESENT-ONLY-WHEN-SET: a fully-priced cart's response is byte-identical to before.
+    const unpriceableItemIds = items
+      .filter((i) => i.service && !hasPublishedPrice(i.service.price))
+      .map((i) => i.id as string);
+
     let subtotal = 0;
     let platformFeeTotal = 0;
     let conciergeFeeTotal = 0;
@@ -8190,6 +8221,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         travelerFee: 0,
       }).toFixed(2),
       itemCount: items.length,
+      // s13: OMITTED when empty, so a fully-priced cart is unchanged. When present it is the
+      // honest statement that `subtotal`/`total` do not cover these lines and checkout will
+      // refuse them (`POST /api/checkout` answers 409 `no_published_price`).
+      ...(unpriceableItemIds.length > 0
+        ? { unpriceableItemIds, unpriceableReason: PRICELESS_LISTING_REFUSAL.reason }
+        : {}),
     });
     } catch (err) {
       console.error("[Cart] GET /api/cart failed:", err);
@@ -8394,6 +8431,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (!service) {
           console.log("[Cart] Service not found for ID:", serviceId);
           return res.status(404).json({ message: "Service not found" });
+        }
+        // -- THE CART RAIL'S HALF OF V-11 (ledger `2026-09-13-cart-priceless-gap`) -------------
+        // V-11 closed this on `POST /api/bookings`; the cart had the IDENTICAL hole. A listing
+        // with a NULL price went in at 201 and `GET /api/cart` then reported
+        // `subtotal: "0.00", total: "0.00", itemCount: 1` -- "no price stated" rendered to the
+        // traveler as FREE, which is the s13 lie V-11 exists to refuse, and `POST /api/checkout`
+        // then walked all the way to the Stripe call with nothing between it and a charge.
+        //
+        // THE RULE IS NOT RE-DECIDED HERE (ruling 9). `resolveBuyAction` is the sole author of
+        // the buy button and the landing rule, and its row 11 already says a priceless listing
+        // can only ever be REQUESTED -- in EVERY branch its landing is `booking_request`, never
+        // `checkout`. Carting is the first step of a checkout, so it is refused here for exactly
+        // that reason. The predicate is the ONE translation of the price column
+        // (`hasPublishedPrice`) and the sentence is the ONE the booking rail says
+        // (`PRICELESS_LISTING_REFUSAL`) -- two rails refusing the same thing in two voices is
+        // the drift class s18 rule 1 names. No amount, rate or fee literal is involved: this
+        // refuses a purchase, it does not price one (s8/s14).
+        if (!hasPublishedPrice(service.price)) {
+          return res.status(400).json({
+            message: PRICELESS_LISTING_REFUSAL.message,
+            reason: PRICELESS_LISTING_REFUSAL.reason,
+          });
         }
       }
 

@@ -51,6 +51,9 @@ import { db } from "../db";
 import { cartItems, itineraryItems, providerServices, trips } from "@shared/schema";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
+// V-11's predicate, the ONE translation of `provider_services.price` into the `hasPrice` fact
+// `resolveBuyAction` decides on (ledger `2026-09-13-cart-priceless-gap`, s18 rule 1).
+import { hasPublishedPrice } from "./buy-action-payload";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 1 — the funnel. Thin passthroughs, behavior-identical by construction.
@@ -162,7 +165,14 @@ function stayContentMeta(
 export type ProjectionSyncResult =
   | { action: "upserted"; cartItemId: string }
   | { action: "deleted"; removed: number }
-  | { action: "noop"; reason: "item_missing" | "no_owner" | "not_projected" };
+  | {
+      action: "noop";
+      // `no_published_price` added by ledger `2026-09-13-cart-priceless-gap`: the item names a
+      // listing the platform cannot price, so the CHECKOUT projection declines to hold it. It is
+      // a reason, not a failure — the caller reports it and the item's own routing state is
+      // untouched (s13: the traveler is told why, never silently given an empty cart).
+      reason: "item_missing" | "no_owner" | "not_projected" | "no_published_price";
+    };
 
 /** contentType marker for a projected item that has no `providerServiceId`. */
 const EXTERNAL_PROJECTION_CONTENT_TYPE = "itinerary_item";
@@ -227,10 +237,31 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
   let stayMeta: { checkIn: string; checkOut: string } | null = null;
   if (item.providerServiceId) {
     const [svc] = await db
-      .select({ pricingUnit: providerServices.pricingUnit })
+      .select({
+        pricingUnit: providerServices.pricingUnit,
+        // Ledger `2026-09-13-cart-priceless-gap`: read on the SAME single-row query that was
+        // already being run for the pricing unit — no extra round trip.
+        price: providerServices.price,
+      })
       .from(providerServices)
       .where(eq(providerServices.id, item.providerServiceId))
       .limit(1);
+    // -- A LISTING THAT PUBLISHES NO PRICE IS NOT PROJECTED INTO THE CHECKOUT VIEW --------------
+    // LD 39: the cart IS the `ready_for_checkout` projection of `itinerary_items`, so this is a
+    // cart-ENTRY rail and it was reachable with a priceless listing — the row landed in the cart
+    // and `GET /api/cart` reported it at `0.00`, the same s13 lie the add rails now refuse
+    // (ruling 9 row 11: a priceless listing can only ever be REQUESTED).
+    //
+    // WHAT THIS DELIBERATELY DOES NOT DO: it does not refuse the traveler's ROUTING flip. The
+    // routing state is the source of truth and the cart is the derived view (this module's own
+    // header) — a "may this item be marked for checkout?" test at the routing rail would be a
+    // second author of a plan-state rule nobody has ratified. So the item keeps its status, the
+    // projection holds nothing it cannot price, any stale projection row is removed, and the
+    // reason travels back on the result the route already returns (s13: said out loud).
+    if (svc && !hasPublishedPrice(svc.price)) {
+      await deleteProjectionFor(itemId);
+      return { action: "noop", reason: "no_published_price" };
+    }
     if (svc?.pricingUnit === "per_night") {
       stayMeta = stayContentMeta(item.checkIn, item.checkOut);
     }

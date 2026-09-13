@@ -1,0 +1,126 @@
+name: Cart Priceless Listing Gate
+
+# Guards ruling 9 row 11 on the CART rails (ledger `2026-09-13-cart-priceless-gap`; punchlist
+# V-11, one endpoint over). A `provider_services` row with no published price used to go into
+# the cart at 201 and render as `subtotal "0.00"`, while `POST /api/bookings` refused the same
+# listing 400 — and `POST /api/checkout` then reached the Stripe call with nothing in front of
+# it. C1-C10 assert the refusal at every guarded rail, that a PRICED listing is unaffected, and
+# that an EMPTY cart is still genuinely zero.
+#
+# WHY ITS OWN WORKFLOW AND NOT A build.yml JOB. This suite needs a REAL booted server (the hole
+# was an HTTP status code), and a throwaway-DB boot of the production bundle needs
+# ALLOW_TEST_ACCOUNTS=1 for server/index.ts's P0 purge fail-safe. `check-env-allowlist.cjs` (c)
+# is FAIL-CLOSED: that token may not appear in ANY form in a workflow that also targets a real
+# deployment, and build.yml carries the prod-smoke jobs, so it does. That is exactly why every
+# other server-booting gate (fee-preview-gate, publish-gate-and-fundamentals, payout-parity,
+# the route gates) lives in its own file. Boot recipe mirrors fee-preview-gate.yml verbatim.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cart-priceless-listing-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cart-priceless-listing:
+    name: cart-priceless-listing (ruling 9 row 11; ledger 2026-09-13-cart-priceless-gap)
+    runs-on: ubuntu-latest
+    # A HANG MUST FAIL, NEVER STALL (the fee-preview-gate precedent): per-step ceilings name the
+    # failing step in the log, and this is the job backstop.
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # The suite registers its own traveler over HTTP and inserts its own fixtures.
+          seed-ci-users: 'false'
+
+      - name: Build production bundle
+        run: npm run build
+
+      # SESSION_COOKIE_INSECURE (plain-http loopback drops a `secure` cookie, so
+      # `register must set a session cookie` fails without it) and RATE_LIMIT_LOOPBACK_SKIP (one
+      # IP registering users is otherwise 429'd) are both load-bearing, and NEVER set in
+      # production. The Stripe key is a stub and is never exercised: C7's whole point is that the
+      # refusal lands BEFORE any Stripe call.
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          # P0 fail-safe (server/index.ts): a production boot purges test accounts unless
+          # explicitly allowed. This CI database is throwaway and this workflow targets no
+          # deployment — see the header for why that distinction decides which file this lives in.
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      # `--test-force-exit` is load-bearing for the reason fee-preview-gate.yml documents at
+      # length: `node --test <file>` prints the summary only when the child EXITS, and a stray
+      # handle (the pino-pretty transport worker under NODE_ENV=test) can leave it alive forever
+      # with every assertion already passed. The flag cannot hide a failed assertion.
+      - name: Priceless listing is refused at every cart rail (C1-C10)
+        run: npx tsx --test --test-force-exit server/__tests__/cart-priceless-listing.http.test.ts
+        timeout-minutes: 15
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          JOURNEY_DB_WRITES_OK: '1'

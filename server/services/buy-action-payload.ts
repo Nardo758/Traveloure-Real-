@@ -48,6 +48,7 @@ import {
   type BuyAction,
   type BuyActionBuyer,
   type BuyBookingMode,
+  type BuyRefusalReason,
 } from "@shared/buy-action";
 import {
   resolveBookingMode,
@@ -112,6 +113,42 @@ export function hasPublishedPrice(price: string | number | null | undefined): bo
   const n = typeof price === "number" ? price : Number(price);
   return Number.isFinite(n) && n > 0;
 }
+
+/**
+ * THE ONE SENTENCE EVERY RAIL SAYS WHEN A LISTING PUBLISHES NO PRICE.
+ *
+ * Added by ledger `2026-09-13-cart-priceless-gap`. V-11 closed this on `POST /api/bookings` and
+ * wrote the refusal inline there; the cart rail had the identical hole one endpoint over — a NULL
+ * price went into the cart at 201 and `GET /api/cart` reported `subtotal: "0.00"`, which is the
+ * §13 lie V-11 exists to refuse ("no price stated" rendered as "free"). Fixing the cart by
+ * re-typing that sentence beside it would have been two rails refusing the same thing in two
+ * voices, which is the derivation-drift class §18 rule 1 names in miniature: the day the quote
+ * rail is built, one of the two copies gets the new sentence and the other keeps promising
+ * something that no longer exists.
+ *
+ * So the sentence lives HERE, beside `hasPublishedPrice` — the ONE translation of the price
+ * column into `resolveBuyAction`'s `hasPrice` fact — and every rail imports both. The `reason` is
+ * the RESOLVER's own vocabulary (`BuyRefusalReason`), so a rename of that union fails to compile
+ * at every rail at once rather than leaving a string literal behind.
+ *
+ * WHAT IT IS NOT: it is not a re-decision of the rule. `resolveBuyAction` row 11 is the sole
+ * author (ruling 9) and already says a priceless listing can only ever be REQUESTED — its landing
+ * is `booking_request`, never `checkout`, in every branch. This constant is how a rail says that
+ * out loud instead of greying out a button (§13 — a refusal is a sentence).
+ *
+ * The HTTP STATUS is deliberately NOT part of it: an add rail answers 400 (the body named a
+ * listing it may not name — `POST /api/bookings`'s own code) while checkout answers 409 (the cart
+ * on disk holds a line that cannot be bought — the code its archived-listing sibling already
+ * uses). The sentence is shared; the code belongs to the rail's own grammar.
+ */
+export const PRICELESS_LISTING_REFUSAL: {
+  readonly reason: BuyRefusalReason;
+  readonly message: string;
+} = {
+  reason: "no_published_price",
+  message:
+    "This listing publishes no price, so it cannot be booked through this rail. A custom-quote listing is requested and quoted before anything is committed.",
+};
 
 /**
  * Resolve the buy action for a batch of platform listings.
