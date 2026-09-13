@@ -41,6 +41,14 @@
  *
  * DISPOSABLE DB ONLY. Every row this file writes is created by this file and deleted in after().
  *
+ *   N25  THE INTERRUPTED FULFILMENT (punchlist V-3b, ledger 2026-09-12-readymade-earning-retry).
+ *        N24 closed the hole BEFORE the purchase row; this closes the one AFTER it. A process
+ *        dying between the atomic `paid → cloned` claim and the author-credit INSERT left a
+ *        DELIVERED purchase with no earning and no way back, because every later fulfil returned
+ *        at `status === 'cloned'`. Migration 294's partial unique index makes the credit safe to
+ *        retry and the fulfilment now ENSURES the money leg — §15c's "money leg only", one table
+ *        over. N25a is the lane's own negative and fails on the pre-fix code.
+ *
  *   N24  THE RECOVERY PATH (ledger 2026-09-12-readymade-recovery-path). N23 reported the hole this
  *        rail had — the purchase row was written ONLY by the buyer's own browser, because the
  *        `payment_intent.succeeded` webhook keys on `metadata.bookingIds` a ready-made PaymentIntent
@@ -1312,4 +1320,180 @@ test("N24h: §14 — price_paid_cents is what STRIPE CAPTURED, not the listing's
   assert.equal(row.price_paid_cents, capturedCents, "DB FACT: what Stripe captured, never the current price");
   assert.equal(row.currency, "USD");
   assert.equal(row.status, "cloned");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// matrix-id: N25 — THE INTERRUPTED FULFILMENT (punchlist V-3b, ledger
+//                  2026-09-12-readymade-earning-retry)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// N24 closed the hole BEFORE the purchase row: a closed tab between capture and confirm lost the
+// whole delivery, and the webhook now recovers it. This closes the hole AFTER it, and it is a
+// different failure with a different shape.
+//
+// `fulfillReadyMadePurchase` credited the author with a PLAIN INSERT reached only by the winner of
+// the atomic `paid → cloned` claim. Under CONCURRENCY that is exactly right — one claim, one
+// credit. Under a CRASH it is unreachable: a process dying between the claim and the insert leaves
+// a purchase that is `cloned` (the clone trip and its items are committed, the buyer has what they
+// bought) with NO author earning, and every later fulfil short-circuited on `status === 'cloned'`
+// and returned. Delivered buyer, unpaid author, no exception, no log line, no detector.
+//
+// THE FIX HAS TWO HALVES AND N25a IS THE ONE THAT MATTERS. Migration 294's PARTIAL unique index
+// (`reference_id WHERE reference_type='ready_made_purchase' AND amount >= 0`) prevents a DOUBLE
+// credit; it does not create a credit that never happened. So the fulfilment now ENSURES the money
+// leg on an already-`cloned` purchase instead of returning early — §15c's "the promotion is the
+// money leg only … the one effect it does retry is idempotent by construction", one table over.
+//
+// THE CLONE IS NOT PART OF THE RETRY, and N25b is the proof: it is NOT uniqueness-guarded and a
+// second one would be a real second trip in the buyer's account.
+//
+// N25a FAILS ON THE PRE-FIX CODE (it is the lane's own negative); N25c/N25d are the guards that
+// the fix did not buy recovery at the price of double-crediting or of re-crediting a refund.
+
+/** Delete the author earning a fulfilment wrote — the DB state a process death between the atomic
+ *  `paid → cloned` claim and the credit insert leaves behind. Nothing else is touched: the
+ *  purchase stays `cloned`, the clone trip and its items stay committed, the buyer keeps what they
+ *  paid for. That asymmetry IS the defect. */
+async function eraseAuthorCredit(purchaseId: string): Promise<void> {
+  await db.execute(sql`DELETE FROM expert_earnings WHERE reference_id = ${purchaseId} AND type = 'ready_made_sale'`);
+  await db.execute(sql`DELETE FROM platform_revenue WHERE source_id = ${purchaseId}`);
+}
+
+async function earningRowFor(purchaseId: string): Promise<any | undefined> {
+  const r = await db.execute(sql`
+    SELECT expert_id, amount, currency, status, reference_type
+    FROM expert_earnings WHERE reference_id = ${purchaseId} AND type = 'ready_made_sale'
+  `);
+  return r.rows[0] as any;
+}
+
+test("N25a: INTERRUPTED AFTER THE CLAIM — a re-run ends with exactly ONE earning and ONE revenue row", async () => {
+  // The lane's own negative. On the pre-fix code the re-run returns at `status === 'cloned'` and
+  // both counts stay 0: the buyer has their trip and the author is never paid.
+  const { fulfillReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const buyerId = await makeBuyer("v3b-a");
+  const piId = `pi_${RUN}_n25a`;
+
+  await deliver(rmPiFor({ id: piId, buyerId }));
+  const row = await purchaseByPi(piId);
+  assert.ok(row, "the delivery recorded the purchase");
+  assert.equal(row.status, "cloned", "and fulfilled it");
+  const amountBefore = (await earningRowFor(row.id))?.amount;
+  assert.ok(amountBefore, "the first pass credited the author");
+
+  // The crash: the claim committed, the credit did not.
+  await eraseAuthorCredit(row.id);
+  assert.equal(await countEarningsFor(row.id), 0, "DB FACT: the interrupted state — cloned, uncredited");
+  assert.equal(await countRevenueFor(row.id), 0);
+
+  const again = await fulfillReadyMadePurchase(row.id);
+
+  assert.equal(again.alreadyFulfilled, true, "the CLONE is not redone — this is the money leg only");
+  assert.equal(again.cloneTripId, row.clone_trip_id, "and it is still the SAME clone trip");
+  assert.equal(await countEarningsFor(row.id), 1, "DB FACT: the author is paid — exactly one earning");
+  assert.equal(await countRevenueFor(row.id), 1, "DB FACT: and exactly one platform-revenue row");
+  assert.equal(await countClonesFor(buyerId), 1, "DB FACT: still exactly one trip — no second clone");
+
+  const recovered = await earningRowFor(row.id);
+  assert.equal(recovered.amount, amountBefore, "§14/§8: the recovered amount is the SAME number, not a new one");
+  assert.equal(recovered.status, "held", "born HELD on the escrow spine, exactly as a first pass does");
+  assert.equal(recovered.reference_type, "ready_made_purchase", "the reference_type migration 294's index is scoped to");
+  assert.equal((again.authorCredit as any)?.earning, "created", "the caller is TOLD the credit was made");
+});
+
+test("N25b: A NORMAL DOUBLE-RUN still produces exactly one of each, and mints no second clone", async () => {
+  // The other direction of the same predicate: re-entering a fulfilment that is ALREADY complete
+  // must be a no-op on every row, and must report `existing` rather than claiming it created one.
+  const { fulfillReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const buyerId = await makeBuyer("v3b-b");
+  const piId = `pi_${RUN}_n25b`;
+
+  await deliver(rmPiFor({ id: piId, buyerId }));
+  const row = await purchaseByPi(piId);
+  assert.ok(row);
+
+  const again = await fulfillReadyMadePurchase(row.id);
+  const third = await fulfillReadyMadePurchase(row.id);
+
+  assert.equal(await countEarningsFor(row.id), 1, "DB FACT: migration 294's partial index is the guard");
+  assert.equal(await countRevenueFor(row.id), 1, "DB FACT: migration 244's index is the guard");
+  assert.equal(await countClonesFor(buyerId), 1, "DB FACT: the clone is NOT part of the retry");
+  assert.equal((again.authorCredit as any)?.earning, "existing", "§13: an existing credit is reported as existing");
+  assert.equal((third.authorCredit as any)?.earning, "existing");
+});
+
+test("N25c: THE PARTIAL PREDICATE IS LOAD-BEARING — every other earnings rail still repeats freely", async () => {
+  // Migration 294 scopes its unique index to `reference_type = 'ready_made_purchase'` precisely so
+  // the five other writers of `expert_earnings` (tip, referral bonus, affiliate commission, expert
+  // review fee, recordRevenueEvent) keep their exact behaviour — several legitimately repeat a
+  // reference_id. A table-wide unique index would have broken all of them silently.
+  const sharedRef = `recon-${RUN}-shared-ref`;
+  await db.execute(sql`
+    INSERT INTO expert_earnings (id, expert_id, type, amount, reference_id, reference_type, status)
+    VALUES (${`recon-${RUN}-ee-1`}, ${ids.user}, 'tip', '5.00', ${sharedRef}, 'expert_tip', 'held'),
+           (${`recon-${RUN}-ee-2`}, ${ids.user}, 'tip', '7.00', ${sharedRef}, 'expert_tip', 'held')
+  `);
+  try {
+    const r = await db.execute(sql`
+      SELECT count(*)::int AS n FROM expert_earnings WHERE reference_id = ${sharedRef}
+    `);
+    assert.equal((r.rows[0] as any).n, 2, "DB FACT: a non-ready-made rail is untouched by the new index");
+  } finally {
+    await db.execute(sql`DELETE FROM expert_earnings WHERE reference_id = ${sharedRef}`).catch(() => {});
+  }
+});
+
+test("N25d: A REFUNDED PURCHASE IS NEVER RE-CREDITED by the re-entrant path (§13)", async () => {
+  // The refund ledger REVERSES the author's earning. `refunded` is terminal, so the money leg must
+  // NOT re-run for it — ensuring the credit there would fight the reversal that just happened.
+  const { fulfillReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const buyerId = await makeBuyer("v3b-d");
+  const piId = `pi_${RUN}_n25d`;
+
+  await deliver(rmPiFor({ id: piId, buyerId }));
+  const row = await purchaseByPi(piId);
+  assert.ok(row);
+
+  await db.execute(sql`UPDATE ready_made_purchases SET status = 'refunded' WHERE id = ${row.id}`);
+  await db.execute(sql`
+    UPDATE expert_earnings SET status = 'reversed'
+    WHERE reference_id = ${row.id} AND type = 'ready_made_sale'
+  `);
+
+  const again = await fulfillReadyMadePurchase(row.id);
+
+  assert.equal(again.authorCredit, undefined, "a terminal purchase runs no money leg at all");
+  assert.equal(await countEarningsFor(row.id), 1, "DB FACT: no second earning was written");
+  const reversed = await earningRowFor(row.id);
+  assert.equal(reversed.status, "reversed", "DB FACT: and the reversal stands");
+});
+
+test("N25e: AN EARNING THAT CANNOT HONESTLY BE CREATED IS NOT INVENTED — the skip is REPORTED (§13)", async () => {
+  // Three facts can be missing when the money leg runs: the listing row, its author's account, or
+  // a payable share. All three take the SAME branch — create NOTHING, name the reason, log at
+  // ERROR — and the fulfilment deliberately does NOT throw: the buyer's clone is already committed,
+  // and a throw here would turn a bookkeeping gap into a webhook that retries forever without ever
+  // being able to succeed. It stays the drift job's finding (§17), never a fabricated row.
+  //
+  // STATED NEGATIVE SPACE: the `no_payable_share` arm is the one this suite can reach without DDL.
+  // `ready_made_purchases.ready_made_trip_id` and `ready_made_trips.author_id` are both NO-ACTION
+  // FKs, so the database itself refuses to produce a purchase whose listing or author is gone —
+  // which is a real guarantee, not a gap in the test, and it is why those two arms exist as
+  // defence against a future loosening rather than against today's schema.
+  const { fulfillReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const buyerId = await makeBuyer("v3b-e");
+  const piId = `pi_${RUN}_n25e`;
+
+  await deliver(rmPiFor({ id: piId, buyerId }));
+  const row = await purchaseByPi(piId);
+  assert.ok(row);
+  await eraseAuthorCredit(row.id);
+
+  await db.execute(sql`UPDATE ready_made_purchases SET price_paid_cents = 0 WHERE id = ${row.id}`);
+  const again = await fulfillReadyMadePurchase(row.id);
+
+  assert.equal((again.authorCredit as any)?.earning, "skipped", "the caller is TOLD, never left guessing");
+  assert.equal((again.authorCredit as any)?.reason, "no_payable_share");
+  assert.equal(await countEarningsFor(row.id), 0, "DB FACT: no earning was invented");
+  assert.equal(await countRevenueFor(row.id), 0, "DB FACT: and no revenue row either");
+  assert.equal(again.cloneTripId, row.clone_trip_id, "the buyer keeps the trip they paid for");
 });

@@ -1549,4 +1549,15 @@ export const MIGRATION_FILES = [
   // legacy column is LANE 2 and deliberately does not ride this deploy — a drop is unrecoverable
   // and a stamped migration never re-runs.
   "293_backfill_provider_services_expert_offering_type_key.sql",
+  // Ledger `2026-09-12-readymade-earning-retry` (punchlist V-3b; CLAUDE.md §15/§15c): the
+  // migration-203 completion-mint guard, one `reference_type` over — a PARTIAL unique index on
+  // `expert_earnings (reference_id) WHERE reference_type = 'ready_made_purchase' AND amount >= 0`.
+  // It is what makes the ready-made author credit safe to RETRY, which is the code half of the
+  // same lane: a fulfilment interrupted after the atomic `paid → cloned` claim and before the
+  // insert left a delivered purchase with no author earning and no way back. PARTIAL is
+  // load-bearing — `expert_earnings` is written by five other rails and several legitimately
+  // repeat a `reference_id`. Index-only, no ALTER/CHECK/DEFAULT (so no
+  // `preflight-prod-constraints.cjs` manifest entry), deduped first on 203's preference order,
+  // and DECLARED in `shared/schema.ts` in the same commit (deploy-push durability rule).
+  "294_ready_made_sale_earning_uniq.sql",
 ] as const;

@@ -6315,6 +6315,20 @@ export const expertEarnings = pgTable("expert_earnings", {
   bookingMintUniq: uniqueIndex("expert_earnings_booking_mint_uniq")
     .on(table.referenceId)
     .where(sql`reference_type = 'service_booking' AND amount >= 0`),
+  // Migration 294 (punchlist V-3b, ledger `2026-09-12-readymade-earning-retry`): the SAME guard,
+  // one reference_type over. The ready-made author credit was a plain INSERT reached only by the
+  // winner of the atomic `paid → cloned` claim — safe under concurrency, unreachable after a
+  // crash, so a process dying between the claim and the insert left a DELIVERED purchase with no
+  // author earning and no retry. The fulfilment now ENSURES this row on an already-`cloned`
+  // purchase (§15c: the money leg only; the clone itself stays strictly once-only), and this index
+  // is what makes that retry safe — a re-run can never double-credit.
+  // PARTIAL is load-bearing: `expert_earnings` is written by five other rails (tip, referral
+  // bonus, affiliate commission, expert review fee, recordRevenueEvent) and several legitimately
+  // repeat a `reference_id`; scoping to this rail's own reference_type leaves them untouched.
+  // `amount >= 0` exactly as 203 — a negative clawback row sharing the identity stays insertable.
+  readyMadeSaleUniq: uniqueIndex("expert_earnings_ready_made_sale_uniq")
+    .on(table.referenceId)
+    .where(sql`reference_type = 'ready_made_purchase' AND amount >= 0`),
 }));
 
 // Expert payouts - tracks payout requests

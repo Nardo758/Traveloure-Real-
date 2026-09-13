@@ -828,7 +828,9 @@ export interface IStorage {
   getExpertEarningsSummary(expertId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }>;
 
   createExpertEarning(earning: InsertExpertEarning): Promise<ExpertEarning>;
-  
+
+  insertExpertEarningOnce(earning: InsertExpertEarning): Promise<{ row: ExpertEarning; inserted: boolean }>;
+
   // Expert Payouts
 
   getExpertPayouts(expertId: string): Promise<ExpertPayout[]>;
@@ -5467,6 +5469,39 @@ export class DatabaseStorage implements IStorage {
   async createExpertEarning(earning: InsertExpertEarning): Promise<ExpertEarning> {
     const [newEarning] = await db.insert(expertEarnings).values(earning).returning();
     return newEarning;
+  }
+
+  /**
+   * The idempotent sibling of `createExpertEarning` — the `insertPlatformRevenueOnce` shape, one
+   * table over (punchlist V-3b, ledger `2026-09-12-readymade-earning-retry`).
+   *
+   * §15: the STATEMENT is the guard. `ON CONFLICT DO NOTHING` lands against whichever partial
+   * unique index covers the caller's identity (migration 203's `service_booking` mint guard;
+   * migration 294's `ready_made_purchase` guard) — never a check-then-insert, which is the TOCTOU
+   * bug this codebase has already paid for. A caller whose identity NO index covers gets the
+   * plain-insert behaviour it always had, which is why `createExpertEarning` is untouched and
+   * every one of its five existing callers keeps its exact behaviour.
+   *
+   * `inserted` is what a caller branches on when a dependent side-effect must happen once and only
+   * once — the same signal `insertPlatformRevenueOnce` returns for exactly that reason.
+   */
+  async insertExpertEarningOnce(earning: InsertExpertEarning): Promise<{ row: ExpertEarning; inserted: boolean }> {
+    const [newRow] = await db.insert(expertEarnings).values(earning).onConflictDoNothing().returning();
+    if (newRow) return { row: newRow, inserted: true };
+
+    // ON CONFLICT fired — return the canonical row that blocked us, found by the identity the
+    // partial indexes are keyed on. Never invent one: a caller that cannot see the existing row
+    // must hear about it (§13), which is what the throw below is.
+    const [existing] = await db
+      .select()
+      .from(expertEarnings)
+      .where(and(
+        eq(expertEarnings.referenceId, earning.referenceId as string),
+        eq(expertEarnings.referenceType, earning.referenceType as string),
+      ))
+      .limit(1);
+    if (existing) return { row: existing, inserted: false };
+    throw new Error("insertExpertEarningOnce: ON CONFLICT fired but no existing row found");
   }
 
   // Expert Payouts
