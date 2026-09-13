@@ -123,6 +123,10 @@ const FETCH_TIMEOUT_MS = 20_000;
  *   headSha: string|null,         // `git rev-parse HEAD`
  *   originSha: string|null,       // `git rev-parse refs/remotes/origin/main`
  *   lockfile: string|null,        // package-lock.json text; null when unreadable
+ *   headTree: string|null,        // `git rev-parse HEAD^{tree}`
+ *   originTree: string|null,      // the reviewed tree; null when origin/main is unresolved
+ *   originIsAncestor: boolean,    // HEAD only ADDS commits on top of origin/main
+ *   extraCommits: Array<{tree: string, deployment: boolean}>, // `origin/main..HEAD`
  *   fetchFailed: boolean,
  * }} snapshot
  */
@@ -172,11 +176,21 @@ function evaluate(snapshot) {
         "compare against, so this cannot pass",
     );
   } else if (snapshot.headSha !== snapshot.originSha) {
-    failures.push(
-      `HEAD (${short(snapshot.headSha)}) is NOT origin/main (${short(snapshot.originSha)}) — ` +
-        "this checkout would publish code that is not on the reviewed branch. This is the " +
-        "2026-09-06 incident exactly",
-    );
+    if (isDeploymentCheckpointOnly(snapshot)) {
+      warnings.push(
+        `HEAD (${short(snapshot.headSha)}) is ${snapshot.extraCommits.length} empty Replit ` +
+          `deployment checkpoint commit(s) ahead of origin/main (${short(snapshot.originSha)}). ` +
+          "Every one carries the reviewed tree, so the artifact is identical to origin/main. " +
+          "This is not the 2026-09-06 shape. Clear it with: " +
+          "`git fetch origin && git reset --hard origin/main`",
+      );
+    } else {
+      failures.push(
+        `HEAD (${short(snapshot.headSha)}) is NOT origin/main (${short(snapshot.originSha)}) — ` +
+          "this checkout would publish code that is not on the reviewed branch. This is the " +
+          "2026-09-06 incident exactly",
+      );
+    }
   }
 
   // 4 — lockfile purity
@@ -193,6 +207,32 @@ function evaluate(snapshot) {
   }
 
   return { failures, warnings };
+}
+
+/**
+ * Replit stamps an empty `Published your App` commit onto `main` after every successful publish,
+ * which re-arms check 3 against a checkout that is materially the reviewed branch — so every
+ * success armed the failure that blocked the NEXT publish (observed twice on 2026-09-13). A guard
+ * that fires after every success is a guard the operator learns to ignore, which is the real cost
+ * this exemption buys off.
+ *
+ * Allow exactly that shape and nothing else: the artifact must ALREADY be identical to
+ * origin/main, HEAD must only ADD commits on top of it, and every added commit must carry the
+ * reviewed tree AND the deployer's trailer. Condition 1 is the load-bearing one — even a forged
+ * trailer cannot ship a different tree.
+ *
+ * NOT exempted, each pinned by a fixture: a local commit carrying real changes (fails 1, 2, 4);
+ * a hand-made empty commit (fails 4); a stale base, origin/main having moved on (fails 2); a
+ * HEAD that is BEHIND origin/main, i.e. publishing older reviewed code (fails 2 and 3).
+ */
+function isDeploymentCheckpointOnly(snapshot) {
+  if (snapshot.headTree === null || snapshot.originTree === null) return false;
+  if (snapshot.headTree !== snapshot.originTree) return false;
+  if (snapshot.originIsAncestor !== true) return false;
+  if (!Array.isArray(snapshot.extraCommits) || snapshot.extraCommits.length === 0) return false;
+  return snapshot.extraCommits.every(
+    (commit) => commit.tree === snapshot.originTree && commit.deployment === true,
+  );
 }
 
 function countOccurrences(haystack, needle) {
@@ -235,6 +275,26 @@ function git(args) {
   }
 }
 
+const DEPLOY_TRAILER_VALUE = "Deployment";
+
+/**
+ * Every commit in `origin/main..HEAD`, as {tree, deployment}. `deployment` is true only when the
+ * commit carries EXACTLY `Replit-Commit-Author: Deployment` — several trailers with that key join
+ * comma-separated and therefore do not match, which is the safe direction.
+ */
+function readExtraCommits(originSha) {
+  const out = git([
+    "log",
+    "--format=%T%x1f%(trailers:key=Replit-Commit-Author,valueonly,separator=%x2c)",
+    `${originSha}..HEAD`,
+  ]);
+  if (out === null || out === "") return [];
+  return out.split("\n").map((line) => {
+    const [tree, trailer] = line.split("\x1f");
+    return { tree: tree ?? "", deployment: (trailer ?? "").trim() === DEPLOY_TRAILER_VALUE };
+  });
+}
+
 function readFileOrNull(file) {
   try {
     return fs.readFileSync(file, "utf-8");
@@ -266,11 +326,19 @@ function gather() {
   // fallback for a git that did not, and for a checkout with no remote-tracking ref configured.
   const originSha = git(["rev-parse", "refs/remotes/origin/main"]) ?? git(["rev-parse", "FETCH_HEAD"]);
 
+  const headOk = /^[0-9a-f]{40}$/i.test(headSha ?? "") ? headSha.toLowerCase() : null;
+  const originOk = /^[0-9a-f]{40}$/i.test(originSha ?? "") ? originSha.toLowerCase() : null;
+
   return {
     branch: git(["rev-parse", "--abbrev-ref", "HEAD"]),
     porcelain: git(["status", "--porcelain"]),
-    headSha: /^[0-9a-f]{40}$/i.test(headSha ?? "") ? headSha.toLowerCase() : null,
-    originSha: /^[0-9a-f]{40}$/i.test(originSha ?? "") ? originSha.toLowerCase() : null,
+    headSha: headOk,
+    originSha: originOk,
+    headTree: git(["rev-parse", "HEAD^{tree}"]),
+    originTree: originOk === null ? null : git(["rev-parse", `${originOk}^{tree}`]),
+    originIsAncestor:
+      originOk === null ? false : git(["merge-base", "--is-ancestor", originOk, "HEAD"]) !== null,
+    extraCommits: originOk === null ? [] : readExtraCommits(originOk),
     lockfile: readFileOrNull(LOCKFILE),
     fetchFailed,
   };
@@ -285,6 +353,12 @@ function selfTest() {
     headSha: "a".repeat(40),
     originSha: "a".repeat(40),
     lockfile: '{"name":"rest-express","lockfileVersion":3}',
+    headTree: "t".repeat(40),
+    originTree: "t".repeat(40),
+    originIsAncestor: true,
+    // `[]` is what keeps THE INCIDENT failing — a bare `headSha` mismatch with no explaining
+    // commit is rejected by the predicate's third condition.
+    extraCommits: [],
     fetchFailed: false,
   };
   const fail = (over) => evaluate({ ...CLEAN, ...over }).failures;
@@ -294,6 +368,52 @@ function selfTest() {
     [
       "THE INCIDENT: a local commit ahead of origin/main fails",
       () => fail({ headSha: "b".repeat(40) }).some((e) => e.includes("NOT origin/main")),
+    ],
+    [
+      "a Replit deployment checkpoint on top of origin/main passes",
+      () =>
+        fail({
+          headSha: "b".repeat(40),
+          extraCommits: [{ tree: "t".repeat(40), deployment: true }],
+        }).length === 0,
+    ],
+    [
+      "an empty local commit WITHOUT the deployer trailer still fails",
+      () =>
+        fail({
+          headSha: "b".repeat(40),
+          extraCommits: [{ tree: "t".repeat(40), deployment: false }],
+        }).some((e) => e.includes("NOT origin/main")),
+    ],
+    [
+      "a deployer-trailered commit that changed the tree still fails",
+      () =>
+        fail({
+          headSha: "b".repeat(40),
+          headTree: "u".repeat(40),
+          extraCommits: [{ tree: "u".repeat(40), deployment: true }],
+        }).some((e) => e.includes("NOT origin/main")),
+    ],
+    [
+      "a checkpoint on a stale base (origin/main moved on) still fails",
+      () =>
+        fail({
+          headSha: "b".repeat(40),
+          originIsAncestor: false,
+          extraCommits: [{ tree: "t".repeat(40), deployment: true }],
+        }).some((e) => e.includes("NOT origin/main")),
+    ],
+    [
+      // Publishing OLDER reviewed code is as wrong as publishing unreviewed code, and it is a
+      // different shape from every case above: `origin/main..HEAD` is EMPTY, so there is no
+      // checkpoint to explain the mismatch.
+      "a HEAD that is BEHIND origin/main still fails",
+      () =>
+        fail({
+          headSha: "b".repeat(40),
+          originIsAncestor: false,
+          extraCommits: [],
+        }).some((e) => e.includes("NOT origin/main")),
     ],
     [
       "a lane branch fails, and names the branch",
