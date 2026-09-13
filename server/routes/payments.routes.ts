@@ -56,6 +56,9 @@ import { resolveTravelSurcharge, type TravelSurchargeResult } from "../services/
 // Stripe call (the B1 pickup_out_of_range placement). §13: NULL field ⇒ no constraint; §14: pure
 // validation, no amount/rate off req.body.
 import { resolveBookingEligibility } from "../services/booking-eligibility.service";
+// V-11 one endpoint over (ledger `2026-09-13-cart-priceless-gap`): the ONE translation of the
+// price column and the ONE sentence every rail refuses a priceless listing with (s18 rule 1).
+import { hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "../services/buy-action-payload";
 // The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`): reads the
 // listing's own `expert_offering_type_key`, falls back to the legacy uuid for a row the backfill
 // has not reached. It decides only WHICH lines are concierge lines — never a rate, never an amount.
@@ -980,6 +983,32 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           return res.status(409).json({
             message: "service_unavailable",
             detail: `"${item.service.serviceName}" is no longer available — the provider has archived it.`,
+          });
+        }
+      }
+
+      // -- A LINE THAT PUBLISHES NO PRICE IS NOT CHARGEABLE (ledger
+      // `2026-09-13-cart-priceless-gap`; V-11's rule, the checkout rail) ------------------------
+      // The add rails now refuse a priceless listing, but a row added BEFORE that landed, or a
+      // listing whose seller unpublished its price after the add, still reaches here -- and
+      // there was NOTHING between such a line and the Stripe call. `resolveItemBaseAmount` reads
+      // `parseFloat(service.price || "0")`, so the line priced at 0 and the request went all the
+      // way to `createPaymentIntent`, where only Stripe's own minimum-amount rule stood in the
+      // way. The platform must not rely on Stripe to enforce its own pricing rule.
+      //
+      // Refused HERE, in the same pre-flight block as its archived-listing sibling and for the
+      // same reason -- before any slot claim, any booking row and any Stripe call -- so nothing
+      // is claimed and nothing needs unwinding (s15b: the CLAIM is not the COMMITMENT). The
+      // predicate is `hasPublishedPrice` and the reason is `PRICELESS_LISTING_REFUSAL.reason`,
+      // both shared with the add rails and with `POST /api/bookings`; ruling 9's row 11 is the
+      // author of the rule and is not restated. s14/s15 are untouched: no amount moved, no
+      // idempotency key, claim or stamp changed, and a correctly-priced cart is byte-identical.
+      for (const item of cartData) {
+        if (item.service && !hasPublishedPrice(item.service.price)) {
+          return res.status(409).json({
+            message: PRICELESS_LISTING_REFUSAL.message,
+            reason: PRICELESS_LISTING_REFUSAL.reason,
+            detail: `"${item.service.serviceName}" publishes no price, so it cannot be bought here — remove it from your cart and request a quote instead.`,
           });
         }
       }
@@ -2180,6 +2209,14 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         previewConciergeRate = await getConciergeBookingRate();
       }
 
+      // s13 (ledger `2026-09-13-cart-priceless-gap`): the same statement `GET /api/cart` makes.
+      // This quote's own loop prices an unpriceable line at 0 through `resolveItemBaseAmount`,
+      // so without this the traveler is quoted a total that silently omits a line they can see.
+      // Same predicate, same reason, OMITTED when empty so a fully-priced cart is unchanged.
+      const previewUnpriceableItemIds = cartData
+        .filter((i: any) => i.service && !hasPublishedPrice(i.service.price))
+        .map((i: any) => i.id as string);
+
       let previewSubtotal = 0;
       let previewPlatformFeeTotal = 0;
       let previewConciergeFeeTotal = 0;
@@ -2310,6 +2347,15 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
               label: `$${previewWaivedTotal.toFixed(2)} service fee — covered by Trip Pass`,
             }
           : null,
+        // s13 (ledger `2026-09-13-cart-priceless-gap`): OMITTED when empty, so a fully-priced
+        // cart's response is unchanged. When present, the quote above does not cover these lines
+        // and `POST /api/checkout` will refuse the cart until they are removed.
+        ...(previewUnpriceableItemIds.length > 0
+          ? {
+              unpriceableItemIds: previewUnpriceableItemIds,
+              unpriceableReason: PRICELESS_LISTING_REFUSAL.reason,
+            }
+          : {}),
       });
     } catch (err) {
       console.error("Fee preview error:", err);
