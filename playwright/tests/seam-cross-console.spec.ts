@@ -93,8 +93,18 @@ test('[Seam 1] Lead pipeline: /leads/route → routing-queue → expert/workspac
       destination: 'Kyoto',
       startDate: '2026-10-01',
       endDate: '2026-10-07',
-      guestCount: 2,
-      budget: 3000,
+      // MINT-BODY SHAPE (ledger `2026-09-14-trips-mint-400`). `trips.budget` is
+      // `decimal("budget", { precision: 10, scale: 2 })`, so `insertTripSchema` — the authority
+      // `POST /api/trips` parses (`shared/routes.ts` api.trips.create.input) — declares it a
+      // STRING; the route itself reads it as one (`parseFloat(sanitizedInput.budget)`) and the
+      // response echoes `"3000.00"`. A number here answered
+      // 400 {"message":"Expected string, received number"} and this seam never ran. The schema is
+      // NOT loosened to coerce (Locked Decision 42 D12: the schema is the mint authority), so the
+      // payload is what moves. `guestCount` is a `user_experiences` column, not a `trips` one —
+      // zod stripped it silently, so the party size this spec meant to state was never recorded
+      // (§13). It is stated on the column that holds it.
+      numberOfTravelers: 2,
+      budget: '3000',
     });
     tripId = String(created.id);
     expect(tripId, 'tripId must be a non-empty string').toBeTruthy();
@@ -233,8 +243,9 @@ test('[Seam 2] Experience build: traveler item → expert workspace delivered �
       destination: 'Kyoto',
       startDate: '2026-10-10',
       endDate: '2026-10-15',
-      guestCount: 2,
-      budget: 2500,
+      // Same mint-body shape as Seam 1 above — see the note there.
+      numberOfTravelers: 2,
+      budget: '2500',
     });
     tripId = String(created.id);
     expect(tripId, 'tripId must be a non-empty UUID string').toBeTruthy();
