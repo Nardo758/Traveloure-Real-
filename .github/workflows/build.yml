@@ -2192,3 +2192,63 @@ jobs:
       # pinned the gate's shape and went with their subject.
       - name: Confirm-honesty pins
         run: npx tsx --test server/__tests__/confirm-honesty.test.ts
+
+  # ---------------------------------------------------------------------------
+  # 2026-09-14-test-files-wired-orphans — DIRECTORY-WIDE unit suites.
+  #
+  # These three jobs close the CLASS rather than the instances: every existing
+  # per-file job stays exactly where it is (each one is a ledger-named record of
+  # why that pin exists), and these run the whole directory so a test added to it
+  # tomorrow is reachable by construction instead of by somebody remembering to
+  # append a job. The selector is a shell glob the reachability inventory
+  # understands (`scripts/check-test-files-wired.cjs`), and `.test.ts*` covers
+  # both extensions.
+  #
+  # STATED NEGATIVE SPACE: the glob is one level deep. A test placed in a NEW
+  # subdirectory under one of these roots is orphaned again, and the inventory is
+  # what says so.
+  # ---------------------------------------------------------------------------
+  unit-suite-shared:
+    name: unit-suite-shared (shared/__tests__ — whole directory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: shared/__tests__ (all)
+        run: npx tsx --test shared/__tests__/*.test.ts*
+
+  unit-suite-client-lib:
+    name: unit-suite-client-lib (client/src/lib/__tests__ — whole directory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: client/src/lib/__tests__ (all)
+        run: npx tsx --test client/src/lib/__tests__/*.test.ts*
+
+  unit-suite-client-components:
+    name: unit-suite-client-components (client component __tests__ — whole directories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # react-dom/server renderToString, no jsdom. tsconfig's `jsx: "preserve"`
+      # means the classic React.createElement transform, so these files publish
+      # React globally for the render — the shim the armed component tests
+      # already use, which keeps the components under test unmodified.
+      - name: client/src/components/__tests__ (all)
+        run: npx tsx --test client/src/components/__tests__/*.test.ts*
+      - name: client/src/components/plancard/__tests__ (all)
+        run: npx tsx --test client/src/components/plancard/__tests__/*.test.ts*

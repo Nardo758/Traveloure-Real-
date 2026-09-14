@@ -10,6 +10,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 import React from "react";
 import { renderToString } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Router } from "wouter";
+import { SignInModalProvider } from "../../contexts/SignInModalContext";
 import {
   CityFeedCardRecommendation,
   humanizeOfferingKey,
@@ -17,16 +20,39 @@ import {
   type RecommendationCandidate,
 } from "../city-feed-card-recommendation";
 
+// tsconfig sets `jsx: "preserve"`, so tsx compiles JSX with the classic
+// `React.createElement` transform and every rendered component file needs React in
+// scope. SignInModalContext.tsx (like most components here) does not import it —
+// Vite supplies it in the real build. Publishing it globally for the render is the
+// same shim the armed trip-strip-lead / moments-callout component tests use, and it
+// keeps the components under test unmodified.
+(globalThis as any).React = React;
+
+// The card reaches wouter, react-query and the sign-in modal through useAskExpert
+// (-> useLocation, useAuth, useSignInModal), so all three are part of the render
+// harness rather than part of what is being asserted — the same harness the armed
+// trip-strip-lead component test uses. wouter needs a location at render time
+// (<Router ssrPath>); queries are disabled, so renderToString takes the synchronous
+// first paint and nothing is fetched.
 function render(candidate: RecommendationCandidate, props: Record<string, any> = {}): string {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, enabled: false } },
+  });
   return renderToString(
-    <CityFeedCardRecommendation
-      candidate={candidate}
-      city="kyoto"
-      position={0}
-      onAdd={() => {}}
-      onBook={() => {}}
-      {...props}
-    />,
+    <QueryClientProvider client={queryClient}>
+      <Router ssrPath="/discover">
+        <SignInModalProvider>
+          <CityFeedCardRecommendation
+            candidate={candidate}
+            city="kyoto"
+            position={0}
+            onAdd={() => {}}
+            onBook={() => {}}
+            {...props}
+          />
+        </SignInModalProvider>
+      </Router>
+    </QueryClientProvider>,
   );
 }
 
