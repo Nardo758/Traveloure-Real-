@@ -36,6 +36,38 @@ function uid(prefix = "") {
 
 const CART_FILE = path.resolve(__dirname, "../../client/src/pages/cart.tsx");
 
+/**
+ * Slice a named `useMutation({ … })` call out of cart.tsx by BALANCED BRACES.
+ *
+ * The original A/B pins anchored the end of the block on a literal that happened
+ * to sit after the invalidation at the time they were written — `setLocation(
+ * \`/trip/${…}\`)` for the convert mutation, and the first `setFlowStep`/
+ * `setLocation` for checkout. Both anchors have since moved: the convert
+ * mutation now routes to the slip (`/plans/:tripId`, CLAUDE.md Locked Decision
+ * 42 D8 — the slip is the one planning surface), and checkout's onSuccess gained
+ * an earlier `setFlowStep("cart")` in the duplicate-claim branch (ruling 38), so
+ * a non-greedy match stopped BEFORE the invalidation it was looking for.
+ *
+ * The invariant the suite exists to hold has not moved at all: BOTH mutations
+ * invalidate the BARE `["/api/cart"]` key, because the TripStrip chip reads that
+ * key and a slug-qualified invalidation leaves it stale. Anchoring on the
+ * mutation's own extent asserts that invariant without pinning the route it
+ * happens to navigate to afterwards.
+ */
+function mutationSource(src: string, name: string): string | null {
+  const start = src.indexOf(`const ${name} = useMutation({`);
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = src.indexOf("{", start); i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}") {
+      depth--;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 // ── Shared API helpers ─────────────────────────────────────────────────────
 
 async function registerFreshUser(page: import("@playwright/test").Page) {
@@ -103,29 +135,28 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
     () => {
       const src = fs.readFileSync(CART_FILE, "utf-8");
 
-      // Locate the onSuccess block of convertToItineraryMutation.
-      // We match from the opening of the mutation up to the setLocation call
-      // that signals end of onSuccess (navigate to trip page).
-      const convertBlock = src.match(
-        /convertToItineraryMutation\s*=\s*useMutation\(\{[\s\S]*?onSuccess[\s\S]*?setLocation\(`\/trip\/\$\{/
-      );
+      // The mutation's own extent, by balanced braces — not a downstream route
+      // literal. See mutationSource() above.
+      const block = mutationSource(src, "convertToItineraryMutation");
       expect(
-        convertBlock,
-        "convertToItineraryMutation block not found in cart.tsx — pattern may have changed"
+        block,
+        "convertToItineraryMutation not found in cart.tsx — the mutation was renamed or removed"
       ).not.toBeNull();
-
-      const block = convertBlock![0];
+      expect(
+        /onSuccess/.test(block!),
+        "convertToItineraryMutation must still have an onSuccess handler"
+      ).toBe(true);
 
       // Must contain the bare key invalidation (no trailing slug argument)
       expect(
-        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*\]/.test(block),
+        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*\]/.test(block!),
         'convertToItineraryMutation.onSuccess must call invalidateQueries({ queryKey: ["/api/cart"] }) ' +
           "(bare key, no slug) so TripStrip refreshes immediately after convert."
       ).toBe(true);
 
       // Must NOT contain a slug-qualified invalidation inside this block
       expect(
-        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*,\s*experience/.test(block),
+        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*,\s*experience/.test(block!),
         "convertToItineraryMutation.onSuccess must NOT pass an experienceSlug argument to " +
           "invalidateQueries — slug-qualified invalidation leaves TripStrip (bare key) stale."
       ).toBe(false);
@@ -143,25 +174,24 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
     () => {
       const src = fs.readFileSync(CART_FILE, "utf-8");
 
-      // Locate the onSuccess block of checkoutMutation.
-      const checkoutBlock = src.match(
-        /checkoutMutation\s*=\s*useMutation\(\{[\s\S]*?onSuccess[\s\S]*?(?:setFlowStep|setLocation)/
-      );
+      const block = mutationSource(src, "checkoutMutation");
       expect(
-        checkoutBlock,
-        "checkoutMutation block not found in cart.tsx — pattern may have changed"
+        block,
+        "checkoutMutation not found in cart.tsx — the mutation was renamed or removed"
       ).not.toBeNull();
-
-      const block = checkoutBlock![0];
+      expect(
+        /onSuccess/.test(block!),
+        "checkoutMutation must still have an onSuccess handler"
+      ).toBe(true);
 
       expect(
-        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*\]/.test(block),
+        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*\]/.test(block!),
         'checkoutMutation.onSuccess must call invalidateQueries({ queryKey: ["/api/cart"] }) ' +
           "(bare key) so TripStrip refreshes immediately after checkout."
       ).toBe(true);
 
       expect(
-        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*,\s*experience/.test(block),
+        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*,\s*experience/.test(block!),
         "checkoutMutation.onSuccess must NOT pass an experienceSlug argument to invalidateQueries."
       ).toBe(false);
 
@@ -204,8 +234,9 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
       console.log(`[tripstrip-count] chip before convert: "${chipBefore?.trim()}"`);
 
       // 6. Block Wouter's client-side navigation BEFORE triggering the action.
-      //    convertToItineraryMutation.onSuccess calls setLocation(`/trip/${tripId}`)
-      //    which resolves to window.history.pushState.  By intercepting pushState
+      //    convertToItineraryMutation.onSuccess calls setLocation(`/plans/${tripId}`)
+      //    — the slip, CLAUDE.md Locked Decision 42 D8 — which resolves to
+      //    window.history.pushState.  By intercepting pushState
       //    we keep the page on /cart so TripStrip remains mounted and we can
       //    observe the chip update that results from the invalidateQueries call
       //    (which fires BEFORE setLocation in onSuccess).
@@ -214,7 +245,7 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
         (window as any).__blockedNavs = [];
         window.history.pushState = function (state, title, url) {
           const urlStr = String(url ?? "");
-          if (urlStr.startsWith("/trip/")) {
+          if (urlStr.startsWith("/plans/")) {
             // Record the blocked navigation for assertion, but do not navigate.
             (window as any).__blockedNavs.push(urlStr);
             return;
@@ -279,7 +310,7 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
       await expect
         .poll(
           () => page.evaluate(() => (window as any).__blockedNavs?.length ?? 0),
-          { timeout: 5_000, message: "convertToItinerary should have attempted a /trip/ navigation" }
+          { timeout: 5_000, message: "convertToItinerary should have attempted a /plans/ navigation" }
         )
         .toBeGreaterThanOrEqual(1);
 
