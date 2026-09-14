@@ -282,6 +282,132 @@ class ClaimLostError extends Error {
   }
 }
 
+// ── THE TRANSPORT RAIL'S STAMP (punchlist R-1, ledger `2026-09-14-transport-confirm-stamps-pi`) ──
+//
+// WHY IT IS HERE AND NOT IN `stripe.service.ts`. §19a makes this module the SOLE writer of
+// `service_bookings.stripe_payment_intent_id`; a second UPDATE site for that column anywhere else
+// is the violation, not a convenience. The transport rail needed one and had none: hosted-Checkout
+// confirmation wrote `confirmationCode: session.id` and nothing else, so a paid transport booking
+// reached `confirmed` with the column NULL — after which `POST /api/bookings/:id/cancel` gated its
+// refund on `!!booking.stripePaymentIntentId` and went status-only on a refund that was owed, and
+// the drift job raised `booking_confirmed_no_pi` at CRITICAL for a row whose only sin was that
+// nobody had recorded the id.
+//
+// WHY IT IS NOT `stampAuthorization`. That one's from-state is the CART claim's
+// `payment_pending` + NULL — the unauthorized-claim predicate §15b/§18b keep as one machine's
+// property. A transport row is born `pending` (see `createTransportBookingCheckout`) and never
+// enters that state, so `stampAuthorization` would match zero rows and silently do nothing. Same
+// column, same discipline, a DIFFERENT from-state list — so the list is declared by name here,
+// beside the one statement that reads it, exactly as the promotion's own list is (§18 rule 1).
+//
+// PROVENANCE (§17b). The only caller is `handleStripePaymentSuccess`, reached from the
+// signature-verified `checkout.session.completed` delivery, and the id it passes is read off a
+// session this server RE-RETRIEVED from Stripe with the platform's own secret key. Stripe's word
+// twice over; no request body reaches this function and it takes no id from one (N17c's posture).
+
+/**
+ * The states a transport row may be stamped FROM. Declared once, read once.
+ *
+ * `pending` is the birth state and the ordinary case: the stamp runs BEFORE the status promotion,
+ * so a process death between the two leaves a `pending` row carrying its PaymentIntent — which is
+ * a state the `paid-service-bookings-have-payment-intent` invariant tolerates and a replay
+ * promotes — rather than the `confirmed`-with-no-id row this lane exists to stop creating.
+ *
+ * `confirmed` is the CATCH-UP case, and it is a recovery, never a backfill: it admits a redelivery
+ * for a row an earlier signal already promoted (including one confirmed before this lane existed).
+ * Nothing is invented — the id still comes from Stripe's own record of THAT session.
+ *
+ * The terminal states are absent, for the V-8 reason one table over: a cancelled, refunded, failed
+ * or expired row has left the promotable set, and quietly attaching a PaymentIntent to it would
+ * change what `refundServiceBooking` and the drift job say about money on a row a human has
+ * already moved. A refusal is REPORTED to the caller and logged there (§17: detect, don't repair).
+ */
+export const TRANSPORT_PI_STAMPABLE_FROM = ["pending", "confirmed"] as const;
+
+export interface TransportStampResult {
+  /** This call wrote the id. */
+  stamped: boolean;
+  /** The row already carried THIS id — an idempotent replay wrote nothing. */
+  alreadyStamped: boolean;
+  /** Why nothing was written, when neither of the above holds. `null` otherwise. */
+  refusedReason: "booking_absent" | "not_stampable_status" | "different_payment_intent" | null;
+  /** The row's status as read back on a refusal — the fact, never a guess (§13). */
+  status: string | null;
+  /** The id the row already carries on a `different_payment_intent` refusal. */
+  existingPaymentIntentId: string | null;
+}
+
+/**
+ * Records `paymentIntentId` on ONE transport booking with a §15 atomic conditional: the UPDATE
+ * carries both guards (`stripe_payment_intent_id IS NULL` and the from-state list) so the statement
+ * IS the concurrency guard, never a check-then-write. The read-back below runs only to say WHY
+ * nothing was written — it is the error message, not the decision.
+ *
+ * Idempotent by construction: the second delivery of the same session matches zero rows on the
+ * NULL predicate and reports `alreadyStamped`, so a replay writes nothing and overwrites nothing.
+ */
+export async function stampTransportPaymentIntent(
+  bookingId: string,
+  paymentIntentId: string,
+): Promise<TransportStampResult> {
+  const [stamped] = await db
+    .update(serviceBookings)
+    .set({ stripePaymentIntentId: paymentIntentId, updatedAt: new Date() })
+    .where(
+      and(
+        eq(serviceBookings.id, bookingId),
+        isNull(serviceBookings.stripePaymentIntentId),
+        inArray(serviceBookings.status, [...TRANSPORT_PI_STAMPABLE_FROM]),
+      ),
+    )
+    .returning({ id: serviceBookings.id });
+
+  if (stamped) {
+    return { stamped: true, alreadyStamped: false, refusedReason: null, status: null, existingPaymentIntentId: null };
+  }
+
+  const [current] = await db
+    .select({ status: serviceBookings.status, existing: serviceBookings.stripePaymentIntentId })
+    .from(serviceBookings)
+    .where(eq(serviceBookings.id, bookingId))
+    .limit(1);
+
+  if (!current) {
+    return {
+      stamped: false,
+      alreadyStamped: false,
+      refusedReason: "booking_absent",
+      status: null,
+      existingPaymentIntentId: null,
+    };
+  }
+  if (current.existing === paymentIntentId) {
+    return {
+      stamped: false,
+      alreadyStamped: true,
+      refusedReason: null,
+      status: current.status ?? null,
+      existingPaymentIntentId: current.existing,
+    };
+  }
+  if (current.existing) {
+    return {
+      stamped: false,
+      alreadyStamped: false,
+      refusedReason: "different_payment_intent",
+      status: current.status ?? null,
+      existingPaymentIntentId: current.existing,
+    };
+  }
+  return {
+    stamped: false,
+    alreadyStamped: false,
+    refusedReason: "not_stampable_status",
+    status: current.status ?? null,
+    existingPaymentIntentId: null,
+  };
+}
+
 /**
  * Reads the caller's OWN prior claim for `idempotencyKey`, newest first.
  *
