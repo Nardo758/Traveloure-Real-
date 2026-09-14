@@ -14,16 +14,28 @@
  * transport_booking_options row and a booking agent completes the booking. When an option
  * has no server-side URL to derive (hasBookingLink false), the card shows an honest
  * no-link state — never a homepage guess.
+ *
+ * R-2 (ledger `2026-09-14-transport-card-cancel`): a BOOKED platform option now carries a cancel
+ * control. `actionButton()` still returns null for a booked/confirmed/cancelled option — that is
+ * the BOOK action, and it is correct that it disappears — and the cancel control is a separate
+ * renderer beside it. The card decides NOTHING about money: whether a booking may be cancelled is
+ * the shared `@shared/booking-cancellation` list the cancel route itself reads, the address is a
+ * `service_bookings.id` the server resolved, and every refund figure and sentence on the
+ * confirmation dialog and afterwards is the SERVER'S OWN (§14/§13). No policy, percentage or
+ * amount is derived here.
  */
 
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Star, CheckCircle2, AlertCircle, UserCheck } from "lucide-react";
+import { Star, CheckCircle2, AlertCircle, UserCheck, XCircle } from "lucide-react";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { PartnerizeBookingCTA } from "./PartnerizeBookingCTA";
+import { CancelBookingDialog, type CancelBookingResult } from "@/components/booking/CancelBookingDialog";
+import { transportCancelControl } from "@/lib/transport-cancel";
 
 interface TransportBookingOption {
   id: string;
@@ -44,6 +56,15 @@ interface TransportBookingOption {
   confirmationRef?: string | null;
   isPartnerizeSourced?: boolean;
   partnerizePartnerId?: string;
+  /**
+   * R-2: the SESSION viewer's own `service_bookings` row for this option, resolved server-side
+   * from `booking_details.optionId` (`transport-viewer-booking.service.ts`). §13 — null means the
+   * viewer has no booking of this option, which is the common case and is not an error; it is
+   * never rendered as "not booked" on someone else's behalf.
+   */
+  serviceBookingId?: string | null;
+  /** `service_bookings.status`, verbatim. NOT `bookingStatus`, which is the OPTION's vocabulary. */
+  serviceBookingStatus?: string | null;
 }
 
 interface TransportBookingCardProps {
@@ -60,6 +81,15 @@ export function TransportBookingCard({
   destination,
 }: TransportBookingCardProps) {
   const { toast } = useToast();
+  const [cancelOpen, setCancelOpen] = useState(false);
+  /**
+   * §13 / LD 44 (e) — WHAT THE SERVER SAID, HELD VERBATIM. Cancelling a `service_bookings` row does
+   * NOT flip `transport_booking_options.booking_status`, so a refetched hub would still describe
+   * this option as booked. Rather than claim a state no column carries, the card renders the
+   * SERVER'S OWN cancel response: the status it returned, and the refund only when that response
+   * says one was issued. A status flip alone is never read as "refunded".
+   */
+  const [cancelResult, setCancelResult] = useState<CancelBookingResult | null>(null);
 
   const isConfirmed = option.bookingStatus === "confirmed";
   const isBooked = option.bookingStatus === "booked" || isConfirmed;
@@ -131,6 +161,35 @@ export function TransportBookingCard({
           </Badge>
         );
     }
+  };
+
+  /**
+   * The cancel decision is ONE pure function (`transportCancelControl`), unit-pinned, reading the
+   * shared from-state list the cancel route reads. Nothing about money is decided here or below.
+   */
+  const cancel = transportCancelControl({
+    serviceBookingId: option.serviceBookingId,
+    serviceBookingStatus: option.serviceBookingStatus,
+    readOnly,
+  });
+
+  // Already cancelled in this session ⇒ the outcome below replaces the button, never sits beside it.
+  const showsCancelControl = cancel.kind === "cancel" && !cancelResult;
+
+  const cancelControl = () => {
+    if (!showsCancelControl) return null;
+    return (
+      <Button
+        onClick={() => setCancelOpen(true)}
+        variant="outline"
+        size="sm"
+        className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/20"
+        data-testid={`button-cancel-transport-${option.id}`}
+      >
+        <XCircle className="h-3.5 w-3.5 mr-1.5" />
+        Cancel booking
+      </Button>
+    );
   };
 
   const actionButton = () => {
@@ -248,12 +307,61 @@ export function TransportBookingCard({
         </div>
       )}
 
+      {/* R-2 cancel row. Its own row, not `actionButton()`'s: that renderer answers "can this be
+          BOOKED", and its null for a booked option is correct. */}
+      {showsCancelControl && (
+        <div className="flex items-center gap-2 flex-wrap pt-1">{cancelControl()}</div>
+      )}
+
+      {/* §13 — THE SERVER'S OWN WORD, and only what it actually said. The status is the one the
+          cancel response carried; the refund line renders ONLY when that response set
+          `refund.issued`, with the server's own amount. A cancelled booking with no refund says
+          so plainly rather than going quiet, because "cancelled" and "refunded" are different
+          facts and nothing here may infer one from the other. */}
+      {cancelResult && (
+        <div
+          className="space-y-0.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/40 rounded-md px-2.5 py-1.5"
+          data-testid={`text-cancel-result-${option.id}`}
+        >
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className="h-3 w-3 shrink-0" />
+            <span>
+              Booking status: <span className="font-medium">{cancelResult.status ?? "updated"}</span>
+            </span>
+          </div>
+          {cancelResult.refund?.issued ? (
+            <p data-testid={`text-cancel-refund-${option.id}`}>
+              Refund issued: ${Number(cancelResult.refund.refundAmount).toFixed(2)}
+            </p>
+          ) : (
+            <p data-testid={`text-cancel-no-refund-${option.id}`}>No automatic refund was issued.</p>
+          )}
+        </div>
+      )}
+
       {/* Confirmation ref display — shown when booked/confirmed with a ref */}
-      {isBooked && option.confirmationRef && (
+      {isBooked && option.confirmationRef && !cancelResult && (
         <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20 rounded-md px-2.5 py-1.5" data-testid={`text-confirmation-ref-${option.id}`}>
           <CheckCircle2 className="h-3 w-3 shrink-0" />
           <span>Ref: <span className="font-medium">{option.confirmationRef}</span></span>
         </div>
+      )}
+
+      {/* The ONE cancellation dialog, shared with My bookings (§18 rule 1). Every amount and
+          sentence in it is the server's. */}
+      {cancel.kind === "cancel" && (
+        <CancelBookingDialog
+          bookingId={cancel.bookingId}
+          open={cancelOpen}
+          onOpenChange={setCancelOpen}
+          testIdSuffix={`transport-${option.id}`}
+          onCancelled={(result) => {
+            setCancelResult(result);
+            if (tripId) {
+              queryClient.invalidateQueries({ queryKey: ["/api/itinerary", tripId, "transport-hub"] });
+            }
+          }}
+        />
       )}
     </div>
   );

@@ -14,6 +14,7 @@ import { db } from "../db";
 import { transportBookingOptions } from "@shared/schema";
 import { createTransportBookingCheckout } from "../services/stripe.service";
 import { populateBookingOptionsForVariant, populateBookingOptionsForLeg, getDestinationTransportOptions } from "../services/transport-booking-options.service";
+import { resolveViewerTransportBookings } from "../services/transport-viewer-booking.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { requireTestSeedEnabled } from "../middleware/test-only-endpoint";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
@@ -155,14 +156,35 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
       dayMap.get(leg.dayNumber)!.legs.push(leg);
     }
 
+    // R-2 (ledger `2026-09-14-transport-card-cancel`): the ONE link from a transport option back
+    // to the `service_bookings` row a platform purchase mints is `booking_details.optionId`, and
+    // nothing resolved it for the client — which is why the card had no address for the existing
+    // `POST /api/bookings/:id/cancel` and therefore no cancel control at all. Resolved here,
+    // scoped to the SESSION user's own rows (§14 applied to a read): this hub is readable by an
+    // assigned expert, an author and an admin, and a BOOKING belongs to exactly one traveler, so
+    // a non-traveler viewer gets nothing back and the card draws no control — the same answer the
+    // cancel route itself would give. NO money travels with it: the id and the booking's own
+    // status, and nothing else.
+    const viewerBookings = await resolveViewerTransportBookings(
+      allOptions.map((opt: any) => opt.id),
+      userId,
+    );
+
     // §16: affiliate/deep-link options never ship their externalUrl to the client. The
     // booking-agent rail re-resolves the URL from the transport_booking_options row by id
     // (transportOptionId) — the card only needs to know a bookable link exists. Same strip
     // as GET /api/transport-legs/:legId/options.
-    const stripExternalUrl = ({ externalUrl, ...rest }: any) => ({
-      ...rest,
-      hasBookingLink: !!externalUrl,
-    });
+    const stripExternalUrl = ({ externalUrl, ...rest }: any) => {
+      const viewerBooking = viewerBookings.get(rest.id);
+      return {
+        ...rest,
+        hasBookingLink: !!externalUrl,
+        // §13: ABSENT, not zero-filled and not invented. No booking of this option by this
+        // viewer ⇒ both are null, which the card reads as "nothing to cancel here".
+        serviceBookingId: viewerBooking?.bookingId ?? null,
+        serviceBookingStatus: viewerBooking?.status ?? null,
+      };
+    };
 
     // Add booking options to legs (filtered by user's selected mode)
     const days = Array.from(dayMap.values()).map((day) => ({

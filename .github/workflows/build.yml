@@ -1331,7 +1331,14 @@ jobs:
       # T1–T3 are the writer (once, replay no-op, terminal refused, catch-up allowed, no overwrite);
       # T4 is the cancel path before and after; T5/T6 are the §14/§15 shape and N17c's provenance
       # posture, including the one-writer-file pin over all of server/.
-      - name: Transport PaymentIntent recording (T1–T6)
+      #
+      # T7 (R-2, ledger 2026-09-14-transport-card-cancel) closes the §18b finding R-1 recorded and
+      # left: the cancel route's NON-refund branch was a check-then-update with no
+      # `expectedFromStatuses`, so a row that left a cancellable state between the handler's read
+      # and its write was cancelled anyway. The flip now carries the SHARED from-state list the
+      # handler's own 400 reads, and a refused transition answers 409 instead of writing a
+      # notification for a cancellation that did not happen.
+      - name: Transport PaymentIntent recording + cancel from-state guard (T1–T7)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/transport-payment-intent.db.test.ts
 
   ready-made-clone-fields:

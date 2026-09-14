@@ -36,6 +36,12 @@
  *       a session id and re-retrieves the session server-side, its only caller is the
  *       signature-verified webhook, and `service_bookings.stripe_payment_intent_id` still has ONE
  *       writer file across the whole of `server/`.
+ *   T7  (R-2, ledger `2026-09-14-transport-card-cancel`) the cancel route's NON-refund branch —
+ *       the one this file's own R-1 note recorded as a check-then-update with no
+ *       `expectedFromStatuses` (§18b shape). The flip now carries the SHARED from-state list, so a
+ *       row that left a cancellable state between the handler's read and its write is REFUSED and
+ *       writes nothing, rather than a second cancellation landing on a completed or already
+ *       cancelled booking. Proven against a real database, both directions, plus the route shape.
  *
  * ONE FINDING BEYOND R-1'S TEXT, recorded and not repaired: R-1 reads the handler as storing the
  * checkout SESSION id as the confirmation code. It stores NOTHING — `service_bookings` has no
@@ -72,6 +78,8 @@ import {
   TRANSPORT_PI_STAMPABLE_FROM,
 } from "../services/checkout-claim.service";
 import { quoteCancellationForBooking } from "../services/cancellation-policy.service";
+import { storage } from "../storage";
+import { BOOKING_CANCELLABLE_FROM_STATUSES } from "@shared/booking-cancellation";
 import { travelerChargeForRow } from "../services/traveler-charge";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -463,5 +471,93 @@ test("T6: a client-supplied PaymentIntent can never reach this column", () => {
     stripComments(read(STRIPE_SERVICE)),
     /import \{ stampTransportPaymentIntent \} from "\.\/checkout-claim\.service";/,
     "and the transport handler is a CALLER of it",
+  );
+});
+
+// ══ T7 — the NON-refund branch's transition is the guard (R-2; §18b) ═════════════════════════
+//
+// R-1 recorded this as a finding and did not fix it: `POST /api/bookings/:id/cancel` checked the
+// booking's status at the TOP of the handler and then, on the else-branch, called
+// `updateServiceBookingStatus(id, "cancelled", reason)` with no from-state list — a check-then-
+// update, which §15 names as the TOCTOU bug rather than a guard. The two are separated by an
+// awaited policy quote, so a concurrent cancellation, a provider status flip or a late paid
+// signal can move the row in between, and the second write would land on it unconditionally.
+//
+// The refund branch never had this problem: `refundServiceBooking` takes its own atomic claim
+// (`... AND status <> 'refunded'`, pinned by T5). This closes the other branch with the SAME
+// list the handler's 400 reads, so the check and the guard cannot disagree (§18 rule 1).
+test("T7: a row that has left a cancellable state is REFUSED, and writes nothing", async () => {
+  // (a) FROM a cancellable state: the flip lands, exactly once.
+  const live = await seedTransportBooking({ status: "pending" });
+  const flipped = await storage.updateServiceBookingStatus(
+    live,
+    "cancelled",
+    "T7 first cancellation",
+    BOOKING_CANCELLABLE_FROM_STATUSES,
+  );
+  assert.ok(flipped, "a pending transport booking must still be cancellable");
+  assert.equal(flipped!.status, "cancelled");
+  const afterFirst = await readBooking(live);
+  assert.equal(afterFirst.status, "cancelled");
+
+  // (b) The SECOND attempt on the same row — the concurrent-caller case — matches nothing.
+  //     Before this lane it re-wrote `cancelled_at` and `cancellation_reason` on an already
+  //     cancelled booking and reported success to a traveler who had cancelled nothing.
+  const replay = await storage.updateServiceBookingStatus(
+    live,
+    "cancelled",
+    "T7 replayed cancellation",
+    BOOKING_CANCELLABLE_FROM_STATUSES,
+  );
+  assert.equal(replay, undefined, "the UPDATE must match zero rows, so nothing comes back");
+  const afterReplay = await readBooking(live);
+  assert.equal(afterReplay.status, "cancelled");
+  assert.equal(
+    String(afterReplay.updated_at),
+    String(afterFirst.updated_at),
+    "a refused transition must not touch the row at all — not even its timestamps",
+  );
+
+  // (c) A row in a state the cancel rail never accepts is refused the same way. `completed` is the
+  //     one that matters: a booking whose money has been released is not a cancellation away from
+  //     anything, and a status-only flip there would strand released earnings against a
+  //     'cancelled' row.
+  for (const terminal of ["completed", "refunded"]) {
+    const id = await seedTransportBooking({ status: terminal });
+    const refused = await storage.updateServiceBookingStatus(
+      id,
+      "cancelled",
+      "T7 terminal",
+      BOOKING_CANCELLABLE_FROM_STATUSES,
+    );
+    assert.equal(refused, undefined, `${terminal} must not be cancellable through this rail`);
+    assert.equal((await readBooking(id)).status, terminal, `${terminal} must be unchanged`);
+  }
+
+  // (d) THE ROUTE'S OWN SHAPE. The list is the shared one, it reaches the UPDATE, and a refused
+  //     transition is REPORTED (§13) rather than dressed up as a successful cancellation with a
+  //     notification and a refund line behind it.
+  const routes = stripComments(read(ROUTES));
+  assert.match(
+    routes,
+    /import \{ BOOKING_CANCELLABLE_FROM_STATUSES, isBookingCancellable \} from "@shared\/booking-cancellation";/,
+    "the route reads the shared from-state list rather than restating the statuses",
+  );
+  const cancelAt = routes.indexOf('app.post("/api/bookings/:id/cancel"');
+  const handler = routes.slice(cancelAt, routes.indexOf('app.post("/api/expert/reviews/:id/respond"'));
+  assert.ok(handler.length > 0, "the cancel handler must still be locatable");
+  assert.match(
+    handler,
+    /updateServiceBookingStatus\(\s*req\.params\.id,\s*"cancelled",\s*reason,\s*BOOKING_CANCELLABLE_FROM_STATUSES,\s*\)/,
+    "§18b: the non-refund branch's UPDATE carries its from-state list",
+  );
+  assert.match(
+    handler,
+    /if \(!updated\) \{[\s\S]{0,400}?res\.status\(409\)/,
+    "a refused transition answers 409 and stops — never a notification for a cancellation that did not happen",
+  );
+  assert.ok(
+    !/booking\.status !== "pending" && booking\.status !== "confirmed"/.test(handler),
+    "the re-typed status pair must be gone, not merely shadowed by the shared predicate",
   );
 });

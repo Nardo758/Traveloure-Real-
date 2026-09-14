@@ -49,6 +49,8 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { isBookingCancellable } from "@shared/booking-cancellation"; // §18 rule 1 — the cancel route's OWN from-state list, never a second copy
+import { CancelBookingDialog } from "@/components/booking/CancelBookingDialog";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { formatStartWindow, formatHours, formatMinutes, formatTransportProvision } from "@/lib/service-good-to-know";
 import {
@@ -722,19 +724,6 @@ function ConfirmationCodeBadge({ code, bookingId }: { code: string; bookingId: s
   );
 }
 
-interface CancelPreview {
-  policyType: string;
-  policyDefaulted: boolean;
-  refundPercent: number;
-  refundAmount: number;
-  totalAmount: number;
-  hoursUntilStart: number | null;
-  automaticRefundAllowed: boolean;
-  message: string;
-  cancellable: boolean;
-  bookingStatus: string;
-}
-
 function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booking: Booking) => void }) {
   const { toast } = useToast();
   // CLAUDE.md Locked Decision 40 (lane 3): a BOOKING is one of the three addresses. `/api/my-bookings`
@@ -762,7 +751,10 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
     : new Date(booking.confirmedAt ?? booking.createdAt).getTime();
   const confirmedAndDelivered = booking.status === "confirmed" && Date.now() >= deliveryRefMs + 24 * 60 * 60 * 1000;
   const canConfirmOrDispute = booking.status === "completed" || confirmedAndDelivered;
-  const canCancel = booking.status === "pending" || booking.status === "confirmed";
+  // The SAME list `POST /api/bookings/:id/cancel` accepts a booking in, and the SAME list its
+  // §18b atomic conditional guards on — so this button can never be offered for a state the
+  // server refuses (§18 rule 1).
+  const canCancel = isBookingCancellable(booking.status);
   const isDisputed = booking.status === "disputed";
   const showVisaTimeline = isVisaBooking(booking) && booking.bookingMetadata;
   const isConfirmedOrBeyond = ["confirmed", "in_progress", "completed"].includes(booking.status);
@@ -782,33 +774,6 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
     },
     onError: () => {
       toast({ title: "Could not confirm", description: "Please try again or contact support.", variant: "destructive" });
-    },
-  });
-
-  // Refund preview fetched only while the confirmation dialog is open, so the traveler sees
-  // the exact refund amount / policy consequence before confirming a cancellation.
-  const { data: cancelPreview, isLoading: previewLoading } = useQuery<CancelPreview>({
-    queryKey: [`/api/bookings/${booking.id}/cancel-preview`],
-    enabled: cancelOpen,
-    staleTime: 0,
-  });
-
-  const cancelMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/bookings/${booking.id}/cancel`, { reason: "Cancelled by traveler" }),
-    onSuccess: async (res: any) => {
-      const data = typeof res?.json === "function" ? await res.json() : res;
-      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
-      setCancelOpen(false);
-      const refund = data?.refund;
-      toast({
-        title: "Booking cancelled",
-        description: refund?.issued
-          ? `A refund of $${Number(refund.refundAmount).toFixed(2)} has been issued to your original payment method.`
-          : "No automatic refund was issued for this cancellation.",
-      });
-    },
-    onError: () => {
-      toast({ title: "Could not cancel booking", description: "Please try again or contact support.", variant: "destructive" });
     },
   });
 
@@ -1142,7 +1107,6 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                   size="sm"
                   className="border-red-300 text-red-700 hover:bg-red-50"
                   onClick={() => setCancelOpen(true)}
-                  disabled={cancelMutation.isPending}
                   data-testid={`button-cancel-booking-${booking.id}`}
                 >
                   <XCircle className="w-4 h-4 mr-1" />
@@ -1220,63 +1184,16 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
         </div>
       </CardContent>
 
-      <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
-        <DialogContent data-testid={`dialog-cancel-${booking.id}`}>
-          <DialogHeader>
-            <DialogTitle>Cancel this booking?</DialogTitle>
-            <DialogDescription>
-              Review your refund before confirming — this is based on the service's cancellation policy.
-            </DialogDescription>
-          </DialogHeader>
-          {previewLoading || !cancelPreview ? (
-            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground" data-testid={`cancel-preview-loading-${booking.id}`}>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Calculating your refund…
-            </div>
-          ) : (
-            <div className="space-y-3 py-2">
-              <div className="rounded-md border p-3 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Amount paid</span>
-                  <span className="font-medium">${cancelPreview.totalAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Refund ({cancelPreview.refundPercent}%)</span>
-                  <span
-                    className={`font-bold ${cancelPreview.refundAmount > 0 ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}
-                    data-testid={`text-refund-amount-${booking.id}`}
-                  >
-                    ${cancelPreview.refundAmount.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground" data-testid={`text-refund-policy-message-${booking.id}`}>
-                {cancelPreview.message}
-              </p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelOpen(false)} data-testid={`button-cancel-dialog-close-${booking.id}`}>
-              Keep booking
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => cancelMutation.mutate()}
-              disabled={cancelMutation.isPending || previewLoading || !cancelPreview}
-              data-testid={`button-cancel-confirm-${booking.id}`}
-            >
-              {cancelMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Cancelling…
-                </>
-              ) : (
-                "Confirm cancellation"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* The ONE traveler cancellation dialog (ledger `2026-09-14-transport-card-cancel`). Its
+          preview query, its refund wording and its toast moved into the shared component so the
+          transport card reuses them instead of authoring a second copy (§18 rule 1). Every
+          testid and every word is unchanged. */}
+      <CancelBookingDialog
+        bookingId={booking.id}
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        onCancelled={() => queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] })}
+      />
 
       <Dialog open={disputeOpen} onOpenChange={setDisputeOpen}>
         <DialogContent data-testid={`dialog-dispute-${booking.id}`}>
