@@ -21,6 +21,7 @@ import { resolveTripTimezone } from "./trip-timezone";
 import { buildClonedItineraryItem } from "./itinerary-item-clone";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
 import { logger } from "../infrastructure/logger";
+import { notifyBuyerOfReadyMadeDelivery } from "./ready-made-notifications.service";
 
 /**
  * Why a re-run could not credit the author. §13: an earning that genuinely cannot be created is
@@ -310,6 +311,33 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   // calls — a second copy of this decision is the derivation-drift class §18 rule 1 names, and it
   // is how a fresh fulfilment and a recovery would start disagreeing about what an author is owed.
   const authorCredit = await ensureReadyMadeAuthorCredit(claimed);
+
+  // ── THE BUYER IS TOLD (punchlist R-5, ledger 2026-09-14-readymade-notifications) ────────────
+  // §15b: this FOLLOWS the atomic `paid → cloned` claim that authorizes it, and it is reached ONLY
+  // by that claim's winner — so a duplicate fulfil, a webhook replaying alongside the buyer's own
+  // confirm, or a re-entrant recovery pass never gets here at all. That claim is the idempotency
+  // basis; `createNotificationOnce`'s dedupe key is the second layer, and the email is gated on it.
+  //
+  // DELIVERY IS NOT A SEPARATE STEP ON THIS RAIL. The clone trip and its items are committed above,
+  // BEFORE the claim; the claim is simultaneously the promotion and the delivery. There is no later
+  // transition to hang a second "your plan is ready" message on, so exactly one notice is emitted.
+  //
+  // Best-effort in every direction: the notifier never throws, and this `catch` is the belt —
+  // a notification failure may never fail a purchase that is already paid for and delivered.
+  try {
+    await notifyBuyerOfReadyMadeDelivery({
+      purchaseId: claimed.id,
+      buyerId: claimed.buyerId,
+      cloneTripId: cloneTrip.id,
+      listingTitle: listing.title,
+      market: listing.market ?? null,
+      // §14: the row's own recorded numbers — never the listing's price today, never recomputed.
+      pricePaidCents: claimed.pricePaidCents,
+      currency: claimed.currency || "USD",
+    });
+  } catch (err) {
+    logger.error({ err, purchaseId: claimed.id }, "[ready-made] buyer delivery notice failed (non-fatal)");
+  }
 
   return { purchase: claimed, cloneTripId: cloneTrip.id, alreadyFulfilled: false, authorCredit };
 }

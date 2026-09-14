@@ -288,6 +288,173 @@ export function buildOccasionReminderEmailPayload(params: OccasionReminderParams
   };
 }
 
+// ─── Ready-made store: purchase delivered / revision requested ───────────────
+// Ledger 2026-09-14-readymade-notifications. Pure BUILDERS only (the
+// buildOccasionReminderEmailPayload precedent): the ready-made rail enqueues these through the
+// EXISTING outbox (`enqueueEmail`), so the platform kill switch, the retry schedule and the admin
+// visibility are the ones every other transactional email already has — no new sender (§18 rule 1).
+//
+// §13 GOVERNS THE COPY AND IS THE POINT. What the buyer has bought is a PLAN — an editable trip
+// in their account, carrying PLACEHOLDER DATES they re-date themselves. It is NOT a finished trip
+// and NOTHING in it is booked; the clone deliberately carries no booking linkage at all
+// (ledger 2026-09-13-clone-carries-content-not-state). Neither builder may say or imply otherwise,
+// and neither states anything about what happens next beyond the revision/consult entitlement,
+// which IS true of every purchase (ledger 2026-08-22-concierge-p3 (a)).
+
+export interface ReadyMadeDeliveredEmailParams {
+  firstName?: string | null;
+  listingTitle: string;
+  market?: string | null;
+  tripId: string;
+  /** What the buyer's purchase ROW records was paid. Never recomputed from the listing (§14). */
+  pricePaidCents: number;
+  currency: string;
+}
+
+/** `1250` + `"USD"` → `"USD 12.50"`. Deliberately dumb: the row's own number, never a rate. */
+function formatPaidAmount(cents: number, currency: string): string {
+  const code = stripCrLf(String(currency || "USD")).toUpperCase().slice(0, 10);
+  const major = (Number(cents) / 100).toFixed(2);
+  return `${code} ${major}`;
+}
+
+export function buildReadyMadeDeliveredEmailPayload(params: ReadyMadeDeliveredEmailParams): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const planUrl = `${getAppBaseUrl()}/plans/${encodeURIComponent(params.tripId)}`;
+  const title = escHtml(params.listingTitle);
+  const amount = escHtml(formatPaidAmount(params.pricePaidCents, params.currency));
+  // §13: a market we were not told is simply not mentioned — never "somewhere", never a guess.
+  const whereLine = params.market ? ` for ${escHtml(params.market)}` : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">Your plan is in your account</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Thanks for your purchase of <strong>${title}</strong>${whereLine}. We have copied it into your
+        account as your own editable plan.
+      </p>
+      <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
+        <tr>
+          <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Plan</td>
+          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${title}</td>
+        </tr>
+        <tr style="background: #F3F4F6;">
+          <td style="padding: 12px 16px; color: #6B7280;">Paid</td>
+          <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${amount}</td>
+        </tr>
+      </table>
+      <p style="color: #374151;">
+        It opens on <strong>placeholder dates</strong> — set your real dates on the plan and everything
+        moves with them. Nothing in the plan is booked yet: each item is a recommendation you can book,
+        change or remove.
+      </p>
+      <p style="color: #374151;">
+        Your purchase also includes one consultation and one revision with the expert who built it.
+        You can request those from the plan whenever you are ready.
+      </p>
+      <a href="${planUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Open your plan
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you bought a ready-made plan on Traveloure.<br>
+        Find it any time under My plans, or at <a href="${planUrl}" style="color: #FF385C;">${planUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `Your plan is in your account`,
+    ``,
+    greeting,
+    ``,
+    `Thanks for your purchase of ${params.listingTitle}${params.market ? ` for ${params.market}` : ""}.`,
+    `We have copied it into your account as your own editable plan.`,
+    ``,
+    `Plan: ${params.listingTitle}`,
+    `Paid: ${formatPaidAmount(params.pricePaidCents, params.currency)}`,
+    ``,
+    `It opens on placeholder dates — set your real dates on the plan and everything moves with them.`,
+    `Nothing in the plan is booked yet: each item is a recommendation you can book, change or remove.`,
+    ``,
+    `Your purchase also includes one consultation and one revision with the expert who built it.`,
+    ``,
+    `Open your plan: ${planUrl}`,
+  ].join("\n");
+
+  return {
+    subject: `Your plan is ready — ${stripCrLf(params.listingTitle)}`,
+    html,
+    text,
+  };
+}
+
+export interface ReadyMadeRevisionRequestedEmailParams {
+  firstName?: string | null;
+  listingTitle: string;
+  tripId: string;
+  /** The buyer's own words, or null when they sent none. NULL is never rendered as "no note". */
+  note?: string | null;
+}
+
+export function buildReadyMadeRevisionRequestedEmailPayload(
+  params: ReadyMadeRevisionRequestedEmailParams,
+): { subject: string; html: string; text: string } {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const workspaceUrl = `${getAppBaseUrl()}/expert/workspace/${encodeURIComponent(params.tripId)}`;
+  const title = escHtml(params.listingTitle);
+  const note = params.note?.trim() ? params.note.trim() : null;
+  const noteHtml = note
+    ? `<blockquote style="margin: 16px 0; padding: 12px 16px; border-left: 3px solid #FF385C;
+         background: #F9FAFB; color: #374151;">${escHtml(note)}</blockquote>`
+    : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">A buyer requested their included revision</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        A buyer of <strong>${title}</strong> has requested the revision included with their purchase.
+        You now have edit access to their copy of the plan.
+      </p>
+      ${noteHtml}
+      <a href="${workspaceUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Open the workspace
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you sell this plan on Traveloure.<br>
+        Open it at <a href="${workspaceUrl}" style="color: #FF385C;">${workspaceUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    `A buyer requested their included revision`,
+    ``,
+    greeting,
+    ``,
+    `A buyer of ${params.listingTitle} has requested the revision included with their purchase.`,
+    `You now have edit access to their copy of the plan.`,
+    ...(note ? [``, `They wrote: ${note}`] : []),
+    ``,
+    `Open the workspace: ${workspaceUrl}`,
+  ].join("\n");
+
+  return {
+    subject: `Revision requested — ${stripCrLf(params.listingTitle)}`,
+    html,
+    text,
+  };
+}
+
 /**
  * @deprecated Callers should use enqueueBookingConfirmationEmail from
  * email-outbox.service.ts so failed sends are retried automatically.

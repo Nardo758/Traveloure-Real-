@@ -536,6 +536,17 @@ export interface IStorage {
   getUnreadCount(userId: string): Promise<number>;
 
   createNotification(notification: InsertNotification): Promise<Notification>;
+  /**
+   * At-most-once notification writer (the `insertExpertEarningOnce` / `insertPlatformRevenueOnce`
+   * naming precedent, one table over). `dedupeKey` is REQUIRED and the write is
+   * `ON CONFLICT DO NOTHING` against migration 209's partial UNIQUE index on
+   * `notifications.dedupe_key`, so a retried or duplicated call for the SAME event inserts zero
+   * extra rows and truthfully reports `{ inserted: false }`. Callers use that answer as the
+   * exactly-once gate for any NON-idempotent sibling effect (e.g. an email).
+   */
+  createNotificationOnce(
+    notification: InsertNotification & { dedupeKey: string },
+  ): Promise<{ inserted: boolean }>;
 
   markAsRead(id: string, userId: string): Promise<Notification | undefined>;
 
@@ -4019,6 +4030,23 @@ export class DatabaseStorage implements IStorage {
   async createNotification(notification: InsertNotification): Promise<Notification> {
     const [newNotification] = await db.insert(notifications).values(notification).returning();
     return newNotification;
+  }
+
+  // See the interface doc: the partial UNIQUE index IS the guard (§15 — the statement is the
+  // guard, never a check-then-insert). `inserted` is what a caller gates a non-idempotent
+  // sibling effect on, so a second pass can never send a second email.
+  async createNotificationOnce(
+    notification: InsertNotification & { dedupeKey: string },
+  ): Promise<{ inserted: boolean }> {
+    const rows = await db
+      .insert(notifications)
+      .values(notification)
+      .onConflictDoNothing({
+        target: notifications.dedupeKey,
+        where: sql`dedupe_key IS NOT NULL`,
+      })
+      .returning({ id: notifications.id });
+    return { inserted: rows.length > 0 };
   }
 
   // Scoped to (id, userId) so a caller can only mutate their own notification — the WHERE is the
