@@ -21,6 +21,21 @@ permissions:
   contents: read
 
 jobs:
+  test-file-reachability:
+    name: test-file-reachability (advisory inventory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Predicate fixtures run first. The inventory intentionally reports current
+      # orphans without failing; wiring those suites is outside this lane.
+      - name: Test-file reachability predicate self-test
+        run: node scripts/check-test-files-wired.cjs --self-test
+      - name: Report test files not reached by CI workflows
+        run: node scripts/check-test-files-wired.cjs
+
   build:
     name: build (vite + esbuild bundle)
     runs-on: ubuntu-latest
