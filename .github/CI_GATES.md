@@ -26,8 +26,8 @@ Add all of them to branch protection now.
 | `build (vite + esbuild bundle)` | `build.yml` | JS syntax / bundling errors — app cannot start |
 | `money-endpoint-guard (CLAUDE.md §14)` | `build.yml` | Client-trusted amounts/identity in money handlers |
 | `claims-only-lookup-guard (session-user extraction)` | `build.yml` | Claims-only `claims.sub` session-user reads under server/ without an `.id` fallback (false 403s for OAuth users) |
-| `navbar-links-smoke (Playwright DOM gate)` | `navbar-links-gate.yml` | Broken nav links; href in nav-config with no matching Route |
-| `hardcoded-links-check (static analysis)` | `navbar-links-gate.yml` | Hardcoded `href`/`to` literals in components pointing at deleted routes |
+| `navbar-links-smoke` | `navbar-links-gate.yml` | Broken nav links; href in nav-config with no matching Route |
+| `hardcoded-links-check` | `navbar-links-gate.yml` | Hardcoded `href`/`to` literals in components pointing at deleted routes |
 | `app-routes-smoke (Playwright DOM gate)` | `app-routes-gate.yml` | Every `<Route>` in App.tsx renders content (not 404 / blank) |
 | `auth-routes-smoke (Playwright DOM gate)` | `auth-routes-gate.yml` | Role-gated pages don't crash when a real session receives real API data |
 | `verify-selection-controls (logic gate)` | `selection-controls-gate.yml` | Narrowing + parity logic for selection controls (32/32 assertions) |
@@ -90,7 +90,11 @@ When adding a new CI workflow that should block merges:
    # Status context (for branch-protection required checks):
    #   * <exact job name string> — safe to mark as a REQUIRED branch-protection check.
    ```
-2. Add the status context to the appropriate tier in this file.
+2. Add the status context to the appropriate tier in this file — and to
+   `.github/branch-protection.json` if it is Tier 1. **The string is the job's `name:`
+   verbatim**: GitHub reports a check run under that name and nothing else, so a
+   descriptive suffix added here or in the JSON is a required context that never
+   reports, and every PR sits `blocked` with all checks green.
 3. `report` jobs are always informational — never add them as required checks.
 4. Fast/pure-logic gates (no DB, no browser) → Tier 1 immediately.
 5. DOM/E2E gates that test a fresh local build → Tier 2 until one green run is confirmed,
