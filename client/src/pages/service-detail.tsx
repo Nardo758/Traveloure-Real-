@@ -97,6 +97,8 @@ import {
 // about. There is no separate traveler↔provider conversation system to point at: this IS the rail,
 // and it works; the CTA was simply speaking a language the destination doesn't parse.
 import { useAskExpert } from "@/lib/use-ask-expert";
+// THE ONE price-unit derivation (§18 rule 1) — see the priceLabel comment below.
+import { resolvePriceUnit, priceUnitWord } from "@/lib/price-unit";
 // S10 (Gate G4): the shared bundle-component summary shape + pure link/label helpers, so the
 // available/unavailable rendering decision lives in exactly one place (unit-tested separately).
 import {
@@ -866,29 +868,45 @@ export default function ServiceDetailPage() {
     !!stayRates &&
     new Set(roomNightDates.map((d) => stayRates.nights.find((n) => n.date === d)?.nightlyRate ?? priceNum)).size > 1;
   const hasTiers = Array.isArray(service.pricingTiers) && service.pricingTiers.length > 0;
-  // D5 (UX audit Jul 29): a per_night room fell through to the generic "per service" sub-label
-  // (jargon that also reads as factually wrong for a nightly room rate) — give it its own branch.
-  const priceLabel = service.pricingUnit === "per_night" && priceNum > 0
-    ? `${fmtPrice(priceNum)} / night`
-    : service.priceType === "hourly" && priceNum > 0
-    ? `${fmtPrice(priceNum)} / hr`
-    : service.priceType === "package_tiers" && priceNum > 0
+  // D5 (UX audit Jul 29) gave `per_night` its own branch because it fell through to the generic
+  // "per service" sub-label. Production QA (2026-09-13) found the SAME fall-through swallowing
+  // `per_person` — the Napa Valley Wine Experience, $195, labelled "per service" — which is the
+  // one-branch-at-a-time repair this chain invites. Both labels now read the ONE price-unit
+  // derivation (`@/lib/price-unit`, §18 rule 1, ledger `2026-09-14-price-unit-one-derivation`),
+  // shared with the Catalog preview, the storefront row and the Distribute roster.
+  //
+  // `priceUnit` is the full answer (pricingUnit before priceType). `priceTypeUnit` reads the
+  // SAME derivation with `pricingUnit` withheld, and exists only to preserve this chain's
+  // pre-existing fall-through exactly: the night branch is gated on a positive price, and a
+  // per_night row with no price used to fall into the priceType branches below it.
+  //
+  // §13: `package_tiers` and `variable` name a pricing MODEL and no unit, so the derivation
+  // returns null for them and they keep their own copy here; a null unit with no positive price
+  // still ends at "contact the provider for pricing" — never a fabricated unit. The two NEW
+  // cases (person, group) are gated on `priceNum > 0` for that reason.
+  const priceUnit = resolvePriceUnit({ priceType: service.priceType, pricingUnit: service.pricingUnit });
+  const priceTypeUnit = resolvePriceUnit({ priceType: service.priceType });
+  const priceLabel = priceNum <= 0
+    ? "Custom quote"
+    : priceUnit
+    ? `${fmtPrice(priceNum)} / ${priceUnitWord(priceUnit)}`
+    : service.priceType === "package_tiers"
     ? `from ${fmtPrice(priceNum)}`
-    : service.priceType === "per_event" && priceNum > 0
-    ? `${fmtPrice(priceNum)} / event`
-    : service.priceType === "variable" && priceNum > 0
+    : service.priceType === "variable"
     ? `From ${fmtPrice(priceNum)}`
-    : priceNum > 0
-    ? fmtPrice(priceNum)
-    : "Custom quote";
-  const priceSubLabel = service.pricingUnit === "per_night" && priceNum > 0
+    : fmtPrice(priceNum);
+  const priceSubLabel = priceUnit === "night" && priceNum > 0
     ? "per night"
-    : service.priceType === "hourly"
+    : priceTypeUnit === "hour"
     ? "billed by the hour"
     : service.priceType === "package_tiers"
     ? "see tiers below"
-    : service.priceType === "per_event"
+    : priceTypeUnit === "event"
     ? "flat rate per event"
+    : priceTypeUnit === "person" && priceNum > 0
+    ? "per person"
+    : priceTypeUnit === "group" && priceNum > 0
+    ? "per group"
     : service.priceType === "variable"
     ? "starting price"
     : priceNum > 0
