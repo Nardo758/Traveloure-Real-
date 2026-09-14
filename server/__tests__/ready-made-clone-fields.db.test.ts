@@ -31,6 +31,13 @@
  *   C7  every column of `itinerary_items` is DECIDED — carried or excluded with a reason. The
  *       exhaustiveness pin is computed from `getTableColumns`, so a column added tomorrow fails
  *       here until a human classifies it (the §19 shape: excluded BY DEFAULT, never carried).
+ *   C8  the clone's `origin` is STAMPED server-side, not copied: an authoring build's own rows
+ *       carry `'traveler'` (the generic create rail's answer for an author, who is not an
+ *       advisor) or NULL, and both are false OF THE BUYER. `'ai'` is preserved verbatim.
+ *   C9  and because of C8 those rows are D3's protected class on the buyer's plan: spared by
+ *       `itineraryItemRebuildDeletable()` and routed into the optimizer's `fixedCommitments`.
+ *       The same case asserts what this did NOT do — the run gate still refuses only for
+ *       payment, so Optimize remains available on a clone (docs/PUNCHLIST.md D-1 is open).
  *
  * AND WHAT THE RAIL SAYS OUT LOUD (punchlist R-5, ledger `2026-09-14-readymade-notifications`;
  * CLAUDE.md §13, §15b, §18 rule 1, Locked Decision 26). The same real fulfilment is the only place
@@ -83,6 +90,12 @@ const ids = {
   event: `rmc-${RUN}-event`,
   loadedItem: `rmc-${RUN}-item-loaded`,
   plainItem: `rmc-${RUN}-item-plain`,
+  // C8/C9 (ledger `2026-09-14-clone-items-are-expert-work`): the two provenances an authoring
+  // build really produces. `authoredItem` is what the generic create rail stamps for a ready-made
+  // AUTHOR (`isAdvisor ? 'expert' : 'traveler'`, and an authoring build's author is not an
+  // advisor); `aiItem` is what the author's own AI generate leaves behind.
+  authoredItem: `rmc-${RUN}-item-authored`,
+  aiItem: `rmc-${RUN}-item-ai`,
   // R3's own listing + purchase: the buyer/listing UNIQUE index (idx_rmp_buyer_trip_active) means
   // a second LIVE purchase of the same listing by the same buyer is not a state the schema holds.
   listingB: `rmc-${RUN}-listing-b`,
@@ -179,6 +192,17 @@ before(async () => {
   await db.execute(sql`
     INSERT INTO itinerary_items (id, trip_id, title, day_number, sort_order, routing_status)
     VALUES (${ids.plainItem}, ${ids.sourceTrip}, 'Nishiki Market wander', 1, 0, 'in_planning')
+  `);
+  // The two rows C8/C9 turn on. `origin='traveler'` is NOT a hypothetical: it is exactly what
+  // POST /api/trips/:tripId/itinerary-items stamps when the caller is the trip's AUTHOR, and the
+  // plain item above (no origin at all) is the pre-migration-181 shape.
+  await db.execute(sql`
+    INSERT INTO itinerary_items (id, trip_id, title, day_number, sort_order, routing_status, origin)
+    VALUES (${ids.authoredItem}, ${ids.sourceTrip}, 'Fushimi Inari before breakfast', 1, 1, 'in_planning', 'traveler')
+  `);
+  await db.execute(sql`
+    INSERT INTO itinerary_items (id, trip_id, title, day_number, sort_order, routing_status, origin)
+    VALUES (${ids.aiItem}, ${ids.sourceTrip}, 'Gion evening stroll', 3, 0, 'in_planning', 'ai')
   `);
   await seedLoadedSourceItem();
   await db.execute(sql`
@@ -314,9 +338,12 @@ test("C5: the content the buyer paid for does travel, field by field", async () 
   assert.equal(row.origin, "expert", "the item really was written by an expert (LD 42 D3/D23 read this)");
   assert.equal(row.suggested_by, "expert");
   assert.equal(row.sort_order, 3);
-  // Behaviour unchanged: the buyer receives the whole plan, not a subset of it.
+  // Behaviour unchanged: the buyer receives the whole plan, not a subset of it. The expected
+  // number is COUNTED from the source trip rather than written down, so adding a fixture row is
+  // never silently a change to what the buyer receives.
+  const src = await db.execute(sql`SELECT count(*)::int AS n FROM itinerary_items WHERE trip_id = ${ids.sourceTrip}`);
   const n = await db.execute(sql`SELECT count(*)::int AS n FROM itinerary_items WHERE trip_id = ${cloneTripId}`);
-  assert.equal((n.rows[0] as any).n, 2, "one clone per source item");
+  assert.equal((n.rows[0] as any).n, (src.rows[0] as any).n, "one clone per source item");
   // `status` is the item's own lifecycle and includes booked/confirmed — an author's claim, so the
   // clone takes the column default instead.
   assert.equal(row.status, "planned", "DB FACT: the author's 'booked' is not asserted of the buyer's item");
@@ -346,6 +373,97 @@ test("C7: every itinerary_items column is decided — carried, or excluded with 
     itineraryItemColumnNames().length,
     "the two lists partition the table exactly once — no column named twice",
   );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// C8–C9 — THE CLONE'S ITEMS ARE EXPERT WORK (punchlist R-3, ledger
+// `2026-09-14-clone-items-are-expert-work`; CLAUDE.md Locked Decision 12, Locked Decision 42 D3)
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+import { and, eq } from "drizzle-orm";
+import { itineraryItems } from "@shared/schema";
+import { itineraryItemRebuildDeletable } from "../services/itinerary-rebuild-guard";
+import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
+import { clonedItemOrigin } from "../services/itinerary-item-clone";
+
+/** The clone's rows keyed by title, in the database's own column names. */
+async function clonedOriginsByTitle(): Promise<Record<string, string | null>> {
+  const r = await db.execute(sql`
+    SELECT title, origin FROM itinerary_items WHERE trip_id = ${cloneTripId}
+  `);
+  return Object.fromEntries((r.rows as any[]).map((x) => [x.title, x.origin]));
+}
+
+test("C8: a clone's provenance is stamped server-side — never the author-side value", async () => {
+  // THE R-3 NEGATIVE. `origin` used to be COPIED. An authoring build's author is not an advisor,
+  // so POST /api/trips/:tripId/itinerary-items stamps their rows `'traveler'`, and rows older
+  // than migration 181 carry NULL — both of which arrived on the BUYER's plan meaning "you added
+  // this" (LD 42 D23's chip) about a row the buyer did not add, and both sat outside D3's
+  // protected set. On `origin/main` the two assertions below read 'traveler' and null.
+  const byTitle = await clonedOriginsByTitle();
+  assert.equal(byTitle["Fushimi Inari before breakfast"], "expert",
+    "DB FACT: the author's own 'traveler' does not become a claim about the buyer");
+  assert.equal(byTitle["Nishiki Market wander"], "expert",
+    "DB FACT: a NULL-origin legacy row is authored by the seller, not by nobody");
+  assert.equal(byTitle["Kiyomizu-dera at dawn"], "expert",
+    "a row already stamped 'expert' is unchanged");
+
+  // §13, the half that keeps this honest: the author's trip recorded that a MACHINE drafted this
+  // row. Rewriting that to 'expert' would assert human authorship the record denies — the false
+  // attribution line D4 drew for `expert_note`, one column over.
+  assert.equal(byTitle["Gion evening stroll"], "ai",
+    "DB FACT: an AI-drafted row keeps its own answer and is not laundered into expert work");
+
+  // And the SOURCE trip is untouched — the stamp is on the copy, never on the original.
+  const src = await db.execute(sql`SELECT origin FROM itinerary_items WHERE id = ${ids.authoredItem}`);
+  assert.equal((src.rows[0] as any).origin, "traveler", "the author's own row keeps its own value");
+
+  // The derivation is ONE function (§18 rule 1) and the rows above are its four inputs.
+  assert.equal(clonedItemOrigin({ origin: "traveler" }), "expert");
+  assert.equal(clonedItemOrigin({ origin: null }), "expert");
+  assert.equal(clonedItemOrigin({ origin: "expert" }), "expert");
+  assert.equal(clonedItemOrigin({ origin: "ai" }), "ai");
+});
+
+test("C9: D3 protects the stamped rows — a machine may read them, never rewrite them", async () => {
+  // D3 (Locked Decision 42): a row carrying `expert_note` or `origin='expert'` is paid human work.
+  // The two forms of that ONE class are asserted here against the buyer's REAL clone.
+  //
+  // (a) THE WHERE-CLAUSE FORM. `itineraryItemRebuildDeletable()` is what the AI regenerate wipe
+  // and the generated-itinerary snapshot re-apply AND into their DELETE, so a row it does not
+  // return is a row no machine rebuild can destroy.
+  const deletable = await db
+    .select({ title: itineraryItems.title })
+    .from(itineraryItems)
+    .where(and(eq(itineraryItems.tripId, cloneTripId!), itineraryItemRebuildDeletable()));
+  const deletableTitles = deletable.map((r) => r.title).sort();
+  assert.deepEqual(deletableTitles, ["Gion evening stroll"],
+    "only the AI-drafted row is replaceable; every expert-authored row of the purchased plan is spared");
+
+  // (b) THE ROW-LEVEL FORM, through the optimizer's own read-set. An expert-work row of ANY
+  // optimizable status is routed into `fixedCommitments` — injected as a constraint, never
+  // emitted as a suggestion and never dropped by an apply.
+  const inputs = await loadTripOptimizerInputs(cloneTripId!);
+  const fixedTitles = inputs.fixedCommitments.map((c) => c.name).sort();
+  assert.deepEqual(
+    fixedTitles,
+    ["Fushimi Inari before breakfast", "Kiyomizu-dera at dawn", "Nishiki Market wander"],
+    "the plan the buyer paid for is the optimizer's fixed points",
+  );
+  assert.deepEqual(inputs.baselineItems.map((b) => b.name), ["Gion evening stroll"],
+    "what remains optimizable is what the seller's own record says a machine wrote");
+  assert.equal(inputs.counts.expertProtected, 3, "counted honestly and separately from `purchased`");
+  assert.equal(inputs.counts.purchased, 0, "nothing on a fresh clone is purchased (C2)");
+
+  // WHAT THIS LANE DID NOT DO, asserted so it cannot drift into a refusal by accident: Optimize
+  // is still AUTHORIZED on a clone exactly as on any other plan. The run gate's whole
+  // `authorized:false` union is payment reasons, and no clone/authored-plan reason was added.
+  // Whether a purchased ready-made plan should refuse Optimize at all is docs/PUNCHLIST.md D-1.
+  const authSrc = await import("node:fs/promises").then((fs) =>
+    fs.readFile(new URL("../services/optimizer-run-authorization.ts", import.meta.url), "utf8"));
+  const reasons = Array.from(authSrc.matchAll(/authorized:\s*false;\s*reason:\s*"([a-z_]+)"/g)).map((m) => m[1]);
+  assert.deepEqual([...new Set(reasons)].sort(), ["payment_rejected", "payment_required"],
+    "no 'authored plan' / 'do not optimize' refusal reason exists — D-1 is still open");
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

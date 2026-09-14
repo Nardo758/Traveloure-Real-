@@ -26,6 +26,7 @@ import {
   CLONE_CARRIED_FIELDS,
   CLONE_EXCLUDED_FIELDS,
   cloneFieldCoverage,
+  clonedItemOrigin,
   itineraryItemColumnNames,
 } from "../itinerary-item-clone";
 
@@ -143,6 +144,35 @@ describe("ready-made clone — content does travel", () => {
     assert.equal(cloned.expertNote, undefined);
     assert.equal(cloned.locationName, undefined);
     assert.equal(cloned.estimatedCost, undefined);
+  });
+});
+
+describe("ready-made clone — provenance is stamped, not copied (punchlist R-3)", () => {
+  // Locked Decision 12 stamps `origin` SERVER-SIDE at create. A clone is the one create site with
+  // no live actor: the buyer added nothing. `origin` answers "who authored this row relative to
+  // THIS plan's traveler", so the author-side value does not mean the same thing on the buyer's
+  // plan — an authoring build's author is not an advisor, so the generic create rail stamps their
+  // rows `'traveler'`, which on the buyer's plan reads "you added this" (LD 42 D23's chip) about a
+  // row the buyer did not add, and which sits outside D3's protected set.
+  for (const [sourceOrigin, expected, why] of [
+    ["traveler", "expert", "the author's own rail stamps 'traveler'; the BUYER added nothing"],
+    [null, "expert", "a pre-migration-181 row is authored by the seller, not by nobody"],
+    ["expert", "expert", "already true — unchanged"],
+    ["ai", "ai", "§13: the seller's record says a machine drafted it; that is not laundered"],
+  ] as const) {
+    it(`origin ${JSON.stringify(sourceOrigin)} clones as ${expected} — ${why}`, () => {
+      const cloned = buildClonedItineraryItem(makeSourceItem({ origin: sourceOrigin }), CLONE_TRIP_ID) as any;
+      assert.equal(cloned.origin, expected);
+      // ONE derivation (§18 rule 1) — the builder delegates rather than re-deciding.
+      assert.equal(clonedItemOrigin({ origin: sourceOrigin }), expected);
+    });
+  }
+
+  it("`origin` is classified as EXCLUDED, so the exhaustiveness pin still covers it", () => {
+    assert.ok(!(CLONE_CARRIED_FIELDS as readonly string[]).includes("origin"),
+      "a derived column must not also be in the copy allowlist — it would be set twice");
+    assert.ok(CLONE_EXCLUDED_FIELDS.origin?.includes("DERIVED"),
+      "the reason must say the builder derives it, as `routingStatus`'s entry does");
   });
 });
 

@@ -46,6 +46,11 @@
  *       content. Carrying the author's calendar dates is the stale-date class one table over.
  * §13 governs every exclusion: the clone's absent value means NOT CAPTURED FOR THIS BUYER, which
  * is the truth, and no excluded column is replaced by a guess.
+ *
+ * ── ONE COLUMN IS DERIVED RATHER THAN CARRIED OR DROPPED ────────────────────────────────────
+ * `origin` (Locked Decision 12) answers "who authored this row, relative to THIS plan's traveler",
+ * so the author's stored value does not mean the same thing on the buyer's plan. It is stamped
+ * server-side by `clonedItemOrigin` below, whose header states the rule and the reason.
  */
 import { getTableColumns } from "drizzle-orm";
 import { itineraryItems } from "@shared/schema";
@@ -86,10 +91,10 @@ export const CLONE_CARRIED_FIELDS = [
   // `expertTravelerNote` this same fulfilment already carries. The PRIVATE twin (`privateNotes`)
   // is excluded below for the same reason `trips.expertNotes` is.
   "notes", "expertNote",
-  // Who authored the content. These describe the ITEM's provenance, not a transaction: a
-  // ready-made plan's items really were written by an expert, and Locked Decision 42 D23's origin
-  // chip and D3's protected set both read a TRUE answer here rather than a flattened one.
-  "suggestedBy", "origin",
+  // Who authored the content. This describes the ITEM's provenance, not a transaction: a
+  // ready-made plan's items really were written by an expert. (`origin` is the other half of the
+  // same fact and is DERIVED rather than copied — see `clonedItemOrigin` and its entry below.)
+  "suggestedBy",
   // Order within the day.
   "sortOrder",
 ] as const satisfies readonly ItineraryItemColumn[];
@@ -111,6 +116,7 @@ export const CLONE_EXCLUDED_FIELDS: Readonly<Record<string, string>> = {
   // through and an author row in `ready_for_checkout` landed in the buyer's cart under LD 39).
   routingStatus: "state — the builder sets it to in_planning; a clone never inherits author-side routing",
   status: "state — the value set includes booked/confirmed/completed, which are claims about the AUTHOR's item",
+  origin: "provenance — DERIVED by the builder (`clonedItemOrigin`), never copied verbatim: the source's own value answers a question about the AUTHOR's trip, and on the BUYER's plan 'traveler'/NULL would be a false claim about a buyer who added nothing (ledger 2026-09-14-clone-items-are-expert-work)",
 
   // Booking state — V-15. A different user's transaction.
   bookingId: "booking state — FK to the AUTHOR's service_bookings row (a cross-user claim)",
@@ -136,6 +142,43 @@ export const CLONE_EXCLUDED_FIELDS: Readonly<Record<string, string>> = {
   privateNotes: "private — organizer-only notes written by the SELLER. The trip-level twin (trips.expertNotes) is deliberately not carried by this same fulfilment under LD 21; the item-level twin follows it. `expertNote`, the traveler-facing field, DOES travel",
   attachments: "undecided free-form — an array of {name,url} the platform has no writer for today; in the worst case it is the AUTHOR's own voucher. Under §19's posture an undecided carrier is excluded by default, and excluding it costs the buyer nothing while nothing writes it",
 };
+
+/**
+ * ── WHO AUTHORED A CLONED ROW (ledger `2026-09-14-clone-items-are-expert-work`) ──────────────
+ *
+ * Locked Decision 12 gives `itinerary_items.origin` three values — `'ai' | 'traveler' | 'expert'`
+ * — and stamps it SERVER-SIDE at create, never from a client. This is that stamp for the one
+ * create site that has no live actor at all: a ready-made clone is written by a fulfilment job on
+ * behalf of a buyer who has added nothing.
+ *
+ * WHY THE SOURCE VALUE CANNOT SIMPLY BE COPIED. `origin` answers "who authored this row, relative
+ * to this plan's traveler", so the same stored value means different things on the two trips. On
+ * the AUTHOR's build the generic create rail (`POST /api/trips/:tripId/itinerary-items`,
+ * `server/routes.ts`) resolves `isAdvisor ? 'expert' : 'traveler'`, and an authoring build's
+ * author is NOT an advisor — they reach the route through its separate `authored` branch — so the
+ * expert's own rows are stamped `'traveler'`, and rows written before migration 181 carry NULL.
+ * Copied onto the buyer's plan those read "you added" (Locked Decision 42 D23's chip) about a row
+ * the buyer did not add, and they sit OUTSIDE D3's protected set, so an optimize apply could
+ * delete the very content the buyer paid for.
+ *
+ * THE RULE, and both halves are §13:
+ *   • `'ai'` is PRESERVED verbatim. The author's own trip recorded that a machine drafted the row;
+ *     rewriting that to `'expert'` would assert human authorship the record denies — the false
+ *     attribution line D4 drew for `expert_note`, one column over.
+ *   • Everything else — `'expert'`, `'traveler'`, NULL — is stamped `'expert'`. A ready-made
+ *     listing is an expert's published plan sold under their name; `'traveler'` and NULL are both
+ *     false OF THE BUYER, and `'expert'` is the one value in LD 12's vocabulary that is true.
+ *
+ * WHAT THIS IS NOT. It is not a "do not optimize" marker and it refuses no run: Optimize stays
+ * available on a clone exactly as before, and `optimizer-run-authorization.ts`'s refusal union is
+ * untouched. It puts these rows in the set D3 already protects — injected as fixed constraints,
+ * never emitted as suggestions, never deleted by an apply or a regenerate. Whether a purchased
+ * ready-made plan is a FINISHED plan or an EDITABLE template is `docs/PUNCHLIST.md` D-1, and this
+ * decides none of it.
+ */
+export function clonedItemOrigin(source: Pick<ItineraryItemRow, "origin">): "ai" | "expert" {
+  return source.origin === "ai" ? "ai" : "expert";
+}
 
 /** Every column on the table, computed — never a hand-copied list (§18 rule 1). */
 export function itineraryItemColumnNames(): string[] {
@@ -174,10 +217,13 @@ export function buildClonedItineraryItem(
     carried[field] = source[field];
   }
   return {
-    ...(carried as Omit<typeof itineraryItems.$inferInsert, "tripId" | "routingStatus">),
+    ...(carried as Omit<typeof itineraryItems.$inferInsert, "tripId" | "routingStatus" | "origin">),
     tripId: cloneTripId,
     // The V-14 fix, written in the key drizzle actually reads. A clone is born in the buyer's
     // planner, never in their cart (LD 39: the cart IS this table's ready_for_checkout projection).
     routingStatus: "in_planning",
+    // LD 12's server-side provenance stamp for the one create site with no live actor — see
+    // `clonedItemOrigin` above. Derived from the source row, never copied and never client-set.
+    origin: clonedItemOrigin(source),
   };
 }
