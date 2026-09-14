@@ -29,6 +29,7 @@ import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guar
 import { resolveAiDraftModel } from "./services/ai-draft-model";
 import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
 import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
+import { BOOKING_CANCELLABLE_FROM_STATUSES, isBookingCancellable } from "@shared/booking-cancellation"; // §18b/§18 rule 1 — the ONE traveler-cancellation from-state list (ledger 2026-09-14-transport-card-cancel)
 import { parseAiJsonObjectOrThrow } from "./utils/ai-json";
 import {
   resolveAiDraftEligibility,
@@ -7297,7 +7298,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!quote || quote.travelerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
-      const cancellable = quote.bookingStatus === "pending" || quote.bookingStatus === "confirmed";
+      // The SAME list the cancel route below accepts a booking in, so the preview can never
+      // offer a cancellation the route would refuse (§18 rule 1).
+      const cancellable = isBookingCancellable(quote.bookingStatus);
       const { travelerId, bookingStatus, ...publicQuote } = quote;
       res.json({ ...publicQuote, cancellable, bookingStatus });
     } catch (err) {
@@ -7317,7 +7320,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
-      if (booking.status !== "pending" && booking.status !== "confirmed") {
+      if (!isBookingCancellable(booking.status)) {
         return res.status(400).json({ message: "Cannot cancel this booking" });
       }
       const { reason } = req.body;
@@ -7374,7 +7377,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       } else {
         // No automatic refund (non-refundable policy, lapsed window, or nothing charged) —
         // a plain status cancellation, exactly what the preview told the traveler.
-        updated = await storage.updateServiceBookingStatus(req.params.id, "cancelled", reason);
+        // §18b — THE TRANSITION IS THE GUARD, not the pre-check at the top of this handler.
+        // That read and this write are separated by an awaited policy quote, so a concurrent
+        // cancellation, a provider status flip or a late paid signal can move the row in
+        // between: a check-then-update is the TOCTOU bug, never the guard. The from-state list
+        // is the SAME one the pre-check reads (§18 rule 1), so the two can never disagree, and
+        // a row that has left a cancellable state writes NOTHING and comes back undefined.
+        // The refund branch above already carried its atomic claim inside
+        // `refundServiceBooking`; this branch had none.
+        updated = await storage.updateServiceBookingStatus(
+          req.params.id,
+          "cancelled",
+          reason,
+          BOOKING_CANCELLABLE_FROM_STATUSES,
+        );
+        if (!updated) {
+          // §13: the row moved under us. Say so — never report a cancellation that did not
+          // happen, and never write the notification or the refund line for one.
+          return res.status(409).json({ message: "This booking is no longer cancellable" });
+        }
       }
 
       // In-app receipt — no silent state changes, even for traveler-initiated actions.
