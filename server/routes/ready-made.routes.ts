@@ -37,6 +37,7 @@ import { resolveMarketSlug } from "../services/trend-engine/operating-markets";
 // §18 rule 1). This file READS the table freely; the concierge-revision grant below is a CALLER
 // of the shared upsert and never inserts the row itself.
 import { upsertTripAdvisorRow } from "../services/booking-actions.service";
+import { notifyExpertOfReadyMadeRevisionRequest } from "../services/ready-made-notifications.service";
 
 const router = Router();
 
@@ -1614,7 +1615,7 @@ router.post("/api/ready-made/purchases/:id/request-revision", isAuthenticated, a
     // status='accepted' is a §12 write-access status; the note rides as the assignment message.
     // Upsert: if a row already exists (e.g. re-grant), (re)assert write access.
     const [listing] = await db
-      .select({ authorId: readyMadeTrips.authorId })
+      .select({ authorId: readyMadeTrips.authorId, title: readyMadeTrips.title })
       .from(readyMadeTrips)
       .where(eq(readyMadeTrips.id, purchase.readyMadeTripId))
       .limit(1);
@@ -1631,6 +1632,26 @@ router.post("/api/ready-made/purchases/:id/request-revision", isAuthenticated, a
         status: "accepted",
         message: note ?? "Concierge revision requested by the buyer.",
       });
+
+      // ── THE EXPERT IS TOLD (punchlist R-5, ledger 2026-09-14-readymade-notifications) ────────
+      // Until this lane the request STORED a message on the advisor row and stopped there: the
+      // seller learned their buyer had spent the included revision only by opening the workspace.
+      // §15b: this FOLLOWS the atomic `revision_status IS NULL → 'requested'` claim above, which is
+      // also the idempotency basis — a second request loses that claim and 409s before reaching
+      // here; the notifier's dedupe key is the second layer and gates the email. Best-effort: the
+      // notifier never throws, and this `catch` is the belt — the entitlement is already spent and
+      // the write access already granted, so a notification failure may never fail the request.
+      try {
+        await notifyExpertOfReadyMadeRevisionRequest({
+          purchaseId: claimed.id,
+          expertUserId: listing.authorId,
+          cloneTripId: purchase.cloneTripId,
+          listingTitle: listing.title ?? "your ready-made plan",
+          note,
+        });
+      } catch (notifyErr: any) {
+        console.error("[ready-made] revision expert notify failed (non-fatal):", notifyErr?.message);
+      }
     }
 
     res.json({ purchase: { purchaseId: claimed.id, revisionStatus: claimed.revisionStatus, revisionRequestedAt: claimed.revisionRequestedAt } });

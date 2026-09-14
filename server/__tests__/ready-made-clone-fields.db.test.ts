@@ -32,6 +32,26 @@
  *       exhaustiveness pin is computed from `getTableColumns`, so a column added tomorrow fails
  *       here until a human classifies it (the §19 shape: excluded BY DEFAULT, never carried).
  *
+ * AND WHAT THE RAIL SAYS OUT LOUD (punchlist R-5, ledger `2026-09-14-readymade-notifications`;
+ * CLAUDE.md §13, §15b, §18 rule 1, Locked Decision 26). The same real fulfilment is the only place
+ * a buyer is ever told their purchase arrived, so the proofs live here beside it:
+ *
+ *   R1  the fulfilment emits EXACTLY ONE buyer bell row and EXACTLY ONE outbox email, and the
+ *       email says only what is true — a plan on placeholder dates, nothing booked.
+ *   R2  a REPLAYED fulfilment (the webhook racing the buyer's own confirm, a recovery pass) emits
+ *       NEITHER a second row nor a second email — the atomic `paid → cloned` claim is the basis.
+ *   R3  a notification writer that THROWS never fails the purchase: the buyer still gets their
+ *       clone, and nothing half-written is left behind (§15b — an ancillary effect may not break
+ *       the operation that authorizes it).
+ *   R4  a revision request notifies the SELLING EXPERT exactly once — bell row + email — and a
+ *       second call adds nothing (migration 209's dedupe index, which also gates the email).
+ *
+ * R4's STATED NEGATIVE SPACE (§18d): it drives the notifier, not the HTTP route, so what it proves
+ * is the notifier's once-ness and its content. The ROUTE's once-ness is a different guard and is
+ * not re-proven here — `POST /api/ready-made/purchases/:id/request-revision` claims
+ * `revision_status IS NULL → 'requested'` atomically and 409s the loser before it can ever reach
+ * this code (that 409 is the route's own pre-existing behaviour).
+ *
  * THE NEGATIVE: C1–C4 FAIL on `origin/main`'s copy of `ready-made-purchase.service.ts`, which
  * spreads the source row minus four names.
  *
@@ -63,8 +83,17 @@ const ids = {
   event: `rmc-${RUN}-event`,
   loadedItem: `rmc-${RUN}-item-loaded`,
   plainItem: `rmc-${RUN}-item-plain`,
+  // R3's own listing + purchase: the buyer/listing UNIQUE index (idx_rmp_buyer_trip_active) means
+  // a second LIVE purchase of the same listing by the same buyer is not a state the schema holds.
+  listingB: `rmc-${RUN}-listing-b`,
+  purchaseB: `rmc-${RUN}-purchase-b`,
+  // `ready_made_trips.source_trip_id` is UNIQUE (idx_rmt_source_trip) — one listing per source
+  // trip — so listing B needs a source trip of its own.
+  sourceTripB: `rmc-${RUN}-src-trip-b`,
+  plainItemB: `rmc-${RUN}-item-plain-b`,
 };
 let cloneTripId: string | null = null;
+let cloneTripIdB: string | null = null;
 
 // ── Disposable-DB guard (identical posture to reconciliation-detection.db.test.ts) ────────────
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -169,8 +198,23 @@ before(async () => {
 });
 
 after(async () => {
-  await db.execute(sql`DELETE FROM expert_earnings WHERE reference_id = ${ids.purchase}`).catch(() => {});
-  await db.execute(sql`DELETE FROM platform_revenue WHERE source_id = ${ids.purchase}`).catch(() => {});
+  await db.execute(sql`DELETE FROM notifications WHERE user_id IN (${ids.author}, ${ids.buyer})`).catch(() => {});
+  await db.execute(sql`DELETE FROM email_outbox WHERE to_email IN (${`rmc-${RUN}-a@t.test`}, ${`rmc-${RUN}-b@t.test`})`).catch(() => {});
+  for (const t of [cloneTripIdB]) {
+    if (!t) continue;
+    await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${t}`).catch(() => {});
+    await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${t}`).catch(() => {});
+    await db.execute(sql`DELETE FROM trip_collaborators WHERE trip_id = ${t}`).catch(() => {});
+  }
+  await db.execute(sql`DELETE FROM expert_earnings WHERE reference_id IN (${ids.purchase}, ${ids.purchaseB})`).catch(() => {});
+  await db.execute(sql`DELETE FROM platform_revenue WHERE source_id IN (${ids.purchase}, ${ids.purchaseB})`).catch(() => {});
+  await db.execute(sql`DELETE FROM ready_made_purchases WHERE id = ${ids.purchaseB}`).catch(() => {});
+  await db.execute(sql`DELETE FROM ready_made_trips WHERE id = ${ids.listingB}`).catch(() => {});
+  if (cloneTripIdB) await db.execute(sql`DELETE FROM trips WHERE id = ${cloneTripIdB}`).catch(() => {});
+  await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${ids.sourceTripB}`).catch(() => {});
+  await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${ids.sourceTripB}`).catch(() => {});
+  await db.execute(sql`DELETE FROM trip_collaborators WHERE trip_id = ${ids.sourceTripB}`).catch(() => {});
+  await db.execute(sql`DELETE FROM trips WHERE id = ${ids.sourceTripB}`).catch(() => {});
   if (cloneTripId) {
     await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${cloneTripId}`).catch(() => {});
     await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${cloneTripId}`).catch(() => {});
@@ -302,4 +346,182 @@ test("C7: every itinerary_items column is decided — carried, or excluded with 
     itineraryItemColumnNames().length,
     "the two lists partition the table exactly once — no column named twice",
   );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// R1–R4 — WHAT THE RAIL SAYS OUT LOUD (punchlist R-5, ledger 2026-09-14-readymade-notifications)
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+import {
+  readyMadeDeliveredDedupeKey,
+  readyMadeRevisionDedupeKey,
+  notifyExpertOfReadyMadeRevisionRequest,
+} from "../services/ready-made-notifications.service";
+
+/** Bell rows carrying this purchase's delivery dedupe key, read back in the DB's own names. */
+async function deliveryNotifications(purchaseId: string): Promise<any[]> {
+  const r = await db.execute(sql`
+    SELECT user_id, type, title, message, related_id, related_type, data, dedupe_key
+    FROM notifications WHERE dedupe_key = ${readyMadeDeliveredDedupeKey(purchaseId)}
+  `);
+  return r.rows as any[];
+}
+
+/** Outbox rows for this purchase, by the metadata the notifier stamps (never by subject text). */
+async function outboxFor(purchaseId: string, emailType: string): Promise<any[]> {
+  const r = await db.execute(sql`
+    SELECT email_type, to_email, subject, html, text_body, metadata
+    FROM email_outbox
+    WHERE email_type = ${emailType} AND metadata->>'purchaseId' = ${purchaseId}
+  `);
+  return r.rows as any[];
+}
+
+test("R1: the fulfilment tells the buyer exactly once — one bell row, one outbox email", async () => {
+  // THE R-5 NEGATIVE. Before this lane the ONLY notification anywhere on the ready-made rail was
+  // an admin row on a buyer CONCERN: a purchase could be captured, cloned and delivered in silence.
+  const rows = await deliveryNotifications(ids.purchase);
+  assert.equal(rows.length, 1, "DB FACT: exactly one buyer notification for the delivered purchase");
+  const n = rows[0];
+  assert.equal(n.user_id, ids.buyer, "it goes to the BUYER, never the author");
+  assert.equal(n.type, "ready_made_purchase");
+  assert.equal(n.related_id, ids.purchase);
+  assert.equal(n.related_type, "ready_made_purchase");
+  assert.equal(n.data?.tripId, cloneTripId, "the bell row deep-links to the buyer's own clone");
+  assert.equal(n.data?.workspacePath, `/plans/${cloneTripId}`,
+    "the slip is where a ready-made purchase lands (ledger 2026-08-22-readymade-slip-delivery)");
+
+  const mail = await outboxFor(ids.purchase, "ready_made_purchase_delivered");
+  assert.equal(mail.length, 1, "DB FACT: exactly one outbox row — the durable LD 26 rail, not a raw send");
+  const m = mail[0];
+  assert.equal(m.to_email, `rmc-${RUN}-b@t.test`, "addressed to the buyer");
+  assert.equal(m.metadata?.tripId, cloneTripId);
+
+  // §13 — WHAT THE COPY CLAIMS, AND WHAT IT MUST NOT. The buyer has an editable PLAN on
+  // PLACEHOLDER dates; nothing in it is booked (the clone deliberately carries no booking linkage
+  // at all — C2 above). Calling it a finished trip, or implying bookings exist, would be the lie
+  // this assertion exists to prevent. D-1 in docs/PUNCHLIST.md is open on exactly this question.
+  const body = `${m.subject}\n${m.text_body}`.toLowerCase();
+  assert.ok(body.includes("placeholder dates"), "the copy says the dates are placeholders");
+  assert.ok(body.includes("nothing in the plan is booked yet"), "the copy says nothing is booked");
+  for (const forbidden of ["finished trip", "your trip is booked", "we have booked", "confirmed booking"]) {
+    assert.ok(!body.includes(forbidden), `the copy must never say "${forbidden}"`);
+  }
+
+  // §14: the amount is the PURCHASE ROW's own recorded number, never recomputed and never the
+  // listing's price today. The fixture row records 12500 cents.
+  assert.ok(m.text_body.includes("USD 125.00"),
+    "the email states what the purchase row records was paid, formatted from that row alone");
+});
+
+test("R2: a replayed fulfilment adds no second notification and no second email", async () => {
+  // The webhook recovery path (ledger 2026-09-12-readymade-recovery-path) drives the SAME
+  // fulfilment as the buyer's own confirm, and the earning retry (V-3c) re-enters it deliberately.
+  // The atomic `paid → cloned` claim is the idempotency basis: a re-run returns at `cloned` and
+  // never reaches the notifier at all.
+  const { fulfillReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const replay = await fulfillReadyMadePurchase(ids.purchase);
+  assert.equal(replay.alreadyFulfilled, true, "fixture: the replay is the re-entrant path");
+  assert.equal(replay.cloneTripId, cloneTripId, "and it returns the SAME clone (no second trip)");
+
+  assert.equal((await deliveryNotifications(ids.purchase)).length, 1, "DB FACT: still exactly one bell row");
+  assert.equal((await outboxFor(ids.purchase, "ready_made_purchase_delivered")).length, 1,
+    "DB FACT: still exactly one email — a buyer is never told twice they bought once");
+});
+
+test("R3: a notification writer that throws never fails the purchase", async () => {
+  // §15b: an ancillary effect may not break the operation that authorizes it. The money is already
+  // captured and the clone already committed when the notifier runs; a bell-row failure must cost
+  // the buyer nothing.
+  const { storage } = await import("../storage");
+  const original = (storage as any).createNotificationOnce;
+  (storage as any).createNotificationOnce = async () => {
+    throw new Error("simulated notifications-table failure");
+  };
+  try {
+    await db.execute(sql`
+      INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
+      VALUES (${ids.sourceTripB}, ${ids.author}, 'Ready-made source trip B', 'Kyoto',
+              CURRENT_DATE + 60, CURRENT_DATE + 64)
+    `);
+    await db.execute(sql`
+      INSERT INTO itinerary_items (id, trip_id, title, day_number, sort_order, routing_status)
+      VALUES (${ids.plainItemB}, ${ids.sourceTripB}, 'Fushimi Inari at dusk', 1, 0, 'in_planning')
+    `);
+    await db.execute(sql`
+      INSERT INTO ready_made_trips (id, author_id, source_trip_id, market, title, duration_days, price_cents, status)
+      VALUES (${ids.listingB}, ${ids.author}, ${ids.sourceTripB}, 'Kyoto', 'Clone fixture listing B', 5, 12500, 'approved')
+    `);
+    await db.execute(sql`
+      INSERT INTO ready_made_purchases (id, buyer_id, ready_made_trip_id, price_paid_cents, stripe_payment_intent_id, status)
+      VALUES (${ids.purchaseB}, ${ids.buyer}, ${ids.listingB}, 12500, ${`pi_${RUN}_clone_b`}, 'paid')
+    `);
+
+    const { fulfillReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+    const result = await fulfillReadyMadePurchase(ids.purchaseB);
+    cloneTripIdB = result.cloneTripId;
+
+    assert.ok(cloneTripIdB, "DB FACT: the buyer still received their clone trip");
+    assert.equal(result.alreadyFulfilled, false, "the claim was still won");
+    const st = await db.execute(sql`SELECT status FROM ready_made_purchases WHERE id = ${ids.purchaseB}`);
+    assert.equal((st.rows[0] as any).status, "cloned", "DB FACT: the purchase is still promoted");
+    const items = await db.execute(sql`SELECT count(*)::int AS n FROM itinerary_items WHERE trip_id = ${cloneTripIdB}`);
+    assert.equal((items.rows[0] as any).n, 1, "and the whole plan arrived");
+  } finally {
+    (storage as any).createNotificationOnce = original;
+  }
+
+  // And nothing half-written: no bell row, and — because the row IS this send's exactly-once
+  // marker — no email either. An email with no marker behind it is one nothing can stop repeating.
+  assert.equal((await deliveryNotifications(ids.purchaseB)).length, 0);
+  assert.equal((await outboxFor(ids.purchaseB, "ready_made_purchase_delivered")).length, 0);
+});
+
+test("R4: a revision request notifies the selling expert exactly once", async () => {
+  // See the file header for this case's stated negative space: it drives the notifier, not the
+  // route. The ROUTE's once-ness is its own atomic `revision_status IS NULL` claim, which 409s a
+  // second request before this code is reached.
+  assert.ok(cloneTripId, "fixture: the buyer's clone exists");
+  const first = await notifyExpertOfReadyMadeRevisionRequest({
+    purchaseId: ids.purchase,
+    expertUserId: ids.author,
+    cloneTripId: cloneTripId!,
+    listingTitle: "Clone fixture listing",
+    note: "Could we swap day 2 for something indoors?",
+  });
+  assert.equal(first.notified, true);
+
+  const rows = await db.execute(sql`
+    SELECT user_id, type, title, message, related_id, data
+    FROM notifications WHERE dedupe_key = ${readyMadeRevisionDedupeKey(ids.purchase)}
+  `);
+  assert.equal(rows.rows.length, 1, "DB FACT: exactly one expert notification");
+  const n = rows.rows[0] as any;
+  assert.equal(n.user_id, ids.author, "it goes to the SELLING EXPERT, never the buyer");
+  assert.equal(n.type, "ready_made_revision_requested");
+  assert.equal(n.related_id, ids.purchase);
+  assert.equal(n.data?.workspacePath, `/expert/workspace/${cloneTripId}`,
+    "the expert's own surface — never the traveler's plan view");
+  assert.ok(String(n.message).includes("swap day 2"), "the buyer's own words ride along");
+
+  const mail = await outboxFor(ids.purchase, "ready_made_revision_requested");
+  assert.equal(mail.length, 1, "DB FACT: exactly one expert email");
+  assert.equal((mail[0] as any).to_email, `rmc-${RUN}-a@t.test`, "addressed to the author");
+
+  // Called again — the dedupe key is the guard, and the email is gated on the insert.
+  const second = await notifyExpertOfReadyMadeRevisionRequest({
+    purchaseId: ids.purchase,
+    expertUserId: ids.author,
+    cloneTripId: cloneTripId!,
+    listingTitle: "Clone fixture listing",
+    note: "Could we swap day 2 for something indoors?",
+  });
+  assert.equal(second.notified, false, "the second pass truthfully reports it wrote nothing");
+  assert.equal(second.emailed, false, "and therefore sends no second email");
+  const again = await db.execute(sql`
+    SELECT count(*)::int AS n FROM notifications WHERE dedupe_key = ${readyMadeRevisionDedupeKey(ids.purchase)}
+  `);
+  assert.equal((again.rows[0] as any).n, 1, "DB FACT: still exactly one expert notification");
+  assert.equal((await outboxFor(ids.purchase, "ready_made_revision_requested")).length, 1,
+    "DB FACT: still exactly one expert email");
 });
