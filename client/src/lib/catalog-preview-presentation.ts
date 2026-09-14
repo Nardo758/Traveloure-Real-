@@ -12,6 +12,9 @@
  * renders as absence (a caller-side `null`/omission), never a guessed placeholder.
  */
 import { PLACE_ANCHORED_METHODS } from "@shared/service-fundamentals";
+// THE ONE price-unit derivation (§18 rule 1, ledger `2026-09-14-price-unit-one-derivation`).
+// This module used to carry its own copy; the suffix spellings it returned are unchanged.
+import { priceUnitSuffix } from "./price-unit";
 
 // ─── location pin chip (top-left of the photo) ──────────────────────────────────────────
 
@@ -102,14 +105,6 @@ export interface PreviewPriceDisplay {
   quote: boolean;
 }
 
-function priceUnitSuffix(priceType?: string | null, pricingUnit?: string | null): string | null {
-  if (pricingUnit === "per_night") return "/night";
-  if (priceType === "hourly") return "/hr";
-  if (priceType === "per_event") return "/event";
-  if (priceType === "per_person") return "/person";
-  return null;
-}
-
 export function derivePreviewPrice(input: PreviewPriceInput): PreviewPriceDisplay {
   const hidden = input.showPrice === false;
   const raw = input.price;
@@ -124,7 +119,7 @@ export function derivePreviewPrice(input: PreviewPriceInput): PreviewPriceDispla
   return {
     hidden,
     text: isQuoteTier ? `From ${formatted}` : formatted,
-    unit: priceUnitSuffix(input.priceType, input.pricingUnit),
+    unit: priceUnitSuffix({ priceType: input.priceType, pricingUnit: input.pricingUnit }),
     quote: isQuoteTier,
   };
 }

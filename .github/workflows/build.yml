@@ -2167,6 +2167,13 @@ jobs:
       # `resolveBuyAction` (see the gap note in that file), so P5's labels must still hold exactly.
       - name: Catalog preview presentation pins
         run: npx tsx --test client/src/lib/__tests__/catalog-preview-presentation.test.ts
+      # THE ONE price-unit derivation (ledger `2026-09-14-price-unit-one-derivation`). N1-N5 are
+      # the ones that matter: an absent, unrecognized or model-only input derives NOTHING, so no
+      # surface can be handed a unit to print for a fact it does not have (§13) — the listing page
+      # labelled a `per_person` listing "per service" because its local chain had a catch-all.
+      # P6-P9 pin the exact spellings the four surfaces rendered before the module existed.
+      - name: Price-unit derivation pins
+        run: npx tsx --test client/src/lib/__tests__/price-unit.test.ts
 
   confirm-honesty:
     name: confirm-honesty (§13/§18c — transport-confirm-timing · confirmation-code-is-the-server-s · transport-status-self-report-gate · delete-dead-transport-status)
