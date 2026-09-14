@@ -32,6 +32,14 @@
  *     two of them. The other two are declared below as `null` with the reason, and reported on
  *     `unaskedSteps` rather than dropped silently, so the omission is a stated fact and a lane
  *     that builds the step has one entry to flip.
+ *   · A PAYMENT CLAIM IS NOT MADE WHERE NO PAYMENT HAPPENS. Ledger
+ *     `2026-09-14-direct-booking-panel-conditioned`, punchlist V-20: the page's Direct-Booking
+ *     trust panel asserted "Payment is processed securely through Traveloure" UNCONDITIONALLY,
+ *     directly beneath the request note that says nothing is charged — two adjacent contradictory
+ *     sentences on every request listing, which is all 67 of production's. `platformCharge` and
+ *     `serviceDetailTrustPanel` below put that claim behind the descriptor's own landing store,
+ *     and the non-charge branch makes NO payment claim at all rather than a softer one (a third
+ *     claim about how a provider takes money is one nobody here is in a position to make).
  *
  * NEGATIVE SPACE (§18d). It maps a descriptor to controls; it never fetches one, never builds one,
  * and never decides whether a control is ENABLED — vacation mode (`away`) and a room's stay
@@ -140,6 +148,16 @@ export interface ServiceDetailBuyRender {
   unrenderedKinds: BuyActionKind[];
   /** True when no buy control renders at all. */
   noBuyControl: boolean;
+  /**
+   * THIS ACTION PUTS A PLATFORM CHARGE IN ITS PATH — read off the descriptor's OWN money
+   * statement, `landing.store === "checkout"`, and never re-derived from `bookingMode` or a price
+   * on the page (§18 rule 1; a second "is this instant?" test is exactly the drift this whole
+   * module exists to stop). It is coincident with the `book` control today by the resolver's own
+   * table — rows 12 and 13 are the only ones that land on `checkout`, and they are the only ones
+   * whose primary is `book` — but the LANDING is what the trust panel's sentence is about, so the
+   * landing is what it reads. An absent descriptor yields `false`: NOT STATED is never a charge.
+   */
+  platformCharge: boolean;
 }
 
 const EMPTY: Omit<ServiceDetailBuyRender, "refusal"> = {
@@ -151,6 +169,7 @@ const EMPTY: Omit<ServiceDetailBuyRender, "refusal"> = {
   unaskedSteps: [],
   unrenderedKinds: [],
   noBuyControl: true,
+  platformCharge: false,
 };
 
 /**
@@ -223,5 +242,46 @@ export function serviceDetailBuyRender(action: BuyAction | undefined | null): Se
     unaskedSteps,
     unrenderedKinds,
     noBuyControl,
+    platformCharge: action.landing.store === "checkout",
   };
+}
+
+// ─── The trust panel's heading and its one claim ──────────────────────────────────────────────
+
+/** The panel's words when the action really does land on a platform checkout. */
+export const DIRECT_BOOKING_PANEL_HEADING = "Direct Booking";
+export const DIRECT_BOOKING_PANEL_CLAIM =
+  "You're booking directly with the provider. Payment is processed securely through Traveloure.";
+
+/**
+ * The panel's heading when it makes no payment claim. It names only what the panel then still
+ * carries — the provider's verification lines, the meeting point, the pickup address, the
+ * transport signal — all of which are true of a request listing as much as a bookable one.
+ */
+export const PROVIDER_DETAILS_PANEL_HEADING = "Provider details";
+
+export interface ServiceDetailTrustPanel {
+  heading: string;
+  /**
+   * The platform-payment sentence, or `null` when this action mints no platform charge. §13: the
+   * non-charge branch omits the claim, it does NOT replace it with a gentler one — what a provider
+   * does about money outside our checkout is not a fact this page holds.
+   */
+  claim: string | null;
+}
+
+/**
+ * Decide the trust panel's heading and whether it may state the payment claim.
+ *
+ * ONE DECISION, TAKEN HERE. The page renders the result and holds neither the condition nor the
+ * copy, so the panel cannot drift back into asserting a charge on a listing the resolver routes to
+ * a conversation. It reads `platformCharge` and nothing else — no price, no `bookingMode`, no
+ * product shape.
+ */
+export function serviceDetailTrustPanel(
+  render: Pick<ServiceDetailBuyRender, "platformCharge">,
+): ServiceDetailTrustPanel {
+  return render.platformCharge
+    ? { heading: DIRECT_BOOKING_PANEL_HEADING, claim: DIRECT_BOOKING_PANEL_CLAIM }
+    : { heading: PROVIDER_DETAILS_PANEL_HEADING, claim: null };
 }

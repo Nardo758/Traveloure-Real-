@@ -22,8 +22,13 @@
  *   V7        the ask steps: performed ones rendered in order, unperformed ones DECLARED
  *   V8        every refusal reason has a distinct, non-empty sentence
  *   V9        a kind this page cannot render is named, not drawn as silence
- *   S1-S3     the shipped page: it calls the mapper, authors no buy verb, and the three OTHER
- *             `ld23-buy-action-gap` authors are untouched (file-SET scan, comments stripped)
+ *   V10-V12   V-20 (ledger `2026-09-14-direct-booking-panel-conditioned`): the Direct-Booking
+ *             trust panel's payment claim follows the descriptor's landing store, so a REQUEST
+ *             listing makes no payment claim and the two adjacent contradictory sentences
+ *             production QA found on 2026-09-13 cannot both render
+ *   S1-S4     the shipped page: it calls the mapper, authors no buy verb, holds no copy of the
+ *             payment claim, and the three OTHER `ld23-buy-action-gap` authors are untouched
+ *             (file-SET scan, comments stripped)
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -41,8 +46,12 @@ import {
   BUY_ACTION_NOT_STATED_SENTENCE,
   BUY_ACTION_UNRENDERABLE_SENTENCE,
   BUY_REFUSAL_SENTENCE,
+  DIRECT_BOOKING_PANEL_CLAIM,
+  DIRECT_BOOKING_PANEL_HEADING,
+  PROVIDER_DETAILS_PANEL_HEADING,
   SERVICE_DETAIL_ASK_LABEL,
   serviceDetailBuyRender,
+  serviceDetailTrustPanel,
 } from "../service-buy-action";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +64,8 @@ const stripComments = (src: string) =>
 const codeClient = (rel: string) => stripComments(readClient(rel));
 
 const GUEST: BuyActionBuyer = { principal: "guest", plans: "none" };
+/** Same buyer as `GUEST`, named where the point of the case is that they hold no plan. */
+const GUEST_NO_PLANS: BuyActionBuyer = GUEST;
 const MEMBER: BuyActionBuyer = { principal: "member", plans: "one" };
 
 /** `archetype-fixture-p1`'s shape: in-person, priced, `instant`, with a published calendar. */
@@ -194,6 +205,65 @@ describe("service detail — the buy controls are the resolver's", () => {
     assert.deepEqual(r.unrenderedKinds, ["plan_with"]);
     assert.equal(r.refusal, BUY_ACTION_UNRENDERABLE_SENTENCE);
   });
+
+  // ── V-20: the trust panel's payment claim ───────────────────────────────────────────────────
+  // Production QA (2026-09-13) read two adjacent sentences on `/services/:id`: the request note
+  // "Nothing is booked and nothing is charged here", and directly beneath it "Payment is processed
+  // securely through Traveloure" — the second rendered unconditionally and never reading the
+  // resolved action. Every one of production's 67 listings takes the request branch, so the claim
+  // was false on all of them. These three pin that the claim now follows the descriptor.
+
+  it("V10 a REQUEST listing makes no payment claim, and does not contradict its own request note", () => {
+    for (const row of [P5, p1({ hasPublishedAvailability: false }), p1({ hasPrice: false })]) {
+      const r = render(row);
+      assert.equal(r.request?.kind, "request_to_book", "fixture must take the request branch");
+      assert.equal(r.platformCharge, false);
+      const panel = serviceDetailTrustPanel(r);
+      assert.equal(panel.claim, null, "a request listing must claim no payment");
+      assert.equal(panel.heading, PROVIDER_DETAILS_PANEL_HEADING);
+      // §13: the honest branch OMITS the claim — it does not soften it into a second, different
+      // assertion about how the provider takes money.
+      assert.doesNotMatch(panel.heading, /payment|pay|charge|secure/i);
+    }
+  });
+
+  it("V11 a listing that really does land on the platform checkout keeps the claim", () => {
+    // Row 12 (instant + scheduled + published calendar) and row 13 (instant + pdf) are the only
+    // two the resolver lands on `checkout`, and they are exactly the two whose primary is `book`.
+    for (const row of [p1(), p1({ deliveryMethod: "pdf", hasPublishedAvailability: null })]) {
+      const r = render(row);
+      assert.equal(r.book?.kind, "book", "fixture must take a Book branch");
+      assert.equal(r.platformCharge, true);
+      const panel = serviceDetailTrustPanel(r);
+      assert.equal(panel.heading, DIRECT_BOOKING_PANEL_HEADING);
+      assert.equal(panel.claim, DIRECT_BOOKING_PANEL_CLAIM);
+      assert.match(panel.claim!, /Payment is processed securely/);
+    }
+  });
+
+  it("V12 §13 — a hidden, an add-only and an ABSENT descriptor all claim no payment", () => {
+    // `hidden` (row 1) lands nowhere; `info_only` (row 10) and the fallback (row 14) land on a
+    // plan or the guest cart, which is not a charge on this page either; an absent descriptor is
+    // NOT STATED, which is never a charge.
+    const cases = [
+      render(p1({ bookingMode: "hidden" })),
+      render(p1({ bookability: "info_only" })),
+      render(p1({ bookingMode: null })),
+      render(p1(), GUEST_NO_PLANS),
+      serviceDetailBuyRender(undefined),
+    ];
+    for (const r of cases) {
+      const panel = serviceDetailTrustPanel(r);
+      if (r.platformCharge) {
+        // A guest's Book still lands on `checkout`; it is the ADD that lands in the guest cart.
+        assert.equal(panel.claim, DIRECT_BOOKING_PANEL_CLAIM);
+      } else {
+        assert.equal(panel.claim, null);
+        assert.equal(panel.heading, PROVIDER_DETAILS_PANEL_HEADING);
+      }
+    }
+    assert.equal(serviceDetailBuyRender(undefined).platformCharge, false);
+  });
 });
 
 describe("service detail — the shipped page authors no buy verb", () => {
@@ -233,5 +303,21 @@ describe("service detail — the shipped page authors no buy verb", () => {
       !readClient(PAGE).includes("ld23-buy-action-gap"),
       "the service detail page is no longer a buy-button author and needs no gap marker",
     );
+  });
+
+  it("S4 the page holds no copy of the payment claim and renders the panel through the decider", () => {
+    const src = codeClient(PAGE);
+    // The claim now lives in `@/lib/service-buy-action` and reaches the page only through
+    // `serviceDetailTrustPanel`, so the page CANNOT render it unguarded. A literal left behind
+    // here would be a second author of the same sentence (§18 rule 1) and the exact shape of the
+    // defect V-20 records.
+    for (const literal of ["Payment is processed securely", "Direct Booking"]) {
+      assert.ok(!src.includes(literal), `the page still authors the trust panel copy: ${literal}`);
+    }
+    assert.ok(src.includes("serviceDetailTrustPanel"), "the panel copy must come from the decider");
+    assert.ok(src.includes("trustPanel.claim"), "the claim must render only when the decider gives one");
+    assert.ok(src.includes("buy.platformCharge"), "the panel must read the descriptor's landing");
+    // And the panel keeps its addressable container.
+    assert.ok(readClient(PAGE).includes('data-testid="section-direct-booking"'));
   });
 });
