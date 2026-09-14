@@ -63,7 +63,7 @@ import { addedTitle } from "@/lib/plan-vocabulary";
 // `addLabel` is deliberately no longer imported, because the ADD button's words are the
 // descriptor's (§18 rule 1 — a second opinion about which verb to show is how the page came to
 // offer purchases the server refuses). `addedTitle` stays: a toast is not a buy button.
-import { serviceDetailBuyRender } from "@/lib/service-buy-action";
+import { serviceDetailBuyRender, serviceDetailTrustPanel } from "@/lib/service-buy-action";
 import type { BuyAction } from "@shared/buy-action";
 import { trackEvent } from "@/lib/analytics";
 // Ledger 2026-09-04-which-event-picker (migration 277; CLAUDE.md Locked Decision 29) — the
@@ -1056,6 +1056,14 @@ export default function ServiceDetailPage() {
   // `isLive: true` for every approved+active listing, so the descriptor cannot say "this provider
   // is away" — the `isAway` disabling below stays exactly as it was, on top of the descriptor.
   const buy = serviceDetailBuyRender(service.buyAction);
+  // THE TRUST PANEL'S PAYMENT CLAIM IS THE DESCRIPTOR'S TOO (ledger
+  // `2026-09-14-direct-booking-panel-conditioned`, punchlist V-20). Until this lane the panel
+  // below asserted "Payment is processed securely through Traveloure" on every listing, including
+  // the request listings whose own note two lines above says nothing is charged. The heading and
+  // the claim are decided ONCE, in `@/lib/service-buy-action`, off `buy.platformCharge` — the
+  // descriptor's `landing.store === "checkout"` — so this page holds neither the condition nor the
+  // copy and cannot drift back into promising a charge the resolver never routes.
+  const trustPanel = serviceDetailTrustPanel(buy);
   // Which of the page's two plan writes an add control drives, and what blocks it. Unchanged
   // behaviour, lifted out of the old room/service button ternary so the descriptor — not the
   // product shape — decides WHICH controls exist, while the shape still decides what they write.
@@ -1873,17 +1881,32 @@ export default function ServiceDetailPage() {
                   </Button>
                 </div>
 
-                {/* Direct-Booking trust panel. */}
+                {/* Trust panel — the payment claim is CONDITIONED on the resolved buy action.
+                    The verification lines below it are true of any listing, so the panel itself
+                    survives a request listing that has one; what does NOT survive is the claim.
+                    With no claim and no line there is nothing left to say, so the panel is omitted
+                    entirely rather than drawn as an empty box (§13). The testid stays on the
+                    container so the panel is still addressable wherever it renders. */}
+                {(trustPanel.claim || hasAnyTrustLine) && (
                 <div className="p-[14px] rounded-[10px] bg-[var(--earn-chip)] text-left" data-testid="section-direct-booking">
                   <div className="flex items-center gap-[7px] text-[13px] font-semibold text-[color:var(--earn-navy)]">
-                    <Handshake className="w-4 h-4 text-[color:var(--earn-teal-ink)]" />
-                    Direct Booking
+                    {buy.platformCharge ? (
+                      <Handshake className="w-4 h-4 text-[color:var(--earn-teal-ink)]" />
+                    ) : (
+                      <Info className="w-4 h-4 text-[color:var(--earn-teal-ink)]" />
+                    )}
+                    {trustPanel.heading}
                   </div>
-                  <p className="text-[11px] text-[color:var(--earn-muted)] leading-[1.45] mt-2 mb-[11px]">
-                    You&apos;re booking directly with the provider. Payment is processed securely through Traveloure.
-                  </p>
+                  {trustPanel.claim && (
+                    <p
+                      className="text-[11px] text-[color:var(--earn-muted)] leading-[1.45] mt-2"
+                      data-testid="text-direct-booking-claim"
+                    >
+                      {trustPanel.claim}
+                    </p>
+                  )}
                   {hasAnyTrustLine && (
-                    <ul className="grid gap-2">
+                    <ul className="grid gap-2 mt-[11px]">
                       {providerVerification?.identityVerified && (
                         <li className="flex items-center gap-[7px] text-[10px] text-[color:var(--earn-ink)]" data-testid="trust-line-identity">
                           <ShieldCheck className="w-[13px] h-[13px] text-[color:var(--earn-teal-ink)] shrink-0" />
@@ -1922,6 +1945,7 @@ export default function ServiceDetailPage() {
                     </ul>
                   )}
                 </div>
+                )}
 
                 <Separator className="my-4 bg-[var(--earn-border)]" />
 
