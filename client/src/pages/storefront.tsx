@@ -60,6 +60,9 @@ import { LanguageMenu } from "@/components/language-menu";
 import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { isPlaceAnchored } from "@shared/service-fundamentals";
+// THE ONE price-unit derivation (§18 rule 1, ledger `2026-09-14-price-unit-one-derivation`).
+// This page used to carry its own `priceUnitLabel`; the phrases it returned are unchanged.
+import { priceUnitPhrase } from "@/lib/price-unit";
 import { isProviderRole } from "@shared/roles";
 import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 import {
@@ -174,14 +177,6 @@ type OfferingCategory = "All" | "Services" | "Ready-Made Trips";
 /** Tab/testid-safe slug for a category label ("Ready-Made Trips" → "ready-made-trips"). */
 function categorySlug(c: OfferingCategory): string {
   return c.toLowerCase().replace(/\s+/g, "-");
-}
-
-function priceUnitLabel(priceType: string | null, pricingUnit: string | null): string | null {
-  if (pricingUnit === "per_night") return "per night";
-  if (priceType === "per_person") return "per person";
-  if (priceType === "hourly") return "per hour";
-  if (priceType === "per_event") return "per event";
-  return null;
 }
 
 function RatingLine({ rating, count }: { rating: string | number | null; count: number | null }) {
@@ -900,7 +895,7 @@ export default function StorefrontPage() {
                   if (isPlaceAnchored({ deliveryMethod: s.deliveryMethod, productShape: s.productShape }) && s.city?.trim()) {
                     chips.push(`📍 ${s.city.trim()}`);
                   }
-                  const unit = priceUnitLabel(s.priceType, s.pricingUnit);
+                  const unit = priceUnitPhrase({ priceType: s.priceType, pricingUnit: s.pricingUnit });
                   const price = s.price ? `$${Number(s.price).toFixed(0)}` : "Custom quote";
                   // Vacation mode: the CTA stops promising "book" while the owner is away —
                   // the listing itself stays visible and clickable (its detail page carries

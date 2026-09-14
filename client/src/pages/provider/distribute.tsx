@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { initialsFromUser } from "@/lib/initials";
 import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
+import { priceUnitSuffix } from "@/lib/price-unit";
 import { ArrowRight, Download, ExternalLink, Copy, MessageCircle, QrCode } from "lucide-react";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────────────────────
@@ -91,19 +92,26 @@ interface OwnerService {
   status: string;
   productShape?: string | null;
   price?: string | number | null;
+  priceType?: string | null;
   pricingUnit?: string | null;
   city?: string | null;
 }
 
-function formatListingPrice(price?: string | number | null, unit?: string | null): string | null {
+// The AMOUNT stays this roster's own formatting; the UNIT comes from the ONE derivation
+// (§18 rule 1, ledger `2026-09-14-price-unit-one-derivation`). The four `pricingUnit` spellings
+// this function used to test for are carried verbatim by that module, so every label it already
+// rendered is unchanged; reading `priceType` as well is what gives a `per_person` listing its
+// "/person" here, exactly as the Catalog preview and the storefront already showed it.
+// §13: a null/empty/zero price still renders NOTHING — a unit is not printed for an amount we
+// do not have.
+function formatListingPrice(
+  price?: string | number | null,
+  priceType?: string | null,
+  pricingUnit?: string | null,
+): string | null {
   if (price == null || price === "" || price === "0" || price === 0) return null;
   const dollars = `$${Number(price).toLocaleString("en-US")}`;
-  if (!unit) return dollars;
-  if (unit === "per_person") return `${dollars}/person`;
-  if (unit === "per_group") return `${dollars}/group`;
-  if (unit === "per_night") return `${dollars}/night`;
-  if (unit === "per_hour")  return `${dollars}/hr`;
-  return dollars;
+  return `${dollars}${priceUnitSuffix({ priceType, pricingUnit }) ?? ""}`;
 }
 
 interface PublishReadiness {
@@ -360,7 +368,7 @@ function StorefrontCard({ services }: { services: OwnerService[] }) {
           </p>
           <div style={{ display: "flex", flexDirection: "column" as const, gap: 8 }}>
             {liveServices.map((s) => {
-              const priceLabel = formatListingPrice(s.price, s.pricingUnit);
+              const priceLabel = formatListingPrice(s.price, s.priceType, s.pricingUnit);
               return (
                 <div
                   key={s.id}
