@@ -633,6 +633,17 @@ async function scanCartRail(args: {
     if (!inScope(r.id)) continue;
     if (!PAID_EQUIVALENT_STATUSES.includes(r.status ?? "")) continue;
 
+    // R-1 (ledger `2026-09-14-transport-confirm-stamps-pi`) — WHY THIS DETECTOR IS UNCHANGED, and
+    // why it must not learn to repair a transport row. Platform-transport bookings confirmed before
+    // that lane carry no PaymentIntent and surface here, correctly: the fact is real, only its cause
+    // was a missing write rather than drift. §19b's posture applies unchanged — DETECTION, never
+    // silent trust and never silent repair — and the ordering-1 recovery that rescues a cart row
+    // cannot reach these: a hosted Checkout Session sets its metadata on the SESSION, so the
+    // PaymentIntent behind a transport booking carries no `bookingIds` for `resolveAndStamp` to
+    // match, and `promotePaidCheckout` keys on `payment_pending`, a state a transport row never
+    // enters. There is therefore no server-verified path from a PaymentIntent back to one of these
+    // rows, and inventing one from a date window and an amount would be exactly the guess this job
+    // refuses everywhere else. They are a human's to reconcile. No backfill was run.
     if (!r.stripePaymentIntentId) {
       exceptions.push({
         rail: "cart",

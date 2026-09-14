@@ -1286,6 +1286,54 @@ jobs:
       - name: Booking-birth provenance (B1–B9)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/booking-birth-provenance.db.test.ts
 
+  transport-payment-intent:
+    name: transport-payment-intent (punchlist R-1; ledger 2026-09-14-transport-confirm-stamps-pi)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # Platform transport confirmed via hosted Stripe Checkout used to reach `confirmed` with
+      # `stripe_payment_intent_id` NULL: the handler wrote `confirmationCode: session.id` and nothing
+      # about the payment. `POST /api/bookings/:id/cancel` gates its refund on that column, so a
+      # refund the policy OWED went status-only, and the drift job raised `booking_confirmed_no_pi`
+      # at CRITICAL for the same rows. The id is now recorded through `checkout-claim.service.ts` —
+      # §19a's SOLE writer of the column — with its own from-state list, because the cart's
+      # `stampAuthorization` keys on `payment_pending`, a state a transport row never enters.
+      #
+      # T1–T3 are the writer (once, replay no-op, terminal refused, catch-up allowed, no overwrite);
+      # T4 is the cancel path before and after; T5/T6 are the §14/§15 shape and N17c's provenance
+      # posture, including the one-writer-file pin over all of server/.
+      - name: Transport PaymentIntent recording (T1–T6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/transport-payment-intent.db.test.ts
+
   ready-made-clone-fields:
     name: ready-made-clone-fields (V-14/V-15; ledger 2026-09-13-clone-carries-content-not-state)
     runs-on: ubuntu-latest

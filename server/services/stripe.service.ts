@@ -29,6 +29,10 @@ import { getStripeSecretKey } from "../utils/stripe-key";
 import { resolveTravelerServiceFee } from "./fee-resolution.service";
 import { coversAction } from "./trip-entitlement.service";
 import { recordTravelerServiceFeeLedger } from "./fee-ledger.service";
+// §19a — `service_bookings.stripe_payment_intent_id` has ONE writer module. The transport rail's
+// stamp lives there beside the cart's (`stampAuthorization`) rather than as a second UPDATE site
+// here; see `stampTransportPaymentIntent`'s docblock for why the two carry different from-states.
+import { stampTransportPaymentIntent } from "./checkout-claim.service";
 
 const key = getStripeSecretKey();
 
@@ -283,11 +287,59 @@ export async function handleStripePaymentSuccess(sessionId: string): Promise<voi
       return;
     }
 
+    // ── The PaymentIntent id, recorded BEFORE the status flip (R-1, ledger
+    //    `2026-09-14-transport-confirm-stamps-pi`) ─────────────────────────────────
+    //
+    // This handler used to write `confirmationCode: session.id` and NOTHING ELSE about the payment,
+    // so a paid transport booking reached `confirmed` with `stripe_payment_intent_id` NULL. Two
+    // consumers key on that column and both were wrong for these rows: `POST /api/bookings/:id/cancel`
+    // gates its refund on `!!booking.stripePaymentIntentId`, so a refund the policy OWED went
+    // status-only; and the drift job raised `booking_confirmed_no_pi` at CRITICAL for every one.
+    //
+    // ORDER IS DELIBERATE. The stamp runs FIRST: a death between the two leaves `pending` + an id
+    // (tolerated by the paid-equivalent invariant, and a replay promotes it), whereas the reverse
+    // leaves `confirmed` + no id — the exact row this lane exists to stop creating.
+    //
+    // §13 — THE ABSENCE IS AN ANSWER. A paid session carrying no `payment_intent` records NOTHING
+    // and says so; no id is derived, guessed or invented from the session id, which is a different
+    // object entirely — the conflation the old `confirmationCode: session.id` write already made.
+    const paymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : (session.payment_intent?.id ?? null);
+
+    if (!paymentIntentId) {
+      console.error(
+        `[transport] paid session ${sessionId} carries no payment_intent — booking=${bookingId} has ` +
+          `no payment id to point at; nothing is invented. Needs a human.`,
+      );
+    } else {
+      const stamp = await stampTransportPaymentIntent(bookingId, paymentIntentId);
+      if (!stamp.stamped && !stamp.alreadyStamped) {
+        console.error(
+          `[transport] REFUSED to record payment_intent=${paymentIntentId} on booking=${bookingId} ` +
+            `(reason="${stamp.refusedReason}", status="${stamp.status}", ` +
+            `existing="${stamp.existingPaymentIntentId ?? "none"}") on paid session ${sessionId} — ` +
+            `detected, never repaired; needs a human.`,
+        );
+      }
+    }
+
     // ── The booking row: atomic conditional, never a check-then-write (§15) ──────────────────────
     const [promotedBooking] = await db
       .update(serviceBookings as any)
       .set({
         status: "confirmed",
+        // INERT, AND RECORDED RATHER THAN QUIETLY REPAIRED (R-1, ledger
+        // `2026-09-14-transport-confirm-stamps-pi`). `service_bookings` has no `confirmation_code`
+        // column — `shared/schema.ts` declares none — and because this UPDATE is written
+        // `serviceBookings as any`, drizzle DROPS the unknown key without complaint, so this line
+        // has never stored anything (the V-14 shape: an `as any` hiding a write that does nothing).
+        // It is LEFT IN PLACE deliberately: whether a transport booking should carry a confirmation
+        // code at all, and whether a CHECKOUT SESSION id is the right value for one, is a
+        // decision-maker's ruling (ledger `2026-09-08-confirmation-code-is-the-server-s` governs the
+        // legacy `bookings` rail, a different table), and deleting the only marker of that intent
+        // would erase the question. `transport-payment-intent.db.test.ts` T1 pins the absence.
         confirmationCode: session.id,
       })
       .where(
@@ -363,9 +415,13 @@ export async function handleStripePaymentSuccess(sessionId: string): Promise<voi
     // Gated on the BOOKING being confirmed — see the header note on §13.
     if (bookingIsConfirmed) {
       try {
-        const stripePaymentRef =
-          typeof session.payment_intent === "string" ? session.payment_intent : null;
-        await recordTravelerServiceFeeLedger({ bookingIds: [bookingId], stripePaymentRef, actor: "transport_confirm" });
+        // ONE derivation of this id per delivery (§18 rule 1) — the same value the stamp above
+        // recorded, never a second read of `session.payment_intent` that could disagree with it.
+        await recordTravelerServiceFeeLedger({
+          bookingIds: [bookingId],
+          stripePaymentRef: paymentIntentId,
+          actor: "transport_confirm",
+        });
       } catch (ledgerErr: any) {
         console.error(`[transport] traveler-fee ledger write failed for booking=${bookingId} (payment CONFIRMED):`, ledgerErr?.message ?? ledgerErr);
       }
