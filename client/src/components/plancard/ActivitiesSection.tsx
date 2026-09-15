@@ -23,6 +23,7 @@ import {
 } from "./plancard-temporal";
 import { BOOKED_TINT, ROUTING_TINTS, tintPillStyle } from "./slip-tokens";
 import { itemOriginChip } from "@/lib/item-origin";
+import { itemKindChipFor } from "@shared/item-kind";
 
 // ── W7 — per-item routing (Trip-Canon Lane 1, Phase 1d) ─────────────────────
 // Governing docs: docs/briefs/RECONCILE_PHASE1_SCOPE.md §1 W7, docs/briefs/ROUTING_STATE_CONTRACT.md.
@@ -136,6 +137,48 @@ export function OriginBadge({ activity }: { activity: PlanCardActivity }) {
       className={isExpert ? PILL_BASE : `${PILL_BASE} border border-border text-muted-foreground bg-transparent`}
       style={isExpert ? tintPillStyle(ROUTING_TINTS.with_expert) : undefined}
       data-testid={`badge-origin-${activity.id}`}
+    >
+      {chip.label}
+    </span>
+  );
+}
+
+/**
+ * THE ITEM KIND CHIP (decision-maker ruling 2026-09-15, punchlist **D-4**, option A; ledger
+ * `2026-09-15-d4-item-kind-contract`). Says HOW this item can be obtained — `included`,
+ * `book separately`, `partner booking`, `recommended`.
+ *
+ * It lives HERE beside `RoutingBadge` and `OriginBadge` because this file is the pill family's one
+ * home (LD 42 D23's placement, followed rather than restated): the slip, the PlanCard full stage
+ * and the Trip Card all mount these three, and a surface that wants the chip mounts this component
+ * instead of writing a second one.
+ *
+ * THE LABELS ARE NOT WRITTEN HERE. The ONE derivation and the ONE label map are
+ * `itemKind` / `itemKindChipFor` (`shared/item-kind.ts`, §18 rule 1); this component only renders
+ * what they return. The kind is DERIVED on every render and stored nowhere, which is what keeps it
+ * from drifting from what checkout actually charges.
+ *
+ * WHY `booking?.id` AND NOT `routingStatus`: presence of a resolved booking row IS the booked state
+ * (ROUTING_STATE_CONTRACT §2, the same rule `RoutingBadge` above applies), and `PlanCardActivity`
+ * carries the booking object rather than the raw `booking_id`. An item whose booking the payload
+ * did not resolve therefore reads as the WEAKER claim (`book separately`), never as bought.
+ *
+ * TONE: all four render as the NEUTRAL outline pill. The tone name the map returns is deliberately
+ * not turned into a colour here — the routing pill beside it already carries this row's colour, and
+ * a second tinted pill would make one item wear two competing accents. No hex appears in this file
+ * (the token layer's rule), and none was added to the token layer for this chip.
+ */
+export function ItemKindBadge({ activity }: { activity: PlanCardActivity }) {
+  const chip = itemKindChipFor({
+    bookingId: activity.booking?.id ?? null,
+    providerServiceId: activity.providerServiceId ?? null,
+    affiliateProductId: activity.affiliateProductId ?? null,
+  });
+  return (
+    <span
+      className={`${PILL_BASE} border border-border text-muted-foreground bg-transparent`}
+      title={chip.blurb}
+      data-testid={`badge-kind-${chip.kind}-${activity.id}`}
     >
       {chip.label}
     </span>
@@ -780,6 +823,7 @@ export function ActivitiesSection({
                     return (
                       <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`routing-row-${a.id}`}>
                         <RoutingBadge activity={a} />
+                        <ItemKindBadge activity={a} />
                         {hasActions && (
                           <RoutingActions
                             tripId={tripId}

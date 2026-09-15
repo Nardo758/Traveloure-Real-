@@ -60,6 +60,7 @@ import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { planTypeDisplay } from "@shared/ready-made-plan-types";
+import { ITEM_KINDS, itemKindChip } from "@shared/item-kind";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import {
   ArrowLeft,
@@ -93,7 +94,18 @@ interface DetailListing {
   heroImageUrl: string | null;
   heroImageMeta: { photographer?: string; profileUrl?: string } | null;
   badge: string | null;
-  insideCounts: { days?: number; items?: number; byType?: Record<string, number> } | null;
+  insideCounts: {
+    days?: number;
+    items?: number;
+    byType?: Record<string, number>;
+    /**
+     * D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`) — the approval-time count
+     * of the build's items BY KIND (included / bookable_separately / external / recommended),
+     * derived by the ONE shared derivation at approval. ABSENT on every listing approved before
+     * that lane, and an absent snapshot is rendered as NOTHING rather than as zeros (§13).
+     */
+    byKind?: Record<string, number>;
+  } | null;
   authorName: string;
   /** MP-2: the author's storefront handle. Null when unclaimed → no link rendered. */
   authorHandle: string | null;
@@ -290,6 +302,11 @@ export default function ReadyMadeDetailPage() {
   }
 
   const inside = listing.insideCounts;
+  // D-4: the kinds present in the approval snapshot, in the ruling's own precedence order, with
+  // absent/zero entries dropped (§13 — "we never counted" and "none of these" are both silence
+  // here, and neither is rendered as a zero). The labels are the ONE map's, never restated.
+  const kindCounts = ITEM_KINDS.map((kind) => ({ chip: itemKindChip(kind)!, n: inside?.byKind?.[kind] ?? 0 }))
+    .filter((row) => row.n > 0);
   const price = listing.priceCents === null ? null : (listing.priceCents / 100).toFixed(2);
 
   // F4: this page is the STORE channel surface — resolve the distribution format from the
@@ -521,6 +538,30 @@ export default function ReadyMadeDetailPage() {
                 </div>
               ) : (
                 <p className="rounded-[8px] bg-[#f5f7f8] p-[14px] text-[#738091] text-[12px]">Contents are finalized at approval.</p>
+              )}
+              {/* HOW MUCH OF THIS PLAN IS BOOKABLE, SAID BEFORE THE PURCHASE (decision-maker ruling
+                  2026-09-15, punchlist D-4; ledger `2026-09-15-d4-item-kind-contract`). D-3 said
+                  the price buys the plan and the bookings inside it are separate; this says how
+                  many of them there are, and how many items are a recommendation with nothing to
+                  book at all. Labels come from the ONE map (@shared/item-kind) — this page writes
+                  none of its own.
+
+                  §13 — AN ABSENT SNAPSHOT DRAWS NOTHING. `byKind` is written at the approval
+                  transition and there is NO backfill, so a listing approved before that lane has
+                  no such count; rendering it as zeros would claim a plan holds no bookable items
+                  when the truth is that nobody counted. Kinds with a zero count are likewise
+                  omitted rather than printed as "0". */}
+              {kindCounts.length > 0 && (
+                <div className="mt-[18px]" data-testid="inside-by-kind">
+                  <p className="text-[#738091] text-[11px] font-bold tracking-[0.06em] uppercase mb-2">
+                    What you can book
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {kindCounts.map(({ chip, n }) => (
+                      <RmCount key={chip.kind} label={chip.label} value={n} />
+                    ))}
+                  </div>
+                </div>
               )}
               {/* D-3: the separation, stated where the contents are counted. A ready-made trip and a
                   service booking are NEVER mixed in one checkout — this price is a digital product

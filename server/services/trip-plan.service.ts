@@ -850,6 +850,26 @@ export async function assembleTripPlan(
       // riding the `full` level only — teaser/preview return long before this builder runs.
       ...((item as any).origin ? { origin: (item as any).origin as string } : {}),
 
+      // D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`): the two LINK columns
+      // the item-kind derivation reads. PRESENT ONLY WHEN THE ROW REALLY NAMES ONE — the same
+      // present-only-when-real posture as `booking`, `userExperienceId`, `origin` and
+      // `affiliateBooking` around them — so an item that names neither serializes exactly as it
+      // did before these keys existed (§13: an absent key means "names none", never a guess).
+      //
+      // READ-ONLY PASS-THROUGH. Nothing here writes either column: `providerServiceId` is written
+      // by the item write rails and `affiliateProductId` by the build-time grounding resolver
+      // (client-settable nowhere — `insertItineraryItemSchema` omits it, §19). Exposing them adds
+      // no write rail and no address: the service id is the one `GET /api/services/:id` already
+      // serves publicly, and the affiliate product id is already published inside
+      // `affiliateBooking.productId` above for agent-bookable items. The affiliate URL is still
+      // never emitted (§16) — only the opaque minted token is, exactly as before.
+      ...((item as any).providerServiceId
+        ? { providerServiceId: (item as any).providerServiceId as string }
+        : {}),
+      ...((item as any).affiliateProductId
+        ? { affiliateProductId: (item as any).affiliateProductId as string }
+        : {}),
+
       // Item 2 Phase 2: the affiliate agent-booking CTA — PRESENT ONLY when the item was grounded
       // to an affiliate_bookable product and a token was minted above (§16/§13, present-only-when-
       // real like `booking`, so every non-affiliate item is byte-identical to before).
