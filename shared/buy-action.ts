@@ -32,10 +32,9 @@
  * charge, no money path is touched here (register §A3 is still open). A partner row never mints a
  * platform charge at all (LD 43(c), §16) — its landing is the agent rail.
  *
- * DEFERRED, DELIBERATELY ABSENT. Rulings 11 (plan work sold as a listing at checkout) and 12 (a
- * consult never requires a plan) are NOT ratified. Nothing here decides either: a listing whose
- * impact class would need one of those answers takes the ordinary listing rows below, and
- * `impactClassFor` is deliberately not consulted — see the note above `resolveBuyAction`.
+ * RULINGS 11 AND 12 ARE NOW RATIFIED (ledger `2026-09-08-rulings-11-12`), AND THIS TABLE STILL
+ * DOES NOT CHANGE — see the note above `resolveBuyAction` for which half of each ruling landed
+ * where, and for the one thing that is still not decided.
  *
  * §13 IS THE LOAD-BEARING HALF. A refusal is a SENTENCE, never a disabled button with no
  * explanation, so `refusal.reason` carries WHY no booking verb is offered. Nothing is invented: no
@@ -228,11 +227,28 @@ function isProviderDeclared(row: BuyActionRow): boolean {
 /**
  * Resolve the buy action for a row and a buyer. FIRST MATCH WINS, in the order §11.5 gives.
  *
- * `impactClassFor` (shared/impact-class.ts) is available and is deliberately NOT consulted: the
- * two classes that would change a landing — `plan_work` (does the checkout sell plan work?) and
- * `consult` (does a consult require a plan?) — are exactly rulings 11 and 12, which register §A4
- * DEFERRED. Reading the class and acting on it would be deciding them here. When they are
- * ratified, this is where they land.
+ * `impactClassFor` (shared/impact-class.ts) is available and is STILL deliberately not consulted.
+ * That was DEFERRAL when this module was written; since ledger `2026-09-08-rulings-11-12` it is a
+ * decision, and the reasons are different for each of the two classes:
+ *
+ *   · `consult` — RULING 12 says a consult never requires a plan. The ordinary listing rows below
+ *     already require none: a consult is bought like any other listing and lands wherever its
+ *     delivery shape says. Consulting the class to reach the behaviour the table already produces
+ *     would be a second statement of one rule (§18 rule 1). So: nothing to do, deliberately.
+ *
+ *   · `plan_work` — RULING 11 says a planning-tier listing bought at checkout GRANTS the seller
+ *     write access to the plan. That is a SERVER-SIDE effect at the authorization stamp
+ *     (`grantPlanWorkAdvisorAccess`, inside `stampAuthorization`'s own transaction) plus a refusal
+ *     at the checkout CLAIM when the purchase names no plan — neither of which is a button or a
+ *     landing. The ruling makes no statement at all about what the CTA should say, and inventing
+ *     one here (refusing a guest, or asking `which_plan` where the table asks none) would be
+ *     deciding something nobody ratified.
+ *
+ * WHAT REMAINS, NAMED (lane `2026-09-15-plan-work-one-rail`): `BuyActionRow` carries neither
+ * `offeringTypeKey` nor `categoryKey`, so this module cannot see an impact class even if it wanted
+ * one — threading them costs a join and a SELECT change at every payload caller
+ * (`buildListingBuyActions` and its four rails). That is worth doing the day a ruling says a
+ * plan-work CTA must differ; it is not worth doing to produce today's behaviour.
  */
 export function resolveBuyAction(row: BuyActionRow, buyer: BuyActionBuyer): BuyAction {
   // ── 1 · Not live, or the provider hid the CTA. No booking verb of any kind. ────────────────

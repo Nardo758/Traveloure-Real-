@@ -290,7 +290,20 @@ test("W1 · the snapshot rides the SAME insert that commits the booking", () => 
   }
 });
 
-test("W2 · nothing UPDATEs the column, and exactly ONE module names it", () => {
+/**
+ * REPAIRED by lane `2026-09-15-plan-work-one-rail` (rulings 11/12), and the repair is the point.
+ *
+ * This pin originally asserted that exactly ONE module NAMED the column, which was true only for as
+ * long as nothing READ it — B1's own note says "B1 records, OC-B2 decides". Ruling 11 is the first
+ * decision to read it (`plan-work-access.service.ts` classifies a booking's committed terms to
+ * decide whether the purchase grants plan write access), so a reader now exists by ratification.
+ *
+ * The INVARIANT the pin exists for is unchanged and is asserted here more precisely: exactly one
+ * module WRITES the column (`storage.ts`, in the same insert that commits the booking — W1), and
+ * NOTHING anywhere updates it afterwards. Readers are allowed and are listed by name, so a fourth
+ * one is still a deliberate edit rather than a silent drift.
+ */
+test("W2 · nothing UPDATEs the column; one module WRITES it and its readers are named", () => {
   const namers: string[] = [];
   for (const rel of moneyFiles()) {
     // The migration registry names the FILE, not the column; it writes nothing.
@@ -300,16 +313,25 @@ test("W2 · nothing UPDATEs the column, and exactly ONE module names it", () => 
   }
   assert.deepEqual(
     namers.sort(),
-    [path.join("server", "storage.ts")],
-    "the one author; a second namer is a second place the terms can be written",
+    [
+      // THE WRITER (W1 proves it stamps inside the insert).
+      path.join("server", "services", "plan-work-access.service.ts"),
+      path.join("server", "storage.ts"),
+    ].sort(),
+    "the one writer plus its named readers; an unlisted namer is a second place the terms can be written",
   );
-  // And neither of them updates it after the fact.
+  // And nothing updates it after the fact — asserted over EVERY namer, reader or writer.
   for (const rel of namers) {
     const src = read(rel);
     assert.equal(
       /set\(\{[^}]*offeringContractSnapshot/s.test(src),
       false,
       `${rel} sets the snapshot on an UPDATE — the terms are committed once, with the row`,
+    );
+    assert.equal(
+      /UPDATE\s+service_bookings[\s\S]{0,400}?offering_contract_snapshot\s*=/i.test(src),
+      false,
+      `${rel} updates the snapshot in raw SQL — the terms are committed once, with the row`,
     );
   }
 });
@@ -325,8 +347,13 @@ test("W3 · the listing→contract-input assembly has ONE implementation and its
     [
       path.join("server", "services", "offering-activation-gate.service.ts"),
       path.join("server", "services", "offering-contract-snapshot.ts"),
-    ],
-    "the gate and the snapshot; a private twin is how one listing gets described two ways",
+      // Lane `2026-09-15-plan-work-one-rail` (ruling 11): the checkout CLAIM's plan-work pre-flight
+      // reads the LIVE listing (no snapshot exists yet at the claim) and must read it the SAME way
+      // the gate and the snapshot do. A THIRD CALLER of the one assembly is what §18 rule 1 asks
+      // for; a private twin here is what it forbids.
+      path.join("server", "services", "plan-work-access.service.ts"),
+    ].sort(),
+    "the gate, the snapshot and the plan-work claim check; a private twin is how one listing gets described two ways",
   );
 
   // And the snapshot classifies through the ONE resolver — it is a caller, not a fifth classifier.

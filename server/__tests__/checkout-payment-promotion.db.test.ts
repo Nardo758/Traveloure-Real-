@@ -27,6 +27,12 @@
  *        both orders (client-then-webhook and webhook-then-client) because a guard that only
  *        holds in one arrival order is not a guard.
  *
+ *   N23  RULING 11 / RULING 12 (ledger `2026-09-08-rulings-11-12`, lane
+ *        `2026-09-15-plan-work-one-rail`) — plan work sold as a listing GRANTS the seller write
+ *        access to the plan at the AUTHORIZATION stamp, inside that stamp's own transaction, and a
+ *        consult grants nothing. Every assertion is a `trip_expert_advisors` row read back from
+ *        the database after `stampAuthorization`.
+ *
  *   N19  late webhook vs a VOIDED row — the TTL sweep already expired the claim. The row is
  *        NOT resurrected (void wins after TTL, ruling 38) and the signal lands in a
  *        RECONCILIATION-EXCEPTION state that is a DB FACT (`booking_details
@@ -55,13 +61,26 @@ import { db } from "../db";
 import {
   CLAIM_EXPIRED_STATUS,
   promotePaidCheckout,
+  stampAuthorization,
 } from "../services/checkout-claim.service";
+// N23 (ruling 11/12): the grant's own module, and the pure composer that builds the snapshot the
+// grant classifies — never a hand-shaped blob, so the suite and the writer cannot drift (§18 rule 1).
+import {
+  isPlanWorkListing,
+  PLAN_WORK_GRANT_STATUS,
+} from "../services/plan-work-access.service";
+import { composeOfferingContractSnapshot } from "../services/offering-contract-snapshot";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
   user: `promo-${RUN}-user`,
   service: `promo-${RUN}-svc`,
   trip: `promo-${RUN}-trip`,
+  // N23: the SELLER of the plan-work listing — a different person from the traveler, because the
+  // advisor row this lane writes is exactly "this OTHER user may now write on your plan".
+  expert: `promo-${RUN}-expert`,
+  planWorkService: `promo-${RUN}-svc-plan`,
+  consultService: `promo-${RUN}-svc-consult`,
 };
 const createdBookingIds: string[] = [];
 const createdItemIds: string[] = [];
@@ -108,6 +127,22 @@ before(async () => {
     INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
     VALUES (${ids.trip}, ${ids.user}, 'Promotion fixture trip', 'Kyoto', CURRENT_DATE + 30, CURRENT_DATE + 35)
   `);
+  // ── N23 fixtures ───────────────────────────────────────────────────────────────────────────
+  // Two REAL listings owned by a real expert, each naming a real `expert_offering_types` row:
+  // `full_itinerary` is the `planning` tier ⇒ impact class `plan_work`; `ask_me_anything` is
+  // `advisory` ⇒ `consult`. The classes are `impactClassFor`'s, never restated here.
+  await db.execute(sql`
+    INSERT INTO users (id, email, first_name, last_name, role)
+    VALUES (${ids.expert}, ${`promo-${RUN}-expert@t.test`}, 'Promo', 'Expert', 'expert')
+  `);
+  await db.execute(sql`
+    INSERT INTO provider_services (id, user_id, service_name, price, delivery_method, expert_offering_type_key)
+    VALUES (${ids.planWorkService}, ${ids.expert}, 'Full itinerary build', '250.00', 'pdf', 'full_itinerary')
+  `);
+  await db.execute(sql`
+    INSERT INTO provider_services (id, user_id, service_name, price, delivery_method, expert_offering_type_key)
+    VALUES (${ids.consultService}, ${ids.expert}, 'Ask me anything', '40.00', 'call', 'ask_me_anything')
+  `);
 });
 
 after(async () => {
@@ -118,8 +153,12 @@ after(async () => {
     await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${id}`).catch(() => {});
   }
   await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${ids.trip}`).catch(() => {});
+  await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${ids.trip}`).catch(() => {});
   await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`).catch(() => {});
-  await db.execute(sql`DELETE FROM provider_services WHERE id = ${ids.service}`).catch(() => {});
+  for (const svc of [ids.service, ids.planWorkService, ids.consultService]) {
+    await db.execute(sql`DELETE FROM provider_services WHERE id = ${svc}`).catch(() => {});
+  }
+  await db.execute(sql`DELETE FROM users WHERE id = ${ids.expert}`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ${ids.user}`).catch(() => {});
 });
 
@@ -148,20 +187,74 @@ async function makeBooking(opts: {
    *  (a uuid `id` column) also sees the id — a non-UUID would be a type error there, not a
    *  realistic no-op. */
   uuidId?: boolean;
+  /** N23: the listing sold. Defaults to the plain fixture service (no offering key, no class). */
+  serviceId?: string;
+  /** N23: the SELLER, i.e. who a plan-work grant would name. Defaults to the traveler fixture. */
+  providerId?: string;
+  /** N23: `null` reproduces a booking that names no plan — ruling 11's precondition failing. */
+  tripId?: string | null;
+  /** N23: the committed `offering_contract_snapshot`. Absent ⇒ NULL = never snapshotted (§13). */
+  snapshot?: unknown;
 }): Promise<string> {
   const id = opts.uuidId ? crypto.randomUUID() : `promo-${RUN}-bk-${createdBookingIds.length}`;
   const details = JSON.stringify(opts.itemId ? { itineraryItemId: opts.itemId } : {});
+  const tripId = opts.tripId === undefined ? ids.trip : opts.tripId;
+  const snapshot = opts.snapshot === undefined ? null : JSON.stringify(opts.snapshot);
   await db.execute(sql`
     INSERT INTO service_bookings (
       id, service_id, traveler_id, provider_id, trip_id, status,
-      total_amount, platform_fee, stripe_payment_intent_id, booking_details, idempotency_key, created_at
+      total_amount, platform_fee, stripe_payment_intent_id, booking_details, idempotency_key, created_at,
+      offering_contract_snapshot
     ) VALUES (
-      ${id}, ${ids.service}, ${ids.user}, ${ids.user}, ${ids.trip}, ${opts.status ?? "payment_pending"},
-      '100.00', '25.00', ${opts.paymentIntentId}, ${details}::jsonb, ${opts.idempotencyKey ?? null}, NOW()
+      ${id}, ${opts.serviceId ?? ids.service}, ${ids.user}, ${opts.providerId ?? ids.user}, ${tripId},
+      ${opts.status ?? "payment_pending"},
+      '100.00', '25.00', ${opts.paymentIntentId}, ${details}::jsonb, ${opts.idempotencyKey ?? null}, NOW(),
+      ${snapshot}::jsonb
     )
   `);
   createdBookingIds.push(id);
   return id;
+}
+
+/**
+ * The snapshot a checkout would have committed for one of the N23 fixture listings, built by the
+ * PRODUCTION composer over the same listing facts `loadOfferingListingInput` reads off the row.
+ * Hand-shaping the blob here would be a second statement of the snapshot's shape (§18 rule 1).
+ */
+function fixtureSnapshot(offeringTypeKey: string, deliveryMethod: string) {
+  return composeOfferingContractSnapshot({
+    listing: {
+      kind: "listing",
+      sellerClass: "expert",
+      deliveryMethod,
+      offeringTypeKey,
+      categoryKey: null,
+      bookingMode: "instant",
+      ownerInstantBooking: true,
+      priceType: null,
+      productShape: null,
+      depositEnabled: null,
+      hasMeetingPoint: false,
+    },
+    cancellationPolicyType: null,
+  });
+}
+
+/** Every advisor row on the fixture trip for one expert. The DB FACT every N23 assertion reads. */
+async function advisorRows(expertUserId: string): Promise<any[]> {
+  const r = await db.execute(sql`
+    SELECT id, status, message FROM trip_expert_advisors
+    WHERE trip_id = ${ids.trip} AND local_expert_id = ${expertUserId}
+  `);
+  return r.rows as any[];
+}
+
+/** Advisor rows for ANY expert on the fixture trip — used to prove a consult grants NOBODY. */
+async function allAdvisorRows(): Promise<any[]> {
+  const r = await db.execute(sql`
+    SELECT local_expert_id, status FROM trip_expert_advisors WHERE trip_id = ${ids.trip}
+  `);
+  return r.rows as any[];
 }
 
 async function bookingRow(id: string): Promise<any> {
@@ -455,4 +548,166 @@ test("N19c: a late signal for a booking stamped with a DIFFERENT PaymentIntent i
   assert.equal(result.exceptions[0]?.reason, "payment_intent_mismatch");
   const row = await bookingRow(bookingId);
   assert.equal(row.status, "payment_pending", "DB FACT: a foreign PI cannot confirm this booking");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// matrix-id: N23 — RULING 11 (plan work grants access at checkout) and RULING 12 (a consult
+// grants nothing). Ledger `2026-09-08-rulings-11-12`; lane `2026-09-15-plan-work-one-rail`.
+//
+// The write lives at the AUTHORIZATION stamp, inside that stamp's own transaction, and goes
+// through the ONE author of `trip_expert_advisors` (`upsertTripAdvisorRow`, LD 32). These
+// assertions are all DB facts read back from that table — never the return value of the grant.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+/** Fixture hygiene: N23 shares one trip, so "exactly one row" must mean "this call made it". */
+async function clearAdvisorRows(): Promise<void> {
+  await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${ids.trip}`);
+}
+
+test("N23a: RULING 11 — a plan-work booking, authorized, grants its seller WRITE access on the plan (exactly one row)", async () => {
+  await clearAdvisorRows();
+  const pi = `pi_${RUN}_n23a`;
+  const bookingId = await makeBooking({
+    paymentIntentId: null,
+    serviceId: ids.planWorkService,
+    providerId: ids.expert,
+    snapshot: fixtureSnapshot("full_itinerary", "pdf"),
+  });
+
+  assert.equal(await stampAuthorization([bookingId], pi), true, "the claim must be stampable");
+
+  const rows = await advisorRows(ids.expert);
+  assert.equal(rows.length, 1, "DB FACT: exactly one advisor row, written by the authorization");
+  assert.equal(
+    rows[0].status,
+    PLAN_WORK_GRANT_STATUS,
+    "the status is the §12 WRITE-access status this rail grants — read from the module, never spelled here",
+  );
+  assert.ok(
+    (rows[0].message ?? "").length > 0,
+    "the row records WHERE the access came from, so the workspace can say so",
+  );
+});
+
+test("N23b: the grant is INSIDE the authorization transaction — a lost claim leaves NO advisor row", async () => {
+  await clearAdvisorRows();
+  const bookingId = await makeBooking({
+    paymentIntentId: null,
+    status: CLAIM_EXPIRED_STATUS, // the TTL sweep got there first
+    serviceId: ids.planWorkService,
+    providerId: ids.expert,
+    snapshot: fixtureSnapshot("full_itinerary", "pdf"),
+  });
+
+  assert.equal(
+    await stampAuthorization([bookingId], `pi_${RUN}_n23b`),
+    false,
+    "a voided claim cannot be authorized",
+  );
+  assert.deepEqual(
+    await advisorRows(ids.expert),
+    [],
+    "DB FACT: the rolled-back authorization granted nothing — access is never sold by a booking that failed",
+  );
+});
+
+test("N23c: a REPLAYED authorization is still exactly one row (the one author never downgrades, equal rank is a no-op)", async () => {
+  await clearAdvisorRows();
+  const pi = `pi_${RUN}_n23c`;
+  const bookingId = await makeBooking({
+    paymentIntentId: null,
+    serviceId: ids.planWorkService,
+    providerId: ids.expert,
+    snapshot: fixtureSnapshot("full_itinerary", "pdf"),
+  });
+
+  assert.equal(await stampAuthorization([bookingId], pi), true);
+  // The late-stamp path inside `promotePaidCheckout` re-drives the SAME stamp for a row a signal
+  // finds unstamped; here the row is already stamped, so the second call is the replay shape.
+  await stampAuthorization([bookingId], pi);
+  await promotePaidCheckout({ paymentIntentId: pi, actor: "webhook", metadataBookingIds: [bookingId] });
+
+  const rows = await advisorRows(ids.expert);
+  assert.equal(rows.length, 1, "DB FACT: a replay re-asserts the same row, it never adds a second");
+  assert.equal(rows[0].status, PLAN_WORK_GRANT_STATUS);
+});
+
+test("N23d: RULING 12 — a CONSULT booking grants NOBODY write access on the plan", async () => {
+  await clearAdvisorRows();
+  const bookingId = await makeBooking({
+    paymentIntentId: null,
+    serviceId: ids.consultService,
+    providerId: ids.expert,
+    snapshot: fixtureSnapshot("ask_me_anything", "call"),
+  });
+
+  assert.equal(await stampAuthorization([bookingId], `pi_${RUN}_n23d`), true);
+  assert.deepEqual(
+    await allAdvisorRows(),
+    [],
+    "DB FACT: buying advice is not gaining write access to a plan — no advisor row, for anyone",
+  );
+});
+
+test("N23e: an existing ASSIGNED advisor is never downgraded by a plan-work purchase", async () => {
+  await clearAdvisorRows();
+  // `assigned` and `accepted` share rank 2 on LD 32's ladder, so the stored one must survive.
+  await db.execute(sql`
+    INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message)
+    VALUES (${`promo-${RUN}-adv`}, ${ids.trip}, ${ids.expert}, 'assigned', 'Admin-confirmed routed lead')
+  `);
+  const bookingId = await makeBooking({
+    paymentIntentId: null,
+    serviceId: ids.planWorkService,
+    providerId: ids.expert,
+    snapshot: fixtureSnapshot("full_itinerary", "pdf"),
+  });
+
+  assert.equal(await stampAuthorization([bookingId], `pi_${RUN}_n23e`), true);
+  const rows = await advisorRows(ids.expert);
+  assert.equal(rows.length, 1, "still one row — the upsert conflicts, it never inserts a twin");
+  assert.equal(rows[0].status, "assigned", "DB FACT: the stored status is kept; a conflict never downgrades");
+  assert.equal(rows[0].message, "Admin-confirmed routed lead", "an existing note is never clobbered");
+});
+
+test("N23f: a plan-work booking that names NO plan grants nothing, and says so rather than inventing one", async () => {
+  await clearAdvisorRows();
+  const bookingId = await makeBooking({
+    paymentIntentId: null,
+    serviceId: ids.planWorkService,
+    providerId: ids.expert,
+    tripId: null,
+    snapshot: fixtureSnapshot("full_itinerary", "pdf"),
+  });
+
+  assert.equal(
+    await stampAuthorization([bookingId], `pi_${RUN}_n23f`),
+    true,
+    "the booking still authorizes — §15b: an ancillary effect may not break the operation that authorizes it",
+  );
+  assert.deepEqual(await allAdvisorRows(), [], "DB FACT: no trip, no row — and no trip is invented (§13)");
+});
+
+test("N23g: an UNSNAPSHOTTED booking grants nothing — the live listing is never re-resolved to fill the gap", async () => {
+  await clearAdvisorRows();
+  // Same plan-work LISTING, but the row carries no snapshot (a pre-migration-291 booking). §13:
+  // NULL means "never snapshotted", which is a fact about our records, not about the listing.
+  const bookingId = await makeBooking({
+    paymentIntentId: null,
+    serviceId: ids.planWorkService,
+    providerId: ids.expert,
+  });
+
+  assert.equal(await stampAuthorization([bookingId], `pi_${RUN}_n23g`), true);
+  assert.deepEqual(await allAdvisorRows(), []);
+});
+
+test("N23h: the CLAIM-step predicate classifies the live listings the checkout refusal reads", async () => {
+  // `POST /api/checkout` refuses a plan-work line that names no plan BEFORE any Stripe call, using
+  // this predicate over the LIVE listing (no snapshot exists yet at the claim). Proven here rather
+  // than through the route because the route's refusal is one `if` over exactly this answer.
+  assert.equal(await isPlanWorkListing(ids.planWorkService), true, "a planning-tier listing is plan work");
+  assert.equal(await isPlanWorkListing(ids.consultService), false, "an advisory-tier listing is a consult");
+  assert.equal(await isPlanWorkListing(ids.service), false, "a listing naming no catalog key has no class (§13)");
+  assert.equal(await isPlanWorkListing(null), false, "no listing, no class");
 });

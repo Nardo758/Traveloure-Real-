@@ -95,6 +95,10 @@ import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 import { getStripeSecretKey } from "../utils/stripe-key";
+// Ruling 11 (ledger `2026-09-08-rulings-11-12`): the plan-work advisor grant, taken at the
+// authorization stamp below. ONE implementation, which itself calls the ONE author of
+// `trip_expert_advisors` (`upsertTripAdvisorRow`) — never a second insert site (LD 32).
+import { grantPlanWorkAdvisorAccess } from "./plan-work-access.service";
 
 /** Ratified TTL (decision-maker, ruling 38): long enough for a traveler to finish the Stripe
  *  PaymentElement, short enough that held inventory comes back the same session. */
@@ -239,6 +243,21 @@ export async function markStripeAttempt(
  * got there first. The transaction rolls back so no row is left half-stamped, and the caller MUST
  * refuse to promote: handing back a clientSecret for a voided booking is the failure this whole
  * lane exists to prevent.
+ *
+ * ── RULING 11 (ledger `2026-09-08-rulings-11-12`, lane `2026-09-15-plan-work-one-rail`) ──────
+ * PLAN WORK SOLD AS A LISTING GRANTS ACCESS AT CHECKOUT, and the ruling puts that write HERE: on
+ * authorization, inside the booking's own transaction. So the advisor row and the PaymentIntent
+ * stamp commit or roll back TOGETHER — a claim the TTL sweep won never grants anyone anything.
+ *
+ * It is ONE MORE CALLER of the ONE author (`upsertTripAdvisorRow`), reached through
+ * `grantPlanWorkAdvisorAccess`; there is no second insert site and no second copy of the "is this
+ * plan work?" decision (§18 rule 1 — the class is `impactClassFor`'s, read off the booking's own
+ * `offering_contract_snapshot`). Ruling 12's twin needs no code at all: a CONSULT booking is
+ * classified as such and the grant simply does not fire for it.
+ *
+ * The grant NEVER THROWS and never fails the stamp (§15b — an ancillary effect may not break the
+ * operation that authorizes it; each upsert is savepointed inside the helper), so this function's
+ * own contract — true iff every row was claimed — is byte-identical to before.
  */
 export async function stampAuthorization(
   bookingIds: string[],
@@ -262,6 +281,9 @@ export async function stampAuthorization(
         // Roll the partial stamp back — all-or-nothing.
         throw new ClaimLostError(bookingIds.length, stamped.length);
       }
+      // Ruling 11, inside the same transaction as the stamp it depends on. Reads each row's own
+      // committed snapshot (never the live listing) and grants only where the booking names a plan.
+      await grantPlanWorkAdvisorAccess(tx, bookingIds);
       return true;
     });
   } catch (err) {

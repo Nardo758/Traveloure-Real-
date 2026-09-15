@@ -1293,6 +1293,54 @@ jobs:
       - name: Booking-birth provenance (B1–B9)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/booking-birth-provenance.db.test.ts
 
+  plan-work-one-rail:
+    name: plan-work-one-rail (rulings 11/12; ledger 2026-09-15-plan-work-one-rail)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # RULING 11: plan work sold as a listing grants the seller WRITE access on the plan at the
+      # AUTHORIZATION stamp, inside that stamp's own transaction, through the ONE author of
+      # `trip_expert_advisors` (LD 32). RULING 12: a consult grants nobody anything. N23a-h are
+      # those assertions, all DB facts read back after `stampAuthorization`.
+      #
+      # THE WHOLE SUITE RUNS HERE, and that is the second thing this job fixes: NO workflow on
+      # `main` named `checkout-payment-promotion.db.test.ts` (verified by grep over `.github/`), so
+      # ruling 39's promotion proofs N17/N18/N19 ran nowhere — the sweep, the detection and the
+      # booking-birth suites each had a job and this one was missed. `check-test-files-wired.cjs`
+      # counts it REACHABLE, which is its own stated shape of answer (a selector that could match)
+      # and not the same fact as a job that runs it. A money-path suite nothing runs cannot fail.
+      - name: Checkout payment promotion + plan-work grant (N17-N19, N23)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/checkout-payment-promotion.db.test.ts
+
   transport-payment-intent:
     name: transport-payment-intent (punchlist R-1; ledger 2026-09-14-transport-confirm-stamps-pi)
     runs-on: ubuntu-latest
