@@ -26,7 +26,7 @@
  *     SOLD, never WHO THE SELLER IS — it is not a credential, it grants nothing, and LD 27's
  *     verification machinery is untouched by it.
  *   · **THERE IS NO SECOND OFFERING COLUMN LEFT TO DISAGREE WITH.** The legacy
- *     `expert_offering_type_id` was dropped by migration 295 (ledger
+ *     `expert_offering_type_id` was dropped by migration 296 (ledger
  *     `2026-09-15-offering-key-id-drop`, lane 2 of `2026-09-12-offering-key-is-canonical`) after
  *     migration 293 copied its answer onto an EMPTY key. This rail writes the key and nothing
  *     else; re-introducing a second column for the same fact is the §18 rule 1 class the ruling
@@ -63,7 +63,7 @@ const ABSENT: ExpertOfferingKeyAdmission = { present: false, key: null, refusal:
  * `2026-09-12-offering-key-is-canonical`, then `2026-09-15-offering-key-id-drop`). It compared a
  * body's `expertOfferingTypeKey` against the legacy uuid beside it and refused a body naming two
  * different offerings. That body can no longer be authored: the key is CANONICAL and the uuid
- * column was dropped by migration 295, so there is no second half for a body to contradict. A pin
+ * column was dropped by migration 296, so there is no second half for a body to contradict. A pin
  * that passes because its subject no longer exists is worse than no pin (the
  * `2026-09-12-delete-dead-transport-status` posture), and so is a refusal.
  */

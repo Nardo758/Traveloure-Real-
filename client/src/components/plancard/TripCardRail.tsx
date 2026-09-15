@@ -9,7 +9,10 @@
  *     PER REQUEST, each carrying the Locked Decision 44 (e) stage the row ACTUALLY holds, through
  *     the one explicit legacy map (`lib/booking-agent-status.ts`). No stage is drawn for a stage
  *     nobody is in, and it never claims a copilot exists — the board's "Ask the agent" control is
- *     the L16/L17 drawer and is deliberately absent here.
+ *     the L16/L17 drawer and is deliberately absent here. Punchlist D-10 narrowed what one of
+ *     those stages MEANS: `confirmed` is written only on the partner's own reported conversion, so
+ *     a purchase an agent made reads as awaiting the partner — this card renders whichever
+ *     sentence the one reader returns and restates neither.
  *   2 YOUR EXPERT — the owner-gated advisor read (`GET /api/trips/:id/expert-advisor`), rendered
  *     through the slip's own `slipExpertRailState` / `slipAdvisorStandingLine` (§18 rule 1), with
  *     Message addressed by the PLAN (LD 40 D22) and a storefront link only when a handle exists.
@@ -86,6 +89,14 @@ interface AffiliateRequestRow {
   itemName?: string | null;
   status?: string | null;
   confirmationRef?: string | null;
+  /**
+   * D-10 (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): a `confirmed` row reads
+   * "Confirmed by <partner>", so the reader is handed the partner the ROW already carries. The
+   * traveler read (`GET /api/affiliate-booking-requests/user`) returns the whole row minus the
+   * partner URL, so this arrives with no server change — and when it is absent the reader says
+   * "the partner" rather than inventing a name (§13).
+   */
+  partnerName?: string | null;
 }
 
 function BookingAgentCard({ tripId }: { tripId: string }) {

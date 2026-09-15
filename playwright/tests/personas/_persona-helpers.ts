@@ -199,7 +199,7 @@ async function pickOfferingOrCategory(page: Page, searchTerm: string): Promise<b
  * button could never enable no matter how long the caller waited on it.
  * (The form's state field was `expertOfferingTypeId` until ledger
  * `2026-09-12-offering-key-is-canonical` made the KEY canonical; the column behind it was dropped
- * by migration 295, `2026-09-15-offering-key-id-drop`.)
+ * by migration 296, `2026-09-15-offering-key-id-drop`.)
  *
  * SCOPED TO `expert-offering-required`, DELIBERATELY. Since migration 292 (ledger
  * `2026-09-12-listing-names-its-expert-offering`) the same picker ALSO renders for a provider —

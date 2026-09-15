@@ -29,6 +29,13 @@ import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guar
 import { resolveAiDraftModel } from "./services/ai-draft-model";
 import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
 import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
+// D-11 (ledger 2026-09-15-d11-no-item-booking-exception): the named no-item classes, the ONE
+// composer of their mark, and the refusal the item-referenceless birth rail answers with.
+import {
+  noItemBookingDetail,
+  PLAN_BOOKING_NEEDS_CART_REFUSAL,
+  type PlanBookingRefusalReason,
+} from "@shared/no-item-booking";
 import { BOOKING_CANCELLABLE_FROM_STATUSES, isBookingCancellable } from "@shared/booking-cancellation"; // §18b/§18 rule 1 — the ONE traveler-cancellation from-state list (ledger 2026-09-14-transport-card-cancel)
 import { parseAiJsonObjectOrThrow } from "./utils/ai-json";
 import {
@@ -92,6 +99,7 @@ import {
   bundleComponents,
   deliverableDownloads,
   resolveBookingMode,
+  convertCartToItinerarySchema,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -173,6 +181,11 @@ import transportHubRoutes from "./routes/transport-hub.routes";
 import transportLegsRoutes from "./routes/transport-legs.routes";
 import { resolveItemEventLink } from "./services/item-event-link.service";
 import { authoredItemPriceRefusal } from "@shared/item-kind";
+// D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): `cart_items.quantity` is
+// UNITS of the listing (the price multiplier) and `cart_items.party_size` is the PARTY fact. Which
+// question a cart rail admits is the ONE derivation in `@shared/cart-quantity`, called by all three
+// write rails below so they cannot disagree (§18 rule 1).
+import { archetypeAsks, resolveCartLineCounts, PINNED_UNIT_QUANTITY } from "@shared/cart-quantity";
 import { enforceTripComparisonRetention } from "./services/comparison-retention.service";
 // LD 41 (ledger `2026-09-05-trip-pass-run-gate`): the ONE optimizer run-authorization predicate,
 // shared by the comparison create and regenerate handlers below.
@@ -671,6 +684,31 @@ const optimizerRunAuthorizationDeps: OptimizerRunAuthorizationDeps = {
 };
 
 // hint: Logic changed on both sides. Requires understanding intent of each change.
+/**
+ * D-14 / ruling 83: read a `partySize` off a cart write body. ONE parser for all three cart write
+ * rails (`POST /api/cart`, `POST /api/cart/items`, `PATCH /api/cart/:id`) so the three cannot
+ * validate the same field three ways (§18 rule 1).
+ *
+ * Three OUTCOMES, deliberately distinct (§13): the key was ABSENT (do not touch a saved answer),
+ * the key was an explicit `null` (the traveler cleared it — "never told us" again), or it is a
+ * positive integer. Anything else is refused rather than coerced. No amount or rate is derived
+ * from it anywhere (§14) — it is a booking input like `scheduledDate`.
+ */
+function readCartPartySize(
+  body: any,
+): { ok: true; present: boolean; value: number | null } | { ok: false; message: string } {
+  if (!body || !Object.prototype.hasOwnProperty.call(body, "partySize")) {
+    return { ok: true, present: false, value: null };
+  }
+  const raw = body.partySize;
+  if (raw === null) return { ok: true, present: true, value: null };
+  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+  if (!Number.isInteger(n) || n < 1 || n > 100000) {
+    return { ok: false, message: "partySize must be a positive integer, or null to clear" };
+  }
+  return { ok: true, present: true, value: n };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -1857,7 +1895,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           travelerId: userId,
           providerId,
           tripId: tripId || null,
-          bookingDetails: { notes },
+          // D-11 (ledger `2026-09-15-d11-no-item-booking-exception`): the NAMED-CLASS mark. This
+          // rail births a booking REQUEST for an expert's help on a plan — what attaches it to the
+          // trip is the advisor row below, never an `itinerary_items` row, and the rail carries no
+          // item reference it could link. So a trip-bearing row here is the ratified migration
+          // EXCEPTION and says so on itself, rather than surfacing as unexplained drift.
+          // Composed SERVER-SIDE through the ONE composer (§18 rule 1); the key is in
+          // `SERVER_AUTHORED_BOOKING_DETAIL_KEYS`, so no client body can plant it.
+          bookingDetails: { notes, ...noItemBookingDetail("expert_booking_request") },
           status: "pending",
           totalAmount: String(totalAmount),
           platformFee: platformFeeAmt,
@@ -3651,7 +3696,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // NO ROLE GATE (decision-maker, explicitly): any owner may name any key the expert catalog
       // carries. It says WHAT IS SOLD, never WHO THE SELLER IS — not a credential, grants nothing.
       // THE KEY IS THE ONLY OFFERING THIS RAIL WRITES (ledger `2026-09-12-offering-key-is-canonical`),
-      // and since migration 295 the only offering column there is (`2026-09-15-offering-key-id-drop`
+      // and since migration 296 the only offering column there is (`2026-09-15-offering-key-id-drop`
       // dropped the legacy migration-057 uuid). The same-body contradiction check went with it — a
       // contradiction it could catch can no longer be authored.
       const expertOfferingAdmission = await admitExpertOfferingTypeKey(bodyWithoutLocation);
@@ -6545,11 +6590,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!serviceId && !customVenueId) {
         return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
       }
+      // Hoisted out of the block below (was block-scoped) — the D-14 admission further down reads
+      // the resolved listing row for its archetype facts.
+      let itemsService: any = null;
       if (serviceId) {
         const service = await storage.getProviderServiceById(serviceId);
         if (!service) {
           return res.status(404).json({ message: "Service not found" });
         }
+        itemsService = service;
         // The SECOND live add-to-cart rail (ledger `2026-09-13-cart-priceless-gap`). It takes the
         // same `serviceId` and calls the same single cart writer as `POST /api/cart`, so it is
         // reachable with a priceless listing in exactly the same way and carries the same
@@ -6571,10 +6620,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
+      // D-14: the SECOND live add rail carries the SAME admission as `POST /api/cart` — one
+      // derivation, one more caller (§18 rule 1). A service was resolved above when `serviceId` is
+      // present; a custom-venue add passes `null` facts and keeps today's behaviour exactly.
+      const itemsPartyRead = readCartPartySize(req.body);
+      if (!itemsPartyRead.ok) {
+        return res.status(400).json({ message: itemsPartyRead.message });
+      }
+      const itemsCounts = resolveCartLineCounts(itemsService, {
+        quantity: quantity == null ? undefined : Number(quantity),
+        partySize: itemsPartyRead.present ? itemsPartyRead.value : undefined,
+      });
+      if (!itemsCounts.ok) {
+        return res.status(400).json({ message: itemsCounts.message, reason: itemsCounts.reason, rule: itemsCounts.rule });
+      }
       const item = await cartProjection.addToCart(userId, {
         serviceId: serviceId || undefined,
         customVenueId: customVenueId || undefined,
-        quantity: quantity || 1,
+        quantity: itemsCounts.quantity ?? PINNED_UNIT_QUANTITY,
+        ...(itemsPartyRead.present ? { partySize: itemsCounts.partySize ?? null } : {}),
+        unitsPinnedToOne: !archetypeAsks(itemsService).asksUnits,
         tripId,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
@@ -6652,6 +6717,32 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = getUserId(req)!;
       const input = createBookingRequestSchema.parse(req.body);
+
+      // ── D-11 (ledger `2026-09-15-d11-no-item-booking-exception`): NO STRAY PLAN OBLIGATIONS ───
+      // A `service_bookings` row that NAMES a trip while no `itinerary_items.booking_id` points at
+      // it is a plan-level obligation the plan itself does not know about (LD 39: `itinerary_items`
+      // is the ONE store of a plan's contents, and `booking_id` is the item→booking link). The
+      // 2026-09-15 ruling makes that a MIGRATION EXCEPTION confined to named classes, never a
+      // supported pattern.
+      //
+      // THIS RAIL HAS NO ITEM REFERENCE AT ALL. Its body allowlist is
+      // {serviceId, tripId, contractId, bookingDetails, bookingMetadata} (B6 pins it) and nothing
+      // downstream writes `itinerary_items.booking_id` — so every trip-bearing booking it births is
+      // a stray BY CONSTRUCTION, and it is not one of the named classes. Marking the row would be a
+      // reason that is not true; the honest disposition is to refuse the `tripId` and say why.
+      // The plan-linked path is the CART: add the service to the plan and check out, where the
+      // claim spine links item to booking at promote (`markItemPurchased`).
+      //
+      // BEFORE ANY WRITE, and before the catalog read — a refusal is not a booking, and no row,
+      // counter or content-registry entry is touched. Plain commerce with no `tripId` is
+      // byte-identical to before; this rail has no client caller in `client/` today either way.
+      if (input.tripId) {
+        const reason: PlanBookingRefusalReason = PLAN_BOOKING_NEEDS_CART_REFUSAL.reason;
+        return res.status(400).json({
+          message: PLAN_BOOKING_NEEDS_CART_REFUSAL.message,
+          reason,
+        });
+      }
 
       // Verify service exists and is active
       const service = await storage.getProviderServiceById(input.serviceId);
@@ -8160,7 +8251,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // Which lines sell `booking_concierge` — the SAME resolver /api/checkout and the fee preview
     // call (ledger `2026-09-12-offering-key-is-canonical`), so this quote cannot classify a cart
     // one way and the charge another. Reads the listing's own `expert_offering_type_key`
-    // (migration 292), which since migration 295 is the only offering column there is (ledger
+    // (migration 292), which since migration 296 is the only offering column there is (ledger
     // `2026-09-15-offering-key-id-drop`). No rate and no amount is decided there.
     const cartConciergeLines = await resolveBookingConciergeItems(
       items.map(i => i.service ?? null),
@@ -8616,12 +8707,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // ── D-14 (ruling 2026-09-15): WHICH COUNT THIS ARCHETYPE ACCEPTS ──────────────────────
+      // `quantity` is UNITS of the listing and prices the line `rate × quantity`; `party_size` is
+      // the traveler's head-count and prices nothing. `@shared/cart-quantity` is the ONE place that
+      // says which of the two an archetype asks for — a stay and a bundle are ONE unit whose party
+      // varies, a scheduled place service is sold by the SEAT (so its unit count IS its party
+      // count), and an artifact/async listing is delivered once and asks neither.
+      //
+      // REFUSED, NOT CLAMPED (§13): a multi-unit body on a pinned archetype is a 400 naming the
+      // rule, because silently reducing it would change what the traveler is charged without
+      // telling them. A seat body's `quantity` is SERVER-DERIVED from the party answer (§14's
+      // posture applied to the multiplier) — never read off the body.
+      const partyRead = readCartPartySize(req.body);
+      if (!partyRead.ok) {
+        return res.status(400).json({ message: partyRead.message });
+      }
+      const counts = resolveCartLineCounts(service, {
+        quantity: quantity == null ? undefined : Number(quantity),
+        partySize: partyRead.present ? partyRead.value : undefined,
+      });
+      if (!counts.ok) {
+        return res.status(400).json({ message: counts.message, reason: counts.reason, rule: counts.rule });
+      }
+
       const item = await cartProjection.addToCart(userId, {
         serviceId: serviceId || undefined,
         customVenueId: customVenueId || undefined,
         ...(isContentAdd ? { contentType, contentId, contentMeta: safeContentMeta } : {}),
         ...(roomStayMeta ? { contentMeta: roomStayMeta } : {}),
-        quantity: quantity || 1,
+        quantity: counts.quantity ?? PINNED_UNIT_QUANTITY,
+        ...(partyRead.present ? { partySize: counts.partySize ?? null } : {}),
+        // A re-add of a units-pinned archetype must not INCREMENT the stored count: adding a
+        // villa to the cart twice is the same one booking, and the dedupe branch's `+ 1` is
+        // exactly how D-14's defect reached a charge.
+        unitsPinnedToOne: !archetypeAsks(service).asksUnits,
         tripId,
         scheduledDate: slotScheduledDate ?? (scheduledDate ? new Date(scheduledDate) : undefined),
         ...(validatedSlotId ? { slotId: validatedSlotId } : {}),
@@ -8671,28 +8790,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       // T2 (ruling 83): the traveler's CONFIRMED party count — the D7 party-size eligibility gate's
-      // trigger-input. Validated to a positive integer (or null to clear); the gate DERIVES nothing
-      // from a body amount/rate (§14) — this is a booking input like quantity. Only touched when the
-      // key is present, so an ordinary quantity/notes/pickup PATCH never disturbs a saved party size.
-      let partySizeUpdate: { partySize?: number | null } = {};
-      if (Object.prototype.hasOwnProperty.call(req.body, "partySize")) {
-        const raw = req.body.partySize;
-        if (raw === null) {
-          partySizeUpdate = { partySize: null };
-        } else {
-          const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
-          if (!Number.isInteger(n) || n < 1 || n > 100000) {
-            return res.status(400).json({ message: "partySize must be a positive integer, or null to clear" });
-          }
-          partySizeUpdate = { partySize: n };
-        }
+      // trigger-input. Validated to a positive integer (or null to clear) by the ONE parser both
+      // add rails use; the gate DERIVES nothing from a body amount/rate (§14) — this is a booking
+      // input like quantity. Only touched when the key is present, so an ordinary
+      // quantity/notes/pickup PATCH never disturbs a saved party size.
+      const partyRead = readCartPartySize(req.body);
+      if (!partyRead.ok) {
+        return res.status(400).json({ message: partyRead.message });
+      }
+      // ── D-14 (ruling 2026-09-15): THE SAME ADMISSION THE ADD RAILS RUN ────────────────────
+      // The archetype facts live on the listing this line names, so the row is read here (a line
+      // naming no listing — a content row, a custom venue — passes `null` facts and keeps today's
+      // behaviour byte-for-byte). A multi-unit PATCH on a stay / bundle / artifact is REFUSED with
+      // the rule named, never clamped (§13); on a seat-shaped listing a stated `partySize` DERIVES
+      // the unit count, and clearing it returns the line to one unit.
+      const patchService = existing.serviceId
+        ? await storage.getProviderServiceById(existing.serviceId)
+        : null;
+      const counts = resolveCartLineCounts(patchService ?? null, {
+        quantity: quantity == null ? undefined : Number(quantity),
+        partySize: partyRead.present ? partyRead.value : undefined,
+      });
+      if (!counts.ok) {
+        return res.status(400).json({ message: counts.message, reason: counts.reason, rule: counts.rule });
       }
       const updated = await cartProjection.updateCartItem(req.params.id, {
-        quantity,
+        quantity: counts.quantity,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
         ...pickupLocationUpdate,
-        ...partySizeUpdate,
+        ...(partyRead.present ? { partySize: counts.partySize ?? null } : {}),
       });
       res.json(updated);
     } catch (err) {
@@ -8746,27 +8873,57 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Convert content cart items into itinerary items
+  // Convert cart lines into itinerary items — the rail that MOVES a line onto a plan.
+  //
+  // Ledger `2026-09-15-d16-plan-holds-venues-and-content` (ruling 2026-09-15, punchlist D-16):
+  // this route used to compose its own `itinerary_items` values inline, beside the projection
+  // module that composes them for `POST /api/cart/resolve-trip` — two authors of one mapping, the
+  // drift class §18 rule 1 names, and how a converted item and a projected item came to describe
+  // the same cart line differently. It is now a CALLER of the ONE builder
+  // (`cartProjection.convertCartLinesToItems`), which keeps this rail's own disposition: the item
+  // is born `in_planning` and the cart line is DELETED in the same transaction.
   app.post("/api/cart/convert-to-itinerary", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const { tripId, newTripName, destination, cartItemIds } = req.body;
-
-      if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
-        return res.status(400).json({ message: "cartItemIds is required and must be a non-empty array" });
+      // §19 ALLOWLIST. This body used to be read raw off `req.body` — four names destructured from
+      // an object with no shape at all. `.strict()` is load-bearing and deliberate: an unknown key
+      // is a 400 rather than a silently ignored field, so a client that starts sending (say) a
+      // `customVenueId` or a `contentType` learns immediately that this rail does not accept one.
+      // Those three columns are stamped SERVER-SIDE from the cart row by the projection module and
+      // are settable by no client anywhere (`insertItineraryItemSchema` omits all three).
+      const parsed = convertCartToItinerarySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid request body" });
       }
+      const { tripId, newTripName, destination, cartItemIds } = parsed.data;
 
-      let targetTripId: string = tripId;
+      let targetTripId: string;
 
-      if (!targetTripId) {
-        if (!newTripName || typeof newTripName !== "string") {
+      if (!tripId) {
+        if (!newTripName) {
           return res.status(400).json({ message: "Either tripId or newTripName is required" });
+        }
+        // LD 42 D12: NO MINT MAY INVENT A DESTINATION. This mint used to write the literal
+        // "To be determined" when the traveler left the field blank — a manufactured answer to the
+        // one question `trips.destination` (NOT NULL) exists to record, and the fact every
+        // market-scoped reader and `resolveTripTimezone`/`market_slug` derive from (LD 30/D12). The
+        // traveler is ASKED instead: the dialog requires it and the server refuses without it.
+        // The DATES this mint still infers (today → +7d) are the same shape of guess and are
+        // RECORDED, not fixed here — `POST /api/cart/resolve-trip` infers them identically, so
+        // they are one lane, not a side effect of this one.
+        if (!destination) {
+          return res.status(400).json({
+            message: "A destination is required to start a plan — we never invent one for you.",
+            reason: "destination_required",
+          });
         }
         const today = new Date();
         const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+        // The ONE mint helper (LD 42 D12/D11): `storage.createTrip` derives `market_slug` and
+        // `timezone` from the destination. A raw insert here would carry neither.
         const newTrip = await storage.createTrip({
-          title: newTripName.trim(),
-          destination: (destination || "To be determined").trim(),
+          title: newTripName,
+          destination,
           startDate: today.toISOString().split("T")[0],
           endDate: nextWeek.toISOString().split("T")[0],
           status: "draft",
@@ -8777,73 +8934,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         } as any);
         targetTripId = newTrip.id;
       } else {
+        targetTripId = tripId;
         const trip = await storage.getTrip(targetTripId);
         if (!trip) return res.status(404).json({ message: "Trip not found" });
         if (trip.userId !== userId) return res.status(403).json({ message: "Forbidden" });
       }
 
-      let convertedCount = 0;
-      for (const cartItemId of cartItemIds) {
-        const cartItem = await storage.getCartItemById(cartItemId);
-        if (!cartItem) continue;
-        if (cartItem.userId !== userId) continue;
-        // W3 (H1, first half): a row is convertible when it carries EITHER discover content
-        // (contentId + contentType) OR a real platform service. The old gate demanded content, so
-        // a SERVICE cart row — the only kind that has a link worth preserving — was silently
-        // skipped and never converted at all. Rows with neither are still skipped (nothing to make
-        // an item out of).
-        if (!cartItem.serviceId && (!cartItem.contentId || !cartItem.contentType)) continue;
+      // THE ONE BUILDER (§18 rule 1). Everything the old inline loop did — the per-line ownership
+      // check, the service read, the "Unknown" location refusal, the `providerServiceId` the W3 fix
+      // restored — lives in `cart-projection.service.ts` now, shared with the projection rail, and
+      // it additionally carries the two links migration 295 added (a traveler's own venue, and the
+      // Discover content a line came from). §13: a line that names nothing a plan item can carry
+      // comes back NAMED rather than silently dropped.
+      const result = await cartProjection.convertCartLinesToItems(userId, targetTripId, cartItemIds);
 
-        const meta: Record<string, any> = cartItem.contentMeta || {};
-        const rawPrice = meta.price ? String(meta.price).replace(/[^0-9.]/g, "") : null;
-        // W3 (H1, second half): the linkage the audit found destroyed. `cart_items.serviceId` IS a
-        // `provider_services.id`, and the itinerary item has had a column for it all along — the
-        // conversion just never wrote it, so a converted service became permanently unbuyable text
-        // (docs/E2E_ITEM_LIFECYCLE.md §3). Preserving it makes the round trip real: the item can be
-        // routed back to `ready_for_checkout`, projected into the cart, and bought.
-        //
-        // The service row is read ONLY for honest display values (name / location / catalog price)
-        // for a service row that carries no contentMeta. Nothing here reads or decides an amount for
-        // a charge — checkout re-derives every price server-side from the catalog (§14).
-        const service = cartItem.serviceId
-          ? await storage.getProviderServiceById(cartItem.serviceId)
-          : null;
-        const servicePrice =
-          service?.price && parseFloat(String(service.price)) > 0 ? String(service.price) : null;
-        const estimatedCost =
-          rawPrice && parseFloat(rawPrice) > 0 ? rawPrice : servicePrice;
-        // §13: `provider_services.location` defaults to the literal "Unknown" — that is the absence
-        // of a location, not a place name, so it must never be copied onto the plan item.
-        const serviceLocation =
-          service?.location && service.location !== "Unknown" ? service.location : null;
-
-        // Born `in_planning` — the migration-159 column default, deliberately NOT set here: a
-        // converted item is a plan item, not purchase intent (ROUTING_STATE_CONTRACT §2).
-        await storage.createItineraryItem({
-          tripId: targetTripId,
-          providerServiceId: cartItem.serviceId ?? null,
-          title: meta.name || service?.serviceName || cartItem.contentId || "Discovered item",
-          description: meta.description || service?.shortDescription || null,
-          itemType: cartItem.contentType === "hotel" ? "accommodation" : "activity",
-          dayNumber: 1,
-          locationName: meta.city || meta.location || serviceLocation,
-          // R26 coords cheap-fix: the fetched service row carries its pin; copy it (NULL stays
-          // NULL — no invention, §13) so the item has real coordinates for neighborhood history.
-          latitude: service?.latitude ?? null,
-          longitude: service?.longitude ?? null,
-          notes: cartItem.notes || null,
-          suggestedBy: "user",
-          origin: "traveler",
-          status: "planned",
-          isFlexible: true,
-          estimatedCost,
-        } as any);
-
-        await cartProjection.removeFromCart(cartItemId);
-        convertedCount++;
-      }
-
-      res.json({ tripId: targetTripId, convertedCount });
+      res.json({
+        tripId: targetTripId,
+        convertedCount: result.converted,
+        ...(result.skipped.length > 0 ? { skipped: result.skipped } : {}),
+      });
     } catch (err) {
       console.error("Convert to itinerary error:", err);
       res.status(500).json({ message: "Failed to convert items to itinerary" });

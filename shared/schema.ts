@@ -1229,7 +1229,7 @@ export const providerServices = pgTable("provider_services", {
   // Per-category dynamic attributes (jsonb, data-driven fields per category_field_schema)
   categoryAttributes: jsonb("category_attributes"),
 
-  // GONE: `expertOfferingTypeId` (the migration-057 uuid FK) was DROPPED by migration 295, ledger
+  // GONE: `expertOfferingTypeId` (the migration-057 uuid FK) was DROPPED by migration 296, ledger
   // `2026-09-15-offering-key-id-drop` — lane 2 of the ruling lane 1 recorded as
   // `2026-09-12-offering-key-is-canonical`. `expertOfferingTypeKey` below names the SAME offering
   // and is CANONICAL, because the offering catalogs are read BY KEY. Do not re-add the uuid: a
@@ -1247,7 +1247,7 @@ export const providerServices = pgTable("provider_services", {
   // an expert key or a `service_categories.category_key`, never a blended vocabulary.
   // IT IS THE KEY, NOT THE ID, AND THAT WAS THE POINT: the migration-057 uuid link that used to
   // sit above was one the offering CATALOGS cannot be read by, so it could never answer
-  // `impactClassFor`. It is dropped (migration 295); this column is the listing's only statement
+  // `impactClassFor`. It is dropped (migration 296); this column is the listing's only statement
   // of what it sells.
   // Additive NULLABLE, NO DEFAULT and NO DB CHECK — THE FK IS THE VALUE-SET CONSTRAINT, which is
   // the publish-trap posture on purpose. NULL = the seller never said (§13): every reader falls
@@ -2345,6 +2345,40 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   adults: z.coerce.number().int().min(1).optional(),
   kids: z.coerce.number().int().min(0).optional(),
 });
+
+/**
+ * ALLOWLIST (§19) for `POST /api/cart/convert-to-itinerary` — the rail that MOVES cart lines onto
+ * a plan (ledger `2026-09-15-d16-plan-holds-venues-and-content`).
+ *
+ * The route used to destructure four names straight off `req.body`, which is the denylist shape
+ * one step further out: there was no schema at all, so anything the handler later chose to read
+ * was client-settable by construction. `.strict()` is deliberate and is the strongest form of
+ * allowlist — an unknown key is a 400 the caller can SEE, rather than a field silently stripped,
+ * so a client that starts sending a privileged name learns at once that this rail refuses it.
+ *
+ * It is pick-BASED on `insertTripSchema` for the two fields that are really `trips` columns, so
+ * the destination and title SHAPES are stated in exactly one place (§18 rule 1). `newTripName` is
+ * the wire name for `trips.title`; `destination` keeps its own. Neither is required HERE, because
+ * the requirement is conditional — the mint branch refuses a missing destination itself (LD 42
+ * D12: a mint may not invent one), while the `tripId` branch has no use for either.
+ *
+ * NOTHING ELSE IS ADMITTED. In particular the three migration-295 columns (`customVenueId`,
+ * `contentType`, `contentId`) are stamped SERVER-SIDE from the cart row by the projection module
+ * and appear in no request schema anywhere.
+ */
+export const convertCartToItinerarySchema = insertTripSchema
+  .pick({ destination: true })
+  .partial()
+  .extend({
+    tripId: z.string().min(1).optional(),
+    newTripName: insertTripSchema.shape.title.optional(),
+    cartItemIds: z
+      .array(z.string().min(1))
+      .min(1, "cartItemIds is required and must be a non-empty array")
+      .max(200),
+  })
+  .strict();
+export type ConvertCartToItinerary = z.infer<typeof convertCartToItinerarySchema>;
 
 /**
  * THE FIELD AUTHORITY for migration 284's three step-4 columns (ledger
@@ -5257,6 +5291,44 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Declared HERE, not only in the migration, per the deploy-push durability rule.
   userExperienceId: varchar("user_experience_id").references(() => userExperiences.id, { onDelete: "set null" }),
 
+  // ── THE TRAVELER'S OWN VENUE, AND THE DISCOVER CONTENT AN ITEM CAME FROM ──────────────────
+  // (migration 295, ruling 2026-09-15 punchlist D-16 (b)/(c); ledger
+  // `2026-09-15-d16-plan-holds-venues-and-content`.)
+  //
+  // LD 39: this table is the ONE store of a plan's contents and the cart is its
+  // `ready_for_checkout` PROJECTION. Two kinds of cart line had no plan representation at all,
+  // and both for the same reason — the line's own SUBJECT had no column here, so the round trip
+  // back through `syncItemProjection` could not reproduce the traveler's row and the
+  // materializer had to REFUSE the line (ledger `2026-09-13-guest-cart-becomes-plan`).
+  //
+  // `customVenueId` mirrors the long-standing `cart_items.customVenueId`: the venue the traveler
+  // typed in themselves. ON DELETE SET NULL is the ruling, not a default (the `userExperienceId`
+  // / `bookingId` / `providerServiceId` / `slotId` posture above): deleting a venue must never
+  // cascade-delete the plan item planned around it — the item keeps the traveler's own title and
+  // simply names no venue.
+  //
+  // `contentType`/`contentId` mirror `cart_items.contentType` (varchar(20)) and
+  // `cart_items.contentId` (text) — a Discover gem / hotel / activity / event / neighborhood.
+  // SOFT reference, deliberately NO FK, for the same reason `gemId` and `dmoExtractedPlaceId`
+  // carry none: the content they name lives across several tables and there is no single referent
+  // to point at. The value set is APP-enforced with NO DB CHECK (the publish-trap posture).
+  //
+  // §13: NULL = NO LINK — not "unknown" and not "none". An item that names neither is the
+  // ordinary plan item every plan is already full of, and a reader renders nothing for a NULL.
+  // No backfill exists or is owed: nothing on disk was ever asked these questions. These three
+  // name no bookable thing, so `shared/item-kind.ts` rule 4 reads such an item as `recommended`
+  // — a reference, with no price the platform could charge.
+  //
+  // §19 ADMISSION: all three are OMITTED from `insertItineraryItemSchema` and NO pick-based
+  // schema re-admits them — unlike `userExperienceId` above there is nothing for a client to say
+  // here. They are stamped SERVER-SIDE from the cart row by the ONE projection module
+  // (`server/services/cart-projection.service.ts`). Under a denylist schema a freshly added
+  // column is client-settable BY DEFAULT, which is the standing class §19 names.
+  // Declared HERE, not only in the migration, per the deploy-push durability rule.
+  customVenueId: varchar("custom_venue_id").references(() => customVenues.id, { onDelete: "set null" }),
+  contentType: varchar("content_type", { length: 20 }),
+  contentId: text("content_id"),
+
   // Notes and attachments
   notes: text("notes"),
   privateNotes: text("private_notes"), // Organizer-only notes
@@ -5320,6 +5392,12 @@ export const itineraryItems = pgTable("itinerary_items", {
   // the two above: the publish-time drizzle push DROPS an index this file does not declare, and
   // the stamped migration never recreates it.
   itineraryItemsUserExperienceIdx: index("idx_itinerary_items_user_experience_id").on(table.userExperienceId),
+  // Migration 295 — "does anything on a plan still name this venue?" (the ON DELETE SET NULL
+  // fan-out when a custom venue is removed). Declared here for the SAME reason as the three
+  // above: the publish-time drizzle push DROPS an index this file does not declare, and the
+  // stamped migration never recreates it. `contentId` gets NO index — it is a soft reference
+  // nothing looks an item up by; the item is always reached through its trip.
+  itineraryItemsCustomVenueIdx: index("idx_itinerary_items_custom_venue_id").on(table.customVenueId),
 }));
 
 // Temporal Anchors - Fixed time commitments that constrain all other scheduling
@@ -5644,7 +5722,15 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // added column is client-settable BY DEFAULT — and this one names a row in ANOTHER table, so a
 // generic body parse would let a client staple an item to an event on a trip they do not own. The
 // allowlist makes the acceptance deliberate; the server then VERIFIES the trip↔event pairing (§14).
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true });
+// Ledger `2026-09-15-d16-plan-holds-venues-and-content` (ruling 2026-09-15, punchlist D-16 (b)/(c),
+// migration 295): `customVenueId` / `contentType` / `contentId` are OMITTED for the same reason as
+// every column above — under a denylist schema a freshly added column is client-settable BY
+// DEFAULT — and, unlike `userExperienceId`, they get NO pick-based re-admission at all. There is
+// nothing here for a client to say: all three are stamped SERVER-SIDE from the cart row by the ONE
+// projection module (`server/services/cart-projection.service.ts`), and `customVenueId` names a row
+// in ANOTHER table whose owner the server verifies, which is exactly the §14 class a generic body
+// parse would hand to the caller.
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true });
 
 /**
  * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275
@@ -8110,6 +8196,25 @@ export const RECONCILIATION_EXCEPTION_KINDS = [
    *  (§17 DETECT, DON'T REPAIR). It is a `warning`, not `critical` — the row may be perfectly fine;
    *  what is not fine is that nothing can tell. */
   "payment_provenance_unverified",
+  /** D-11 / ledger `2026-09-15-d11-no-item-booking-exception` — A TRIP-LEVEL OBLIGATION THE PLAN
+   *  DOES NOT KNOW ABOUT. The booking NAMES a trip (`trip_id`), no `itinerary_items.booking_id`
+   *  points at it, and it carries no `booking_details.noItemReason` naming one of the ratified
+   *  classes (`transport_commerce`, `expert_booking_request` — see `shared/no-item-booking.ts`).
+   *
+   *  Under LD 39 `itinerary_items` is the ONE store of a plan's contents and `booking_id`
+   *  (migration 159) is the item→booking link, so such a row is a purchase the slip renders with
+   *  no place in the itinerary: it cannot be reordered, the refund reversal edge
+   *  (`revertItemsOnRefund`, which keys on `booking_id`) cannot reach it, and it carries no
+   *  `origin`. The 2026-09-15 ruling makes it a MIGRATION EXCEPTION — marked and audited — rather
+   *  than a supported pattern, so an UNMARKED one is reported here.
+   *
+   *  `warning`, not `critical`: the money may be perfectly correct — this is a plan-integrity
+   *  fact, not a payment one. NO BACKFILL and NO REPAIR (§17/§19b): a row born before the marks
+   *  existed is indistinguishable from one born outside the classes, and inventing a reason for
+   *  it would manufacture exactly the fact the mark exists to state. In-flight claims
+   *  (`payment_pending`) and rows that are no longer obligations (`cancelled`/`expired`/
+   *  `refunded`) are out of the predicate — see `NO_ITEM_EXEMPT_STATUSES` in the job. */
+  "trip_booking_without_item",
   // ── READY-MADE rail (`ready_made_purchases`) ──────────────────────────────────────────────
   // The store lane (CLAUDE.md "ready_made_trips is the single store lane") was invisible to this
   // job for the same reason cart checkout once was: disjoint id spaces. A ready-made PaymentIntent

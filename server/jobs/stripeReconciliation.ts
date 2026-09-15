@@ -10,10 +10,14 @@
  * two id spaces are disjoint, and the queries matched zero rows without erroring. Nothing in the
  * platform told anyone that money and the database disagreed about a cart purchase.
  *
- * ONE JOB, BOTH RAILS. The legacy rail is still live (`/booking-demo`, `/itinerary-comparison/:id`
- * → `POST /api/bookings/process-cart`, CLAUDE.md §15c), so its two original checks are kept
- * verbatim in behaviour and simply re-expressed as two of the classifications below. The cart rail
- * gains seven more.
+ * ONE JOB, BOTH RAILS. The legacy rail is still live (`POST /api/bookings/process-cart`,
+ * CLAUDE.md §15c), so its two original checks are kept verbatim in behaviour and simply
+ * re-expressed as two of the classifications below. The cart rail gains seven more.
+ * D-12 (ledger `2026-09-15-d12-service-bookings-canonical`) gave that endpoint a DATED
+ * no-new-writes switch and retired its two client surfaces (`/booking-demo`, the
+ * itinerary-comparison board's "Book Now"). THIS SCAN IS DELIBERATELY UNCHANGED BY THAT: a rail
+ * that stops taking new rows still owns every row it already wrote, and a detector that stopped
+ * looking would make the oldest money on the platform the least watched (§17).
  *
  * ONE JOB, *THREE* RAILS (ready-made-reconciliation-rail lane; punchlist V-3)
  * ─────────────────────────────────────────────────────────────────────────
@@ -101,6 +105,11 @@ import { bookings, adminNotifications } from "@shared/schema";
 import type { ReconciliationExceptionKind } from "@shared/schema";
 import { promotePaidCheckout } from "../services/checkout-claim.service";
 import { travelerChargeForRow } from "../services/traveler-charge";
+import {
+  readNoItemReason,
+  NO_ITEM_BOOKING_CLASSES,
+  NO_ITEM_REASON_KEY,
+} from "@shared/no-item-booking";
 import { logger } from "../infrastructure/logger";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────────────────────
@@ -154,6 +163,24 @@ const PAID_EQUIVALENT_STATUSES = ["confirmed", "in_progress", "completed", "deli
 
 /** Statuses a claim can be in that are NOT yet a purchase — an in-flight checkout, not drift. */
 const PROVISIONAL_STATUSES = ["payment_pending", "pending"];
+
+/**
+ * D-11 — the statuses for which "no plan item" is NOT a finding.
+ *
+ * `payment_pending` is an UNAUTHORIZED PROVISIONAL CLAIM by construction (§15b) and the item link
+ * is written at PROMOTE (`markItemPurchased`), not at birth, so an in-flight checkout legitimately
+ * has no linked item for the duration of the charge — reporting it would be the detector crying
+ * wolf on the spine's own ordering, the same discipline `READY_MADE_FULFILMENT_GRACE_MS` keeps one
+ * rail over. The other three are rows that are NO LONGER an obligation: a swept claim, a cancelled
+ * booking, a reversed one. (A REFUNDED row that WAS linked keeps its `booking_id` — the reversal
+ * edge deliberately leaves it on the row — so this exemption only ever covers rows that never had
+ * one.)
+ *
+ * STATED NEGATIVE SPACE: an UNKNOWN status is deliberately NOT exempt. `service_bookings.status`
+ * is a plain `varchar(30)` with no CHECK, so a value nobody listed here is reported rather than
+ * silently excused — a detector that fails open on a vocabulary change is no detector.
+ */
+const NO_ITEM_EXEMPT_STATUSES = ["payment_pending", "expired", "cancelled", "refunded"];
 
 /** Statuses from which a booking can never be promoted (ruling 39's TERMINAL_UNPROMOTABLE). */
 const TERMINAL_STATUSES = ["expired", "failed", "payment_failed", "cancelled", "canceled", "refunded"];
@@ -269,6 +296,17 @@ interface CartBookingRow {
    *  include the whole platform_fee; `travelerChargeForRow` reads the two apart, which is what
    *  keeps this job from manufacturing an amount_mismatch on every historical booking (§13). */
   travelerChargeConciergeFee: string | null;
+  /** D-11 (ledger `2026-09-15-d11-no-item-booking-exception`): the trip this booking NAMES, if any.
+   *  A booking with no trip is plain commerce and is not this classification's business. */
+  tripId: string | null;
+  /** Whether ANY `itinerary_items` row points at this booking (`booking_id`, migration 159) — the
+   *  LD 39 item→booking link. Computed in SQL beside the row so the detector does no per-row read. */
+  hasLinkedItem: boolean;
+  /** `booking_details.noItemReason` — the NAMED-CLASS mark a birth site with no item reference
+   *  composes (`shared/no-item-booking.ts`). Read as a raw string deliberately: an unrecognised
+   *  value still exempts nothing, because the predicate below asks `readNoItemReason` and that
+   *  refuses anything outside the ratified set (§13 — an unknown string is not a class). */
+  noItemReason: string | null;
 }
 
 /** The expected Stripe amount for ONE row: the traveler's charge (ONE derivation, §18 rule 1)
@@ -298,6 +336,9 @@ function mapCartRow(r: any): CartBookingRow {
     travelerFeeCharged: r.traveler_fee_charged == null ? null : String(r.traveler_fee_charged),
     travelerChargeConciergeFee:
       r.traveler_charge_concierge_fee == null ? null : String(r.traveler_charge_concierge_fee),
+    tripId: r.trip_id ?? null,
+    hasLinkedItem: Boolean(r.has_linked_item),
+    noItemReason: r.no_item_reason == null ? null : String(r.no_item_reason),
   };
 }
 
@@ -306,7 +347,16 @@ const CART_COLUMNS = sql`
   traveler_id, created_at, (booking_details ? 'reconciliationException') AS has_recon_exception,
   (COALESCE(booking_details, '{}'::jsonb) ? 'stripeAttemptAt') AS has_stripe_attempt,
   booking_details->'travelerServiceFee'->>'charged' AS traveler_fee_charged,
-  booking_details->'travelerCharge'->>'conciergeFee' AS traveler_charge_concierge_fee
+  booking_details->'travelerCharge'->>'conciergeFee' AS traveler_charge_concierge_fee,
+  trip_id,
+  /* ONE spelling of the key (see the NO_ITEM_REASON_KEY note on CartBookingRow, and §18 rule 1):
+     the bind parameter is the same constant the composer and the strip use. The ::text cast is
+     load-bearing — jsonb ->> unknown is ambiguous between the text and the integer operator, so an
+     uncast bind parameter cannot be resolved at plan time. */
+  booking_details->>${NO_ITEM_REASON_KEY}::text AS no_item_reason,
+  EXISTS (
+    SELECT 1 FROM itinerary_items ii WHERE ii.booking_id = service_bookings.id
+  ) AS has_linked_item
 `;
 
 // ── The job ──────────────────────────────────────────────────────────────────────────────────
@@ -759,6 +809,71 @@ async function scanCartRail(args: {
           "Indistinguishable causes: the PS15 mass-assignment on POST /api/bookings (closed by " +
           "ruling 46), a seeded fixture, or a row predating ruling 38. Not repaired and not trusted " +
           "— a human decides (rulings 41/46, §17 DETECT-DON'T-REPAIR).",
+      },
+    });
+  }
+
+  // ── B3. PLAN drift: a trip-level obligation the plan does not know about (D-11) ─────────────
+  // Ledger `2026-09-15-d11-no-item-booking-exception` (decision-maker ruling, option A). LD 39:
+  // `itinerary_items` is the ONE store of a plan's contents, and `itinerary_items.booking_id`
+  // (migration 159) is the item→booking link. A `service_bookings` row that NAMES a trip while no
+  // item points at it is therefore a purchase the slip renders (LD 42 D9 — `resolveTripBookings`
+  // emits every booking on the trip, correctly, so the traveler is never shown a plan that hides
+  // what they bought) with NO place in the itinerary: it cannot be reordered, the refund reversal
+  // edge cannot reach it, and it carries no `origin`.
+  //
+  // THE RULING MAKES THAT A MIGRATION EXCEPTION, NOT A PATTERN. Two rails legitimately produce
+  // one — the transport-commerce hosted checkout and the expert-booking-request rail, neither of
+  // which has an item reference to carry — and each now MARKS its row server-side
+  // (`booking_details.noItemReason`, the ONE composer in `shared/no-item-booking.ts`). A third
+  // rail, `POST /api/bookings`, had no item reference either and is not a named class, so it now
+  // REFUSES a `tripId` outright rather than birthing a stray. Everything else that reaches this
+  // predicate is either a row born before the marks existed or a rail nobody has ratified — and
+  // those two are INDISTINGUISHABLE after the fact, which is exactly why this is a finding and not
+  // a repair.
+  //
+  // DETECT, DON'T REPAIR, AND NO BACKFILL (§17/§19b): the job writes no `noItemReason`, links no
+  // item, and touches no booking. Stamping a reason onto a historical row would manufacture the
+  // very fact the mark exists to state, and linking an item would be the job inventing a plan
+  // entry the traveler never made (§13).
+  //
+  // NOT A MONEY CLASSIFICATION — `warning`. Nothing here reads an amount for its decision; the
+  // expected charge is recorded only so the human who follows up knows the size of what is
+  // unaccounted for, through the SAME `expectedChargeForRow` every other cart kind uses
+  // (§18 rule 1).
+  for (const r of rows) {
+    if (!inScope(r.id)) continue;
+    if (!r.tripId) continue; // plain commerce — no plan to be inconsistent with
+    if (r.hasLinkedItem) continue; // the plan knows about it
+    if (NO_ITEM_EXEMPT_STATUSES.includes(r.status ?? "")) continue;
+    // `readNoItemReason` refuses anything outside the ratified set, so a row carrying an
+    // unrecognised string is still reported (§13 — an unknown value is not a class).
+    if (readNoItemReason({ [NO_ITEM_REASON_KEY]: r.noItemReason })) continue;
+    exceptions.push({
+      rail: "cart",
+      kind: "trip_booking_without_item",
+      severity: "warning",
+      // Keyed on the BOOKING alone: the fact is about one row's relationship to its plan and does
+      // not change from pass to pass, so append-only + ON CONFLICT DO NOTHING makes a long-lived
+      // stray ONE row while `exceptions_detected` keeps reporting it (§17 rule 1).
+      dedupeKey: `cart:trip_booking_without_item:${r.id}`,
+      bookingId: r.id,
+      paymentIntentId: r.stripePaymentIntentId,
+      expectedAmount: round2(expectedChargeForRow(r)),
+      details: {
+        bookingStatus: r.status,
+        tripId: r.tripId,
+        // Present-only-when-set would hide the distinction that matters: a row carrying a string
+        // this job does not recognise is NOT the same fact as a row carrying nothing (§13).
+        noItemReasonOnRow: r.noItemReason,
+        ratifiedClasses: [...NO_ITEM_BOOKING_CLASSES],
+        note:
+          "This booking names a trip and NO itinerary_items row points at it (LD 39's item→booking " +
+          "link), and it carries no ratified `booking_details.noItemReason` — so the plan holds an " +
+          "obligation it does not know about. Indistinguishable causes: a row born before the " +
+          "marks existed, or a birth rail outside the named classes. Not repaired, not backfilled " +
+          "and not trusted — a human decides (ledger 2026-09-15-d11-no-item-booking-exception, " +
+          "\u00a717 DETECT-DON'T-REPAIR).",
       },
     });
   }

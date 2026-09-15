@@ -117,7 +117,7 @@ function api(path: string, method: string, body?: unknown) {
  * the expert.
  *
  * THE OFFERING IS NAMED BY KEY. `provider_services.expert_offering_type_id` (the migration-057
- * uuid this fixture used to insert) was DROPPED by migration 295, ledger
+ * uuid this fixture used to insert) was DROPPED by migration 296, ledger
  * `2026-09-15-offering-key-id-drop`; `expert_offering_type_key` (migration 292) is the column the
  * route's concierge predicate reads and the only one there is. The fixture states exactly what it
  * always stated — "this listing sells booking_concierge" — through the column that now carries it.
@@ -161,7 +161,7 @@ async function bookingConciergeOfferingTypeKey(): Promise<string> {
  * `expert_offering_type_id`, which `impactClassFor` cannot read, so the fee rail saw a concierge
  * listing (through its id→key fallback) while the plan-work rail saw an unclassified one. That is
  * exactly the two-columns-disagree pathology ledger `2026-09-12-offering-key-is-canonical` names,
- * and migration 295 (`2026-09-15-offering-key-id-drop`) ends it: both rails now read the KEY and
+ * and migration 296 (`2026-09-15-offering-key-id-drop`) ends it: both rails now read the KEY and
  * agree. Production converged at migration 293, which copied every id onto its key.
  *
  * So the concierge tests give the cart a plan. THE FEE MATH IS UNCHANGED BY IT: a fresh trip holds

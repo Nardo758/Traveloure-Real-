@@ -236,3 +236,50 @@ test("K6 — no file outside shared/item-kind.ts carries a SECOND kind→label m
     "a second table of the kind labels is the derivation-drift class; render itemKindChip()'s value instead",
   );
 });
+
+// ── K7 — the migration-295 links are `recommended`, and no rule was written for them ───────────
+// Ruling 2026-09-15, punchlist D-16 (b)/(c); ledger `2026-09-15-d16-plan-holds-venues-and-content`.
+// `itinerary_items` gained `custom_venue_id` (the traveler's OWN venue) and
+// `content_type`/`content_id` (a Discover gem / hotel / activity). Neither names anything the
+// platform can charge for — checkout skips an item with no service on both loops — so rule 4
+// already answers them and this pins that the silence is DELIBERATE: a fifth rule, or a branch in
+// a component, would be a second "what kind of item is this?" expression (§18 rule 1).
+
+test("K7 — an item naming only a CUSTOM VENUE is `recommended`, and carries no platform price", () => {
+  const row = { customVenueId: "venue_1", title: "Nonna's terrace" } as Record<string, unknown>;
+  assert.equal(itemKind(row), "recommended");
+  assert.equal(itemKindChipFor(row).platformPriced, false);
+});
+
+test("K7 — an item naming only DISCOVER CONTENT is `recommended`, and carries no platform price", () => {
+  const row = { contentType: "gem", contentId: "gem_42" } as Record<string, unknown>;
+  assert.equal(itemKind(row), "recommended");
+  assert.equal(itemKindChipFor(row).platformPriced, false);
+});
+
+test("K7 — NEITHER link outranks a real listing or a real booking", () => {
+  // The precedence is unchanged: a row that somehow named both is still judged by the fact
+  // checkout can act on. A venue or a content id never downgrades a bookable item.
+  assert.equal(
+    itemKind({ providerServiceId: "svc_1", customVenueId: "venue_1" } as Record<string, unknown>),
+    "bookable_separately",
+  );
+  assert.equal(
+    itemKind({ bookingId: "bk_1", contentType: "hotel", contentId: "h_9" } as Record<string, unknown>),
+    "included",
+  );
+});
+
+test("K7 — the derivation READS neither column: a venue/content item is judged only by the three", () => {
+  // The guarantee behind K7's first two proofs — they pass because the three id fields are absent,
+  // not because the new columns were taught to mean anything. `ItemKindInput` deliberately does
+  // not carry them (shared/item-kind.ts), so a caller cannot believe they are read.
+  const src = readFileSync(path.join(REPO, "shared/item-kind.ts"), "utf8");
+  const fn = src.slice(src.indexOf("export function itemKind("), src.indexOf("export type ItemKindTone"));
+  for (const column of ["customVenueId", "contentType", "contentId"]) {
+    assert.ok(
+      !fn.includes(column),
+      `${column} must not appear in the derivation — it is not one of the three facts it reads`,
+    );
+  }
+});

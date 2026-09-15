@@ -21,6 +21,7 @@ import Stripe from "stripe";
 import { db } from "../db";
 import { transportBookingOptions, serviceBookings } from "@shared/schema";
 import { users } from "@shared/models/auth";
+import { noItemBookingDetail } from "@shared/no-item-booking";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { getStripeSecretKey } from "../utils/stripe-key";
 // Ruling 2026-09-02-traveler-fee-applies-everywhere (path 4 — platform transport is merchant-of-record,
@@ -153,6 +154,13 @@ export async function createTransportBookingCheckout(
     totalAmount: String(totalAmount / 100),
     bookingDetails: {
       bookingType: "transport",
+      // D-11 (ledger `2026-09-15-d11-no-item-booking-exception`): the NAMED-CLASS mark. This rail
+      // sells a `transport_booking_options` row, which no `itinerary_items` column points at, so
+      // the booking it births can never carry a plan item — and when the caller names a trip, the
+      // row is a trip-level obligation the plan does not know about. Composed SERVER-SIDE through
+      // the ONE composer (§18 rule 1); the key is in `SERVER_AUTHORED_BOOKING_DETAIL_KEYS`, so no
+      // client body can plant it and exempt itself from the `trip_booking_without_item` detector.
+      ...noItemBookingDetail("transport_commerce"),
       optionId,
       travelers,
       specialRequests,

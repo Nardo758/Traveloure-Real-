@@ -33,7 +33,9 @@ function readApp(): string {
  *
  * Excluded intentionally:
  *   - Dev-only redirects guarded by NODE_ENV=development (/landing-mockups,
- *     /architecture, /booking-demo, /layout-mock) — not live in production builds.
+ *     /architecture, /layout-mock) — not live in production builds.
+ *     (/booking-demo was one of these until punchlist D-12 removed the route and the page
+ *     outright — ledger `2026-09-15-d12-service-bookings-canonical`.)
  */
 
 // ---------------------------------------------------------------------------

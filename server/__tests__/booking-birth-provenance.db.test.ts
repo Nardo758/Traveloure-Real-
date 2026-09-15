@@ -71,6 +71,14 @@ import {
   TRAVELER_CHARGE_SNAPSHOT_KEY,
   stripServerAuthoredBookingDetails,
 } from "@shared/booking-details-admission";
+import {
+  NO_ITEM_BOOKING_CLASSES,
+  NO_ITEM_REASON_KEY,
+  PLAN_BOOKING_NEEDS_CART_REFUSAL,
+  noItemBookingDetail,
+  readNoItemReason,
+  type PlanBookingRefusalReason,
+} from "@shared/no-item-booking";
 import type { BuyRefusalReason } from "@shared/buy-action";
 import { resolveServiceOwnerShareRate } from "../services/commission";
 import { hasPublishedPrice } from "../services/buy-action-payload";
@@ -140,6 +148,15 @@ class RailRefusal extends Error {
   }
 }
 
+/** What the rail answers to a body that names a `tripId` (D-11). Separate class from `RailRefusal`
+ *  because it answers in its OWN vocabulary — a rename of `PlanBookingRefusalReason` fails to
+ *  compile here rather than quietly passing under the price refusal's reason. */
+class PlanRailRefusal extends Error {
+  constructor(readonly reason: PlanBookingRefusalReason) {
+    super(`rail refused: ${reason}`);
+  }
+}
+
 /** Reproduces EXACTLY what `POST /api/bookings` does with a body: the exported allowlist schema the
  *  route parses with, the price gate it applies, and the storage writer it calls, with the same
  *  server-derived amount/identity. Nothing here is a reconstruction of the route's logic — every
@@ -151,6 +168,10 @@ class RailRefusal extends Error {
  *  stripped; B8 is the assertion that keeps it that way. */
 async function postBooking(body: Record<string, unknown>): Promise<string> {
   const input = createBookingRequestSchema.parse(body);
+  // D-11: the route's OWN gate, in the route's own order — FIRST, before the catalog read and
+  // before any write. This rail carries no item reference, so a trip-bearing booking it births is
+  // a stray by construction; the plan-linked path is the cart (LD 39). B10 pins the handler.
+  if (input.tripId) throw new PlanRailRefusal(PLAN_BOOKING_NEEDS_CART_REFUSAL.reason);
   const service = await storage.getProviderServiceById(input.serviceId!);
   assert.ok(service, "fixture service must exist");
   // V-11: the route's OWN gate, its own imported predicate — the ONE translation of the price
@@ -288,7 +309,6 @@ test("B1: POST /api/bookings with stripePaymentIntentId in the body — field st
   // anything — and, per ruling 46, may never be BORN onto a row either.
   const bookingId = await postBooking({
     serviceId,
-    tripId: ids.trip,
     bookingDetails: { notes: "legitimate field" },
     stripePaymentIntentId: HOSTILE_PI,
   });
@@ -354,7 +374,6 @@ test("B3: the route body is an ALLOWLIST — the whole privileged family is unre
   // Everything a denylist schema would have let through. NONE of it may reach the row.
   const bookingId = await postBooking({
     serviceId,
-    tripId: ids.trip,
     bookingDetails: { notes: "legit" },
     stripePaymentIntentId: HOSTILE_PI,
     totalAmount: "0.01",
@@ -578,7 +597,6 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
   // (cancellation-policy.service.ts) and what a checkout re-drive charges (checkout-claim.service.ts).
   const bookingId = await postBooking({
     serviceId,
-    tripId: ids.trip,
     bookingDetails: {
       notes: "legitimate field",
       // The era discriminator. A concierge fee nobody resolved, on a row nobody charged.
@@ -596,6 +614,10 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
       [BALANCE_PAYER_DETAIL_KEY]: ids.provider,
       completion: { rule: "forged", actor: ids.traveler },
       itineraryItemId: "some-item",
+      // D-11: the NAMED-CLASS mark. A client that could plant it would exempt its own row from
+      // the `trip_booking_without_item` detector this lane adds — the same shape of move as
+      // planting `stripeAttemptAt` two keys up.
+      [NO_ITEM_REASON_KEY]: "transport_commerce",
     },
     bookingMetadata: {
       visaType: "legitimate field",
@@ -670,6 +692,7 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
       "balancePaidByUserId",
       "completion",
       "itineraryItemId",
+      "noItemReason",
     ],
     "the server-authored key family — see shared/booking-details-admission.ts for each one's reader",
   );
@@ -678,6 +701,11 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
   );
   assert.ok(
     (SERVER_AUTHORED_BOOKING_DETAIL_KEYS as readonly string[]).includes(BALANCE_PAYER_DETAIL_KEY),
+  );
+  assert.ok(
+    (SERVER_AUTHORED_BOOKING_DETAIL_KEYS as readonly string[]).includes(NO_ITEM_REASON_KEY),
+    "D-11's named-class mark is server-authored — a client that could plant it would exempt its " +
+      "own row from the detector the mark feeds",
   );
 
   // STATED NEGATIVE SPACE, asserted rather than only written down: the strip is TOP-LEVEL, because
@@ -736,7 +764,7 @@ test("B9: a listing that publishes no price does not produce a booking at all �
   // thing §9.2's "do not send a quote through generic checkout" had standing behind it.
   const pricelessId = await makeService(null);
   await assert.rejects(
-    () => postBooking({ serviceId: pricelessId, tripId: ids.trip, bookingDetails: { notes: "quote me" } }),
+    () => postBooking({ serviceId: pricelessId, bookingDetails: { notes: "quote me" } }),
     (err: unknown) => err instanceof RailRefusal && err.reason === "no_published_price",
     "a NULL price is refused in the resolver's own vocabulary, not committed at 0.00",
   );
@@ -748,7 +776,7 @@ test("B9: a listing that publishes no price does not produce a booking at all �
   // A ZERO price is the same fact wearing a number: nobody published a price of nothing.
   const zeroId = await makeService("0.00");
   await assert.rejects(
-    () => postBooking({ serviceId: zeroId, tripId: ids.trip, bookingDetails: {} }),
+    () => postBooking({ serviceId: zeroId, bookingDetails: {} }),
     (err: unknown) => err instanceof RailRefusal && err.reason === "no_published_price",
   );
 
@@ -764,7 +792,7 @@ test("B9: a listing that publishes no price does not produce a booking at all �
   // A PRICED LISTING IS BYTE-IDENTICAL: it passes the gate, and the amount below it is the same
   // catalog-derived number it has always been (§14). B3 asserts the full birth invariants.
   const pricedId = await makeService("250.00");
-  const bookingId = await postBooking({ serviceId: pricedId, tripId: ids.trip, bookingDetails: { notes: "n" } });
+  const bookingId = await postBooking({ serviceId: pricedId, bookingDetails: { notes: "n" } });
   const row = await readBooking(bookingId);
   assert.equal(row.total_amount, "250.00");
   assert.equal(row.status, "pending");
@@ -804,6 +832,160 @@ test("B9: a listing that publishes no price does not produce a booking at all �
     assert.ok(
       src.includes("hasPublishedPrice"),
       `${rel} prices a booking off a listing price with a || 0 fallback and never consults hasPublishedPrice (V-11)`,
+    );
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// B10–B11 — D-11: a trip-bearing booking with no plan item is a MARKED exception or a REFUSAL
+// (ledger `2026-09-15-d11-no-item-booking-exception`, decision-maker ruling, option A)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("B10: POST /api/bookings REFUSES a body that names a trip — before any write — and plain commerce is unchanged", async () => {
+  const serviceId = await makeService();
+
+  // LD 39: `itinerary_items` is the ONE store of a plan's contents and `itinerary_items.booking_id`
+  // (migration 159) is the item→booking link. THIS RAIL HAS NO ITEM REFERENCE AT ALL — B6 pins its
+  // five-key allowlist and none of them names an item, and nothing downstream writes `booking_id`
+  // — so every trip-bearing booking it births would be a plan-level obligation the plan does not
+  // know about. It is not one of the ratified classes, so the honest answer is a refusal, not a
+  // mark: a `noItemReason` here would be a reason that is not true.
+  const before = await db.execute(sql`
+    SELECT count(*)::int AS n FROM service_bookings WHERE service_id = ${serviceId}
+  `);
+  assert.equal((before.rows[0] as any).n, 0, "precondition: no rows for this fixture listing yet");
+
+  await assert.rejects(
+    () => postBooking({ serviceId, tripId: ids.trip, bookingDetails: { notes: "put it on my plan" } }),
+    (err: unknown) => err instanceof PlanRailRefusal && err.reason === "plan_booking_needs_cart",
+    "a trip-bearing body is refused in the rail's own vocabulary",
+  );
+
+  // BEFORE ANY WRITE — a refusal is not a booking. No row, and therefore no counter, no
+  // content-registry entry, and nothing for the detector to find later.
+  const after = await db.execute(sql`
+    SELECT count(*)::int AS n FROM service_bookings WHERE service_id = ${serviceId}
+  `);
+  assert.equal((after.rows[0] as any).n, 0, "DB FACT: the refusal committed NOTHING");
+
+  // AND THE RAIL STILL WORKS. Plain commerce — a booking request that names no plan — is
+  // byte-identical to before this lane: born `pending`, no PaymentIntent, catalog-derived amount.
+  const bookingId = await postBooking({ serviceId, bookingDetails: { notes: "no plan named" } });
+  const row = await readBooking(bookingId);
+  assert.equal(row.status, "pending");
+  assert.equal(row.total_amount, "100.00");
+  assert.equal(row.stripe_payment_intent_id, null);
+  const tripOnRow = await db.execute(sql`SELECT trip_id FROM service_bookings WHERE id = ${bookingId}`);
+  assert.equal((tripOnRow.rows[0] as any).trip_id, null, "and it names no trip");
+
+  // The refusal's own shape, pinned: a `reason` a surface can branch on beside a sentence a human
+  // can read (the V-11 precedent on this same handler).
+  assert.equal(PLAN_BOOKING_NEEDS_CART_REFUSAL.reason, "plan_booking_needs_cart");
+  assert.ok(
+    PLAN_BOOKING_NEEDS_CART_REFUSAL.message.length > 40,
+    "the refusal names the rule rather than answering with a bare code",
+  );
+});
+
+test("B11: the two NAMED classes mark their own rows — one composer, both birth sites, and the mark survives only server-side", async () => {
+  const serviceId = await makeService();
+
+  // THE COMPOSER, directly. It is the ONE author of the mark (§18 rule 1); a hand-written
+  // `{ noItemReason: "…" }` at a birth site is the second author this pins against.
+  assert.deepEqual(noItemBookingDetail("transport_commerce"), { [NO_ITEM_REASON_KEY]: "transport_commerce" });
+  assert.deepEqual(noItemBookingDetail("expert_booking_request"), {
+    [NO_ITEM_REASON_KEY]: "expert_booking_request",
+  });
+
+  // THE RATIFIED SET, pinned. Widening it is a decision-maker's call recorded in the ledger — and
+  // the cost of a new class is the detector's silence about that rail forever after.
+  assert.deepEqual(
+    [...NO_ITEM_BOOKING_CLASSES],
+    ["transport_commerce", "expert_booking_request"],
+    "the classes ratified 2026-09-15 — see shared/no-item-booking.ts for why each rail has no item",
+  );
+
+  // §13 ON THE READER: an absent, malformed or UNRECOGNISED value is not a class. A row carrying
+  // an unknown string is still a finding, which is what keeps the mark from becoming a free pass.
+  assert.equal(readNoItemReason(null), null);
+  assert.equal(readNoItemReason({}), null);
+  assert.equal(readNoItemReason({ [NO_ITEM_REASON_KEY]: "something_else" }), null);
+  assert.equal(readNoItemReason({ [NO_ITEM_REASON_KEY]: 7 }), null);
+  assert.equal(readNoItemReason({ [NO_ITEM_REASON_KEY]: "transport_commerce" }), "transport_commerce");
+
+  // THE SERVER-COMPOSED MARK SURVIVES the checkout claim's own writer — the B8 shape, one key over.
+  // `createServiceBooking` is the spine's writer and is deliberately NOT stripped; the expert
+  // rail composes its mark through it, exactly as the claim composes `travelerCharge`.
+  const marked = await storage.createServiceBooking({
+    serviceId,
+    travelerId: ids.traveler,
+    providerId: ids.provider,
+    tripId: ids.trip,
+    totalAmount: "100.00",
+    bookingDetails: { notes: "expert request", ...noItemBookingDetail("expert_booking_request") },
+  } as any);
+  createdBookingIds.push(marked.id);
+  const markedRow = await readBooking(marked.id);
+  assert.equal(
+    readNoItemReason(markedRow.booking_details),
+    "expert_booking_request",
+    "a SERVER-composed mark must survive — it is what exempts the row from the detector",
+  );
+
+  // AND THE CLIENT RAIL CANNOT PLANT ONE. B7's loop covers the whole family; this is the one that
+  // matters here, asserted on its own so the reason is legible at the failure site.
+  const client = await postBooking({
+    serviceId,
+    bookingDetails: { notes: "n", [NO_ITEM_REASON_KEY]: "transport_commerce" },
+  });
+  const clientRow = await readBooking(client);
+  assert.equal(
+    readNoItemReason(clientRow.booking_details),
+    null,
+    "a body-supplied mark is stripped — a caller may not excuse its own row from the detector",
+  );
+
+  // THE BIRTH SITES ARE PINNED TO THE COMPOSER, over the file SET rather than by a call-site
+  // count: any server file that writes a `noItemReason` must do it through `noItemBookingDetail`.
+  // Comments stripped, so a mention in prose cannot satisfy it.
+  const roots = ["server/routes.ts", "server/routes", "server/services", "server/jobs"];
+  const files: string[] = [];
+  for (const root of roots) {
+    const abs = path.join(process.cwd(), root);
+    if (!fs.existsSync(abs)) continue;
+    if (fs.statSync(abs).isFile()) files.push(root);
+    else {
+      for (const f of fs.readdirSync(abs)) {
+        if (f.endsWith(".ts")) files.push(path.join(root, f));
+      }
+    }
+  }
+  assert.ok(files.length > 20, `expected the route/service/job file set, found ${files.length}`);
+  const stripComments = (src: string) =>
+    src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const sources = new Map(
+    files.map((rel) => [rel, stripComments(fs.readFileSync(path.join(process.cwd(), rel), "utf8"))]),
+  );
+  // (a) NOBODY SPELLS THE KEY. Server code names the constant or calls the composer; a quoted
+  //     literal is the second spelling §18 rule 1 refuses, and here it would fail OPEN — the strip
+  //     and the detector would keep reading a key the writer had stopped writing.
+  const spellers = [...sources].filter(([, src]) => /["'`]noItemReason["'`]/.test(src)).map(([rel]) => rel);
+  assert.deepEqual(
+    spellers,
+    [],
+    `these files spell the mark's key as a literal instead of using NO_ITEM_REASON_KEY: ${spellers.join(", ")}`,
+  );
+  // (b) EVERY RATIFIED CLASS HAS EXACTLY ONE BIRTH SITE. Not a call-site count — a per-class one,
+  //     so the pin survives a file move and still fails when a class gains a second author (drift)
+  //     or loses its only one (an unmarked rail quietly rejoining the findings).
+  for (const cls of NO_ITEM_BOOKING_CLASSES) {
+    const composed = [...sources]
+      .filter(([, src]) => src.includes(`noItemBookingDetail("${cls}")`))
+      .map(([rel]) => rel);
+    assert.equal(
+      composed.length,
+      1,
+      `class '${cls}' must be composed at exactly ONE server birth site — found: ${composed.join(", ") || "(none)"}`,
     );
   }
 });

@@ -41,6 +41,8 @@
  * admissible under its new name.
  */
 
+import { NO_ITEM_REASON_KEY } from "./no-item-booking";
+
 /**
  * The `booking_details` key a checkout claim stamps so a row SAYS which composition priced it.
  * Its PRESENCE is the discriminator (§13): a row without it was charged under the pre-A3
@@ -88,6 +90,11 @@ export const SERVER_AUTHORED_BOOKING_DETAIL_KEYS = [
   "completion",
   // The plan item this booking flips to `purchased`. Written server-side from the cart line.
   "itineraryItemId",
+  // D-11 (ledger `2026-09-15-d11-no-item-booking-exception`): the NAMED CLASS that excuses a
+  // trip-bearing booking from having a plan item behind it. Reader: the reconciliation job's
+  // `trip_booking_without_item` predicate — so a body that could plant it would exempt its own
+  // row from the detector this key exists to feed.
+  NO_ITEM_REASON_KEY,
 ] as const;
 
 export type ServerAuthoredBookingDetailKey = (typeof SERVER_AUTHORED_BOOKING_DETAIL_KEYS)[number];

@@ -22,6 +22,14 @@
  *    its own `TRV` + 10 characters, persists it on `bookings.confirmation_code` and emails it — so
  *    the fabricated one was indistinguishable from the real thing to the traveler and meaningless
  *    to support. A test asserting "a confirmation code is rendered" passes on the fabricated one.
+ *    THE SUBJECT IS GONE (punchlist D-12, ledger `2026-09-15-d12-service-bookings-canonical`):
+ *    `BookingFlowModal` was the legacy `bookings` rail's only client, and when that rail's two
+ *    surfaces (`/booking-demo`, the itinerary-comparison board's "Book Now") were retired it had
+ *    zero mounts and was DELETED (§18c). B2/B3 pinned that file's own poll and render wiring and
+ *    have gone with it; B1 is REPAIRED, not deleted (§18d) — it now asserts the INVARIANT over the
+ *    whole client tree rather than over one file, which is strictly stronger than what it pinned
+ *    before, and B5 is the only pin a deletion can have (the C9 precedent below): neither the file
+ *    nor an importer of it comes back.
  *  · C-series (V-7). `PATCH /api/transport-booking-options/:optionId/status` read `bookingStatus`
  *    and `confirmationRef` straight off `req.body` behind `isAuthenticated` and NOTHING else — no
  *    ownership check, no allowlist, no value set. Any signed-in account could stamp ANY transport
@@ -57,12 +65,20 @@
  *  - C9 is a NAME/PATH scan, not a semantic one: it proves the deleted route path and the deleted
  *    storage helper are absent from `server/`, `client/` and `e2e/`, and nothing about a third rail
  *    that reaches the same column by a different spelling.
+ *  - B1's sweep is LINE-LOCAL and NAME-based: it catches a confirmation code minted beside a
+ *    `Math.random()` on one line, or a `TRV`-prefixed template literal, anywhere under `client/src`.
+ *    A code assembled over several lines, or under another prefix, is outside its predicate — the
+ *    server's own mint is what makes a code real, and B4 is what proves an absent one is said out
+ *    loud rather than filled.
+ *  - B5 is a NAME/PATH scan like C9: it proves the deleted component file is absent and unimported.
+ *    It says nothing about a differently-named component that re-opens the same rail — the route's
+ *    own D-12 switch is that layer.
  *
  * Run: npx tsx --test server/__tests__/confirm-honesty.test.ts
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -71,8 +87,9 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 
 const TRANSPORT_ROUTES = "server/routes/transport-hub.routes.ts";
 const STRIPE_SERVICE = "server/services/stripe.service.ts";
-const FLOW_MODAL = "client/src/components/booking/BookingFlowModal.tsx";
 const CONFIRMATION = "client/src/components/booking/BookingConfirmation.tsx";
+/** D-12: deleted with the legacy rail's last client. B5 proves it stays deleted. */
+const DELETED_FLOW_MODAL = "client/src/components/booking/BookingFlowModal.tsx";
 
 /**
  * Every pin below that reads a REGION of a file derives it from the file set with COMMENTS
@@ -89,6 +106,25 @@ const stripComments = (src: string) =>
       return !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*"));
     })
     .join("\n");
+
+/**
+ * Every `.ts`/`.tsx` file under `dir`, skipping `node_modules`, `dist` and `__tests__` — the same
+ * exclusions C9's own walker applies, so a pin can never be satisfied (or broken) by a test file
+ * that merely NAMES the thing it forbids.
+ */
+function walkFiles(dir: string, exts: string[]): string[] {
+  const out: string[] = [];
+  const walk = (d: string) => {
+    for (const entry of readdirSync(d)) {
+      if (entry === "node_modules" || entry === "__tests__" || entry === "dist") continue;
+      const full = join(d, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (exts.some((e) => entry.endsWith(e))) out.push(full);
+    }
+  };
+  walk(dir);
+  return out;
+}
 
 /** The body of one Express handler: from its route-path literal to the NEXT route registration. */
 const handlerBody = (src: string, routePath: string) => {
@@ -174,49 +210,57 @@ test("A4: the transport booking rail itself is intact", () => {
 
 // ── B-series — the confirmation code is the server's, or there is none ──────────────────────────
 
-test("B1: the modal fabricates no confirmation code", () => {
-  const src = read(FLOW_MODAL);
-
-  // Any `Math.random()` on the same line as a confirmation code is the defect, whatever the prefix.
-  for (const line of src.split("\n")) {
-    if (line.trimStart().startsWith("//") || line.trimStart().startsWith("*")) continue;
-    assert.ok(
-      !(/confirmationCode/.test(line) && /Math\.random/.test(line)),
-      `a confirmation code is being generated in the browser: ${line.trim()}`,
-    );
-    assert.ok(
-      !/`TRV\$\{/.test(line),
-      `a TRV-prefixed code is being minted in the browser: ${line.trim()}`,
-    );
+test("B1: nothing in the client mints a confirmation code", () => {
+  // REPAIRED, never weakened (§18d). This pin used to read ONE file — `BookingFlowModal.tsx`, the
+  // component that carried the defect — and that file was deleted with the legacy rail's last
+  // client (D-12). The invariant it existed for is not about that file, so the pin now sweeps the
+  // whole client tree: no surface anywhere may invent a confirmation code in the browser.
+  const offences: string[] = [];
+  for (const rel of walkFiles(join(ROOT, "client", "src"), [".ts", ".tsx"])) {
+    const src = readFileSync(rel, "utf8");
+    for (const line of src.split("\n")) {
+      const t = line.trimStart();
+      if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")) continue;
+      if (/confirmationCode/.test(line) && /Math\.random/.test(line)) {
+        offences.push(`${relative(ROOT, rel)}: ${line.trim()}`);
+      }
+      if (/`TRV\$\{/.test(line)) {
+        offences.push(`${relative(ROOT, rel)}: ${line.trim()}`);
+      }
+    }
   }
-});
-
-test("B2: the code rendered is the one the server returned", () => {
-  const src = read(FLOW_MODAL);
-  assert.match(
-    src,
-    /statuses\[b\.id\]\?\.confirmationCode/,
-    "the confirmation row must take its code from the server's bulk-status response",
-  );
-  assert.match(
-    src,
-    /confirmationCode: serverCode \?\? undefined/,
-    "a booking with no server code must carry NO code (§13), never a substitute",
+  assert.deepEqual(
+    offences,
+    [],
+    `a confirmation code is being generated in the browser:\n${offences.join("\n")}`,
   );
 });
 
-test("B3: the poll no longer discards the rows it fetched", () => {
-  const src = read(FLOW_MODAL);
-  assert.match(
-    src,
-    /pollForWebhookConfirmation[\s\S]{0,400}?Promise<\{\s*confirmed: boolean;\s*statuses:/,
-    "pollForWebhookConfirmation must return the statuses it read, not only allConfirmed",
+test("B5 (D-12): the legacy rail's client stays deleted and unimported", () => {
+  // The only pin a deletion can have — the C9 precedent above, applied to a component instead of a
+  // route. B2 and B3 pinned this file's poll and render wiring; their subject is gone, so they are
+  // replaced by the assertion that it does not come back. The legacy `bookings` rail itself is NOT
+  // deleted (its reads, refunds and the §17 scan all survive) — what is gone is the browser
+  // surface that wrote NEW rows to it.
+  assert.ok(
+    !existsSync(join(ROOT, DELETED_FLOW_MODAL)),
+    `${DELETED_FLOW_MODAL} was deleted by D-12 and must not come back — a new rail into ` +
+      "`POST /api/bookings/process-cart` needs its own ruling, not a restored file",
   );
-  assert.match(
-    src,
-    /statuses = \{ \.\.\.statuses, \.\.\.\(await fetchBookingStatuses\(bookingIds\)\) \}/,
-    "the fallback confirm-payment path must re-read, since that is what persists the code",
-  );
+
+  const importers: string[] = [];
+  for (const dir of ["client/src", "server", "e2e", "playwright"]) {
+    const abs = join(ROOT, dir);
+    if (!existsSync(abs)) continue;
+    for (const file of walkFiles(abs, [".ts", ".tsx"])) {
+      const rel = relative(ROOT, file);
+      // COMMENTS STRIPPED, the standing lane rule: a doc comment explaining why the component was
+      // deleted must not read as the component coming back (`BookingConfirmation.tsx` carries
+      // exactly such a note).
+      if (/BookingFlowModal/.test(stripComments(readFileSync(file, "utf8")))) importers.push(rel);
+    }
+  }
+  assert.deepEqual(importers, [], `BookingFlowModal is referenced again by: ${importers.join(", ")}`);
 });
 
 test("B4: an absent code is stated, not filled", () => {

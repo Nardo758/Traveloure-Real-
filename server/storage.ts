@@ -136,6 +136,12 @@ import {
   vendorContracts,
 } from "@shared/schema";
 import { stripServerAuthoredBookingDetails } from "@shared/booking-details-admission";
+// D-10 (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): the purchase writer's §15
+// from-list and its target type come from the ONE vocabulary module — never restated here.
+import {
+  PURCHASE_CLAIMABLE_FROM_STATUSES,
+  type HumanPurchaseBookingAgentStatus,
+} from "@shared/booking-agent-vocabulary";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
 import type {
   NeighborhoodRow as MarketNeighborhoodRow,
@@ -1120,7 +1126,7 @@ export interface IStorage {
   // confirm can't double-insert the affiliate earning it triggers. Returns undefined when the row
   // was already confirmed (lost the race) — caller must treat that as an idempotent no-op.
 
-  confirmAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
+  recordAffiliateBookingPurchase(id: string, purchaseStatus: HumanPurchaseBookingAgentStatus, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
   // AI booking copilot verification leg (migration 170). Persists ONLY the verification jsonb
   // snapshot — never touches affiliateUrl or any other column. §16: the snapshot itself must never
   // carry the URL; that's enforced by the caller (booking-verification.service.ts) never putting it
@@ -1370,10 +1376,23 @@ export function stripFormVerificationFields<T extends Record<string, unknown>>(f
 // entirely (a raw `req.body` destructure) and calls `updateItineraryItem` directly, so THIS strip
 // is what actually protects that route. Extracted as a standalone pure function (matching
 // `stripFormVerificationFields`'s placement) so it is unit-testable without a live DB.
+//
+// WIDENED 2026-09-15 (ruling, punchlist D-16 (b)/(c); ledger
+// `2026-09-15-d16-plan-holds-venues-and-content`) TO MIGRATION 295's THREE COLUMNS, and the name
+// is kept deliberately: this is the layer-2 strip for every SERVER-STAMPED `itinerary_items`
+// column, of which the routing pair was simply the first. `customVenueId` / `contentType` /
+// `contentId` are stamped from the CART ROW by `server/services/cart-projection.service.ts` and by
+// nothing else — that module inserts directly (`tx.insert(itineraryItems)`) and never calls these
+// two methods, so stripping here costs the one legitimate writer nothing while covering the raw
+// `req.body` destructure on the canonical PATCH route, exactly as it already does for the pair
+// above. §19: under a denylist a freshly added column is client-settable BY DEFAULT.
 export function stripItineraryItemRoutingFields<T extends Record<string, unknown>>(item: T): T {
   const {
     routingStatus: _rs,
     bookingId: _bid,
+    customVenueId: _cvid,
+    contentType: _ct,
+    contentId: _cid,
     ...safe
   } = item as Record<string, unknown>;
   return safe as T;
@@ -3837,7 +3856,7 @@ export class DatabaseStorage implements IStorage {
     return enriched;
   }
 
-  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; slotId?: string; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
+  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; partySize?: number | null; unitsPinnedToOne?: boolean; tripId?: string; scheduledDate?: Date; slotId?: string; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
     if (!userId && !item.guestSessionId) {
       throw new Error("Either userId or guestSessionId is required");
     }
@@ -3876,9 +3895,22 @@ export class DatabaseStorage implements IStorage {
       // the additive-quantity behavior unchanged.
       const isRoomStayUpdate =
         item.contentMeta && typeof (item.contentMeta as Record<string, unknown>).checkIn === "string";
+      // D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): an archetype that asks
+      // NO unit count — a stay, a bundle, an artifact — is ONE unit however many times it is added.
+      // The `+ 1` below is how a villa added twice came to be priced twice (`rate × quantity`), so a
+      // pinned archetype's re-add SETS the count to one rather than incrementing it. The caller
+      // decides which archetype that is through the ONE derivation (`@shared/cart-quantity`); this
+      // writer never re-derives it (§18 rule 1). Every other listing keeps the additive behaviour.
       const [updated] = await db.update(cartItems)
         .set({
-          quantity: isRoomStayUpdate ? (existing.quantity || 1) : (existing.quantity || 1) + (item.quantity || 1),
+          quantity: item.unitsPinnedToOne
+            ? 1
+            : isRoomStayUpdate
+              ? (existing.quantity || 1)
+              : (existing.quantity || 1) + (item.quantity || 1),
+          // The traveler's party answer rides a re-add only when they gave one — an absent key
+          // never clears a saved count (§13, ruling 83's own posture).
+          ...(item.partySize !== undefined ? { partySize: item.partySize } : {}),
           // C3: re-adding with a picked slot attaches (or replaces) the slot + its derived date.
           ...(item.slotId ? { slotId: item.slotId, scheduledDate: item.scheduledDate } : {}),
           ...(isRoomStayUpdate ? { contentMeta: item.contentMeta } : {}),
@@ -3898,6 +3930,9 @@ export class DatabaseStorage implements IStorage {
       contentMeta: item.contentMeta || {},
       experienceSlug: item.experienceSlug,
       quantity: item.quantity || 1,
+      // D-14: written at birth when the add rail asked for it; `undefined` leaves the column NULL,
+      // which is ruling 83's honest "the traveler never told us".
+      ...(item.partySize !== undefined ? { partySize: item.partySize } : {}),
       tripId: item.tripId,
       scheduledDate: item.scheduledDate,
       slotId: item.slotId || null,
@@ -7538,21 +7573,44 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async confirmAffiliateBookingRequest(
+  /**
+   * RECORD A HUMAN PURCHASE — punchlist D-10 (option A), ledger
+   * `2026-09-15-d10-confirmed-needs-partner-evidence`. This REPLACES the old
+   * `confirmAffiliateBookingRequest`, which wrote `status='confirmed'` on an agent's press.
+   *
+   * THE RULE IT EXECUTES: a human agent's press means a named actor ATTEMPTED A PURCHASE, which
+   * LD 44 (e) calls `purchased_by_*`. It is NOT a confirmation — only PARTNER-ORIGINATED evidence
+   * produces `confirmed` (`server/services/affiliate-booking-confirmation.service.ts`, the ONE
+   * writer). The agent's typed `confirmationRef` rides along and stays visible; it is our record of
+   * what they did, not the partner's word.
+   *
+   * §15/§18b: the transition IS the guard — a single
+   * `UPDATE … WHERE id = ? AND status IN (<claimable from-list>)`, never a check-then-update. The
+   * from-list is DERIVED in `shared/booking-agent-vocabulary.ts` and excludes `confirmed` (a human
+   * press must never pull a row back off the partner's word) and every `purchased_by_*` (so a
+   * double press matches ZERO rows and the confirm side-effects — the plan item and the
+   * earning-ledger row — fire exactly once). A NULL status is treated as the birth value the column
+   * defaults to, so a legacy row with no status is still claimable rather than silently stuck.
+   *
+   * Same layer-2 strip as the update path above: recording a purchase never reassigns the row.
+   */
+  async recordAffiliateBookingPurchase(
     id: string,
+    purchaseStatus: HumanPurchaseBookingAgentStatus,
     data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "tripId">>,
   ): Promise<AffiliateBookingRequest | undefined> {
-    // §15 atomic claim: transitions pending/failed/etc → 'confirmed' ONLY when the row is not
-    // already 'confirmed'. A concurrent/duplicate confirm request matches 0 rows and returns
-    // undefined — the caller (the R4/F7 earning-ledger write) must treat that as "already
-    // confirmed" and skip re-running the confirm side-effects (itinerary item + affiliate earning),
-    // not retry the insert.
-    // Same layer-2 strip as the update path above: confirming a booking never reassigns it.
-    const { expertId: _assigneeIsClaimedNotConfirmed, ...safe } = data as Record<string, unknown>;
+    const { expertId: _assigneeIsClaimedNotPurchased, status: _statusIsTheParameter, ...safe } =
+      data as Record<string, unknown>;
     const [updated] = await db
       .update(affiliateBookingRequests)
-      .set({ ...(safe as typeof data), status: "confirmed", updatedAt: new Date() })
-      .where(and(eq(affiliateBookingRequests.id, id), ne(affiliateBookingRequests.status, "confirmed")))
+      .set({ ...(safe as typeof data), status: purchaseStatus, updatedAt: new Date() })
+      .where(and(
+        eq(affiliateBookingRequests.id, id),
+        or(
+          inArray(affiliateBookingRequests.status, [...PURCHASE_CLAIMABLE_FROM_STATUSES]),
+          isNull(affiliateBookingRequests.status),
+        )!,
+      ))
       .returning();
     return updated;
   }

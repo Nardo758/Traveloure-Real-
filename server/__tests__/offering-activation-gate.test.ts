@@ -304,7 +304,7 @@ test("K4 · BOTH `/api/provider/services` write rails admit the key, through ONE
 
 // ── K5–K8 · THE KEY IS CANONICAL; THE LEGACY UUID IS GONE ────────────────────────────────────
 // Ledger `2026-09-12-offering-key-is-canonical` (lane 1; migration 293 backfilled) and
-// `2026-09-15-offering-key-id-drop` (lane 2; migration 295 DROPPED
+// `2026-09-15-offering-key-id-drop` (lane 2; migration 296 DROPPED
 // `provider_services.expert_offering_type_id`). These pins live beside K1–K4 because they are the
 // same subject one step on: K1/K2 proved only the KEY is admissible, and these prove the legacy id
 // is admissible NOWHERE, that the money path's concierge decision has ONE home, and that the KEY
@@ -326,7 +326,7 @@ test("K5 · the legacy `expertOfferingTypeId` is admissible on NO rail (the colu
   } as Record<string, unknown>) as Record<string, unknown>;
   assert.ok(
     !("expertOfferingTypeId" in parsed),
-    "`insertProviderServiceSchema` must never admit the legacy uuid — migration 295 dropped it, and a second writable offering column is free to disagree with the canonical key (§18 rule 1)",
+    "`insertProviderServiceSchema` must never admit the legacy uuid — migration 296 dropped it, and a second writable offering column is free to disagree with the canonical key (§18 rule 1)",
   );
   // And the allowlist that re-admits the KEY still admits nothing else (K2's shape, from the other
   // direction): naming the legacy column there would reopen the hole this ruling closes.
@@ -379,13 +379,13 @@ test("K7 · NO reader of the legacy uuid remains anywhere under server/ (the col
   walk(path.join(REPO_ROOT, "server"));
   // DERIVED FROM THE FILE SET, comments stripped — never a call-site count. Lane 1 left exactly
   // one reader (the concierge resolver's fallback for a database migration 293 had not reached);
-  // lane 2 dropped the column (migration 295) and that arm with it. EMPTY is the assertion, and
+  // lane 2 dropped the column (migration 296) and that arm with it. EMPTY is the assertion, and
   // this pin is KEPT as a fence: a reader of a column the database no longer carries is a runtime
   // failure against production, and it should fail here instead.
   assert.deepEqual(
     files.sort(),
     [],
-    "`provider_services.expert_offering_type_id` was dropped by migration 295 — nothing under server/ may read it. If a lane needs a listing's expert offering, the column is `expertOfferingTypeKey`.",
+    "`provider_services.expert_offering_type_id` was dropped by migration 296 — nothing under server/ may read it. If a lane needs a listing's expert offering, the column is `expertOfferingTypeKey`.",
   );
 });
 
@@ -415,7 +415,7 @@ test("K8 · the predicate: the KEY answers, alone, and it reaches no database", 
   assert.equal(none.isBookingConcierge({}), false);
   assert.equal(none.isBookingConcierge({ expertOfferingTypeKey: "" }), false);
 
-  // (c) THE FENCE THE DISAGREEMENT CASE LEAVES BEHIND. Before migration 295 a row could carry a
+  // (c) THE FENCE THE DISAGREEMENT CASE LEAVES BEHIND. Before migration 296 a row could carry a
   //     key naming one offering and a legacy uuid naming another, and the ruling made the KEY win.
   //     That input class can no longer exist on disk — but a reader that started consulting a
   //     legacy-shaped property again would flip this answer, so the case is kept as a pin: a

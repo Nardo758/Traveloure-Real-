@@ -3095,9 +3095,12 @@ export default function ExpertWorkspace() {
   });
 
   const updateBookingMutation = useMutation({
-    // Pass the trip-scoped workspace tripId so confirming a booking logs the
-    // booked item onto this Trip (Phase 2.2). The server only logs on confirm and
-    // only after the cross-trip guard passes (Phase 2.3).
+    // Pass the trip-scoped workspace tripId so recording a purchase logs the bought item onto this
+    // Trip (Phase 2.2). The server only logs on the purchase transition and only after the
+    // cross-trip guard passes (Phase 2.3).
+    // D-10 (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): this rail sends
+    // `purchased_by_human`, never `confirmed` — only the partner's own reported conversion writes
+    // that, through the reconciliation matcher.
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
       const res = await apiRequest("PATCH", `/api/affiliate-booking-requests/${id}`, { status, tripId });
       return res.json();
@@ -3111,7 +3114,7 @@ export default function ExpertWorkspace() {
             : data.attachmentReason === "expert_not_assigned_to_trip"
               ? "You aren't assigned to this trip."
               : "It could not be linked to this trip.";
-        toast({ title: "Confirmed, but not added to this trip", description: why, variant: "destructive" });
+        toast({ title: "Purchase recorded, but not added to this trip", description: why, variant: "destructive" });
       } else {
         toast({ title: "Booking updated" });
       }
@@ -5393,7 +5396,7 @@ export default function ExpertWorkspace() {
                               )}
                               {req.status !== "confirmed" && req.status !== "failed" && (
                                 <div style={{ display: "flex", gap: 6 }}>
-                                  <button onClick={() => updateBookingMutation.mutate({ id: req.id, status: "confirmed" })} disabled={updateBookingMutation.isPending} data-testid={`button-confirm-${req.id}`} style={{ flex: 1, padding: "5px 0", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", background: OK_SOFT, color: OK, border: `1px solid ${OK}` }}>Confirm</button>
+                                  <button onClick={() => updateBookingMutation.mutate({ id: req.id, status: "purchased_by_human" })} disabled={updateBookingMutation.isPending} data-testid={`button-confirm-${req.id}`} style={{ flex: 1, padding: "5px 0", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", background: OK_SOFT, color: OK, border: `1px solid ${OK}` }}>Record purchase</button>
                                   <button onClick={() => updateBookingMutation.mutate({ id: req.id, status: "failed" })} disabled={updateBookingMutation.isPending} data-testid={`button-fail-${req.id}`} style={{ flex: 1, padding: "5px 0", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", background: CARD, color: DANGER, border: `1px solid ${DANGER}` }}>Failed</button>
                                 </div>
                               )}

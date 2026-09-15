@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * preview-offering-key-id-drop.cjs — the READ-ONLY production go/no-go for migration 295.
+ * preview-offering-key-id-drop.cjs — the READ-ONLY production go/no-go for migration 296.
  * Ledger `2026-09-15-offering-key-id-drop` (lane 2 of `2026-09-12-offering-key-is-canonical`);
  * CLAUDE.md ruling 31's amendment, §13, `docs/RELEASE.md` step 3.
  *
  * WHY THIS EXISTS
  * ---------------
- * Migration 295 DROPS `provider_services.expert_offering_type_id`. A drop is unrecoverable, and a
+ * Migration 296 DROPS `provider_services.expert_offering_type_id`. A drop is unrecoverable, and a
  * stamped migration never re-runs — so a row that still answers ONLY through the uuid loses its
  * offering permanently the moment the column goes, and on the money path that silently stops a
  * Booking Concierge line being charged its facilitation fee (nothing throws; the quote and the
@@ -15,7 +15,7 @@
  * Migration 293 copied the uuid's answer onto `expert_offering_type_key` for every row that
  * carried one. Whether it has actually REACHED a given database, and whether it found a catalog row
  * to join for every listing, are facts about that database — not about these files. The author of
- * 295 cannot see production. So this script is run against the real database BEFORE 295 is
+ * 296 cannot see production. So this script is run against the real database BEFORE 296 is
  * published, and its output is read by a human.
  *
  * IT NEVER WRITES. `SET TRANSACTION READ ONLY` is issued before any query, and there is no INSERT,
@@ -38,15 +38,15 @@
  *       are printed because a human should see what is about to become unreadable, before it is.
  *
  * EXIT CODES. 0 = the blocking count is zero (publishable as far as this database can tell).
- *             1 = the blocking count is NON-ZERO — do not publish 295.
+ *             1 = the blocking count is NON-ZERO — do not publish 296.
  *             2 = could not connect or query, or the column is missing in a way that means this
  *                 preview answered nothing. Never treat 2 as a pass.
  * A non-empty DISAGREEMENTS list is NOT an error exit — it is a read.
  *
  * NEGATIVE SPACE (§18d) — what this preview does NOT tell you
  * -----------------------------------------------------------
- *   • It checks ONE column pair on ONE table. It says nothing about anything else migration 295's
- *     release carries, and nothing about whether 295 is registered or the declaration was removed
+ *   • It checks ONE column pair on ONE table. It says nothing about anything else migration 296's
+ *     release carries, and nothing about whether 296 is registered or the declaration was removed
  *     (the chain-integrity test and the offering-activation-gate pins are those instruments).
  *   • It cannot tell you whether a listing's offering is CORRECT — only whether the key can answer
  *     wherever the uuid could. A row with NEITHER identifier is untouched by all of this and is
@@ -77,7 +77,7 @@ const COLUMNS_SQL = `
     AND column_name IN ('${LEGACY_COLUMN}', '${CANONICAL_COLUMN}')
 `;
 
-/** (1) THE BLOCKING QUERY, verbatim from the punchlist entry and migration 295's header. */
+/** (1) THE BLOCKING QUERY, verbatim from the punchlist entry and migration 296's header. */
 const BLOCKING_SQL = `
   SELECT count(*)::int AS count
   FROM provider_services
@@ -139,7 +139,7 @@ async function main() {
     if (!columns.has(CANONICAL_COLUMN)) {
       console.error(
         `[offering-key-id-drop] provider_services.${CANONICAL_COLUMN} is ABSENT — migration 292 has ` +
-          "not applied on this database. Migration 295 must not be published here: there is no " +
+          "not applied on this database. Migration 296 must not be published here: there is no " +
           "canonical column for the drop to leave behind.",
       );
       process.exit(2);
@@ -147,7 +147,7 @@ async function main() {
     if (!columns.has(LEGACY_COLUMN)) {
       const msg =
         `[offering-key-id-drop] provider_services.${LEGACY_COLUMN} is ALREADY GONE on this ` +
-        "database — migration 295 has applied here. Nothing to check, nothing to lose.";
+        "database — migration 296 has applied here. Nothing to check, nothing to lose.";
       if (json) console.log(JSON.stringify({ legacyColumnPresent: false, blocking: 0, disagreements: [] }, null, 2));
       else console.log(msg);
       process.exit(0);
@@ -169,7 +169,7 @@ async function main() {
   }
 
   console.log(
-    "[offering-key-id-drop] READ-ONLY preview of migration 295 " +
+    "[offering-key-id-drop] READ-ONLY preview of migration 296 " +
       "(DROP provider_services.expert_offering_type_id). Nothing was written.\n",
   );
   console.log("(1) BLOCKING — rows carrying the legacy uuid with NO canonical key:");
@@ -214,14 +214,14 @@ async function main() {
 
   if (blocking > 0) {
     console.error(
-      `STOP: ${blocking} row(s) would lose their offering. Migration 295 must NOT be published ` +
+      `STOP: ${blocking} row(s) would lose their offering. Migration 296 must NOT be published ` +
         "against this database. Apply migration 293 first (it is idempotent), re-run this preview, " +
         "and escalate any row that stays blocked because its catalog row was deleted.",
     );
     process.exit(1);
   }
   console.log(
-    "OK: every row that names an offering names it by the canonical key. Migration 295 loses " +
+    "OK: every row that names an offering names it by the canonical key. Migration 296 loses " +
       "nothing on this database.",
   );
   process.exit(0);

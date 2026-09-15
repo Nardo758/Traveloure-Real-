@@ -7,7 +7,10 @@
  * THE INVARIANT: the item write sites that read a coord-bearing SOURCE must copy its lat/lng onto
  * the row so neighborhood history can accrue (R26; NULL stays NULL — no invention, §13):
  *   - DMO → ready-made draft     (server/routes/expert-workspace.routes.ts) — source dmo_raw_content
- *   - cart → convert-to-itinerary (server/routes.ts)                        — source provider_services
+ *   - cart → item (both rails)   (server/services/cart-projection.service.ts) — source provider_services
+ *     (ONE builder since 2026-09-15: `buildPlanItemValues`, shared by the convert rail and the
+ *      resolve-trip materializer — so one marker now covers both, where before only the convert
+ *      rail existed to mark.)
  * NOTE — the optimizer variant producer was in the original R26 list but was DEMOTED to the FOLLOWUP:
  * its `ItineraryItem` interface carries no lat/lng, so there was nothing in hand to copy (the coords
  * are absent one layer up, a real project — see the 3.1b-T trace correction). It is deliberately NOT
@@ -23,13 +26,18 @@ const fs = require("fs");
 const path = require("path");
 const REPO = path.resolve(__dirname, "..");
 
+// `server/routes.ts` held the cart→convert-to-itinerary copy until 2026-09-15, when that rail's
+// item-building loop moved into the ONE shared builder in the projection module (ruling 2026-09-15,
+// punchlist D-16; ledger `2026-09-15-d16-plan-holds-venues-and-content`) — the same move that put
+// the H1 `providerServiceId` invariant there. The marker moved WITH the code, so this list follows
+// it: the invariant is unchanged and is still asserted at exactly one address per path.
 const TARGET_FILES = [
   "server/routes/expert-workspace.routes.ts",
-  "server/routes.ts",
+  "server/services/cart-projection.service.ts",
 ];
 const MARKER = "R26 coords cheap-fix";
 const LOOKAHEAD = 6;
-const EXPECTED_MARKERS = 2; // one per real cheap-fix path (DMO draft, cart-convert)
+const EXPECTED_MARKERS = 2; // one per real cheap-fix path (DMO draft, cart→item)
 
 function scan(rel, text) {
   const errs = [];

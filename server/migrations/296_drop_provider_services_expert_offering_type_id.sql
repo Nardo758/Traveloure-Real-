@@ -1,4 +1,4 @@
--- Migration 295: DROP the legacy `provider_services.expert_offering_type_id`.
+-- Migration 296: DROP the legacy `provider_services.expert_offering_type_id`.
 -- Ledger `2026-09-15-offering-key-id-drop` (lane 2 of two; lane 1 was
 -- `2026-09-12-offering-key-is-canonical`, migration 293).
 --

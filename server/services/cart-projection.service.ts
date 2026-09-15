@@ -48,7 +48,7 @@
  */
 import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { db } from "../db";
-import { cartItems, itineraryItems, providerServices, trips } from "@shared/schema";
+import { cartItems, customVenues, itineraryItems, providerServices, trips } from "@shared/schema";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 // V-11's predicate, the ONE translation of `provider_services.price` into the `hasPrice` fact
@@ -178,6 +178,34 @@ export type ProjectionSyncResult =
 const EXTERNAL_PROJECTION_CONTENT_TYPE = "itinerary_item";
 
 /**
+ * The cart's DISPLAY envelope for an item that names no platform listing. Real display strings
+ * only — never an invented price or image (s13).
+ *
+ * Extracted so Section 2 states it ONCE for both the external/free-text branch and the
+ * content-linked branch below (s18 rule 1).
+ */
+function displayEnvelopeFor(item: typeof itineraryItems.$inferSelect): Record<string, unknown> {
+  return {
+    ...(item.title ? { name: item.title } : {}),
+    ...(item.description ? { description: item.description } : {}),
+    ...(item.locationName ? { city: item.locationName } : {}),
+    ...(item.estimatedCost ? { price: String(item.estimatedCost) } : {}),
+    // D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`): the partner grounding,
+    // carried so the CART can tell a `recommended` line from an `external` one. This branch
+    // already is the item's ONE copy-down (LD 39) — the cart row is written FROM the item here
+    // and nowhere else — so the fact travels with the rest of the display envelope rather than
+    // through a second copier (s18 rule 1).
+    //
+    // DISPLAY ONLY, AND IT MOVES NO MONEY. This whole branch is the NO-SERVICE case, which
+    // checkout's subtotal and booking loops both skip (`if (!item.service) continue;`); the id is
+    // the same one the plancard already publishes for agent-bookable items, and the affiliate URL
+    // is still never emitted (s16). PRESENT ONLY when the item names one, so a row that names
+    // none is byte-identical to before (s13 — absent means "names none").
+    ...(item.affiliateProductId ? { affiliateProductId: item.affiliateProductId } : {}),
+  };
+}
+
+/**
  * Reconcile `cart_items` with ONE itinerary item's routing state.
  *
  *   routing_status = 'ready_for_checkout'  ⇒ upsert the projection row for this item
@@ -267,39 +295,62 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
     }
   }
 
+  // Read the row we are about to reconcile BEFORE composing the values: a content-linked item
+  // needs the display keys the ITEM has no column for (see `contentMeta` below).
+  const [existing] = await db
+    .select({ id: cartItems.id, contentMeta: cartItems.contentMeta })
+    .from(cartItems)
+    .where(eq(cartItems.itineraryItemId, item.id))
+    .limit(1);
+  const existingMeta = (existing?.contentMeta ?? {}) as Record<string, unknown>;
+
+  // ── THE ITEM'S OWN SUBJECT LINKS (migration 295; ledger `2026-09-15-d16-plan-holds-venues-and-content`)
+  // Before 295 this table had no column for a traveler's OWN venue or for the Discover content a
+  // line came from, so this projection could only ever write `customVenueId: null` and its own
+  // `itinerary_item` marker — which is precisely why the materializer in Section 3 had to REFUSE
+  // both shapes: the round trip could not reproduce the traveler's row. It can now, in BOTH
+  // directions, and these three lines are that faithfulness.
+  const linkedVenueId = item.customVenueId ?? null;
+  const linkedContent =
+    item.contentType && item.contentId
+      ? { contentType: item.contentType, contentId: item.contentId }
+      : null;
+  // A row whose subject is a LISTING or a VENUE carries no content link — the cart's own reader
+  // (`storage._enrichCartItems`) branches on the venue first and on the service last, and writing
+  // the external marker onto either would be a second, contradictory statement of what the row
+  // is. Only a subject-less item keeps the marker, which is exactly what it was invented for.
+  const projectedContent =
+    linkedContent ??
+    (item.providerServiceId || linkedVenueId
+      ? { contentType: null as string | null, contentId: null as string | null }
+      : { contentType: EXTERNAL_PROJECTION_CONTENT_TYPE as string | null, contentId: item.id as string | null });
+
   const values = {
     userId: ownerId,
     guestSessionId: null as string | null,
     serviceId: item.providerServiceId ?? null,
-    customVenueId: null as string | null,
+    customVenueId: linkedVenueId,
     // External / free-text plan items keep the content-item shape the cart already renders
-    // (storage._enrichCartItems branches on contentId+contentType). Real display strings only —
-    // never an invented price or image (§13).
-    contentType: item.providerServiceId ? null : EXTERNAL_PROJECTION_CONTENT_TYPE,
-    contentId: item.providerServiceId ? null : item.id,
+    // (storage._enrichCartItems branches on contentId+contentType).
+    ...projectedContent,
     contentMeta: item.providerServiceId
       ? // A per-night stay carries its night range; every other service keeps today's empty
         // object byte-for-byte. `stayMeta` is null whenever the listing is not per-night or the
         // item's range is absent/unparseable, so nothing is invented (§13).
         (stayMeta ?? {})
-      : {
-          ...(item.title ? { name: item.title } : {}),
-          ...(item.description ? { description: item.description } : {}),
-          ...(item.locationName ? { city: item.locationName } : {}),
-          ...(item.estimatedCost ? { price: String(item.estimatedCost) } : {}),
-          // D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`): the partner
-          // grounding, carried so the CART can tell a `recommended` line from an `external` one.
-          // This branch already is the item's ONE copy-down (LD 39) — the cart row is written
-          // FROM the item here and nowhere else — so the fact travels with the rest of the
-          // display envelope rather than through a second copier (§18 rule 1).
-          //
-          // DISPLAY ONLY, AND IT MOVES NO MONEY. This whole branch is the NO-SERVICE case, which
-          // checkout's subtotal and booking loops both skip (`if (!item.service) continue;`); the
-          // id is the same one the plancard already publishes for agent-bookable items, and the
-          // affiliate URL is still never emitted (§16). PRESENT ONLY when the item names one, so
-          // a row that names none is byte-identical to before (§13 — absent means "names none").
-          ...(item.affiliateProductId ? { affiliateProductId: item.affiliateProductId } : {}),
-        },
+      : linkedVenueId
+        ? // A VENUE row's display is JOINED from `custom_venues` by the cart's own reader, not
+          // read out of this envelope, so there is nothing to compose — and whatever the
+          // traveler's row already carried is left exactly as it is (§13: do not rewrite an
+          // answer nobody asked about).
+          existingMeta
+        : linkedContent
+          ? // A CONTENT row's display envelope is PART OF THE ROW and carries keys this table has
+            // no column for — `imageUrl` above all. The item authors what it can author and the
+            // row keeps the rest: overwriting wholesale would silently drop the traveler's
+            // Discover image, which is the very loss the old refusal existed to prevent (§13).
+            { ...existingMeta, ...displayEnvelopeFor(item) }
+          : displayEnvelopeFor(item),
     quantity: 1,
     tripId: item.tripId,
     scheduledDate: item.scheduledDate ? new Date(item.scheduledDate) : null,
@@ -309,12 +360,6 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
     slotId: item.slotId ?? null,
     itineraryItemId: item.id,
   };
-
-  const [existing] = await db
-    .select({ id: cartItems.id })
-    .from(cartItems)
-    .where(eq(cartItems.itineraryItemId, item.id))
-    .limit(1);
 
   if (existing) {
     await db.update(cartItems).set(values).where(eq(cartItems.id, existing.id));
@@ -365,17 +410,32 @@ async function deleteProjectionFor(itemId: string): Promise<number> {
 // has. Section 2 writes `quantity: 1`, `customVenueId: null`, and — for an item with no
 // `providerServiceId` — a `contentType: "itinerary_item"` content shape. Therefore:
 //
-//   • quantity > 1   — REFUSED. `resolveItemBaseAmount` prices a line `rate * quantity`, so a
-//                      silent 3 -> 1 is a silent change to what the traveler is charged. What a
-//                      multi-unit line SHOULD become is punchlist D-14 (`quantity` is units of
-//                      the listing, NOT a party count) and is deliberately NOT decided here.
-//   • custom venue   — REFUSED. `itinerary_items` has no column pointing at `custom_venues`, so
-//                      the line's own subject could not survive the round trip.
-//   • content line   — REFUSED. A gem/hotel/activity row names a piece of CONTENT, not a
-//                      listing; the round trip would rewrite its `contentType`/`contentId` and
-//                      lose the link back to the source. `/api/cart/convert-to-itinerary` is
-//                      that shape's existing home, and it MOVES the row (it deletes the cart
-//                      line) rather than projecting it.
+//   • quantity > 1   — STILL REFUSED, and now for a NAMED reason rather than an undecided one.
+//                      `resolveItemBaseAmount` prices a line `rate * quantity`, so a silent 3 -> 1
+//                      is a silent change to what the traveler is charged. D-14 is ANSWERED
+//                      (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): `quantity`
+//                      is UNITS of the listing and `party_size` is the party. But `itinerary_items`
+//                      has NO unit column, so the plan cannot CARRY a multi-unit line faithfully —
+//                      Section 2 would write `quantity: 1` back over it on the next sync. Adding
+//                      that column is punchlist D-41 and needs the decision-maker; until it lands
+//                      the refusal stands and is reported per line (s13), never silently reduced.
+//   • custom venue   — MATERIALIZED since migration 295 (ruling 2026-09-15, punchlist D-16 (b);
+//                      ledger `2026-09-15-d16-plan-holds-venues-and-content`). It was refused
+//                      because `itinerary_items` had no column pointing at `custom_venues`, so
+//                      the line's own subject could not survive the round trip. It has one now,
+//                      and Section 2 writes it back. THE VENUE'S OWNER IS VERIFIED HERE (s14 /
+//                      ledger `2026-09-05-custom-venues-owner-scope`): the cart row's owner IS
+//                      the trip's owner by the check at the top of this function, so a venue
+//                      belonging to anyone else is refused rather than filed onto the plan.
+//   • content line   — MATERIALIZED since migration 295 (D-16 (c)). A gem/hotel/activity row
+//                      names a piece of CONTENT, not a listing; it was refused because the round
+//                      trip would rewrite its `contentType`/`contentId` into the projection's own
+//                      `itinerary_item` marker and lose the link back to the source. The item now
+//                      CARRIES that link, so the marker is no longer written over it.
+//                      `/api/cart/convert-to-itinerary` remains that shape's OTHER home and is a
+//                      DIFFERENT operation, not a second copy of this one: it MOVES the row (it
+//                      deletes the cart line) where this one PROJECTS it — and since this lane it
+//                      composes its item through the SAME builder below (s18 rule 1).
 //   • no price       — REFUSED, through the SAME `hasPublishedPrice` Section 2 consults (s18
 //                      rule 1): Section 2 would delete the projection on its very next run, so
 //                      linking such a line would destroy the traveler's own cart row.
@@ -392,13 +452,21 @@ async function deleteProjectionFor(itemId: string): Promise<number> {
 // a cart holding only external/affiliate descriptors (which have no `cart_items` rows at all)
 // materializes NOTHING and says so rather than pretending the plan carries them.
 
-/** Why one cart line did not become a plan item. Reported, never silent (s13). */
+/**
+ * Why one cart line did not become a plan item. Reported, never silent (s13).
+ *
+ * `custom_venue` and `content_line` are GONE from this union as of migration 295 — those two
+ * lines are materialized now, not refused. `custom_venue_missing` is not their replacement: it is
+ * the venue-shaped sibling of `service_missing`, and it says ONE sentence for "no such venue" and
+ * "not yours" deliberately (the `2026-09-05-custom-venues-owner-scope` posture), so the reason can
+ * never be used to tell the two apart.
+ */
 export type CartLineSkipReason =
   | "quantity_gt_one"
-  | "custom_venue"
-  | "content_line"
   | "no_subject"
+  | "ambiguous_subject"
   | "service_missing"
+  | "custom_venue_missing"
   | "no_published_price"
   | "raced";
 
@@ -430,6 +498,234 @@ function resolvePlanDayNumber(scheduled: Date | null, tripStart: string | null):
   if (!Number.isFinite(startMs) || !Number.isFinite(dayMs)) return 1;
   const diff = Math.round((dayMs - startMs) / 86400000);
   return diff >= 0 ? diff + 1 : 1;
+}
+
+/**
+ * THE RESOLVED SUBJECT OF A CART LINE — what the plan item will be ABOUT.
+ *
+ * `cart_items` can name exactly one of three things, and since migration 295 `itinerary_items`
+ * has a column for each of them. Resolving the subject is where every DB read and every refusal
+ * lives; composing the item's values from it (`buildPlanItemValues` below) is then PURE.
+ */
+type CartLineSubject =
+  | {
+      kind: "service";
+      service: {
+        id: string;
+        serviceName: string;
+        shortDescription: string | null;
+        location: string | null;
+        latitude: string | null;
+        longitude: string | null;
+        pricingUnit: string | null;
+      };
+    }
+  | {
+      kind: "custom_venue";
+      venue: {
+        id: string;
+        name: string;
+        notes: string | null;
+        address: string | null;
+        latitude: string | null;
+        longitude: string | null;
+      };
+    }
+  | { kind: "content"; contentType: string; contentId: string };
+
+/**
+ * Resolve ONE cart line's subject, or say why it has none that a plan item can carry (s13).
+ *
+ * `ownerId` is the TRIP OWNER, which is also the cart line's owner — every caller establishes
+ * that before reaching here. It is passed because the CUSTOM VENUE branch verifies it: a venue is
+ * an owner-scoped row (ledger `2026-09-05-custom-venues-owner-scope`), so a line naming someone
+ * else's venue is refused rather than filed onto this plan (s14). "No such venue" and "not yours"
+ * are deliberately the SAME answer.
+ */
+async function resolveCartLineSubject(
+  line: typeof cartItems.$inferSelect,
+  ownerId: string,
+  opts: {
+    /**
+     * Whether a listing with NO published price refuses the line.
+     *
+     * TRUE for the PROJECTION rail (`materializeCartLinesAsItems`), because linking such a line
+     * would have `syncItemProjection` DELETE the traveler's own cart row on its very next run.
+     * FALSE for the CONVERT rail, which MOVES the row — it deletes the cart line itself and never
+     * projects it, so there is no sync to destroy anything, and refusing here would newly strand a
+     * legacy priceless row the traveler is trying to put on their plan. One resolver with a stated
+     * parameter, never two resolvers (s18 rule 1).
+     */
+    refusePricelessListing: boolean;
+  },
+): Promise<{ ok: true; subject: CartLineSubject } | { ok: false; reason: CartLineSkipReason }> {
+  // A row that names TWO subjects is refused rather than resolved by precedence. The admission
+  // test for materialization is that `syncItemProjection` can REPRODUCE the line, and Section 2
+  // writes exactly one subject — so choosing one here would silently drop the other off the
+  // traveler's own cart row on the very next sync. `storage.addToCart` never writes two, so this
+  // is a fence, not a live path (s13: refused and named, never quietly resolved).
+  const named = [line.customVenueId, line.serviceId, line.contentId].filter(Boolean).length;
+  if (named > 1) return { ok: false, reason: "ambiguous_subject" };
+
+  if (line.customVenueId) {
+    const [venue] = await db
+      .select({
+        id: customVenues.id,
+        name: customVenues.name,
+        notes: customVenues.notes,
+        address: customVenues.address,
+        latitude: customVenues.latitude,
+        longitude: customVenues.longitude,
+        userId: customVenues.userId,
+      })
+      .from(customVenues)
+      .where(eq(customVenues.id, line.customVenueId))
+      .limit(1);
+    if (!venue || venue.userId !== ownerId) return { ok: false, reason: "custom_venue_missing" };
+    return { ok: true, subject: { kind: "custom_venue", venue } };
+  }
+
+  if (line.serviceId) {
+    const [svc] = await db
+      .select({
+        id: providerServices.id,
+        serviceName: providerServices.serviceName,
+        shortDescription: providerServices.shortDescription,
+        location: providerServices.location,
+        latitude: providerServices.latitude,
+        longitude: providerServices.longitude,
+        pricingUnit: providerServices.pricingUnit,
+        price: providerServices.price,
+      })
+      .from(providerServices)
+      .where(eq(providerServices.id, line.serviceId))
+      .limit(1);
+    if (!svc) return { ok: false, reason: "service_missing" };
+    // REFUSED through the SAME `hasPublishedPrice` Section 2 consults (s18 rule 1): Section 2
+    // would DELETE the projection on its very next run, so linking such a line would destroy the
+    // traveler's own cart row. D-16's priceless refusal, unchanged by this lane.
+    if (opts.refusePricelessListing && !hasPublishedPrice(svc.price)) {
+      return { ok: false, reason: "no_published_price" };
+    }
+    const { price: _price, ...service } = svc;
+    return { ok: true, subject: { kind: "service", service } };
+  }
+
+  if (line.contentId && line.contentType) {
+    return { ok: true, subject: { kind: "content", contentType: line.contentType, contentId: line.contentId } };
+  }
+
+  return { ok: false, reason: "no_subject" };
+}
+
+/**
+ * THE ONE PLACE A CART LINE BECOMES A PLAN ITEM'S VALUES (s18 rule 1).
+ *
+ * PURE — no DB, no clock, no request. Both rails that turn a cart line into an
+ * `itinerary_items` row call it: `materializeCartLinesAsItems` (which LINKS the line and leaves
+ * it in the cart) and `convertCartLinesToItems` (which MOVES it — it deletes the line). Those two
+ * DISPOSITIONS are the only difference between them, and each states its own; a second copy of
+ * this mapping is how a converted item and a projected item would start describing the same cart
+ * line differently.
+ *
+ * `routingStatus` is deliberately NOT set here: it is the disposition, and the two callers
+ * genuinely disagree about it for a stated reason (see each).
+ */
+function buildPlanItemValues(args: {
+  tripId: string;
+  line: typeof cartItems.$inferSelect;
+  subject: CartLineSubject;
+  tripStartDate: string | null;
+}): Record<string, unknown> {
+  const { tripId, line, subject, tripStartDate } = args;
+  const meta = (line.contentMeta ?? {}) as Record<string, unknown>;
+  const scheduled = line.scheduledDate ? new Date(line.scheduledDate) : null;
+
+  const common = {
+    tripId,
+    dayNumber: resolvePlanDayNumber(scheduled, tripStartDate),
+    // The line's own facts, and only those. No invented date, no invented title, and no party
+    // size — `quantity` is units of the listing and is never promoted into one (punchlist D-14).
+    scheduledDate: scheduled ? toYmd(scheduled) : null,
+    slotId: line.slotId ?? null,
+    notes: line.notes ?? null,
+    // LD 12 / LD 42 D23: the TRAVELER chose these lines — not an AI draft, not expert work.
+    // `origin` decides what the optimizer may rewrite and what the item row's provenance chip
+    // says, so it is stamped server-side here and settable nowhere else.
+    origin: "traveler",
+    suggestedBy: "user",
+    status: "planned",
+  };
+
+  if (subject.kind === "service") {
+    const svc = subject.service;
+    // The SAME predicate Section 2 projects a stay through, so the round trip reproduces the
+    // night range the money path reads. s13: an unparseable range yields NOTHING.
+    const stay = svc.pricingUnit === "per_night" ? stayContentMeta(meta.checkIn, meta.checkOut) : null;
+    // s13: `provider_services.location` defaults to the literal "Unknown" — that is the ABSENCE
+    // of a location, not a place name, and must never be copied onto a plan item.
+    const locationName = svc.location && svc.location !== "Unknown" ? svc.location : null;
+    return {
+      ...common,
+      // NOT NULL. The LISTING'S OWN NAME — the one fact the column forces us to carry. Never
+      // invented.
+      title: svc.serviceName,
+      description: svc.shortDescription ?? null,
+      // The listing's own pricing unit is the listing's own statement about what it is.
+      // Everything else takes the column default (`activity`) rather than a guess.
+      ...(svc.pricingUnit === "per_night" ? { itemType: "accommodation" } : {}),
+      providerServiceId: svc.id,
+      ...(stay ? { checkIn: stay.checkIn, checkOut: stay.checkOut } : {}),
+      locationName,
+      // R26 coords cheap-fix (ledger 2026-08-18-partner-demand-coords-fix): the listing's own pin
+      // travels so neighborhood history can accrue. NULL stays NULL — nothing is invented (§13).
+      latitude: svc.latitude ?? null,
+      longitude: svc.longitude ?? null,
+      // NO `estimatedCost`: the plan reads this listing's price through the service link, and a
+      // copied number is a second, staleable statement of an amount (s8/s14 posture).
+    };
+  }
+
+  if (subject.kind === "custom_venue") {
+    const venue = subject.venue;
+    // The VENUE's own row is the source of every display fact, exactly as the cart's own reader
+    // (`storage._enrichCartItems`) already joins it — so nothing here is invented and the price,
+    // which the venue row alone states, is deliberately NOT copied onto the item (the same reason
+    // the service branch copies none).
+    return {
+      ...common,
+      title: venue.name,
+      description: venue.notes ?? null,
+      customVenueId: venue.id,
+      locationName: venue.address ?? null,
+      latitude: venue.latitude ?? null,
+      longitude: venue.longitude ?? null,
+    };
+  }
+
+  // CONTENT. A gem / hotel / activity / event / neighborhood from Discover. The row's own display
+  // envelope is the only source of facts — there is no catalog row behind it to read — and every
+  // field is OMITTED when the envelope does not state it (s13), never defaulted.
+  const name = typeof meta.name === "string" && meta.name.trim() ? meta.name : subject.contentId;
+  const city = typeof meta.city === "string" && meta.city.trim() ? meta.city : null;
+  const description = typeof meta.description === "string" && meta.description.trim() ? meta.description : null;
+  // The traveler's own display price, carried ONLY when the envelope states one — the behaviour
+  // `/api/cart/convert-to-itinerary` has always had for a content row. It is not a platform
+  // price and charges nothing: an item that names no service is `recommended`
+  // (`shared/item-kind.ts` rule 4) and checkout skips it on both loops. The cart's add rail
+  // allowlists content meta to strings and REFUSES a price (s14), so only legacy rows carry one.
+  const rawPrice = meta.price != null ? String(meta.price).replace(/[^0-9.]/g, "") : "";
+  const estimatedCost = rawPrice && parseFloat(rawPrice) > 0 ? rawPrice : null;
+  return {
+    ...common,
+    title: name,
+    description,
+    ...(subject.contentType === "hotel" ? { itemType: "accommodation" } : {}),
+    contentType: subject.contentType,
+    contentId: subject.contentId,
+    locationName: city,
+    ...(estimatedCost ? { estimatedCost } : {}),
+  };
 }
 
 /**
@@ -491,77 +787,37 @@ export async function materializeCartLinesAsItems(
       out.skipped.push({ cartItemId: line.id, reason });
     };
 
-    if (line.customVenueId) { skip("custom_venue"); continue; }
-    if (!line.serviceId) { skip(line.contentId ? "content_line" : "no_subject"); continue; }
+    // D-16 (a) — STILL REFUSED, and now for a named reason (ruling 2026-09-15, ledger
+    // `2026-09-15-d14-quantity-is-units`). `quantity` is UNITS of the listing, and
+    // `itinerary_items` has NO unit column, so the plan cannot carry a multi-unit line faithfully:
+    // Section 2 would write `quantity: 1` back over it on the next sync, silently changing what a
+    // priced line costs. Adding that column is punchlist D-41 and is NOT authorized. Checked FIRST
+    // because it is a fact about the LINE'S COUNT and is true of every subject below.
     if ((line.quantity ?? 1) > 1) { skip("quantity_gt_one"); continue; }
 
-    const [svc] = await db
-      .select({
-        id: providerServices.id,
-        serviceName: providerServices.serviceName,
-        shortDescription: providerServices.shortDescription,
-        location: providerServices.location,
-        latitude: providerServices.latitude,
-        longitude: providerServices.longitude,
-        pricingUnit: providerServices.pricingUnit,
-        price: providerServices.price,
-      })
-      .from(providerServices)
-      .where(eq(providerServices.id, line.serviceId))
-      .limit(1);
-    if (!svc) { skip("service_missing"); continue; }
-    if (!hasPublishedPrice(svc.price)) { skip("no_published_price"); continue; }
-
-    const meta = (line.contentMeta ?? {}) as Record<string, unknown>;
-    // The SAME predicate Section 2 projects a stay through, so the round trip reproduces the
-    // night range the money path reads. s13: an unparseable range yields NOTHING.
-    const stay = svc.pricingUnit === "per_night" ? stayContentMeta(meta.checkIn, meta.checkOut) : null;
-    // s13: `provider_services.location` defaults to the literal "Unknown" — that is the ABSENCE
-    // of a location, not a place name, and must never be copied onto a plan item (the same call
-    // `/api/cart/convert-to-itinerary` already makes).
-    const locationName = svc.location && svc.location !== "Unknown" ? svc.location : null;
-    const scheduled = line.scheduledDate ? new Date(line.scheduledDate) : null;
+    // The subject, and every refusal that depends on reading a row (§18 rule 1: one resolver,
+    // shared with the convert rail below).
+    const resolved = await resolveCartLineSubject(line, userId, { refusePricelessListing: true });
+    if (!resolved.ok) { skip(resolved.reason); continue; }
 
     try {
       const itemId = await db.transaction(async (tx) => {
         const [created] = await tx
           .insert(itineraryItems)
           .values({
-            tripId,
-            // NOT NULL. The LISTING'S OWN NAME — the one fact the column forces us to carry, and
-            // the same source `/api/cart/convert-to-itinerary` reads. Never invented.
-            title: svc.serviceName,
-            description: svc.shortDescription ?? null,
-            // The listing's own pricing unit is the listing's own statement about what it is.
-            // Everything else takes the column default (`activity`) rather than a guess.
-            ...(svc.pricingUnit === "per_night" ? { itemType: "accommodation" } : {}),
-            dayNumber: resolvePlanDayNumber(scheduled, trip.startDate ?? null),
-            // The line's own facts, and only those. No invented date, no invented title, and no
-            // party size — `quantity` is units of the listing and is never promoted into one
-            // (punchlist D-14), which is also why a multi-unit line is refused above.
-            scheduledDate: scheduled ? toYmd(scheduled) : null,
-            slotId: line.slotId ?? null,
-            providerServiceId: svc.id,
-            ...(stay ? { checkIn: stay.checkIn, checkOut: stay.checkOut } : {}),
-            locationName,
-            latitude: svc.latitude ?? null,
-            longitude: svc.longitude ?? null,
-            notes: line.notes ?? null,
-            // NO `estimatedCost`: the plan reads this listing's price through the service link,
-            // and a copied number is a second, staleable statement of an amount (s8/s14 posture).
-            // LD 12 / LD 42 D23: the TRAVELER chose these lines — not an AI draft, not expert
-            // work. `origin` decides what the optimizer may rewrite and what the item row's
-            // provenance chip says, so it is stamped server-side here and settable nowhere else.
-            origin: "traveler",
-            suggestedBy: "user",
-            status: "planned",
+            ...buildPlanItemValues({
+              tripId,
+              line,
+              subject: resolved.subject,
+              tripStartDate: trip.startDate ?? null,
+            }),
             // LD 39: the cart IS the `ready_for_checkout` projection of this table, so a line
             // sitting in the cart IS that state — this is a READ of the row that already exists,
             // not a routing TRANSITION (those belong to routing.routes.ts, which is why
             // `storage.createItineraryItem` strips the column and is deliberately not used here).
             // Born `in_planning` instead would make the very next sync DELETE the cart line.
             routingStatus: "ready_for_checkout",
-          })
+          } as any)
           .returning({ id: itineraryItems.id });
 
         // THE ATOMIC LINK (s15 posture): a concurrent resolve that already keyed this row wins
@@ -589,6 +845,117 @@ export async function materializeCartLinesAsItems(
         "cart-projection: failed to materialize a cart line into a plan item",
       );
       skip("raced");
+    }
+  }
+
+  return out;
+}
+
+/**
+ * THE CONVERT RAIL — `POST /api/cart/convert-to-itinerary`, the OTHER way a cart line becomes a
+ * plan item, and it MOVES the line rather than projecting it.
+ *
+ * Ledger `2026-09-15-d16-plan-holds-venues-and-content`. Until this lane the route composed its
+ * own `itinerary_items` values inline, which is how the two rails came to disagree about the same
+ * cart line — the drift class s18 rule 1 names. It is now a CALLER of the shared resolver and the
+ * shared value builder above; what remains its own is exactly the DISPOSITION, which is a real
+ * difference and is stated here rather than hidden in a flag:
+ *
+ *   • ROUTING. The item is born at the column default, `in_planning` — a converted item is a plan
+ *     item, not purchase intent (ROUTING_STATE_CONTRACT §2). The projection rail must instead be
+ *     born `ready_for_checkout`, because its line STAYS in the cart and `syncItemProjection` would
+ *     otherwise delete it.
+ *   • THE CART LINE. It is DELETED, in the same transaction as the insert, so a crash can never
+ *     leave the traveler holding both a cart line and an item made out of it. The projection rail
+ *     LINKS its line instead and leaves it exactly where the traveler put it.
+ *   • THE D-16 (a) MULTI-UNIT REFUSAL DOES NOT APPLY HERE, and that is a preserved behaviour, not
+ *     an oversight. It exists because the projection rail's round trip would write `quantity: 1`
+ *     back over the traveler's count; this rail has no round trip — it deletes the row. The unit
+ *     count is therefore lost here exactly as it has always been lost here, which punchlist D-41
+ *     (a unit column on `itinerary_items`) is what would fix; this lane is not authorized to add
+ *     one and does not.
+ *
+ * OWNERSHIP IS RE-DERIVED FROM THE RECORD (s14), even though the route checks it too: the trip
+ * must be this caller's, and a cart line that is not this caller's is skipped SILENTLY — naming it
+ * would confirm to a prober that the id exists (the `POST /api/conversations/start` posture).
+ */
+export type ConvertCartLinesResult = {
+  converted: number;
+  itemIds: string[];
+  /** Lines that named nothing a plan item can carry. Reported, never silent (s13). */
+  skipped: Array<{ cartItemId: string; reason: CartLineSkipReason }>;
+};
+
+export async function convertCartLinesToItems(
+  userId: string,
+  tripId: string,
+  cartItemIds: string[],
+): Promise<ConvertCartLinesResult> {
+  const out: ConvertCartLinesResult = { converted: 0, itemIds: [], skipped: [] };
+
+  const [trip] = await db
+    .select({ id: trips.id, userId: trips.userId, startDate: trips.startDate })
+    .from(trips)
+    .where(eq(trips.id, tripId))
+    .limit(1);
+  if (!trip || !trip.userId || trip.userId !== userId) {
+    logger.warn(
+      { tripId, userId },
+      "cart-projection: refusing to convert cart lines into a trip the caller does not own",
+    );
+    return out;
+  }
+
+  for (const cartItemId of cartItemIds) {
+    const [line] = await db
+      .select()
+      .from(cartItems)
+      .where(eq(cartItems.id, cartItemId))
+      .limit(1);
+    // Absent, or not this caller's — the SAME silence for both (see the doc above).
+    if (!line || line.userId !== userId) continue;
+
+    const resolved = await resolveCartLineSubject(line, userId, { refusePricelessListing: false });
+    if (!resolved.ok) {
+      out.skipped.push({ cartItemId: line.id, reason: resolved.reason });
+      continue;
+    }
+
+    try {
+      const itemId = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(itineraryItems)
+          .values(
+            buildPlanItemValues({
+              tripId,
+              line,
+              subject: resolved.subject,
+              tripStartDate: trip.startDate ?? null,
+            }) as any,
+          )
+          .returning({ id: itineraryItems.id });
+        // THE MOVE. This module is the single writer of `cart_items` (LD 39), so the delete is
+        // written here rather than through the Section 1 passthrough, which cannot join this
+        // transaction. A line already gone loses the race and the whole conversion rolls back.
+        const removed = await tx
+          .delete(cartItems)
+          .where(eq(cartItems.id, line.id))
+          .returning({ id: cartItems.id });
+        if (removed.length === 0) throw new CartLineRacedError();
+        return created.id;
+      });
+      out.converted += 1;
+      out.itemIds.push(itemId);
+    } catch (err) {
+      if (err instanceof CartLineRacedError) {
+        out.skipped.push({ cartItemId: line.id, reason: "raced" });
+        continue;
+      }
+      logger.error(
+        { err, cartItemId: line.id, tripId },
+        "cart-projection: failed to convert a cart line into a plan item",
+      );
+      out.skipped.push({ cartItemId: line.id, reason: "raced" });
     }
   }
 

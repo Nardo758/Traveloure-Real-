@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { CreditCard, UserCheck, Bookmark, Share2, Clock, DollarSign, Eye, CheckCircle, Star, MoreVertical, ArrowLeft } from 'lucide-react';
+import { UserCheck, Bookmark, Share2, Clock, Eye, CheckCircle, Star, MoreVertical, ArrowLeft } from 'lucide-react';
 import StripeCheckout from './StripeCheckout';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -44,12 +44,22 @@ interface Comparison {
   travelers: number;
 }
 
+/**
+ * D-12 (decision-maker 2026-09-15, ledger `2026-09-15-d12-service-bookings-canonical`): this
+ * component no longer takes an `onBook` and no longer renders a "Book Now" button. That button was
+ * the itinerary-comparison board's entry into the LEGACY `bookings` rail
+ * (`POST /api/bookings/process-cart`), fed by cart lines the browser assembled from the variant's
+ * DISPLAY fields — the `provider_service_id` that makes a proposed stop purchasable was never
+ * carried across, so the board had nothing service-linked to book. A proposal becomes purchasable
+ * by being ADOPTED onto the plan (`apply-to-trip` preserves the catalog link) and then bought from
+ * the slip: LD 39's one store, LD 45 (4)'s one checkout door. The Expert Review affordance below is
+ * unchanged — it mints an expert request, not a legacy booking.
+ */
 interface VariantActionButtonsProps {
   variant: Variant;
   comparison: Comparison;
   userId: string;
   userEmail?: string;
-  onBook: () => void;
 }
 
 interface VariantOptionsMenuProps {
@@ -63,7 +73,6 @@ export default function VariantActionButtons({
   comparison,
   userId,
   userEmail,
-  onBook,
 }: VariantActionButtonsProps) {
   // Expert Review Modal
   const [showExpertModal, setShowExpertModal] = useState(false);
@@ -276,18 +285,6 @@ export default function VariantActionButtons({
     <>
       {/* Centered Action Buttons */}
       <div className="flex items-center justify-center gap-2">
-        {/* Book Now */}
-        <Button
-          onClick={onBook}
-          className="text-xs px-3"
-          size="sm"
-          variant="default"
-          data-testid={`button-book-now-${variant.id}`}
-        >
-          <CreditCard className="w-3 h-3 mr-1" />
-          Book Now
-        </Button>
-
         {/* Expert Review */}
         <Button
           onClick={() => setShowExpertModal(true)}

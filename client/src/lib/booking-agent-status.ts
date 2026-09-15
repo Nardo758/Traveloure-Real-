@@ -26,12 +26,28 @@
  * legacy four. This map is the reader's EXPLICIT mapping of those four — "readers map the legacy
  * four explicitly and say so" — while a ruled value passes through by name.
  *
+ * D-10 — `confirmed` MEANS THE PARTNER SAID SO (punchlist D-10 option A, ledger
+ * `2026-09-15-d10-confirmed-needs-partner-evidence`). The human rail can no longer write it: an
+ * agent's press writes `purchased_by_human` and carries their typed reference with it, and the ONE
+ * writer of `confirmed` is the sub_id reconciliation matcher, on the affiliate network's own
+ * reported conversion. So this reader changed in two places:
+ *   · `purchased_by_human` WITH a reference reads "Purchased · reference recorded · awaiting the
+ *     partner's confirmation", and WITHOUT one reads the same sentence minus that clause. The
+ *     reference is a real fact and stays visible; it is simply not the partner's word.
+ *   · `confirmed` reads "Confirmed by <partner>", naming the partner the request already carries
+ *     — never a partner name invented here, and "the partner" when the row states none.
+ * LEGACY ROWS ALREADY AT `confirmed` KEEP IT. There is NO BACKFILL: a row confirmed under the old
+ * rule was confirmed under it, and rewriting it would invent a fact about work nobody did. Nothing
+ * distinguishes such a row from a partner-confirmed one — which is exactly why the human rail
+ * stopped being able to make more of them, rather than this reader trying to tell them apart. The
+ * previous "confirmed without a reference is really purchased_by_human" arm is therefore GONE: a
+ * partner-confirmed row carries no reference (the matcher never writes one — see below), so that
+ * arm would now downgrade the one reading D-10 exists to protect.
+ *
  * §13 — WHAT IS NOT CLAIMED. `assigned` is NOT rendered as "researching": researching is a copilot
- * verb and the row records a human assignment. `confirmed` without a confirmation reference is
- * NOT "booked" — it is `purchased_by_human` (a named actor attempted a purchase) — and only a row
- * carrying a reference reads "Booked". `failed` is rendered as neither flagged nor unavailable,
- * because the legacy value cannot say which. An unrecognised status is shown VERBATIM under an
- * `unknown` key rather than folded into the nearest-looking ruled state.
+ * verb and the row records a human assignment. `failed` is rendered as neither flagged nor
+ * unavailable, because the legacy value cannot say which. An unrecognised status is shown VERBATIM
+ * under an `unknown` key rather than folded into the nearest-looking ruled state.
  */
 
 import {
@@ -56,11 +72,16 @@ export type BookingAgentStage =
 export interface BookingAgentStatusRow {
   status?: string | null;
   confirmationRef?: string | null;
+  /** The partner the request already names. Never invented here when absent (§13). */
+  partnerName?: string | null;
 }
 
 export interface BookingAgentReading {
   stage: BookingAgentStage;
-  /** Traveler-facing label. "Booked" appears ONLY on `confirmed` (a reference in hand). */
+  /**
+   * Traveler-facing label. A CONFIRMATION is claimed ONLY on `confirmed`, which only the partner's
+   * own reported conversion can produce (D-10).
+   */
   label: string;
   /** True only when the stage is one LD 44 ratified by name (never for the legacy/unknown ones). */
   ruled: boolean;
@@ -70,16 +91,38 @@ const RULED_LABELS: Record<Exclude<BookingAgentStage, "assigned_legacy" | "faile
   received: "Received",
   researching: "Researching",
   ready_to_buy: "Ready to buy",
-  purchased_by_human: "Purchased by your agent, awaiting confirmation",
-  purchased_by_traveler: "Purchased by you, awaiting confirmation",
-  purchased_by_api: "Purchased, awaiting confirmation",
-  confirmed: "Booked",
+  // D-10: a purchase is never "booked". The wait is named for WHOSE word is missing.
+  purchased_by_human: "Purchased by your agent · awaiting the partner's confirmation",
+  purchased_by_traveler: "Purchased by you · awaiting the partner's confirmation",
+  purchased_by_api: "Purchased · awaiting the partner's confirmation",
+  // Overwritten by `confirmedLabel` below, which names the partner the row carries.
+  confirmed: "Confirmed by the partner",
   flagged: "Needs your answer",
   unavailable: "Unavailable from the partner",
 };
 
 const hasRef = (row: BookingAgentStatusRow): boolean =>
   typeof row.confirmationRef === "string" && row.confirmationRef.trim().length > 0;
+
+/**
+ * D-10: `confirmed` names the partner the REQUEST ALREADY CARRIES (`partner_name`, NOT NULL on the
+ * table). A row that somehow states none falls back to "the partner" — never a guessed name.
+ */
+function confirmedLabel(row: BookingAgentStatusRow): string {
+  const partner = typeof row.partnerName === "string" ? row.partnerName.trim() : "";
+  return partner.length > 0 ? `Confirmed by ${partner}` : RULED_LABELS.confirmed;
+}
+
+/**
+ * D-10: the agent's typed reference is a real fact and is SAID — it is just not the partner's
+ * word, so the sentence still ends in the wait. Only `purchased_by_human` carries the clause: a
+ * `purchased_by_traveler` row's reference is the traveler's own and the label already says so.
+ */
+function purchasedByHumanLabel(row: BookingAgentStatusRow): string {
+  return hasRef(row)
+    ? "Purchased · reference recorded · awaiting the partner's confirmation"
+    : RULED_LABELS.purchased_by_human;
+}
 
 /** Read ONE row into the ruled vocabulary — the explicit legacy map lives here and nowhere else. */
 export function readBookingAgentStatus(row: BookingAgentStatusRow): BookingAgentReading {
@@ -91,19 +134,23 @@ export function readBookingAgentStatus(row: BookingAgentStatusRow): BookingAgent
     case "assigned":
       return { stage: "assigned_legacy", label: "With a booking agent", ruled: false };
     case "confirmed":
-      // LD 44 (e): "booked" only with a confirmation in hand.
-      return hasRef(row)
-        ? { stage: "confirmed", label: RULED_LABELS.confirmed, ruled: true }
-        : { stage: "purchased_by_human", label: RULED_LABELS.purchased_by_human, ruled: true };
+      // D-10: the column value means the partner's own report. A legacy row written under the old
+      // human rail carries the same string and is KEPT as it stands (no backfill) — the two are
+      // indistinguishable by design, which is why the human rail stopped writing it.
+      return { stage: "confirmed", label: confirmedLabel(row), ruled: true };
     case "failed":
       return { stage: "failed_legacy", label: "Couldn't be booked", ruled: false };
     default:
       // ── the ruled values, passed through by name once phase 0 writes them ───────────────────
       // The membership test is the SHARED one, so a value added to the vocabulary is readable here
       // without a second list to remember (§18 rule 1). `confirmed` never reaches this arm — it is
-      // handled above, where the confirmation reference decides what it means.
+      // handled above, where it reads as the partner's own confirmation.
       if (isRuledBookingAgentStatus(raw) && raw !== "confirmed") {
-        return { stage: raw, label: RULED_LABELS[raw], ruled: true };
+        return {
+          stage: raw,
+          label: raw === "purchased_by_human" ? purchasedByHumanLabel(row) : RULED_LABELS[raw],
+          ruled: true,
+        };
       }
       // §13: an unrecognised value is shown as itself, never as the nearest ruled state. An EMPTY
       // status is "unknown" too — a row with no status is not "received".

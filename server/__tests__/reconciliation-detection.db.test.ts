@@ -207,9 +207,23 @@ async function makeBooking(opts: {
   platformFee?: string;
   itemId?: string | null;
   idempotencyKey?: string;
+  /**
+   * D-11 (ledger `2026-09-15-d11-no-item-booking-exception`). Every row this builder writes NAMES
+   * `ids.trip`, and LD 39 says a plan's contents live in `itinerary_items` with
+   * `itinerary_items.booking_id` (migration 159) as the item→booking link — so a booking on a trip
+   * with NO item pointing at it is itself a drift kind now. The DEFAULT is therefore the realistic
+   * shape of a cart-checkout row: a linked plan item, written here the way `markItemPurchased`
+   * writes it at promote. `false` is the fixture knob for the stray, and `noItemReason` is the
+   * knob for a ratified exception class.
+   */
+  withPlanItem?: boolean;
+  noItemReason?: string;
 }): Promise<string> {
   const id = `recon-${RUN}-bk-${createdBookingIds.length}`;
-  const details = JSON.stringify(opts.itemId ? { itineraryItemId: opts.itemId } : {});
+  const details = JSON.stringify({
+    ...(opts.itemId ? { itineraryItemId: opts.itemId } : {}),
+    ...(opts.noItemReason ? { noItemReason: opts.noItemReason } : {}),
+  });
   await db.execute(sql`
     INSERT INTO service_bookings (
       id, service_id, traveler_id, provider_id, trip_id, status,
@@ -221,6 +235,19 @@ async function makeBooking(opts: {
     )
   `);
   createdBookingIds.push(id);
+  if (opts.withPlanItem ?? true) await makeLinkedItem(id);
+  return id;
+}
+
+/** The plan row a purchase leaves behind: `booking_id` stamped and `routing_status='purchased'`,
+ *  exactly what `markItemPurchased` writes when a checkout promotes (item-routing.service.ts). */
+async function makeLinkedItem(bookingId: string): Promise<string> {
+  const id = `recon-${RUN}-linked-${createdItemIds.length}`;
+  await db.execute(sql`
+    INSERT INTO itinerary_items (id, trip_id, title, day_number, routing_status, booking_id)
+    VALUES (${id}, ${ids.trip}, 'Reconciliation linked item', 1, 'purchased', ${bookingId})
+  `);
+  createdItemIds.push(id);
   return id;
 }
 
@@ -558,8 +585,9 @@ test("N20h: a refund the `refunds` table already records is NOT drift", async ()
 });
 
 test("N20i: ONE JOB, BOTH RAILS — a legacy charge with no booking is still classified, and a legacy PaymentIntent is not indicted by the cart rail", async () => {
-  // The legacy `bookings` rail is still live (CLAUDE.md §15c: /booking-demo,
-  // /itinerary-comparison/:id → POST /api/bookings/process-cart), so extending the scan must not
+  // The legacy `bookings` rail is still live (CLAUDE.md §15c:
+  // POST /api/bookings/process-cart — D-12 dated its no-new-writes switch and retired its two
+  // client surfaces; the rows and this scan are untouched), so extending the scan must not
   // cost its two original checks — nor may the new cart rail report every legacy PI as "no
   // booking", which is what a naive extension would do.
   const legacyChargeId = `ch_${RUN}_legacy`;
@@ -1496,4 +1524,150 @@ test("N25e: AN EARNING THAT CANNOT HONESTLY BE CREATED IS NOT INVENTED — the s
   assert.equal(await countEarningsFor(row.id), 0, "DB FACT: no earning was invented");
   assert.equal(await countRevenueFor(row.id), 0, "DB FACT: and no revenue row either");
   assert.equal(again.cloneTripId, row.clone_trip_id, "the buyer keeps the trip they paid for");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// matrix-id: N26 — D-11: A TRIP-LEVEL OBLIGATION THE PLAN DOES NOT KNOW ABOUT
+// (ledger `2026-09-15-d11-no-item-booking-exception`, decision-maker ruling, option A)
+//
+// LD 39: `itinerary_items` is the ONE store of a plan's contents and `itinerary_items.booking_id`
+// (migration 159) is the item→booking link. The ruling makes a trip-bearing booking with no item
+// behind it a MIGRATION EXCEPTION confined to named classes — marked server-side — and everything
+// else a FINDING. The positive is cheap; the two negatives are what keep this kind from burying
+// every legitimate purchase on the platform, which is the same discriminating discipline B5 keeps
+// for `payment_provenance_unverified`.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("N26a: a trip-bearing booking with NO plan item and no ratified reason is trip_booking_without_item — detected ONCE, and repaired never", async () => {
+  const piId = `pi_${RUN}_n26a`;
+  const bookingId = await makeBooking({
+    paymentIntentId: piId,
+    status: "confirmed",
+    withPlanItem: false, // the stray: the plan holds an obligation it cannot see
+  });
+  const intent = pi({ id: piId, bookingIds: [bookingId] });
+
+  const first = await scan({ paymentIntents: [intent] }, [bookingId]);
+
+  const rows = await exceptionsForRun(first.runId!);
+  const hit = rows.find((r) => r.kind === "trip_booking_without_item");
+  assert.ok(hit, `expected trip_booking_without_item, got: ${rows.map((r) => r.kind).join(", ") || "(none)"}`);
+  assert.equal(hit.rail, "cart");
+  assert.equal(
+    hit.severity,
+    "warning",
+    "a plan-integrity fact, not a payment one — the money here may be perfectly correct",
+  );
+  assert.equal(hit.booking_id, bookingId);
+  assert.equal(hit.dedupe_key, `cart:trip_booking_without_item:${bookingId}`, "keyed on the BOOKING alone");
+  assert.equal(hit.details.tripId, ids.trip, "the plan it names is recorded for the human who follows up");
+  assert.equal(
+    hit.details.noItemReasonOnRow,
+    null,
+    "recorded as NULL rather than omitted: 'carries nothing' and 'carries a string we do not know' " +
+      "are different facts (§13)",
+  );
+
+  // DETECT, DON'T REPAIR (§17): no item was invented, no reason was stamped, the row is untouched.
+  const row = await bookingRow(bookingId);
+  assert.equal(row.status, "confirmed", "the job did not move the booking");
+  const after = await db.execute(sql`
+    SELECT (SELECT count(*)::int FROM itinerary_items WHERE booking_id = ${bookingId}) AS items,
+           booking_details->>'noItemReason' AS reason
+    FROM service_bookings WHERE id = ${bookingId}
+  `);
+  assert.equal((after.rows[0] as any).items, 0, "DB FACT: the job linked NO item — that would be inventing a plan entry");
+  assert.equal((after.rows[0] as any).reason, null, "DB FACT: and it backfilled NO reason — that would manufacture a fact");
+
+  // APPEND-ONLY: a stray that persists is ONE row, still reported every pass (§17 rule 1).
+  const second = await scan({ paymentIntents: [intent] }, [bookingId]);
+  assert.equal(second.newExceptions, 0, "the second pass records no duplicate");
+  assert.ok(
+    second.exceptions.some((e) => e.kind === "trip_booking_without_item"),
+    "but it still DETECTS it — 'still drifting' stays visible",
+  );
+  const count = await db.execute(sql`
+    SELECT count(*)::int AS n FROM reconciliation_exceptions
+    WHERE booking_id = ${bookingId} AND kind = 'trip_booking_without_item'
+  `);
+  assert.equal((count.rows[0] as any).n, 1, "DB FACT: exactly ONE row for a stray seen twice");
+});
+
+test("N26b: a NAMED-CLASS row is NOT drift — and an unrecognised reason still is", async () => {
+  // The ratified exception: a rail with no item reference to carry, marked server-side at birth
+  // (`shared/no-item-booking.ts`). Without this the kind would indict every transport booking and
+  // every expert request on a plan, which is precisely what "marked and audited" prevents.
+  const markedId = await makeBooking({
+    paymentIntentId: null,
+    status: "pending",
+    withPlanItem: false,
+    noItemReason: "transport_commerce",
+  });
+
+  const marked = await scan({}, [markedId]);
+  const markedRows = await exceptionsForRun(marked.runId!);
+  assert.equal(
+    markedRows.filter((r) => r.kind === "trip_booking_without_item").length,
+    0,
+    "a ratified class SAYS why it has no item, and is therefore not a finding",
+  );
+
+  // §13 — THE MARK IS NOT A FREE PASS. Only the ratified vocabulary exempts a row; an unknown
+  // string is not a class, so a rail that invented its own reason is still reported.
+  const bogusId = await makeBooking({
+    paymentIntentId: null,
+    status: "pending",
+    withPlanItem: false,
+    noItemReason: "because_i_said_so",
+  });
+
+  const bogus = await scan({}, [bogusId]);
+  const bogusRows = await exceptionsForRun(bogus.runId!);
+  const hit = bogusRows.find((r) => r.kind === "trip_booking_without_item");
+  assert.ok(hit, "an unrecognised reason exempts nothing");
+  assert.equal(
+    hit.details.noItemReasonOnRow,
+    "because_i_said_so",
+    "and the string that was actually on the row is recorded, not just its absence",
+  );
+  assert.deepEqual(
+    hit.details.ratifiedClasses,
+    ["transport_commerce", "expert_booking_request"],
+    "the exception names the vocabulary it judged against, so the finding is readable without the code",
+  );
+});
+
+test("N26c: a LINKED booking and an IN-FLIGHT claim are both silent — the discriminating half", async () => {
+  // (a) The ordinary case: a cart checkout whose plan item points at the booking. If this fired,
+  //     every purchase on the platform would be a finding and the real strays would be invisible.
+  const piId = `pi_${RUN}_n26c`;
+  const linkedId = await makeBooking({ paymentIntentId: piId, status: "confirmed" }); // withPlanItem defaults true
+  const intent = pi({ id: piId, bookingIds: [linkedId] });
+
+  const linked = await scan({ paymentIntents: [intent] }, [linkedId]);
+  assert.equal(linked.exceptions.length, 0, "a linked, correctly-priced, succeeded purchase is not drift at all");
+
+  // (b) The §15b in-flight claim. `payment_pending` with no PaymentIntent stamped is an
+  //     UNAUTHORIZED PROVISIONAL CLAIM by construction, and the item link is written at PROMOTE
+  //     (`markItemPurchased`), not at birth — so "no item yet" is the spine's own ordering, not
+  //     drift. Reporting it would be the detector crying wolf on the checkout it is auditing.
+  const claimId = await makeBooking({ paymentIntentId: null, status: "payment_pending", withPlanItem: false });
+
+  const claim = await scan({}, [claimId]);
+  const claimRows = await exceptionsForRun(claim.runId!);
+  assert.equal(
+    claimRows.filter((r) => r.kind === "trip_booking_without_item").length,
+    0,
+    "an in-flight claim is not yet an obligation — the link comes at promote",
+  );
+
+  // (c) And a row that is no longer an obligation: a swept claim. Same reasoning, other end.
+  const voidedId = await makeBooking({ paymentIntentId: null, status: "expired", withPlanItem: false });
+  const voided = await scan({}, [voidedId]);
+  const voidedRows = await exceptionsForRun(voided.runId!);
+  assert.equal(
+    voidedRows.filter((r) => r.kind === "trip_booking_without_item").length,
+    0,
+    "a voided claim owes the plan nothing",
+  );
 });

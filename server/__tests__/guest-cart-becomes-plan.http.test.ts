@@ -47,6 +47,24 @@
  *       once — in the projection module — and has exactly ONE caller. Its negative space is stated
  *       in the proof itself.
  *
+ * D-16 (b)/(c) — ruling 2026-09-15, ledger `2026-09-15-d16-plan-holds-venues-and-content`,
+ * migration 295. Two of G7's four refusals existed for ONE reason: `itinerary_items` had no column
+ * for the line's own subject, so the round trip could not reproduce the traveler's row.
+ *
+ *   G11 A CUSTOM-VENUE line becomes an item that NAMES the venue (its own name, address and pin,
+ *       never an invented one) and the projection re-derives the same single cart row.
+ *   G12 A CONTENT line keeps its `content_type`/`content_id` link back to the source, and the
+ *       round trip preserves the display keys the ITEM has no column for (the image).
+ *   G13 THE TWO REFUSALS THAT REMAIN still refuse and are still NAMED: a multi-unit line (D-16 (a)
+ *       — `itinerary_items` has no unit column; that is punchlist D-41) and a priceless listing.
+ *   G14 §14 — a venue belonging to someone else is refused, in ONE sentence that cannot be used to
+ *       tell "no such venue" from "not yours".
+ *   G15 `POST /api/cart/convert-to-itinerary`: the §19 `.strict()` allowlist (an unknown key is a
+ *       400), LD 42 D12 (the mint refuses rather than inventing "To be determined"), and the same
+ *       builder — with this rail's OWN disposition (`in_planning`, and the cart line is MOVED).
+ *   G16 STATIC PIN: ONE `buildPlanItemValues`, and the convert route composes no item values of
+ *       its own. Negative space stated in the proof.
+ *
  * SERVER REQUIRED (JOURNEY_BASE_URL, default :5000) + DISPOSABLE DB ONLY. Every row this file
  * writes is created and deleted by it. No Stripe key is exercised — nothing here charges.
  *
@@ -119,6 +137,7 @@ async function makeService(id: string, price: string | null, name: string): Prom
 /** Reset the traveler's whole cart + every plan this suite minted, so each proof starts clean. */
 async function resetTravelerState(): Promise<void> {
   await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
+  await db.execute(sql`DELETE FROM custom_venues WHERE id LIKE ${`gcart-${RUN}-venue-%`}`);
   await db.execute(sql`DELETE FROM cart_items WHERE guest_session_id LIKE ${`gcart-${RUN}%`}`);
   for (const tripId of Array.from(mintedTripIds)) {
     await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${tripId}`);
@@ -138,6 +157,42 @@ async function seedGuestCartRow(
     INSERT INTO cart_items (id, guest_session_id, service_id, quantity, scheduled_date, slot_id)
     VALUES (${id}, ${guestSessionId}, ${serviceId}, ${extra.quantity ?? 1},
             ${extra.scheduledDate ?? null}, ${extra.slotId ?? null})
+  `);
+  return id;
+}
+
+/** Seed a CUSTOM VENUE owned by `ownerId`, the shape `POST /api/custom-venues` writes. */
+async function seedCustomVenue(ownerId: string, name: string): Promise<string> {
+  const id = `gcart-${RUN}-venue-${crypto.randomUUID().slice(0, 6)}`;
+  await db.execute(sql`
+    INSERT INTO custom_venues (id, user_id, name, address, notes, latitude, longitude, estimated_cost)
+    VALUES (${id}, ${ownerId}, ${name}, '12 Pontocho Alley, Kyoto', 'Ask for the terrace',
+            '35.0050000', '135.7700000', '250.00')
+  `);
+  return id;
+}
+
+/** Seed a cart row whose subject is a CUSTOM VENUE (guest-session owned, NULL-keyed). */
+async function seedGuestVenueCartRow(guestSessionId: string, venueId: string): Promise<string> {
+  const id = `gcart-${RUN}-cart-${crypto.randomUUID().slice(0, 6)}`;
+  await db.execute(sql`
+    INSERT INTO cart_items (id, guest_session_id, custom_venue_id, quantity)
+    VALUES (${id}, ${guestSessionId}, ${venueId}, 1)
+  `);
+  return id;
+}
+
+/** Seed a cart row whose subject is DISCOVER CONTENT — the shape `POST /api/cart` writes. */
+async function seedGuestContentCartRow(
+  guestSessionId: string,
+  contentType: string,
+  contentId: string,
+  meta: Record<string, string>,
+): Promise<string> {
+  const id = `gcart-${RUN}-cart-${crypto.randomUUID().slice(0, 6)}`;
+  await db.execute(sql`
+    INSERT INTO cart_items (id, guest_session_id, content_type, content_id, content_meta, quantity)
+    VALUES (${id}, ${guestSessionId}, ${contentType}, ${contentId}, ${JSON.stringify(meta)}::jsonb, 1)
   `);
   return id;
 }
@@ -162,8 +217,9 @@ async function resolveTrip(body: Record<string, unknown> = {}): Promise<{
 
 async function itemsOn(tripId: string): Promise<any[]> {
   const r = await db.execute(sql`
-    SELECT id, title, provider_service_id, scheduled_date, slot_id, day_number, origin,
-           routing_status, item_type, location_name, estimated_cost, notes
+    SELECT id, title, description, provider_service_id, custom_venue_id, content_type, content_id,
+           scheduled_date, slot_id, day_number, origin, routing_status, item_type, location_name,
+           estimated_cost, notes, latitude, longitude
     FROM itinerary_items WHERE trip_id = ${tripId} ORDER BY title
   `);
   return r.rows as any[];
@@ -171,7 +227,8 @@ async function itemsOn(tripId: string): Promise<any[]> {
 
 async function cartRows(): Promise<any[]> {
   const r = await db.execute(sql`
-    SELECT id, service_id, itinerary_item_id, trip_id, quantity, scheduled_date, slot_id
+    SELECT id, service_id, custom_venue_id, content_type, content_id, content_meta,
+           itinerary_item_id, trip_id, quantity, scheduled_date, slot_id
     FROM cart_items WHERE user_id = ${travelerId} ORDER BY id
   `);
   return r.rows as any[];
@@ -437,8 +494,10 @@ test("G7: the round trip is faithful, and a line that could not round-trip is NA
     dated,
   );
 
-  // And the refusals: a multi-unit line (D-14) and a custom-venue line cannot round-trip, so they
-  // are NOT materialized — and the reason travels back rather than the line silently vanishing.
+  // And the refusal that REMAINS: a multi-unit line (D-14) cannot round-trip — `itinerary_items`
+  // has no unit column (punchlist D-41) — so it is NOT materialized, and the reason travels back
+  // rather than the line silently vanishing. (A custom-venue line used to be refused here for a
+  // comparable reason; migration 295 gave it a column and G11 proves it now lands.)
   await resetTravelerState();
   const s2 = `gcart-${RUN}-sess-7b`;
   const multi = await seedGuestCartRow(s2, ids.svcA, { quantity: 3 });
@@ -556,8 +615,278 @@ test("G10: static pin — the cart→item materializer is defined ONCE and has O
   // projecting it), which is a different operation, not a second copy of this one — and every
   // AI / expert / ready-made rail inserts items of its own. A grep over `insert(itineraryItems)`
   // would flag all of those and prove nothing.
+  // REPAIRED, NOT DELETED (ledger `2026-09-15-d16-plan-holds-venues-and-content`): this line used
+  // to look for `removeFromCart(cartItemId)` in routes.ts, where the convert rail's own loop lived.
+  // That loop moved into the projection module — it now shares the ONE value builder with the
+  // materializer — so the pin asserts the same INVARIANT at its new address: the convert rail still
+  // DELETES its cart line, which is what makes it a MOVE and therefore a different operation from
+  // the materializer's LINK.
+  const service = stripped.get(path.join(root, "services/cart-projection.service.ts"))!;
+  const convertStart = service.indexOf("export async function convertCartLinesToItems");
+  assert.ok(convertStart > 0, "the convert rail is defined in the projection module");
   assert.ok(
-    /removeFromCart\(cartItemId\)/.test(stripped.get(path.join(root, "routes.ts"))!),
+    /\.delete\(cartItems\)/.test(service.slice(convertStart)),
     "the convert-to-itinerary rail still MOVES its row, which is why it is not this one",
   );
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// D-16 (b)/(c) — THE PLAN NOW HOLDS A TRAVELER'S OWN VENUE AND A DISCOVER CONTENT LINE.
+// Decision-maker ruling 2026-09-15; ledger `2026-09-15-d16-plan-holds-venues-and-content`;
+// migration 295. Two of the four refusals above existed for ONE reason — `itinerary_items` had no
+// column for the line's own subject, so `syncItemProjection` could not reproduce the traveler's
+// row. It has three columns now, and G11/G12 prove the round trip in BOTH directions. G13 proves
+// the two refusals that REMAIN still refuse, and G14 proves the venue's OWNER is verified.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+// ── G11 ───────────────────────────────────────────────────────────────────────────────────────
+test("G11: a CUSTOM-VENUE line becomes an item that names the venue, and round-trips", async () => {
+  await resetTravelerState();
+  const guestSession = `gcart-${RUN}-sess-11`;
+  const venueId = await seedCustomVenue(travelerId, `Nonna's terrace ${RUN}`);
+  const cartId = await seedGuestVenueCartRow(guestSession, venueId);
+  await api("/api/cart/migrate", travelerCookie, "POST", { guestSessionId: guestSession });
+
+  const resolved = await resolveTrip({ destination: "Kyoto" });
+  assert.equal(resolved.planItems?.created, 1, "THE GAP: pre-295 this was refused as `custom_venue`");
+  assert.equal(resolved.planItems?.skipped, undefined, "and nothing is reported as refused");
+
+  const [item] = await itemsOn(resolved.tripId!);
+  assert.equal(item.custom_venue_id, venueId, "the item NAMES the traveler's own venue");
+  assert.equal(item.provider_service_id, null, "a venue is not a listing and never pretends to be");
+  assert.equal(item.title, `Nonna's terrace ${RUN}`, "the VENUE's own name — never invented");
+  assert.equal(item.location_name, "12 Pontocho Alley, Kyoto", "its own address, copied verbatim");
+  assert.equal(item.origin, "traveler", "LD 12: the traveler typed this venue in themselves");
+  assert.equal(
+    item.estimated_cost,
+    null,
+    "§13/§14: the venue row alone states its cost — a copied number is a second, staleable one",
+  );
+
+  // THE ADMISSION TEST, RUN FOR REAL: the projection re-derives the cart row from the item.
+  const sync = await cartProjection.syncItemProjection(item.id);
+  assert.equal(sync.action, "upserted", "the item projects; it does not delete its own cart line");
+  const rows = await cartRows();
+  assert.equal(rows.length, 1, "ONE cart row — a faithful projection never forks the line");
+  assert.equal(rows[0].id, cartId, "the SAME row, re-derived in place");
+  assert.equal(rows[0].custom_venue_id, venueId, "and it still names the venue it always named");
+  assert.equal(rows[0].content_type, null, "no `itinerary_item` marker is written over a venue row");
+  assert.equal(rows[0].itinerary_item_id, item.id);
+});
+
+// ── G12 ───────────────────────────────────────────────────────────────────────────────────────
+test("G12: a CONTENT line becomes an item that keeps its link, and round-trips with its image", async () => {
+  await resetTravelerState();
+  const guestSession = `gcart-${RUN}-sess-12`;
+  const contentId = `gem-${RUN}`;
+  const cartId = await seedGuestContentCartRow(guestSession, "gem", contentId, {
+    name: `Weekenders Coffee ${RUN}`,
+    description: "A six-seat bar behind a car park",
+    city: "Kyoto",
+    imageUrl: "https://example.test/weekenders.jpg",
+  });
+  await api("/api/cart/migrate", travelerCookie, "POST", { guestSessionId: guestSession });
+
+  const resolved = await resolveTrip({ destination: "Kyoto" });
+  assert.equal(resolved.planItems?.created, 1, "THE GAP: pre-295 this was refused as `content_line`");
+
+  const [item] = await itemsOn(resolved.tripId!);
+  assert.equal(item.content_type, "gem", "the item keeps the LINK BACK TO THE SOURCE");
+  assert.equal(item.content_id, contentId);
+  assert.equal(item.provider_service_id, null, "content is not a listing");
+  assert.equal(item.title, `Weekenders Coffee ${RUN}`, "the envelope's own name");
+  assert.equal(item.location_name, "Kyoto");
+
+  const sync = await cartProjection.syncItemProjection(item.id);
+  assert.equal(sync.action, "upserted");
+  const rows = await cartRows();
+  assert.equal(rows.length, 1, "ONE cart row");
+  assert.equal(rows[0].id, cartId, "the SAME row");
+  assert.equal(rows[0].content_type, "gem", "NOT rewritten into the projection's own marker");
+  assert.equal(rows[0].content_id, contentId, "and the link back to the source survives");
+  const meta = (rows[0].content_meta ?? {}) as Record<string, unknown>;
+  assert.equal(
+    meta.imageUrl,
+    "https://example.test/weekenders.jpg",
+    "§13: the item has no column for an image, so the row keeps its own — the projection " +
+      "authors what it can author and never silently drops the rest",
+  );
+  assert.equal(meta.name, `Weekenders Coffee ${RUN}`);
+});
+
+// ── G13 ───────────────────────────────────────────────────────────────────────────────────────
+test("G13: the TWO remaining refusals still refuse, on a venue/content cart too", async () => {
+  await resetTravelerState();
+  const guestSession = `gcart-${RUN}-sess-13`;
+  const venueId = await seedCustomVenue(travelerId, `Multi venue ${RUN}`);
+  // A multi-UNIT venue line: D-16 (a) / D-14. `itinerary_items` has no unit column (punchlist
+  // D-41, NOT authorized by this ruling), so the next sync would write `quantity: 1` back over it.
+  const multiId = `gcart-${RUN}-cart-${crypto.randomUUID().slice(0, 6)}`;
+  await db.execute(sql`
+    INSERT INTO cart_items (id, guest_session_id, custom_venue_id, quantity)
+    VALUES (${multiId}, ${guestSession}, ${venueId}, 3)
+  `);
+  // And the priceless listing, which the projection would delete on its very next run.
+  const pricelessId = await seedGuestCartRow(guestSession, ids.svcNull);
+  await api("/api/cart/migrate", travelerCookie, "POST", { guestSessionId: guestSession });
+
+  const resolved = await resolveTrip({ destination: "Kyoto" });
+  assert.equal(resolved.planItems?.created, 0, "neither line may become an item");
+  assert.deepEqual(
+    [...(resolved.planItems?.skipped ?? [])].sort((a, b) => a.cartItemId.localeCompare(b.cartItemId)),
+    [
+      { cartItemId: multiId, reason: "quantity_gt_one" },
+      { cartItemId: pricelessId, reason: "no_published_price" },
+    ].sort((a, b) => a.cartItemId.localeCompare(b.cartItemId)),
+    "§13: BOTH refusals are NAMED — D-41 is what would lift the first, and nothing lifts the second",
+  );
+  const rows = await cartRows();
+  assert.equal(rows.length, 2, "and both lines stay exactly where the traveler left them");
+  assert.ok(rows.every((r) => r.itinerary_item_id === null), "neither is linked");
+});
+
+// ── G14 ───────────────────────────────────────────────────────────────────────────────────────
+test("G14: §14 — a venue belonging to SOMEONE ELSE is refused, in one sentence", async () => {
+  await resetTravelerState();
+  const guestSession = `gcart-${RUN}-sess-14`;
+  const foreignVenue = await seedCustomVenue(otherId, `Not yours ${RUN}`);
+  const cartId = await seedGuestVenueCartRow(guestSession, foreignVenue);
+  await api("/api/cart/migrate", travelerCookie, "POST", { guestSessionId: guestSession });
+
+  const resolved = await resolveTrip({ destination: "Kyoto" });
+  assert.equal(resolved.planItems?.created, 0, "one person's venue is never filed onto another's plan");
+  assert.deepEqual(
+    resolved.planItems?.skipped,
+    [{ cartItemId: cartId, reason: "custom_venue_missing" }],
+    "'no such venue' and 'not yours' are deliberately the SAME answer " +
+      "(ledger `2026-09-05-custom-venues-owner-scope`)",
+  );
+  assert.equal((await itemsOn(resolved.tripId!)).length, 0, "and nothing was written");
+});
+
+// ── G15 ───────────────────────────────────────────────────────────────────────────────────────
+test("G15: convert-to-itinerary — the §19 allowlist, and the SAME builder", async () => {
+  await resetTravelerState();
+  const guestSession = `gcart-${RUN}-sess-15`;
+  const venueId = await seedCustomVenue(travelerId, `Convert venue ${RUN}`);
+  const venueCart = await seedGuestVenueCartRow(guestSession, venueId);
+  const contentCart = await seedGuestContentCartRow(guestSession, "gem", `gem-conv-${RUN}`, {
+    name: `Convert gem ${RUN}`,
+    city: "Kyoto",
+  });
+  await api("/api/cart/migrate", travelerCookie, "POST", { guestSessionId: guestSession });
+
+  // (a) AN UNKNOWN KEY IS A 400, NOT A SILENTLY IGNORED FIELD. `.strict()` is the point: a client
+  // that starts sending a privileged name learns at once that this rail refuses it.
+  const unknown = await api("/api/cart/convert-to-itinerary", travelerCookie, "POST", {
+    newTripName: "Kyoto",
+    destination: "Kyoto, Japan",
+    cartItemIds: [venueCart],
+    customVenueId: "a-venue-that-is-not-mine",
+  });
+  assert.equal(unknown.status, 400, "an unknown key is refused outright");
+
+  // (b) LD 42 D12 — A MINT MAY NOT INVENT A DESTINATION. It used to write "To be determined".
+  const noDestination = await api("/api/cart/convert-to-itinerary", travelerCookie, "POST", {
+    newTripName: `Kyoto ${RUN}`,
+    cartItemIds: [venueCart],
+  });
+  assert.equal(noDestination.status, 400, "the traveler is ASKED, never guessed at");
+  assert.equal(((await noDestination.json()) as any).reason, "destination_required");
+
+  // (c) THE HAPPY PATH, THROUGH THE ONE BUILDER: both lines land, carrying their subject links.
+  const res = await api("/api/cart/convert-to-itinerary", travelerCookie, "POST", {
+    newTripName: `Kyoto ${RUN}`,
+    destination: "Kyoto, Japan",
+    cartItemIds: [venueCart, contentCart],
+  });
+  const raw = await res.text();
+  assert.equal(res.status, 200, `convert must succeed: ${raw}`);
+  const body = JSON.parse(raw) as any;
+  mintedTripIds.add(body.tripId);
+  assert.equal(body.convertedCount, 2);
+
+  const items = await itemsOn(body.tripId);
+  assert.equal(items.length, 2);
+  const venueItem = items.find((i) => i.custom_venue_id === venueId)!;
+  assert.ok(venueItem, "the venue link rides the CONVERT rail too, not only the projection rail");
+  const contentItem = items.find((i) => i.content_type === "gem")!;
+  assert.ok(contentItem, "and so does the content link");
+  for (const item of items) {
+    assert.equal(
+      item.routing_status,
+      "in_planning",
+      "THE DISPOSITION IS THIS RAIL'S OWN: a converted item is a plan item, not purchase intent",
+    );
+  }
+  // AND THE LINE IS MOVED, NOT LINKED — which is the other half of the disposition.
+  assert.equal((await cartRows()).length, 0, "the cart rows are deleted by this rail");
+});
+
+// ── G16 ───────────────────────────────────────────────────────────────────────────────────────
+test("G16: static pin — ONE cart→item value builder, and the convert route composes none of its own", () => {
+  const root = path.join(process.cwd(), "server");
+  const stripComments = (s: string) =>
+    s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  // THE FILE SET, never a call-site count.
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === "__tests__") continue;
+        walk(full);
+      } else if (entry.name.endsWith(".ts")) {
+        files.push(full);
+      }
+    }
+  };
+  walk(root);
+  const stripped = new Map(files.map((f) => [f, stripComments(fs.readFileSync(f, "utf8"))]));
+  const rel = (f: string) => path.relative(root, f).split(path.sep).join("/");
+
+  const definers = files.filter((f) => /function buildPlanItemValues/.test(stripped.get(f)!));
+  assert.deepEqual(
+    definers.map(rel),
+    ["services/cart-projection.service.ts"],
+    "§18 rule 1: ONE place a cart line becomes a plan item's values. The convert rail and the " +
+      "projection rail differ only in DISPOSITION, and a second copy of the mapping is exactly " +
+      "how the two came to describe the same cart line differently.",
+  );
+
+  // The convert ROUTE no longer inserts an item itself: it calls the module.
+  const routes = stripped.get(path.join(root, "routes.ts"))!;
+  const convertStart = routes.indexOf('app.post("/api/cart/convert-to-itinerary"');
+  assert.ok(convertStart > 0, "the convert route is still defined in routes.ts");
+  const convertBody = routes.slice(convertStart, convertStart + 6000);
+  assert.ok(
+    convertBody.includes("convertCartLinesToItems("),
+    "the route is a CALLER of the one builder",
+  );
+  assert.ok(
+    !convertBody.includes("createItineraryItem("),
+    "and composes no `itinerary_items` values of its own",
+  );
+
+  // THE LINKAGE INVARIANT FOLLOWED THE CODE. `check-linkage-preservation.cjs` used to watch the
+  // convert route's own `createItineraryItem(` call for `providerServiceId` (hole H1,
+  // docs/E2E_ITEM_LIFECYCLE.md §3 — a converted service once became permanently unbuyable text).
+  // That call site is gone, so the guard no longer sees it; the invariant is asserted HERE instead,
+  // at the one place the mapping now lives, rather than quietly losing a layer.
+  const projection = stripped.get(path.join(root, "services/cart-projection.service.ts"))!;
+  const builderStart = projection.indexOf("function buildPlanItemValues");
+  const serviceBranch = projection.slice(
+    projection.indexOf('subject.kind === "service"', builderStart),
+    projection.indexOf('subject.kind === "custom_venue"', builderStart),
+  );
+  assert.ok(
+    /providerServiceId:\s*svc\.id/.test(serviceBranch),
+    "a plan item born from a sellable cart line must carry providerServiceId — the H1 invariant",
+  );
+
+  // STATED NEGATIVE SPACE: this pin proves the MAPPING is not forked and that this one route no
+  // longer writes items inline. It does NOT prove that no other rail inserts an item — the AI,
+  // expert and ready-made rails all legitimately do, and a grep over `insert(itineraryItems)`
+  // would flag every one of them and prove nothing.
 });

@@ -26,7 +26,7 @@ export const IDENTITY_EDIT_FIELDS = [
   // under "category/offering" as an identity edit: changing it changes the archetype a buyer is
   // committing to, so on an APPROVED listing it re-enters review beside the ids rather than
   // moving the live row. (`offeringTypeKey` beside it is the /earn URL param spelling.)
-  // `expertOfferingTypeId` used to sit here and is GONE with its column (migration 295, ledger
+  // `expertOfferingTypeId` used to sit here and is GONE with its column (migration 296, ledger
   // `2026-09-15-offering-key-id-drop`): a lane that names a dropped column in the review split is
   // a lane nobody can trigger, and the handler iterates this list against the parsed body.
   "serviceOfferingTypeId", "expertOfferingTypeKey", "offeringTypeKey",

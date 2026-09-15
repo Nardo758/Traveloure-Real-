@@ -2,7 +2,7 @@
  * IS THIS LINE A BOOKING-CONCIERGE LINE? — ONE implementation, every money surface.
  *
  * Ledger `2026-09-12-offering-key-is-canonical` (lane 1) and `2026-09-15-offering-key-id-drop`
- * (lane 2, migration 295 — the legacy uuid and its fallback arm are gone). CLAUDE.md §18 rule 1
+ * (lane 2, migration 296 — the legacy uuid and its fallback arm are gone). CLAUDE.md §18 rule 1
  * (one derivation), §14 (nothing here is client-sourced), §8 (no rate and no fee literal lives
  * here), §13 (an absent answer is an answer).
  *
@@ -24,7 +24,7 @@
  * `provider_services.expert_offering_type_key` (migration 292) is the column the offering catalogs
  * are actually read BY — `impactClassFor` and the whole commerce-contract resolver take a key.
  * The older `expert_offering_type_id` (migration 057) existed only to be translated back into one;
- * migration 293 copied its answer onto the key for every row that carried one, and migration 295
+ * migration 293 copied its answer onto the key for every row that carried one, and migration 296
  * dropped it after a human read the production count of rows that could still answer only through
  * it. There is no id→key lookup here any more, and this module reaches no database at all.
  *

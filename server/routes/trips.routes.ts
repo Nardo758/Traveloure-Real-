@@ -2999,6 +2999,13 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
         // client-chosen foreign key straight into the write, naming a row in another table (and
         // possibly on another trip). This destructure is layer 1; the resolver is the §14 layer.
         userExperienceId: _uxid,
+        // Ledger `2026-09-15-d16-plan-holds-venues-and-content` (migration 295): the two SUBJECT
+        // links — the traveler's own venue, and the Discover content a line came from — are
+        // stripped for the same §19 reason and admitted by NO allowlist at all. They are stamped
+        // server-side from the CART ROW by the projection module and there is nothing here for a
+        // client to say; `customVenueId` in particular names a row in another table whose owner
+        // that module verifies. Layer 1; `stripItineraryItemRoutingFields` in storage is layer 2.
+        customVenueId: _cvid, contentType: _ctype, contentId: _cid,
         ...safeBody
       } = req.body as any;
       // D4 (LD 42, ratified Sep 5 2026): THE OWNER MAY NOT WRITE `itinerary_items.expert_note`.

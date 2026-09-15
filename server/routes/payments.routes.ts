@@ -1320,7 +1320,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // the listing's OWN key (migration 292) answers this, through the ONE resolver every money
       // surface calls — the per-site legacy-uuid → offering-key map this block used to build is
       // gone, and with it the chance of this quote and the charge loop below disagreeing about the
-      // same cart (§18 rule 1). The legacy column itself is gone too (migration 295, ledger
+      // same cart (§18 rule 1). The legacy column itself is gone too (migration 296, ledger
       // `2026-09-15-offering-key-id-drop`), so the resolver now reaches no database at all. No rate
       // and no amount is decided there.
       const conciergeLines = await resolveBookingConciergeItems(
@@ -2208,7 +2208,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
 
       // Which lines sell `booking_concierge` — the SAME resolver /api/checkout calls (ledger
       // `2026-09-12-offering-key-is-canonical`), so the preview cannot classify a cart one way and
-      // the charge another. Reads the listing's own key, which since migration 295 is the only
+      // the charge another. Reads the listing's own key, which since migration 296 is the only
       // offering column there is (ledger `2026-09-15-offering-key-id-drop`).
       const previewConciergeLines = await resolveBookingConciergeItems(
         cartData.map(i => i.service ?? null),
