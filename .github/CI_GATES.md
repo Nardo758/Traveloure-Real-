@@ -35,6 +35,7 @@ Add all of them to branch protection now.
 | `earn-page-smoke (Playwright DOM gate)` | `service-offering-types-gate.yml` | /earn page renders at least one catalog card per role |
 | `relevance-dominance (pure unit)` | `upsell-trust-contract.yml` | Revenue-reordering bug in upsell engine; pure unit, zero flakiness |
 | `ci-db-setup-lint (no inline migration steps)` | `ci-db-setup-lint.yml` | Guards the composite action contract — detects inline `migrate-entry.ts` / `create-sessions-table.ts` run steps in any of the 6 Playwright workflow files |
+| `test-file-reachability (ratchet - new orphans fail)` | `build.yml` | A test file no workflow command can reach. Ratchets against `scripts/test-orphan-baseline.txt`: a NEW orphan fails, and a baseline row since wired or deleted fails until its line goes. The baseline is RECORDED DEBT and may only shrink — it exempts nothing (`2026-09-14-test-files-wired-orphans`). Blind to `e2e/` by ruling, and to runners reached through constructs its tokenizer does not model. |
 
 ### Tier 2 — RECOMMENDED (add once a green baseline exists)
 
