@@ -287,6 +287,18 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
           ...(item.description ? { description: item.description } : {}),
           ...(item.locationName ? { city: item.locationName } : {}),
           ...(item.estimatedCost ? { price: String(item.estimatedCost) } : {}),
+          // D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`): the partner
+          // grounding, carried so the CART can tell a `recommended` line from an `external` one.
+          // This branch already is the item's ONE copy-down (LD 39) — the cart row is written
+          // FROM the item here and nowhere else — so the fact travels with the rest of the
+          // display envelope rather than through a second copier (§18 rule 1).
+          //
+          // DISPLAY ONLY, AND IT MOVES NO MONEY. This whole branch is the NO-SERVICE case, which
+          // checkout's subtotal and booking loops both skip (`if (!item.service) continue;`); the
+          // id is the same one the plancard already publishes for agent-bookable items, and the
+          // affiliate URL is still never emitted (§16). PRESENT ONLY when the item names one, so
+          // a row that names none is byte-identical to before (§13 — absent means "names none").
+          ...(item.affiliateProductId ? { affiliateProductId: item.affiliateProductId } : {}),
         },
     quantity: 1,
     tripId: item.tripId,

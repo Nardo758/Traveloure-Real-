@@ -27,12 +27,17 @@
  *             listing makes no payment claim and the two adjacent contradictory sentences
  *             production QA found on 2026-09-13 cannot both render
  *   S1-S4     the shipped page: it calls the mapper, authors no buy verb, holds no copy of the
- *             payment claim, and the three OTHER `ld23-buy-action-gap` authors are untouched
- *             (file-SET scan, comments stripped)
+ *             payment claim, and the recorded `ld23-buy-action-gap` authors are exactly the two
+ *             that remain (file-SET scan, comments stripped)
+ *
+ * S3 WAS REPAIRED, NOT DELETED, by ledger `2026-09-15-buy-label-cards`: it pinned THREE other
+ * authors, and one of them (`components/OfferingCard.tsx`) had zero importers and was deleted
+ * under §18c. The pin now asserts that file's ABSENCE and walks `client/src` for the marker, so
+ * the gap set is exact rather than a list that could silently grow.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -287,21 +292,51 @@ describe("service detail — the shipped page authors no buy verb", () => {
     }
   });
 
-  it("S3 the three OTHER recorded buy-button authors still carry their gap markers", () => {
-    // FILE SET, comments INTACT — the marker IS a comment. This lane deliberately left all three
-    // alone (each has its own recorded reason), so their markers must still be there; and the page
-    // this lane fixed must no longer be a candidate for one.
-    const gapFiles = [
-      "components/OfferingCard.tsx",
-      "lib/catalog-preview-presentation.ts",
-      "pages/storefront.tsx",
-    ];
+  it("S3 the TWO surviving recorded buy-button authors carry their markers, and the deleted third is gone", () => {
+    // FILE SET, comments INTACT — the marker IS a comment.
+    //
+    // REPAIRED, NOT DELETED (ledger `2026-09-15-buy-label-cards`). This pin asserted THREE
+    // authors. One of them, `components/OfferingCard.tsx`, turned out to have ZERO importers —
+    // the storefront forked it as `StorefrontOfferingCard` and the provider Catalog forked it
+    // again as `CatalogPreviewOfferCard` — so §18c deletes it rather than leaving an unrendered
+    // author of a buy label standing. The invariant it stood for survives in a stronger form:
+    // the marker's file set is asserted EXACTLY, so a fourth surface that starts authoring its
+    // own CTA has to be declared here, and the deleted one cannot come back unnoticed.
+    const gapFiles = ["lib/catalog-preview-presentation.ts", "pages/storefront.tsx"];
     for (const f of gapFiles) {
       assert.ok(readClient(f).includes("ld23-buy-action-gap"), `${f} lost its recorded gap marker`);
     }
     assert.ok(
+      !existsSync(join(CLIENT_SRC, "components/OfferingCard.tsx")),
+      "the importerless OfferingCard was deleted (§18c); re-adding it needs its own ruling and its own marker",
+    );
+    assert.ok(
       !readClient(PAGE).includes("ld23-buy-action-gap"),
       "the service detail page is no longer a buy-button author and needs no gap marker",
+    );
+    // The marker's whole footprint under client/src, derived by WALKING the tree rather than by a
+    // count — the two authors above, plus the two files that merely DESCRIBE the gap (the mapper's
+    // negative-space note and this test). Anything else is an undeclared author.
+    const declared = new Set([
+      ...gapFiles,
+      "lib/service-buy-action.ts",
+      "lib/__tests__/service-buy-action.test.ts",
+    ]);
+    const found: string[] = [];
+    const walk = (dir: string, prefix: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) walk(join(dir, entry.name), rel);
+        else if (/\.tsx?$/.test(entry.name) && readClient(rel).includes("ld23-buy-action-gap")) {
+          found.push(rel);
+        }
+      }
+    };
+    walk(CLIENT_SRC, "");
+    assert.deepEqual(
+      found.sort(),
+      [...declared].sort(),
+      "the recorded buy-label gap set changed — declare the new author here, or remove the stale entry",
     );
   });
 

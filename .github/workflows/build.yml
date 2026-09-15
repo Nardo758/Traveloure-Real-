@@ -1492,6 +1492,13 @@ jobs:
       # it was green for the whole life of both defects; it now calls the one implementation.
       - name: The clone builder, exercised directly
         run: npx tsx --test --test-force-exit server/services/__tests__/ready-made-clone-routing.test.ts
+      # D-4 (ruling 2026-09-15; ledger 2026-09-15-d4-item-kind-contract) — the READY-MADE AUTHORING
+      # CONTRACT, on the same rail's own job because it is the same author and the same build: an
+      # author may not publish a priced item that names no bookable thing (checkout skips an item
+      # with no service on both loops, so the price is a claim nobody can charge). A1/A3 FAIL on
+      # main's router. Mounts the real trips router against this job's Postgres; no server boot.
+      - name: The ready-made authoring price contract (A1-A5)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/authored-item-price-contract.db.test.ts
 
   reconciliation-detection:
     name: reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)

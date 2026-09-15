@@ -276,6 +276,20 @@ function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) 
           )}
         </div>
 
+        {/* D-3 (decision-maker ruling 2026-09-15, option A; ledger
+            `2026-09-15-d3-readymade-separate-checkout`). THIS CARD PUTS THE PRICE BADGE AND THE
+            "N items" CHIP ON THE SAME TILE, which reads as "N items for $X". It is not: a
+            ready-made purchase is its own PaymentIntent against `ready_made_trips`, and the
+            bookable services inside the plan are reservations bought separately through the cart at
+            their own listing price — the two are never mixed in one checkout. One line, in the
+            card's voice, so the store never implies otherwise (§13). */}
+        <p
+          className="text-[10.5px] text-[color:var(--earn-muted)] leading-snug mt-2"
+          data-testid={`rm-shelf-separate-${l.id}`}
+        >
+          Price is for the plan. Anything it recommends is booked separately, at its own price.
+        </p>
+
         {/* Get this trip — teal full-width. Disabled with a reason ONLY when price is null
             (2026-08-25 submit/approve gate now prevents priceless new listings). */}
         <div className="mt-auto pt-3">

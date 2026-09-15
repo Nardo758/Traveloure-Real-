@@ -298,8 +298,19 @@ export function buildOccasionReminderEmailPayload(params: OccasionReminderParams
 // in their account, carrying PLACEHOLDER DATES they re-date themselves. It is NOT a finished trip
 // and NOTHING in it is booked; the clone deliberately carries no booking linkage at all
 // (ledger 2026-09-13-clone-carries-content-not-state). Neither builder may say or imply otherwise,
-// and neither states anything about what happens next beyond the revision/consult entitlement,
-// which IS true of every purchase (ledger 2026-08-22-concierge-p3 (a)).
+// and neither states anything about what happens next beyond the ONE REVISION entitlement, which IS
+// true of every purchase (ledger 2026-08-22-concierge-p3 (a); narrowed to the revision alone by the
+// decision-maker ruling of 2026-09-15 — punchlist D-2, ledger
+// `2026-09-15-d2-one-revision-not-a-consultation`: only the revision has storage and a rail, so a
+// consultation is never promised here).
+//
+// D-3 (decision-maker ruling 2026-09-15, option A; ledger `2026-09-15-d3-readymade-separate-checkout`):
+// a ready-made trip and a service booking are NEVER mixed in one checkout. What this email reports
+// paid is the PLAN — its own PaymentIntent against `ready_made_trips`. Every bookable thing inside
+// the plan is a separate reservation at its own listing price, carted by the buyer on the slip
+// (LD 39). The delivered email already said nothing is booked; it now also says the bookings are a
+// separate purchase, because "not booked yet" alone still leaves "…and already paid for" available
+// to the reader (§13).
 
 export interface ReadyMadeDeliveredEmailParams {
   firstName?: string | null;
@@ -354,8 +365,12 @@ export function buildReadyMadeDeliveredEmailPayload(params: ReadyMadeDeliveredEm
         change or remove.
       </p>
       <p style="color: #374151;">
-        Your purchase also includes one consultation and one revision with the expert who built it.
-        You can request those from the plan whenever you are ready.
+        What you paid for is the plan itself. Stays, tours, transport and anything else it recommends
+        are booked separately, each at its own price.
+      </p>
+      <p style="color: #374151;">
+        Your purchase also includes one revision with the expert who built it. You can request it
+        from the plan whenever you are ready.
       </p>
       <a href="${planUrl}"
          style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
@@ -383,7 +398,10 @@ export function buildReadyMadeDeliveredEmailPayload(params: ReadyMadeDeliveredEm
     `It opens on placeholder dates — set your real dates on the plan and everything moves with them.`,
     `Nothing in the plan is booked yet: each item is a recommendation you can book, change or remove.`,
     ``,
-    `Your purchase also includes one consultation and one revision with the expert who built it.`,
+    `What you paid for is the plan itself. Stays, tours, transport and anything else it recommends`,
+    `are booked separately, each at its own price.`,
+    ``,
+    `Your purchase also includes one revision with the expert who built it.`,
     ``,
     `Open your plan: ${planUrl}`,
   ].join("\n");

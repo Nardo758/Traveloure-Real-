@@ -44,6 +44,8 @@
  * a buyer is ever told their purchase arrived, so the proofs live here beside it:
  *
  *   R1  the fulfilment emits EXACTLY ONE buyer bell row and EXACTLY ONE outbox email, and the
+ *       copy carries the D-3 separation (the price bought the PLAN; the bookings inside it are a
+ *       separate purchase at their own price) as well as the D-2 entitlement wording.
  *       email says only what is true — a plan on placeholder dates, nothing booked.
  *   R2  a REPLAYED fulfilment (the webhook racing the buyer's own confirm, a recovery pass) emits
  *       NEITHER a second row nor a second email — the atomic `paid → cloned` claim is the basis.
@@ -522,7 +524,32 @@ test("R1: the fulfilment tells the buyer exactly once — one bell row, one outb
   const body = `${m.subject}\n${m.text_body}`.toLowerCase();
   assert.ok(body.includes("placeholder dates"), "the copy says the dates are placeholders");
   assert.ok(body.includes("nothing in the plan is booked yet"), "the copy says nothing is booked");
-  for (const forbidden of ["finished trip", "your trip is booked", "we have booked", "confirmed booking"]) {
+  // D-2 (decision-maker ruling 2026-09-15, option A; ledger
+  // `2026-09-15-d2-one-revision-not-a-consultation`): the purchase includes ONE asynchronous
+  // REVISION and nothing else. `ready_made_purchases` stores `revision_status` and has no
+  // consultation column, rail or scheduling, so "consult" in this email would be selling something
+  // no code path can deliver — the same §13 lie as the booked/finished claims beside it.
+  assert.ok(body.includes("one revision"), "the copy names the one entitlement the row actually stores");
+  // D-3 (decision-maker ruling 2026-09-15, option A; ledger
+  // `2026-09-15-d3-readymade-separate-checkout`): a ready-made trip and a service booking are NEVER
+  // mixed in one checkout. This email reports what was PAID, so it is the surface most able to
+  // leave "…and the bookings inside it are paid for too" available to the reader. "Nothing is
+  // booked yet" alone does not close that — it says the reservations have not HAPPENED, not that
+  // they are a separate purchase — so the copy must also say the bookings are separate, each at its
+  // own price (LD 39: the buyer carts them through the cart, the `ready_for_checkout` projection).
+  assert.ok(
+    body.includes("booked separately"),
+    "the copy says the things inside the plan are booked separately — the D-3 separation",
+  );
+  assert.ok(
+    body.includes("what you paid for is the plan"),
+    "and says what the purchase DID buy, so the separation reads as a statement, not a disclaimer",
+  );
+  for (const forbidden of [
+    "finished trip", "your trip is booked", "we have booked", "confirmed booking", "consult",
+    // D-3's inclusion claims: the price covers the PLAN and no reservation at all.
+    "all-inclusive", "bookings included", "stays included", "everything is included",
+  ]) {
     assert.ok(!body.includes(forbidden), `the copy must never say "${forbidden}"`);
   }
 

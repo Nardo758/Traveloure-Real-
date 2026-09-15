@@ -20,6 +20,16 @@
  * never shown here: on purchase it clones into the buyer's own editable trip, which is where they
  * see it.
  *
+ * D-3 (decision-maker ruling 2026-09-15, option A; ledger
+ * `2026-09-15-d3-readymade-separate-checkout`): A READY-MADE TRIP AND A SERVICE BOOKING ARE NEVER
+ * MIXED IN ONE CHECKOUT, and this page says so. The ready-made purchase is its own PaymentIntent
+ * against its own table — a digital product; the bookable services the plan recommends are
+ * reservations the buyer carts separately at their own listing price (LD 39: the cart is the
+ * `ready_for_checkout` projection of `itinerary_items`, and a cloned item is born `in_planning`
+ * carrying no booking at all). Nothing on this page may imply the price covers them, so the
+ * contents block is headed "What's inside the plan", the price caption names what it buys, and the
+ * separation is stated once beside each (§13).
+ *
  * The AUTHOR of a not-yet-approved listing sees this exact page flagged "Preview" (the server
  * returns the same redacted DTO with preview:true) — what they ship is what they previewed.
  * Purchase: the safe 2-step (POST /purchase 202 → shared StripeCheckout → POST /purchase/confirm
@@ -50,6 +60,7 @@ import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { planTypeDisplay } from "@shared/ready-made-plan-types";
+import { ITEM_KINDS, itemKindChip } from "@shared/item-kind";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import {
   ArrowLeft,
@@ -66,6 +77,7 @@ import {
   ShoppingBag,
   Sun,
   UserRound,
+  Wallet,
 } from "lucide-react";
 
 interface DetailListing {
@@ -82,7 +94,18 @@ interface DetailListing {
   heroImageUrl: string | null;
   heroImageMeta: { photographer?: string; profileUrl?: string } | null;
   badge: string | null;
-  insideCounts: { days?: number; items?: number; byType?: Record<string, number> } | null;
+  insideCounts: {
+    days?: number;
+    items?: number;
+    byType?: Record<string, number>;
+    /**
+     * D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`) — the approval-time count
+     * of the build's items BY KIND (included / bookable_separately / external / recommended),
+     * derived by the ONE shared derivation at approval. ABSENT on every listing approved before
+     * that lane, and an absent snapshot is rendered as NOTHING rather than as zeros (§13).
+     */
+    byKind?: Record<string, number>;
+  } | null;
   authorName: string;
   /** MP-2: the author's storefront handle. Null when unclaimed → no link rendered. */
   authorHandle: string | null;
@@ -279,6 +302,11 @@ export default function ReadyMadeDetailPage() {
   }
 
   const inside = listing.insideCounts;
+  // D-4: the kinds present in the approval snapshot, in the ruling's own precedence order, with
+  // absent/zero entries dropped (§13 — "we never counted" and "none of these" are both silence
+  // here, and neither is rendered as a zero). The labels are the ONE map's, never restated.
+  const kindCounts = ITEM_KINDS.map((kind) => ({ chip: itemKindChip(kind)!, n: inside?.byKind?.[kind] ?? 0 }))
+    .filter((row) => row.n > 0);
   const price = listing.priceCents === null ? null : (listing.priceCents / 100).toFixed(2);
 
   // F4: this page is the STORE channel surface — resolve the distribution format from the
@@ -484,11 +512,21 @@ export default function ReadyMadeDetailPage() {
               </div>
             </RmCard>
 
-            {/* What's included — the approval-time snapshot; honest empty state if none. */}
+            {/* What's inside the plan — the approval-time snapshot; honest empty state if none.
+
+                THE HEADING IS NOT "What's included" ANY MORE (decision-maker ruling 2026-09-15,
+                punchlist D-3, option A; ledger `2026-09-15-d3-readymade-separate-checkout`). These
+                counts describe what the plan PLANS — stays, food, transport, venues — and the word
+                "included" beside a price reads as "your $X covers these", which it does not and
+                structurally cannot: a ready-made purchase is its own PaymentIntent against
+                `ready_made_trips`, and the bookable services inside the plan are reservations bought
+                separately through the cart at their own listing price. The separation notice below
+                says so out loud (§13). */}
             <RmCard>
-              <RmSectionHeading>What's included</RmSectionHeading>
+              <RmSectionHeading>What's inside the plan</RmSectionHeading>
               <p className="text-[#738091] text-[13px] leading-[1.5] mt-2 mb-[19px]">
-                A useful contents snapshot, without revealing the itinerary itself.
+                A useful contents snapshot of what this plan covers, without revealing the itinerary
+                itself.
               </p>
               {inside?.days ? (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="inside-counts">
@@ -501,7 +539,46 @@ export default function ReadyMadeDetailPage() {
               ) : (
                 <p className="rounded-[8px] bg-[#f5f7f8] p-[14px] text-[#738091] text-[12px]">Contents are finalized at approval.</p>
               )}
-              <div className="flex items-start gap-[10px] mt-[18px] p-[14px] rounded-[9px] border border-[#e4e7ec] text-[#475467] text-[12px] leading-[1.45]">
+              {/* HOW MUCH OF THIS PLAN IS BOOKABLE, SAID BEFORE THE PURCHASE (decision-maker ruling
+                  2026-09-15, punchlist D-4; ledger `2026-09-15-d4-item-kind-contract`). D-3 said
+                  the price buys the plan and the bookings inside it are separate; this says how
+                  many of them there are, and how many items are a recommendation with nothing to
+                  book at all. Labels come from the ONE map (@shared/item-kind) — this page writes
+                  none of its own.
+
+                  §13 — AN ABSENT SNAPSHOT DRAWS NOTHING. `byKind` is written at the approval
+                  transition and there is NO backfill, so a listing approved before that lane has
+                  no such count; rendering it as zeros would claim a plan holds no bookable items
+                  when the truth is that nobody counted. Kinds with a zero count are likewise
+                  omitted rather than printed as "0". */}
+              {kindCounts.length > 0 && (
+                <div className="mt-[18px]" data-testid="inside-by-kind">
+                  <p className="text-[#738091] text-[11px] font-bold tracking-[0.06em] uppercase mb-2">
+                    What you can book
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {kindCounts.map(({ chip, n }) => (
+                      <RmCount key={chip.kind} label={chip.label} value={n} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* D-3: the separation, stated where the contents are counted. A ready-made trip and a
+                  service booking are NEVER mixed in one checkout — this price is a digital product
+                  against its own PaymentIntent, and every bookable thing the plan recommends is a
+                  reservation bought at its own listing price. Nothing here may imply otherwise. */}
+              <div
+                className="flex items-start gap-[10px] mt-[18px] p-[14px] rounded-[9px] border border-[#e4e7ec] bg-[#fdf7ef] text-[#475467] text-[12px] leading-[1.45]"
+                data-testid="text-separate-bookings"
+              >
+                <Wallet className="w-4 h-4 shrink-0 mt-0.5 text-[#a67015]" aria-hidden="true" />
+                <p className="m-0">
+                  <span className="font-semibold text-[#193752]">The price buys the plan.</span> Stays,
+                  tours, transport and anything else it recommends are booked separately, each at its
+                  own price — buying this plan books nothing.
+                </p>
+              </div>
+              <div className="flex items-start gap-[10px] mt-[14px] p-[14px] rounded-[9px] border border-[#e4e7ec] text-[#475467] text-[12px] leading-[1.45]">
                 <Pencil className="w-4 h-4 shrink-0 mt-0.5 text-[#247d78]" aria-hidden="true" />
                 <p className="m-0">
                   <span className="font-semibold text-[#193752]">Unlocked means fully yours.</span> After checkout, the
@@ -517,7 +594,7 @@ export default function ReadyMadeDetailPage() {
               >
                 <ConciergeBell className="w-4 h-4 shrink-0 mt-0.5 text-[#247d78]" aria-hidden="true" />
                 <p className="m-0">
-                  <span className="font-semibold text-[#193752]">Includes 1 consultation + 1 revision.</span> Request it
+                  <span className="font-semibold text-[#193752]">Includes 1 revision.</span> Request it
                   from your Trip Slip after purchase.
                 </p>
               </div>
@@ -548,7 +625,10 @@ export default function ReadyMadeDetailPage() {
                   <span className="ml-1.5 text-[#738091] text-[12px] font-normal">/ traveler</span>
                 )}
               </div>
-              <p className="text-[#738091] text-[11px] mt-[7px] mb-[18px]">No recurring fee · copied into your editable trips</p>
+              {/* D-3: the caption says WHAT the number buys, next to the number itself. */}
+              <p className="text-[#738091] text-[11px] mt-[7px] mb-[18px]" data-testid="text-rm-price-caption">
+                For the plan itself · no recurring fee · copied into your editable trips
+              </p>
               <Button
                 size="lg"
                 onClick={startPurchase}
@@ -562,8 +642,14 @@ export default function ReadyMadeDetailPage() {
               <div className="grid gap-[11px] mt-[19px] pt-[17px] border-t border-[#e4e7ec] text-[#475467] text-[11px]">
                 <span className="flex items-center gap-2"><Pencil className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Edit every itinerary item</span>
                 <span className="flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Keep it in your Trip Slip</span>
-                <span className="flex items-center gap-2"><UserRound className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Consult the expert after purchase</span>
+                <span className="flex items-center gap-2"><UserRound className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> 1 revision from the expert after purchase</span>
                 <span className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Pay once, keep the plan</span>
+                {/* D-3: the included-with list must not end where a buyer would assume the rest is
+                    included too. Bookings are their own purchase, on their own rail. */}
+                <span className="flex items-center gap-2" data-testid="text-buy-card-separate">
+                  <Wallet className="w-3.5 h-3.5 text-[#a67015]" aria-hidden="true" /> Stays, tours and
+                  transport are booked separately, at their own price
+                </span>
               </div>
               <Button
                 variant="outline"

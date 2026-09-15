@@ -3,23 +3,33 @@
  *
  * Catalog+Distribute ruling 74, lane C1 proof — the traveler-facing offering
  * card was extracted from a local, un-exported component in
- * client/src/pages/storefront.tsx into the shared, exported
- * client/src/components/OfferingCard.tsx (so C2's Catalog Preview can render the
- * exact same card). This spec proves the legacy `/p/kyoto-interpreter` link
+ * client/src/pages/storefront.tsx into a shared, exported
+ * client/src/components/OfferingCard.tsx (so C2's Catalog Preview could render
+ * the exact same card). This spec proves the legacy `/p/kyoto-interpreter` link
  * permanently redirects to the canonical provider storefront while its offering
- * cards still render THROUGH the extracted component with no regression.
+ * cards still render with no regression.
+ *
+ * WHAT IT ACTUALLY DRIVES, corrected 2026-09-15 (ledger `2026-09-15-buy-label-cards`):
+ * the LIVE storefront page, never the extracted component in isolation. Both
+ * consumers later re-forked their own card — `StorefrontOfferingCard` here and
+ * `CatalogPreviewOfferCard` in client/src/pages/provider/services.tsx — which left
+ * the shared file with zero importers, and §18c deleted it. Every assertion below is
+ * unchanged and still describes the rendered storefront: this spec was never a
+ * render harness for that file, so it is kept rather than deleted with it. It stays
+ * ORPHANED for its own separate, recorded reason (ledger
+ * `2026-09-14-test-files-wired-orphans`): it expects a SERVER 301 on `/p/:handle`,
+ * which is a client route now.
  *
  * No auth required — the storefront is a public page. Selectors are the real
- * `storefront-service-<id>` testids the extracted OfferingCard emits, resolved
- * from the live GET /api/storefront/:handle payload (we don't hardcode ids).
+ * `storefront-service-<id>` testids the card emits, resolved from the live
+ * GET /api/storefront/:handle payload (we don't hardcode ids).
  *
  * Seeded facts asserted (server/seeds): the kyoto-interpreter provider sells
  * "Business Meeting Interpretation (Full Day)" and "Conference & Event
  * Interpretation"; both are approved+active so they surface on the storefront.
  *
  * Relevant source:
- *   client/src/components/OfferingCard.tsx   (the extracted card)
- *   client/src/pages/storefront.tsx          (adopts it, deleted local copy)
+ *   client/src/pages/storefront.tsx          (StorefrontOfferingCard — the live card)
  */
 
 import { test, expect } from '@playwright/test';

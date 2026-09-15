@@ -329,6 +329,30 @@ export interface TripPlanActivity {
    */
   origin?: string;
 
+  /**
+   * ADDITIVE (ruling 2026-09-15, punchlist D-4; ledger `2026-09-15-d4-item-kind-contract`) — the
+   * two LINK columns the item-kind derivation reads: `itinerary_items.provider_service_id` (the
+   * bookable platform listing) and `itinerary_items.affiliate_product_id` (the partner grounding).
+   * Together with `booking` above they are the whole input to `itemKind()` (shared/item-kind.ts),
+   * which is what lets every surface say whether an item is included / book separately / a partner
+   * booking / a recommendation WITHOUT a stored label that could drift from what checkout does.
+   *
+   * PRESENT ONLY WHEN THE ROW REALLY NAMES ONE — the same posture as `booking`, `origin` and
+   * `affiliateBooking`, so an item that names neither is byte-identical to before these existed
+   * (an absent key, not a null one). An ABSENT key is read as "this row names none", which is the
+   * honest answer and the weaker claim; nothing infers a link (§13).
+   *
+   * READ-ONLY PASS-THROUGH, and neither is an address or a secret. `providerServiceId` is the id
+   * `GET /api/services/:id` already serves publicly; `affiliateProductId` is the id the plancard
+   * already publishes inside `affiliateBooking.productId` for agent-bookable items and the id the
+   * booking-agent rail already takes from the client (§16 protects the partner URL, which is never
+   * emitted here and is not emitted by this addition either).
+   *
+   * FULL LEVEL ONLY — teaser/preview return long before an activity is built.
+   */
+  providerServiceId?: string;
+  affiliateProductId?: string;
+
   // ── Existing plancard contract fields (kept — live consumers read them) ────────────────
   /** Display type, via the plancard `mapItemType` mapping. */
   type: string;

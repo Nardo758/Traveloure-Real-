@@ -45,8 +45,10 @@
  * and never decides whether a control is ENABLED — vacation mode (`away`) and a room's stay
  * availability are page-level facts the descriptor does not hold (`buildListingBuyActions` is
  * called with `isLive: true` for every approved+active listing), and the page keeps its own
- * disabling for both. It says nothing about the three OTHER recorded `ld23-buy-action-gap`
- * authors (`OfferingCard`, the storefront card, the catalog preview), which are out of this lane.
+ * disabling for both. It says nothing about the TWO other recorded `ld23-buy-action-gap` authors
+ * (the storefront card, the catalog preview), which are out of this lane. They were three until
+ * ledger `2026-09-15-buy-label-cards` deleted the third — `client/src/components/OfferingCard.tsx`,
+ * which had zero importers (§18c) — and re-verified that both survivors' blockers still hold.
  */
 import type {
   BuyAction,
