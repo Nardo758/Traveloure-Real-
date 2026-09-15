@@ -288,7 +288,13 @@ test('[Seam 2] Experience build: traveler item → expert workspace delivered �
       dayNumber: 1,
       startTime: '10:00',
       locationName: 'En tea house, Kyoto',
-      estimatedCost: 65,
+      // STRING, not a number (punchlist V-31 lane; the same shape ledger `2026-09-14-trips-mint-400`
+      // fixed for `trips.budget` one call up). `itinerary_items.estimated_cost` is
+      // `decimal(10,2)` (`shared/schema.ts:1535`), so the insert schema this route parses declares
+      // it a STRING; a number answered 400 {"message":"Invalid data", ... "Expected string,
+      // received number"} and this seam stopped at its first write. The schema is NOT loosened to
+      // coerce — the payload moves.
+      estimatedCost: '65',
     });
 
     expect(
@@ -774,7 +780,12 @@ test('[Seam 4] Supply → feed: admin/services activation → /discover/location
     } else {
       // All are active — temporarily deactivate the first one to create a causal test.
       const first = allKyoto[0];
-      await apiPatch<unknown>(page, `/api/admin/services/${first.id}/status`, { status: 'inactive' });
+      // 'paused', not 'inactive' (punchlist V-31 lane). `PATCH /api/admin/services/:id/status`
+      // allows exactly `active|paused|draft|suspended` (`server/routes/admin.routes.ts:4119`) and
+      // answers 400 {"message":"Invalid status"} to anything else — there is no `inactive` in the
+      // vocabulary. `apiPatch` throws on a non-2xx, so this line ended Seam 4 before its own
+      // assertion ran; under the old anonymous `loginAs` it never got this far to show it.
+      await apiPatch<unknown>(page, `/api/admin/services/${first.id}/status`, { status: 'paused' });
       targetServiceId = first.id;
       targetServiceName = first.serviceName ?? '';
     }

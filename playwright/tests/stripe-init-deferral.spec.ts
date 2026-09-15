@@ -61,9 +61,17 @@ test.describe("Stripe init deferral", () => {
     // Navigate to cart
     await page.goto(`${BASE_URL}/cart`);
 
-    // Wait for cart content (either empty state or checkout surface)
+    // Wait for the cart surface to render.
+    // SELECTOR REPAIRED (punchlist V-31 lane, ledger `2026-09-15-v31-loginas-verifies`). The five
+    // selectors this step used to wait for — cart-empty, cart-items, checkout-surface,
+    // .stripe-checkout, .order-summary — exist in NO client file (`grep -rn` over `client/src`
+    // returns nothing for any of them), so this wait could never resolve and the step could only
+    // ever time out. It went unnoticed because `loginAs` asserted nothing, so the run read as
+    // "the authenticated cart is broken" rather than "this spec waits for a selector the page
+    // does not have". The two below are the cart page's own, and render on every branch —
+    // `client/src/pages/cart.tsx` `text-page-title` and the `cart` step pill.
     await page.waitForSelector(
-      '[data-testid="cart-empty"], [data-testid="cart-items"], [data-testid="checkout-surface"], .stripe-checkout, .order-summary',
+      '[data-testid="text-page-title"], [data-testid="step-pill-cart"]',
       { timeout: 10000 }
     );
 
