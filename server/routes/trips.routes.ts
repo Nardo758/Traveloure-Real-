@@ -18,6 +18,7 @@ import * as cartProjection from "../services/cart-projection.service";
 // The ONE server-side resolution of the item→EVENT link (migration 277) — shared with the live
 // POST rail in server/routes.ts so the two cannot drift (§18 rule 1).
 import { resolveItemEventLink } from "../services/item-event-link.service";
+import { discardPlanProposal, listPlanProposals } from "../services/plan-proposals.service";
 // Ledger `2026-09-05-slip-own-your-plan` (review R14): the ONE row-level answer to "is this row
 // money?", re-exported by the rebuild guard so the set-level WHERE clause and this single-row test
 // are read together (§18 rule 1). Imported from the guard module rather than from `@shared`
@@ -3318,5 +3319,95 @@ router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) =>
   // === EA Client Delegation Routes ===
 
   // GET /api/ea/clients — list all clients managed by this EA
+
+
+// ── PLAN PROPOSALS: READ EXPOSURE AND DISCARD, AND NOTHING ELSE ──────────────────────────────────
+//
+// (decision-maker ruling 2026-09-15, punchlist **D-19** = option (b); ledger
+//  `2026-09-15-d19-plan-proposals`; migration 299. CLAUDE.md Locked Decision 45 (3), Locked
+//  Decision 42 D3 / D4 / D17 / D18 / D23, §13, §14, §15, §18 rule 1, §19.)
+//
+// `plan_proposals` is where an AI proposal lives before the traveler applies it. The EXPERT
+// `trip_suggestions` rail is untouched: its `expert_id` is NOT NULL and its approve path hardcodes
+// `origin:'expert'`, so an AI author there would be the false attribution Locked Decision 42 D4
+// and D23 forbid by name.
+//
+// THE GATE. Both routes run `authorizeTripLogistics(..., { requireWriteAccess: true })` — the
+// SAME named shared predicate the itinerary-item mutation rails already use
+// (`POST /api/trips/:tripId/itinerary/reorder` in the monolith, and
+// `PATCH /api/trips/:tripId/expert-traveler-note` above): owner ‖ §12 WRITE-status advisor
+// (accepted/assigned, NEVER pending) ‖ trip author ‖ audit-logged admin. Locked Decision 42 **D17**
+// warns off `authorizeTripLogistics` in its DEFAULT form, which grants `pending` — correctly, for
+// reading; `requireWriteAccess: true` is exactly the §12 narrowing D17 asks for, and calling it is
+// what "one predicate, one more caller — never a second copy" means here.
+//
+// THE READ IS GATED AS HARD AS THE WRITE, deliberately. A proposal carries the AI's reasoning about
+// a plan and the rows it would replace; a pending advisor who has not accepted has no business
+// reading the traveler's staged changes, and there is no reader today that needs the looser tier.
+// Widening it later is a decision, not a tidy-up.
+//
+// THE OWNER IS THE SESSION (§14): `getUserId(req)`, never a query string or a body field.
+//
+// **NO CREATE ROUTE, AND NO APPLY ROUTE.** Nothing produces a proposal yet — the L16 Ask-AI drawer
+// is the consumer that follows — and the APPLY is the CHARGE POINT, which is punchlist **D-20**
+// (flat vs tiered) and **D-21** (what one "task" is, and the §15b claim that makes a double-click
+// one charge). Both are open rulings and they own it. An apply wired here would be a second,
+// uncharged AI write path into the plan's items, which Locked Decision 45 refuses by name.
+router.get("/api/trips/:tripId/proposals", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { tripId } = req.params;
+    const denied = await authorizeTripLogistics(
+      tripId, userId, "GET /api/trips/:tripId/proposals", { requireWriteAccess: true },
+    );
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+
+    // The WHOLE log, newest first — applied and discarded rows included. A discarded proposal is a
+    // record of what was offered and refused; filtering it out would make the log a claim rather
+    // than a record. §13: an empty array means this plan has never been asked anything, which is
+    // NOT "the AI had nothing to say", and no surface may render it as the latter.
+    const proposals = await listPlanProposals(tripId);
+    res.json({ proposals });
+  } catch (err: any) {
+    console.error("[trips] list plan proposals failed:", err?.message);
+    res.status(500).json({ message: "Failed to load proposals" });
+  }
+});
+
+// POST /api/trips/:tripId/proposals/:id/discard — the traveler read it and said no.
+//
+// Discarding costs nothing (Locked Decision 45 (3): a question is free, a proposal is free to read
+// and free to discard; the charge is at apply) and the ROW STAYS, flipped to `discarded`, so the
+// plan's log remains a true record of what was offered.
+//
+// THE STATEMENT IS THE GUARD (§15, §18b). `discardPlanProposal` is ONE atomic conditional
+// `UPDATE … WHERE id = ? AND trip_id = ? AND status = 'proposed'`. There is no pre-read here to
+// decide against — a check-then-update is the TOCTOU bug §15 names, not a guard — so two
+// concurrent discards produce exactly one write and the loser falls into the same 404 below.
+//
+// ONE 404 FOR EVERY REFUSAL, NEVER A 403 (the `POST /api/conversations/start` posture, Locked
+// Decision 40): "no such proposal", "not on this trip", "already applied", "already discarded" and
+// "lost the race" are answered identically, so the rail cannot be used to probe which proposals
+// exist. An ALREADY-APPLIED proposal is refused on purpose: an apply changed the plan's items, and
+// Locked Decision 42 **D18** is explicit that there is no undo — a discard that walked the row back
+// while the items stayed would be a record that disagrees with the plan.
+router.post("/api/trips/:tripId/proposals/:id/discard", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { tripId, id } = req.params;
+    const denied = await authorizeTripLogistics(
+      tripId, userId, "POST /api/trips/:tripId/proposals/:id/discard", { requireWriteAccess: true },
+    );
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+
+    const row = await discardPlanProposal(id, tripId);
+    if (!row) return res.status(404).json({ message: "Proposal not found" });
+    res.json({ ok: true, proposal: row });
+  } catch (err: any) {
+    console.error("[trips] discard plan proposal failed:", err?.message);
+    res.status(500).json({ message: "Failed to discard the proposal" });
+  }
+});
+
 
 export default router;

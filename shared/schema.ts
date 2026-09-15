@@ -4,6 +4,15 @@ import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
 import { users } from "./models/auth";
 import { withoutServerAuthoredBookingDetails } from "./booking-details-admission";
+import { PLAN_PROPOSAL_STATUSES } from "./plan-proposals";
+// LAZY, and deliberately so — the same circularity `shared/models/chat.ts` documents from the
+// other side: this file re-exports that one (below), and that one imports `trips` from here.
+// Drizzle's `.references()` takes a CALLBACK it evaluates when the relation is built, never at
+// module-evaluation time, so both bindings are initialised by the time either is read. The
+// `plan_proposals.conversation_id` FK must be declared HERE and not only in migration 299,
+// because the publish-time drizzle push drops constraints the schema files do not declare (the
+// deploy-push durability rule).
+import { conversations } from "./models/chat";
 
 // Re-export auth models
 export * from "./models/auth";
@@ -274,6 +283,115 @@ export const tripDestinations = pgTable("trip_destinations", {
   index("trip_destinations_trip_idx").on(table.tripId),
 ]);
 export type TripDestination = typeof tripDestinations.$inferSelect;
+
+/**
+ * WHERE AN AI PROPOSAL LIVES BEFORE THE TRAVELER APPLIES IT (migration 299; decision-maker
+ * ruling 2026-09-15, punchlist **D-19** = option (b); ledger `2026-09-15-d19-plan-proposals`).
+ *
+ * CLAUDE.md Locked Decision 45 (3): every Ask-AI answer is a PROPOSAL staged beside the plan, and
+ * nothing changes until the traveler applies it. `trip_suggestions` (below) cannot carry one — its
+ * `expert_id` is NOT NULL, its create route refuses anyone who is not an assigned expert, and its
+ * approve path hardcodes `origin:'expert'`, which is the false attribution Locked Decision 42 D4
+ * and D23 forbid by name. **That rail is untouched by this table**; an AI proposal never enters it
+ * by sentinel author or otherwise.
+ *
+ * A LOG, NOT AN ORDERED LIST: no `position` column and no UNIQUE. The `dmo_extracted_places` /
+ * `service_route_points` / `trip_destinations` pattern gives the CASCADE and the parent index;
+ * their `UNIQUE (parent, "position")` belongs to replace-list surfaces whose order IS the content,
+ * which this is not. Ordering is `createdAt`.
+ *
+ * `status` is app-enforced — `PLAN_PROPOSAL_STATUSES` in `shared/plan-proposals.ts`, stated once
+ * (§18 rule 1) — with **NO DB CHECK** (publish-trap posture) and **NO DEFAULT**: a writer always
+ * states it, because "proposed" is a claim about the row and not a filler.
+ *
+ * `conversationId` is ON DELETE SET NULL (never CASCADE): deleting a THREAD must not delete the
+ * proposals it produced. NULL = this proposal names no thread, and a reader says so rather than
+ * resolving it to the plan's nearest conversation (§13).
+ *
+ * `appliedItemIds` is the RECORD of what an apply created, for "see what changed" — Locked
+ * Decision 42 **D18**: there is no undo, and no surface may offer one on the strength of it.
+ *
+ * `modelTier` is a COST RECORD ONLY (Locked Decision 41 (c)) — a spend choice, never a product
+ * claim, so no surface describes a proposal by the engine that produced it.
+ *
+ * **NO payment, charge, claim or entitlement column.** The charge point is punchlist D-20/D-21
+ * (flat vs tiered; what one "task" is) and it adds its own columns in its own migration. A column
+ * no writer sets is the mass-assignment surface §19 exists to refuse.
+ *
+ * The table and its index are declared HERE as well as in migration 299 — the deploy-push
+ * durability rule: an object this file does not declare is dropped at publish and never recreated.
+ */
+export const planProposals = pgTable("plan_proposals", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  conversationId: integer("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+  /** The traveler's own question, as they asked it. NULL = not recorded, never an invented prompt. */
+  question: text("question"),
+  /** The proposed change set — shape documented by `PlanProposalChangeSet` in shared/plan-proposals.ts. */
+  proposal: jsonb("proposal"),
+  /** proposed | applied | discarded — app-enforced, no CHECK, no default. See PLAN_PROPOSAL_STATUSES. */
+  status: varchar("status", { length: 20 }).notNull(),
+  modelTier: varchar("model_tier", { length: 40 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  appliedAt: timestamp("applied_at"),
+  discardedAt: timestamp("discarded_at"),
+  appliedItemIds: text("applied_item_ids").array(),
+}, (table) => [
+  index("plan_proposals_trip_idx").on(table.tripId),
+]);
+export type PlanProposal = typeof planProposals.$inferSelect;
+
+/**
+ * THE ONE ADMISSION SCHEMA for `plan_proposals`, and it is **pick-based** (§19).
+ *
+ * §19 states the class and the fix shape: a privileged column is client-settable BY DEFAULT under
+ * a denylist (`.omit()`) schema, and nobody edits an omit list for a column that did not exist
+ * when it was written. So there is deliberately **NO `insertPlanProposalSchema`** — no
+ * `createInsertSchema(planProposals)` denylist exists anywhere for a body to be parsed against.
+ *
+ * THIS SCHEMA IS NOT A CLIENT BODY SCHEMA EITHER. In this lane the table has exactly one writer,
+ * `createPlanProposal` in `server/services/plan-proposals.service.ts`, and **no route accepts a
+ * proposal from a request body at all** — nothing produces one yet; the L16 drawer is the consumer
+ * that follows. The pick exists so that when that lane wires a server-side producer, the set of
+ * columns a writer may state is already NAMED, and the lifecycle columns below are unreachable by
+ * construction rather than by somebody remembering to strip them.
+ *
+ * NOT PICKED, and each for its own reason:
+ *   `id`, `createdAt`            — the database's to say.
+ *   `appliedAt`, `appliedItemIds` — the RECORD an apply leaves (Locked Decision 42 D18). The apply
+ *                                   is the CHARGE POINT and belongs to punchlist D-20/D-21; a
+ *                                   writer that could stamp "applied" without going through it
+ *                                   would be a second, uncharged apply rail.
+ *   `discardedAt`                 — stamped only by `discardPlanProposal`'s atomic conditional
+ *                                   (§15/§18b), never handed in by a caller.
+ *
+ * `status` IS picked and is REQUIRED — the column has no DEFAULT precisely so a writer states it
+ * (see the table comment) — and its value set comes from `PLAN_PROPOSAL_STATUSES`
+ * (`shared/plan-proposals.ts`), stated once and `.extend()`ed on here. A re-typed literal union at
+ * the writer would be the drift class §18 rule 1 names.
+ */
+export const planProposalCreateSchema = createInsertSchema(planProposals)
+  .pick({
+    tripId: true,
+    conversationId: true,
+    question: true,
+    proposal: true,
+    status: true,
+    modelTier: true,
+  })
+  .extend({
+    tripId: z.string().min(1),
+    status: z.enum(PLAN_PROPOSAL_STATUSES),
+    conversationId: z.number().int().nullable().optional(),
+    question: z.string().nullable().optional(),
+    // The change set is stored as jsonb and typed by `PlanProposalChangeSet`; it is NOT re-parsed
+    // here into a second, narrower authority on that shape (§18 rule 1). The column stays
+    // permissive for the same reason it carries no CHECK.
+    proposal: z.unknown().nullable().optional(),
+    modelTier: z.string().max(40).nullable().optional(),
+  })
+  .strict();
+export type PlanProposalCreate = z.infer<typeof planProposalCreateSchema>;
 
 export const generatedItineraries = pgTable("generated_itineraries", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
