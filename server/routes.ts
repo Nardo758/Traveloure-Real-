@@ -1286,10 +1286,38 @@ export async function registerRoutes(
   // canonical handler. It is named here so the next reader of this file does not re-add an inline
   // twin that would shadow it back into silence — there is deliberately NO copy at this address.
 
-  // POST /api/trips — create a trip (guest or authenticated)
-  // Guests get null userId; authenticated users get their userId.
-  // Guests receive a shareToken to access the trip until sign-up.
+  // POST /api/trips — create a plan. AUTHENTICATED ONLY, and the gate is the first thing here.
+  //
+  // WHAT THIS USED TO DO, AND WHY REPAIRING IT WAS THE WRONG FIX (ledger
+  // `2026-09-14-guest-trip-mint-responds`, punchlist R-9). An anonymous caller was minted a
+  // NULL-owner `trips` row and then handed a `shareToken` — except the token line read the BARE
+  // GLOBAL `crypto`. This file imports only `randomBytes` from `node:crypto`, and in an ESM module
+  // `crypto` is the Web Crypto object, which has no `randomBytes`; so the line threw
+  // `TypeError: crypto.randomBytes is not a function` into the `catch` below, which re-threw it out
+  // of an async Express 4 handler — a rejection Express never sees. THE RESPONSE NEVER ARRIVED: the
+  // row was already committed, and the request hung until the client gave up (reproduced: row
+  // present, no reply in 60 s). A guest was left with an orphan plan they had no address for, which
+  // is strictly worse than being told no (§13).
+  //
+  // SO THE ANONYMOUS MINT IS REFUSED, NOT REPAIRED. `2026-09-13-guest-cart-becomes-plan` states the
+  // negative space out loud — "NO GUEST PLAN AND NO GUEST OPTIMIZATION (G2 stays HELD, nothing lets
+  // an anonymous principal own a `trips` row)" — and punchlist D-15 rules the flow it replaces:
+  // the guest's work lives in the CART (LD 39's sanctioned fallback), they sign in AT THE MOMENT
+  // with the gate checked BEFORE anything is minted (LD 42 D5), and the cart's lines become the
+  // plan's items through `POST /api/cart/resolve-trip`. Making the token line work would have
+  // SHIPPED guest trips — a product G2 holds — as a side effect of fixing a hang.
+  //
+  // NOT A NEW POLICY FOR NULL-OWNER ROWS: the expert-AUTHORING builds (`ready-made.routes.ts`,
+  // `expert-workspace.routes.ts`) legitimately mint `userId: null` and do not come through here.
+  // NO BACKFILL (§17, §13): NULL-owner rows already on disk stay exactly as they are — a row that
+  // was written was written, and it is indistinguishable from an authoring draft.
   app.post(api.trips.create.path, async (req, res) => {
+    // Before the parse and before any write (LD 42 D5). A refusal an anonymous caller can act on;
+    // it names no trip, so nothing is minted for them to be told about.
+    const actorUserId = getUserId(req);
+    if (!actorUserId) {
+      return res.status(401).json({ message: "Sign in to create a plan" });
+    }
     try {
       // 2A.3 / R8 party-size DE-MASKING: the schema no longer fabricates a default 1/2/0, so an
       // omitted party size stays undefined ⇒ NULL (an honest "not captured", §13). We still derive
@@ -1323,32 +1351,30 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Budget must be a positive number" });
       }
 
-      const userId = getUserId(req)!;
-      const trip = await storage.createTrip({ ...sanitizedInput, userId });
+      const trip = await storage.createTrip({ ...sanitizedInput, userId: actorUserId });
 
       // Fire-and-forget: T2 funnel event
       trackFunnelEvent({
-        userId: userId || undefined,
+        userId: actorUserId,
         tripId: trip.id,
         eventType: "trip_created",
         funnelStage: "T2",
       }).catch(() => {}); // fire-and-forget funnel event — never blocks trip creation
 
-      // If guest, ensure they have a shareToken for access
-      if (!userId && !trip.shareToken) {
-        const token = crypto.randomBytes(32).toString("hex");
-        const [updated] = await db.update(trips)
-          .set({ shareToken: token })
-          .where(eq(trips.id, trip.id))
-          .returning();
-        return res.status(201).json(updated);
-      }
-
+      // The guest `shareToken` mint that used to stand here is DELETED, not disabled: past the gate
+      // above `actorUserId` is always set, so the branch was unreachable — and it was the branch
+      // that threw (see the header). A plan's share link is minted on press by the rail that owns
+      // it (`SlipRail`), never as a side effect of creation.
       res.status(201).json(trip);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
+      // FOUND, NOT FIXED (punchlist R-9): this re-throw is the MECHANISM the guest branch's
+      // TypeError rode out on — there is no Express error-handling middleware in this app and
+      // Express 4 never sees an async rejection, so any non-Zod throw here still hangs the
+      // request instead of answering 500. R-9 removed the one thing that threw, not the class.
+      // Giving it an answer is a behaviour change on the OWNER path that no ruling covers.
       throw err;
     }
   });

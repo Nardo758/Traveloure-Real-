@@ -63,9 +63,12 @@ export function useCreateTrip() {
       });
 
       if (!res.ok) {
-        if (res.status === 400) {
-          const error = await res.json();
-          throw new Error(error.message || "Validation failed");
+        // 401 is the anonymous-mint REFUSAL (ledger `2026-09-14-guest-trip-mint-responds`): the
+        // server tells the caller to sign in, and "Failed to create trip" would hide the one thing
+        // they can act on (§13). Read the server's own sentence for both refusals it can send.
+        if (res.status === 400 || res.status === 401) {
+          const error = await res.json().catch(() => ({}) as { message?: string });
+          throw new Error(error.message || (res.status === 401 ? "Sign in to create a plan" : "Validation failed"));
         }
         throw new Error("Failed to create trip");
       }
