@@ -153,6 +153,19 @@ export const CLONE_EXCLUDED_FIELDS: Readonly<Record<string, string>> = {
   checkIn: "absolute date — the AUTHOR's stay range",
   checkOut: "absolute date — the AUTHOR's stay range",
 
+  // Counts that answer a question about a DIFFERENT buyer's cart (migration 298, ruling
+  // 2026-09-15 D-41; ledger `2026-09-15-d41-item-quantity`).
+  quantity:
+    "cart answer — UNITS of the listing, and the unit count on a plan item is the BUYER's own " +
+    "cart-line answer PROJECTED onto it by `cart-projection.service.ts` (D-14's admission rule, " +
+    "D-41's one writer). The author's 3 says the AUTHOR wanted three, which is not an answer the " +
+    "buyer gave and which no rail here could have admitted on their behalf: units are set on a " +
+    "CART LINE, where `archetypeAsks` validates the question against the listing's archetype, and " +
+    "this fulfilment writes no cart line. §13 — the clone therefore carries NULL, which MEANS ONE " +
+    "UNIT rather than an absent answer, so the buyer's plan states the same thing every other " +
+    "un-carted item on it states; if they want three they add three, through the rail that prices " +
+    "them. Copying it would also be a silent money claim on a row nobody has bought",
+
   // Private authorship, and one dormant free-form carrier.
   privateNotes: "private — organizer-only notes written by the SELLER. The trip-level twin (trips.expertNotes) is deliberately not carried by this same fulfilment under LD 21; the item-level twin follows it. `expertNote`, the traveler-facing field, DOES travel",
   attachments: "undecided free-form — an array of {name,url} the platform has no writer for today; in the worst case it is the AUTHOR's own voucher. Under §19's posture an undecided carrier is excluded by default, and excluding it costs the buyer nothing while nothing writes it",

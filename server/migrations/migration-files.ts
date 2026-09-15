@@ -1587,7 +1587,8 @@ export const MIGRATION_FILES = [
   // Ledger `2026-09-15-d18-announced-marker` (punchlist D-18 = option A). `ready_made_purchases`
   // gains `notified_at` — additive nullable timestamp, NO DEFAULT, NO CHECK, no backfill, declared
   // in `shared/schema.ts` in the same commit (deploy-push durability rule). It records that the
-  // buyer's delivery announcement (PR #900's bell row + email) EXISTS. NULL = never announced,
+  // buyer's delivery announcement (ledger `2026-09-14-readymade-notifications`'s bell row + email)
+  // EXISTS. NULL = never announced,
   // which is the only reading every legacy row can bear (§13 — a `now()` default would claim an
   // announcement nobody made). Stamped by the ONE shared notifier through an atomic conditional
   // (`WHERE notified_at IS NULL`); §17's drift job DETECTS a delivered-but-unannounced purchase

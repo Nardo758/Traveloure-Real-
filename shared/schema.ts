@@ -10316,8 +10316,8 @@ export const readyMadePurchases = pgTable("ready_made_purchases", {
   // `2026-09-15-d18-announced-marker`). Additive nullable, NO DEFAULT, NO CHECK (publish-trap
   // posture). Declared HERE, not only in the migration, per the deploy-push durability rule.
   //
-  // WHAT IT RECORDS: that the buyer's delivery announcement EXISTS — PR #900's bell row (ledger
-  // `2026-09-14-readymade-notifications`) and the email gated on it. That lane made the send
+  // WHAT IT RECORDS: that the buyer's delivery announcement EXISTS — the bell row that ledger
+  // `2026-09-14-readymade-notifications` landed, and the email gated on it. That lane made the send
   // exactly-once (the atomic `paid → cloned` claim, plus `notifications.dedupe_key`) and stated
   // its own LIVENESS gap out loud: a process dying between the claim and the send left a
   // DELIVERED purchase announced to nobody, with nothing recording the fact and nothing able to

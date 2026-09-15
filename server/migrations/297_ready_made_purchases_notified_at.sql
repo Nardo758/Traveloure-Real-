@@ -10,8 +10,9 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- WHY: THE LIVENESS GAP LEDGER `2026-09-14-readymade-notifications` STATED OUT LOUD
 -- ─────────────────────────────────────────────────────────────────────────────
--- PR #900 hung the buyer's bell row + email on the winner of `fulfillReadyMadePurchase`'s atomic
--- `paid → cloned` claim, and made them exactly-once through migration 209's partial UNIQUE index
+-- Ledger `2026-09-14-readymade-notifications` hung the buyer's bell row + email on the winner of
+-- `fulfillReadyMadePurchase`'s atomic `paid → cloned` claim, and made them exactly-once through
+-- migration 209's partial UNIQUE index
 -- on `notifications.dedupe_key` (the email is GATED on that insert). That closes the
 -- duplicate-send half completely. What it could not close without a column is the LIVENESS half:
 -- a process that dies between the claim and the send leaves a purchase that is DELIVERED — the
