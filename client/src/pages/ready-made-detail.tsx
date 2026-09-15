@@ -517,7 +517,7 @@ export default function ReadyMadeDetailPage() {
               >
                 <ConciergeBell className="w-4 h-4 shrink-0 mt-0.5 text-[#247d78]" aria-hidden="true" />
                 <p className="m-0">
-                  <span className="font-semibold text-[#193752]">Includes 1 consultation + 1 revision.</span> Request it
+                  <span className="font-semibold text-[#193752]">Includes 1 revision.</span> Request it
                   from your Trip Slip after purchase.
                 </p>
               </div>
@@ -562,7 +562,7 @@ export default function ReadyMadeDetailPage() {
               <div className="grid gap-[11px] mt-[19px] pt-[17px] border-t border-[#e4e7ec] text-[#475467] text-[11px]">
                 <span className="flex items-center gap-2"><Pencil className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Edit every itinerary item</span>
                 <span className="flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Keep it in your Trip Slip</span>
-                <span className="flex items-center gap-2"><UserRound className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Consult the expert after purchase</span>
+                <span className="flex items-center gap-2"><UserRound className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> 1 revision from the expert after purchase</span>
                 <span className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Pay once, keep the plan</span>
               </div>
               <Button
