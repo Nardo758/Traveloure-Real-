@@ -220,11 +220,17 @@ function LaneHeader({ eyebrow, title, count }: { eyebrow: string; title: string;
 /**
  * Storefront-local offering card — the continuity mock's `.psc-offering` treatment
  * (category label on the image, rating+price header row, footer "Secure checkout" +
- * CTA) reimplemented page-locally rather than by editing the shared
- * client/src/components/OfferingCard.tsx (which Catalog's Preview toggle also renders —
- * out of this lane's diff). Same prop contract and the same rendered text/testid/href
- * behavior as the shared card, so offering-card.spec.ts's assertions (title heading,
- * price/CTA text, href pattern, testid) hold unchanged.
+ * CTA) reimplemented page-locally rather than by editing the then-shared
+ * `client/src/components/OfferingCard.tsx`. It kept that card's prop contract and its
+ * rendered text/testid/href behaviour, so offering-card.spec.ts's assertions (title
+ * heading, price/CTA text, href pattern, testid) held unchanged.
+ *
+ * THAT SHARED CARD IS GONE (ledger `2026-09-15-buy-label-cards`, §18c). Forking it here
+ * and forking it again as `CatalogPreviewOfferCard` in `client/src/pages/provider/
+ * services.tsx` left it with ZERO importers, so it was deleted rather than left standing
+ * as an unrendered fourth author of a buy label. THIS card is the one the public
+ * storefront renders, and it is the surface the remaining `ld23-buy-action-gap` note
+ * below is about.
  *
  * Wedding-flow restyle: hairline card, Fraunces navy title, mono price/meta/chips, and a
  * --earn-chip photo well (the artboards' `[photo · …]` placeholder) instead of a brand-pink
@@ -275,9 +281,21 @@ function StorefrontOfferingCard({
   //       change to the module that just landed, not this lane's to make.
   //   (b) THE READY-MADE LANE gets no descriptor at all (only `services` are resolved), so the
   //       second caller below would still be authoring its own "Preview trip →".
-  // Repointing also moves the rendered label off the literals `playwright/tests/offering-card.
-  // spec.ts:75` asserts, which is a real change to prove and not a byte-identical one. Kept
-  // VERBATIM; the gap is the finding.
+  // Repointing also moves the rendered label off the CTA literals
+  // `playwright/tests/offering-card.spec.ts` asserts, which is a real change to prove and not a
+  // byte-identical one. Kept VERBATIM; the gap is the finding.
+  //
+  // RE-VERIFIED 2026-09-15 (ledger `2026-09-15-buy-label-cards`): both blockers HOLD, unchanged.
+  // (a) `server/routes/storefront.routes.ts` still passes a literal `isLive: true` for every row
+  // and computes `away` further down from `users.vacation_until`, so the two facts never meet;
+  // `BuyActionRow` carries no seller-state field at all and `BuyRefusalReason` has no member for
+  // it. (b) `readyMade` rows are still built with no `buyAction` key. THE EXACT FIELD THAT WOULD
+  // LIFT (a): a seller-away fact on `BuyActionRow` — e.g. `sellerAway?: boolean` — plus its OWN
+  // `BuyRefusalReason` member (`seller_away`), because §13 forbids folding it into
+  // `not_available`, which means "not approved/active, or the provider chose `hidden`": an away
+  // seller's listing IS live and IS coming back, and one refusal reason standing for both facts
+  // is how a surface starts saying the wrong one. Deciding that is ruling 9's author's call and
+  // is deliberately NOT taken here.
   const ctaLabel =
     bookingMode === "request" ? "Request to book →"
     : bookingMode === "hidden" ? "Enquire →"
