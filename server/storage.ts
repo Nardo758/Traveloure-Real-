@@ -1378,10 +1378,23 @@ export function stripFormVerificationFields<T extends Record<string, unknown>>(f
 // entirely (a raw `req.body` destructure) and calls `updateItineraryItem` directly, so THIS strip
 // is what actually protects that route. Extracted as a standalone pure function (matching
 // `stripFormVerificationFields`'s placement) so it is unit-testable without a live DB.
+//
+// WIDENED 2026-09-15 (ruling, punchlist D-16 (b)/(c); ledger
+// `2026-09-15-d16-plan-holds-venues-and-content`) TO MIGRATION 295's THREE COLUMNS, and the name
+// is kept deliberately: this is the layer-2 strip for every SERVER-STAMPED `itinerary_items`
+// column, of which the routing pair was simply the first. `customVenueId` / `contentType` /
+// `contentId` are stamped from the CART ROW by `server/services/cart-projection.service.ts` and by
+// nothing else — that module inserts directly (`tx.insert(itineraryItems)`) and never calls these
+// two methods, so stripping here costs the one legitimate writer nothing while covering the raw
+// `req.body` destructure on the canonical PATCH route, exactly as it already does for the pair
+// above. §19: under a denylist a freshly added column is client-settable BY DEFAULT.
 export function stripItineraryItemRoutingFields<T extends Record<string, unknown>>(item: T): T {
   const {
     routingStatus: _rs,
     bookingId: _bid,
+    customVenueId: _cvid,
+    contentType: _ct,
+    contentId: _cid,
     ...safe
   } = item as Record<string, unknown>;
   return safe as T;

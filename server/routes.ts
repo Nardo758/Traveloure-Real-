@@ -99,6 +99,7 @@ import {
   bundleComponents,
   deliverableDownloads,
   resolveBookingMode,
+  convertCartToItinerarySchema,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -8874,27 +8875,57 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Convert content cart items into itinerary items
+  // Convert cart lines into itinerary items — the rail that MOVES a line onto a plan.
+  //
+  // Ledger `2026-09-15-d16-plan-holds-venues-and-content` (ruling 2026-09-15, punchlist D-16):
+  // this route used to compose its own `itinerary_items` values inline, beside the projection
+  // module that composes them for `POST /api/cart/resolve-trip` — two authors of one mapping, the
+  // drift class §18 rule 1 names, and how a converted item and a projected item came to describe
+  // the same cart line differently. It is now a CALLER of the ONE builder
+  // (`cartProjection.convertCartLinesToItems`), which keeps this rail's own disposition: the item
+  // is born `in_planning` and the cart line is DELETED in the same transaction.
   app.post("/api/cart/convert-to-itinerary", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const { tripId, newTripName, destination, cartItemIds } = req.body;
-
-      if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
-        return res.status(400).json({ message: "cartItemIds is required and must be a non-empty array" });
+      // §19 ALLOWLIST. This body used to be read raw off `req.body` — four names destructured from
+      // an object with no shape at all. `.strict()` is load-bearing and deliberate: an unknown key
+      // is a 400 rather than a silently ignored field, so a client that starts sending (say) a
+      // `customVenueId` or a `contentType` learns immediately that this rail does not accept one.
+      // Those three columns are stamped SERVER-SIDE from the cart row by the projection module and
+      // are settable by no client anywhere (`insertItineraryItemSchema` omits all three).
+      const parsed = convertCartToItinerarySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid request body" });
       }
+      const { tripId, newTripName, destination, cartItemIds } = parsed.data;
 
-      let targetTripId: string = tripId;
+      let targetTripId: string;
 
-      if (!targetTripId) {
-        if (!newTripName || typeof newTripName !== "string") {
+      if (!tripId) {
+        if (!newTripName) {
           return res.status(400).json({ message: "Either tripId or newTripName is required" });
+        }
+        // LD 42 D12: NO MINT MAY INVENT A DESTINATION. This mint used to write the literal
+        // "To be determined" when the traveler left the field blank — a manufactured answer to the
+        // one question `trips.destination` (NOT NULL) exists to record, and the fact every
+        // market-scoped reader and `resolveTripTimezone`/`market_slug` derive from (LD 30/D12). The
+        // traveler is ASKED instead: the dialog requires it and the server refuses without it.
+        // The DATES this mint still infers (today → +7d) are the same shape of guess and are
+        // RECORDED, not fixed here — `POST /api/cart/resolve-trip` infers them identically, so
+        // they are one lane, not a side effect of this one.
+        if (!destination) {
+          return res.status(400).json({
+            message: "A destination is required to start a plan — we never invent one for you.",
+            reason: "destination_required",
+          });
         }
         const today = new Date();
         const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+        // The ONE mint helper (LD 42 D12/D11): `storage.createTrip` derives `market_slug` and
+        // `timezone` from the destination. A raw insert here would carry neither.
         const newTrip = await storage.createTrip({
-          title: newTripName.trim(),
-          destination: (destination || "To be determined").trim(),
+          title: newTripName,
+          destination,
           startDate: today.toISOString().split("T")[0],
           endDate: nextWeek.toISOString().split("T")[0],
           status: "draft",
@@ -8905,73 +8936,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         } as any);
         targetTripId = newTrip.id;
       } else {
+        targetTripId = tripId;
         const trip = await storage.getTrip(targetTripId);
         if (!trip) return res.status(404).json({ message: "Trip not found" });
         if (trip.userId !== userId) return res.status(403).json({ message: "Forbidden" });
       }
 
-      let convertedCount = 0;
-      for (const cartItemId of cartItemIds) {
-        const cartItem = await storage.getCartItemById(cartItemId);
-        if (!cartItem) continue;
-        if (cartItem.userId !== userId) continue;
-        // W3 (H1, first half): a row is convertible when it carries EITHER discover content
-        // (contentId + contentType) OR a real platform service. The old gate demanded content, so
-        // a SERVICE cart row — the only kind that has a link worth preserving — was silently
-        // skipped and never converted at all. Rows with neither are still skipped (nothing to make
-        // an item out of).
-        if (!cartItem.serviceId && (!cartItem.contentId || !cartItem.contentType)) continue;
+      // THE ONE BUILDER (§18 rule 1). Everything the old inline loop did — the per-line ownership
+      // check, the service read, the "Unknown" location refusal, the `providerServiceId` the W3 fix
+      // restored — lives in `cart-projection.service.ts` now, shared with the projection rail, and
+      // it additionally carries the two links migration 295 added (a traveler's own venue, and the
+      // Discover content a line came from). §13: a line that names nothing a plan item can carry
+      // comes back NAMED rather than silently dropped.
+      const result = await cartProjection.convertCartLinesToItems(userId, targetTripId, cartItemIds);
 
-        const meta: Record<string, any> = cartItem.contentMeta || {};
-        const rawPrice = meta.price ? String(meta.price).replace(/[^0-9.]/g, "") : null;
-        // W3 (H1, second half): the linkage the audit found destroyed. `cart_items.serviceId` IS a
-        // `provider_services.id`, and the itinerary item has had a column for it all along — the
-        // conversion just never wrote it, so a converted service became permanently unbuyable text
-        // (docs/E2E_ITEM_LIFECYCLE.md §3). Preserving it makes the round trip real: the item can be
-        // routed back to `ready_for_checkout`, projected into the cart, and bought.
-        //
-        // The service row is read ONLY for honest display values (name / location / catalog price)
-        // for a service row that carries no contentMeta. Nothing here reads or decides an amount for
-        // a charge — checkout re-derives every price server-side from the catalog (§14).
-        const service = cartItem.serviceId
-          ? await storage.getProviderServiceById(cartItem.serviceId)
-          : null;
-        const servicePrice =
-          service?.price && parseFloat(String(service.price)) > 0 ? String(service.price) : null;
-        const estimatedCost =
-          rawPrice && parseFloat(rawPrice) > 0 ? rawPrice : servicePrice;
-        // §13: `provider_services.location` defaults to the literal "Unknown" — that is the absence
-        // of a location, not a place name, so it must never be copied onto the plan item.
-        const serviceLocation =
-          service?.location && service.location !== "Unknown" ? service.location : null;
-
-        // Born `in_planning` — the migration-159 column default, deliberately NOT set here: a
-        // converted item is a plan item, not purchase intent (ROUTING_STATE_CONTRACT §2).
-        await storage.createItineraryItem({
-          tripId: targetTripId,
-          providerServiceId: cartItem.serviceId ?? null,
-          title: meta.name || service?.serviceName || cartItem.contentId || "Discovered item",
-          description: meta.description || service?.shortDescription || null,
-          itemType: cartItem.contentType === "hotel" ? "accommodation" : "activity",
-          dayNumber: 1,
-          locationName: meta.city || meta.location || serviceLocation,
-          // R26 coords cheap-fix: the fetched service row carries its pin; copy it (NULL stays
-          // NULL — no invention, §13) so the item has real coordinates for neighborhood history.
-          latitude: service?.latitude ?? null,
-          longitude: service?.longitude ?? null,
-          notes: cartItem.notes || null,
-          suggestedBy: "user",
-          origin: "traveler",
-          status: "planned",
-          isFlexible: true,
-          estimatedCost,
-        } as any);
-
-        await cartProjection.removeFromCart(cartItemId);
-        convertedCount++;
-      }
-
-      res.json({ tripId: targetTripId, convertedCount });
+      res.json({
+        tripId: targetTripId,
+        convertedCount: result.converted,
+        ...(result.skipped.length > 0 ? { skipped: result.skipped } : {}),
+      });
     } catch (err) {
       console.error("Convert to itinerary error:", err);
       res.status(500).json({ message: "Failed to convert items to itinerary" });

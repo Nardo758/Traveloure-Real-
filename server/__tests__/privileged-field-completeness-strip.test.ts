@@ -147,4 +147,33 @@ describe("stripItineraryItemRoutingFields — layer 2 storage backstop", () => {
     assert.equal("bookingId" in clean, false);
     assert.equal(clean.title, "Renamed by owner");
   });
+
+  // Ruling 2026-09-15, punchlist D-16 (b)/(c); ledger `2026-09-15-d16-plan-holds-venues-and-content`.
+  it("strips migration 295's THREE server-stamped subject links too", () => {
+    const dirty: Record<string, unknown> = {
+      tripId: "trip-1",
+      title: "Someone else's venue",
+      customVenueId: "a-venue-that-is-not-mine",
+      contentType: "gem",
+      contentId: "gem-42",
+    };
+    const clean = stripItineraryItemRoutingFields(dirty);
+    assert.deepEqual(clean, { tripId: "trip-1", title: "Someone else's venue" });
+  });
+
+  it("the CREATE rail's layer 1 omits the same three (§19 — no pick re-admits them)", async () => {
+    const { insertItineraryItemSchema } = await import("@shared/schema");
+    const parsed = insertItineraryItemSchema.parse({
+      tripId: "trip-1",
+      title: "Coffee at Weekenders",
+      dayNumber: 1,
+      customVenueId: "a-venue-that-is-not-mine",
+      contentType: "gem",
+      contentId: "gem-42",
+    }) as Record<string, unknown>;
+    assert.equal("customVenueId" in parsed, false);
+    assert.equal("contentType" in parsed, false);
+    assert.equal("contentId" in parsed, false);
+    assert.equal(parsed.title, "Coffee at Weekenders");
+  });
 });

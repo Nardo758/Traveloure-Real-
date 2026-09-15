@@ -84,7 +84,14 @@ export const CLONE_CARRIED_FIELDS = [
   // buyer carts that service themselves, at its own listing price, on its own checkout — a
   // ready-made purchase and a service booking are never mixed (LD 39: the cart is this table's
   // `ready_for_checkout` projection). No new chip, no new column, no new rail.
+  // `contentType`/`contentId` (migration 295, ruling 2026-09-15 punchlist D-16 (c); ledger
+  // `2026-09-15-d16-plan-holds-venues-and-content`) join that list for exactly the same reason:
+  // they name a piece of DISCOVER CONTENT — a gem, a hotel, an activity — which is platform-wide
+  // and public, not a row in the author's trip. They are a soft reference and carry no booking and
+  // no owner. (`customVenueId`, added by the same migration, is the OPPOSITE shape and is excluded
+  // below.)
   "providerServiceId", "dmoExtractedPlaceId", "affiliateProductId", "gemId",
+  "contentType", "contentId",
   // What the author reckons it costs. `estimatedCost` is a JUDGEMENT the author published as part
   // of the plan (§8: it is not a fee, a rate or a commission — it is a traveler-facing estimate),
   // so it travels; `actualCost` is what the AUTHOR actually paid and does not.
@@ -137,6 +144,7 @@ export const CLONE_EXCLUDED_FIELDS: Readonly<Record<string, string>> = {
   // Cross-trip identity — pointers into the author's own trip.
   userExperienceId: "cross-trip identity — an event on the AUTHOR's trip; LD 29 requires the event's trip_id to BE the item's trip and both live write rails refuse a pairing that fails it. NULL is the clone's own implicit event",
   participantIds: "cross-trip identity — trip_participants ids belonging to the AUTHOR's trip",
+  customVenueId: "cross-user identity — a `custom_venues` row the AUTHOR created and OWNS (migration 295, ruling 2026-09-15 D-16 (b)). Every read of that table is owner-scoped (ledger `2026-09-05-custom-venues-owner-scope`), so on the buyer's plan the link resolves to nothing while still claiming the buyer has a venue of their own — the V-15 cross-user shape. The venue's own name, address and pin were copied onto the item's OWN columns when it was written, so the buyer loses no content by dropping the pointer",
   conflictsWith: "cross-trip identity — itinerary_items ids on the AUTHOR's trip",
   backupPlanId: "cross-trip identity — another itinerary item on the AUTHOR's trip. Remapping source ids onto the clone's new ids is a decision nobody has taken, so the link is DROPPED rather than left dangling (§13); `isBackupPlan` still travels, because 'this item is a fallback' is true of the content",
 
