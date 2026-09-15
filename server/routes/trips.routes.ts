@@ -433,9 +433,20 @@ router.put("/api/trips/:tripId/destinations", isAuthenticated, async (req, res) 
 });
 
 
-// POST /api/trips — create a trip (guest or authenticated)
-// Guests get null userId; authenticated users get their userId.
-// Guests receive a shareToken to access the trip until sign-up.
+// POST /api/trips — MOUNT-ORDER DEAD TWIN. tripsRoutes is `app.use`d LAST, so the inline
+// registration in `server/routes.ts` always wins this path and this handler never runs. It is
+// ANNOTATED rather than duplicated or quietly aligned, per the LD 29 precedent for a shadowed POST
+// twin (a second copy of an admission decision is the drift class §18 rule 1 names).
+//
+// PORT-FORWARD WARNING — READ BEFORE RESURRECTING (ledger `2026-09-14-guest-trip-mint-responds`,
+// punchlist R-9). This copy still carries the guest branch the live handler DELETED: it mints a
+// NULL-owner `trips` row for an anonymous caller and hands back a `shareToken`. That is the product
+// `2026-09-13-guest-cart-becomes-plan` holds — "nothing lets an anonymous principal own a `trips`
+// row" (G2 HELD; punchlist D-15) — and the live handler now refuses the anonymous mint with a 401
+// BEFORE the parse and before any write. If this path is ever moved back here, MOVE the canonical
+// handler; do not revive this one, which would reopen guest trips by accident.
+// (It does not hang the way the live copy did: this file imports `crypto` as a namespace, so
+// `crypto.randomBytes` resolves here. The hang was the live copy reading the ESM Web Crypto global.)
 router.post(api.trips.create.path, async (req, res) => {
     try {
       const input = api.trips.create.input.parse(req.body);

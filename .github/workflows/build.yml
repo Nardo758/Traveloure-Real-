@@ -143,9 +143,16 @@ jobs:
       # column — one TS2339 that had shipped as an always-`undefined` key for the route's whole
       # life. Routing it through the shared `toBookingProvider` allowlist removed the error.
       # ZERO new type errors in any file batch 4 touched. Locked in, same PR.
+      # 129 measured 2026-09-14 (ledger `2026-09-14-guest-trip-mint-responds`): the compiler KNEW.
+      # `server/routes.ts(1339,30): error TS2339: Property 'randomBytes' does not exist on type
+      # 'Crypto'` WAS this baseline's own entry for the guest-mint hang — the bare ESM `crypto`
+      # global is Web Crypto, the call threw at runtime out of an async Express handler, and the
+      # request never answered. Deleting that unreachable branch removed the error. Note the shape
+      # again: a ceiling that only forbids the number going UP is how a KNOWN runtime defect sat
+      # inside it. ZERO new type errors in any file this lane touched. Locked in, same PR.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '130'
+          TSC_BASELINE: '129'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
