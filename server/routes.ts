@@ -3695,11 +3695,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // ONE implementation, two callers — the PATCH rail below is the other (§18 rule 1).
       // NO ROLE GATE (decision-maker, explicitly): any owner may name any key the expert catalog
       // carries. It says WHAT IS SOLD, never WHO THE SELLER IS — not a credential, grants nothing.
-      // THE KEY IS THE ONLY OFFERING THIS RAIL WRITES (ledger `2026-09-12-offering-key-is-canonical`):
-      // the legacy `expertOfferingTypeId` is `.omit()`ed from the generic body too, so no rail can
-      // set it and the two columns cannot be made to disagree by a write from here on. The
-      // same-body contradiction check went with it — a contradiction it could catch can no longer
-      // be authored.
+      // THE KEY IS THE ONLY OFFERING THIS RAIL WRITES (ledger `2026-09-12-offering-key-is-canonical`),
+      // and since migration 296 the only offering column there is (`2026-09-15-offering-key-id-drop`
+      // dropped the legacy migration-057 uuid). The same-body contradiction check went with it — a
+      // contradiction it could catch can no longer be authored.
       const expertOfferingAdmission = await admitExpertOfferingTypeKey(bodyWithoutLocation);
       if (expertOfferingAdmission.refusal) {
         return res
@@ -8252,11 +8251,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // Which lines sell `booking_concierge` — the SAME resolver /api/checkout and the fee preview
     // call (ledger `2026-09-12-offering-key-is-canonical`), so this quote cannot classify a cart
     // one way and the charge another. Reads the listing's own `expert_offering_type_key`
-    // (migration 292); the legacy `expert_offering_type_id` is its fallback for a row the backfill
-    // has not reached, so no answer moves. No rate and no amount is decided there.
+    // (migration 292), which since migration 296 is the only offering column there is (ledger
+    // `2026-09-15-offering-key-id-drop`). No rate and no amount is decided there.
     const cartConciergeLines = await resolveBookingConciergeItems(
       items.map(i => i.service ?? null),
-      ids => storage.getExpertOfferingTypeKeysByIds(ids),
     );
     const cartHasConcierge = cartConciergeLines.hasAny;
     const cartConciergeRate = cartHasConcierge ? await getConciergeBookingRate() : 0;

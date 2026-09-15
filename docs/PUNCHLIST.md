@@ -136,6 +136,12 @@
   `DATABASE_URL=<prod> npx tsx scripts/audit-offering-classification.ts` step remains a PRODUCTION fact and is
   unverifiable from the repo.
 - **LANE 2 of `2026-09-12-offering-key-is-canonical` — DROP `provider_services.expert_offering_type_id`.**
+  **[PREPARED 2026-09-15 — PR #907 open; HELD on the production preview; `2026-09-15-offering-key-id-drop`]**
+  Built and green: migration **296** (DDL only), `scripts/preview-offering-key-id-drop.cjs` (read-only; the
+  operator runs `DATABASE_URL=<prod> node scripts/preview-offering-key-id-drop.cjs` per `docs/RELEASE.md`
+  step 3 and it exits non-zero on a non-zero blocking count), the `shared/schema.ts` declaration and the
+  `lane2-removal-target` arm removed, K7 repaired to an EMPTY reader set. **Not merged, not un-drafted —
+  the coordinator lands it once a human has run the query below against production and read the output.**
   Lane 1 landed the backfill (migration 293), repointed every reader to the canonical
   `expert_offering_type_key`, and made the legacy uuid unwritable on every rail. Lane 2 removes the
   column: delete its declaration from `shared/schema.ts` (**that** is what makes the Replit deploy

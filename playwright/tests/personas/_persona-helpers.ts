@@ -191,12 +191,15 @@ async function pickOfferingOrCategory(page: Page, searchTerm: string): Promise<b
 /**
  * The "What you sell" picker, WHERE IT IS REQUIRED (client/src/components/ServiceForm.tsx, the
  * `expert-offering-required` tile grid, `option-tier-${offeringTypeKey}`) — a SEPARATE required
- * field from `#category`/the offering picker above: it sets `formData.expertOfferingTypeId`,
+ * field from `#category`/the offering picker above: it sets `formData.expertOfferingTypeKey`,
  * which gates `button-submit-service` directly on a fresh create
- * (`disabled={... || (!isEditMode && !formData.expertOfferingTypeId)}`). Missing this was the
+ * (`disabled={... || (!isEditMode && !formData.expertOfferingTypeKey)}`). Missing this was the
  * root cause of the submit button staying disabled — driveServiceFormToSubmit filled name,
- * description and category, but never this tile grid, so expertOfferingTypeId stayed "" and the
+ * description and category, but never this tile grid, so the offering key stayed "" and the
  * button could never enable no matter how long the caller waited on it.
+ * (The form's state field was `expertOfferingTypeId` until ledger
+ * `2026-09-12-offering-key-is-canonical` made the KEY canonical; the column behind it was dropped
+ * by migration 296, `2026-09-15-offering-key-id-drop`.)
  *
  * SCOPED TO `expert-offering-required`, DELIBERATELY. Since migration 292 (ledger
  * `2026-09-12-listing-names-its-expert-offering`) the same picker ALSO renders for a provider —
@@ -322,7 +325,7 @@ export async function driveServiceFormToSubmit(
       // override on a bare .click() — retried against this test's whole 240s budget before
       // reporting anything). A DISABLED submit/publish button can mean SEVERAL distinct things
       // depending on role/branch (ServiceForm.tsx): an incomplete required-field set (name,
-      // category, and for a fresh expert create also expertOfferingTypeId — see
+      // category, and for a fresh expert create also expertOfferingTypeKey — see
       // pickExpertTierIfPresent above), OR — provider only — the SEPARATE publishBlocked /
       // verificationGateBlocked / attestationGateBlocked category-level gates, which ARE named
       // in the button's own `title` attribute and relabel its text (e.g. "Verification
@@ -338,7 +341,7 @@ export async function driveServiceFormToSubmit(
         const reason = title
           ? `button title: "${title}" (text: "${text?.trim() ?? ""}")`
           : `no title attribute — likely an incomplete required-field set (name, category, and ` +
-            `expertOfferingTypeId on a fresh expert create; see pickExpertTierIfPresent)`;
+            `expertOfferingTypeKey on a fresh expert create; see pickExpertTierIfPresent)`;
         console.error(`[driveServiceFormToSubmit] ${testid} stayed disabled after 15s — ${reason}`);
         return null;
       }

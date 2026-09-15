@@ -302,25 +302,31 @@ test("K4 · BOTH `/api/provider/services` write rails admit the key, through ONE
   assert.deepEqual(parsers.sort(), []);
 });
 
-// ── K5–K8 · THE KEY IS CANONICAL; THE LEGACY UUID IS FROZEN AND ON ITS WAY OUT ────────────────
-// Ledger `2026-09-12-offering-key-is-canonical` (lane 1 of two; migration 293 backfills, lane 2
-// drops `provider_services.expert_offering_type_id`). These pins live beside K1–K4 because they
-// are the same subject one step on: K1/K2 proved only the KEY is admissible, and these prove the
-// legacy id is admissible NOWHERE, that the money path's concierge decision has ONE home, and
-// that the answer for a row carrying both identifiers is unchanged.
+// ── K5–K8 · THE KEY IS CANONICAL; THE LEGACY UUID IS GONE ────────────────────────────────────
+// Ledger `2026-09-12-offering-key-is-canonical` (lane 1; migration 293 backfilled) and
+// `2026-09-15-offering-key-id-drop` (lane 2; migration 296 DROPPED
+// `provider_services.expert_offering_type_id`). These pins live beside K1–K4 because they are the
+// same subject one step on: K1/K2 proved only the KEY is admissible, and these prove the legacy id
+// is admissible NOWHERE, that the money path's concierge decision has ONE home, and that the KEY
+// alone answers it.
+//
+// K7 IS A FENCE, NOT A CHORE. Its reader set is now EMPTY, and it is kept rather than deleted
+// precisely so a reader RETURNING — a route or service reaching for a column that no longer
+// exists, or a re-added declaration — fails here rather than at runtime against production.
 //
 // NEGATIVE SPACE (§18d): K5–K8 reach no database. They say nothing about what production rows
-// hold — lane 2's punchlist entry carries the read-only production check — and nothing about the
-// FEE itself, which is a `fee_bands` rate this predicate never touches (§8).
+// hold — the read-only `scripts/preview-offering-key-id-drop.cjs`, run against production before
+// the drop is published, is that instrument — and nothing about the FEE itself, which is a
+// `fee_bands` rate this predicate never touches (§8).
 
-test("K5 · the legacy `expertOfferingTypeId` is admissible on NO rail (so the two columns cannot be made to disagree)", () => {
+test("K5 · the legacy `expertOfferingTypeId` is admissible on NO rail (the column is dropped; a re-added one must not be settable)", () => {
   const parsed = insertProviderServiceSchema.parse({
     serviceName: "K5",
     expertOfferingTypeId: "00000000-0000-0000-0000-000000000001",
   } as Record<string, unknown>) as Record<string, unknown>;
   assert.ok(
     !("expertOfferingTypeId" in parsed),
-    "`insertProviderServiceSchema` must OMIT the legacy uuid — the key is canonical and a second writable column is free to disagree with it (§18 rule 1)",
+    "`insertProviderServiceSchema` must never admit the legacy uuid — migration 296 dropped it, and a second writable offering column is free to disagree with the canonical key (§18 rule 1)",
   );
   // And the allowlist that re-admits the KEY still admits nothing else (K2's shape, from the other
   // direction): naming the legacy column there would reopen the hole this ruling closes.
@@ -356,7 +362,7 @@ test("K6 · the `booking_concierge` literal has exactly ONE home under server/, 
   );
 });
 
-test("K7 · ONE reader of the legacy uuid remains, it is the resolver's fallback, and it is marked for lane 2", () => {
+test("K7 · NO reader of the legacy uuid remains anywhere under server/ (the column is dropped)", () => {
   const files: string[] = [];
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir)) {
@@ -371,81 +377,60 @@ test("K7 · ONE reader of the legacy uuid remains, it is the resolver's fallback
     }
   };
   walk(path.join(REPO_ROOT, "server"));
-  const resolver = path.join("server", "services", "booking-concierge.service.ts");
+  // DERIVED FROM THE FILE SET, comments stripped — never a call-site count. Lane 1 left exactly
+  // one reader (the concierge resolver's fallback for a database migration 293 had not reached);
+  // lane 2 dropped the column (migration 296) and that arm with it. EMPTY is the assertion, and
+  // this pin is KEPT as a fence: a reader of a column the database no longer carries is a runtime
+  // failure against production, and it should fail here instead.
   assert.deepEqual(
     files.sort(),
-    [resolver],
-    "the legacy uuid is read in one place only — the fallback for a database migration 293 has not reached",
-  );
-  // The marker is what lane 2 greps for. A fallback nobody can find is a fallback nobody removes.
-  const src = readFileSync(path.join(REPO_ROOT, resolver), "utf8");
-  assert.ok(
-    src.includes("lane2-removal-target"),
-    "the fallback arm must carry the grep-able lane-2 marker",
+    [],
+    "`provider_services.expert_offering_type_id` was dropped by migration 296 — nothing under server/ may read it. If a lane needs a listing's expert offering, the column is `expertOfferingTypeKey`.",
   );
 });
 
-test("K8 · the predicate: the KEY answers, and a row carrying BOTH identifiers answers exactly as it did before", async () => {
-  const CONCIERGE_ID = "id-concierge";
-  const OTHER_ID = "id-other";
-  const catalog = [
-    { id: CONCIERGE_ID, key: "booking_concierge" },
-    { id: OTHER_ID, key: "wedding_planner" },
-  ];
-  let lookups = 0;
-  const lookup = async (ids: string[]) => {
-    lookups += 1;
-    return catalog.filter((r) => ids.includes(r.id));
-  };
+test("K8 · the predicate: the KEY answers, alone, and it reaches no database", async () => {
+  // The resolver takes the cart's listings and NOTHING else. Before the drop it took a second
+  // argument — an injected id→key lookup — which was the legacy arm's only reason to exist. The
+  // arity is pinned so that rail cannot be re-grown quietly beside the canonical column.
+  assert.equal(
+    resolveBookingConciergeItems.length,
+    1,
+    "the concierge predicate takes the listings only; a second parameter is a second offering rail (§18 rule 1)",
+  );
 
-  // (a) The identity the ruling turns on: for every row where the key and the legacy id name the
-  //     SAME offering — which is exactly what migration 293 produces — the key-first answer equals
-  //     the legacy-only answer. Driven off the catalog, never a hand-copied expectation.
-  for (const row of catalog) {
-    const legacyOnly = await resolveBookingConciergeItems([{ expertOfferingTypeId: row.id }], lookup);
-    const both = await resolveBookingConciergeItems(
-      [{ expertOfferingTypeId: row.id, expertOfferingTypeKey: row.key }],
-      lookup,
-    );
-    const keyOnly = await resolveBookingConciergeItems([{ expertOfferingTypeKey: row.key }], lookup);
-    const answer = legacyOnly.isBookingConcierge({ expertOfferingTypeId: row.id });
-    assert.equal(answer, row.key === "booking_concierge");
-    assert.equal(both.isBookingConcierge({ expertOfferingTypeId: row.id, expertOfferingTypeKey: row.key }), answer);
-    assert.equal(keyOnly.isBookingConcierge({ expertOfferingTypeKey: row.key }), answer);
+  // Driven off the catalog's own keys, never a hand-copied expectation.
+  const KEYS = ["booking_concierge", "wedding_planner"] as const;
+  for (const key of KEYS) {
+    const one = await resolveBookingConciergeItems([{ expertOfferingTypeKey: key }]);
+    assert.equal(one.isBookingConcierge({ expertOfferingTypeKey: key }), key === "booking_concierge");
+    assert.equal(one.hasAny, key === "booking_concierge");
   }
 
-  // (b) A row that states NO key and carries no id is not a concierge line, and neither is an
-  //     absent listing — §13: an unclassified listing is never read as one thing or the other.
-  const none = await resolveBookingConciergeItems([null, {}, { expertOfferingTypeKey: null }], lookup);
+  // (b) A row that states NO key is not a concierge line, and neither is an absent listing —
+  //     §13: an unclassified listing is never read as one offering or the other.
+  const none = await resolveBookingConciergeItems([null, {}, { expertOfferingTypeKey: null }]);
   assert.equal(none.hasAny, false);
   assert.equal(none.isBookingConcierge(null), false);
+  assert.equal(none.isBookingConcierge({}), false);
+  assert.equal(none.isBookingConcierge({ expertOfferingTypeKey: "" }), false);
 
-  // (c) The key is CANONICAL where the two disagree — the one input class whose answer differs
-  //     from the pre-lane code, stated here rather than left to be discovered.
-  const disagreeing = await resolveBookingConciergeItems(
-    [{ expertOfferingTypeId: CONCIERGE_ID, expertOfferingTypeKey: "wedding_planner" }],
-    lookup,
-  );
-  assert.equal(
-    disagreeing.isBookingConcierge({ expertOfferingTypeId: CONCIERGE_ID, expertOfferingTypeKey: "wedding_planner" }),
-    false,
-  );
+  // (c) THE FENCE THE DISAGREEMENT CASE LEAVES BEHIND. Before migration 296 a row could carry a
+  //     key naming one offering and a legacy uuid naming another, and the ruling made the KEY win.
+  //     That input class can no longer exist on disk — but a reader that started consulting a
+  //     legacy-shaped property again would flip this answer, so the case is kept as a pin: a
+  //     stray `expertOfferingTypeId` beside a non-concierge key changes nothing.
+  const strayLegacy = { expertOfferingTypeKey: "wedding_planner", expertOfferingTypeId: "id-concierge" } as Record<string, unknown>;
+  const disagreeing = await resolveBookingConciergeItems([strayLegacy]);
+  assert.equal(disagreeing.isBookingConcierge(strayLegacy), false);
+  assert.equal(disagreeing.hasAny, false);
 
   // (d) hasAny is the same predicate over the same set — the strict fee-band loader turns on it,
   //     so it can never disagree with the per-line answers the loops read.
   const mixed = await resolveBookingConciergeItems(
-    [null, { expertOfferingTypeKey: "wedding_planner" }, { expertOfferingTypeId: CONCIERGE_ID }],
-    lookup,
+    [null, { expertOfferingTypeKey: "wedding_planner" }, { expertOfferingTypeKey: "booking_concierge" }],
   );
   assert.equal(mixed.hasAny, true);
-
-  // (e) A fully migrated cart issues NO id lookup at all: the fallback is for rows the backfill has
-  //     not reached, not a second rail every checkout pays for.
-  const before = lookups;
-  const migrated = await resolveBookingConciergeItems(
-    [{ expertOfferingTypeKey: "booking_concierge" }, { expertOfferingTypeKey: "wedding_planner" }],
-    lookup,
-  );
-  assert.equal(migrated.hasAny, true);
-  assert.equal(lookups, before, "a cart whose listings all state a key must not query the legacy catalog");
+  assert.equal(mixed.isBookingConcierge({ expertOfferingTypeKey: "wedding_planner" }), false);
+  assert.equal(mixed.isBookingConcierge({ expertOfferingTypeKey: "booking_concierge" }), true);
 });
