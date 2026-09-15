@@ -219,8 +219,14 @@ export function FeedReadyMadeCard({
                 <div className="text-[12.5px] font-semibold leading-none truncate" style={{ fontFamily: EARN_MONO }}>
                   {priceDisplay}
                 </div>
+                {/* D-3 (ruling 2026-09-15, option A; ledger `2026-09-15-d3-readymade-separate-checkout`):
+                    the label says WHAT the number buys. A bare "price" on a tile that also carries a
+                    duration and a rating reads as the cost of the trip; it is the cost of the PLAN,
+                    and the services inside it are booked separately at their own listing price
+                    through the cart — never mixed into this purchase (§13). The tile states no
+                    contents, so the label is the whole claim it makes and the whole correction. */}
                 <div className="mt-1 text-[9.5px] uppercase tracking-wide leading-none text-muted-foreground" style={{ fontFamily: EARN_MONO }}>
-                  price
+                  plan price
                 </div>
               </div>
             )}
