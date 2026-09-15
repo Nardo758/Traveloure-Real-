@@ -351,7 +351,22 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
             // Discover image, which is the very loss the old refusal existed to prevent (§13).
             { ...existingMeta, ...displayEnvelopeFor(item) }
           : displayEnvelopeFor(item),
-    quantity: 1,
+    // ── UNITS, BOTH WAYS (migration 298; ruling 2026-09-15 punchlist D-41; ledger
+    // `2026-09-15-d41-item-quantity`). This line read `quantity: 1` unconditionally, which is why
+    // Section 3 had to REFUSE a multi-unit line: the round trip would write the traveler's 3 back
+    // down to 1 and silently change what they are charged (`resolveItemBaseAmount` prices a line
+    // rate x quantity). The item now HAS a unit column, so the copy-down carries it.
+    //
+    // s13 — NULL ON THE ITEM MEANS ONE UNIT, and that is the reading this `?? 1` states. It is not
+    // a default standing in for a missing answer: every pre-298 item row was written by a rail
+    // with no unit concept and every reader has always treated it as one unit, so 1 is what the
+    // row already said. `cart_items.quantity` is NOT NULL-shaped in practice (DEFAULT 1) and the
+    // money path multiplies by it, so a NULL must never reach it.
+    //
+    // ONE COPY-DOWN (s18 rule 1). This statement and `buildPlanItemValues` below are the only two
+    // places the count crosses between the two tables, and they are inverses of each other — that
+    // is what makes the round trip faithful and what the materializer's admission test relies on.
+    quantity: item.quantity ?? 1,
     tripId: item.tripId,
     scheduledDate: item.scheduledDate ? new Date(item.scheduledDate) : null,
     // The traveler's picked slot rides the projection (migration 275). INTENT only — the
@@ -462,7 +477,10 @@ async function deleteProjectionFor(itemId: string): Promise<number> {
  * never be used to tell the two apart.
  */
 export type CartLineSkipReason =
-  | "quantity_gt_one"
+  // `quantity_gt_one` is GONE (ruling 2026-09-15, punchlist D-41; migration 298) — a multi-unit
+  // line is materialized now, not refused, so nothing produces it. s18c: a union member with no
+  // producer is not kept "just in case"; it would read to the next author as a refusal that can
+  // still happen. `custom_venue`/`content_line` left the same way at migration 295.
   | "no_subject"
   | "ambiguous_subject"
   | "service_missing"
@@ -641,11 +659,27 @@ function buildPlanItemValues(args: {
   const meta = (line.contentMeta ?? {}) as Record<string, unknown>;
   const scheduled = line.scheduledDate ? new Date(line.scheduledDate) : null;
 
+  // ── THE LINE'S UNIT COUNT (migration 298; ruling 2026-09-15 punchlist D-41; ledger
+  // `2026-09-15-d41-item-quantity`). D-14 settled what the number MEANS — UNITS of the listing,
+  // the multiplier `resolveItemBaseAmount` reads — and 298 gives the plan somewhere to hold it.
+  //
+  // s13 — ONE UNIT IS WRITTEN AS NULL, NOT AS 1, AND THAT IS DELIBERATE. `cart_items.quantity` is
+  // `DEFAULT 1`, so a 1 on a cart line is usually the COLUMN's answer and not the traveler's: on
+  // every archetype that asks no unit question at all (a stay, a bundle, an artifact —
+  // `shared/cart-quantity.ts`) it is pinned there by rule and nobody was ever asked. Writing 1
+  // onto the item would turn "never asked" into "the traveler answered one" and make a new item
+  // indistinguishable from an old one for no gain, since NULL ALREADY MEANS ONE UNIT and every
+  // reader — `syncItemProjection` above included — resolves it that way. So the count is carried
+  // only where it is a real, above-one answer, and the round trip is faithful either way.
+  const lineUnits = Number.isFinite(line.quantity as number) ? Math.floor(line.quantity as number) : null;
+  const carriedQuantity = lineUnits !== null && lineUnits > 1 ? { quantity: lineUnits } : {};
+
   const common = {
     tripId,
     dayNumber: resolvePlanDayNumber(scheduled, tripStartDate),
     // The line's own facts, and only those. No invented date, no invented title, and no party
     // size — `quantity` is units of the listing and is never promoted into one (punchlist D-14).
+    ...carriedQuantity,
     scheduledDate: scheduled ? toYmd(scheduled) : null,
     slotId: line.slotId ?? null,
     notes: line.notes ?? null,
@@ -787,13 +821,21 @@ export async function materializeCartLinesAsItems(
       out.skipped.push({ cartItemId: line.id, reason });
     };
 
-    // D-16 (a) — STILL REFUSED, and now for a named reason (ruling 2026-09-15, ledger
-    // `2026-09-15-d14-quantity-is-units`). `quantity` is UNITS of the listing, and
-    // `itinerary_items` has NO unit column, so the plan cannot carry a multi-unit line faithfully:
-    // Section 2 would write `quantity: 1` back over it on the next sync, silently changing what a
-    // priced line costs. Adding that column is punchlist D-41 and is NOT authorized. Checked FIRST
-    // because it is a fact about the LINE'S COUNT and is true of every subject below.
-    if ((line.quantity ?? 1) > 1) { skip("quantity_gt_one"); continue; }
+    // D-16 (a) IS LIFTED (ruling 2026-09-15, punchlist D-41 = yes; ledger
+    // `2026-09-15-d41-item-quantity`; migration 298). A `if ((line.quantity ?? 1) > 1) {
+    // skip("quantity_gt_one"); continue; }` stood here, and its stated reason was exactly this:
+    // `itinerary_items` had NO unit column, so the round trip would write `quantity: 1` back over
+    // the traveler's 3 and silently change what a priced line costs. The column exists now,
+    // `buildPlanItemValues` carries the count up and Section 2 carries it back down, so the
+    // admission test this whole module turns on — CAN SECTION 2 REPRODUCE THE LINE? — is now
+    // satisfied for a multi-unit line and the refusal has nothing left to protect.
+    //
+    // NOTHING ELSE MOVED WITH IT. The unit count is still set on the CART LINE and nowhere else
+    // (D-14: `shared/cart-quantity.ts` `archetypeAsks` decides whether a listing's archetype is
+    // even asked, and a units-pinned archetype REFUSES a multi-unit body rather than clamping it),
+    // `insertItineraryItemSchema` still omits the column and storage still strips it (s19), and
+    // checkout still prices a line off the CART row. This lane lifted a refusal; it opened no new
+    // way to author the number.
 
     // The subject, and every refusal that depends on reading a row (§18 rule 1: one resolver,
     // shared with the convert rail below).
@@ -868,12 +910,12 @@ export async function materializeCartLinesAsItems(
  *   • THE CART LINE. It is DELETED, in the same transaction as the insert, so a crash can never
  *     leave the traveler holding both a cart line and an item made out of it. The projection rail
  *     LINKS its line instead and leaves it exactly where the traveler put it.
- *   • THE D-16 (a) MULTI-UNIT REFUSAL DOES NOT APPLY HERE, and that is a preserved behaviour, not
- *     an oversight. It exists because the projection rail's round trip would write `quantity: 1`
- *     back over the traveler's count; this rail has no round trip — it deletes the row. The unit
- *     count is therefore lost here exactly as it has always been lost here, which punchlist D-41
- *     (a unit column on `itinerary_items`) is what would fix; this lane is not authorized to add
- *     one and does not.
+ *   • THE UNIT COUNT NOW SURVIVES HERE TOO (migration 298, punchlist D-41; ledger
+ *     `2026-09-15-d41-item-quantity`). This rail never carried the D-16 (a) refusal — it has no
+ *     round trip to be unfaithful, because it DELETES the line — so the count was simply lost on
+ *     conversion, which this bullet recorded and named D-41 as the fix for. It is the fix now.
+ *     Both rails compose their item through the same `buildPlanItemValues`, so the count travels
+ *     on both by construction rather than by a second decision taken here (s18 rule 1).
  *
  * OWNERSHIP IS RE-DERIVED FROM THE RECORD (s14), even though the route checks it too: the trip
  * must be this caller's, and a cart line that is not this caller's is skipped SILENTLY — naming it

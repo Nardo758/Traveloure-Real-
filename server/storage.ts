@@ -134,6 +134,8 @@ import {
   tripAnalyticsEnhanced,
   bundleComponents,
   vendorContracts,
+  // D-18 (migration 297): the announcement marker's one stamp site lives here.
+  readyMadePurchases,
 } from "@shared/schema";
 import { stripServerAuthoredBookingDetails } from "@shared/booking-details-admission";
 // D-10 (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): the purchase writer's §15
@@ -553,6 +555,22 @@ export interface IStorage {
   createNotificationOnce(
     notification: InsertNotification & { dedupeKey: string },
   ): Promise<{ inserted: boolean }>;
+
+  /**
+   * Stamp `ready_made_purchases.notified_at` — the durable record that the buyer's delivery
+   * announcement exists (migration 297, punchlist D-18; ledger `2026-09-15-d18-announced-marker`).
+   *
+   * §15 shape: the ATOMIC CONDITIONAL (`WHERE id = ? AND notified_at IS NULL`) is the guard, never
+   * a check-then-update, so the first stamp wins and every later one is a truthful no-op reporting
+   * `{ stamped: false }`. The purchase's own `paid → cloned` claim already makes the send
+   * once-only; this keeps the MARKER once-only too, so a recovery pass racing a live fulfilment
+   * cannot move a timestamp somebody already wrote.
+   *
+   * ONE CALLER BY RULING (§18 rule 1): `notifyBuyerOfReadyMadeDelivery`, the one shared sender.
+   * §17's drift job must NOT call this — a detector that stamps "announced" without sending
+   * anything silences the finding it exists to raise.
+   */
+  markReadyMadePurchaseNotified(purchaseId: string): Promise<{ stamped: boolean }>;
 
   markAsRead(id: string, userId: string): Promise<Notification | undefined>;
 
@@ -1386,6 +1404,15 @@ export function stripFormVerificationFields<T extends Record<string, unknown>>(f
 // two methods, so stripping here costs the one legitimate writer nothing while covering the raw
 // `req.body` destructure on the canonical PATCH route, exactly as it already does for the pair
 // above. §19: under a denylist a freshly added column is client-settable BY DEFAULT.
+//
+// WIDENED AGAIN 2026-09-15 (ruling, punchlist D-41; ledger `2026-09-15-d41-item-quantity`) TO
+// MIGRATION 298's `quantity`. THERE IS ONE ADMISSION RULE FOR UNITS and it is D-14's: a traveler
+// sets units on the CART LINE, where `shared/cart-quantity.ts` `archetypeAsks` decides whether
+// that listing's archetype is even asked the question (a stay and a bundle are PINNED to one unit
+// and a multi-unit body is refused 400, a seat-shaped service has the count DERIVED server-side
+// from the party), and the plan item receives it by PROJECTION from the same one module. Letting
+// the item PATCH set it would be a second admission rail for the same number that bypasses the
+// archetype rule entirely — and `resolveItemBaseAmount` prices a line `rate × quantity`.
 export function stripItineraryItemRoutingFields<T extends Record<string, unknown>>(item: T): T {
   const {
     routingStatus: _rs,
@@ -1393,6 +1420,7 @@ export function stripItineraryItemRoutingFields<T extends Record<string, unknown
     customVenueId: _cvid,
     contentType: _ct,
     contentId: _cid,
+    quantity: _qty,
     ...safe
   } = item as Record<string, unknown>;
   return safe as T;
@@ -4092,6 +4120,17 @@ export class DatabaseStorage implements IStorage {
       })
       .returning({ id: notifications.id });
     return { inserted: rows.length > 0 };
+  }
+
+  // See the interface doc. The statement IS the guard (§15): `notified_at IS NULL` means the first
+  // writer wins and a later pass changes nothing and says so.
+  async markReadyMadePurchaseNotified(purchaseId: string): Promise<{ stamped: boolean }> {
+    const rows = await db
+      .update(readyMadePurchases)
+      .set({ notifiedAt: new Date() } as any)
+      .where(and(eq(readyMadePurchases.id, purchaseId), isNull(readyMadePurchases.notifiedAt)))
+      .returning({ id: readyMadePurchases.id });
+    return { stamped: rows.length > 0 };
   }
 
   // Scoped to (id, userId) so a caller can only mutate their own notification — the WHERE is the

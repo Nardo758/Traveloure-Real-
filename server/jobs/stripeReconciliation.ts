@@ -38,10 +38,17 @@
  * to reason about), and the PaymentIntent self-identifies through metadata `createPaymentIntent`
  * wrote server-side at `POST /api/ready-made/:id/purchase`.
  *
- * THERE IS NO REPAIR ON THIS RAIL — NOT EVEN THE CART RAIL'S ONE NARROW EXCEPTION. That exception
- * exists because `promotePaidCheckout` is a RATIFIED recovery layer whose logic is merely arriving
- * late (§15c). `fulfillReadyMadePurchase` is idempotent and would be TEMPTING to call here; it is
- * deliberately NOT called. A detector that fulfils is a second, unreviewed delivery path.
+ * THERE IS NO *MONEY* REPAIR ON THIS RAIL, AND THAT HAS NOT CHANGED. `fulfillReadyMadePurchase`
+ * is idempotent and would be TEMPTING to call here; it is deliberately NOT called. A detector that
+ * fulfils is a second, unreviewed delivery path.
+ *
+ * THE RAIL DOES NOW TAKE THE CART RAIL'S SHAPE OF EXCEPTION, ONE CLASS OVER FROM MONEY (D-18,
+ * ledger `2026-09-15-d18-announced-marker`). The cart exception exists because
+ * `promotePaidCheckout` is a RATIFIED recovery layer whose logic is merely arriving late (§15c).
+ * R6 hands a DELIVERED purchase carrying no announcement marker to `notifyBuyerOfReadyMadeDelivery`
+ * — likewise an existing shared writer, likewise arriving late, and it moves NO money: it tells a
+ * buyer about a delivery that already happened. The job writes `ready_made_purchases.notified_at`
+ * NEVER; the sender owns it.
  *
  * THE FINDING THIS LANE RECORDED HAS SINCE BEEN RULED AND FIXED — AND THE FIX IS NOT HERE
  * (ledger 2026-09-12-readymade-recovery-path). This header used to read "the ready-made rail has NO
@@ -104,6 +111,11 @@ import { db } from "../db";
 import { bookings, adminNotifications } from "@shared/schema";
 import type { ReconciliationExceptionKind } from "@shared/schema";
 import { promotePaidCheckout } from "../services/checkout-claim.service";
+// D-18 (ledger `2026-09-15-d18-announced-marker`): §17's ONE narrow exception, one rail over from
+// `promotePaidCheckout`. The job hands an unannounced delivery to the EXISTING shared sender — it
+// writes `ready_made_purchases.notified_at` through nothing of its own, ever.
+import { notifyBuyerOfReadyMadeDelivery } from "../services/ready-made-notifications.service";
+import { READY_MADE_ANNOUNCE_GRACE_MS, READY_MADE_ANNOUNCE_GRACE_MINUTES } from "../config/ready-made-announce.config";
 import { travelerChargeForRow } from "../services/traveler-charge";
 import {
   readNoItemReason,
@@ -232,6 +244,14 @@ export interface ReconciliationResult {
    * pass's log line; persisting it is a named follow-up in the lane's ledger row.
    */
   checkedReadyMadePurchases: number;
+  /**
+   * D-18 — purchase ids this pass handed BACK to the shared notifier and which now carry an
+   * announcement (ledger `2026-09-15-d18-announced-marker`). NOT persisted on the run row, for the
+   * same stated reason as `checkedReadyMadePurchases` directly above: a new column there is a
+   * migration plus two admin SELECT edits this lane did not take. A hand-off that FAILED is not
+   * here — it is an `rm_delivery_not_announced` exception row, which IS durable.
+   */
+  readyMadeAnnounceHandOffs: string[];
   ranAt: string;
   /** Back-compat with the pre-existing admin page/endpoint shape, which renders `mismatches`.
    *  Legacy-rail entries only ever carried these two kinds; now every kind lands here. */
@@ -396,6 +416,7 @@ export async function runStripeReconciliation(opts?: {
     checkedCartBookings: 0,
     checkedBookings: 0,
     checkedReadyMadePurchases: 0,
+    readyMadeAnnounceHandOffs: [],
     ranAt,
     mismatches: [],
   };
@@ -444,6 +465,7 @@ export async function runStripeReconciliation(opts?: {
       exceptions,
     });
     base.checkedReadyMadePurchases = readyMade.scannedPurchases;
+    base.readyMadeAnnounceHandOffs = readyMade.announceHandOffs;
 
     base.exceptions = exceptions;
     base.mismatches = exceptions.map((e) => ({
@@ -486,6 +508,9 @@ export async function runStripeReconciliation(opts?: {
           cartBookings: base.checkedCartBookings,
           legacyBookings: base.checkedBookings,
           readyMadePurchases: base.checkedReadyMadePurchases,
+          // D-18: a pass that re-drove an unannounced delivery DID something, and "clean" must not
+          // be the only word for it (§17 rule 2's reasoning, one line down).
+          readyMadeAnnounceHandOffs: base.readyMadeAnnounceHandOffs.length,
         },
         "[RECONCILIATION] clean pass — no drift (run RECORDED so silence is distinguishable from a dead job)",
       );
@@ -984,12 +1009,20 @@ async function scanLegacyRail(args: {
 
 // ── READY-MADE RAIL (`ready_made_purchases` — the store lane; punchlist V-3) ──────────────────
 //
-// DETECT, DON'T REPAIR, WITH NO EXCEPTION AT ALL (§17). The cart rail's one narrow repair exists
-// because `promotePaidCheckout` is a ratified recovery layer arriving late. This rail has no
-// ratified recovery layer to arrive late: nothing but the buyer's own `/purchase/confirm` call
-// creates the row, and the `payment_intent.succeeded` webhook keys on `metadata.bookingIds`, which
-// a ready-made PaymentIntent never carries. So this scanner promotes nothing, fulfils nothing,
-// refunds nothing and revokes nothing — it writes exception rows and stops.
+// DETECT, DON'T REPAIR — WITH ONE NARROW EXCEPTION, AND IT IS NOT A MONEY ONE (§17).
+//
+// This block used to read "with no exception at all", and for money that is still exactly true:
+// THIS SCANNER PROMOTES NOTHING, FULFILS NOTHING, REFUNDS NOTHING AND REVOKES NOTHING. Nothing
+// but the buyer's own `/purchase/confirm` call and the `payment_intent.succeeded` webhook creates
+// or fulfils a purchase, and this job is neither.
+//
+// What it now does have is §17's ONE sanctioned move, the same one `promotePaidCheckout` has on
+// the cart rail: HANDING A ROW TO AN EXISTING SHARED WRITER so that writer's own logic arrives
+// late. R6 below hands a DELIVERED purchase with no announcement marker back to
+// `notifyBuyerOfReadyMadeDelivery` (D-18, ledger `2026-09-15-d18-announced-marker`). It composes
+// no message, enqueues no email, and NEVER WRITES `ready_made_purchases.notified_at` — the sender
+// owns that column (§18 rule 1), and a detector that stamped "announced" without sending anything
+// would silence the finding it exists to raise.
 //
 // THE EXPECTED AMOUNT IS THE ROW'S OWN `price_paid_cents` (§17 rule 3). It is deliberately NOT the
 // listing's current `price_cents`: the price is LOCKED at PaymentIntent creation (§14 — the
@@ -1011,6 +1044,13 @@ interface ReadyMadePurchaseRow {
   currency: string | null;
   cloneTripId: string | null;
   purchasedAt: Date | null;
+  /** Migration 297 / D-18. NULL = NO RECORD OF AN ANNOUNCEMENT — never "the buyer was not told"
+   *  (§13). The hand-off below is what turns the one into the other. */
+  notifiedAt: Date | null;
+  /** JOINED from `ready_made_trips`, because the shared notifier needs the listing's own words and
+   *  this job may not compose a message of its own. NULL when the listing row is gone. */
+  listingTitle: string | null;
+  listingMarket: string | null;
 }
 
 function mapReadyMadeRow(r: any): ReadyMadePurchaseRow {
@@ -1024,6 +1064,9 @@ function mapReadyMadeRow(r: any): ReadyMadePurchaseRow {
     currency: r.currency == null ? null : String(r.currency),
     cloneTripId: r.clone_trip_id ?? null,
     purchasedAt: r.purchased_at ? new Date(String(r.purchased_at)) : null,
+    notifiedAt: r.notified_at ? new Date(String(r.notified_at)) : null,
+    listingTitle: r.listing_title == null ? null : String(r.listing_title),
+    listingMarket: r.listing_market == null ? null : String(r.listing_market),
   };
 }
 
@@ -1041,8 +1084,13 @@ async function scanReadyMadeRail(args: {
   windowStart: Date;
   onlyPurchaseIds?: string[];
   exceptions: ReconciliationException[];
-}): Promise<{ scannedPurchases: number }> {
+}): Promise<{ scannedPurchases: number; announceHandOffs: string[] }> {
   const { paymentIntents, refunds, windowStart, onlyPurchaseIds, exceptions } = args;
+
+  /** D-18: purchases this pass handed BACK to the shared notifier and which now carry an
+   *  announcement. Reported so a healed row is visible in the run rather than silently absent —
+   *  the §17 rule that a clean pass and a pass that did work must not render identically. */
+  const announceHandOffs: string[] = [];
 
   const readyMadeIntents = paymentIntents.filter(isReadyMadeIntent);
   // A refund can name a PaymentIntent whose purchase row predates the window — load by BOTH, the
@@ -1204,6 +1252,132 @@ async function scanReadyMadeRail(args: {
     }
   }
 
+  // ── R6. DELIVERED, BUT WAS THE BUYER TOLD? (D-18; ledger `2026-09-15-d18-announced-marker`) ──
+  //
+  // THE ONE PLACE THIS RAIL REPAIRS, AND IT REPAIRS NOTHING ITSELF. §17 is "detect, don't repair"
+  // with ONE narrow exception: handing a row to an EXISTING shared writer so that writer's own
+  // logic arrives late. `promotePaidCheckout` is that exception on the cart rail; this is the same
+  // shape here. The job calls `notifyBuyerOfReadyMadeDelivery` — the ONE shared sender (§18 rule 1)
+  // — and writes NOTHING of its own: it never composes a message, never enqueues an email, and
+  // above all NEVER WRITES `notified_at`. A detector that stamped "announced" without sending
+  // anything would silence the very finding it exists to raise.
+  //
+  // THE PREDICATE. `status = 'cloned'` (delivered — the clone trip and items are committed before
+  // the `paid → cloned` claim, so `cloned` IS delivery on this rail), a NULL marker, and an age
+  // past `READY_MADE_ANNOUNCE_GRACE_MS`. The grace is CONFIG, not a literal
+  // (`server/config/ready-made-announce.config.ts`, the `envDays` posture); §8 is untouched —
+  // nothing here is a rate and nothing multiplies money.
+  //
+  // WHY `paid` IS NOT IN THE PREDICATE. A `paid` row was never delivered, so there is nothing to
+  // announce; R3 above is its classification, and announcing an undelivered purchase would tell
+  // the buyer their plan is in their account when it is not (§13). The two never overlap.
+  //
+  // §13 — AN UNAGEABLE ROW IS NOT INDICTED AND IS NOT TOUCHED. `purchased_at` is NOT NULL DEFAULT
+  // now(), so a null age is unreachable rather than tolerated; if it ever happens the honest answer
+  // is to say nothing, exactly as R3 already decides one classification up.
+  //
+  // §13 — A `cloned` ROW WITH NO CLONE TRIP IS THE BUYER'S OWN HOUSEKEEPING, NOT A FAILED
+  // ANNOUNCEMENT, AND IS SKIPPED ENTIRELY. `clone_trip_id` is ON DELETE SET NULL and a buyer
+  // deleting their own trip is an ordinary act — R3 above refuses to indict exactly that shape, and
+  // this rail must refuse it for the same reason. There is also nothing left to announce: the
+  // notice links to the plan, so "your plan is in your account" would name a trip that is gone.
+  //
+  // THE ORDINARY CASE RECORDS NOTHING. When the hand-off succeeds the announcement now exists and
+  // the marker is stamped, so there is no drift left to report — an exception row would be a
+  // durable, append-only accusation about a fact the same pass just fixed. Only a hand-off that
+  // could NOT produce an announcement is recorded, and the kind says so.
+  for (const row of rows) {
+    if (!inScope(row.id)) continue;
+    if (row.status !== "cloned") continue;
+    if (row.notifiedAt) continue;
+    const ageMs = row.purchasedAt ? now - row.purchasedAt.getTime() : null;
+    if (ageMs === null || ageMs <= READY_MADE_ANNOUNCE_GRACE_MS) continue;
+
+    // The buyer's own deletion — see the header above. Nothing is reported and nothing is sent.
+    if (!row.cloneTripId) continue;
+
+    // What remains that could still block a hand-off: the shared sender's notice REQUIRES a buyer
+    // and the listing's own title, and this job may not invent either (§13). Both columns are NOT
+    // NULL and the listing is an FK, so this arm is expected to be unreachable — it is written
+    // rather than assumed, because the alternative to naming it is passing a fabricated notice
+    // down to the one writer that speaks to the traveler.
+    const canHandOff = Boolean(row.buyerId && row.listingTitle);
+    let handOff: { notified: boolean; emailed: boolean; announced: boolean; stamped: boolean } | null = null;
+    let handOffError: string | null = null;
+    if (canHandOff) {
+      try {
+        handOff = await notifyBuyerOfReadyMadeDelivery({
+          purchaseId: row.id,
+          buyerId: row.buyerId!,
+          cloneTripId: row.cloneTripId!,
+          listingTitle: row.listingTitle!,
+          market: row.listingMarket,
+          // §14: the purchase row's OWN recorded numbers — never the listing's price today, never
+          // recomputed, and never taken from Stripe.
+          pricePaidCents: row.pricePaidCents,
+          currency: row.currency || "USD",
+        });
+      } catch (err) {
+        // The sender is documented never to throw; the belt is here because a detector that dies
+        // on one row stops examining the rest of the window.
+        handOffError = err instanceof Error ? err.message : String(err);
+        logger.error({ err, purchaseId: row.id }, "[RECONCILIATION] ready-made announce hand-off threw");
+      }
+    }
+
+    if (handOff?.announced) {
+      // HEALED ON THIS PASS, and deliberately NOT counted as `promoted`: that field means "claims
+      // recovered via the shared PROMOTION" and is persisted on the run row as such; an
+      // announcement is not a promotion and borrowing the counter would make a money-recovery
+      // number read high for a notification (§13). It is reported on this pass's response and in
+      // the log line below, where a healed pass stops looking identical to a silent one.
+      logger.warn(
+        { purchaseId: row.id, stamped: handOff.stamped, emailed: handOff.emailed },
+        "[RECONCILIATION] delivered ready-made purchase had no announce marker — handed to the shared notifier",
+      );
+      announceHandOffs.push(row.id);
+      continue;
+    }
+
+    exceptions.push({
+      rail: "ready_made",
+      kind: "rm_delivery_not_announced",
+      // The money is right and the product was delivered; what is wrong is that the buyer does not
+      // know. That is a warning, on the `payment_provenance_unverified` precedent.
+      severity: "warning",
+      dedupeKey: `ready_made:rm_delivery_not_announced:${row.id}`,
+      bookingId: row.id,
+      paymentIntentId: row.stripePaymentIntentId,
+      expectedAmount: centsToDollars(row.pricePaidCents),
+      currency: row.currency,
+      details: {
+        purchaseStatus: row.status,
+        readyMadeTripId: row.readyMadeTripId,
+        // Admin-only surface under §2's blanket guard — LD 40's rule governs PUBLIC payloads, and
+        // the buyer is the one person a human must reach about a delivery they never heard of.
+        buyerId: row.buyerId,
+        cloneTripId: row.cloneTripId,
+        purchasedAt: row.purchasedAt?.toISOString() ?? null,
+        graceMinutes: READY_MADE_ANNOUNCE_GRACE_MINUTES,
+        handOffAttempted: canHandOff,
+        // §13: the reasons a hand-off is impossible are DIFFERENT facts and are named, never
+        // collapsed into "could not notify".
+        ...(canHandOff
+          ? {}
+          : { missingBuyerId: !row.buyerId, missingListingRow: !row.listingTitle }),
+        ...(handOffError ? { handOffError } : {}),
+        note:
+          "A ready-made purchase is `cloned` — delivered, with the clone trip committed and the " +
+          "author credited — and ready_made_purchases.notified_at is still NULL past the announce " +
+          "grace, so nothing on disk says the buyer was ever told. This job HANDED the row to the " +
+          "one shared sender (notifyBuyerOfReadyMadeDelivery, §17's narrow recovery exception) and " +
+          "the announcement still does not exist afterwards, which is why this row is here at all: " +
+          "the ordinary case self-heals on the pass that finds it and records nothing. The job " +
+          "never writes notified_at itself.",
+      },
+    });
+  }
+
   // ── R5. REFUND drift: Stripe reversed money the purchase row still treats as live ────────────
   for (const rf of refunds) {
     const piId = typeof rf.payment_intent === "string" ? rf.payment_intent : null;
@@ -1239,7 +1413,7 @@ async function scanReadyMadeRail(args: {
     });
   }
 
-  return { scannedPurchases: rows.length };
+  return { scannedPurchases: rows.length, announceHandOffs };
 }
 
 // ── DB access ────────────────────────────────────────────────────────────────────────────────
@@ -1299,25 +1473,35 @@ async function loadReadyMadePurchases(args: {
   const { windowStart, paymentIntentIds, onlyPurchaseIds } = args;
   if (onlyPurchaseIds && onlyPurchaseIds.length === 0) return [];
 
-  const clauses = [sql`purchased_at >= ${windowStart.toISOString()}`];
+  // Qualified to `p.` since the LEFT JOIN on `ready_made_trips` below — neither column exists on
+  // that table today, but an unqualified predicate over a join is one added column from ambiguous.
+  const clauses = [sql`p.purchased_at >= ${windowStart.toISOString()}`];
   if (paymentIntentIds.length > 0) {
     const unique = Array.from(new Set(paymentIntentIds));
     clauses.push(
-      sql`stripe_payment_intent_id IN (${sql.join(unique.map((v) => sql`${v}`), sql`, `)})`,
+      sql`p.stripe_payment_intent_id IN (${sql.join(unique.map((v) => sql`${v}`), sql`, `)})`,
     );
   }
 
   const rows = await db.execute(sql`
-    SELECT id, buyer_id, ready_made_trip_id, status, stripe_payment_intent_id,
-           price_paid_cents, currency, clone_trip_id, purchased_at
-    FROM ready_made_purchases
+    SELECT p.id, p.buyer_id, p.ready_made_trip_id, p.status, p.stripe_payment_intent_id,
+           p.price_paid_cents, p.currency, p.clone_trip_id, p.purchased_at,
+           -- Migration 297 / D-18. Read here, and written NOWHERE in this file (§17).
+           p.notified_at,
+           -- The listing's OWN words, for the hand-off below. A LEFT JOIN because a purchase
+           -- outliving its listing is a real state and must not vanish from every other
+           -- classification on this rail just because one of them wanted a title (§13).
+           t.title AS listing_title, t.market AS listing_market
+    FROM ready_made_purchases p
+    LEFT JOIN ready_made_trips t ON t.id = p.ready_made_trip_id
     WHERE (${sql.join(clauses, sql` OR `)})
       ${
         onlyPurchaseIds
-          ? sql`AND id IN (${sql.join(onlyPurchaseIds.map((v) => sql`${v}`), sql`, `)})`
+          // Qualified: since the LEFT JOIN above, a bare `id` is ambiguous across both tables.
+          ? sql`AND p.id IN (${sql.join(onlyPurchaseIds.map((v) => sql`${v}`), sql`, `)})`
           : sql``
       }
-    ORDER BY purchased_at ASC
+    ORDER BY p.purchased_at ASC
     LIMIT ${READY_MADE_SCAN_LIMIT}
   `);
   if (rows.rows.length === READY_MADE_SCAN_LIMIT) {

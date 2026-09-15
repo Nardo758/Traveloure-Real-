@@ -172,6 +172,14 @@ after(async () => {
     await db.execute(sql`DELETE FROM service_bookings WHERE id = ${id}`).catch(() => {});
   }
   for (const id of createdPurchaseIds) {
+    // N27's hand-off runs the REAL shared sender, which writes a bell row and enqueues an email.
+    // Both are keyed on the purchase and are cleaned before the purchase and its buyer go.
+    await db
+      .execute(sql`DELETE FROM notifications WHERE dedupe_key = ${`ready_made_purchase:${id}:delivered`}`)
+      .catch(() => {});
+    await db
+      .execute(sql`DELETE FROM email_outbox WHERE metadata->>'purchaseId' = ${id}`)
+      .catch(() => {});
     await db.execute(sql`DELETE FROM ready_made_purchases WHERE id = ${id}`).catch(() => {});
   }
   await db.execute(sql`DELETE FROM ready_made_trips WHERE id = ${ids.listing}`).catch(() => {});
@@ -1669,5 +1677,207 @@ test("N26c: a LINKED booking and an IN-FLIGHT claim are both silent — the disc
     voidedRows.filter((r) => r.kind === "trip_booking_without_item").length,
     0,
     "a voided claim owes the plan nothing",
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// matrix-id: N27 — D-18: A DELIVERED PURCHASE RECORDS THAT IT WAS ANNOUNCED
+//
+// Ruling 2026-09-15, punchlist D-18 = option A; ledger `2026-09-15-d18-announced-marker`;
+// migration 297.
+//
+// Ledger `2026-09-14-readymade-notifications` closed the DUPLICATE-SEND half of the buyer's
+// delivery notice and stated its own LIVENESS gap out loud: a process dying between the atomic
+// `paid → cloned` claim and the send left a purchase that was DELIVERED and ANNOUNCED TO NOBODY,
+// with nothing recording the fact and therefore nothing able to retry it.
+//
+// This is §17's ONE narrow exception arriving on a second rail: the job HANDS the row back to the
+// EXISTING shared sender (`notifyBuyerOfReadyMadeDelivery`) — it composes no message, sends
+// nothing itself, and NEVER writes `notified_at`. The negatives carry the weight, as ever: the
+// grace keeps a fresh delivery out of it, a second pass does nothing at all, a `paid` row is never
+// announced, and a buyer who deleted their own clone trip is not indicted for housekeeping.
+//
+// The STATIC half — that the job cannot stamp the column even in principle — is pinned purely in
+// `server/__tests__/ready-made-announce-marker.test.ts` (A4), which needs no database.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+/** The buyer's bell row for one purchase, by the sender's own dedupe key. */
+async function deliveryNotificationRows(purchaseId: string): Promise<any[]> {
+  const r = await db.execute(sql`
+    SELECT id, user_id, type, dedupe_key, created_at
+    FROM notifications
+    WHERE dedupe_key = ${`ready_made_purchase:${purchaseId}:delivered`}
+  `);
+  return r.rows as any[];
+}
+
+async function notifiedAtOf(purchaseId: string): Promise<Date | null> {
+  const r = await db.execute(sql`SELECT notified_at FROM ready_made_purchases WHERE id = ${purchaseId}`);
+  const v = (r.rows[0] as any)?.notified_at;
+  return v ? new Date(String(v)) : null;
+}
+
+test("N27a: a DELIVERED purchase with no announce marker is handed to the shared sender — and the job stamps nothing itself", async () => {
+  // The liveness gap, seeded exactly: the `paid → cloned` claim took (the buyer HAS their plan),
+  // and the send never happened. Nothing on disk said so before migration 297.
+  const piId = `pi_${RUN}_n27a`;
+  const purchaseId = await makePurchase({
+    paymentIntentId: piId,
+    status: "cloned",
+    cloneTripId: ids.trip,
+    ageMinutes: 24 * 60,
+  });
+  assert.equal(await notifiedAtOf(purchaseId), null, "seeded as never announced (§13: NULL, not a default)");
+  assert.equal((await deliveryNotificationRows(purchaseId)).length, 0, "and with no bell row behind it");
+
+  const result = await scanReadyMade({ paymentIntents: [rmPi({ id: piId })] }, [purchaseId]);
+
+  // THE HAND-OFF HAPPENED, and it happened through the ONE shared sender.
+  const bells = await deliveryNotificationRows(purchaseId);
+  assert.equal(bells.length, 1, "DB FACT: the buyer now has exactly ONE delivery notification");
+  assert.equal(bells[0].type, "ready_made_purchase", "written by the shared sender, not composed by the job");
+
+  // AND THE MARKER IS STAMPED — by the SENDER, which is the only writer of the column.
+  const stampedAt = await notifiedAtOf(purchaseId);
+  assert.ok(stampedAt instanceof Date, "DB FACT: the delivery now records that it was announced");
+
+  // THE ORDINARY CASE RECORDS NO EXCEPTION. An append-only accusation about a fact this same pass
+  // just fixed would outlive the problem it describes.
+  const rows = await exceptionsForRun(result.runId!);
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_delivery_not_announced").length,
+    0,
+    "a hand-off that succeeded leaves no drift to report",
+  );
+
+  // AND IT IS NOT A PROMOTION. `promoted` means "claims recovered via the shared PROMOTION" and is
+  // persisted as such; an announcement borrowing that counter would read as money recovery (§13).
+  assert.equal(result.promoted, 0, "no money moved and none is claimed to have moved");
+  assert.deepEqual(
+    result.readyMadeAnnounceHandOffs,
+    [purchaseId],
+    "the work IS reported — a pass that re-drove a delivery must not render as a silent clean pass",
+  );
+
+  // DETECT, DON'T REPAIR still holds for everything else on the rail.
+  const row = await purchaseRow(purchaseId);
+  assert.equal(row.status, "cloned", "DB FACT: the job changed no status");
+  assert.equal(row.clone_trip_id, ids.trip, "and re-minted nothing");
+});
+
+test("N27b: a SECOND pass over an announced delivery does nothing — the stamp is an atomic conditional", async () => {
+  const piId = `pi_${RUN}_n27b`;
+  const purchaseId = await makePurchase({
+    paymentIntentId: piId,
+    status: "cloned",
+    cloneTripId: ids.trip,
+    ageMinutes: 24 * 60,
+  });
+
+  await scanReadyMade({ paymentIntents: [rmPi({ id: piId })] }, [purchaseId]);
+  const first = await notifiedAtOf(purchaseId);
+  assert.ok(first, "the first pass announced it");
+
+  const second = await scanReadyMade({ paymentIntents: [rmPi({ id: piId })] }, [purchaseId]);
+
+  assert.equal(
+    (await deliveryNotificationRows(purchaseId)).length,
+    1,
+    "DB FACT: still exactly ONE bell row — the dedupe key is the send's guard",
+  );
+  const after = await notifiedAtOf(purchaseId);
+  assert.equal(
+    after?.getTime(),
+    first?.getTime(),
+    "§15: `WHERE notified_at IS NULL` is the guard, so the SECOND STAMP IS A NO-OP and the " +
+      "timestamp somebody already wrote is never moved",
+  );
+  assert.deepEqual(
+    second.readyMadeAnnounceHandOffs,
+    [],
+    "and the second pass reports no work, because there was none: the row is no longer in the predicate",
+  );
+  const rows = await exceptionsForRun(second.runId!);
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_delivery_not_announced").length,
+    0,
+    "nothing is recorded about an announced delivery",
+  );
+});
+
+test("N27c: INSIDE the announce grace nothing is sent, stamped or reported", async () => {
+  // The window is a claim about what we KNOW, not about what happened: a delivery seconds old may
+  // have its announcement in flight, and re-driving it would race the fulfilment that is running.
+  const piId = `pi_${RUN}_n27c`;
+  const purchaseId = await makePurchase({
+    paymentIntentId: piId,
+    status: "cloned",
+    cloneTripId: ids.trip,
+    ageMinutes: 0,
+  });
+
+  const result = await scanReadyMade({ paymentIntents: [rmPi({ id: piId })] }, [purchaseId]);
+
+  assert.equal((await deliveryNotificationRows(purchaseId)).length, 0, "no bell row");
+  assert.equal(await notifiedAtOf(purchaseId), null, "no stamp");
+  assert.deepEqual(result.readyMadeAnnounceHandOffs, [], "no hand-off");
+  const rows = await exceptionsForRun(result.runId!);
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_delivery_not_announced").length,
+    0,
+    "and no finding — the detector does not cry wolf on a delivery that is still being delivered",
+  );
+});
+
+test("N27d: a `paid` purchase is never announced — the two classifications do not overlap", async () => {
+  // A `paid` row was never delivered, so there is nothing to announce. Telling the buyer their plan
+  // is in their account when it is not is the §13 lie this predicate exists to avoid; R3's
+  // `rm_purchase_paid_not_cloned` is that row's own, correct classification.
+  const piId = `pi_${RUN}_n27d`;
+  const purchaseId = await makePurchase({
+    paymentIntentId: piId,
+    status: "paid",
+    cloneTripId: null,
+    ageMinutes: 24 * 60,
+  });
+
+  const result = await scanReadyMade({ paymentIntents: [rmPi({ id: piId })] }, [purchaseId]);
+
+  assert.equal((await deliveryNotificationRows(purchaseId)).length, 0, "DB FACT: no delivery was announced");
+  assert.equal(await notifiedAtOf(purchaseId), null, "and no marker was stamped");
+  const rows = await exceptionsForRun(result.runId!);
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_purchase_paid_not_cloned").length,
+    1,
+    "it is reported as UNDELIVERED, which is what it is",
+  );
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_delivery_not_announced").length,
+    0,
+    "and never as unannounced — the buyer is owed a delivery, not a message about one",
+  );
+});
+
+test("N27e: a buyer who DELETED their own clone trip is not indicted, and is not messaged", async () => {
+  // `clone_trip_id` is ON DELETE SET NULL and deleting your own trip is an ordinary act. R3 already
+  // refuses to read that shape as a failed delivery; this rail refuses it for the same reason —
+  // and there is nothing left to announce anyway, since the notice links to the plan.
+  const piId = `pi_${RUN}_n27e`;
+  const purchaseId = await makePurchase({
+    paymentIntentId: piId,
+    status: "cloned",
+    cloneTripId: null,
+    ageMinutes: 24 * 60,
+  });
+
+  const result = await scanReadyMade({ paymentIntents: [rmPi({ id: piId })] }, [purchaseId]);
+
+  assert.equal((await deliveryNotificationRows(purchaseId)).length, 0, "nothing is sent");
+  assert.equal(await notifiedAtOf(purchaseId), null, "nothing is stamped");
+  const rows = await exceptionsForRun(result.runId!);
+  assert.equal(
+    rows.filter((r) => r.kind === "rm_delivery_not_announced").length,
+    0,
+    "§13: the buyer's own housekeeping is not drift",
   );
 });

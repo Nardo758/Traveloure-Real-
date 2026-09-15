@@ -1584,4 +1584,28 @@ export const MIGRATION_FILES = [
   // `scripts/preview-offering-key-id-drop.cjs` must return ZERO rows carrying the uuid and no key
   // (docs/RELEASE.md step 3) — a drop is unrecoverable and a stamped migration never re-runs.
   "296_drop_provider_services_expert_offering_type_id.sql",
+  // Ledger `2026-09-15-d18-announced-marker` (punchlist D-18 = option A). `ready_made_purchases`
+  // gains `notified_at` — additive nullable timestamp, NO DEFAULT, NO CHECK, no backfill, declared
+  // in `shared/schema.ts` in the same commit (deploy-push durability rule). It records that the
+  // buyer's delivery announcement (PR #900's bell row + email) EXISTS. NULL = never announced,
+  // which is the only reading every legacy row can bear (§13 — a `now()` default would claim an
+  // announcement nobody made). Stamped by the ONE shared notifier through an atomic conditional
+  // (`WHERE notified_at IS NULL`); §17's drift job DETECTS a delivered-but-unannounced purchase
+  // and hands it back to that same notifier — recovery arriving late, never a second sender, and
+  // the job never writes the column itself. OMITTED from `insertReadyMadePurchaseSchema` (§19).
+  // No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no manifest entry.
+  "297_ready_made_purchases_notified_at.sql",
+  // Ledger `2026-09-15-d41-item-quantity` (punchlist D-41 = yes). `itinerary_items` gains
+  // `quantity` — integer, additive nullable, NO DEFAULT, NO CHECK, no backfill, declared in
+  // `shared/schema.ts` in the same commit (deploy-push durability rule). **NULL = ONE UNIT**, the
+  // item model's own historical shape and the only reading that leaves every existing row saying
+  // exactly what it already said (§13 — never 0, never a guessed count). It is UNITS of the
+  // listing (D-14, ledger `2026-09-15-d14-quantity-is-units`), never the party. It lifts D-16 (a):
+  // `syncItemProjection` now carries the count BOTH ways through the ONE copy-down, so a
+  // multi-unit cart line can materialize onto a plan faithfully. OMITTED from
+  // `insertItineraryItemSchema` and stripped in storage (§19) — units are set on the CART line
+  // through D-14's rails and projected, never edited on the item. Checkout math untouched
+  // (`rate × quantity` reads the cart row). No CHECK added or changed, so
+  // `preflight-prod-constraints.cjs` needs no manifest entry.
+  "298_itinerary_items_quantity.sql",
 ] as const;

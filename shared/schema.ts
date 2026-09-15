@@ -5329,6 +5329,35 @@ export const itineraryItems = pgTable("itinerary_items", {
   contentType: varchar("content_type", { length: 20 }),
   contentId: text("content_id"),
 
+  // ── HOW MANY UNITS OF THE LISTING THIS ITEM IS (migration 298, ruling 2026-09-15 punchlist
+  // D-41 = yes; ledger `2026-09-15-d41-item-quantity`).
+  //
+  // D-14 (ledger `2026-09-15-d14-quantity-is-units`) settled what the number MEANS:
+  // `cart_items.quantity` is UNITS OF THE LISTING — the multiplier `resolveItemBaseAmount` reads
+  // — and `cart_items.party_size` is THE PARTY, which is never a multiplier. LD 39 makes this
+  // table the ONE store of a plan's contents and the cart its `ready_for_checkout` PROJECTION,
+  // but the plan had nowhere to hold a count: `minParticipants`/`maxParticipants` above are the
+  // item's own capacity BOUNDS (from templates), not what was bought. So `syncItemProjection`
+  // wrote `quantity: 1` unconditionally and `materializeCartLinesAsItems` had to REFUSE a
+  // multi-unit cart line rather than silently reduce what the traveler is charged (D-16 (a)).
+  //
+  // §13 — NULL = ONE UNIT. That is the item model's own historical shape and the only reading
+  // that leaves every existing row saying exactly what it already said: never 0, never "unknown",
+  // never a guessed count. NO BACKFILL — writing `1` everywhere would turn "never asked" into
+  // "the traveler answered one", and the two would be indistinguishable afterwards.
+  //
+  // IT IS A UNIT COUNT, NOT A PARTY COUNT. A plan item carrying a party size is a SEPARATE
+  // decision nobody has made; do not conflate them here (§18 rule 1 on the number's meaning).
+  //
+  // §19 ADMISSION: OMITTED from `insertItineraryItemSchema`, re-admitted by NO pick, and stripped
+  // in storage by `stripItineraryItemRoutingFields`. THERE IS ONE ADMISSION RULE FOR UNITS and it
+  // is D-14's: a traveler sets them on the CART LINE, where `shared/cart-quantity.ts`
+  // `archetypeAsks` validates the question against the listing's archetype, and the plan item
+  // receives the count by PROJECTION. An item-side editor would be a second admission rail for
+  // the same number, bypassing that rule. Written server-side by the ONE projection module
+  // (`server/services/cart-projection.service.ts`) and by nothing else.
+  quantity: integer("quantity"),
+
   // Notes and attachments
   notes: text("notes"),
   privateNotes: text("private_notes"), // Organizer-only notes
@@ -5730,7 +5759,7 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // projection module (`server/services/cart-projection.service.ts`), and `customVenueId` names a row
 // in ANOTHER table whose owner the server verifies, which is exactly the §14 class a generic body
 // parse would hand to the caller.
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true });
 
 /**
  * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275
@@ -8252,6 +8281,27 @@ export const RECONCILIATION_EXCEPTION_KINDS = [
    *  earning unreversed. Typically a refund issued straight from the Stripe dashboard, which no
    *  platform code path knows about. */
   "rm_refund_not_reversed",
+  /** D-18 / ledger `2026-09-15-d18-announced-marker` — A DELIVERED PURCHASE THE BUYER WAS NEVER
+   *  TOLD ABOUT, AND THE RE-DRIVE COULD NOT TELL THEM EITHER.
+   *
+   *  The purchase is `cloned` — money captured, clone trip committed, author credited — and
+   *  `ready_made_purchases.notified_at` (migration 297) is still NULL past
+   *  `READY_MADE_ANNOUNCE_GRACE_MS`. That is the LIVENESS gap ledger
+   *  `2026-09-14-readymade-notifications` stated out loud: a process dying between the
+   *  `paid → cloned` claim and the send leaves a buyer who paid and heard nothing, with nothing
+   *  recording the fact and nothing able to retry it.
+   *
+   *  RAISED ONLY AFTER THE §17 HAND-OFF FAILED. The job hands the row to the ONE shared sender
+   *  (`notifyBuyerOfReadyMadeDelivery` — recovery arriving late, §17's one narrow exception) and
+   *  reports this kind only when the announcement still does not exist afterwards. The ordinary
+   *  case therefore SELF-HEALS on the pass that finds it and records no exception at all; a row
+   *  here means the SENDER could not write the buyer's notification row, which is a different and
+   *  worse fact than "nobody had told them yet".
+   *
+   *  `warning`, not `critical`: the money is correct and the product was delivered. What is wrong
+   *  is that the buyer does not know. The job NEVER writes `notified_at` itself — a detector that
+   *  stamped "announced" without sending anything would silence its own finding (§17). */
+  "rm_delivery_not_announced",
   // ── LEGACY rail (`bookings` — still live via /booking-demo and process-cart) ───────────────
   "stripe_charge_no_booking",
   "booking_no_stripe_charge",
@@ -10262,6 +10312,30 @@ export const readyMadePurchases = pgTable("ready_made_purchases", {
   disputedAt: timestamp("disputed_at"),
   disputeResolvedAt: timestamp("dispute_resolved_at"),
   disputeResolvedBy: varchar("dispute_resolved_by").references(() => users.id, { onDelete: "set null" }),
+  // ── THE BUYER WAS TOLD (migration 297, ruling 2026-09-15 punchlist D-18 = option A; ledger
+  // `2026-09-15-d18-announced-marker`). Additive nullable, NO DEFAULT, NO CHECK (publish-trap
+  // posture). Declared HERE, not only in the migration, per the deploy-push durability rule.
+  //
+  // WHAT IT RECORDS: that the buyer's delivery announcement EXISTS — PR #900's bell row (ledger
+  // `2026-09-14-readymade-notifications`) and the email gated on it. That lane made the send
+  // exactly-once (the atomic `paid → cloned` claim, plus `notifications.dedupe_key`) and stated
+  // its own LIVENESS gap out loud: a process dying between the claim and the send left a
+  // DELIVERED purchase announced to nobody, with nothing recording the fact and nothing able to
+  // retry it. This column is that record.
+  //
+  // §13: NULL = NO RECORD OF AN ANNOUNCEMENT, and there is NO BACKFILL — nothing on disk says
+  // when a buyer was told, so a stamped default would claim a fact nobody has.
+  //
+  // ONE WRITER (§18 rule 1): `notifyBuyerOfReadyMadeDelivery` — the ONE shared sender — stamps it
+  // through an atomic conditional (`storage.markReadyMadePurchaseNotified`, `WHERE notified_at IS
+  // NULL`) once it knows the notification row exists. §17's drift job DETECTS a `cloned` row with
+  // a NULL marker past the announce grace and hands it BACK to that same notifier (recovery
+  // arriving late, the §17 narrow exception); the job never writes this column itself.
+  //
+  // §19: OMITTED from `insertReadyMadePurchaseSchema` and re-admitted by no pick — there is
+  // nothing here for a client to say, and a client that could stamp it could silence its own
+  // undelivered-purchase finding.
+  notifiedAt: timestamp("notified_at"),
 }, (table) => ({
   // Migration 133. Deploy-push rule (see `bookings`). Partial WHERE mirrored verbatim: a buyer
   // may hold only ONE live purchase of a listing, but refunded/revoked rows must be allowed to
@@ -10309,6 +10383,9 @@ export const insertReadyMadePurchaseSchema = createInsertSchema(readyMadePurchas
   disputedAt: true,
   disputeResolvedAt: true,
   disputeResolvedBy: true,
+  // Migration 297 / D-18: the announcement marker is stamped by the ONE shared notifier after a
+  // send, and by nothing else — same §19 posture as the two families above.
+  notifiedAt: true,
 });
 export type ReadyMadePurchase = typeof readyMadePurchases.$inferSelect;
 export type InsertReadyMadePurchase = z.infer<typeof insertReadyMadePurchaseSchema>;

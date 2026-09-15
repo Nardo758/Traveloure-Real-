@@ -32,12 +32,35 @@
  * half exactly-once too, using an index that already exists: if the notification row was already
  * there, somebody already notified, and no second email is enqueued.
  *
- * THE LIMIT, SAID OUT LOUD (§13): a process that dies between the authorizing claim and this call
+ * ───────────────────────────────────────────────────────────────────────────────────────────────
+ * THE LIVENESS LIMIT IS NOW CLOSED (ruling 2026-09-15, punchlist **D-18** = option A; ledger
+ * `2026-09-15-d18-announced-marker`; migration 297).
+ *
+ * This header used to read: "a process that dies between the authorizing claim and this call
  * leaves a delivered purchase that was never announced, and NOTHING retries it — there is no
- * "notified" column on `ready_made_purchases`, and adding one is a migration nobody has ratified.
- * That is a LIVENESS gap, not a duplicate-send one, and it is the honest half of shipping without
- * a schema change. The `occasion_drafts.notified_at` ledger (LD 26) is the shape that would close
- * it if a ruling ever calls for it.
+ * `notified` column on `ready_made_purchases`, and adding one is a migration nobody has ratified.
+ * … The `occasion_drafts.notified_at` ledger (LD 26) is the shape that would close it if a ruling
+ * ever calls for it." There is one now, on exactly that shape.
+ *
+ * `notifyBuyerOfReadyMadeDelivery` IS ITS ONE WRITER (§18 rule 1). It stamps
+ * `ready_made_purchases.notified_at` through `storage.markReadyMadePurchaseNotified` — an ATOMIC
+ * CONDITIONAL (`WHERE id = ? AND notified_at IS NULL`; §15, the statement is the guard, never a
+ * check-then-update) — the moment it knows the buyer's notification row EXISTS.
+ *
+ * "EXISTS" AND "WE INSERTED IT" ARE DELIBERATELY DIFFERENT TESTS HERE, and the difference is the
+ * whole reason the column earns its keep. A pass that finds the bell row ALREADY THERE is looking
+ * at the precise half-finished state the marker records: the row was written and the stamp was
+ * never reached. So it stamps and does NOT re-send — the email stays gated on the insert, exactly
+ * as before. Only a THROW from the insert, where the row may genuinely not exist, leaves the
+ * marker alone; stamping there would claim an announcement on the strength of a failure.
+ *
+ * WHO CALLS IT, AND WHO MAY NOT WRITE THE COLUMN. Two callers: the `paid → cloned` claim winner
+ * inside `fulfillReadyMadePurchase`, and §17's drift job, which DETECTS a delivered purchase whose
+ * marker is still NULL past `READY_MADE_ANNOUNCE_GRACE_MS` and hands the row BACK HERE. That is
+ * §17's ONE narrow exception — an existing shared writer's own logic arriving late, the same
+ * standing `promotePaidCheckout` has on the cart rail — and it is exactly why the JOB never writes
+ * the column itself: a detector that stamped "announced" without sending anything would silence
+ * the very finding it exists to raise.
  */
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
@@ -67,6 +90,27 @@ export interface ReadyMadeDeliveryNotice {
 }
 
 /**
+ * What one call did. Four facts, because they are four DIFFERENT facts and collapsing any pair
+ * would cost a reader the distinction it needs (§13).
+ */
+export interface ReadyMadeDeliveryNotifyResult {
+  /** THIS call inserted the bell row. It is what gates the email — a second sender must not mail. */
+  notified: boolean;
+  /** This call enqueued the email. */
+  emailed: boolean;
+  /**
+   * The buyer's notification row EXISTS as of this call — inserted here, or already present.
+   * FALSE only when the insert threw, i.e. when we cannot say whether it exists. This, and not
+   * `notified`, is what §17's drift job reads to decide whether a delivery is still unannounced:
+   * "somebody already told them" and "nobody has told them" are opposite answers and `notified`
+   * reports the same `false` for both.
+   */
+  announced: boolean;
+  /** THIS call won the `notified_at IS NULL` stamp. A later pass truthfully reports `false`. */
+  stamped: boolean;
+}
+
+/**
  * The buyer's purchase confirmation: ONE bell row + ONE email.
  *
  * DELIVERY AND PROMOTION ARE THE SAME EVENT ON THIS RAIL, so this is ONE notice and not two. The
@@ -75,11 +119,11 @@ export interface ReadyMadeDeliveryNotice {
  * is no later "delivered" transition to hang a second message on, and inventing one would tell the
  * buyer the same fact twice.
  *
- * Never throws. Returns what it did, for the caller's log and for tests.
+ * Never throws. Returns what it did, for the caller's log, for §17's drift job and for tests.
  */
 export async function notifyBuyerOfReadyMadeDelivery(
   notice: ReadyMadeDeliveryNotice,
-): Promise<{ notified: boolean; emailed: boolean }> {
+): Promise<ReadyMadeDeliveryNotifyResult> {
   let notified = false;
   try {
     const { inserted } = await storage.createNotificationOnce({
@@ -102,17 +146,38 @@ export async function notifyBuyerOfReadyMadeDelivery(
     logger.error({ err, purchaseId: notice.purchaseId }, `${TAG} buyer delivery notification failed (non-fatal)`);
     // Fall through WITHOUT emailing: the notification row is this send's exactly-once marker, and
     // an email with no marker behind it is an email nothing can stop from being sent again.
-    return { notified: false, emailed: false };
+    // AND WITHOUT STAMPING: the insert threw, so we cannot say the announcement exists, and
+    // `notified_at` is a record of a fact — never of an attempt (§13, D-18).
+    return { notified: false, emailed: false, announced: false, stamped: false };
   }
 
-  if (!notified) return { notified: false, emailed: false };
+  // ── THE MARKER (migration 297, D-18) ────────────────────────────────────────────────────────
+  // Reached whether or not THIS call inserted the row, because the insert did not throw and the
+  // row is therefore there either way. `inserted === false` is exactly the state the column exists
+  // to close: the bell row was written by a process that died before it could stamp. §15 — the
+  // `notified_at IS NULL` predicate inside the statement is the guard, so a recovery pass racing a
+  // live fulfilment moves no timestamp somebody already wrote, and reports `stamped: false`
+  // truthfully rather than claiming the write.
+  //
+  // NEVER FAILS THE CALLER (§15b): a marker that could not be written leaves the announcement
+  // itself intact and the row eligible for one more detector pass, which is the harmless failure.
+  let stamped = false;
+  try {
+    ({ stamped } = await storage.markReadyMadePurchaseNotified(notice.purchaseId));
+  } catch (err) {
+    logger.error({ err, purchaseId: notice.purchaseId }, `${TAG} announce marker stamp failed (non-fatal)`);
+  }
+
+  // The EMAIL stays gated on the INSERT, unchanged: if the row was already there somebody already
+  // notified, and no second email is enqueued. Only the marker treats the two cases alike.
+  if (!notified) return { notified: false, emailed: false, announced: true, stamped };
 
   try {
     const buyer = await storage.getUser(notice.buyerId);
     if (!buyer?.email) {
       // §13: no address is not a failure to report as one — there is simply nowhere to send.
       logger.warn({ purchaseId: notice.purchaseId }, `${TAG} buyer has no email address — bell row only`);
-      return { notified: true, emailed: false };
+      return { notified: true, emailed: false, announced: true, stamped };
     }
     const payload = buildReadyMadeDeliveredEmailPayload({
       firstName: buyer.firstName ?? null,
@@ -130,10 +195,10 @@ export async function notifyBuyerOfReadyMadeDelivery(
       text: payload.text,
       metadata: { purchaseId: notice.purchaseId, tripId: notice.cloneTripId },
     });
-    return { notified: true, emailed: true };
+    return { notified: true, emailed: true, announced: true, stamped };
   } catch (err) {
     logger.error({ err, purchaseId: notice.purchaseId }, `${TAG} buyer delivery email failed (non-fatal)`);
-    return { notified: true, emailed: false };
+    return { notified: true, emailed: false, announced: true, stamped };
   }
 }
 
