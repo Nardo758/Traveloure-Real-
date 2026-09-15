@@ -76,7 +76,14 @@ export const CLONE_CARRIED_FIELDS = [
   // What it is grounded to. All three are pointers into PLATFORM-WIDE catalogs (provider_services,
   // dmo_extracted_places, affiliate_products), NOT into the author's trip: they are the author's
   // recommendation of a bookable or known thing, which is exactly what the buyer bought. None of
-  // them is a booking — the booking columns are excluded below.
+  // them is a booking — the booking columns are excluded below. D-3 (decision-maker ruling
+  // 2026-09-15, option A; ledger `2026-09-15-d3-readymade-separate-checkout`) names what that means
+  // on the buyer's slip: a cloned item keeps its `providerServiceId` and arrives with NO booking,
+  // NO slot and `routingStatus: "in_planning"`, so the slip's EXISTING neutral "Planning" routing
+  // pill already says "in your plan, not booked" and the origin chip says "from your expert". The
+  // buyer carts that service themselves, at its own listing price, on its own checkout — a
+  // ready-made purchase and a service booking are never mixed (LD 39: the cart is this table's
+  // `ready_for_checkout` projection). No new chip, no new column, no new rail.
   "providerServiceId", "dmoExtractedPlaceId", "affiliateProductId", "gemId",
   // What the author reckons it costs. `estimatedCost` is a JUDGEMENT the author published as part
   // of the plan (§8: it is not a fee, a rate or a commission — it is a traveler-facing estimate),
