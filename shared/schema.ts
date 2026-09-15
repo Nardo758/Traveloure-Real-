@@ -8337,6 +8337,22 @@ export const reconciliationRuns = pgTable(
     scannedRefunds: integer("scanned_refunds").notNull().default(0),
     scannedCartBookings: integer("scanned_cart_bookings").notNull().default(0),
     scannedLegacyBookings: integer("scanned_legacy_bookings").notNull().default(0),
+    /**
+     * The READY-MADE rail's two per-pass tallies (D-42, migration 301, ledger
+     * `2026-09-15-d42-reconciliation-tallies`): purchase rows examined, and DELIVERED-but-
+     * unannounced purchases handed back to the ONE shared sender (D-18). Written on EVERY pass —
+     * completed, skipped and failed — by the same `closeRun` UPDATE that sets the five columns
+     * above (§17 rule 2; §18 rule 1 — one run-row writer).
+     *
+     * NULLABLE with NO DEFAULT, unlike the five above, and that difference is the ruling: every
+     * row written before migration 301 came from a job that did not count these things at all, so
+     * **NULL = NOT TALLIED**. A `DEFAULT 0` would rewrite those rows into "this pass examined zero
+     * ready-made purchases" — a claim nobody has (§13). A genuine 0 (a quiet window) is a
+     * different fact and is stored as 0. Readers omit the figure on NULL; they never render it
+     * as zero.
+     */
+    checkedReadyMadePurchases: integer("checked_ready_made_purchases"),
+    readyMadeAnnounceHandOffs: integer("ready_made_announce_hand_offs"),
     /** Every drift found this pass, including ones already on record from an earlier pass. */
     exceptionsDetected: integer("exceptions_detected").notNull().default(0),
     /** Rows this pass actually inserted (detected minus already-recorded). */
