@@ -205,7 +205,7 @@ export default function TermsOfServicePage() {
 
             <h3 className="text-xl font-medium mb-3">5.5.3 Commission Structure</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
-              <li><strong>Referral Commission:</strong> 5-15% of booking value for referred travelers (tier-based on performance)</li>
+              <li><strong>Referral Commission:</strong> A share of the value of bookings made by travelers you refer, set by Traveloure's published fee schedule in effect at the time of the booking and shown in your Traveloure console</li>
               <li><strong>Content Bonus:</strong> Additional compensation for featured platform content</li>
               <li><strong>Affiliate Links:</strong> Unique tracking links with 30-day cookie duration</li>
               <li><strong>Payout Terms:</strong> Monthly payouts, minimum $50 threshold, via Stripe</li>
@@ -249,7 +249,7 @@ export default function TermsOfServicePage() {
 
             <h3 className="text-xl font-medium mb-3">5.6.3 Platform Fees</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-              <li><strong>Commission Rate:</strong> 15-20% of service fees (tier-based on volume)</li>
+              <li><strong>Commission Rate:</strong> The platform fee applicable to a booking is set by Traveloure's published fee schedule in effect at the time of the booking. The amount you receive is shown in your Traveloure console on each earning and payout record</li>
               <li><strong>Payment Processing:</strong> 2.9% + $0.30 per transaction (Stripe fees)</li>
               <li><strong>Payout Schedule:</strong> Weekly payouts for verified experts</li>
               <li><strong>Minimum Payout:</strong> $25 threshold for withdrawal</li>
@@ -290,24 +290,15 @@ export default function TermsOfServicePage() {
               All payments are processed through Stripe Connect, our secure payment processor. By using the Platform, you agree to Stripe's terms of service and privacy policy. Payment information is collected and processed by Stripe; Traveloure does not store complete credit card numbers.
             </p>
 
-            <h3 className="text-xl font-medium mb-3">7.2 Platform Credit System</h3>
-            <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
-              <li>Users purchase platform credits in advance</li>
-              <li>Credits are used to pay for platform fees and Expert consultation services</li>
-              <li>Service Provider services may be paid through credits or direct payment</li>
-              <li>Credits are non-refundable except as required by law</li>
-              <li>Unused credits do not expire but may be subject to inactivity fees after 24 months</li>
-            </ul>
-
-            <h3 className="text-xl font-medium mb-3">7.3 Commission Structure</h3>
+            <h3 className="text-xl font-medium mb-3">7.2 Commission Structure</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              <strong>Local Expert Commissions:</strong> Experts receive 75-85% of consultation fees; Traveloure retains 15-25% as platform fee. Exact split determined by Expert tier, performance, and volume.
+              <strong>Local Expert Commissions:</strong> Traveloure retains a platform fee from consultation fees and the Expert receives the remainder. The split is set by Traveloure's published fee schedule in effect at the time of the booking, and the amount you receive is shown in your Traveloure console on each earning and payout record.
             </p>
             <p className="text-muted-foreground leading-relaxed mb-6">
-              <strong>Service Provider Commissions:</strong> Standard commission of 4-12% of booking value. Rate varies by service category, volume, and partnership level.
+              <strong>Service Provider Commissions:</strong> Traveloure retains a platform fee from the value of each booking. The fee is set by Traveloure's published fee schedule in effect at the time of the booking, and the amount you receive is shown in your Traveloure console on each earning and payout record.
             </p>
 
-            <h3 className="text-xl font-medium mb-3">7.4 Payout Terms</h3>
+            <h3 className="text-xl font-medium mb-3">7.3 Payout Terms</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
               For Experts and Service Providers:
             </p>
@@ -319,7 +310,7 @@ export default function TermsOfServicePage() {
               <li>Tax reporting required; Forms 1099 issued for US-based users earning $600+ annually</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">7.5 Taxes and Currency</h3>
+            <h3 className="text-xl font-medium mb-3">7.4 Taxes and Currency</h3>
             <p className="text-muted-foreground leading-relaxed">
               Users are responsible for all applicable taxes. Travelers are responsible for applicable sales tax, VAT, or tourism taxes. Experts and Providers are responsible for income tax, self-employment tax, and business taxes. All transactions are processed in US Dollars (USD) unless otherwise specified. Currency conversion fees may apply for international transactions.
             </p>
@@ -513,7 +504,7 @@ export default function TermsOfServicePage() {
 
             <h3 className="text-xl font-medium mb-3">16.3 Effect of Termination</h3>
             <p className="text-muted-foreground leading-relaxed">
-              Upon termination: your access to the Platform will cease; your account data will be deleted, apart from records we are legally required to retain as described in Section 6 of our Privacy Policy; unused platform credits may be forfeited (subject to applicable law); sections of these Terms that by nature should survive will remain in effect.
+              Upon termination: your access to the Platform will cease; your account data will be deleted, apart from records we are legally required to retain as described in Section 6 of our Privacy Policy; sections of these Terms that by nature should survive will remain in effect.
             </p>
           </section>
 
