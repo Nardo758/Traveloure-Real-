@@ -89,7 +89,93 @@ export const OWNER_BOOKING_TRANSITIONS: Record<string, readonly string[]> = {
  *                         concurrent requests both believe they opened the dispute.
  *   - `expired`         — a swept claim; it never held money.
  */
-export const DISPUTABLE_FROM_STATUSES: readonly string[] = ["confirmed", "deposit_paid", "completed"];
+/*
+ * ── D-6 ACCEPTANCE ADDS TWO STATUSES TO THIS LIST (ledger `2026-09-15-d24-d26-acceptance-columns`)
+ * `awaiting_acceptance` and `revision_requested` descend from `confirmed`, so the money is in
+ * escrow exactly as it is there and NOTHING has minted — which is the whole predicate above. A
+ * traveler who believes the delivered artifact is not what was sold must have a remedy that is
+ * neither "accept it" nor "ask for a revision", and a traveler whose revision request is ignored
+ * must have one too.
+ *
+ * A REVISION REQUEST IS STILL NEVER A DISPUTE, and adding these does not blur that: a revision is
+ * an entitlement the listing SOLD (`provider_services.revisions_included`), it writes a
+ * `booking_revision_requests` row and flips to `revision_requested`; a dispute is a CLAIM that
+ * something went wrong, it writes `booking_metadata.disputeReason`, it flips to `disputed` and it
+ * marks the earner's `dispute_state='open'`. Different word, different surface, different
+ * consequence. The two rails share nothing but this table.
+ *
+ * The route's `completed_at` cutoff is unaffected: neither status has a `completed_at`, so the
+ * time bound simply does not apply (its own comment already says so), and the STATE bound is this
+ * list.
+ */
+export const DISPUTABLE_FROM_STATUSES: readonly string[] = [
+  "confirmed",
+  "deposit_paid",
+  "completed",
+  "awaiting_acceptance",
+  "revision_requested",
+];
+
+/*
+ * ── D-6 (punchlist D-24/D-25/D-26, option A; ledger `2026-09-15-d24-d26-acceptance-columns`) ─────
+ * THE ACCEPTANCE RAILS' FROM-STATE LISTS. They live here for the reason this module exists: a
+ * second rail re-deciding "which statuses may become X" beside the first is the derivation-drift
+ * class §18 rule 1 names.
+ *
+ * NEGATIVE SPACE, stated so green means green-within-stated-bounds (§18d): these are FROM-state
+ * lists and nothing else. They say nothing about WHO may ask (the accept and revision rails gate on
+ * `traveler_id` from the session, the delivery rail on `provider_id` — §14), nothing about WHETHER
+ * the listing takes acceptance at all (`acceptanceModeFor` in `shared/acceptance-window.ts` answers
+ * that, and D-40's `records_only` hybrid arm moves NO status), and nothing about the escalation to
+ * admin review, which is D-27's lane and has no list here because this lane writes none of it.
+ */
+
+/**
+ * ACCEPT. Only a booking that is actually waiting for the traveler's answer. One entry, and the
+ * narrowness is the point: acceptance is what MINTS on the `gates_completion` arm, so it must never
+ * be able to consume `confirmed` (which is the timer's state, not the traveler's) or any terminal
+ * state.
+ */
+export const ACCEPTANCE_FROM_STATUSES: readonly string[] = ["awaiting_acceptance"];
+
+/** REQUEST A REVISION. The same single state, for the same reason. */
+export const REVISION_REQUESTABLE_FROM_STATUSES: readonly string[] = ["awaiting_acceptance"];
+
+/**
+ * DELIVER (or RE-DELIVER) THE ARTIFACT — the statuses in which a provider may set the per-booking
+ * pointer and stamp `delivered_at`. Paid-equivalent states only: a `payment_pending` provisional
+ * claim is never delivered against (§15b), and a terminal row is not re-opened by an upload.
+ *
+ * NOTE what is NOT here: this list permits the WRITE of the delivery facts. The only STATUS FLIP
+ * the delivery rail performs is the one below.
+ */
+export const ARTIFACT_DELIVERY_FROM_STATUSES: readonly string[] = [
+  "confirmed",
+  "deposit_paid",
+  "awaiting_acceptance",
+  "revision_requested",
+];
+
+/**
+ * RE-OPEN THE ACCEPTANCE WINDOW. The delivery rail's ONE status flip:
+ * `revision_requested` -> `awaiting_acceptance`.
+ *
+ * `confirmed` is DELIBERATELY ABSENT, and it is the sequencing decision this lane is most likely to
+ * be read wrong on. Moving `confirmed` -> `awaiting_acceptance` on first delivery is D-27's lane
+ * (the `artifact_timer` amendment: the job's artifact arm targets `awaiting_acceptance`). Doing it
+ * here would take every artifact booking OFF the only completion path that exists today — the
+ * timer's candidate query keys on `confirmed` — and strand it in a state nothing can leave until
+ * D-27 ships. So first delivery stamps the delivery facts and leaves the status alone.
+ */
+export const ARTIFACT_REDELIVERY_REOPEN_FROM_STATUSES: readonly string[] = ["revision_requested"];
+
+/**
+ * THE D-40 HYBRID ARM'S WRITE STATES. A `records_only` acceptance moves NO status — the booking
+ * keeps `service_date_timer` and nothing mints — so this list bounds only when `accepted_at` may be
+ * stamped and a revision row written on such a booking: the paid-equivalent states, for the same
+ * reason the delivery list uses them.
+ */
+export const ARTIFACT_RECORD_ONLY_STATUSES: readonly string[] = ["confirmed", "deposit_paid"];
 
 /**
  * ── V-24 (punchlist §2; ledger `2026-09-15-v23-v25-from-state-guards`) ────────────────────────────
