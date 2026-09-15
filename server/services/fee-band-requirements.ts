@@ -163,8 +163,18 @@ export const RESOLVER_FEE_BAND_REQUIREMENTS: readonly FeeBandRequirement[] = [
     bandKey: CONCIERGE_AI_TASK_BAND,
     expectedType: "flat_cents",
     required: true,
-    owner: "pricing.routes",
-    fallback: failLoud("GET /api/pricing (requireFlatCentsBand)"),
+    // AMENDED by punchlist **D-20** = A (ledger `2026-09-15-d20-d21-proposal-charge`): this band
+    // stopped being display-only the moment the AI-proposal apply became a charge point. Its
+    // `owner` named only `pricing.routes` while the real consequence of deactivating it is now
+    // that a TRAVELER CANNOT APPLY A PROPOSAL — `resolveAiTaskChargeCents`
+    // (`proposal-charge.service.ts`) reads it through the same fail-loud accessor, so the charge
+    // path refuses rather than pricing itself. V-5's deactivation warning is generated from this
+    // entry, so leaving it stale would have told an operator that turning the band off changes a
+    // number on the pricing page (§13 — the warning has to name what actually breaks).
+    owner: "pricing.routes / proposal-charge.service (the AI-proposal apply charge)",
+    fallback: failLoud(
+      "GET /api/pricing (requireFlatCentsBand) and resolveAiTaskChargeCents (proposal-charge.service) — the apply charge",
+    ),
   },
   {
     bandKey: CONCIERGE_DONE_FOR_YOU_DEPOSIT_BAND,

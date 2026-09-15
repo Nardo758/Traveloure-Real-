@@ -121,7 +121,10 @@ export function HowItWorks() {
               <Price
                 eyebrow="Pay per use"
                 main={cents(pricing?.optimizerRunDisplay?.priceCents)}
-                mainNote={`/ run · ${cents(pricing?.aiTaskCents)} / task`}
+                /* D-21 (ledger `2026-09-15-d20-d21-proposal-charge`): a task is charged once per
+                    proposal APPLIED, never per question. The amount stays band-derived — this note
+                    adds the timing, never a literal. */
+                mainNote={`/ run · ${cents(pricing?.aiTaskCents)} / task, charged on apply`}
                 second={pricing?.tripPass ? `Trip Pass ${cents(pricing.tripPass.priceCents)}` : undefined}
                 secondNote={pricing?.tripPass ? "/ trip · unlimited" : undefined}
               />
