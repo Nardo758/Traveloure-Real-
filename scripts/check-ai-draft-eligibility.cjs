@@ -55,9 +55,14 @@
  *     `check-itinerary-rebuild-guard.cjs`'s, and this guard does not duplicate it.
  *   • TEST files are exempt by design — a fixture drives the snapshot rail directly to prove what
  *     it does.
- *   • The PAID rails are out of scope entirely and are not exemptions, because they never match
- *     the predicate: the optimizer (`generateOptimizedItineraries`), apply-to-trip and adopt-stop
- *     insert optimizer-authored items without a rebuild delete and without the snapshot.
+ *   • The PAID rails are out of scope, but not all of them by the same mechanism. Most never match
+ *     the predicate at all: the optimizer (`generateOptimizedItineraries`), apply-to-trip and
+ *     adopt-stop insert optimizer-authored items without a rebuild delete and without the
+ *     snapshot. The AI-PROPOSAL APPLY (`proposal-charge.service.ts`, punchlist D-20/D-21) DOES
+ *     match, because it reuses the ONE rebuild-guard predicate on its replace delete rather than
+ *     writing a second protected-class test beside it (LD 42 D3, §18 rule 1) — so it is an
+ *     EXEMPTION with its reason printed, not a silent out-of-scope. A pay-gated rail naming this
+ *     token is a match on the token, never on the class of defect.
  *   • Client code is out of scope; the client cannot write these rows.
  */
 
@@ -90,6 +95,16 @@ const EXEMPTIONS = {
   "server/services/itinerary-rebuild-guard.ts":
     "The rebuild-guard predicate's own DEFINITION. It names the token because it exports it; it " +
     "writes nothing and touches no trip.",
+  "server/services/proposal-charge.service.ts":
+    "The AI-PROPOSAL APPLY and its charge point (punchlist D-20/D-21, ledger " +
+    "`2026-09-15-d20-d21-proposal-charge`). It is a PAID rail — LD 41 (b) says any AI action on a " +
+    "non-empty slip is charged, and this one is: the apply is authorized by " +
+    "`resolveProposalApplyAuthorization` (a Trip Pass, or a PaymentIntent verified for that exact " +
+    "proposal) before it writes anything. It never runs a free draft, never calls the snapshot, " +
+    "and never generates — it applies a change set the traveler has already read. It names the " +
+    "rebuild-guard token only to REUSE the one protected-class predicate on its replace delete " +
+    "(LD 42 D3, §18 rule 1), which is the opposite of the defect this guard exists to catch. " +
+    "Exempt because it is already pay-gated, not because the rule is waived.",
 };
 
 /** Directories never scanned. */

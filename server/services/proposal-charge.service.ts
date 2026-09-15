@@ -338,7 +338,16 @@ export async function applyPlanProposal(params: {
 
       // The WHERE-clause form of the same class, ANDed in as the second layer: a row whose state
       // changed between the read above and this delete still survives.
+      //
+      // item-removed:replace — an apply REPLACES the rows the proposal names with the rows it adds,
+      // in ONE transaction. R15 (ledger `2026-08-17-partner-demand-r15-transition-log`): this is a
+      // rebuild, not a removal, so it writes NO `item_removed` diary row — emitting one would put a
+      // false removal signal into the demand pipeline for a row the traveler never removed (§13).
+      // Same classification, same reason, as apply-to-trip's own replace delete.
       const deleted = await tx
+        // item-removed:replace — a rebuild in one transaction, never a removal signal (R15).
+        // rebuild-guard-exempt: the WHERE carries `itineraryItemRebuildDeletable()` itself, so
+        // ready_for_checkout / purchased / booked rows and D3 expert work are spared by construction.
         .delete(itineraryItems)
         .where(
           and(
