@@ -90,6 +90,26 @@ jobs:
       - name: Optimizer run predicate pin (LD 42 D17)
         run: npx tsx --test server/__tests__/optimizer-run-predicate.test.ts
 
+      # 2026-09-15-d18-announced-marker (punchlist D-18 = option A, migration 297): a DELIVERED
+      # ready-made purchase records that it was announced. The pure half — the grace is CONFIG on
+      # the envDays pattern and not a literal; §19 keeps `notifiedAt` out of the insert schema;
+      # §18 rule 1 gives the stamp exactly ONE caller (the shared sender); §17 proves the drift job
+      # READS the column and can never write it; §15 proves the stamp's WHERE is the guard, so a
+      # second stamp is a no-op by construction. The behavioural half (hand-off, grace, the
+      # negatives) is N27 in the reconciliation-detection job below, which has a database.
+      - name: Ready-made announce marker pin (D-18)
+        run: npx tsx --test server/__tests__/ready-made-announce-marker.test.ts
+
+      # 2026-09-15-d41-item-quantity (punchlist D-41 = yes, migration 298): a plan item may carry a
+      # unit count, NULL = one unit. The pure half — §19 omits it from the item insert schema and
+      # strips it in storage; the count crosses between `cart_items` and `itinerary_items` in ONE
+      # module, both ways; the `quantity_gt_one` refusal is DELETED rather than left unreachable
+      # (§18c); a single-unit line is carried as NULL so a `DEFAULT 1` cart row never becomes "the
+      # traveler answered one" (§13); D-14's archetype admission and the checkout multiplier are
+      # both untouched. The behavioural half is G6/G7/G13 in guest-cart-becomes-plan-gate.yml.
+      - name: Plan item unit count pin (D-41)
+        run: npx tsx --test server/__tests__/plan-item-units.test.ts
+
 
       # ── tsc baseline ratchet ──────────────────────────────────────────────────
       # The repo is NOT tsc-clean, so the gate is a CEILING, not zero. THE NUMBER
@@ -1583,7 +1603,14 @@ jobs:
       # (§15c's "money leg only"); the CLONE stays strictly once-only. N25a fails on the
       # pre-fix code, and N25c proves the partial predicate leaves the five other earnings
       # rails free to repeat a reference_id.
-      - name: Reconciliation detection + ready-made recovery and retry (N20–N25)
+      # N27 (ledger 2026-09-15-d18-announced-marker, punchlist D-18, migration 297) adds §17's ONE
+      # narrow exception on this rail, and it is not a money one: a DELIVERED purchase whose
+      # `notified_at` is still NULL past the announce grace is HANDED BACK to the existing shared
+      # sender — the job composes no message, sends nothing itself and never writes the column.
+      # The negatives carry the weight as always: the grace keeps a fresh delivery out of it, a
+      # second pass moves no timestamp (the stamp's WHERE is the guard), a `paid` row is never
+      # announced, and a buyer who deleted their own clone trip is not indicted for housekeeping.
+      - name: Reconciliation detection + ready-made recovery, retry and announce (N20–N27)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/reconciliation-detection.db.test.ts
   roles-needed-reachability-guard:
     name: roles-needed-reachability-guard (ledger 2026-09-04-roles-needed)

@@ -1,0 +1,60 @@
+-- Migration 298: A PLAN ITEM MAY CARRY A UNIT COUNT.
+-- Decision-maker ruling 2026-09-15, punchlist **D-41** = yes; ledger
+-- `2026-09-15-d41-item-quantity`. Additive, nullable, NO DEFAULT, NO CHECK, no backfill (the
+-- migration-181/195/273/275/277/279/280/281/282/284/287/295 posture — a CHECK here is exactly the
+-- publish-time drizzle-push failure CLAUDE.md's Coordination Prevention rules warn about). The
+-- column is ALSO declared in `shared/schema.ts` in this same commit: per the deploy-push
+-- durability rule, a DB object the code depends on that `schema.ts` does not declare is dropped by
+-- Replit's publish-time push and NEVER recreated (the stamped migration will not re-run).
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHY: THE CART COULD COUNT UNITS AND THE PLAN COULD NOT
+-- ─────────────────────────────────────────────────────────────────────────────
+-- D-14 is answered (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`):
+-- `cart_items.quantity` is UNITS OF THE LISTING — the multiplier `resolveItemBaseAmount` reads —
+-- and `cart_items.party_size` (migration 206) is THE PARTY, which is never a multiplier. LD 39
+-- makes `itinerary_items` the ONE store of a plan's contents and the cart its
+-- `ready_for_checkout` PROJECTION. But this table carried no unit count at all —
+-- `min_participants`/`max_participants` are the item's own capacity BOUNDS, from templates — so
+-- `syncItemProjection` wrote `quantity: 1` unconditionally and `materializeCartLinesAsItems` had
+-- to REFUSE a multi-unit cart line (`quantity_gt_one`) rather than silently reduce what the
+-- traveler is charged. Three seats of one listing therefore could not become a plan item at all.
+-- That was D-16 (a), named rather than undecided, and it is this column that lifts it.
+--
+-- §13 — NULL = ONE UNIT, and that is the only reading that leaves every existing row saying
+-- exactly what it already said. It is the item model's own historical shape: every row on disk was
+-- written by a rail that had no unit concept, and every reader of those rows treats them as one
+-- unit today. NULL is therefore never 0, never "unknown-so-omit-the-line", and never a guessed
+-- count. NO BACKFILL is owed or possible — writing `1` everywhere would turn "the question was
+-- never asked" into "the traveler answered one", and would be indistinguishable afterwards from a
+-- real single-unit answer.
+--
+-- IT IS A UNIT COUNT, NOT A PARTY COUNT. The party lives on `cart_items.party_size` (ruling 83)
+-- and has no home on this table; giving a plan item one is a SEPARATE decision nobody has made.
+-- Do not conflate them in this column — collapsing the two numbers is exactly how a villa for
+-- seven came to be billed seven times, which is the bug D-14 exists to have ruled out.
+--
+-- WHO WRITES IT (§18 rule 1 — ONE copy-down). `server/services/cart-projection.service.ts` and
+-- nothing else: Section 2 (`syncItemProjection`) projects the item's count onto the cart row, and
+-- the two materialize/convert rails carry the cart line's count onto the item through the ONE
+-- shared `buildPlanItemValues`. That module inserts and updates directly, so the storage strip
+-- below costs the one legitimate writer nothing.
+--
+-- ADMISSION (§19): `insertItineraryItemSchema` OMITS it — beside the migration-295 three — and NO
+-- pick-based schema re-admits it, and `stripItineraryItemRoutingFields` strips it in storage for
+-- the raw `req.body` destructure on the canonical item PATCH route. THERE IS ONE ADMISSION RULE
+-- FOR UNITS AND IT IS D-14's: a traveler sets units on the CART LINE, through the cart rails that
+-- already validate the question against the listing's archetype (`shared/cart-quantity.ts`
+-- `archetypeAsks` — a stay and a bundle are pinned to one unit, a seat-shaped service DERIVES the
+-- count server-side), and the plan item receives it by projection. Editing units on the item
+-- directly would be a second admission rail for the same number, bypassing the archetype rule, and
+-- is deliberately not built.
+--
+-- CHECKOUT MATH IS UNTOUCHED. `resolveItemBaseAmount` prices a line `rate × quantity` off the CART
+-- row, exactly as before; this column adds no charge, removes none, and no money path reads it.
+--
+-- NO INDEX. Nothing filters or joins on a unit count.
+--
+-- Idempotent; safe to re-run.
+
+ALTER TABLE itinerary_items ADD COLUMN IF NOT EXISTS quantity INTEGER;
