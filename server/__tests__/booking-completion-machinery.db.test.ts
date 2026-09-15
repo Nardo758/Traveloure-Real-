@@ -5,8 +5,14 @@
  * six different completion CONDITIONS, one completion EVENT. So the properties worth proving are
  * the ones a per-method fork would break, and most of them are NEGATIVES:
  *
- *   A. The pdf timer fires on BOTH arms the ruling names — 7 days after the FIRST download, and
- *      7 days UNDOWNLOADED post-delivery — and on NEITHER of them early.
+ *   A. THE PDF TIMER NO LONGER COMPLETES ANYTHING (D-27; ledger
+ *      `2026-09-15-d27-artifact-timer-acceptance-prompt`). Ruling 63's two arms — 7 days after the
+ *      FIRST download, and 7 days UNDOWNLOADED post-delivery — used to flip a pdf booking to
+ *      `completed` and mint the seller's held earning with the traveler never having answered, and
+ *      D-6 forbids exactly that. The arms SURVIVE as the DELIVERY-INSTANT derivation
+ *      (`resolveArtifactDeliveryInstant`), which now drives the acceptance PROMPT instead. These
+ *      proofs are RE-PINNED onto the post-D-27 invariant rather than deleted: an artifact reaches
+ *      `awaiting_acceptance`, never `completed`, and mints nothing on either arm.
  *   B. §13: a booking that lacks the data to decide is SKIPPED WITH A STATED REASON, never
  *      guessed into a completion. A guessed completion mints real money.
  *   C. §15: the flip is an atomic conditional, so a double run of the timer, a double click on
@@ -269,105 +275,96 @@ after(async () => {
   if (stranger) await db.execute(sql`DELETE FROM users WHERE id = ${stranger.id}`).catch(() => {});
 });
 
-// ══ A — the pdf timer, both arms ═════════════════════════════════════════════════════════════
+// ══ A — the pdf arms, RE-PINNED to the post-D-27 invariant ═══════════════════════════════════
+//
+// Every proof below asserted a COMPLETION before D-27. Each is re-pinned, not deleted: the same
+// fixture, the same clock, and the assertion inverted to the rule that replaced it — an artifact is
+// PROMPTED to `awaiting_acceptance` and mints NOTHING, and only the traveler's acceptance (or a
+// human resolving the escalated dispute) completes it.
 
-test("D8-P1: pdf auto-completes 7 days after the FIRST download, through the shared spine", async () => {
+test("D8-P1 (re-pinned, D-27): a downloaded pdf is PROMPTED to awaiting_acceptance, never completed", async () => {
   const bk = await makeBooking({ serviceId: ids.pdfSvc, confirmedDaysAgo: 20 });
   await logDownload(bk, ids.pdfSvc, 8);
   await logDownload(bk, ids.pdfSvc, 2); // a later re-download must not restart the clock
 
-  const before = await diaryCount(bk);
   const run = await runBookingAutoCompletion(undefined, verifyPaid);
 
-  assert.ok(run.completedBookingIds.includes(bk), `job must complete ${bk}; skipped=${JSON.stringify(run.skipped)}`);
-  assert.equal(await statusOf(bk), "completed");
-  const stamp = await completionStamp(bk);
-  assert.equal(stamp?.rule, "artifact_timer");
-  assert.equal(stamp?.actor, "auto_complete_pdf");
-  assert.equal(stamp?.evidence?.arm, "downloaded", "the DOWNLOADED arm must be the one that fired");
-  // ONE payout machinery: the SAME held earnings the in-person flip mints.
-  const earnings = await earningCounts(bk);
-  assert.equal(earnings.provider, 1, "exactly one provider earning");
-  assert.equal(earnings.expert, 1, "exactly one expert earning");
-  assert.equal(earnings.held, 2, "both born HELD — completion is not payout");
-  assert.equal(await diaryCount(bk), before + 1, "exactly one booking_completed diary row");
+  assert.ok(!run.completedBookingIds.includes(bk), "D-6: a clock may never complete an artifact");
+  assert.ok(run.promptedBookingIds.includes(bk), `job must PROMPT ${bk}; skipped=${JSON.stringify(run.artifactSkipped)}`);
+  assert.equal(await statusOf(bk), "awaiting_acceptance");
+  assert.equal(await completionStamp(bk), null, "nothing completed, so nothing stamped a completion");
+  // THE MONEY TEST, and it is the whole of D-6: the prompt mints nothing.
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
 });
 
-test("D8-N1: pdf does NOT auto-complete before 7 days after the first download", async () => {
+test("D8-N1 (re-pinned, D-27): a pdf inside its old timer window is not prompted early either — it has a delivery instant, so it IS prompted", async () => {
   const bk = await makeBooking({ serviceId: ids.pdfSvc, confirmedDaysAgo: 20 });
   await logDownload(bk, ids.pdfSvc, 3);
 
+  // The RULE still classifies it; it simply no longer completes anything (§13 — the refusal is
+  // stated rather than the case being deleted).
   const e = await resolveCompletionEligibility(bk);
   assert.equal(e.rule, "artifact_timer");
   assert.equal(e.eligible, false);
-  assert.equal(e.reason, "window_open");
+  assert.equal(e.reason, "artifact_takes_acceptance");
 
-  await runBookingAutoCompletion(undefined, verifyPaid);
-  assert.equal(await statusOf(bk), "confirmed", "an open window must leave the booking untouched");
-  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 }, "no money may move inside the window");
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
+  assert.ok(!run.completedBookingIds.includes(bk));
+  // The ASK does not wait for the old 7-day timer: a delivered artifact is offered for acceptance
+  // as soon as it is delivered. The WINDOW is what the 7 days now measure, and it ends in a
+  // dispute rather than in a completion.
+  assert.equal(await statusOf(bk), "awaiting_acceptance");
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 }, "no money may move on a prompt");
 });
 
-test("D8-P2: pdf auto-completes 7 days UNDOWNLOADED post-delivery", async () => {
+test("D8-P2 (re-pinned, D-27): the UNDOWNLOADED listing-clock arm prompts too, and still mints nothing", async () => {
   await db.execute(sql`UPDATE provider_services SET deliverable_uploaded_at = NOW() - INTERVAL '9 days' WHERE id = ${ids.pdfSvc}`);
   const bk = await makeBooking({ serviceId: ids.pdfSvc, confirmedDaysAgo: 10 });
 
   const run = await runBookingAutoCompletion(undefined, verifyPaid);
-  assert.ok(run.completedBookingIds.includes(bk), `job must complete ${bk}; skipped=${JSON.stringify(run.skipped)}`);
-  const stamp = await completionStamp(bk);
-  assert.equal(stamp?.evidence?.arm, "undownloaded");
-  assert.equal(await statusOf(bk), "completed");
-  const earnings = await earningCounts(bk);
-  assert.equal(earnings.provider + earnings.expert, 2);
+  assert.ok(!run.completedBookingIds.includes(bk));
+  assert.ok(run.promptedBookingIds.includes(bk), `job must PROMPT ${bk}; skipped=${JSON.stringify(run.artifactSkipped)}`);
+  assert.equal(await statusOf(bk), "awaiting_acceptance");
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
+  await db.execute(sql`UPDATE provider_services SET deliverable_uploaded_at = NULL WHERE id = ${ids.pdfSvc}`);
 });
 
-test("D8-N2 (§13): an UNDOWNLOADED pdf booking with NO delivery timestamp is skipped with a stated reason, never guessed", async () => {
+test("D8-N2 (§13, re-pinned): a pdf booking with NO delivery instant is never put on an acceptance clock", async () => {
   await db.execute(sql`UPDATE provider_services SET deliverable_uploaded_at = NULL WHERE id = ${ids.pdfSvc}`);
   const bk = await makeBooking({ serviceId: ids.pdfSvc, confirmedDaysAgo: 60 });
 
-  const e = await resolveCompletionEligibility(bk);
-  assert.equal(e.eligible, false);
-  assert.equal(e.reason, "no_delivery_timestamp", "the reason must be STATED, not inferred from confirmedAt alone");
-
   const run = await runBookingAutoCompletion(undefined, verifyPaid);
-  assert.ok((run.skipped["no_delivery_timestamp"] ?? 0) >= 1, "the pass must ACCOUNT for the skip");
-  assert.equal(await statusOf(bk), "confirmed");
+  assert.ok(
+    (run.artifactSkipped["no_delivery_timestamp"] ?? 0) >= 1,
+    "the pass must ACCOUNT for the skip — a delivery nobody can date is never inferred from confirmedAt",
+  );
+  assert.equal(await statusOf(bk), "confirmed", "not prompted, not completed, not escalated");
   assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
-});
-
-test("D8-N2b: delivered only 3 days ago, undownloaded — window still open", async () => {
-  await db.execute(sql`UPDATE provider_services SET deliverable_uploaded_at = NOW() - INTERVAL '3 days' WHERE id = ${ids.pdfSvc}`);
-  const bk = await makeBooking({ serviceId: ids.pdfSvc, confirmedDaysAgo: 30 });
-  const e = await resolveCompletionEligibility(bk);
-  assert.equal(e.eligible, false);
-  assert.equal(e.reason, "window_open");
-  assert.equal(e.evidence.arm, "undownloaded");
-  await db.execute(sql`UPDATE provider_services SET deliverable_uploaded_at = NULL WHERE id = ${ids.pdfSvc}`);
 });
 
 // ══ C — idempotency (§15) ════════════════════════════════════════════════════════════════════
 
-test("D8-P3 (§15): a DOUBLE job run is exactly ONE flip, ONE earning set and ONE diary row", async () => {
+test("D8-P3 (§15, re-pinned): a DOUBLE job run is exactly ONE prompt and ONE diary row", async () => {
   const bk = await makeBooking({ serviceId: ids.pdfSvc, confirmedDaysAgo: 20 });
   await logDownload(bk, ids.pdfSvc, 10);
 
   const diaryBefore = await diaryCount(bk);
   await runBookingAutoCompletion(undefined, verifyPaid);
-  const afterFirst = await earningCounts(bk);
   const diaryAfterFirst = await diaryCount(bk);
-  assert.equal(await statusOf(bk), "completed");
-  assert.equal(afterFirst.provider + afterFirst.expert, 2);
-  assert.equal(diaryAfterFirst, diaryBefore + 1);
+  assert.equal(await statusOf(bk), "awaiting_acceptance");
+  assert.equal(diaryAfterFirst, diaryBefore + 1, "exactly one diary row for the prompt");
 
   const second = await runBookingAutoCompletion(undefined, verifyPaid);
-  assert.ok(!second.completedBookingIds.includes(bk), "a completed booking is not a candidate on the second pass");
-  assert.deepEqual(await earningCounts(bk), afterFirst, "no second earning set");
+  assert.ok(!second.promptedBookingIds.includes(bk), "the transition IS the guard — a prompted booking is not prompted twice");
   assert.equal(await diaryCount(bk), diaryAfterFirst, "no second diary row");
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 }, "still nothing minted");
 
-  // …and the direct caller loses the same way: the atomic conditional is the guard, not a check.
-  const direct = await completeBooking({ bookingId: bk, actor: "auto_complete_pdf" });
+  // …and the direct completion caller loses the same way: `awaiting_acceptance` is NOT in
+  // `COMPLETION_ALLOWED_FROM_STATUSES` (the D-24 invariant), so a timer actor cannot consume it.
+  const direct = await completeBooking({ bookingId: bk, actor: "auto_complete_property" });
   assert.equal(direct.completed, false);
   assert.equal(direct.reason, "wrong_status");
-  assert.deepEqual(await earningCounts(bk), afterFirst);
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
 });
 
 // ══ D/E — the timer is method-scoped, and never touches a provisional claim ══════════════════

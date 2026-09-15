@@ -17,6 +17,7 @@ import {
 } from "../services/smart-sequencing.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { generateIcsContent } from "../utils/ics-calendar";
+import { planDatesAreConfirmed } from "@shared/plan-dates";
 import { resolveTripTimezone } from "../services/trip-timezone";
 
 const router = Router();
@@ -264,14 +265,24 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
     // a finished answer: the exporter then keeps today's floating output exactly, because UTC or
     // the server's zone would be a claim rather than a fallback (§13).
     let planTimezone: string | null = null;
+    // Migration 302 (ledger `2026-09-15-d22-dates-confirmed`, punchlist D-22): WAS THE DAY THIS
+    // EXPORT COUNTS FROM CHOSEN BY ANYBODY? Read off the linked plan beside the zone, because the
+    // exporter needs BOTH before it may pin an instant. A comparison with no trip behind it has
+    // nobody who could have answered, so it stays unconfirmed and the export floats — the same
+    // direction a NULL zone takes, and for the same reason (§13).
+    let planDatesConfirmed = false;
     if (comparison.tripId) {
       const trip = await storage.getTrip(comparison.tripId);
       planTimezone = trip?.timezone ?? null;
+      planDatesConfirmed = planDatesAreConfirmed((trip as any)?.datesConfirmedAt);
     }
     if (!planTimezone) planTimezone = resolveTripTimezone(comparison.destination);
 
     // Generate .ics content
-    const icsContent = generateIcsContent({ ...comparison, timezone: planTimezone }, items);
+    const icsContent = generateIcsContent(
+      { ...comparison, timezone: planTimezone, datesConfirmed: planDatesConfirmed },
+      items,
+    );
     
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="traveloure-${id}.ics"`);

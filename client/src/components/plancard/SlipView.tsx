@@ -93,6 +93,7 @@ import {
   SLIP_ASK_EXPERT_LABEL,
 } from "@/lib/slip-item-tools";
 import { MapControlCenter } from "./MapControlCenter";
+import { SetPlanDates } from "./SetPlanDates";
 // LD 43(d): mount 2 of 2 — the Finalize success / finished area, and ONLY when the plan
 // actually holds bookable rows. The component itself decides visibility from the vault read.
 import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
@@ -135,6 +136,22 @@ export interface SlipTrip {
    * never the server's zone, never the nearest guess (§13).
    */
   timezone?: string;
+  /**
+   * D-22 (migration 302, ledger `2026-09-15-d22-dates-confirmed`) — WAS THIS PLAN'S WINDOW CHOSEN
+   * BY ANYBODY, or filled in because `start_date`/`end_date` are NOT NULL?
+   *
+   * PRESENT-AND-BOOLEAN, deliberately the opposite shape from `timezone` above. An absent zone
+   * means "say nothing about the zone", so omitting that key is the honest shape there; here the
+   * FALSE value is the load-bearing half, and an omitted key would collapse "these dates are a
+   * placeholder" into "this payload predates the field". `undefined` therefore reads as the
+   * pre-field case and changes nothing (the header renders no chip), while an explicit `false`
+   * renders the placeholder chip and, for the owner, the re-date CTA.
+   *
+   * It is a BOOLEAN and never the timestamp: when the dates were certified is nobody's business on
+   * a read surface, and publishing it would invite a second reader to re-answer the question that
+   * `planDatesAreConfirmed` answers once (§18 rule 1).
+   */
+  datesConfirmed?: boolean;
 }
 
 export interface SlipData extends PlanCardData {
@@ -379,6 +396,22 @@ function SlipHeader({
       </h1>
       <p className="text-sm text-muted-foreground" data-testid="slip-meta">
         {start && end ? `${format(start, "MMM d")} – ${format(end, "MMM d, yyyy")}` : null}
+        {/* ── DID ANYBODY CHOOSE THIS WINDOW? (punchlist D-22 + R-4, migration 302, ledger
+            `2026-09-15-d22-dates-confirmed`.) `trips.start_date`/`end_date` are NOT NULL, so the
+            range above has ALWAYS rendered — including for a ready-made clone, whose window is
+            `new Date()` + `duration_days - 1` chosen by the fulfilment job, and for an authoring
+            build's synthetic anchor. This is the one place the slip says which it is, and it is
+            also R-4's missing moment: the CTA is the first client caller `PATCH /api/trips/:id`
+            has ever had. Renders NOTHING for a confirmed plan (§13: the unmarked case stays
+            quiet), and the CTA is the OWNER's alone (Locked Decision 42 D16). */}
+        {start && end ? " " : null}
+        <SetPlanDates
+          tripId={trip?.id ?? ""}
+          startDate={trip?.startDate}
+          endDate={trip?.endDate}
+          datesConfirmedAt={(trip as any)?.datesConfirmed}
+          isOwner={isOwner}
+        />
         {start && end && partyLabel ? " · " : null}
         {partyLabel ? (
           <span className="inline-flex items-center gap-1" data-testid="slip-meta-party">

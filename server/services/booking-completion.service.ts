@@ -68,6 +68,8 @@ import {
   PROPERTY_AUTO_COMPLETE_GRACE_DAYS,
   serviceDateCompletionDays,
 } from "../config/completion-windows.config";
+import { acceptanceModeFor, type DeliveryInstantSource } from "@shared/acceptance-window";
+import { ACCEPTANCE_FROM_STATUSES } from "../utils/booking-from-states";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
 import { storage } from "../storage";
 
@@ -81,22 +83,44 @@ export const COMPLETION_ALLOWED_FROM_STATUSES: readonly string[] = ["confirmed"]
 
 /** Who drove this completion. Recorded on the booking row; mapped to a diary actorType below. */
 export type CompletionActor =
-  | "auto_complete_pdf"
+  /*
+   * `auto_complete_pdf` IS GONE (D-27; ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`).
+   * It was the actor of the silent timeout D-6 forbids: a clock that completed an artifact booking
+   * and minted the seller's earning without the traveler ever answering. `artifact_timer` left
+   * `TIMER_DRIVEN_COMPLETION_RULES`, so `timerActorFor` returns null for it and this union has ONE
+   * FEWER member — never a renamed one. An artifact completes on `traveler_accepted`, or by a human
+   * resolving the dispute the unanswered window escalates into. Rows already stamped
+   * `actor: "auto_complete_pdf"` in `bookingDetails.completion` are NOT rewritten (LD 44(e)): that
+   * actor did complete those bookings, and editing the record would invent a different history.
+   */
   | "auto_complete_property"
   /** Ruling 69 disposition 1 — the in_person/hybrid booked-service-date timer. */
   | "auto_complete_service_date"
   | "provider_session_end"
   | "provider_declared"
-  | "provider_bundle_components";
+  | "provider_bundle_components"
+  /**
+   * D-6 (ledger `2026-09-15-d24-d26-acceptance-columns`): THE TRAVELER ACCEPTED THE ARTIFACT.
+   * A new CALLER of the ONE completion implementation, with its own actor tag — never a second
+   * minting path (§18 rule 1, and the brief's own non-negotiable rule 3). It is the only actor
+   * whose from-state is `awaiting_acceptance` rather than `confirmed`, and the only one that
+   * stamps `accepted_at`.
+   */
+  | "traveler_accepted";
 
 const DIARY_ACTOR: Record<CompletionActor, TransitionActorType> = {
-  auto_complete_pdf: "auto_complete",
   auto_complete_property: "auto_complete",
   auto_complete_service_date: "auto_complete",
   provider_session_end: "provider",
   provider_declared: "provider",
   provider_bundle_components: "provider",
+  traveler_accepted: "traveler",
 };
+
+/** TRUE for the ONE actor whose completion is a traveler's acceptance rather than a rule firing. */
+function isAcceptanceActor(actor: CompletionActor): boolean {
+  return actor === "traveler_accepted";
+}
 
 /** Why a booking is NOT (yet) completable. Stable, machine-readable, §13-honest. */
 export type IneligibleReason =
@@ -115,7 +139,20 @@ export type IneligibleReason =
   | "slot_has_no_end_time"
   | "session_not_ended"
   | "bundle_components_unknown"
-  | "bundle_components_incomplete";
+  | "bundle_components_incomplete"
+  /**
+   * D-6/D-40: the traveler accepted, but this listing's acceptance does NOT complete the booking.
+   * Either it takes no acceptance at all, or it is a `hybrid` with a DECLARED artifact, whose
+   * acceptance is `records_only` — it records `accepted_at` and revision rows and gates NOTHING
+   * about completion or the mint. Handled by the acceptance service's own arm, never here.
+   */
+  | "acceptance_does_not_complete"
+  /**
+   * D-27: the booking's rule IS `artifact_timer`, and `artifact_timer` no longer completes
+   * anything. Stated rather than silently absent, because "this rule cannot complete" and "this
+   * window is still open" are different facts and a reader must be able to tell them apart (§13).
+   */
+  | "artifact_takes_acceptance";
 
 export interface CompletionEligibility {
   bookingId: string;
@@ -143,6 +180,8 @@ interface BookingRow {
   serviceId: string | null;
   providerId: string | null;
   confirmedAt: Date | null;
+  /** D-26's per-booking delivery instant. NULL = the per-booking source has no answer (§13). */
+  deliveredAt: Date | null;
   slotId: string | null;
   bookingDetails: Record<string, any> | null;
 }
@@ -152,6 +191,8 @@ interface ServiceRow {
   deliveryMethod: string | null;
   productShape: string | null;
   deliverableUploadedAt: Date | null;
+  /** D-40: a hybrid listing's declared artifact. NULL = not declared (§13). */
+  declaredArtifactDeliverable: string | null;
 }
 
 async function loadBooking(bookingId: string): Promise<BookingRow | null> {
@@ -163,6 +204,7 @@ async function loadBooking(bookingId: string): Promise<BookingRow | null> {
       serviceId: serviceBookings.serviceId,
       providerId: serviceBookings.providerId,
       confirmedAt: serviceBookings.confirmedAt,
+      deliveredAt: serviceBookings.deliveredAt,
       slotId: serviceBookings.slotId,
       bookingDetails: serviceBookings.bookingDetails,
     })
@@ -178,6 +220,7 @@ async function loadService(serviceId: string): Promise<ServiceRow | null> {
       deliveryMethod: providerServices.deliveryMethod,
       productShape: providerServices.productShape,
       deliverableUploadedAt: providerServices.deliverableUploadedAt,
+      declaredArtifactDeliverable: providerServices.declaredArtifactDeliverable,
     })
     .from(providerServices)
     .where(eq(providerServices.id, serviceId));
@@ -224,6 +267,71 @@ export async function resolveServiceDate(
   return null;
 }
 
+/**
+ * THE ARTIFACT'S DELIVERY INSTANT — ONE derivation, stated with its SOURCE (D-27; ledger
+ * `2026-09-15-d27-artifact-timer-acceptance-prompt`).
+ *
+ * This is the question "when was this artifact delivered to THIS traveler?", and it has exactly
+ * two answers plus an honest third:
+ *
+ *   `per_booking`    `service_bookings.delivered_at` — the per-booking instant D-26 added, stamped
+ *                    by the deliver rail and MOVED by every re-delivery. Preferred whenever it is
+ *                    set, because it is the only one that is about this traveler.
+ *   `listing_clock`  the pre-D-26 derivation ruling 63's two arms already used, kept verbatim:
+ *                    the FIRST `deliverable_downloads` row for this booking (arm `downloaded` —
+ *                    tried first because it covers a listing whose `deliverable_uploaded_at`
+ *                    predates the column), else `max(confirmed_at, deliverable_uploaded_at)`
+ *                    (arm `undownloaded`). It is a LISTING-level clock shared by every buyer,
+ *                    which is why it is NAMED rather than presented as this traveler's delivery.
+ *   `null`           NEITHER source answers. §13: the booking is NOT put on an acceptance clock,
+ *                    is skipped with `no_delivery_timestamp`, and is never anchored on
+ *                    `confirmed_at` alone, on the listing's upload instant alone, or on "now".
+ *
+ * IT NEVER WRITES. D-26's rule: a `listing_clock` instant is a DERIVATION, and stamping it onto
+ * `delivered_at` would turn "we inferred this" into "the seller delivered on this date" — and would
+ * move every other buyer's window with it the moment the listing's file changed.
+ *
+ * ONE IMPLEMENTATION, TWO READERS (§18 rule 1): the `artifact_timer` eligibility arm above and the
+ * acceptance-prompt/escalation arm in `artifact-acceptance-timer.service.ts`. A second copy in the
+ * job is exactly the derivation-drift class that rule names.
+ */
+export interface ArtifactDeliveryInstant {
+  at: Date;
+  source: DeliveryInstantSource;
+  /** Which listing-clock arm produced it. `null` on the per-booking source. */
+  arm: "downloaded" | "undownloaded" | null;
+}
+
+export async function resolveArtifactDeliveryInstant(
+  booking: Pick<BookingRow, "id" | "confirmedAt"> & { deliveredAt?: Date | null },
+  service: Pick<ServiceRow, "deliverableUploadedAt">,
+): Promise<ArtifactDeliveryInstant | null> {
+  // D-26's per-booking instant wins outright when it exists — it is the only one that moves with a
+  // re-delivery, which is the whole reason the column was added.
+  const perBooking = booking.deliveredAt ?? null;
+  if (perBooking && Number.isFinite(new Date(perBooking).getTime())) {
+    return { at: new Date(perBooking), source: "per_booking", arm: null };
+  }
+
+  const [first] = await db
+    .select({ downloadedAt: deliverableDownloads.downloadedAt })
+    .from(deliverableDownloads)
+    .where(eq(deliverableDownloads.bookingId, booking.id))
+    .orderBy(asc(deliverableDownloads.downloadedAt))
+    .limit(1);
+  if (first?.downloadedAt) {
+    return { at: new Date(first.downloadedAt), source: "listing_clock", arm: "downloaded" };
+  }
+
+  if (!booking.confirmedAt || !service.deliverableUploadedAt) return null;
+  const ms = Math.max(
+    new Date(booking.confirmedAt).getTime(),
+    new Date(service.deliverableUploadedAt).getTime(),
+  );
+  if (!Number.isFinite(ms)) return null;
+  return { at: new Date(ms), source: "listing_clock", arm: "undownloaded" };
+}
+
 const no = (
   bookingId: string,
   rule: CompletionRule | null,
@@ -239,10 +347,21 @@ const no = (
 export async function resolveCompletionEligibility(
   bookingId: string,
   now: Date = new Date(),
+  opts: {
+    /**
+     * D-6: resolve for a TRAVELER'S ACCEPTANCE rather than for a rule firing. The from-state
+     * becomes `awaiting_acceptance` (not `confirmed`), and the acceptance itself IS the condition —
+     * exactly as `provider_declared` returns `evidence: { declared: true }` because the declaration
+     * is the condition there. It is a MODE of the one resolver, not a second one (§18 rule 1).
+     */
+    acceptance?: boolean;
+  } = {},
 ): Promise<CompletionEligibility> {
+  const forAcceptance = opts.acceptance === true;
+  const allowedFrom = forAcceptance ? ACCEPTANCE_FROM_STATUSES : COMPLETION_ALLOWED_FROM_STATUSES;
   const booking = await loadBooking(bookingId);
   if (!booking) return no(bookingId, null, "booking_not_found");
-  if (!COMPLETION_ALLOWED_FROM_STATUSES.includes(booking.status ?? "")) {
+  if (!allowedFrom.includes(booking.status ?? "")) {
     return no(bookingId, null, "wrong_status", { status: booking.status });
   }
   if (!booking.serviceId) return no(bookingId, null, "service_not_found");
@@ -253,6 +372,27 @@ export async function resolveCompletionEligibility(
     deliveryMethod: service.deliveryMethod,
     productShape: service.productShape,
   });
+  // D-6: the acceptance arm answers BEFORE the per-rule switch, and deliberately so. A traveler's
+  // acceptance is not a rule firing — it is the strongest evidence on the platform (the payer
+  // saying "this is what I bought"), so it must not be made to satisfy the `artifact_timer`
+  // window it exists to replace. It still resolves the RULE above, because the provenance the flip
+  // records must name the rule the booking actually falls under.
+  if (forAcceptance) {
+    const mode = acceptanceModeFor({
+      deliveryMethod: service.deliveryMethod,
+      productShape: service.productShape,
+      declaredArtifactDeliverable: service.declaredArtifactDeliverable,
+    });
+    if (mode !== "gates_completion") {
+      return no(bookingId, rule, "acceptance_does_not_complete", { acceptanceMode: mode });
+    }
+    return {
+      bookingId,
+      rule,
+      eligible: true,
+      evidence: { accepted: true, basis: "traveler_acceptance", acceptanceMode: mode },
+    };
+  }
   if (!rule) {
     return no(bookingId, null, "unclassifiable_service", {
       deliveryMethod: service.deliveryMethod,
@@ -325,58 +465,34 @@ export async function resolveCompletionEligibility(
       return { bookingId, rule, eligible: true, evidence };
     }
 
-    // ── pdf: TWO arms, exactly as ruling 63 words them. ───────────────────────────────────────
+    // ── pdf: RETIRED AS A COMPLETION RULE (D-27; ledger
+    // `2026-09-15-d27-artifact-timer-acceptance-prompt`). ─────────────────────────────────────
+    //
+    // Ruling 63's two arms — "7 days after FIRST download" and "7 days UNDOWNLOADED post-delivery"
+    // — no longer COMPLETE anything. D-6 forbids a silent timeout completing in the seller's
+    // favour, so an artifact booking completes only when the traveler accepts it
+    // (`traveler_accepted`, the acceptance rail) or when a human resolves the dispute an
+    // unanswered window escalates into.
+    //
+    // §13, AND IT IS THE REASON THIS ARM ANSWERS `false` RATHER THAN BEING DELETED. `artifact_timer`
+    // is still the TRUE answer to "which rule governs this booking", so `completionRuleFor` still
+    // returns it and this switch still has a case for it. What it must never do again is report
+    // `eligible: true` for a booking nothing may complete — an eligibility nobody can act on is
+    // worse than a stated refusal, because every reader takes it as a pending completion. The
+    // refusal names the reason and carries the DERIVED delivery instant as evidence, so an ops
+    // question ("why has this not completed?") is answerable from the row.
+    //
+    // The two arms themselves did not disappear: they ARE the delivery-instant derivation, lifted
+    // into `resolveArtifactDeliveryInstant` below and read by the acceptance-prompt arm (§18 rule 1
+    // — one derivation, two readers, never a second copy in the job).
     case "artifact_timer": {
-      const [first] = await db
-        .select({ downloadedAt: deliverableDownloads.downloadedAt })
-        .from(deliverableDownloads)
-        .where(eq(deliverableDownloads.bookingId, booking.id))
-        .orderBy(asc(deliverableDownloads.downloadedAt))
-        .limit(1);
-
-      // ARM A — "7 days after FIRST download". Needs only migration 194's log, so it covers every
-      // booking regardless of how old the listing is.
-      if (first?.downloadedAt) {
-        const eligibleAtMs =
-          new Date(first.downloadedAt).getTime() + ARTIFACT_AUTO_COMPLETE_DAYS * DAY_MS;
-        const evidence = {
-          arm: "downloaded",
-          firstDownloadAt: new Date(first.downloadedAt).toISOString(),
-          eligibleAt: new Date(eligibleAtMs).toISOString(),
-        };
-        if (now.getTime() < eligibleAtMs) {
-          return { ...no(bookingId, rule, "window_open", evidence), eligibleAt: evidence.eligibleAt };
-        }
-        return { bookingId, rule, eligible: true, evidence };
-      }
-
-      // ARM B — "7 days UNDOWNLOADED POST-DELIVERY". Delivery is the moment BOTH halves of the
-      // entitlement existed: the booking was confirmed AND the provider's file was there. Missing
-      // either half ⇒ ineligible with the reason (§13) — never fire a completion timer on a
-      // booking where nothing was ever delivered.
-      if (!booking.confirmedAt || !service.deliverableUploadedAt) {
-        return no(bookingId, rule, "no_delivery_timestamp", {
-          arm: "undownloaded",
-          confirmedAt: booking.confirmedAt ? new Date(booking.confirmedAt).toISOString() : null,
-          deliverableUploadedAt: service.deliverableUploadedAt
-            ? new Date(service.deliverableUploadedAt).toISOString()
-            : null,
-        });
-      }
-      const deliveredAtMs = Math.max(
-        new Date(booking.confirmedAt).getTime(),
-        new Date(service.deliverableUploadedAt).getTime(),
-      );
-      const eligibleAtMs = deliveredAtMs + ARTIFACT_AUTO_COMPLETE_DAYS * DAY_MS;
-      const evidence = {
-        arm: "undownloaded",
-        deliveredAt: new Date(deliveredAtMs).toISOString(),
-        eligibleAt: new Date(eligibleAtMs).toISOString(),
-      };
-      if (now.getTime() < eligibleAtMs) {
-        return { ...no(bookingId, rule, "window_open", evidence), eligibleAt: evidence.eligibleAt };
-      }
-      return { bookingId, rule, eligible: true, evidence };
+      const instant = await resolveArtifactDeliveryInstant(booking, service);
+      return no(bookingId, rule, "artifact_takes_acceptance", {
+        acceptanceRule: "traveler_acceptance",
+        ...(instant
+          ? { deliveredAt: instant.at.toISOString(), deliveryInstantSource: instant.source, arm: instant.arm }
+          : { deliveredAt: null, deliveryInstantSource: null }),
+      });
     }
 
     // ── call / video / voice_notes: "session end PER BOOKED SLOT, provider-confirmed". ────────
@@ -484,7 +600,13 @@ export async function completeBooking(input: {
   allowOwnerDeclaredFallback?: boolean;
 }): Promise<CompleteBookingResult> {
   const now = input.now ?? new Date();
-  const eligibility = await resolveCompletionEligibility(input.bookingId, now);
+  // D-6: the acceptance arm is chosen by the ACTOR, never by a caller-supplied flag — the actor tag
+  // is the caller's one statement of which rail it is, and the SERVICE decides everything else
+  // (the same posture ruling 69's `allowOwnerDeclaredFallback` takes one arm over).
+  const forAcceptance = isAcceptanceActor(input.actor);
+  const eligibility = await resolveCompletionEligibility(input.bookingId, now, {
+    acceptance: forAcceptance,
+  });
   const takesNoDateFallback =
     !eligibility.eligible && !!input.allowOwnerDeclaredFallback && !!eligibility.ownerDeclarableFallback;
   if (!eligibility.eligible && !takesNoDateFallback) {
@@ -501,7 +623,11 @@ export async function completeBooking(input: {
     input.bookingId,
     "completed",
     input.reason,
-    COMPLETION_ALLOWED_FROM_STATUSES,
+    // §15/§18b: THE TRANSITION IS THE GUARD, and the acceptance rail claims its OWN from-state.
+    // `awaiting_acceptance` is deliberately NOT added to `COMPLETION_ALLOWED_FROM_STATUSES`: that
+    // list is also the timer's candidate predicate (`findAutoCompleteCandidates`), and widening it
+    // would hand the nightly job the very bookings D-6 forbids it to complete.
+    forAcceptance ? ACCEPTANCE_FROM_STATUSES : COMPLETION_ALLOWED_FROM_STATUSES,
   );
   if (!updated) {
     // Lost the atomic race (or the row vanished). Exactly one caller wins; the loser mints no
@@ -520,6 +646,11 @@ export async function completeBooking(input: {
   await db
     .update(serviceBookings)
     .set({
+      // D-24: `accepted_at` records the ANSWER that caused the completion, where `completed_at`
+      // records the money event. Written HERE — after this caller provably WON the atomic
+      // conditional above — and by this actor only, so a future admin-review completion out of the
+      // same `awaiting_acceptance` state can never be read as a traveler's acceptance (§13).
+      ...(forAcceptance ? { acceptedAt: now } : {}),
       bookingDetails: sql`COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) || ${JSON.stringify({
         completion: {
           rule: eligibility.rule,
@@ -548,7 +679,9 @@ export async function completeBooking(input: {
             ? ((updated.bookingDetails as any).itineraryItemId as string)
             : null,
         eventType: "booking_completed",
-        fromStatus: "confirmed",
+        // The state this flip actually consumed — `awaiting_acceptance` on the acceptance rail.
+        // A diary row that always said "confirmed" would misreport the one transition that is not.
+        fromStatus: forAcceptance ? "awaiting_acceptance" : "confirmed",
         toStatus: "completed",
         actorType: DIARY_ACTOR[input.actor],
       });
@@ -685,8 +818,11 @@ export async function findAutoCompleteCandidates(now: Date = new Date(), limit =
 
 /** Which timer actor a rule belongs to. Keeps the job free of any method knowledge of its own. */
 export function timerActorFor(rule: CompletionRule): CompletionActor | null {
+  // D-27: `artifact_timer` is no longer in `TIMER_DRIVEN_COMPLETION_RULES`, so it falls out HERE —
+  // through the set, not through a second special case. That is the whole retirement: the job asks
+  // this function for an actor, gets `null`, and accounts for the booking as
+  // `rule_not_timer_driven` instead of completing it.
   if (!TIMER_DRIVEN_COMPLETION_RULES.has(rule)) return null;
-  if (rule === "artifact_timer") return "auto_complete_pdf";
   if (rule === "service_date_timer") return "auto_complete_service_date";
   return "auto_complete_property";
 }

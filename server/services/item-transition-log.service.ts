@@ -48,7 +48,13 @@ export type TransitionActorType =
   // date). Distinct from the generic `system` for exactly the reason `reconciliation` is
   // distinct from `webhook` — a completion nobody asserted, that a clock inferred, is a
   // materially different fact and ops must be able to tell them apart. 13 chars.
-  | "auto_complete";
+  | "auto_complete"
+  // D-27 (ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`): the nightly job acting on an
+  // ARTIFACT booking, which it may no longer complete. Deliberately NOT `auto_complete`: that value
+  // means "a clock completed this booking", which is precisely the thing D-27 retires, and a diary
+  // row claiming it for a transition that completed nothing would misreport the one fact this lane
+  // exists to make true. 9 chars: fits actor_type VARCHAR(20) (migration 171).
+  | "scheduler";
 
 export type TransitionEventType =
   | "status_transition"
@@ -109,7 +115,18 @@ export type TransitionEventType =
   // state). Market is NOT stored here — it derives at the rollup via `trip_id → trips.market_slug`
   // (L6/R15: a diary row is history, never a report; no denormalized market column). 12 chars —
   // fits event_type varchar(30) (migration 171).
-  | "item_removed";
+  | "item_removed"
+  // D-27 (ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`): the artifact acceptance-prompt
+  // arm. `confirmed → awaiting_acceptance` — the platform ASKING the traveler to accept a delivered
+  // artifact. from/to carry the BOOKING statuses (the `booking_completed` convention). It is a
+  // separate event type from `booking_completed` because it completes nothing and mints nothing,
+  // and a diary that used one word for both would make the retirement unauditable. 27 chars.
+  | "booking_acceptance_prompted"
+  // D-27: the ESCALATION. `awaiting_acceptance → disputed` after the derived acceptance deadline
+  // passed with no answer — the booking joins the EXISTING admin dispute queue with its own system
+  // reason. Distinct from the prompt above and from any traveler-raised dispute: nobody claimed
+  // anything went wrong, nobody answered at all. 26 chars.
+  | "booking_acceptance_elapsed";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */

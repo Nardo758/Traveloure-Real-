@@ -51,3 +51,27 @@ export function serviceDateCompletionDays(): number {
   // Imported lazily-by-reference (a plain call) rather than re-declared: one authority, one value.
   return holdWindowDays("service_booking");
 }
+
+/**
+ * D-6's ACCEPTANCE WINDOW — how long a traveler has to accept a delivered artifact before the
+ * booking escalates (punchlist D-24/D-27; ledger `2026-09-15-d24-d26-acceptance-columns`).
+ *
+ * THE DECISION-MAKER SET THE NUMBER: 7 days (D-27's period), env-overridable through
+ * `BOOKING_ACCEPTANCE_WINDOW_DAYS` — CONFIG, never a literal in a route (§8 posture).
+ *
+ * WHY IT IS ITS OWN ACCESSOR AND NOT A DELEGATION. `serviceDateCompletionDays()` above delegates to
+ * `holdWindowDays('service_booking')` because it measures the SAME thing that window measures — the
+ * traveler's chance to object before money settles. This one measures something else: the time a
+ * traveler has to ANSWER before the booking leaves them and goes to a human. The earnings hold has
+ * not started yet at that point (nothing has minted), so tracking it would tie two windows that
+ * answer different questions. This is not the "parallel constant" the file header forbids; it is a
+ * second question with its own number.
+ *
+ * IT ONLY SAYS WHEN THE WINDOW CLOSES. The escalation itself — `awaiting_acceptance` to admin
+ * review — is D-27's lane and this lane writes none of it.
+ */
+export const ACCEPTANCE_WINDOW_DAYS_DEFAULT = 7;
+
+export function acceptanceWindowDays(): number {
+  return envDays("BOOKING_ACCEPTANCE_WINDOW_DAYS", ACCEPTANCE_WINDOW_DAYS_DEFAULT);
+}

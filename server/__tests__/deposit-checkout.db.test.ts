@@ -314,7 +314,11 @@ test("D5: a deposit_paid booking is NOT completion-eligible (wrong_status) and m
   assert.equal(elig.eligible, false);
   assert.equal(elig.reason, "wrong_status", "a deposit_paid booking is outside the D8 confirmed→completed rail");
 
-  const done = await completeBooking({ bookingId: id, actor: "auto_complete_pdf" });
+  // D-27 retired the `auto_complete_pdf` actor (ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`).
+  // The assertion below is about the FROM-STATE and is actor-agnostic — `completeBooking` refuses a
+  // `deposit_paid` booking as `wrong_status` before it ever looks at a rule or an actor — so the
+  // proof is re-pinned onto a surviving timer actor rather than deleted.
+  const done = await completeBooking({ bookingId: id, actor: "auto_complete_property" });
   assert.equal(done.completed, false, "completion refuses a deposit-only booking");
 
   const earn = await db.execute(sql`SELECT count(*)::int AS n FROM provider_earnings WHERE source_id = ${id}`);

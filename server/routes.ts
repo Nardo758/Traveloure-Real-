@@ -157,6 +157,7 @@ import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import { isArtifactDelivery, SESSION_END_METHODS } from "@shared/service-fundamentals";
+import { DELIVERABLE_READABLE_STATUSES, resolveDeliverable } from "@shared/acceptance-window";
 import { resolvePublishVerification } from "./services/publish-verification.service";
 import Stripe from "stripe";
 import { getStripeSecretKey } from "./utils/stripe-key";
@@ -299,6 +300,7 @@ import { checkOfferingActivationGate } from "./services/offering-activation-gate
 // `provider_services.expert_offering_type_key` off a request body (§19 allowlist), shared by the
 // two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
 import { admitExpertOfferingTypeKey } from "./services/expert-offering-key.service";
+import { admitDeclaredArtifactDeliverable } from "./services/declared-artifact.service";
 // The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`) — see the
 // cart quote below; it decides only which lines are concierge lines, never a rate or an amount.
 import { resolveBookingConciergeItems } from "./services/booking-concierge.service";
@@ -1390,7 +1392,17 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Budget must be a positive number" });
       }
 
-      const trip = await storage.createTrip({ ...sanitizedInput, userId: actorUserId });
+      // MINT SITE 1 of 10 — THE TRAVELER'S OWN DOOR (migration 302, ledger
+      // `2026-09-15-d22-dates-confirmed`, punchlist D-22). `insertTripSchema` REQUIRES
+      // `startDate`/`endDate`, and the client's ONE mint door (`mintTripSlip` /
+      // `checkSlipPrecondition`, `client/src/lib/trip-slip.ts`) REFUSES rather than defaulting
+      // them — Locked Decision 42 D12: a mint may not invent a date. So a body that reaches here
+      // carries dates the traveler stated, and this mint says so. Nothing else on this rail may:
+      // `datesConfirmedAt` is `.omit()`ed from the body schema (§19).
+      const trip = await storage.createTrip(
+        { ...sanitizedInput, userId: actorUserId },
+        { datesChosenByTraveler: true },
+      );
 
       // Fire-and-forget: T2 funnel event
       trackFunnelEvent({
@@ -1419,6 +1431,44 @@ export async function registerRoutes(
   });
 
   // PATCH /api/trips/:id — update trip (auth: owner/EA, or guest via shareToken)
+  //
+  // ── THE ONE RE-DATE RAIL (punchlist **R-4**, migration 302, ledger
+  //    `2026-09-15-d22-dates-confirmed`) ──────────────────────────────────────────────────────
+  //
+  // R-4's blocker was never the availability question; it was that THERE WAS NO MOMENT AT WHICH A
+  // TRAVELER PICKS REAL DATES. The plan modal's step 3 writes its dates into the `trip_contexts`
+  // jsonb for a plan that already exists, `PATCH /api/trips/:tripId/occasion` carries no dates at
+  // all, and this handler — which always could have taken them — had no client caller:
+  // `useUpdateTrip` (`client/src/hooks/use-trips.ts`) had ZERO call sites anywhere in `client/`,
+  // `e2e/` or `playwright/`. Dates reached a trip row at MINT and never again. This is that
+  // moment, and this lane gives it its first caller (the slip header's "Set your dates").
+  //
+  // THREE THINGS IT MUST KEEP DOING, none of which is visible from the handler body below:
+  //
+  //   (a) IT WRITES THROUGH `storage.updateTrip`, never a raw UPDATE. That is what re-runs Locked
+  //       Decision 30's `timezone` derivation and Locked Decision 42 D12's `market_slug` one when
+  //       the destination moves, and it is the path Locked Decision 34's position-0 mirror is
+  //       written through for the same reason (a trigger could not re-derive, and would be a
+  //       second author of `trips.destination`).
+  //
+  //   (b) IT STAMPS `dates_confirmed_at` — SERVER-SIDE, in that same one writer, whenever a start
+  //       or end date is part of the update. The column is `.omit()`ed from `insertTripSchema`
+  //       (§19) and re-admitted by no pick, and `storage.updateTrip` deletes it off the incoming
+  //       object as the second layer, so **a client may change its dates and may never certify
+  //       them**. Before this, a plan minted on a placeholder window (a ready-made clone, an
+  //       authoring build, a cart mint's today-fallback) had no way to ever stop being one.
+  //
+  //   (c) AVAILABILITY REVALIDATION IS **NOT** TRIGGERED HERE, AND THAT IS STATED RATHER THAN
+  //       ASSUMED. R-4's third clause asks that a re-date re-check the bookable services on the
+  //       plan. There is NO such function on `main` to call: the lane that was to build it
+  //       (ledger `2026-09-14-clone-date-revalidation`) landed VERIFICATION ONLY and nothing else
+  //       — precisely because the moment this handler now provides did not exist — and the
+  //       punchlist's own lane list keeps availability revalidation as a THIRD lane. Writing one
+  //       here would mean inventing the read half too: `resolveBuyAction` is date-blind
+  //       (`hasPublishedAvailability` means "a slot dated today or later", explicitly not "free on
+  //       these dates"), and the only date-scoped read is one month-at-a-time query per service
+  //       that no slip surface makes. §13: an unbuilt check is said out loud, never faked with a
+  //       call that cannot answer the question.
   app.patch(api.trips.update.path, requireAuthOrShareToken, async (req, res) => {
     try {
       const input = api.trips.update.input.parse(req.body);
@@ -3714,6 +3764,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ? { expertOfferingTypeKey: expertOfferingAdmission.key }
         : {};
 
+      // D-40 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`): a `hybrid` listing may
+      // DECLARE ONE artifact deliverable that takes D-6 acceptance on its own while the booking
+      // keeps D-7 completion. §19 — the generic body schema `.omit()`s the column, so this pick-based
+      // `.strict()` admission is the ONLY way a request body reaches it. An explicit `null`
+      // withdraws the declaration; an ABSENT key leaves the column untouched.
+      const declaredArtifactAdmission = admitDeclaredArtifactDeliverable(bodyWithoutLocation);
+      if (declaredArtifactAdmission.refusal) {
+        return res
+          .status(declaredArtifactAdmission.refusal.status)
+          .json(declaredArtifactAdmission.refusal.body);
+      }
+      const declaredArtifactPatch = declaredArtifactAdmission.present
+        ? { declaredArtifactDeliverable: declaredArtifactAdmission.value }
+        : {};
+
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
       // listings (only enforced on this publish write).
@@ -3875,7 +3940,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cityPatch = await deriveCityPatch((input as any).neighborhood, {
         neighborhoodPresent: (input as any).neighborhood !== undefined,
       });
-      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, userId });
+      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, ...declaredArtifactPatch, userId });
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -4044,6 +4109,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       const expertOfferingPatch = expertOfferingAdmission.present
         ? { expertOfferingTypeKey: expertOfferingAdmission.key }
+        : {};
+
+      // D-40 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`): a `hybrid` listing may
+      // DECLARE ONE artifact deliverable that takes D-6 acceptance on its own while the booking
+      // keeps D-7 completion. §19 — the generic body schema `.omit()`s the column, so this pick-based
+      // `.strict()` admission is the ONLY way a request body reaches it. An explicit `null`
+      // withdraws the declaration; an ABSENT key leaves the column untouched.
+      const declaredArtifactAdmission = admitDeclaredArtifactDeliverable(bodyWithoutLocation);
+      if (declaredArtifactAdmission.refusal) {
+        return res
+          .status(declaredArtifactAdmission.refusal.status)
+          .json(declaredArtifactAdmission.refusal.body);
+      }
+      const declaredArtifactPatch = declaredArtifactAdmission.present
+        ? { declaredArtifactDeliverable: declaredArtifactAdmission.value }
         : {};
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
@@ -4228,7 +4308,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Migration 292: the offering key joins the patch here, BEFORE the §23 edit split below —
       // it is an IDENTITY field (`IDENTITY_EDIT_FIELDS`, "Category and offering"), so on an
       // APPROVED listing it is staged for review rather than applied to the live row.
-      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch };
+      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch };
 
       // ── Ruling 112 Q8 (CLAUDE.md §23) — the EDIT SPLIT, decided ONLY here ─────────────────
       // An APPROVED listing is never taken down for an edit. Identity-changing fields are
@@ -6480,7 +6560,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Deliverable not found" });
       }
-      if (booking.status !== "confirmed") {
+      // D-6 (ledger `2026-09-15-d24-d26-acceptance-columns`): the gate was `status === 'confirmed'`
+      // alone. An accepting traveler must be able to READ the thing they are being asked to accept,
+      // and one waiting on a revision must still hold what they were sent — so the list is
+      // `DELIVERABLE_READABLE_STATUSES`, stated ONCE in `shared/acceptance-window.ts` and read by
+      // this rail and its metadata probe below (§18 rule 1). It is a READ list, not a from-state
+      // list: `payment_pending` is still absent, so a provisional claim (§15b) never unlocks a file.
+      if (!DELIVERABLE_READABLE_STATUSES.includes(booking.status ?? "")) {
         return res.status(404).json({ message: "Deliverable not found" });
       }
       if (!booking.serviceId) {
@@ -6490,7 +6576,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!service || !isArtifactDelivery({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
         return res.status(404).json({ message: "Deliverable not found" });
       }
-      const fileValue = (service.serviceFile ?? "").trim();
+      // D-26: THE PER-BOOKING FILE WHEN SET, ELSE THE LISTING'S — and the caller is TOLD which. The
+      // fallback is honest, not silent: after a revision those are different documents, and a
+      // traveler reading "the file your expert made for you" must not be shown the one the listing
+      // ships to everyone without knowing it.
+      const resolvedDeliverable = resolveDeliverable((booking as any).deliverableFile, service.serviceFile);
+      const fileValue = resolvedDeliverable?.value ?? "";
+      const deliverableSource = resolvedDeliverable?.source ?? null;
       if (!fileValue) {
         // §13: honest absence — the booking and service are real and qualify, but the
         // provider hasn't uploaded anything yet. Distinguishable from "not found" so the
@@ -6520,12 +6612,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const filename = `${(service.serviceName || "deliverable").replace(/[^a-z0-9.-]/gi, "_").slice(0, 100)}.pdf`;
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        // D-26: a STREAMED response carries no JSON body, so the "which file did I get" answer
+        // rides a header — and it is also LOGGED below, so the server's own record says which one
+        // it served even for a client that ignores it.
+        if (deliverableSource) res.setHeader("X-Deliverable-Source", deliverableSource);
         res.setHeader("Content-Length", String(bytes.length));
+        console.log(`[deliverable] served booking=${booking.id} source=${deliverableSource ?? "none"} protected=true`);
         return res.end(bytes);
       }
 
       await logDownload(false);
-      res.json({ fileUrl: fileValue, deliveryMethod: service.deliveryMethod, protected: false });
+      console.log(`[deliverable] served booking=${booking.id} source=${deliverableSource ?? "none"} protected=false`);
+      res.json({
+        fileUrl: fileValue,
+        deliveryMethod: service.deliveryMethod,
+        protected: false,
+        // D-26: WHICH file this is — `booking` = the artifact made for this traveler,
+        // `listing` = the listing's own file, served as the honest fallback.
+        deliverableSource,
+      });
     } catch (err) {
       console.error("Deliverable fetch error:", err);
       res.status(500).json({ message: "Failed to fetch deliverable" });
@@ -6544,14 +6649,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = getUserId(req)!;
       const booking = await storage.getServiceBooking(req.params.id);
-      if (!booking || booking.travelerId !== userId || booking.status !== "confirmed" || !booking.serviceId) {
+      if (
+        !booking ||
+        booking.travelerId !== userId ||
+        !DELIVERABLE_READABLE_STATUSES.includes(booking.status ?? "") ||
+        !booking.serviceId
+      ) {
         return res.json({ available: false });
       }
       const service = await storage.getProviderServiceById(booking.serviceId);
       if (!service || !isArtifactDelivery({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
         return res.json({ available: false });
       }
-      const fileValue = (service.serviceFile ?? "").trim();
+      // D-26: same resolution as the download rail, through the SAME shared helper — a probe that
+      // answered from the listing while the download served the booking's own file would be two
+      // answers to one question (§18 rule 1).
+      const resolvedMeta = resolveDeliverable((booking as any).deliverableFile, service.serviceFile);
+      const fileValue = resolvedMeta?.value ?? "";
       if (!fileValue) {
         // §13 honest absence: qualifies, but nothing uploaded yet — distinguishable from "not a
         // deliverable booking" so the client can say "your expert hasn't uploaded it yet".
@@ -6564,6 +6678,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         available: true,
         protected: isProtected,
         deliveryMethod: service.deliveryMethod,
+        deliverableSource: resolvedMeta?.source ?? null,
         ...(isProtected ? {} : { fileUrl: fileValue }),
       });
     } catch (err) {
@@ -8491,6 +8606,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // 6. Create the trip with inferred metadata
       const title = `Your ${destination} trip`;
+      // MINT SITE 3 of 10 (migration 302, punchlist D-22). This window is INFERRED, and only
+      // sometimes from the traveler: `bodyStart`/`bodyEnd` are their own answer, while the
+      // scheduled-item minimum and `defaultStart` are this handler filling a NOT NULL column. So
+      // the claim is made ONLY when both dates came off the request, and otherwise nothing is
+      // claimed and the slip renders the window as the placeholder it is (§13).
       const trip = await storage.createTrip({
         userId,
         title,
@@ -8501,7 +8621,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         adults: inferredTravelers,
         kids: 0,
         status: "draft",
-      });
+      }, { datesChosenByTraveler: Boolean(bodyStart && bodyEnd) });
 
       // 7. Backfill tripId on all matching cart items.
       // W2: routed through the projection module (the single cart writer). The WHERE/SET moved
@@ -8909,6 +9029,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           kids: 0,
           numberOfTravelers: 2, // consistent with adults (kids=0) — see trip-defaults fix
         } as any);
+        // MINT SITE 4 of 10 (migration 302, ledger `2026-09-15-d22-dates-confirmed`, punchlist
+        // D-22). NO CLAIM, and deliberately: `today`/`nextWeek` directly above are this handler's
+        // own arithmetic, not an answer anybody gave — the destination is refused when absent
+        // (D12) but the window is filled in because `start_date`/`end_date` are NOT NULL. Leaving
+        // `dates_confirmed_at` NULL is what makes the slip label it a placeholder instead of
+        // presenting next week as the traveler's plan (§13). Nothing is passed rather than
+        // `false`: omission is the no-claim shape (see `TripMintOptions`).
         targetTripId = newTrip.id;
       } else {
         targetTripId = tripId;
@@ -10902,6 +11029,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       });
 
       // Create a backing trip so itinerary_items can FK-reference it.
+      // MINT SITE 5 of 10 (migration 302, punchlist D-22). `startDate`/`endDate` above are
+      // `dates?.start`/`dates?.end` when the request carried them and a "3-day trip starting
+      // tomorrow" default when it did not, so the claim is made only in the first case (§13).
       const quickTrip = await storage.createTrip({
         userId,
         title: result.title || `${itineraryRequest.destination} Trip`,
@@ -10911,7 +11041,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         numberOfTravelers: travelers,
         status: "draft",
         eventType: "vacation",
-      });
+      }, { datesChosenByTraveler: Boolean(dates?.start && dates?.end) });
 
       // Store the generated plan only after the backing trip exists so the
       // read model and its itinerary_items share one canonical trip linkage.

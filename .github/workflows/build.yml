@@ -1557,6 +1557,115 @@ jobs:
       - name: The ready-made authoring price contract (A1-A5)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/authored-item-price-contract.db.test.ts
 
+  dates-confirmed:
+    name: dates-confirmed (D-22 + R-4; ledger 2026-09-15-d22-dates-confirmed)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # D-22 (ruled yes, 2026-09-15) + R-4. `trips.start_date`/`end_date` are NOT NULL, so every
+      # plan HAS a window — and until migration 302 nothing said whether a traveler chose it. The
+      # ready-made clone's `new Date()` + `duration_days - 1`, the two expert authoring builds'
+      # synthetic anchor and the cart mints' today-fallback all rendered exactly like a window the
+      # traveler picked, on the slip, the Trip Card, the `.ics` and Home. K3 and K7 FAIL on main
+      # (no column ⇒ no way to tell them apart, and the exporter pins a confident instant to a
+      # date nobody chose). K4/K6 drive the MOUNTABLE trips-router twin of the re-date rail — the
+      # live copy is the monolith's and its wiring is stated as negative space in the suite header.
+      - name: A plan says whether its dates were chosen (K1-K7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/dates-confirmed.db.test.ts
+      # The pure layer beside it: the ONE placeholder-dates derivation every surface reads (the
+      # slip header, the Trip Card countdown, the `.ics`, Home). No DB, no server — but it is wired
+      # here rather than in a guard-only job because it imports `@shared/`, which pulls in the
+      # installed dependency tree (the #812 lesson recorded in docs/OPERATING_PROCEDURE.md §3).
+      - name: The one placeholder-dates derivation (P1-P7)
+        run: npx tsx --test --test-force-exit client/src/lib/__tests__/plan-dates.test.ts
+
+  acceptance-rails:
+    name: acceptance-rails (D-24..D-27 + D-40; ledgers 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # D-6's rails against a real database (migration 303). R1 races two acceptances and asserts
+      # ONE completion, ONE accepted_at and ONE earning set — a check-then-update lets both through.
+      # R3 proves the allowance counts down from the LISTING's own revisions_included and that a
+      # refusal STATES the number without becoming a dispute. R7 is D-40's load-bearing half: a
+      # hybrid's declared artifact is accepted and completion/the mint do not move.
+      #
+      # D-27 (ledger 2026-09-15-d27-artifact-timer-acceptance-prompt) RE-PINNED R9 and added
+      # R11-R19. R9 used to pin the sequenced gap ("artifact_timer is untouched"); it now pins the
+      # retirement itself, so a re-added artifact_timer fails here rather than silently restoring
+      # the silent timeout D-6 forbids. R13 is the negative that fails on the pre-D-27 head: the
+      # whole nightly job may never complete an artifact, however old. R12 pins D-26's rule that a
+      # DERIVED listing-clock instant is never written back to delivered_at, and R18 pins that the
+      # payment gate lives on the ASK (which opens the rail that mints) and deliberately not on the
+      # escalation.
+      - name: The accept / revision / deliver / escalation rails (R1-R19)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/acceptance-rails.db.test.ts
+      # The PURE layer beside it: the ONE derivation of the mode, the derived deadline, the allowance
+      # arithmetic and the per-booking file fallback. No DB and no server — wired in a job that runs
+      # `npm ci` because it imports `@shared/` (the #812 lesson, docs/OPERATING_PROCEDURE.md §3).
+      - name: The one acceptance derivation (A1-A5)
+        run: npx tsx --test --test-force-exit shared/__tests__/acceptance-window.test.ts
+
   plan-proposals:
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)
     runs-on: ubuntu-latest
