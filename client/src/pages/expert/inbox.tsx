@@ -58,6 +58,7 @@ import {
   ConciergeBell,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { readBookingRequestClaim } from "@/lib/booking-agent-claim";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -461,10 +462,34 @@ interface AffiliateBookingRequest {
 
 function AgentBookingRequestsSection() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [confirmRefById, setConfirmRefById] = useState<Record<string, string>>({});
 
   const { data: requests, isLoading } = useQuery<AffiliateBookingRequest[]>({
     queryKey: ["/api/affiliate-booking-requests/expert"],
+  });
+
+  // THE CLAIM (ledger `2026-09-08-assignment-is-claimed`, executed by
+  // `2026-09-15-booking-agent-claim`). This used to PATCH `{ expertId: "self" }` through the
+  // generic update rail — an identity on the wire, and a plain UPDATE, so two agents pressing
+  // Claim at the same moment both "won" and the second silently took the row from the first. It
+  // now posts to the ONE claim rail, which takes NO body, derives the claimant from the session
+  // (§14) and writes through a single atomic conditional (§15). A 409 means someone else got
+  // there first — it is surfaced as that, and the list is refetched so the row stops offering a
+  // control the server will refuse.
+  const claimMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/affiliate-booking-requests/${id}/claim`);
+      return res.json();
+    },
+    onSuccess: (data: { alreadyYours?: boolean }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/affiliate-booking-requests/expert"] });
+      toast({ title: data?.alreadyYours ? "Already yours" : "Request claimed" });
+    },
+    onError: (err: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/affiliate-booking-requests/expert"] });
+      toast({ title: "Could not claim request", description: err.message, variant: "destructive" });
+    },
   });
 
   const updateMutation = useMutation({
@@ -498,7 +523,11 @@ function AgentBookingRequestsSection() {
       ) : (
         <div className="space-y-2">
           {sorted.map((r) => {
-            const isUnclaimed = !r.expertId;
+            // §13: ONE reading of "is this claimed, and may the viewer be told it is theirs"
+            // (`client/src/lib/booking-agent-claim.ts`). An unclaimed row is never rendered as
+            // someone's, and a row whose holder is unknown to this reader is "Claimed", never
+            // "Claimed by you".
+            const claim = readBookingRequestClaim(r, user?.id);
             return (
               <Card key={r.id} className="border border-console-light" data-testid={`inbox-agent-booking-${r.id}`}>
                 <CardContent className="p-4 space-y-2">
@@ -513,14 +542,16 @@ function AgentBookingRequestsSection() {
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <StatusBadge status={r.status} />
-                      {isUnclaimed && <Badge variant="outline" className="text-[10px]">Unclaimed</Badge>}
+                      <Badge variant="outline" className="text-[10px]" data-testid={`badge-claim-${r.id}`}>
+                        {claim.label}
+                      </Badge>
                     </div>
                   </div>
-                  {isUnclaimed ? (
+                  {claim.canClaim ? (
                     <Button
                       size="sm"
-                      onClick={() => updateMutation.mutate({ id: r.id, data: { expertId: "self" } })}
-                      disabled={updateMutation.isPending}
+                      onClick={() => claimMutation.mutate(r.id)}
+                      disabled={claimMutation.isPending}
                       data-testid={`button-claim-${r.id}`}
                     >
                       Claim

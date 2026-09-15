@@ -25,6 +25,14 @@ import {
   bookingAgentStatusRefusal,
   isHumanSettableBookingAgentStatus,
 } from "@shared/booking-agent-vocabulary";
+// The booking-agent CLAIM (ledger `2026-09-08-assignment-is-claimed`) — the gate, the atomic write
+// and the classification of a lost race live in ONE module; this router is its thin adapter.
+import {
+  BOOKING_AGENT_CLAIM_MESSAGE,
+  BOOKING_AGENT_CLAIM_STATUS,
+  claimBodySchema,
+  claimBookingRequest,
+} from "../services/booking-agent-claim.service";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
@@ -80,7 +88,7 @@ import {
   insertItineraryComparison, saveGeneratedItinerarySnapshot, updateItineraryComparisonStatus,
   stampAiGeneratedItineraryTrip,
   getActiveProviderServices, getDestinationEventsByCity,
-  getExpertUserIds, getAiDiscoveredGemById,
+  getAiDiscoveredGemById,
   getAffiliateProductsByIds, getContentRegistryByIds,
   getAffiliateProductsByLocation, getContentRegistryByLocation,
   insertAffiliateClick, getPlatformStats, getFeaturedTestimonials,
@@ -7587,16 +7595,25 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
       const finalItemName = (resolved.name || (typeof itemName === "string" ? itemName : "") || "Partner booking").slice(0, 255);
       const finalPartnerName = (resolved.partner || (typeof partnerName === "string" ? partnerName : "") || "Partner").slice(0, 100);
 
-      // ASSIGNMENT IS ARBITRARY, AND SAYING SO IS THE POINT (LD 44 phase 0, ledger
-      // `2026-09-08-agent-phase-zero`). This comment previously claimed "based on category (city
-      // match optional)". It never was: `getExpertUserIds(10)` returns the first ten `role='expert'`
-      // rows in whatever order the table gives them, and this takes `[0]` — no category, no city, no
-      // load, no availability. LD 44 names the arbitrary assignment as a finding that NEEDS ITS OWN
-      // RULING, so phase 0 corrects the description and changes no behaviour (§13: a comment that
-      // describes matching nobody wrote is the same lie as a UI claim).
-      const expertIds2 = await getExpertUserIds(10);
-      const expertId = expertIds2.length > 0 ? expertIds2[0] : null;
-      const status = expertId ? "assigned" : "pending";
+      // AUTO-ASSIGNMENT IS RETIRED — A REQUEST IS CLAIMED FROM THE POOL (CLAUDE.md Locked
+      // Decision 44's reserved question, ruled by ledger `2026-09-08-assignment-is-claimed`,
+      // executed by `2026-09-15-booking-agent-claim`). What stood here stamped
+      // `getExpertUserIds(10)[0]` — the first `role='expert'` row the table happened to return, no
+      // category, no city, no load, no availability — onto every request. That created an OWNER WHO
+      // NEVER AGREED TO THE WORK and hid the request from everyone else, which is the real defect.
+      // NO ASSIGNEE IS STAMPED AT CREATE. The row is born unclaimed and lands in the pooled queue
+      // the expert inbox already reads (`getAffiliateBookingRequestsByExpert` returns
+      // `expert_id = me OR expert_id IS NULL`), where it is CLAIMED through the ONE claim rail
+      // below (`POST /api/affiliate-booking-requests/:id/claim`). Nothing is notified to a person
+      // as its owner, because there is no owner yet.
+      // §13: `status` is UNCHANGED — the birth state stays the legacy `pending` this rail has
+      // always written, which the ONE reader (`client/src/lib/booking-agent-status.ts`) already
+      // maps to `received`. Re-pointing it at the ruled value is a vocabulary move LD 44 (e)
+      // phase 0 deliberately did not make, and this lane does not make it either. `assigned` is
+      // simply never written at create any more, and rows already carrying it keep it (NO BACKFILL
+      // — a row that was assigned was assigned).
+      const expertId: string | null = null;
+      const status = "pending";
 
       // MONEY_MAP F-5 (LIVE — ledger `2026-09-05-affiliate-subid-live`): attribution is per
       // REQUEST, so this row's id is stamped into the partner's own attribution parameter through
@@ -7674,11 +7691,13 @@ router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, asy
       if (!resolved) {
         return res.status(404).json({ message: "This route is no longer available in the catalog — try refreshing the list" });
       }
-      // Same arbitrary first-expert pick as the rail above, and the same ruled non-fix: LD 44
-      // phase 0 corrects descriptions, not the algorithm (see the note on the sibling create path).
-      const expertIds3 = await getExpertUserIds(10);
-      const expertId = expertIds3.length > 0 ? expertIds3[0] : null;
-      const status = expertId ? "assigned" : "pending";
+      // Same retirement as the rail above, for the same reason and by the same ruling
+      // (`2026-09-08-assignment-is-claimed`): no assignee is stamped at create, the row is born
+      // unclaimed into the pooled queue, and the claim rail below is its ONE assignee author. See
+      // the full note on the sibling create path — a second copy of the reasoning is the drift
+      // §18 rule 1 names.
+      const expertId: string | null = null;
+      const status = "pending";
 
       // MONEY_MAP F-5 (LIVE — ledger `2026-09-05-affiliate-subid-live`): stamp the booking-request
       // id onto the outbound link's attribution parameter so the partner's commission report echoes
@@ -7853,6 +7872,55 @@ router.get("/api/affiliate-booking-requests/:id/open", isAuthenticated, async (r
   });
 
 
+// THE CLAIM — ledger `2026-09-08-assignment-is-claimed`, executed by
+// `2026-09-15-booking-agent-claim`. Auto-assignment is retired (see both create rails above): a
+// request is born unclaimed into the pooled queue and CLAIMED here by whoever takes it.
+//
+// §14 — the claimant is `getUserId(req)` and nothing else. The body is parsed against a `.strict()`
+// allowlist of NOTHING, so a request naming its own `expertId` is REFUSED, never honoured and never
+// silently stripped. The path carries the row id; no identity arrives on the wire.
+//
+// §15 — the guard is the statement: `UPDATE … SET expert_id = $me WHERE id = $id AND expert_id IS
+// NULL`, in `storage.claimAffiliateBookingRequest`, the column's ONE author. Two agents claiming at
+// the same instant produce exactly one winner; the loser gets 409 naming the FACT and never the
+// holder. The winner's own retry is idempotent (`alreadyYours`) — see the service for why.
+//
+// A claim writes NO status: `assigned` is a legacy value outside the human-settable allowlist, and
+// `researching`/`purchased_by_api` are machine states (LD 44 (e)). Ownership is `expert_id`'s answer.
+router.post("/api/affiliate-booking-requests/:id/claim", isAuthenticated, async (req, res) => {
+    try {
+      const sessionUserId = getUserId(req)!;
+      if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
+
+      const parsedBody = claimBodySchema.safeParse(req.body ?? {});
+      if (!parsedBody.success) {
+        // §19: an unknown key is refused rather than stripped — most of all `expertId`, which is
+        // the one field this rail must never take from a caller.
+        return res.status(400).json({
+          message: "A claim takes no fields — the claimant is the signed-in booking agent",
+        });
+      }
+
+      const outcome = await claimBookingRequest({
+        requestId: req.params.id,
+        actorUserId: sessionUserId,
+      });
+      if (!outcome.ok) {
+        return res
+          .status(BOOKING_AGENT_CLAIM_STATUS[outcome.reason])
+          .json({ message: BOOKING_AGENT_CLAIM_MESSAGE[outcome.reason], reason: outcome.reason });
+      }
+
+      // §16: the partner URL never leaves in a response body — same strip as every other rail here.
+      const { affiliateUrl: _claimedUrl, ...safe } = outcome.row;
+      return res.json({ ...safe, alreadyYours: outcome.alreadyYours });
+    } catch (err: any) {
+      console.error("[AffiliateBooking] claim error:", err);
+      return res.status(500).json({ message: "Failed to claim booking request" });
+    }
+  });
+
+
 // Map a booking's travelDate onto a 1-based trip day: (travelDate − trip.start) + 1,
 // clamped to the trip's [start, end] range. Falls back to day 1 when travelDate is
 // absent/unparseable or the trip has no start date.
@@ -7889,13 +7957,20 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       const { id } = req.params;
       // tripId is intentionally NOT in this blind-allow list — it is only attached
       // after the cross-trip guard below passes (Phase 2.3). Never blindly trust it.
-      const allowed = ["status", "expertNotes", "confirmationRef", "price", "expertId"] as const;
+      //
+      // `expertId` IS NO LONGER HERE (ledger `2026-09-08-assignment-is-claimed`, executed by
+      // `2026-09-15-booking-agent-claim`). It used to ride this list with a `"self"` sentinel, which
+      // meant two things at once: any caller could PATCH an ARBITRARY user id onto the row (an
+      // identity taken from the body — the §14 class), and the write was a plain UPDATE, so two
+      // agents claiming the same request both "succeeded" and the second silently took it from the
+      // first (§15: a write with no conditional is not a claim). Assignment now has ONE rail —
+      // `POST /api/affiliate-booking-requests/:id/claim` above — and `storage` strips the field a
+      // second time, so an internal caller cannot reach it either.
+      const allowed = ["status", "expertNotes", "confirmationRef", "price"] as const;
       const data: any = {};
       for (const key of allowed) {
         if (req.body[key] !== undefined) data[key] = req.body[key];
       }
-      // Self-assign: if setting expertId, use current user
-      if (data.expertId === "self") data.expertId = sessionUserId;
 
       // LD 44 (e) phase 0 (ledger `2026-09-08-agent-phase-zero`): the status VALUE SET is
       // app-enforced — there is no DB CHECK and no migration (the publish-trap posture) — and this

@@ -1341,6 +1341,50 @@ jobs:
       - name: Checkout payment promotion + plan-work grant (N17-N19, N23)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/checkout-payment-promotion.db.test.ts
 
+  booking-agent-claim:
+    name: booking-agent-claim (LD 44; ledger 2026-09-08-assignment-is-claimed / 2026-09-15-booking-agent-claim)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # BOOKING-AGENT AUTO-ASSIGNMENT IS RETIRED; A REQUEST IS CLAIMED FROM THE POOL.
+      # C1 proves no create rail picks an agent (and that `getExpertUserIds` is gone, not merely
+      # unused — §18c). C2-C4 are the §15 claim: two concurrent claims, exactly one winner, the
+      # loser 409 naming the fact and never the holder. C5-C7 are the gate and the 404. C8 is §14
+      # /§19 — the claimant cannot arrive on the wire. C9 is the two-layer retirement of the PATCH
+      # rail's `expertId`. C10 is the no-backfill rule and the reason a claim writes no status.
+      # NEGATIVE RUN: with the atomic conditional removed from the writer, C2/C3/C4/C10 fail.
+      - name: Booking-agent claim (C1-C10)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/booking-agent-claim.db.test.ts
+
   transport-payment-intent:
     name: transport-payment-intent (punchlist R-1; ledger 2026-09-14-transport-confirm-stamps-pi)
     runs-on: ubuntu-latest

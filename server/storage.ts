@@ -1103,12 +1103,24 @@ export interface IStorage {
   // attributed URL never exists client-side. Same projection the traveler list already had.
   getAffiliateBookingRequestsByExpert(expertId: string, tripId?: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
 
-  updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
+  // THE ONE AUTHOR OF `affiliate_booking_requests.expert_id` (ledger
+  // `2026-09-08-assignment-is-claimed`, executed by `2026-09-15-booking-agent-claim`). §15: the
+  // statement IS the guard — `WHERE id = ? AND expert_id IS NULL` — so two concurrent claims
+  // produce exactly ONE winner and the loser matches zero rows and gets `undefined`. A
+  // check-then-update would be the bug. The actor is passed in by the route from the SESSION
+  // (§14); this writer never sees a request body.
+  claimAffiliateBookingRequest(id: string, expertUserId: string): Promise<AffiliateBookingRequest | undefined>;
+
+  // `expertId` is DELIBERATELY ABSENT from this Pick and from confirm's below: the claim rail above
+  // is the column's one author, and the PATCH rail no longer carries it (§18 rule 1 — a second
+  // assignee author is how one rail starts handing out a row the other rail already gave away).
+  // The implementations strip it as well, so an internal `as any` caller cannot reach it either.
+  updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
   // R4/F7 (§15): atomic pending→confirmed claim used by the confirm site so a duplicate/concurrent
   // confirm can't double-insert the affiliate earning it triggers. Returns undefined when the row
   // was already confirmed (lost the race) — caller must treat that as an idempotent no-op.
 
-  confirmAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
+  confirmAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
   // AI booking copilot verification leg (migration 170). Persists ONLY the verification jsonb
   // snapshot — never touches affiliateUrl or any other column. §16: the snapshot itself must never
   // carry the URL; that's enforced by the caller (booking-verification.service.ts) never putting it
@@ -7487,13 +7499,42 @@ export class DatabaseStorage implements IStorage {
     return rows.map(({ affiliateUrl: _url, ...rest }) => rest);
   }
 
+  /**
+   * THE CLAIM — the ONE author of `affiliate_booking_requests.expert_id`
+   * (ledger `2026-09-08-assignment-is-claimed`; executed by `2026-09-15-booking-agent-claim`).
+   *
+   * §15: `WHERE id = ? AND expert_id IS NULL` is the guard ITSELF, not a pre-check. Two agents
+   * pressing Claim at the same instant issue two of these; the row is claimed by exactly one and
+   * the other matches ZERO rows and gets `undefined`. The caller classifies that undefined by
+   * re-reading — for the MESSAGE only, never for the decision.
+   *
+   * §14: `expertUserId` comes from the caller's SESSION. This writer takes no body and no query.
+   * It writes NO status: a claim is an assignment fact, and `assigned` is a legacy status value no
+   * ruled rail may write (LD 44 (e); it is not in `HUMAN_SETTABLE_BOOKING_AGENT_STATUSES`).
+   */
+  async claimAffiliateBookingRequest(
+    id: string,
+    expertUserId: string,
+  ): Promise<AffiliateBookingRequest | undefined> {
+    const [claimed] = await db
+      .update(affiliateBookingRequests)
+      .set({ expertId: expertUserId, updatedAt: new Date() })
+      .where(and(eq(affiliateBookingRequests.id, id), isNull(affiliateBookingRequests.expertId)))
+      .returning();
+    return claimed;
+  }
+
   async updateAffiliateBookingRequest(
     id: string,
-    data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>,
+    data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "tripId">>,
   ): Promise<AffiliateBookingRequest | undefined> {
+    // Layer 2 of the §18/§19 two-layer strip: the route's allowlist no longer admits `expertId`,
+    // and this writer removes it again so an internal `as any` caller a type-level Pick cannot
+    // reach is covered too. `claimAffiliateBookingRequest` is the column's one author.
+    const { expertId: _assigneeIsClaimedNotPatched, ...safe } = data as Record<string, unknown>;
     const [updated] = await db
       .update(affiliateBookingRequests)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...(safe as typeof data), updatedAt: new Date() })
       .where(eq(affiliateBookingRequests.id, id))
       .returning();
     return updated;
@@ -7501,16 +7542,18 @@ export class DatabaseStorage implements IStorage {
 
   async confirmAffiliateBookingRequest(
     id: string,
-    data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>,
+    data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "tripId">>,
   ): Promise<AffiliateBookingRequest | undefined> {
     // §15 atomic claim: transitions pending/failed/etc → 'confirmed' ONLY when the row is not
     // already 'confirmed'. A concurrent/duplicate confirm request matches 0 rows and returns
     // undefined — the caller (the R4/F7 earning-ledger write) must treat that as "already
     // confirmed" and skip re-running the confirm side-effects (itinerary item + affiliate earning),
     // not retry the insert.
+    // Same layer-2 strip as the update path above: confirming a booking never reassigns it.
+    const { expertId: _assigneeIsClaimedNotConfirmed, ...safe } = data as Record<string, unknown>;
     const [updated] = await db
       .update(affiliateBookingRequests)
-      .set({ ...data, status: "confirmed", updatedAt: new Date() })
+      .set({ ...(safe as typeof data), status: "confirmed", updatedAt: new Date() })
       .where(and(eq(affiliateBookingRequests.id, id), ne(affiliateBookingRequests.status, "confirmed")))
       .returning();
     return updated;
