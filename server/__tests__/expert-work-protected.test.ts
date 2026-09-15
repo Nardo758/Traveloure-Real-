@@ -177,13 +177,29 @@ describe("E6 — D4: the LIVE create rail strips expert_note for non-advisors", 
 });
 
 describe("E7 — ONE class, no third expression (D3, §18 rule 1)", () => {
-  it("the row-level predicate is imported only by the guard and the baseline service", () => {
+  // §18 rule 1 forbids a third EXPRESSION of the class, never a third CALLER of the one
+  // expression — the opposite, in fact: every new rail that needs the answer must reach for this
+  // predicate rather than writing its own. So this pin names the callers and is REPAIRED when a
+  // ruled rail joins them, which is what keeps "one class" checkable at all. A file added here
+  // without a reason beside it is the thing to refuse.
+  const ROW_PREDICATE_CALLERS = [
+    // The two forms of the answer, sitting beside each other (the module's own header).
+    "itinerary-rebuild-guard.ts",
+    // The optimizer read-set — D3's original consumer.
+    "optimizer-baseline.service.ts",
+    // The AI-proposal APPLY (punchlist D-20/D-21, ledger `2026-09-15-d20-d21-proposal-charge`):
+    // a `replaces` entry naming expert work is REFUSED with the reason rather than skipped, and
+    // the test for "is this expert work?" is THIS predicate, called once — never a parallel one
+    // written beside it.
+    "proposal-charge.service.ts",
+  ];
+  it("the row-level predicate is imported only by the guard, the baseline service and the apply", () => {
     const importers = serverFiles(SERVER).filter((f) =>
       readFileSync(f, "utf8").includes("itineraryItemIsExpertWork"),
     );
     assert.deepEqual(
       importers.map((f) => f.replace(/\\/g, "/").replace(/^.*\//, "")).sort(),
-      ["itinerary-rebuild-guard.ts", "optimizer-baseline.service.ts"],
+      [...ROW_PREDICATE_CALLERS].sort(),
     );
   });
   it("the SQL clause is referenced only by the guard and the two apply-to-trip delete sites", () => {

@@ -130,7 +130,11 @@ export default function PricingPage() {
       checklist: [
         "3 versions built around your anchor plans",
         "Re-time, fill gaps, or stitch it together",
-        "Charged only when you confirm",
+        // D-21 (ledger `2026-09-15-d20-d21-proposal-charge`): the AI task is charged once per
+        // proposal you APPLY — asking is free however many times, and reading or discarding a
+        // proposal costs nothing. Never "per question": that would describe a charge nothing takes
+        // and would make the review-first shape (LD 42 D18 — there is no undo) dishonest.
+        "A run is charged when you confirm; a task only when you apply a proposal",
       ],
       cta: "Optimize a plan",
       variant: "outline" as const,

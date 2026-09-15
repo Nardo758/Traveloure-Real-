@@ -19,6 +19,28 @@ import * as cartProjection from "../services/cart-projection.service";
 // POST rail in server/routes.ts so the two cannot drift (§18 rule 1).
 import { resolveItemEventLink } from "../services/item-event-link.service";
 import { discardPlanProposal, listPlanProposals } from "../services/plan-proposals.service";
+// The APPLY and its CHARGE (punchlist D-20/D-21, ledger `2026-09-15-d20-d21-proposal-charge`).
+// The route holds the gate and the sequence; every money decision lives in the two modules below —
+// the PURE authorization predicate and the one charge/apply service (§18 rule 1).
+import {
+  logProposalApplyBasis,
+  resolveProposalApplyAuthorization,
+} from "../services/proposal-apply-authorization";
+import {
+  applyPlanProposal,
+  claimProposalCharge,
+  createProposalChargeIntent,
+  getPlanProposal,
+  ledgerProposalCharge,
+  ProposalApplyRefused,
+  resolveAiTaskChargeCents,
+  retrieveProposalPaymentIntent,
+  stampProposalPaymentIntent,
+  verifyProposalPayment,
+} from "../services/proposal-charge.service";
+import { PLAN_PROPOSAL_STATUS_PROPOSED } from "@shared/plan-proposals";
+import { coversAction } from "../services/trip-entitlement.service";
+import { stripePaymentService } from "../services/stripe-payment.service";
 // Ledger `2026-09-05-slip-own-your-plan` (review R14): the ONE row-level answer to "is this row
 // money?", re-exported by the rebuild guard so the set-level WHERE clause and this single-row test
 // are read together (§18 rule 1). Imported from the guard module rather than from `@shared`
@@ -3406,6 +3428,224 @@ router.post("/api/trips/:tripId/proposals/:id/discard", isAuthenticated, async (
   } catch (err: any) {
     console.error("[trips] discard plan proposal failed:", err?.message);
     res.status(500).json({ message: "Failed to discard the proposal" });
+  }
+});
+
+
+// ── THE APPLY IS THE CHARGE POINT (punchlist D-20 = A, D-21 = A) ─────────────────────────────────
+//
+// (decision-maker rulings 2026-09-15; ledger `2026-09-15-d20-d21-proposal-charge`; migration 300.
+//  CLAUDE.md Locked Decision 45 (3), Locked Decision 41 (a)/(f), Locked Decision 42 D3/D17/D18,
+//  Locked Decision 43 (c), §8, §13, §14, §15, §15b, §18 rule 1, §19a.)
+//
+// **D-20 = A: the price is FLAT and it comes from `fee_bands`** — the `concierge:ai_task` band,
+// `flat_cents`, through the EXISTING fail-loud resolver. No literal anywhere (§8), and
+// `optimization_fees` is untouched: a second tiered fee table for a second AI product is how the
+// platform ends up with two fee homes nobody can reconcile.
+//
+// **D-21 = A: ONE charge per DISTINCT PROPOSAL APPLIED.** Asking is free, reading is free,
+// discarding is free. The §15b CLAIM sits on the proposal row and the Stripe idempotency key is
+// derived from the proposal id, so a double-click or a retry is ONE charge.
+//
+// THE GATE is the SAME `authorizeTripLogistics(..., { requireWriteAccess: true })` the read and
+// discard routes above already run — owner ‖ §12 WRITE-status advisor (accepted/assigned, NEVER
+// pending). Locked Decision 42 **D17** is the reason it is the write tier and not the read one: an
+// apply REWRITES the plan's items, and the largest item write on the platform must not be gated by
+// the read-shaped tier that (correctly, for reading) grants `pending`.
+//
+// §14 THROUGHOUT: the acting user is the session, the plan is the ROW's, and the amount is the
+// band's. Nothing about price, identity or rate arrives in a body. The only client-supplied value
+// either route accepts is a PaymentIntent id, and it is never trusted — it is verified against
+// Stripe, and against THIS proposal's own server-written metadata, before it authorizes anything.
+
+// POST /api/trips/:tripId/proposals/:id/pay — create the AI-task PaymentIntent for ONE proposal.
+//
+// §15b CLAIM → AUTHORIZE → PROMOTE. The claim is taken BEFORE the Stripe call, as one atomic
+// conditional, so two concurrent pays produce exactly one claim and the loser makes no Stripe call
+// at all. A Trip Pass on the plan takes NO claim and creates NO PaymentIntent (LD 41 (a): coverage
+// is unlimited, so there is no counter to race on and nothing to suppress a charge against).
+router.post("/api/trips/:tripId/proposals/:id/pay", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { tripId, id } = req.params;
+    const denied = await authorizeTripLogistics(
+      tripId, userId, "POST /api/trips/:tripId/proposals/:id/pay", { requireWriteAccess: true },
+    );
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+
+    const proposal = await getPlanProposal(id, tripId);
+    // ONE 404 for "no such proposal" and "not on this trip" alike — the probing posture the read
+    // and discard routes already take (Locked Decision 40's `POST /api/conversations/start` rule).
+    if (!proposal) return res.status(404).json({ message: "Proposal not found" });
+    if (proposal.status !== PLAN_PROPOSAL_STATUS_PROPOSED) {
+      return res.status(409).json({ message: "This proposal has already been applied or discarded." });
+    }
+
+    // THE PASS IS READ FIRST, and it is the SERVER's read — the client never asserts coverage. It
+    // is first for LD 41 (a)'s reason: the charge gate and the apply gate must never disagree about
+    // a covered plan, which is the exact defect that ruling exists to close.
+    if (await coversAction(tripId, "ai_task")) {
+      logProposalApplyBasis("trip_pass", { tripId, proposalId: id });
+      return res.json({ coveredByTripPass: true, runBasis: "trip_pass" as const });
+    }
+
+    // A PaymentIntent already stands for this proposal (a resumed sheet, a reloaded drawer). The
+    // idempotency key is derived from the proposal id, so this is the SAME intent Stripe would
+    // return anyway — handing back its client secret is a resume, never a second charge.
+    if (proposal.stripePaymentIntentId) {
+      const existing = await retrieveProposalPaymentIntent(proposal.stripePaymentIntentId);
+      return res.json({
+        clientSecret: existing.client_secret,
+        paymentIntentId: existing.id,
+        feeCents: existing.amount,
+        currency: (existing.currency ?? "usd").toUpperCase(),
+        resumed: true,
+      });
+    }
+
+    // §8/§14: the amount is the band's, resolved server-side, fail-loud. Resolved BEFORE the claim
+    // so a misconfigured band refuses without leaving a claim behind.
+    const feeCents = await resolveAiTaskChargeCents();
+
+    // §15b THE CLAIM — the statement IS the guard. A loser of the race, and a row that stopped
+    // being `proposed` between the read above and here, both land on the same 409.
+    const claimed = await claimProposalCharge(id, tripId);
+    if (!claimed) {
+      return res.status(409).json({
+        message: "A payment for this proposal is already in progress, or it is no longer applicable.",
+      });
+    }
+
+    const customerId = (await stripePaymentService.getOrCreateCustomer(userId)) ?? undefined;
+    const intent = await createProposalChargeIntent({
+      proposalId: id,
+      tripId,
+      userId,
+      amountCents: feeCents,
+      customerId,
+    });
+    // §19a: the ONE writer of this column, and an atomic conditional, so it can never be overwritten.
+    await stampProposalPaymentIntent(id, intent.id);
+
+    return res.json({
+      clientSecret: intent.client_secret,
+      paymentIntentId: intent.id,
+      feeCents,
+      currency: "USD",
+    });
+  } catch (err: any) {
+    console.error("[trips] proposal pay failed:", err?.message);
+    res.status(500).json({ message: "Failed to start the payment for this proposal" });
+  }
+});
+
+// POST /api/trips/:tripId/proposals/:id/apply — the traveler applies ONE proposal to their plan.
+//
+// AUTHORIZATION IS THE ONE PURE PREDICATE (`resolveProposalApplyAuthorization`), bases ordered
+// trip pass → the payment recorded on the row → a freshly supplied PaymentIntent, each verified
+// against Stripe. §15c posture: a client-supplied PaymentIntent never resolves or stamps anything
+// on its own word.
+//
+// LD 42 **D3**: a `replaces` entry naming protected work — an item carrying your expert's note or
+// authored by them, or one you have already committed money to — is REFUSED with the reason, never
+// skipped silently. LD 42 **D18**: `applied_item_ids` is a RECORD of what the apply created and
+// this rail offers no undo on the strength of it.
+router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { tripId, id } = req.params;
+    const denied = await authorizeTripLogistics(
+      tripId, userId, "POST /api/trips/:tripId/proposals/:id/apply", { requireWriteAccess: true },
+    );
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+
+    const proposal = await getPlanProposal(id, tripId);
+    if (!proposal) return res.status(404).json({ message: "Proposal not found" });
+    if (proposal.status !== PLAN_PROPOSAL_STATUS_PROPOSED) {
+      return res.status(409).json({ message: "This proposal has already been applied or discarded." });
+    }
+
+    const auth = await resolveProposalApplyAuthorization(
+      {
+        proposalId: id,
+        tripId,
+        recordedPaymentIntentId: proposal.stripePaymentIntentId,
+        // The ONLY client-supplied value on this rail, and it authorizes nothing until Stripe and
+        // the intent's own server-written `proposalId` metadata both vouch for it.
+        suppliedPaymentIntentId: typeof req.body?.paymentIntentId === "string" ? req.body.paymentIntentId : null,
+      },
+      { tripPassCoversTask: (t) => coversAction(t, "ai_task"), verifyPayment: verifyProposalPayment },
+    );
+
+    if (!auth.authorized) {
+      // 402 for both: the traveler has not paid for this apply. The rejected case carries the
+      // verifier's own reason rather than collapsing every refusal into one message (§13).
+      return res.status(402).json({
+        message: "This proposal has not been paid for yet.",
+        reason: auth.reason,
+        ...(auth.reason === "payment_rejected" ? { detail: auth.detail } : {}),
+      });
+    }
+
+    // A freshly verified PaymentIntent still owes the §15 atomic conditional that records it. If
+    // the stamp loses (somebody else's intent is already on the row), refuse rather than apply on
+    // a payment identity this rail did not record.
+    if (auth.basis === "paid" && auth.claimRequired) {
+      const stamped = await stampProposalPaymentIntent(id, auth.paymentIntentId);
+      if (!stamped) {
+        return res.status(409).json({ message: "A different payment is already recorded for this proposal." });
+      }
+    }
+
+    let applied;
+    try {
+      applied = await applyPlanProposal({
+        proposalId: id,
+        tripId,
+        basis: auth.basis,
+        // §13: a covered apply charged nothing, and that is NULL — never `0`, which would read as
+        // "we charged them nothing" rather than "no charge was made".
+        chargedAmountCents: auth.basis === "paid" ? auth.amountCents : null,
+        paymentIntentId: auth.basis === "paid" ? auth.paymentIntentId : null,
+      });
+    } catch (err: any) {
+      if (err instanceof ProposalApplyRefused) {
+        // D3 / D18: the reason is said out loud, and NOTHING was written — the whole apply is one
+        // transaction, so a refusal leaves the plan exactly as it was.
+        return res.status(409).json({ message: err.message, reason: err.code, itemIds: err.itemIds });
+      }
+      throw err;
+    }
+
+    logProposalApplyBasis(auth.basis, { tripId, proposalId: id });
+
+    // §15b: the ledger write follows the operation it describes and may never break it. A
+    // Trip-Pass-covered apply writes NO ledger row — there is no money to record, and a `$0` row is
+    // forbidden by `fee_ledger`'s own `amount <> 0` CHECK and would be a fabricated charge (§13).
+    if (auth.basis === "paid") {
+      try {
+        await ledgerProposalCharge({
+          paymentIntentId: auth.paymentIntentId,
+          amountCents: auth.amountCents,
+          proposalId: id,
+          tripId,
+          userId,
+        });
+      } catch (ledgerErr: any) {
+        console.error("[trips] proposal charge ledger failed (non-fatal):", ledgerErr?.message);
+      }
+    }
+
+    res.json({
+      ok: true,
+      runBasis: auth.basis,
+      proposal: applied.proposal,
+      createdItemIds: applied.createdItemIds,
+      replacedItemIds: applied.replacedItemIds,
+    });
+  } catch (err: any) {
+    console.error("[trips] apply plan proposal failed:", err?.message);
+    res.status(500).json({ message: "Failed to apply the proposal" });
   }
 });
 

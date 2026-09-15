@@ -224,13 +224,30 @@ test("P1: `plan_proposals` and its index exist, and the DB columns match shared/
   );
   assert.equal(uniques.length, 0, "no UNIQUE index — proposals are a log, not an ordered list");
 
-  // NO payment / charge / claim column. The charge point is punchlist D-20/D-21 and adds its own.
-  for (const name of actual.keys()) {
-    assert.ok(
-      !/pay|charge|claim|stripe|amount|price|fee|cents|entitle/i.test(name),
-      `plan_proposals must carry no money column; found '${name}' (see punchlist D-20/D-21)`,
-    );
-  }
+  // ── THE MONEY COLUMNS ARE EXACTLY THE FOUR D-20/D-21 RATIFIED, AND NO OTHERS ──────────────
+  //
+  // REPAIRED, NOT DELETED (the operating procedure's own rule for a pin that main moves). This
+  // assertion originally read "plan_proposals must carry NO money column", because when migration
+  // 299 landed the charge point was an OPEN ruling and a speculative `charged_at` would have been
+  // this table's lane taking a decision that was not its to take. Punchlist **D-20** = A and
+  // **D-21** = A have since answered it (ledger `2026-09-15-d20-d21-proposal-charge`, migration
+  // 300), so the invariant is no longer "none" — it is "exactly these four, ratified, and nothing
+  // that arrived without a ruling". A fifth money column added tomorrow fails here until a human
+  // names it, which is the same protection stated the other way round.
+  const RATIFIED_MONEY_COLUMNS = [
+    "charge_claimed_at",       // the §15b pre-flight claim marker
+    "stripe_payment_intent_id", // §19a — one writer, the apply charge path
+    "charged_amount_cents",    // server-derived from the concierge:ai_task band (§8/§14)
+    "charge_basis",            // trip_pass | paid — app-enforced, no CHECK, no default
+  ];
+  const moneyish = [...actual.keys()].filter((name) =>
+    /pay|charge|claim|stripe|amount|price|fee|cents|entitle/i.test(name),
+  );
+  assert.deepEqual(
+    moneyish.sort(),
+    [...RATIFIED_MONEY_COLUMNS].sort(),
+    "plan_proposals carries exactly the four money columns D-20/D-21 ratified — no more, no fewer",
+  );
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

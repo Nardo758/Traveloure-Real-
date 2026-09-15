@@ -1592,6 +1592,28 @@ jobs:
       # 404-never-403 posture.
       - name: plan_proposals — the store, its refusals and its two routes (P1-P7)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/plan-proposals.db.test.ts
+      # THE APPLY IS THE CHARGE POINT (punchlist D-20 = A, D-21 = A; migration 300; ledger
+      # `2026-09-15-d20-d21-proposal-charge`). Same rail, same store, same Postgres — so it rides
+      # this job rather than standing up a second database for the other half of one table.
+      # D-20: the price is FLAT and comes from the `concierge:ai_task` fee band, never a literal
+      # (§8) — C7 asserts the EQUALITY against the row and follows an admin edit. D-21: ONE charge
+      # per DISTINCT PROPOSAL APPLIED — C1 fires two concurrent claims and proves exactly one
+      # lands (§15b: the statement is the guard, never a check-then-update), C5 proves a second
+      # apply is 409 with no second items. C2 proves a Trip-Pass-covered apply creates NO
+      # PaymentIntent and takes NO claim (LD 41 (a)), C3 proves an unauthorized apply writes
+      # nothing, C4 proves `origin:'ai'` is server-stamped and a `replaces` naming expert work is
+      # REFUSED with the reason rather than skipped (LD 42 D3, §13), and C6 pins the ruled answer
+      # for a discard after a claim. NO STRIPE CALL is made — every leg here is reachable without
+      # one, and the two that are not are proven in the pure suite below.
+      - name: the AI-proposal apply charge — claim, basis, band and refusals (C1-C7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/plan-proposal-charge.db.test.ts
+      # The PURE layer beside it: the authorization DECISION, exercised with no database at all.
+      # `resolveProposalApplyAuthorization` imports no db, no storage and no Stripe client (A8
+      # derives that from the file), which is what lets the bases order — trip pass FIRST, then a
+      # verified PaymentIntent — be proven in CI. LD 41 (a) exists because this class of failure is
+      # SILENT: a covered traveler answered "payment required" throws nothing and logs nothing.
+      - name: the apply authorization predicate, exercised directly (A1-A9)
+        run: npx tsx --test --test-force-exit server/__tests__/proposal-apply-authorization.test.ts
 
   from-state-guards:
     name: from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)

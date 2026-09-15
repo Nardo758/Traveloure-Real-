@@ -11,7 +11,10 @@ import { availableAtFor } from "../config/earnings-hold.config";
 import { eq, desc, sql, and, gte, lte, count, sum } from "drizzle-orm";
 
 export interface RevenueEvent {
-  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'coordination_fee' | 'expert_review_fee' | 'other';
+  // `ai_task_fee` (ledger `2026-09-15-d20-d21-proposal-charge`, punchlist D-20/D-21): the AI
+  // proposal APPLY charge. 100% platform revenue on the same 'ai' tier as `optimization_fee` — a
+  // task has no expert or provider share to split, so no earning is minted for it.
+  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'coordination_fee' | 'expert_review_fee' | 'ai_task_fee' | 'other';
   sourceId: string;
   trackingNumber?: string;
   grossAmount: number;
@@ -75,7 +78,10 @@ class RevenueTrackingService {
     // assigned expert COMPLETES the request, completeExpertRequest atomically re-splits this
     // capture-time row (expert gets the admin-editable 'expert_review_expert_share' band rate,
     // default 0.75; platform keeps the remainder) and credits a held expert earning.
-    const isFullPlatformFee = event.sourceType === 'optimization_fee' || event.sourceType === 'coordination_fee' || event.sourceType === 'expert_review_fee';
+    // `ai_task_fee` joins the 100%-platform set for the same reason `optimization_fee` is in it:
+    // the traveler pays the platform for a machine's work and there is nobody to split it with
+    // (ledger `2026-09-15-d20-d21-proposal-charge`).
+    const isFullPlatformFee = event.sourceType === 'optimization_fee' || event.sourceType === 'coordination_fee' || event.sourceType === 'expert_review_fee' || event.sourceType === 'ai_task_fee';
     // Derive source flag for the resolver so affiliate events get the 70% tier.
     const affiliateSource = event.sourceType === 'affiliate_commission' ? 'affiliate' as const : undefined;
     const rates = await resolveCommissionRates({
