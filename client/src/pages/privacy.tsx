@@ -75,7 +75,6 @@ export default function PrivacyPolicyPage() {
               <li>Billing address and contact information</li>
               <li>Last four digits of credit/debit cards for display purposes</li>
               <li>Payment transaction history and records</li>
-              <li>Platform credit balances and usage</li>
               <li>For Experts and Providers: bank account information, tax identification numbers, payout preferences (processed securely through Stripe Connect)</li>
             </ul>
 
@@ -135,7 +134,6 @@ export default function PrivacyPolicyPage() {
               <li>Process bookings, reservations, and transactions</li>
               <li>Enable communication between users through our platform</li>
               <li>Display relevant content, recommendations, and search results</li>
-              <li>Manage platform credits and process payments</li>
             </ul>
 
             <h3 className="text-xl font-medium mb-3">3.2 Safety and Trust</h3>
