@@ -422,14 +422,14 @@ test("F5b: the history entry's `status`/`timestamp` are the server's, not the ca
   const updated = await storage.updateCoordinationStatus(
     stateId,
     "expert_matching",
-    { status: "completed", timestamp: "1999-01-01T00:00:00.000Z", action: "hostile" },
+    { status: "completed", timestamp: "2001-01-01T00:00:00.000Z", action: "hostile" },
     ["intake"],
   );
   assert.ok(updated);
   const history = (await readCoordination(stateId)).state_history as any[];
   const entry = history[history.length - 1];
   assert.equal(entry.status, "expert_matching", "the recorded status is the one the row took");
-  assert.notEqual(entry.timestamp, "1999-01-01T00:00:00.000Z", "the recorded instant is the server's");
+  assert.notEqual(entry.timestamp, "2001-01-01T00:00:00.000Z", "the recorded instant is the server's");
   assert.equal(entry.action, "hostile", "the rest of the caller's entry still lands — the strip is narrow");
 });
 
