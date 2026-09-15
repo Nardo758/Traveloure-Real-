@@ -5,6 +5,7 @@
     "strict": false,
     "contexts": [
       "build (vite + esbuild bundle)",
+      "test-file-reachability (ratchet - new orphans fail)",
       "money-endpoint-guard (CLAUDE.md §14)",
       "claims-only-lookup-guard (session-user extraction)",
       "navbar-links-smoke",

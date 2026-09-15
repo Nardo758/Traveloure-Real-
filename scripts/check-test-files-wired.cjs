@@ -1,6 +1,20 @@
 #!/usr/bin/env node
 /**
- * CI test-file reachability inventory.
+ * CI test-file reachability inventory — AND THE RATCHET OVER IT.
+ *
+ * THE RATCHET (ruled 2026-09-15, ledger `2026-09-15-orphan-ratchet`; punchlist D-44)
+ * `scripts/test-orphan-baseline.txt` records EXACTLY the orphan set of the day it was
+ * written. It is RECORDED DEBT, NOT AN ALLOWLIST: a listed suite is still owed
+ * repair-or-delete under `2026-09-14-test-files-wired-orphans` ("a suite leaves the
+ * orphan list by being RUN, or by being GONE — never by being named an exception").
+ * The normal scan compares the live orphan set against that file and EXITS 1 on
+ * either direction of drift:
+ *   (a) an orphan that is NOT in the baseline  -> NEW ORPHAN;
+ *   (b) a baseline path that is now REACHABLE,
+ *       or that no longer exists               -> STALE BASELINE ENTRY.
+ * So the file can only ever SHRINK, and the recorded debt is always true — it can
+ * neither quietly grow nor quietly rot. The full orphan inventory is still printed
+ * on every run, exactly as before.
  *
  * UNDERSTOOD INVOCATION SHAPES
  * - `tsx --test <file|directory|glob>` (including `npx tsx` and env prefixes)
@@ -51,14 +65,25 @@
  *   ten `e2e/specs/*.spec.ts` files are invisible to this inventory). They do
  *   have a real, schedule-only CI reach through `playwright.e2e.config.ts`'s
  *   `testDir` (`npm run test:e2e:staging`), so adding the root would move both
- *   the numerator and the denominator. Widening the inventory's scope is a
- *   decision about what it MEASURES and is left to a ruling; the limit is
- *   stated here rather than silently closed.
+ *   the numerator and the denominator. RULED 2026-09-15 (`2026-09-15-orphan-ratchet`):
+ *   the root STAYS OUT and the limit stays STATED — widening the inventory is a
+ *   decision about what it MEASURES, and the ratchet does not make it. An `e2e/`
+ *   spec is therefore invisible to the ratchet as well: it can be added, wired or
+ *   orphaned without this guard noticing either way.
+ * - THE RATCHET DOES NOT MAKE A BASELINE ROW ACCEPTABLE. It catches exactly two
+ *   things — a NEW unreachable test file, and a baseline row that has gone stale
+ *   (wired, or deleted). It says nothing about the 233 rows it carries: each is
+ *   still an unrun suite, still owed repair-or-delete, and a green run here means
+ *   only that the debt did not grow. It also cannot see a suite reached through a
+ *   construct the tokenizer does not model (see the two entries above), so a
+ *   "NEW ORPHAN" line can in principle be a file this parser simply cannot follow;
+ *   the answer to that is to make the invocation legible, never to list the file
+ *   in the baseline.
  *
- * This is intentionally an advisory inventory: current orphans are printed and
- * the normal scan exits 0. That exit posture is unchanged by the 2026-09-15
- * repair — this lane corrected WHAT the guard reports, not whether it blocks.
- * `--self-test` is the predicate gate and exits nonzero on a broken fixture.
+ * `--self-test` is the predicate gate: it proves BOTH the reachability reader and
+ * the ratchet comparison, and exits nonzero on a broken fixture. The 2026-09-13
+ * advisory exit-0 posture is GONE as of the ratchet — the scan exits 1 on drift —
+ * but nothing about WHAT the scan measures changed with it.
  *
  * Node built-ins only. Self-test: node scripts/check-test-files-wired.cjs --self-test
  */
@@ -68,6 +93,8 @@ const path = require("path");
 const ROOT = path.resolve(__dirname, "..");
 const WORKFLOW_DIR = path.join(ROOT, ".github", "workflows");
 const TEST_ROOTS = ["server", "shared", "client", "playwright"];
+const BASELINE_PATH = path.join(ROOT, "scripts", "test-orphan-baseline.txt");
+const BASELINE_REL = "scripts/test-orphan-baseline.txt";
 const TEST_RE = /\.(?:test\.ts|test\.tsx|spec\.ts)$/;
 
 /** Commands that merely wrap another command; the runner is what follows. */
@@ -372,6 +399,50 @@ function inventory({ root = ROOT, tests, workflowCommands, packageScripts, dirEx
   };
 }
 
+/**
+ * Read the recorded-debt baseline: one repo-relative path per line, `#` comments
+ * and blank lines ignored. Order is irrelevant to the comparison (the file is kept
+ * sorted for readability and diff sanity).
+ */
+function readBaseline(file = BASELINE_PATH) {
+  return fs
+    .readFileSync(file, "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+}
+
+/**
+ * Compare the live inventory against the recorded debt. PURE — no file system, no
+ * process exit; the caller decides what to do with the two lists.
+ *
+ * A baseline entry is STALE when it is no longer an orphan, for either reason:
+ * the suite is now reachable (someone wired it — the debt shrank and the file must
+ * say so), or it is no longer in the inventory at all (deleted, renamed, or moved
+ * out of `TEST_ROOTS`). Both must be removed in the same PR that caused them.
+ */
+function ratchet({ tests, reachable, orphans, baseline }) {
+  const baselineSet = new Set(baseline);
+  const orphanSet = new Set(orphans);
+  const reachableSet = new Set(reachable);
+  const testSet = new Set(tests);
+
+  const newOrphans = orphans.filter((file) => !baselineSet.has(file));
+  const stale = [];
+  for (const entry of baseline) {
+    if (orphanSet.has(entry)) continue;
+    stale.push({
+      path: entry,
+      reason: reachableSet.has(entry)
+        ? "now REACHABLE from a workflow command"
+        : testSet.has(entry)
+          ? "no longer an orphan"
+          : "no longer EXISTS in the test inventory",
+    });
+  }
+  return { newOrphans, stale };
+}
+
 function workflowCommands(dir = WORKFLOW_DIR) {
   return walk(dir, (file) => /\.ya?ml$/.test(file))
     .flatMap((file) => extractRunCommands(fs.readFileSync(path.join(dir, file), "utf8")));
@@ -469,6 +540,77 @@ function selfTest() {
     },
   ];
 
+  // RATCHET fixtures (2026-09-15, `2026-09-15-orphan-ratchet`). The comparison is
+  // pure, so these need no file system: each case states an inventory outcome and a
+  // baseline, and asserts exactly which of the two failure lists is non-empty.
+  // `wired` is the tree AFTER someone wired `client/unreferenced.test.ts`.
+  const allOrphans = [
+    "server/direct.test.ts",
+    "server/__tests__/prose-only.test.ts",
+    "shared/directory/covered.test.ts",
+    "client/unreferenced.test.ts",
+  ];
+  const wiredReachable = ["client/unreferenced.test.ts"];
+  const wiredOrphans = allOrphans.filter((file) => file !== "client/unreferenced.test.ts");
+
+  const ratchetCases = [
+    {
+      // The steady state: the baseline names exactly today's orphans. Debt did not
+      // grow, no row went stale, the run is green.
+      name: "ratchet — unchanged inventory passes",
+      tests,
+      reachable: [],
+      orphans: allOrphans,
+      baseline: allOrphans,
+      newOrphans: [],
+      stale: [],
+    },
+    {
+      // A test file that no workflow reaches and the baseline does not carry. This
+      // is the whole point of the ratchet: the debt may not grow silently.
+      name: "ratchet — a NEW orphan fails",
+      tests,
+      reachable: [],
+      orphans: allOrphans,
+      baseline: allOrphans.filter((file) => file !== "client/unreferenced.test.ts"),
+      newOrphans: ["client/unreferenced.test.ts"],
+      stale: [],
+    },
+    {
+      // Someone wired a baseline suite but left the line in place. The debt list is
+      // now a lie in the flattering direction, so it fails until the line is removed.
+      name: "ratchet — a baseline entry that became REACHABLE fails",
+      tests,
+      reachable: wiredReachable,
+      orphans: wiredOrphans,
+      baseline: allOrphans,
+      newOrphans: [],
+      stale: ["client/unreferenced.test.ts"],
+    },
+    {
+      // Someone deleted a baseline suite and left the line in place. Same failure,
+      // the other honest exit from the orphan list (`2026-09-14-test-files-wired-orphans`).
+      name: "ratchet — a baseline entry whose file is GONE fails",
+      tests: tests.filter((file) => file !== "client/unreferenced.test.ts"),
+      reachable: [],
+      orphans: wiredOrphans,
+      baseline: allOrphans,
+      newOrphans: [],
+      stale: ["client/unreferenced.test.ts"],
+    },
+    {
+      // The only way the file is meant to move: a suite was wired AND its line was
+      // removed in the same change. The ratchet is silent — it never blocks a shrink.
+      name: "ratchet — a correctly shrunk baseline passes",
+      tests,
+      reachable: wiredReachable,
+      orphans: wiredOrphans,
+      baseline: wiredOrphans,
+      newOrphans: [],
+      stale: [],
+    },
+  ];
+
   let failed = 0;
   for (const testCase of cases) {
     const result = inventory({
@@ -492,11 +634,37 @@ function selfTest() {
       console.log(`self-test OK — ${testCase.name}`);
     }
   }
+
+  for (const testCase of ratchetCases) {
+    const result = ratchet({
+      tests: testCase.tests,
+      reachable: testCase.reachable,
+      orphans: testCase.orphans,
+      baseline: testCase.baseline,
+    });
+    const ok =
+      JSON.stringify(result.newOrphans) === JSON.stringify(testCase.newOrphans) &&
+      JSON.stringify(result.stale.map((entry) => entry.path)) === JSON.stringify(testCase.stale);
+    if (!ok) {
+      failed++;
+      console.error(`SELF-TEST FAILED: ${testCase.name}`, {
+        result,
+        expectedNewOrphans: testCase.newOrphans,
+        expectedStale: testCase.stale,
+      });
+    } else {
+      console.log(`self-test OK — ${testCase.name}`);
+    }
+  }
+
+  const total = cases.length + ratchetCases.length;
   if (failed) {
-    console.error(`SELF-TEST FAILED: ${failed} of ${cases.length} fixture(s)`);
+    console.error(`SELF-TEST FAILED: ${failed} of ${total} fixture(s)`);
     process.exit(1);
   }
-  console.log(`self-test OK (${cases.length}/${cases.length} fixtures)`);
+  console.log(
+    `self-test OK (${total}/${total} fixtures — ${cases.length} reachability, ${ratchetCases.length} ratchet)`,
+  );
 }
 
 if (process.argv.includes("--self-test")) {
@@ -514,4 +682,45 @@ const result = inventory({
 
 console.log(`test-files-wired: ${result.reachable.length}/${tests.length} reachable; ${result.orphans.length} orphan(s)`);
 for (const orphan of result.orphans) console.log(`ORPHAN ${orphan}`);
+
+if (!fs.existsSync(BASELINE_PATH)) {
+  console.error(
+    `\nMISSING BASELINE: ${BASELINE_REL} does not exist. It is the recorded orphan debt this guard ratchets against; restore it rather than deleting it.`,
+  );
+  process.exit(1);
+}
+
+const baseline = readBaseline();
+const drift = ratchet({
+  tests,
+  reachable: result.reachable,
+  orphans: result.orphans,
+  baseline,
+});
+
+for (const file of drift.newOrphans) {
+  console.error(`NEW ORPHAN (unreachable test file not in the baseline) ${file}`);
+}
+for (const entry of drift.stale) {
+  console.error(
+    `STALE BASELINE ENTRY (remove it from ${BASELINE_REL} in this PR) ${entry.path} — ${entry.reason}`,
+  );
+}
+
+if (drift.newOrphans.length || drift.stale.length) {
+  console.error(
+    `\ntest-orphan-ratchet FAILED: ${drift.newOrphans.length} new orphan(s), ${drift.stale.length} stale baseline entry(ies).`,
+  );
+  console.error(
+    `A NEW ORPHAN is wired into a workflow or deleted — never added to ${BASELINE_REL}, which may only SHRINK (ledger 2026-09-14-test-files-wired-orphans: a suite leaves the orphan list by being RUN or by being GONE, never by being named an exception).`,
+  );
+  console.error(
+    `A STALE BASELINE ENTRY is a line to delete in the same PR that wired or removed that suite.`,
+  );
+  process.exit(1);
+}
+
+console.log(
+  `test-orphan-ratchet: OK — baseline: ${baseline.length} recorded orphan(s) (debt, not exempt)`,
+);
 process.exit(0);
