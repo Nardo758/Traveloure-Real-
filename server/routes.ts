@@ -1390,7 +1390,17 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Budget must be a positive number" });
       }
 
-      const trip = await storage.createTrip({ ...sanitizedInput, userId: actorUserId });
+      // MINT SITE 1 of 10 — THE TRAVELER'S OWN DOOR (migration 302, ledger
+      // `2026-09-15-d22-dates-confirmed`, punchlist D-22). `insertTripSchema` REQUIRES
+      // `startDate`/`endDate`, and the client's ONE mint door (`mintTripSlip` /
+      // `checkSlipPrecondition`, `client/src/lib/trip-slip.ts`) REFUSES rather than defaulting
+      // them — Locked Decision 42 D12: a mint may not invent a date. So a body that reaches here
+      // carries dates the traveler stated, and this mint says so. Nothing else on this rail may:
+      // `datesConfirmedAt` is `.omit()`ed from the body schema (§19).
+      const trip = await storage.createTrip(
+        { ...sanitizedInput, userId: actorUserId },
+        { datesChosenByTraveler: true },
+      );
 
       // Fire-and-forget: T2 funnel event
       trackFunnelEvent({
@@ -1419,6 +1429,44 @@ export async function registerRoutes(
   });
 
   // PATCH /api/trips/:id — update trip (auth: owner/EA, or guest via shareToken)
+  //
+  // ── THE ONE RE-DATE RAIL (punchlist **R-4**, migration 302, ledger
+  //    `2026-09-15-d22-dates-confirmed`) ──────────────────────────────────────────────────────
+  //
+  // R-4's blocker was never the availability question; it was that THERE WAS NO MOMENT AT WHICH A
+  // TRAVELER PICKS REAL DATES. The plan modal's step 3 writes its dates into the `trip_contexts`
+  // jsonb for a plan that already exists, `PATCH /api/trips/:tripId/occasion` carries no dates at
+  // all, and this handler — which always could have taken them — had no client caller:
+  // `useUpdateTrip` (`client/src/hooks/use-trips.ts`) had ZERO call sites anywhere in `client/`,
+  // `e2e/` or `playwright/`. Dates reached a trip row at MINT and never again. This is that
+  // moment, and this lane gives it its first caller (the slip header's "Set your dates").
+  //
+  // THREE THINGS IT MUST KEEP DOING, none of which is visible from the handler body below:
+  //
+  //   (a) IT WRITES THROUGH `storage.updateTrip`, never a raw UPDATE. That is what re-runs Locked
+  //       Decision 30's `timezone` derivation and Locked Decision 42 D12's `market_slug` one when
+  //       the destination moves, and it is the path Locked Decision 34's position-0 mirror is
+  //       written through for the same reason (a trigger could not re-derive, and would be a
+  //       second author of `trips.destination`).
+  //
+  //   (b) IT STAMPS `dates_confirmed_at` — SERVER-SIDE, in that same one writer, whenever a start
+  //       or end date is part of the update. The column is `.omit()`ed from `insertTripSchema`
+  //       (§19) and re-admitted by no pick, and `storage.updateTrip` deletes it off the incoming
+  //       object as the second layer, so **a client may change its dates and may never certify
+  //       them**. Before this, a plan minted on a placeholder window (a ready-made clone, an
+  //       authoring build, a cart mint's today-fallback) had no way to ever stop being one.
+  //
+  //   (c) AVAILABILITY REVALIDATION IS **NOT** TRIGGERED HERE, AND THAT IS STATED RATHER THAN
+  //       ASSUMED. R-4's third clause asks that a re-date re-check the bookable services on the
+  //       plan. There is NO such function on `main` to call: the lane that was to build it
+  //       (ledger `2026-09-14-clone-date-revalidation`) landed VERIFICATION ONLY and nothing else
+  //       — precisely because the moment this handler now provides did not exist — and the
+  //       punchlist's own lane list keeps availability revalidation as a THIRD lane. Writing one
+  //       here would mean inventing the read half too: `resolveBuyAction` is date-blind
+  //       (`hasPublishedAvailability` means "a slot dated today or later", explicitly not "free on
+  //       these dates"), and the only date-scoped read is one month-at-a-time query per service
+  //       that no slip surface makes. §13: an unbuilt check is said out loud, never faked with a
+  //       call that cannot answer the question.
   app.patch(api.trips.update.path, requireAuthOrShareToken, async (req, res) => {
     try {
       const input = api.trips.update.input.parse(req.body);
@@ -8486,6 +8534,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // 6. Create the trip with inferred metadata
       const title = `Your ${destination} trip`;
+      // MINT SITE 3 of 10 (migration 302, punchlist D-22). This window is INFERRED, and only
+      // sometimes from the traveler: `bodyStart`/`bodyEnd` are their own answer, while the
+      // scheduled-item minimum and `defaultStart` are this handler filling a NOT NULL column. So
+      // the claim is made ONLY when both dates came off the request, and otherwise nothing is
+      // claimed and the slip renders the window as the placeholder it is (§13).
       const trip = await storage.createTrip({
         userId,
         title,
@@ -8496,7 +8549,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         adults: inferredTravelers,
         kids: 0,
         status: "draft",
-      });
+      }, { datesChosenByTraveler: Boolean(bodyStart && bodyEnd) });
 
       // 7. Backfill tripId on all matching cart items.
       // W2: routed through the projection module (the single cart writer). The WHERE/SET moved
@@ -8904,6 +8957,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           kids: 0,
           numberOfTravelers: 2, // consistent with adults (kids=0) — see trip-defaults fix
         } as any);
+        // MINT SITE 4 of 10 (migration 302, ledger `2026-09-15-d22-dates-confirmed`, punchlist
+        // D-22). NO CLAIM, and deliberately: `today`/`nextWeek` directly above are this handler's
+        // own arithmetic, not an answer anybody gave — the destination is refused when absent
+        // (D12) but the window is filled in because `start_date`/`end_date` are NOT NULL. Leaving
+        // `dates_confirmed_at` NULL is what makes the slip label it a placeholder instead of
+        // presenting next week as the traveler's plan (§13). Nothing is passed rather than
+        // `false`: omission is the no-claim shape (see `TripMintOptions`).
         targetTripId = newTrip.id;
       } else {
         targetTripId = tripId;
@@ -10897,6 +10957,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       });
 
       // Create a backing trip so itinerary_items can FK-reference it.
+      // MINT SITE 5 of 10 (migration 302, punchlist D-22). `startDate`/`endDate` above are
+      // `dates?.start`/`dates?.end` when the request carried them and a "3-day trip starting
+      // tomorrow" default when it did not, so the claim is made only in the first case (§13).
       const quickTrip = await storage.createTrip({
         userId,
         title: result.title || `${itineraryRequest.destination} Trip`,
@@ -10906,7 +10969,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         numberOfTravelers: travelers,
         status: "draft",
         eventType: "vacation",
-      });
+      }, { datesChosenByTraveler: Boolean(dates?.start && dates?.end) });
 
       // Store the generated plan only after the backing trip exists so the
       // read model and its itinerary_items share one canonical trip linkage.

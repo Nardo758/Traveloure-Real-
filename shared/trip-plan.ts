@@ -591,6 +591,24 @@ export interface TripPlanPlancardExtras {
      *  and rendered by PlanCard as "From your expert". The PRIVATE trips.expertNotes never appears
      *  here. Absent/undefined on a pre-migration response → renders nothing (§13). */
     expertTravelerNote?: string | null;
+    /**
+     * D-22 (migration 302, ledger `2026-09-15-d22-dates-confirmed`) — DID ANYBODY CHOOSE THIS
+     * PLAN'S WINDOW? `trips.start_date`/`end_date` are NOT NULL, so `startDate`/`endDate` above
+     * have always rendered — including for a ready-made clone, whose window is the fulfilment
+     * job's `new Date()` + `duration_days - 1`, and for an expert authoring build's synthetic
+     * anchor. This is the one fact that tells a chosen window from a filled-in one.
+     *
+     * ALWAYS PRESENT AND BOOLEAN, deliberately the opposite shape from `timezone` above. An absent
+     * zone means "say nothing about the zone", so omitting that key is the honest shape; here the
+     * FALSE value is the load-bearing half, and an omitted key would collapse "these dates are a
+     * placeholder" into "this payload predates the field". `undefined` therefore reads as the
+     * pre-field case and changes nothing.
+     *
+     * BOOLEAN, never the timestamp: WHEN the dates were certified is nobody's business on a read
+     * surface, and publishing it would invite a second reader to re-answer what
+     * `planDatesAreConfirmed` (`shared/plan-dates.ts`) answers once (§18 rule 1).
+     */
+    datesConfirmed?: boolean;
   };
   changeLog: TripPlanChange[];
   metrics: TripPlanMetrics;

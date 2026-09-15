@@ -117,7 +117,18 @@ describe("T5 the countdown needs the plan's zone (LD 30)", () => {
   });
   it("the Up-next hero passes the plan's zone through", () => {
     const hero = code("components/plancard/UpNextHero.tsx");
-    assert.match(hero, /formatCountdown\(upNextActivity, day\.date, now, timezone\)/);
+    // REPAIRED, NOT LOOSENED (ledger `2026-09-15-d22-dates-confirmed`, punchlist D-22). The
+    // invariant this pin exists for is that the hero hands the PLAN's own zone to the countdown
+    // rather than letting the device's speak for it. D-22 widened the same call with the second
+    // half of the same fact — whether anybody CHOSE the day being counted to — so the argument
+    // list grew by one and the literal spelling stopped matching. The invariant is asserted
+    // instead of the spelling: the zone still rides, and the dates fact rides beside it.
+    assert.match(hero, /formatCountdown\(\s*upNextActivity,\s*day\.date,\s*now,\s*timezone\b/);
+    assert.match(
+      hero,
+      /formatCountdown\([^)]*\bdatesConfirmed\b[^)]*\)/,
+      "the hero must also pass whether the plan's dates were chosen (D-22) — a countdown to a placeholder day is a claim nobody made",
+    );
   });
   it("PlanCard reads the zone off the plancard DTO and hands it down", () => {
     const card = code("components/plancard/PlanCard.tsx");

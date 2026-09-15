@@ -257,6 +257,18 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
       // Placeholder window sized to the plan; the buyer re-dates it in their own planner.
       startDate: fmt(start),
       endDate: fmt(end),
+      // THE PLACEHOLDER NOW SAYS SO (migration 302, ledger `2026-09-15-d22-dates-confirmed`,
+      // punchlist D-22 = yes, and the fact punchlist R-4 was blocked on). `dates_confirmed_at` is
+      // left NULL — DELIBERATELY, and it is the whole point of the column: the window directly
+      // above is `new Date()` + `duration_days - 1`, this fulfilment job's own arithmetic, and
+      // until now it was indistinguishable on disk and on every surface from a window the buyer
+      // picked. NULL makes the slip, the My-plans row, the Trip Card and the `.ics` render it AS a
+      // placeholder, withhold the countdown (Locked Decision 45 (6)) and make no pinned DTSTART
+      // claim off it (Locked Decision 30's floating posture, one derivative over — here the DAY is
+      // the guess). It is stamped the moment the buyer answers, through the ONE re-date rail
+      // (`PATCH /api/trips/:id` → `storage.updateTrip`). Written as an explicit NULL rather than
+      // omitted so the next reader of this insert sees the decision instead of an absence (§13).
+      datesConfirmedAt: null,
       status: "draft",
     } as any)
     .returning();
