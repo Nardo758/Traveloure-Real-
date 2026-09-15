@@ -5,6 +5,7 @@ import { resolveConciergeTierView } from "../utils/concierge-tier-filter";
 import { pgTextArray } from "../services/upsell-query.service";
 import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
 import { withQueryTimer } from '../utils/queryTimer';
+import { DISPUTE_REJECT_FROM_STATUSES } from '../utils/booking-from-states';
 import { parsePagination } from '../utils/pagination';
 import { Router } from "express";
 import { storage } from "../storage";
@@ -1360,8 +1361,36 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
   }
   try {
     const { bookingId } = req.params;
+    // V-24 (§18b; ledger `2026-09-15-v23-v25-from-state-guards`). This handler read NO status before
+    // writing and discarded the writer's return value, so it answered `success: true` for a write
+    // that changed nothing — and, worse, it was a TWO-argument call, so the guard fell back to
+    // `eq(id)`. The target status is `completed`, and inside `updateServiceBookingStatus` that
+    // STAMPS `completed_at` and MINTS held earnings in the same transaction: rejecting a dispute on
+    // a row that had since been refunded, cancelled or swept minted real money against it. The
+    // named list is `DISPUTE_REJECT_FROM_STATUSES` (`["disputed"]`) — the only state a rejection can
+    // put back is the one the dispute created.
+    //
+    // A 404 needs its own read, because the writer cannot tell "no such booking" from "wrong state"
+    // (both come back `undefined`), and those are different facts to an admin (§13).
+    const existing = await storage.getServiceBooking(bookingId);
+    if (!existing) return res.status(404).json({ message: "Booking not found" });
     const cleared = await storage.setBookingEarningsDispute(bookingId, false);
-    await storage.updateServiceBookingStatus(bookingId, "completed");
+    const restored = await storage.updateServiceBookingStatus(
+      bookingId,
+      "completed",
+      undefined,
+      DISPUTE_REJECT_FROM_STATUSES,
+    );
+    if (!restored) {
+      // Lost race or wrong state. Nothing was stamped and NOTHING WAS MINTED — the mint lives inside
+      // the guarded UPDATE's own transaction, so a refused transition mints by construction, not by
+      // a second check here (§18b: the transition is the guard).
+      return res.status(409).json({
+        message:
+          "This booking is no longer disputed, so the rejection was not applied. Reload the queue and try again.",
+        currentStatus: existing.status,
+      });
+    }
     let auditWarning: string | undefined;
     await insertAccessAuditLog({
       actorId: user.id,
