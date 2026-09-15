@@ -10,10 +10,11 @@ import { db } from "../db";
 import { and, count, eq } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { getTripRole, getTripWriteRole, canMutateTrip } from "../utils/trip-role";
+import { getTripRole } from "../utils/trip-role";
 import { itineraryItemNotExpertWork } from "../services/itinerary-rebuild-guard";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
+import { verifyTripOwnership } from "../utils/trip-ownership";
 import { logItemTransition } from "../services/item-transition-log.service";
 import { assembleTripPlan, TripPlanNotFoundError } from "../services/trip-plan.service";
 import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
@@ -67,17 +68,25 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // hold: the comparison-ownership check above AND the trip authorization here, performed BEFORE
     // the delete.
     // D17 (LD 42, Sep 5 2026): apply-to-trip IS the optimizer's write — it deletes and re-inserts
-    // the plan's items — so it is authorized by the item-mutation predicate
-    // (`getTripWriteRole`/`canMutateTrip`: owner ‖ WRITE-status advisor, NEVER pending, plus the
-    // mutation handlers' parallel author branch), NOT the logistics read tier that granted pending
-    // advisors and audit-logged admin. ONE predicate for every item write (§18 rule 1).
+    // the plan's items — so it is authorized by THE item-mutation predicate, §12-narrowed.
+    // ONE TRIP-WRITE RESOLVER (punchlist V-29 = option B, decision-maker ruled 2026-09-15; ledger
+    // `2026-09-15-v29-one-trip-write-resolver`): that predicate is
+    // `authorizeTripLogistics(…, { requireWriteAccess: true })`, not the collaborator-only
+    // `getTripWriteRole`/`canMutateTrip` this gate used to call with a hand-rolled author branch
+    // beside it. BEHAVIOUR DELTA, by name: (a) an OWNER WITH NO `trip_collaborators` ROW is no
+    // longer 403'd on their own plan — ownership is read from `trips.user_id`; (b) the trip AUTHOR
+    // and an AUDIT-LOGGED ADMIN gain write here, as they already have on reorder /
+    // expert-traveler-note / the D-19 proposal rails. §12 is unweakened: `requireWriteAccess: true`
+    // keeps the advisor branch at accepted/assigned and NEVER pending.
     // Local convention in this router: `{ error }` bodies, 403 for an authorized-user-wrong-trip.
     {
-      const tripRole = await getTripWriteRole(comparison.tripId, userId);
-      const authorMayApply = canMutateTrip(tripRole) ? false : await isTripAuthor(comparison.tripId, userId);
-      if (!canMutateTrip(tripRole) && !authorMayApply) {
-        return res.status(403).json({ error: "Access denied" });
-      }
+      const denial = await authorizeTripLogistics(
+        comparison.tripId,
+        userId,
+        "POST /api/itinerary-comparisons/:id/apply-to-trip",
+        { requireWriteAccess: true },
+      );
+      if (denial) return res.status(denial.status).json({ error: "Access denied" });
     }
 
     // Find best variant: prefer selectedVariantId, else top AI variant by optimizationScore
@@ -607,11 +616,27 @@ router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, r
       return res.status(400).json({ error: `status must be one of: ${allowed.join(", ")}` });
     }
 
-    // Verify trip role (owner or expert can confirm/dismiss transport legs; friends cannot)
-    const tripRole = await getTripRole(tripId, userId);
-    if (!canMutateTrip(tripRole)) {
-      return res.status(403).json({ error: tripRole === "friend" ? "Friends cannot confirm or dismiss transport legs" : "Access denied" });
-    }
+    // ONE TRIP-WRITE RESOLVER (V-29 = option B; ledger `2026-09-15-v29-one-trip-write-resolver`).
+    // Confirming or dismissing a leg WRITES the plan, but this rail resolved the caller through
+    // `getTripRole` — the READ resolver — so it granted a `pending` advisor a write. Moving it onto
+    // THE predicate carries the usual delta — (a) an owner with no `trip_collaborators` row is no
+    // longer refused, (b) the trip author and an audit-logged admin gain write here — AND A
+    // NARROWING that is §12 applied where it was missing: a PENDING advisor can no longer confirm
+    // or dismiss a leg. Status and body shape unchanged; the "friend" sentence is unreachable (no
+    // writer in this repository mints a friend `trip_collaborators` row — L20 Part C).
+    const denial = await authorizeTripLogistics(
+      tripId,
+      userId,
+      "PATCH /api/transport-legs/:legId/status",
+      { requireWriteAccess: true },
+    );
+    if (denial) return res.status(denial.status).json({ error: "Access denied" });
+    // Change-log role, derived honestly (§13 applies to logs). The one predicate returns null for
+    // EVERY passing branch (owner ‖ WRITE-status advisor ‖ author ‖ admin) and does not report
+    // which one, so ownership is the only branch we can state as fact; every other authorized
+    // party gets the neutral "editor" label rather than a guess — the same derivation the reorder
+    // rail in server/routes.ts already uses for exactly this reason.
+    const changeRole = (await verifyTripOwnership(tripId, userId)) ? "owner" : "editor";
 
     // Verify that the leg belongs to a variant linked to this trip (prevent cross-trip mutations)
     const leg = await storage.getTransportLegById(legId);
@@ -647,7 +672,7 @@ router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, r
       userName,
       status === "dismissed" ? "Declined suggested transport leg" : `Confirmed transport leg`,
       status === "dismissed" ? "decline" : "edit",
-      tripRole!,
+      changeRole,
     );
 
     res.json({ success: true, legId, status });

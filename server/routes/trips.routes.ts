@@ -168,7 +168,7 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
-import { getTripRole, getTripWriteRole, canMutateTrip } from "../utils/trip-role";
+import { getTripRole } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { renderTripPdf } from "../services/trip-pdf.render";
 // The plan's .ics — ONE generator, two callers (§18 rule 1). `generateIcsContent` already owned
@@ -1269,7 +1269,8 @@ router.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, re
 // serve this. Two siblings, two sources, neither reimplementing the other.
 //
 // READ gate, not a write gate: `getTripRole` (§12 — read surfaces grant a PENDING advisor;
-// only mutation paths use `getTripWriteRole`), plus the authoring-mode branch so an author can
+// only mutation paths take the one write resolver, `authorizeTripLogistics(…, { requireWriteAccess:
+// true })` — V-29), plus the authoring-mode branch so an author can
 // print the source trip they are building. `privateNotes` and `trips.expertNotes` are never
 // read by the renderer (§21).
 router.get("/api/trips/:tripId/pdf", isAuthenticated, async (req, res) => {
@@ -1454,10 +1455,21 @@ router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res)
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
       }
-      const tripRole = await getTripRole(existing.tripId, userId);
-      if (!canMutateTrip(tripRole)) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot set backup plans" : "Access denied" });
-      }
+      // ONE TRIP-WRITE RESOLVER (V-29 = option B; ledger `2026-09-15-v29-one-trip-write-resolver`).
+      // Setting a backup plan WRITES the plan's items, but this rail resolved the caller through
+      // `getTripRole` — the READ resolver — so it granted a `pending` advisor a write. Moving it
+      // onto THE predicate therefore carries the usual delta (a) an owner with no
+      // `trip_collaborators` row is no longer refused, (b) the trip author and an audit-logged
+      // admin gain write here — AND A NARROWING that is §12 applied where it was missing: a
+      // PENDING advisor can no longer set a backup plan. Status and body shape are unchanged; the
+      // unreachable "friend" sentence is gone (no writer mints a friend row — L20 Part C).
+      const denial = await authorizeTripLogistics(
+        existing.tripId,
+        userId,
+        "POST /api/itinerary-items/:id/backup",
+        { requireWriteAccess: true },
+      );
+      if (denial) return res.status(denial.status).json({ message: "Access denied" });
       const { backupItemId } = req.body;
       const item = await itineraryIntelligenceService.setBackupPlan(req.params.id, backupItemId);
       res.json(item);
@@ -2992,20 +3004,50 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
     try {
       const userId = getUserId(req)!;
       const { tripId, itemId } = req.params;
-      // D1 (ruling, Aug 7 2026 — "a PENDING advisor may not write"): this is a trip-item
-      // MUTATION path, so it resolves the advisor branch through the WRITE allow-list
-      // (`getTripWriteRole` — accepted/assigned, NOT pending) instead of `getTripRole`.
-      const tripRole = await getTripWriteRole(tripId, userId);
-      // Authoring mode (ready-made brief §2/§4): PARALLEL named author branch beside getTripRole —
-      // the helper is deliberately untouched (known pre-launch bypass, separate fix).
-      const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
-      if (!canMutateTrip(tripRole) && !authorMayMutate) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" });
-      }
-      // FABLE-REVIEW: the mode-flip gate. `tripRole === "expert"` is the advisor-only branch of
-      // canMutateTrip (never owner — see trip-role.ts; never the authored-build author, which
-      // takes the separate authorMayMutate branch above and never reaches "expert" here).
-      if (tripRole === "expert" && await isPlanApprovedForExpert(tripId, userId)) {
+      // ONE TRIP-WRITE RESOLVER (punchlist V-29 = option B, decision-maker ruled 2026-09-15;
+      // ledger `2026-09-15-v29-one-trip-write-resolver`). CLAUDE.md Locked Decision 42 **D17**
+      // rules ONE "may this person rewrite the plan?" predicate; there were two. This rail used
+      // the collaborator-only `getTripWriteRole`/`canMutateTrip` and hand-rolled the author branch
+      // beside it. It now calls THE predicate — owner off `trips.user_id` (`verifyTripOwnership`),
+      // the §12 WRITE-status advisor, the trip author, and an audit-logged admin.
+      //
+      // BEHAVIOUR DELTA, stated here and in the ledger row rather than slipped in:
+      //   (a) an OWNER WITH NO `trip_collaborators` ROW is no longer 403'd on their own plan —
+      //       ownership is read from the column instead of from a row a mint site had to remember;
+      //   (b) the trip AUTHOR (the expert authoring build) and an AUDIT-LOGGED ADMIN gain write
+      //       here, exactly as they already have on reorder / expert-traveler-note / the D-19
+      //       proposal rails.
+      // §12 IS UNWEAKENED: `requireWriteAccess: true` keeps the advisor branch at accepted/assigned
+      // and NEVER pending. The old `"friend"` refusal sentence is gone because it is unreachable —
+      // the predicate never reads `trip_collaborators`, and no writer in this repository mints a
+      // friend row (L20 Part C). The STATUS and the body SHAPE are unchanged.
+      const denial = await authorizeTripLogistics(
+        tripId,
+        userId,
+        "PATCH /api/trips/:tripId/itinerary-items/:itemId",
+        { requireWriteAccess: true },
+      );
+      if (denial) return res.status(denial.status).json({ message: "Access denied" });
+      // THE ADVISOR-NESS the two rules below key on is NOT a second "may this person rewrite the
+      // plan?" test — the gate above already answered that. It is the CANONICAL advisor predicate
+      // (`storage.isExpertAssignedToTripForWrite` → `isTripAdvisorWithWriteAccess`, the same one
+      // the gate's own advisor branch calls), in the `owned ? false : …` shape the reorder and
+      // optimize-order handlers already use, so an owner who also holds an advisor row is still
+      // treated as the owner exactly as the old role resolution did.
+      const ownsTrip = await verifyTripOwnership(tripId, userId);
+      const isWriteAdvisor = ownsTrip ? false : await storage.isExpertAssignedToTripForWrite(tripId, userId);
+      // The AUTHOR branch, named for the D-4 authored-item price contract below, which is about the
+      // ready-made build's author and nobody else. Same `? false :` shape the old role resolution
+      // produced: it is the author branch ONLY when neither the owner nor the advisor branch
+      // applies. (One edge moved with V-29 and is stated rather than hidden: an owner who is ALSO
+      // the author of their own plan now reads as the OWNER here, which is what the contract's own
+      // comment says it means — "never the owner". Under the retired resolver an owner with no
+      // `trip_collaborators` row fell through to the author branch instead.) The audit-logged admin
+      // V-29 admitted is none of the three and takes no branch here.
+      const authorMayMutate = (ownsTrip || isWriteAdvisor) ? false : await isTripAuthor(tripId, userId);
+      // FABLE-REVIEW: the mode-flip gate — the advisor-only branch (never the owner; never the
+      // authored-build author, who is not an advisor row).
+      if (isWriteAdvisor && await isPlanApprovedForExpert(tripId, userId)) {
         return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
@@ -3036,10 +3078,11 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       // expert" that the traveler wrote themself is a false attribution on a surface whose whole
       // value is whose words those are. The field is simply not in the owner's pick (the §19
       // allowlist shape applied to an AUTHORSHIP field): stripped for every caller EXCEPT a
-      // WRITE-status advisor (`tripRole === "expert"` — resolved by `getTripWriteRole` above, so
-      // accepted/assigned, never pending), whose writes ride this same advisor-gated rail. The
-      // ready-made author branch (`authorMayMutate`) is not an advisor and is stripped too.
-      if (tripRole !== "expert") delete (safeBody as any).expertNote;
+      // WRITE-status advisor (`isWriteAdvisor` — the canonical advisor predicate resolved above,
+      // so accepted/assigned, never pending), whose writes ride this same advisor-gated rail. The
+      // ready-made author branch is not an advisor and is stripped too, and so is the admin the
+      // V-29 move admitted — neither of them is the person the note is attributed to.
+      if (!isWriteAdvisor) delete (safeBody as any).expertNote;
       const eventLink = itineraryItemEventLinkSchema.safeParse(req.body);
       if (!eventLink.success) {
         return res.status(400).json({ message: "Invalid event link", errors: eventLink.error.errors });
@@ -3102,15 +3145,21 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
     try {
       const userId = getUserId(req)!;
       const { tripId, itemId } = req.params;
-      // D1 (ruling, Aug 7 2026): trip-item MUTATION path — WRITE-gated role (see PATCH above).
-      const tripRole = await getTripWriteRole(tripId, userId);
-      // Authoring mode (ready-made brief §2/§4): parallel named author branch (see PATCH above).
-      const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
-      if (!canMutateTrip(tripRole) && !authorMayMutate) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" });
-      }
+      // ONE TRIP-WRITE RESOLVER (V-29 = option B — see the PATCH handler above for the full
+      // rationale and the named behaviour delta: (a) an owner with no `trip_collaborators` row is
+      // no longer refused on their own plan, (b) the trip author and an audit-logged admin gain
+      // write here. §12 is unweakened — `requireWriteAccess: true`, never `pending`.)
+      const denial = await authorizeTripLogistics(
+        tripId,
+        userId,
+        "DELETE /api/trips/:tripId/itinerary-items/:itemId",
+        { requireWriteAccess: true },
+      );
+      if (denial) return res.status(denial.status).json({ message: "Access denied" });
+      const ownsTrip = await verifyTripOwnership(tripId, userId);
+      const isWriteAdvisor = ownsTrip ? false : await storage.isExpertAssignedToTripForWrite(tripId, userId);
       // FABLE-REVIEW: the mode-flip gate — see the PATCH handler above for the full rationale.
-      if (tripRole === "expert" && await isPlanApprovedForExpert(tripId, userId)) {
+      if (isWriteAdvisor && await isPlanApprovedForExpert(tripId, userId)) {
         return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
@@ -3133,7 +3182,7 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
       // authorization above (never req.body): an assigned expert acting on the plan ⇒ "expert",
       // otherwise the owner/author ⇒ "traveler".
       await storage.deleteItineraryItem(itemId, {
-        actorType: tripRole === "expert" ? "expert" : "traveler",
+        actorType: isWriteAdvisor ? "expert" : "traveler",
         actorId: userId,
       });
       res.json({ success: true });

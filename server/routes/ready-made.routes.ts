@@ -13,7 +13,7 @@
  *    else 403/404. The client is TOLD the mode; it never infers it.
  *
  * Auth rules (brief §2, hard): the authoring check is isTripAuthor (explicit, present-value
- * comparison). NEVER routed through getTripRole/canMutateTrip.
+ * comparison). NEVER routed through getTripRole.
  */
 import { Router } from "express";
 import { getUserId } from "../utils/auth";

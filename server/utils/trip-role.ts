@@ -17,7 +17,7 @@
 import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 import { tripCollaborators } from "@shared/schema";
-import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./trip-advisor";
+import { isTripAdvisor } from "./trip-advisor";
 
 export type TripRole = "owner" | "expert" | "friend" | null;
 
@@ -55,42 +55,27 @@ export async function getTripRole(tripId: string, userId: string): Promise<TripR
 }
 
 /**
- * WRITE-gated sibling of `getTripRole` (ruling, Aug 7 2026 — "a PENDING advisor may not write").
- * Identical to `getTripRole` except the advisor branch is resolved against the WRITE allow-list
- * (`isTripAdvisorWithWriteAccess` — accepted/assigned, NOT pending) instead of the read one. Use
- * this for trip-item MUTATION endpoints (create/edit/delete/reorder); `getTripRole` above stays
- * the read-surface resolver (plancard, trip GET, assigned-trips list) so a pending advisor can
- * still see the trip while deciding whether to accept.
+ * THE WRITE ARM OF THIS MODULE IS RETIRED (punchlist V-29 = option B, decision-maker ruled
+ * 2026-09-15; ledger `2026-09-15-v29-one-trip-write-resolver`).
  *
- * A pending advisor resolves to `null` here (no `trip_collaborators` row, and the advisor branch
- * does not pass) — `canMutateTrip(null)` is false, so the caller falls through to the generic
- * "Access denied" 403, same shape as any other unauthorized caller.
+ * `getTripWriteRole` and `canMutateTrip` used to live here and answered "may this person rewrite
+ * the plan?" — the question CLAUDE.md Locked Decision 42 **D17** rules must have exactly ONE
+ * answer. There were two, and they disagreed about three principals: this one resolved the OWNER
+ * only through a `trip_collaborators` row (it never read `trips.user_id`) and carried neither the
+ * trip AUTHOR nor an admin branch, so every caller bolted `isTripAuthor` on beside it.
+ *
+ * THE ONE PREDICATE IS NOW
+ *   `authorizeTripLogistics(tripId, userId, route, { requireWriteAccess: true })`
+ *   (server/utils/trip-logistics-auth.ts)
+ * — owner off the `trips` row, §12 WRITE-status advisor (accepted/assigned, NEVER pending), trip
+ * author, audit-logged admin. Do not re-introduce a second one here: a parallel "may this person
+ * rewrite the plan?" test is the derivation-drift class §18 rule 1 names, and its return is pinned
+ * by `server/__tests__/one-trip-write-resolver.db.test.ts` (W6).
+ *
+ * `getTripRole` above SURVIVES and is unchanged: it is the READ resolver (plancard read, trip
+ * GET/PDF, the affiliate-booking trip-access check), and §12 deliberately grants a `pending`
+ * advisor there. Because it still resolves the owner from `trip_collaborators`, the owner-row
+ * data invariant every mint site writes (`storage.createTrip`, the two raw-SQL mints, the
+ * ready-made clone, `server/seeds/trip-ownership.seed.ts`) is STILL load-bearing and was
+ * deliberately left in place by that lane.
  */
-export async function getTripWriteRole(tripId: string, userId: string): Promise<TripRole> {
-  if (!userId) return null;
-
-  const rows = await db
-    .select({ role: tripCollaborators.role })
-    .from(tripCollaborators)
-    .where(and(eq(tripCollaborators.tripId, tripId), eq(tripCollaborators.userId, userId)))
-    .limit(1);
-
-  if (rows.length > 0) {
-    return rows[0].role as TripRole;
-  }
-
-  if (await isTripAdvisorWithWriteAccess(tripId, userId)) {
-    return "expert";
-  }
-
-  return null;
-}
-
-/**
- * Returns true if the caller may mutate the trip (add/edit/remove activities, change transport mode).
- * Only owner and expert roles can mutate; friend is suggest-only. (Unchanged policy —
- * the fix is in role *resolution* above, not in this mutate predicate.)
- */
-export function canMutateTrip(role: TripRole): boolean {
-  return role === "owner" || role === "expert";
-}

@@ -130,7 +130,7 @@ class BookingService {
       VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', ${trackingNumber}, ${timezone}, ${marketSlug}, NOW())
     `);
 
-    // L10 owner row: getTripRole()/canMutateTrip() resolve access by collaborator
+    // L10 owner row: getTripRole() — the READ resolver — resolves access by collaborator
     // assignment only (never trips.userId), so a trip minted without this row 403s
     // its own owner until the boot-time backfill seed happens to run. Same posture
     // as storage.createTrip; raw SQL because this path is raw SQL (id has no DB
@@ -1213,7 +1213,7 @@ class BookingService {
       )
     `);
 
-    // L10 owner row: getTripRole()/canMutateTrip() resolve access by collaborator
+    // L10 owner row: getTripRole() — the READ resolver — resolves access by collaborator
     // assignment only (never trips.userId), so a trip minted without this row 403s
     // its own owner until the boot-time backfill seed happens to run. Same posture
     // as storage.createTrip; raw SQL because this path is raw SQL (id has no DB
