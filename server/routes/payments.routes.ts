@@ -59,6 +59,8 @@ import { resolveBookingEligibility } from "../services/booking-eligibility.servi
 // V-11 one endpoint over (ledger `2026-09-13-cart-priceless-gap`): the ONE translation of the
 // price column and the ONE sentence every rail refuses a priceless listing with (s18 rule 1).
 import { hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "../services/buy-action-payload";
+// Ruling 11 (ledger `2026-09-08-rulings-11-12`): plan work needs a plan, refused at the CLAIM.
+import { isPlanWorkListing, PLAN_WORK_NEEDS_PLAN_REFUSAL } from "../services/plan-work-access.service";
 // The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`): reads the
 // listing's own `expert_offering_type_key`, falls back to the legacy uuid for a row the backfill
 // has not reached. It decides only WHICH lines are concierge lines — never a rate, never an amount.
@@ -1011,6 +1013,36 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             detail: `"${item.service.serviceName}" publishes no price, so it cannot be bought here — remove it from your cart and request a quote instead.`,
           });
         }
+      }
+
+      // -- RULING 11's PRECONDITION: PLAN WORK NEEDS A PLAN (ledger `2026-09-08-rulings-11-12`;
+      // lane `2026-09-15-plan-work-one-rail`) ---------------------------------------------------
+      // A planning-tier listing bought here GRANTS the seller write access to the traveler's plan
+      // at the authorization stamp (`grantPlanWorkAdvisorAccess`, inside `stampAuthorization`'s own
+      // transaction). LD 32 is the reason it cannot be sold without one: no expert touchpoint
+      // exists without a slip, and `trip_expert_advisors.trip_id` is NOT NULL, so a plan-work line
+      // with no trip is a purchase that can never deliver what it sold.
+      //
+      // The buy-side resolver does NOT refuse this today -- `resolveBuyAction` deliberately leaves
+      // the `plan_work` class unconsulted (ruling 9's own note), and a guest's add lands in the
+      // guest cart with no trip at all -- so the refusal belongs here, in the same pre-flight block
+      // as its archived-listing and priceless-listing siblings: BEFORE any slot claim, any booking
+      // row and any Stripe call (s15b -- the CLAIM is not the COMMITMENT). Never at promotion,
+      // which is after money has moved.
+      //
+      // The class is `impactClassFor`'s, read through the SHARED `loadOfferingListingInput`
+      // (s18 rule 1); the LIVE listing is the right thing to read at the claim, because that is
+      // what the traveler is buying right now and no snapshot exists yet. The check runs ONLY for a
+      // line that resolves to no trip, so a normal cart pays for no extra queries. s13: a listing
+      // whose class cannot be derived is NOT plan work and is not refused.
+      for (const item of cartData) {
+        if (tripId || (item as any).tripId) continue;
+        if (!(await isPlanWorkListing(item.serviceId))) continue;
+        return res.status(409).json({
+          message: PLAN_WORK_NEEDS_PLAN_REFUSAL.message,
+          reason: PLAN_WORK_NEEDS_PLAN_REFUSAL.reason,
+          detail: `"${item.service?.serviceName ?? "This listing"}" is plan work, which is done inside a plan. Pick or start a plan, then check out.`,
+        });
       }
 
       // ── §17 bundles (migration 151): re-verify + snapshot BEFORE any write ──────────
