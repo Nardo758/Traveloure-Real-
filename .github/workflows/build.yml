@@ -1592,6 +1592,55 @@ jobs:
       - name: The transition is the guard (F1-F7)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/from-state-guards.db.test.ts
 
+  slot-units:
+    name: slot-units (V-26; ledger 2026-09-15-v26-slot-units)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # V-26: `storage.bookSlot` claimed ONE unit of `vendor_availability_slots.booked_count` per
+      # cart line whatever the line's unit count, and guarded `booked_count < capacity` — which
+      # refuses only an ALREADY-FULL slot and can never refuse an over-subscribing line. The money
+      # on that same line was `rate x quantity`, so a three-seat booking charged three and debited
+      # the provider's calendar one. D-14 made that reachable through the supported flow by deriving
+      # `quantity = party_size` for the seat-shaped archetype that is slot-bound. S1-S3 are the
+      # claim (the arithmetic AND the guard in one statement, §15/C3 — refused, never clamped);
+      # S4/S5 are the release, which gives back what the claim RECORDED taking and not what the line
+      # was priced at; S6 is the refusal of a nonsense count; S7/S8 pin that the checkout reads the
+      # ONE derivation the charge multiplies by (§18 rule 1) and that the stay branch's 1-per-NIGHT
+      # is deliberate. S1/S3/S4/S6 fail on main's storage. No server boot, so no ALLOW_TEST_ACCOUNTS.
+      - name: A slot claim carries the line's unit count (S1-S8)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/slot-units.db.test.ts
+
   reconciliation-detection:
     name: reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)
     runs-on: ubuntu-latest

@@ -194,11 +194,25 @@ describe("D-41 — the plan item's unit count (migration 298)", () => {
     const at = payments.indexOf("export function resolveItemBaseAmount");
     assert.ok(at > 0, "the money path's per-line amount helper is where it was");
     const body = payments.slice(at, payments.indexOf("\n}", at));
+    // REPAIRED to its invariant, not deleted (punchlist V-26, ledger `2026-09-15-v26-slot-units`).
+    // This asserted the INLINED expression `rate * (item?.quantity || 1)`. V-26 needed the SAME
+    // number at the slot claim, so it was lifted into ONE named derivation — `resolveItemUnitCount`
+    // — that both the charge and the claim read (§18 rule 1). The invariant U7 exists for is
+    // untouched and is what is asserted now: a non-stay line is priced `rate ×` the CART line's own
+    // count, and that count is still `item.quantity` with the historical `|| 1` reading (§13 — an
+    // unstated count is ONE unit). What U7 forbids is a multiplier moving onto the PLAN's column,
+    // which the second assertion below still owns.
     assert.match(
       body,
-      /rate\s*\*\s*\(item\?\.quantity\s*\|\|\s*1\)/,
+      /rate\s*\*\s*resolveItemUnitCount\(item\)/,
       "a non-stay line is still priced rate × the CART line's count — this lane added no charge, " +
         "removed none, and moved no multiplier onto the plan",
+    );
+    const unitCount = payments.slice(payments.indexOf("export function resolveItemUnitCount"));
+    assert.match(
+      unitCount.slice(0, unitCount.indexOf("\n}")),
+      /return item\?\.quantity \|\| 1;/,
+      "and that derivation is the CART row's count, read exactly as it always was",
     );
     assert.doesNotMatch(
       payments,

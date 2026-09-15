@@ -14,6 +14,9 @@ import {
   stampAuthorization,
   assertServiceOwnerNotAway,
   ProviderAwayError,
+  // V-26 (ledger `2026-09-15-v26-slot-units`): the `booking_details` key that records how many
+  // units of EACH claimed slot this booking holds — read back by every release path.
+  CLAIMED_SLOT_UNITS_KEY,
 } from "../services/checkout-claim.service";
 // D6 rails attribution (docs/DECISIONS.md ruling 61): the chain from a shared link to the single
 // fee resolver. §14/§18 — the ref SELECTS a band lane and can carry no rate, amount or identity;
@@ -391,6 +394,23 @@ export async function resolveStayNightlyRates(cartData: any[]): Promise<Map<stri
 // discipline). Omitting `stayRates` (or a miss) falls back to the pre-S11 flat computation,
 // byte-identical to today — this keeps the signature backward-compatible for any caller that
 // hasn't been threaded yet.
+/**
+ * V-26 (ledger `2026-09-15-v26-slot-units`): ONE derivation of how many UNITS OF THE LISTING a
+ * cart line holds — the number the charge multiplies by AND the number the inventory claim takes.
+ *
+ * D-14 (`2026-09-15-d14-quantity-is-units`) settled that `cart_items.quantity` is units of the
+ * listing and `party_size` is the party and never a multiplier. Until V-26 the money read this
+ * expression and `storage.bookSlot` read nothing at all, so a three-seat line was charged for
+ * three and debited the provider's calendar one. Both now read THIS function (§18 rule 1) — a
+ * second spelling of the same expression is how the charge and the claim start disagreeing again.
+ *
+ * §13: `|| 1` is the item model's own historical reading — an unstated count is ONE unit, never
+ * zero and never unknown (the same reading `2026-09-15-d41-item-quantity` gave the plan column).
+ */
+export function resolveItemUnitCount(item: any): number {
+  return item?.quantity || 1;
+}
+
 export function resolveItemBaseAmount(item: any, stayRates?: Map<string, StayNightlyRateResult>): number {
   const stay = getRoomNights(item);
   const rate = parseFloat(item?.service?.price || "0");
@@ -399,7 +419,7 @@ export function resolveItemBaseAmount(item: any, stayRates?: Map<string, StayNig
     if (resolved) return resolved.total;
     return rate * stay.nights;
   }
-  return rate * (item?.quantity || 1);
+  return rate * resolveItemUnitCount(item);
 }
 
 // ── B1 travel surcharge (ruling 81): ONE preload+resolve pass, shared by every quote/charge surface
@@ -1226,11 +1246,16 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         throw err;
       }
 
+      // V-26 (ledger `2026-09-15-v26-slot-units`): a claim now carries the LINE'S OWN UNIT COUNT,
+      // so the compensation list has to remember how many units each claim took — releasing 1 for
+      // a 3-unit claim would leak two seats of the provider's capacity on every aborted checkout.
+      // The id list is kept alongside (unchanged) because it is what gets stamped on the row.
       const claimedSlotIds: string[] = [];
-      const releaseClaimed = async (ids: string[]) => {
-        for (const id of ids) {
-          await storage.releaseSlot(id).catch((e: any) =>
-            console.error(`[checkout] slot compensation release failed for ${id}:`, e));
+      const claimedSlots: Array<{ id: string; units: number }> = [];
+      const releaseClaimed = async (claims: Array<{ id: string; units: number }>) => {
+        for (const claim of claims) {
+          await storage.releaseSlot(claim.id, claim.units).catch((e: any) =>
+            console.error(`[checkout] slot compensation release failed for ${claim.id}:`, e));
         }
       };
       for (const item of cartData) {
@@ -1244,7 +1269,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           const slotIdByDate = new Map(nightSlots.map((s) => [String(s.date), s.id]));
           const unpublished = nightDates.filter((d) => !slotIdByDate.has(d));
           if (unpublished.length > 0) {
-            await releaseClaimed(claimedSlotIds);
+            await releaseClaimed(claimedSlots);
             return res.status(409).json({
               success: false,
               error: "nights_unavailable",
@@ -1254,12 +1279,19 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           const claimedThisStay: string[] = [];
           let nightFailed = false;
           for (const d of nightDates) {
-            const claimed = await storage.bookSlot(slotIdByDate.get(d)!);
+            // V-26: a stay claims ONE unit of each NIGHT'S slot — the room itself, once per date.
+            // Its unit count is not the multiplier here: D-14 pins a stay's `quantity` to 1 and
+            // the CHARGE is nights x the nightly rate (`resolveItemBaseAmount`'s stay branch),
+            // so the line's count would double-count the nights it is already spread across.
+            // Passed as a literal, not as `resolveItemUnitCount(item)`, precisely so a legacy
+            // row still carrying `quantity: 3` (D-14's V10 — nothing rewrites those) cannot claim
+            // three rooms a night.
+            const claimed = await storage.bookSlot(slotIdByDate.get(d)!, 1);
             if (!claimed) { nightFailed = true; break; }
             claimedThisStay.push(claimed.id);
           }
           if (nightFailed) {
-            await releaseClaimed([...claimedThisStay, ...claimedSlotIds]);
+            await releaseClaimed([...claimedThisStay.map((id) => ({ id, units: 1 })), ...claimedSlots]);
             return res.status(409).json({
               success: false,
               error: "nights_unavailable",
@@ -1267,6 +1299,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             });
           }
           claimedSlotIds.push(...claimedThisStay);
+          claimedSlots.push(...claimedThisStay.map((id) => ({ id, units: 1 })));
           // RELEASE-ALL-NIGHTS hotfix: keep BOTH the first-night representative id (unchanged,
           // still what `slotId` gets stamped with below) AND the full per-night list, so the
           // booking row can carry the complete claim (bookingDetails.claimedSlotIds below).
@@ -1276,9 +1309,15 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
 
         const itemSlotId = (item as any).slotId as string | null | undefined;
         if (!itemSlotId || !item.service) continue;
-        const claimed = await storage.bookSlot(itemSlotId);
+        // V-26: the claim takes the LINE'S OWN UNIT COUNT — the ONE number `resolveItemBaseAmount`
+        // multiplies the rate by (§18 rule 1), read from the same `resolveItemUnitCount` so the
+        // traveler cannot be charged for three seats while the provider's calendar is debited one.
+        // REFUSED, NEVER CLAMPED (§13): a 3-unit line against 2 remaining seats returns undefined
+        // from the single statement that IS the guard (§15/C3), and lands in the 409 below.
+        const itemUnits = resolveItemUnitCount(item);
+        const claimed = await storage.bookSlot(itemSlotId, itemUnits);
         if (!claimed) {
-          await releaseClaimed(claimedSlotIds);
+          await releaseClaimed(claimedSlots);
           return res.status(409).json({
             success: false,
             error: "slot_unavailable",
@@ -1288,6 +1327,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           });
         }
         claimedSlotIds.push(itemSlotId);
+        claimedSlots.push({ id: itemSlotId, units: itemUnits });
       }
 
       // S11 (§14, ledger row 107): ONE preload+resolve pass for every stay line's per-night rate,
@@ -1696,6 +1736,18 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
               scheduledDate: item.scheduledDate,
               notes: item.notes || notes,
               quantity: item.quantity || 1,
+              // V-26 (ledger `2026-09-15-v26-slot-units`): WHAT THE CLAIM ACTUALLY TOOK, per slot.
+              // Deliberately NOT read back off `quantity` above: that is the cart line's priced
+              // unit count, and a row born before this lane carries it while holding only ONE unit
+              // of its slot (the old writer added 1 whatever the line held). The release reads
+              // THIS key, so a pre-V-26 row gives back exactly what it took and a post-V-26 row
+              // gives back all of it — the same posture `claimedSlotIds` takes for WHICH slots.
+              // A stay records 1: it claims one unit of each NIGHT'S slot, never `quantity` rooms.
+              ...(stay
+                ? { [CLAIMED_SLOT_UNITS_KEY]: 1 }
+                : (item as any).slotId
+                  ? { [CLAIMED_SLOT_UNITS_KEY]: resolveItemUnitCount(item) }
+                  : {}),
               // Lane S ruling 18 (reconciliation key): the plan item this booking intends to flip
               // to `purchased`. If the flip+log pair below ever rolls back, the
               // `bookings-have-purchased-items` invariant joins on this to find the booking whose
@@ -1832,7 +1884,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           // so the slot capacity claimed above is ours alone to give back, and nothing has been
           // charged. Return the same shape as the SELECT fast-path.
           if (isClaimRow && isUniqueViolation(insertErr)) {
-            await releaseClaimed(claimedSlotIds);
+            await releaseClaimed(claimedSlots);
             console.info(`[checkout] lost idempotency claim race, idempotencyKey=${checkoutKey} — returning duplicate`);
             return res.status(200).json({
               success: true,

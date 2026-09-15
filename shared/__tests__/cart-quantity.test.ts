@@ -33,8 +33,9 @@
  * lets a client-supplied `quantity` win over a stated seat count.
  *
  * NEGATIVE SPACE (§18d): this file proves what a listing's own columns imply. It says nothing
- * about slot CAPACITY — `storage.bookSlot` claims exactly one unit per slot-bound line and reads
- * neither column — and nothing about what a line is CHARGED, which stays server-derived in
+ * about slot CAPACITY — which claims the line's unit count since punchlist V-26 (ledger
+ * `2026-09-15-v26-slot-units`; proven in `server/__tests__/slot-units.db.test.ts`, one rail later)
+ * — and nothing about what a line is CHARGED, which stays server-derived in
  * `resolveItemBaseAmount` and was not touched by this lane.
  *
  * Run solo: npx tsx --test shared/__tests__/cart-quantity.test.ts

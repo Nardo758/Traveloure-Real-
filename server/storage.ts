@@ -160,7 +160,13 @@ import { drainPendingEventsIntoTrip } from "./services/pending-events.service";
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
-import { deriveClaimedSlotIds } from "./services/checkout-claim.service";
+import {
+  deriveClaimedSlotIds,
+  // V-26 (ledger `2026-09-15-v26-slot-units`): the other half of a release — HOW MANY units each
+  // claimed slot holds — and the shared refusal rule for a non-positive/fractional count.
+  deriveClaimedSlotUnits,
+  assertPositiveSlotUnits,
+} from "./services/checkout-claim.service";
 // OC-B1 (ledger `2026-09-12-offering-contract-snapshot`): the terms a booking was committed under.
 // Stamped in the two creators below so every caller is covered — the same placement rationale as
 // the PS15 PI strip beside it. It never fails a booking (see the module header).
@@ -718,10 +724,12 @@ export interface IStorage {
 
   deleteVendorAvailabilitySlot(id: string): Promise<void>;
 
-  bookSlot(id: string): Promise<VendorAvailabilitySlot | undefined>;
+  // V-26: `units` is the number of units of capacity this one line takes — NOT a party size and
+  // not a night count. See the implementation for the refusal rule on a non-positive/non-integer.
+  bookSlot(id: string, units: number): Promise<VendorAvailabilitySlot | undefined>;
   // C3: compensation release for a claimed slot (failed multi-item claim / future refund path).
 
-  releaseSlot(id: string): Promise<void>;
+  releaseSlot(id: string, units: number): Promise<void>;
 
   // Coordination States
 
@@ -3339,13 +3347,18 @@ export class DatabaseStorage implements IStorage {
       const slotIdsToRelease = isFirstCancellation
         ? deriveClaimedSlotIds(u.bookingDetails as Record<string, unknown> | null, u.slotId)
         : [];
+      // V-26 (ledger `2026-09-15-v26-slot-units`): give back the SAME number of units the claim
+      // took, read from what the booking RECORDED (`claimedSlotUnits`) — never from the cart
+      // line's priced quantity, and never a flat 1 now that a claim can be larger. A row with no
+      // record releases 1, because the pre-V-26 writer took exactly 1 (§13).
+      const slotUnitsToRelease = deriveClaimedSlotUnits(u.bookingDetails as Record<string, unknown> | null);
       if (slotIdsToRelease.length > 0) {
         await tx.execute(sql`
           UPDATE vendor_availability_slots
-          SET booked_count = GREATEST(COALESCE(booked_count, 0) - 1, 0),
+          SET booked_count = GREATEST(COALESCE(booked_count, 0) - ${slotUnitsToRelease}, 0),
               status = CASE
                 WHEN status = 'fully_booked'
-                     AND GREATEST(COALESCE(booked_count, 0) - 1, 0) < COALESCE(capacity, 1)
+                     AND GREATEST(COALESCE(booked_count, 0) - ${slotUnitsToRelease}, 0) < COALESCE(capacity, 1)
                   THEN 'available'
                 ELSE status
               END,
@@ -4516,19 +4529,33 @@ export class DatabaseStorage implements IStorage {
   // zero callers, so this rewrite regresses nothing. Returns undefined when the slot is missing,
   // blocked, in the past, or full — the caller's "this slot just booked" signal. Claim the slot
   // FIRST, then create bookings / call Stripe; release via releaseSlot on a downstream failure.
-  async bookSlot(id: string): Promise<VendorAvailabilitySlot | undefined> {
+  //
+  // V-26 (ledger `2026-09-15-v26-slot-units`): the claim carries the LINE'S OWN UNIT COUNT. This
+  // used to add exactly 1 whatever the line held, and guarded `booked_count < capacity` — which
+  // refuses only an ALREADY-FULL slot, never an over-subscribing line. D-14
+  // (`2026-09-15-d14-quantity-is-units`) derives `quantity = party_size` server-side for the
+  // seat-shaped `in_person`/`hybrid` archetype, so a listing that ASKS for seats was charging for
+  // three and debiting the provider's calendar one — a durable, visible discrepancy on the row.
+  //
+  // THE ARITHMETIC AND THE GUARD ARE IN THE SAME SINGLE STATEMENT (§15/C3): `+ units` in the SET
+  // and `+ units <= capacity` in the WHERE, so the row transition itself is what decides, and a
+  // concurrent claimer cannot pass a check this one already invalidated. REFUSED, NEVER CLAMPED
+  // (§13): a 2-unit line against 1 remaining seat gets `undefined` — the same "this slot just
+  // booked" signal a full slot gives — rather than a silently reduced claim nobody asked for.
+  async bookSlot(id: string, units: number): Promise<VendorAvailabilitySlot | undefined> {
+    assertPositiveSlotUnits(units, "bookSlot");
     const result = await db.execute(sqlOp`
       UPDATE vendor_availability_slots
-      SET booked_count = COALESCE(booked_count, 0) + 1,
+      SET booked_count = COALESCE(booked_count, 0) + ${units},
           status = CASE
-            WHEN COALESCE(booked_count, 0) + 1 >= COALESCE(capacity, 1) THEN 'fully_booked'
+            WHEN COALESCE(booked_count, 0) + ${units} >= COALESCE(capacity, 1) THEN 'fully_booked'
             ELSE status
           END,
           updated_at = NOW()
       WHERE id = ${id}
         AND status <> 'blocked'
         AND date >= CURRENT_DATE
-        AND COALESCE(booked_count, 0) < COALESCE(capacity, 1)
+        AND COALESCE(booked_count, 0) + ${units} <= COALESCE(capacity, 1)
       RETURNING *
     `);
     return (result.rows?.[0] as VendorAvailabilitySlot | undefined) ?? undefined;
@@ -4536,12 +4563,18 @@ export class DatabaseStorage implements IStorage {
 
   // C3: compensation for a failed multi-slot claim (and the future refund-release path). Never
   // drops below zero; re-opens a fully_booked slot when capacity frees up (blocked stays blocked).
-  async releaseSlot(id: string): Promise<void> {
+  //
+  // V-26: gives back the SAME number of units the claim took. Widening the claim without widening
+  // this would leak a slot's capacity permanently on every cancel/refund, which is why both halves
+  // ship together. The caller decides `units` from what the booking RECORDED it claimed
+  // (`deriveClaimedSlotUnits`), never from what the line was priced at — see that helper.
+  async releaseSlot(id: string, units: number): Promise<void> {
+    assertPositiveSlotUnits(units, "releaseSlot");
     await db.execute(sqlOp`
       UPDATE vendor_availability_slots
-      SET booked_count = GREATEST(COALESCE(booked_count, 0) - 1, 0),
+      SET booked_count = GREATEST(COALESCE(booked_count, 0) - ${units}, 0),
           status = CASE
-            WHEN status = 'fully_booked' AND GREATEST(COALESCE(booked_count, 0) - 1, 0) < COALESCE(capacity, 1)
+            WHEN status = 'fully_booked' AND GREATEST(COALESCE(booked_count, 0) - ${units}, 0) < COALESCE(capacity, 1)
               THEN 'available'
             ELSE status
           END,

@@ -188,12 +188,12 @@ test("N3: double-claim on the same S11-materialized night is refused (§15 atomi
   const slots = await slotsForService(room);
   assert.equal(slots.length, 2, "2-night range materializes exactly 2 slots");
 
-  const firstClaim = await storage.bookSlot(slots[0].id);
+  const firstClaim = await storage.bookSlot(slots[0].id, 1);
   assert.ok(firstClaim, "first claim on a fresh materialized night must succeed");
-  const secondClaim = await storage.bookSlot(slots[0].id);
+  const secondClaim = await storage.bookSlot(slots[0].id, 1);
   assert.equal(secondClaim, undefined, "a second claim on the SAME night (capacity 1) must be refused — the atomic conditional still governs a date-range-materialized row");
 
-  await storage.releaseSlot(slots[0].id);
+  await storage.releaseSlot(slots[0].id, 1);
 });
 
 test("N5: a blacked-out night is NEVER materialized — the exact predicate the checkout claim loop uses finds zero rows for it", async () => {
@@ -346,11 +346,11 @@ test("P1/N1: materialize → redacted calendar → quote → claim, nights × EA
   // atomic claim exactly like a manual/pattern-materialized row (mirrors availability-model.db
   // .test.ts's own P-CLAIM).
   for (const row of slots) {
-    const claimed = await storage.bookSlot(row.id);
+    const claimed = await storage.bookSlot(row.id, 1);
     assert.ok(claimed, `night ${row.date} must be claimable`);
   }
   for (const row of slots) {
-    await storage.releaseSlot(row.id);
+    await storage.releaseSlot(row.id, 1);
   }
 
   // Cleanup this test's cart row so it doesn't leak into other tests' subtotal assertions.
@@ -373,7 +373,7 @@ test("P2: a price-edit propagates to UNBOOKED materialized nights only — a boo
   assert.ok(middleNight, "middle night must exist");
 
   // Book the middle night — simulating a real stay claim on it — BEFORE the price edit.
-  const claimed = await storage.bookSlot(middleNight.id);
+  const claimed = await storage.bookSlot(middleNight.id, 1);
   assert.ok(claimed, "middle night must be claimable before the edit");
 
   const second = await readOnce(await api(`/api/provider/services/${room}/date-ranges`, provider.cookie, "PUT", {
@@ -389,7 +389,7 @@ test("P2: a price-edit propagates to UNBOOKED materialized nights only — a boo
   assert.equal(byDate.get(dateAtOffset(22))!.pricing.nightlyRate, 200, "unbooked night repriced to the new rate");
   assert.equal(byDate.get(dateAtOffset(21))!.pricing.nightlyRate, 100, "the BOOKED night's rate survives untouched — §18b posture: booked inventory is never silently altered");
 
-  await storage.releaseSlot(middleNight.id);
+  await storage.releaseSlot(middleNight.id, 1);
 });
 
 test("P3: re-materializing the same date-ranges twice creates zero duplicate slot rows", async () => {

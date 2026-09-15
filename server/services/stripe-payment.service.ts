@@ -30,7 +30,7 @@ import { logger } from '../infrastructure/logger';
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so refundServiceBooking's
 // release can never drift from voidClaim's / updateServiceBookingStatus's.
-import { deriveClaimedSlotIds } from './checkout-claim.service';
+import { deriveClaimedSlotIds, deriveClaimedSlotUnits } from './checkout-claim.service';
 import { travelerChargeForRow } from './traveler-charge';
 import { getStripeSecretKey } from '../utils/stripe-key';
 
@@ -1162,13 +1162,20 @@ class StripePaymentService {
       (row.booking_details ?? null) as Record<string, unknown> | null,
       row.slot_id ? String(row.slot_id) : null,
     );
+    // V-26 (ledger `2026-09-15-v26-slot-units`): a claim can hold MORE THAN ONE unit of a slot, so
+    // the refund gives back exactly what the booking RECORDED it claimed (`claimedSlotUnits`) —
+    // not the cart line's priced quantity, and not a flat 1. A pre-V-26 row carries no record and
+    // releases 1, which is precisely what it took (§13).
+    const slotUnitsToRelease = deriveClaimedSlotUnits(
+      (row.booking_details ?? null) as Record<string, unknown> | null,
+    );
     if (slotIdsToRelease.length > 0) {
       const { storage } = await import('../storage');
       // Each slot released independently — one slot's failure must not stop the others (a
       // multi-night stay must not leak the remaining nights because night 1's release threw).
       for (const slotId of slotIdsToRelease) {
         try {
-          await storage.releaseSlot(slotId);
+          await storage.releaseSlot(slotId, slotUnitsToRelease);
         } catch (releaseErr) {
           console.error(`[refund] slot release failed for booking ${bookingId}, slot ${slotId} (non-critical):`, releaseErr);
         }
