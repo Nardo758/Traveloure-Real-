@@ -1724,6 +1724,57 @@ jobs:
       - name: One trip-write resolver (W1-W6)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/one-trip-write-resolver.db.test.ts
 
+  leads-door-and-trip-read-gate:
+    name: leads-door-and-trip-read-gate (V-32, V-33; ledger 2026-09-15-v32-v33-leads-door-item-read-gate)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # V-33: `GET /api/trips/:id` granted its expert arm on `trips.expertId`, a column NOTHING
+      # under server/ writes, so an expert assigned through the ONE author of
+      # `trip_expert_advisors` was answered 403 AND logged as an `[IDOR ATTEMPT]`. A1/A2 prove a
+      # pending and an accepted advisor now read 200 with no such log line (the wrong log was half
+      # the defect — a status-only assertion would have let the libel survive); A3 keeps the
+      # warning firing for a real stranger; A4 keeps `rejected` denying; A5 pins the owner and the
+      # 401 anonymous arm; R1 proves the §21 private-build-note redaction was NOT widened by the
+      # new arm. S1/S2 are the source pins (canonical predicate imported, dead column annotated).
+      # V-32: L1 is the ratchet that keeps `/api/leads/route` retired — it fails both on a restored
+      # registration AND on the route-header comment that WAS the defect; L1b proves the scoring
+      # service was left live. The gate is inline in the handler, so A*/R1 mount the REAL router in
+      # a bare express app and make real requests. Measured against the unfixed gate: 4 of 11 fail.
+      # No server boot, so no ALLOW_TEST_ACCOUNTS.
+      - name: Retired lead door + trip read gate (A0-A5, R1, S1-S2, L1-L1b)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/leads-door-and-trip-read-gate.db.test.ts
+
   slot-units:
     name: slot-units (V-26; ledger 2026-09-15-v26-slot-units)
     runs-on: ubuntu-latest

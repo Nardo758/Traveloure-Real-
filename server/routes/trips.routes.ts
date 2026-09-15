@@ -169,6 +169,9 @@ import {
   type CommissionRates,
 } from "../services/commission";
 import { getTripRole } from "../utils/trip-role";
+// The CANONICAL §12 READ-access advisor predicate (pending/accepted/assigned; rejected and any
+// unrecognised status DENY). Imported directly rather than re-derived — V-33.
+import { isTripAdvisor } from "../utils/trip-advisor";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { renderTripPdf } from "../services/trip-pdf.render";
 // The plan's .ics — ONE generator, two callers (§18 rule 1). `generateIcsContent` already owned
@@ -357,10 +360,28 @@ router.get(api.trips.get.path, async (req, res) => {
     }
 
     const isOwner = trip.userId && trip.userId === userId;
-    const isExpert = userId != null && (trip as any).expertId === userId;
     const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
     const isGuestWithToken = shareToken && trip.shareToken === shareToken;
-    if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
+    // V-33 (ledger `2026-09-15-v32-v33-leads-door-item-read-gate`). The expert arm here used to be
+    // `(trip as any).expertId === userId` — a grant NOTHING can satisfy. `trips.expert_id` is
+    // declared (shared/schema.ts) and no code path under `server/` writes it, so an expert assigned
+    // through the ONE author of `trip_expert_advisors` (`upsertTripAdvisorRow`, Locked Decision 32's
+    // CORRECTION paragraph) was refused 403 on the trip they had just been assigned to AND was
+    // libelled by the `[IDOR ATTEMPT]` line below — a §13 falsehood in the log as well as a refused
+    // read. The arm now asks the question that dead column was standing in for, through the
+    // CANONICAL §12 READ predicate (`isTripAdvisor`, server/utils/trip-advisor.ts — the single
+    // source of truth every other read surface authorizes against, and the same function
+    // `storage.isExpertAssignedToTrip` and `getTripRole` both delegate to; §18 rule 1: one
+    // implementation, one more caller — never a second copy of the status allow-list here).
+    // `pending` PASSES: Locked Decision 12 names the trip GET among the read surfaces that keep
+    // granting it, so an invited expert can see the trip while deciding. Evaluated ONLY when no
+    // cheaper arm already granted, so an owner's read costs no extra query. The EA-managed and
+    // share-token arms are untouched.
+    const isAssignedAdvisor =
+      !isOwner && !isManagingEa && !isGuestWithToken
+        ? await isTripAdvisor(trip.id, userId)
+        : false;
+    if (!isOwner && !isAssignedAdvisor && !isManagingEa && !isGuestWithToken) {
       if (userId) {
         console.warn(
           `[IDOR ATTEMPT] User ${userId} tried to access resource owned by ` +
@@ -388,12 +409,21 @@ router.get(api.trips.get.path, async (req, res) => {
     // field (PATCH /api/trips/:tripId/expert-notes, booking-actions.ts) — it must never be
     // delivered to the traveler. This handler's viewer set includes the trip OWNER (the
     // traveler themselves) and a plain-shareToken guest, neither of which is a builder-side
-    // principal; only the trip-column expert / managing EA is. Redact it here rather than trust
+    // principal; only the managing EA is. Redact it here rather than trust
     // every future consumer of the `...trip` spread to know not to render it — the same posture
     // `/api/itinerary-share/:token` below already takes for its own (unrelated)
     // `shared_itineraries.expertNotes` column. `expertTravelerNote` (§21's traveler-facing
     // counterpart) is NOT redacted — it is meant for exactly this audience.
-    const canSeePrivateExpertNotes = isExpert || isManagingEa;
+    //
+    // V-33: this predicate is DELIBERATELY NOT widened by the advisor arm added above, and the
+    // change is behaviour-preserving — its former `isExpert` term read `trips.expertId`, which
+    // nothing writes, so the managing EA was already the only principal it could ever admit. A
+    // builder-side reader of the private build notes has its OWN rail,
+    // `GET /api/trips/:tripId/expert-notes` (booking-actions.ts), hardened Aug 29 2026 to the §12
+    // WRITE allow-list (accepted/assigned — a `pending` advisor is refused there). Letting a
+    // READ-status advisor inherit the notes through this spread would re-open exactly the §21 leak
+    // that rail closed, so the access fix and the redaction predicate stay separate decisions.
+    const canSeePrivateExpertNotes = isManagingEa;
 
     // Migration 281 (ledger `2026-09-04-stops-and-event-time`, Locked Decision 34): the plan's
     // ORDERED STOPS, additive — every existing consumer ignores the key. Gated by exactly the

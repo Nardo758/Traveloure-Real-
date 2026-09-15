@@ -283,6 +283,24 @@ This document captures architectural decisions to maintain consistency across co
     list** (§13 forbids a second hardcoded one). A destination outside the 8 returns NULL. It is
     deliberately NOT `timezoneForMarket()`, whose "UTC for an unknown market" answer is right for
     the demand rollup's grain and wrong here — for a plan, UTC would be a claim.
+    **A PLAN ALSO SAYS WHETHER ITS DATES WERE CHOSEN (amended Sep 15, 2026 — ledger
+    `2026-09-15-d22-dates-confirmed`; migration 302).** `trips.start_date`/`end_date` are NOT NULL,
+    so 42 D12's "no mint may invent a date" cannot be enforced by the schema alone: the ready-made
+    clone, the two expert authoring builds and several cart mints fill a window in because the
+    columns demand one. `trips.dates_confirmed_at` is the fact that tells those apart — additive
+    nullable, NO DEFAULT, NO CHECK (the publish-trap posture), declared in `shared/schema.ts`, NO
+    BACKFILL. **NULL = NOT CONFIRMED, and never "no dates"** (the plan HAS a window; nobody chose
+    it): every reader labels it a PLACEHOLDER, the `.ics` keeps this ruling's FLOATING output rather
+    than pinning an instant to a day nobody picked, and 45 (6)'s countdown is withheld — a pinned
+    instant needs a real DAY as much as a real ZONE. **SERVER-DERIVED, never client-settable (§19,
+    the same posture as `timezone` and `market_slug`):** `insertTripSchema` omits it and no pick
+    re-admits it; `storage.createTrip` takes the MINT SITE's own `datesChosenByTraveler` — **opt-in,
+    so a mint that says nothing makes no claim** — and `storage.updateTrip` stamps `now()` on any
+    date change, which is the ONE re-date rail (the owner-gated `PATCH /api/trips/:id`, whose first
+    client caller is the slip header's owner-only "Set your dates", 42 D16). The reader-side
+    derivation is ONE module, `shared/plan-dates.ts` (§18 rule 1). **Availability revalidation on a
+    re-date is NOT part of this and is not built** — it has no read half yet, and saying so is the
+    honest half of shipping without one.
     **(b) The pending-events pen is DRAINED at mint.** `2026-09-03-switch-readers` shipped the
     "What's happening" chips and stated its own gap: with no trip row yet, ticked chips are HELD
     in `trip_contexts` as `pendingEventTitles` and nothing ever promoted them, so a traveler who
@@ -1081,7 +1099,9 @@ This document captures architectural decisions to maintain consistency across co
     auto-trip and the saved-trip conversion) bypass that path and therefore **stamp it
     explicitly** — the same treatment ruling 30 already gave them for the zone. A plan with no
     market slug is invisible to every market-scoped reader while looking perfectly normal on the
-    slip.
+    slip. **Because the date columns are NOT NULL, this clause is enforced by a FACT, not by the
+    schema: `trips.dates_confirmed_at` (Locked Decision 30, amended Sep 15, 2026) records whether
+    the window was chosen, and a mint that filled one in to satisfy the columns leaves it NULL.**
 
     **D13 — A DOOR PASSES WHAT IT HOLDS, AND CI CHECKS THE NAMED ONES.** Ruling 33 ruled that doors
     differ in exactly two things — what arrives pre-filled and which step opens first — and
