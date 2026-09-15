@@ -19,6 +19,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 
 interface Mismatch {
   type: string;
@@ -88,21 +89,13 @@ interface ReconciliationRun {
   note: string | null;
 }
 
-/** Plain-language labels for the drift vocabulary (shared/schema.ts
- *  RECONCILIATION_EXCEPTION_KINDS). An ops surface that shows only the enum name makes the
- *  reader look up what it means, which is how a critical row gets skimmed past. */
-const KIND_LABELS: Record<string, string> = {
-  pi_succeeded_no_booking: "Payment succeeded — NO booking exists",
-  pi_succeeded_claim_provisional: "Payment succeeded — booking still an unpromoted claim",
-  pi_succeeded_booking_voided: "Payment succeeded — booking is voided/terminal",
-  booking_confirmed_no_pi: "Booking says paid — no PaymentIntent at all",
-  booking_confirmed_pi_not_succeeded: "Booking says paid — PaymentIntent not succeeded",
-  amount_mismatch: "Charged amount ≠ server-derived total",
-  refund_not_reversed: "Stripe refund with no reversal in the database",
-  payment_provenance_unverified: "PaymentIntent id the checkout never wrote — provenance unverifiable",
-  stripe_charge_no_booking: "Legacy: Stripe charge — no matching booking",
-  booking_no_stripe_charge: "Legacy: booking confirmed — no Stripe charge",
-};
+/* Plain-language labels for the drift vocabulary come from `shared/reconciliation-kinds.ts`,
+ * where they are declared BESIDE the kinds themselves (punchlist V-28). This page used to keep its
+ * own hand-written map, which named ten of the seventeen kinds the job emits — every `rm_*`
+ * ready-made kind and `trip_booking_without_item` rendered as a raw identifier, printed twice, with
+ * no sentence saying what drifted. A map maintained apart from the list is the derivation-drift
+ * class §18 rule 1 names; `reconciliationKindLabel` is now the ONE reader, and a kind this build
+ * does not know still renders as its own identifier rather than a guess (§13). */
 
 interface UnprocessedWebhook {
   id: string;
@@ -869,7 +862,7 @@ export default function AdminReconciliation() {
                         </td>
                         <td className="py-2 px-3">
                           <p className={`text-xs font-medium ${e.severity === "critical" ? "text-red-700" : "text-amber-700"}`}>
-                            {KIND_LABELS[e.kind] ?? e.kind}
+                            {reconciliationKindLabel(e.kind)}
                           </p>
                           <p className="text-[11px] text-gray-400 font-mono">{e.kind}</p>
                         </td>

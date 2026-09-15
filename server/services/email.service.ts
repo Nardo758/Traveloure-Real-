@@ -21,6 +21,7 @@
 import { Resend } from "resend";
 import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-flags";
 import { escHtml, stripCrLf } from "../utils/email-escape";
+import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 
 let cachedClient: Resend | null = null;
 function getClient(): Resend | null {
@@ -998,20 +999,11 @@ export interface ReconciliationMismatch {
   amount?: number;
 }
 
-/** Plain-language digest labels for the drift vocabulary. Mirrors KIND_LABELS on the admin page.
- *  An unknown kind falls back to the raw key rather than being mislabelled as a known one. */
-const RECONCILIATION_LABELS: Record<string, string> = {
-  pi_succeeded_no_booking: "Payment succeeded — NO booking exists",
-  pi_succeeded_claim_provisional: "Payment succeeded — booking still an unpromoted claim",
-  pi_succeeded_booking_voided: "Payment succeeded — booking is voided/terminal",
-  booking_confirmed_no_pi: "Booking says paid — no PaymentIntent at all",
-  booking_confirmed_pi_not_succeeded: "Booking says paid — PaymentIntent not succeeded",
-  amount_mismatch: "Charged amount ≠ server-derived total",
-  refund_not_reversed: "Stripe refund with no reversal in the database",
-  payment_provenance_unverified: "PaymentIntent id the checkout never wrote — provenance unverifiable",
-  stripe_charge_no_booking: "Stripe charge — no booking (legacy rail)",
-  booking_no_stripe_charge: "Booking confirmed — no charge (legacy rail)",
-};
+/* The digest's drift labels come from `shared/reconciliation-kinds.ts` (punchlist V-28). This file
+ * used to carry its own map whose comment said, in so many words, that it "mirrors KIND_LABELS on
+ * the admin page" — two hand-maintained copies of one vocabulary, and both had fallen seven kinds
+ * behind the job. `reconciliationKindLabel` is the ONE reader on every surface; an unknown kind
+ * still falls back to the raw key rather than being mislabelled as a known one (§13). */
 
 interface AdminDigestParams {
   toEmail: string;
@@ -1072,7 +1064,7 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
       // ternary labelled every unrecognised kind "Booking confirmed — no charge", which would
       // have described an amount mismatch or an unreversed refund as something it is not — a
       // detector whose ops surface mislabels the finding is worse than one that says nothing.
-      const label = RECONCILIATION_LABELS[m.type] ?? m.type;
+      const label = reconciliationKindLabel(m.type);
       const ref =
         m.chargeId && !m.bookingId
           ? `Charge: ${escHtml(m.chargeId)} · $${escHtml(String(m.amount ?? "?"))}`
