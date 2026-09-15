@@ -155,12 +155,24 @@ describe("E4 — the optimizer baseline protects expert work", () => {
 
 describe("E5 — D4: the owner PATCH strips expert_note", () => {
   it("the trip-scoped PATCH strips expertNote for every caller except a WRITE-status advisor", () => {
-    assert.match(tripsRoutesSrc, /if \(tripRole !== "expert"\) delete \(safeBody as any\)\.expertNote;/);
+    // V-29 (ledger `2026-09-15-v29-one-trip-write-resolver`) retired the collaborator-only
+    // `getTripWriteRole`, so the advisor-ness this strip keys on is the CANONICAL advisor
+    // predicate (`storage.isExpertAssignedToTripForWrite` → `isTripAdvisorWithWriteAccess`)
+    // resolved beside the one trip-write gate. The invariant is unchanged and so is this pin's
+    // job: only a WRITE-status advisor keeps the field.
+    assert.match(tripsRoutesSrc, /if \(!isWriteAdvisor\) delete \(safeBody as any\)\.expertNote;/);
   });
-  it("the strip sits AFTER getTripWriteRole resolution (the advisor gate it keys on)", () => {
-    const roleIdx = tripsRoutesSrc.indexOf("getTripWriteRole(tripId, userId)");
-    const stripIdx = tripsRoutesSrc.indexOf('if (tripRole !== "expert") delete (safeBody as any).expertNote;');
-    assert.ok(roleIdx > -1 && stripIdx > roleIdx, "strip must follow write-role resolution");
+  it("the strip sits AFTER the advisor resolution it keys on, which sits after the write gate", () => {
+    const gateIdx = tripsRoutesSrc.indexOf('"PATCH /api/trips/:tripId/itinerary-items/:itemId"');
+    const advisorIdx = tripsRoutesSrc.indexOf("const isWriteAdvisor = ownsTrip ? false : await storage.isExpertAssignedToTripForWrite(tripId, userId);");
+    const stripIdx = tripsRoutesSrc.indexOf("if (!isWriteAdvisor) delete (safeBody as any).expertNote;");
+    assert.ok(gateIdx > -1, "the one trip-write gate's route label is missing");
+    assert.ok(advisorIdx > gateIdx, "advisor resolution must follow the write gate");
+    assert.ok(stripIdx > advisorIdx, "strip must follow advisor resolution");
+  });
+  it("the advisor-ness is the canonical predicate, not a second trip-write resolver (§18 rule 1)", () => {
+    assert.ok(!/getTripWriteRole\s*\(/.test(tripsRoutesSrc), "the retired write resolver is back");
+    assert.ok(!/canMutateTrip\s*\(/.test(tripsRoutesSrc), "the retired mutate predicate is back");
   });
   it("the old 'deliberately left in safeBody' rationale is GONE (amended, not contradicted)", () => {
     assert.ok(!tripsRoutesSrc.includes("DELIBERATELY left in `safeBody`"));

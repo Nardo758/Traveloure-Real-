@@ -15,8 +15,8 @@
  *   D1. the owner's assembled plan DELIVERS expert_traveler_note (plancard.trip
  *       + tripNote) and the per-item expert_note — and the PRIVATE
  *       trips.expert_notes value appears NOWHERE in the serialized payload
- *   D2. §12 — a PENDING advisor resolves to NO write role (getTripWriteRole →
- *       null, canMutateTrip false); accepted/assigned resolve to 'expert' with
+ *   D2. §12 — a PENDING advisor holds NO write access (isTripAdvisorWithWriteAccess →
+ *       false); accepted/assigned grant it, with
  *       write access; a rejected advisor has neither
  *   D3. per-item note authoring lands: updateItineraryItem stamps expert_note
  *       and the re-assembled plan renders the new value to the owner
@@ -52,7 +52,6 @@ const { eq, inArray, sql } = await import("drizzle-orm");
 const { users, trips, itineraryItems, tripExpertAdvisors } = await import("../../shared/schema");
 const { storage } = await import("../storage");
 const { assembleTripPlan } = await import("../services/trip-plan.service");
-const { getTripWriteRole, canMutateTrip } = await import("../utils/trip-role");
 const { isTripAdvisorWithWriteAccess } = await import("../utils/trip-advisor");
 const { getSession } = await import("../replit_integrations/auth/replitAuth");
 const { setupEmailAuth } = await import("../replit_integrations/auth/emailAuth");
@@ -260,19 +259,17 @@ describe("expert-note separation + per-item authoring (rulings 5+6, §12/§21)",
     } as any).returning();
 
     assert.equal(await isTripAdvisorWithWriteAccess(tripId, advisorId), false);
-    assert.equal(await getTripWriteRole(tripId, advisorId), null);
-    assert.equal(canMutateTrip(await getTripWriteRole(tripId, advisorId)), false);
+    assert.equal(await isTripAdvisorWithWriteAccess(tripId, advisorId), false);
 
     for (const status of ["accepted", "assigned"]) {
       await db.update(tripExpertAdvisors).set({ status } as any).where(eq(tripExpertAdvisors.id, advisor.id));
       assert.equal(await isTripAdvisorWithWriteAccess(tripId, advisorId), true, `${status} grants write`);
-      assert.equal(await getTripWriteRole(tripId, advisorId), "expert", `${status} resolves expert role`);
-      assert.equal(canMutateTrip("expert"), true);
+      assert.equal(await isTripAdvisorWithWriteAccess(tripId, advisorId), true, `${status} grants write access`);
     }
 
     await db.update(tripExpertAdvisors).set({ status: "rejected" } as any).where(eq(tripExpertAdvisors.id, advisor.id));
     assert.equal(await isTripAdvisorWithWriteAccess(tripId, advisorId), false, "rejected grants nothing");
-    assert.equal(await getTripWriteRole(tripId, advisorId), null);
+    assert.equal(await isTripAdvisorWithWriteAccess(tripId, advisorId), false);
 
     // Leave the advisor with write access for D3.
     await db.update(tripExpertAdvisors).set({ status: "accepted" } as any).where(eq(tripExpertAdvisors.id, advisor.id));
@@ -281,8 +278,8 @@ describe("expert-note separation + per-item authoring (rulings 5+6, §12/§21)",
   it("D3: per-item note authoring lands and renders to the owner", async () => {
     // The write path's §12 gate (D2) has admitted this advisor; the authoring
     // core is updateItineraryItem — the same call the PATCH route makes after
-    // getTripWriteRole passes.
-    assert.equal(await getTripWriteRole(tripId, advisorId), "expert");
+    // the §12 write allow-list passes.
+    assert.equal(await isTripAdvisorWithWriteAccess(tripId, advisorId), true);
     const updated = await storage.updateItineraryItem(itemId, { expertNote: ITEM_NOTE_V2 } as any);
     assert.equal((updated as any)?.expertNote, ITEM_NOTE_V2);
 

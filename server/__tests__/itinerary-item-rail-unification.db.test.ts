@@ -3,8 +3,9 @@
  *
  * Prior state: TWO rails existed for editing/deleting an itinerary item —
  *  - CANONICAL (trip-scoped): PATCH/DELETE /api/trips/:tripId/itinerary-items/:itemId
- *    (server/routes/trips.routes.ts) — advisor-aware (`getTripWriteRole`/`canMutateTrip`/
- *    `isTripAuthor`) AND applies the plan-approval mode-flip (`isPlanApprovedForExpert` ->
+ *    (server/routes/trips.routes.ts) — resolved through the ONE trip-write predicate
+ *    (`authorizeTripLogistics(…, { requireWriteAccess: true })` — V-29) AND applies the
+ *    plan-approval mode-flip (`isPlanApprovedForExpert` ->
  *    409 plan_approved_suggest_instead once the client approves the delivered plan).
  *  - BARE (item-scoped): PATCH/DELETE /api/itinerary-items/:id (server/routes.ts, live —
  *    registered before trips.routes.ts's identically-shaped §9 mount-order-dead twin) — gated
@@ -22,8 +23,8 @@
  * not the cascade-safe `storage.deleteItineraryItem` the canonical rail uses).
  *
  * This file proves the SURVIVING canonical rail's authorization matrix by reproducing its exact
- * logic against the same exported building blocks the route calls (`getTripWriteRole`,
- * `canMutateTrip`, `isTripAuthor`, `isPlanApprovedForExpert`, `storage.getItineraryItemByIdAndTrip`,
+ * logic against the same exported building blocks the route calls (`authorizeTripLogistics`,
+ * `verifyTripOwnership`, `isTripAuthor`, `isPlanApprovedForExpert`, `storage.getItineraryItemByIdAndTrip`,
  * `storage.updateItineraryItem`, `storage.deleteItineraryItem`) — the same "reproduce the route,
  * don't reimplement it" approach as expert-attribution-and-accept-diary.db.test.ts and
  * booking-birth-provenance.db.test.ts. It also asserts the route's server-side strip of
@@ -39,7 +40,8 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
-import { getTripWriteRole, canMutateTrip } from "../utils/trip-role";
+import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
+import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "../utils/plan-approval";
 
@@ -94,15 +96,19 @@ async function patchItineraryItem(
   itemId: string,
   body: Record<string, unknown>,
 ): Promise<{ status: number; body?: any }> {
-  const tripRole = await getTripWriteRole(tripId, actingUserId);
-  const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, actingUserId);
-  if (!canMutateTrip(tripRole) && !authorMayMutate) {
-    return {
-      status: 403,
-      body: { message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" },
-    };
-  }
-  if (tripRole === "expert" && (await isPlanApprovedForExpert(tripId, actingUserId))) {
+  // V-29 (ledger `2026-09-15-v29-one-trip-write-resolver`): the route now resolves the ONE
+  // trip-write predicate, and the advisor-ness the mode-flip keys on is the canonical advisor
+  // predicate resolved beside it. Reproduced here in the route's own shape.
+  const denial = await authorizeTripLogistics(
+    tripId,
+    actingUserId,
+    "PATCH /api/trips/:tripId/itinerary-items/:itemId",
+    { requireWriteAccess: true },
+  );
+  if (denial) return { status: denial.status, body: { message: "Access denied" } };
+  const ownsTrip = await verifyTripOwnership(tripId, actingUserId);
+  const isWriteAdvisor = ownsTrip ? false : await storage.isExpertAssignedToTripForWrite(tripId, actingUserId);
+  if (isWriteAdvisor && (await isPlanApprovedForExpert(tripId, actingUserId))) {
     return { status: 409, body: PLAN_APPROVED_SUGGEST_INSTEAD_ERROR };
   }
   const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
@@ -120,15 +126,16 @@ async function deleteItineraryItem(
   tripId: string,
   itemId: string,
 ): Promise<{ status: number; body?: any }> {
-  const tripRole = await getTripWriteRole(tripId, actingUserId);
-  const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, actingUserId);
-  if (!canMutateTrip(tripRole) && !authorMayMutate) {
-    return {
-      status: 403,
-      body: { message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" },
-    };
-  }
-  if (tripRole === "expert" && (await isPlanApprovedForExpert(tripId, actingUserId))) {
+  const denial = await authorizeTripLogistics(
+    tripId,
+    actingUserId,
+    "DELETE /api/trips/:tripId/itinerary-items/:itemId",
+    { requireWriteAccess: true },
+  );
+  if (denial) return { status: denial.status, body: { message: "Access denied" } };
+  const ownsTrip = await verifyTripOwnership(tripId, actingUserId);
+  const isWriteAdvisor = ownsTrip ? false : await storage.isExpertAssignedToTripForWrite(tripId, actingUserId);
+  if (isWriteAdvisor && (await isPlanApprovedForExpert(tripId, actingUserId))) {
     return { status: 409, body: PLAN_APPROVED_SUGGEST_INSTEAD_ERROR };
   }
   const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
@@ -152,7 +159,7 @@ before(async () => {
     VALUES (${ids.stranger}, ${`iru-${RUN}-stranger@t.test`}, 'IRU', 'Stranger', 'traveler')
   `);
   // storage.createTrip (not a raw insert) so the owner's trip_collaborators row is written —
-  // getTripRole/getTripWriteRole resolve access by assignment only, never trips.userId.
+  // the READ resolver `getTripRole` resolves access by assignment only, never trips.userId.
   const trip = await storage.createTrip({
     userId: ids.owner,
     title: "IRU fixture trip",

@@ -311,7 +311,6 @@ import { isTripAuthor } from "./utils/trip-authorship";
 // The item-mutation predicate (LD 42 D17): the optimizer RUN is an item write and is authorized
 // through THE SAME predicate every other item write uses — owner ‖ WRITE-status advisor
 // (accepted/assigned, never pending) — not the logistics read tier.
-import { getTripWriteRole, canMutateTrip } from "./utils/trip-role";
 import { verifyTripOwnership } from "./utils/trip-ownership";
 // Canonical per-trip mutation authorization: owner ‖ trip-assigned expert ‖ trip author ‖
 // audit-logged admin. Returns null when authorized, else the {status, message} to send.
@@ -8980,17 +8979,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // A comparison with NO trip is legitimate (cart / experience-template flows create one before
       // any trip exists), so only authorize when a tripId is actually supplied.
       // D17 (LD 42, Sep 5 2026): the optimizer RUN rewrites the plan's items — the largest item
-      // write on the platform — so it is authorized by THE SAME predicate item mutations use:
-      // `getTripWriteRole`/`canMutateTrip` (owner ‖ WRITE-status advisor, NEVER pending), with the
-      // mutation handlers' parallel author branch. NOT `authorizeTripLogistics` — a read-shaped
-      // tier that grants pending (correctly, for reading) and audit-logged admin (which item
-      // mutations never grant). ONE predicate, one more caller (§18 rule 1).
+      // write on the platform — so it is authorized by THE SAME predicate item mutations use,
+      // §12-narrowed, never the read-shaped tier that grants `pending`.
+      // ONE TRIP-WRITE RESOLVER (punchlist V-29 = option B, decision-maker ruled 2026-09-15;
+      // ledger `2026-09-15-v29-one-trip-write-resolver`). D17's predicate is
+      // `authorizeTripLogistics(…, { requireWriteAccess: true })` — owner off `trips.user_id`,
+      // §12 WRITE-status advisor (accepted/assigned, NEVER pending), trip author, audit-logged
+      // admin — NOT the collaborator-only `getTripWriteRole`/`canMutateTrip` with a hand-rolled
+      // author branch beside it, which is deleted. BEHAVIOUR DELTA, by name: (a) an OWNER WITH NO
+      // `trip_collaborators` ROW is no longer 403'd on their own plan; (b) the trip AUTHOR and an
+      // AUDIT-LOGGED ADMIN gain write here, exactly as they already have on the reorder rail a few
+      // hundred lines below. §12 is unweakened and the refusal keeps its status and body shape.
       if (tripId) {
-        const tripRole = await getTripWriteRole(tripId, userId);
-        const authorMayRun = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
-        if (!canMutateTrip(tripRole) && !authorMayRun) {
-          return res.status(403).json({ message: "Access denied" });
-        }
+        const denial = await authorizeTripLogistics(
+          tripId,
+          userId,
+          "POST /api/itinerary-comparisons",
+          { requireWriteAccess: true },
+        );
+        if (denial) return res.status(denial.status).json({ message: "Access denied" });
       }
 
       // ── Lane 5b: resolve the baseline BEFORE anything is created or verified ────────────────
@@ -9344,13 +9351,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // THE RE-POINT (see the create handler for the full rationale). The stored `tripId` is
         // re-authorized here rather than trusted from the create-time check: access can be revoked
         // between the two calls, and this handler triggers a paid run over that trip's contents.
-        // D17 (LD 42): the run is an item write — authorized by the item-mutation predicate
-        // (`getTripWriteRole`/`canMutateTrip`, never pending), NOT the logistics read tier.
-        const tripRole = await getTripWriteRole(comparison.tripId, userId);
-        const authorMayRun = canMutateTrip(tripRole) ? false : await isTripAuthor(comparison.tripId, userId);
-        if (!canMutateTrip(tripRole) && !authorMayRun) {
-          return res.status(403).json({ message: "Access denied" });
-        }
+        // D17 (LD 42): the run is an item write — authorized by THE item-mutation predicate,
+        // §12-narrowed (never pending), never the logistics READ tier. V-29 = option B (ledger
+        // `2026-09-15-v29-one-trip-write-resolver`): that predicate is `authorizeTripLogistics`
+        // with `requireWriteAccess: true`. Delta, by name — see the create handler above: (a) an
+        // owner with no `trip_collaborators` row is no longer refused on their own plan; (b) the
+        // trip author and an audit-logged admin gain write here.
+        const denial = await authorizeTripLogistics(
+          comparison.tripId,
+          userId,
+          "POST /api/itinerary-comparisons/:id/generate",
+          { requireWriteAccess: true },
+        );
+        if (denial) return res.status(denial.status).json({ message: "Access denied" });
 
         const tripInputs = await loadTripOptimizerInputs(comparison.tripId);
         baselineItems = tripInputs.baselineItems;
@@ -12056,8 +12069,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // RETIRED (V4 rail-unification, Aug 7 2026): PATCH /api/itinerary-items/:id used to live here,
   // gated ONLY by `verifyTripOwnership` — owner-only, no advisor branch, no plan-approval mode-flip.
   // That diverged from the canonical trip-scoped rail (`PATCH /api/trips/:tripId/itinerary-items/:itemId`,
-  // server/routes/trips.routes.ts) which is advisor-aware (`getTripWriteRole`/`canMutateTrip`/
-  // `isTripAuthor`) and applies the `isPlanApprovedForExpert` mode-flip. Caller trace (client/src,
+  // server/routes/trips.routes.ts) which resolves access through the ONE trip-write predicate
+  // (`authorizeTripLogistics(…, { requireWriteAccess: true })` — owner ‖ §12 WRITE-status advisor
+  // ‖ trip author ‖ audit-logged admin; V-29) and applies the `isPlanApprovedForExpert` mode-flip. Caller trace (client/src,
   // server, playwright, scripts/journeys) found ZERO live callers of the bare path — every caller
   // already uses the trip-scoped route (see client/src/pages/expert/workspace.tsx's own comment
   // explaining why it deliberately avoids this bare path). Per CLAUDE.md §18c ("no consumer ⇒
@@ -12125,15 +12139,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // SECURITY: same omission as the reorder handler above — `isAuthenticated` only, no trip
       // authorization, so any authenticated user could compute an optimized order for any trip.
       // D17 (LD 42, Sep 5 2026): this handler was already DECLARED a trip-item mutation path (the
-      // comment below) but gated by the logistics predicate's write flag; it now uses the
-      // item-mutation predicate itself — `getTripWriteRole`/`canMutateTrip` (owner ‖ WRITE-status
-      // advisor, NEVER pending) with the mutation handlers' parallel author branch. ONE predicate
-      // for every item write (§18 rule 1).
-      const tripRole = await getTripWriteRole(req.params.tripId, userId);
-      const authorMayRun = canMutateTrip(tripRole) ? false : await isTripAuthor(req.params.tripId, userId);
-      if (!canMutateTrip(tripRole) && !authorMayRun) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+      // comment below), and it is gated by THE item-mutation predicate, §12-narrowed.
+      // ONE TRIP-WRITE RESOLVER (punchlist V-29 = option B, decision-maker ruled 2026-09-15;
+      // ledger `2026-09-15-v29-one-trip-write-resolver`). D17's predicate is
+      // `authorizeTripLogistics(…, { requireWriteAccess: true })` — owner off `trips.user_id`,
+      // §12 WRITE-status advisor (accepted/assigned, NEVER pending), trip author, audit-logged
+      // admin — NOT the collaborator-only `getTripWriteRole`/`canMutateTrip` with a hand-rolled
+      // author branch beside it, which is deleted. BEHAVIOUR DELTA, by name: (a) an OWNER WITH NO
+      // `trip_collaborators` ROW is no longer 403'd on their own plan; (b) the trip AUTHOR and an
+      // AUDIT-LOGGED ADMIN gain write here, exactly as they already have on the reorder rail a few
+      // hundred lines below. §12 is unweakened and the refusal keeps its status and body shape.
+      const denial = await authorizeTripLogistics(
+        req.params.tripId,
+        userId,
+        "POST /api/trips/:tripId/itinerary/optimize-order",
+        { requireWriteAccess: true },
+      );
+      if (denial) return res.status(denial.status).json({ message: "Access denied" });
       // FABLE-REVIEW: the mode-flip gate (QA_PUNCH_LIST item 18) — same derivation as the
       // reorder handler above (itself mirroring the item-create handler's `isAdvisor`). This
       // endpoint only COMPUTES a suggested order (no write), but gating it too means an
