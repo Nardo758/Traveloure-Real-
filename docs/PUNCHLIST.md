@@ -102,7 +102,7 @@
   `DATABASE_URL=<prod> npx tsx scripts/audit-offering-classification.ts` step remains a PRODUCTION fact and is
   unverifiable from the repo.
 - **LANE 2 of `2026-09-12-offering-key-is-canonical` — DROP `provider_services.expert_offering_type_id`.**
-  **[PREPARED 2026-09-15 — PR #__PRNUM__ open; HELD on the production preview; `2026-09-15-offering-key-id-drop`]**
+  **[PREPARED 2026-09-15 — PR #907 open; HELD on the production preview; `2026-09-15-offering-key-id-drop`]**
   Built and green: migration **295** (DDL only), `scripts/preview-offering-key-id-drop.cjs` (read-only; the
   operator runs `DATABASE_URL=<prod> node scripts/preview-offering-key-id-drop.cjs` per `docs/RELEASE.md`
   step 3 and it exits non-zero on a non-zero blocking count), the `shared/schema.ts` declaration and the
