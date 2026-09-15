@@ -39,7 +39,7 @@
  *   · A plan with NO rows here has never been asked anything. The list is empty, which is not the
  *     same as "the AI had nothing to say", and no caller may render it as the latter.
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import {
   planProposalCreateSchema,
@@ -120,6 +120,15 @@ export async function listPlanProposals(tripId: string): Promise<PlanProposal[]>
  *     Locked Decision 42 D18 is explicit that there is no undo.
  *   · a proposal on ANOTHER trip is not this trip's to discard — the `trip_id` clause, not a
  *     second ownership read. The route answers a 404 for that, never a 403 (the probing posture).
+ *   · **a proposal that already has a PaymentIntent cannot be discarded** (punchlist **D-21**,
+ *     ledger `2026-09-15-d20-d21-proposal-charge`). A PaymentIntent the traveler can still confirm
+ *     is money that may yet move; discarding the row underneath it would take a charge with nothing
+ *     to apply it to. A CLAIM ALONE does NOT block the discard, and that distinction is
+ *     load-bearing: `charge_claimed_at` with no `stripe_payment_intent_id` is a pay attempt whose
+ *     Stripe call never landed, and leaving THAT row undiscardable would brick a proposal on a
+ *     transient error. Discard is its recovery. (Stated liveness limit: a claimed row whose
+ *     PaymentIntent exists and is never confirmed stays un-applied and un-discardable until it is;
+ *     a TTL reclaim is a later lane, not a compensating rollback — §15b.)
  *
  * Returns the updated row, or `undefined` when nothing matched. `undefined` deliberately does not
  * distinguish "no such proposal", "not on this trip", "already discarded" and "lost the race": the
@@ -139,6 +148,9 @@ export async function discardPlanProposal(
         eq(planProposals.id, id),
         eq(planProposals.tripId, tripId),
         eq(planProposals.status, PLAN_PROPOSAL_STATUS_PROPOSED),
+        // D-21: a PaymentIntent exists ⇒ money may yet move on this proposal, so the row is not
+        // the traveler's to discard. One more clause in the SAME statement — never a pre-check.
+        isNull(planProposals.stripePaymentIntentId),
       ),
     )
     .returning();

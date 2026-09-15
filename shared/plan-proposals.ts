@@ -118,3 +118,62 @@ export interface PlanProposalChangeSet {
    */
   protectedNote?: string;
 }
+
+/**
+ * ── THE CHARGE BASIS ─────────────────────────────────────────────────────────────────────────
+ *
+ * (decision-maker rulings 2026-09-15, punchlist **D-20** = A and **D-21** = A; ledger
+ *  `2026-09-15-d20-d21-proposal-charge`; migration 300. CLAUDE.md Locked Decision 45 (3),
+ *  Locked Decision 41 (a), §8, §13, §18 rule 1.)
+ *
+ * WHY the apply was allowed, recorded on the row. `plan_proposals.charge_basis` carries **NO DB
+ * CHECK** and **NO DEFAULT** (the publish-trap posture), so — exactly like the status above — the
+ * value set only means anything if it is stated ONCE, here.
+ *
+ * `trip_pass` — an active Trip Pass on THIS plan covers the action (`coversAction(tripId,
+ *               "ai_task")`). Coverage is UNLIMITED by ruling, so a covered apply takes no claim,
+ *               creates no PaymentIntent and leaves `charged_amount_cents` NULL. Locked Decision
+ *               41 (a)'s posture, one product over.
+ * `paid`      — a PaymentIntent for THIS proposal was verified `succeeded` by the server.
+ *
+ * There is deliberately **no `free_rerun`** and **no `waived`**. The optimizer's free-re-run window
+ * is a property of THAT product's pricing (LD 41 (a)); an AI task has no such window, and inventing
+ * a basis nothing writes is how a reader starts classifying a state that never occurs (§13).
+ *
+ * NULL is NOT a member of this set: it means the proposal was never applied. Two ways to say
+ * "nothing happened" is how a reader ends up guessing which was meant.
+ */
+export const PLAN_PROPOSAL_CHARGE_BASES = ["trip_pass", "paid"] as const;
+export type PlanProposalChargeBasis = (typeof PLAN_PROPOSAL_CHARGE_BASES)[number];
+
+/** The basis a Trip-Pass-covered apply records. One literal, one home (§18 rule 1). */
+// `satisfies`, not a `: PlanProposalChargeBasis` annotation: the annotation would widen these to
+// the whole union and every discriminated result that narrows on them would stop narrowing. This
+// keeps the LITERAL type while still checking membership of the one set above.
+export const PLAN_PROPOSAL_CHARGE_BASIS_TRIP_PASS = "trip_pass" satisfies PlanProposalChargeBasis;
+/** The basis a verified-PaymentIntent apply records. Same reason. */
+export const PLAN_PROPOSAL_CHARGE_BASIS_PAID = "paid" satisfies PlanProposalChargeBasis;
+
+/** Fails closed: a NULL, a non-string or any unrecognised value is not a basis. */
+export function isPlanProposalChargeBasis(value: unknown): value is PlanProposalChargeBasis {
+  return (
+    typeof value === "string" && (PLAN_PROPOSAL_CHARGE_BASES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * THE ONE PLACE THE APPLY'S STRIPE IDEMPOTENCY KEY IS SPELLED (§15, D-21).
+ *
+ * D-21 = A: one charge per DISTINCT PROPOSAL APPLIED, idempotent on that proposal's id. The key is
+ * therefore derived from the proposal id and NOTHING else — no date component (the optimizer's
+ * `opt-fee-<user>-<target>-<YYYY-MM-DD>` shape is per-target-per-DAY because its unit of charge is
+ * a run, not a row), no user component (the row already belongs to exactly one plan, and the plan
+ * to one owner). A double-click, a retry and a resumed session all rebuild the same key and Stripe
+ * returns the same PaymentIntent.
+ *
+ * It lives in `shared/` beside the vocabulary rather than in the charge service so the test that
+ * pins the shape and the code that sends it read the same expression (§18 rule 1).
+ */
+export function planProposalApplyIdempotencyKey(proposalId: string): string {
+  return `ai-apply-${proposalId}`;
+}

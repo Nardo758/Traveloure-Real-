@@ -1623,4 +1623,17 @@ export const MIGRATION_FILES = [
   // or claim column: the charge point is punchlist D-20/D-21 and adds its own. No CHECK added
   // or changed, so `preflight-prod-constraints.cjs` needs no manifest entry.
   "299_plan_proposals.sql",
+  // Ledger `2026-09-15-d20-d21-proposal-charge` (punchlist D-20 = A, D-21 = A). THE APPLY IS THE
+  // CHARGE POINT, and the proposal row is where the §15b claim sits. Four additive-nullable
+  // columns on `plan_proposals`, all declared in `shared/schema.ts` in the same commit
+  // (deploy-push durability rule): `charge_claimed_at` (the §15b pre-flight marker, written by an
+  // atomic conditional BEFORE the Stripe call), `stripe_payment_intent_id` (§19a — ONE writer, the
+  // apply charge path; absent from the pick-based admission schema so no body can admit it),
+  // `charged_amount_cents` (server-derived at apply from the `concierge:ai_task` fee band — D-20 is
+  // FLAT from `fee_bands`, never a literal, §8/§14) and `charge_basis` (`trip_pass` | `paid`,
+  // app-enforced in `shared/plan-proposals.ts`). NO DB CHECK and NO DEFAULT on `charge_basis` — the
+  // publish-trap posture — and NO index: every read is by primary key. NO BACKFILL: nothing has
+  // ever been applied, so there is nothing true to backfill. No CHECK added or changed, so
+  // `preflight-prod-constraints.cjs` needs no manifest entry.
+  "300_plan_proposals_charge.sql",
 ] as const;

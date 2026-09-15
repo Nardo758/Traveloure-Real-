@@ -336,6 +336,41 @@ export const planProposals = pgTable("plan_proposals", {
   appliedAt: timestamp("applied_at"),
   discardedAt: timestamp("discarded_at"),
   appliedItemIds: text("applied_item_ids").array(),
+  /**
+   * ── THE CHARGE COLUMNS (migration 300, ledger `2026-09-15-d20-d21-proposal-charge`) ──
+   *
+   * Punchlist **D-20** = A (the apply is charged FLAT from `fee_bands`, band `concierge:ai_task`,
+   * never a literal — §8) and **D-21** = A (ONE charge per DISTINCT PROPOSAL APPLIED, idempotent
+   * on the proposal id). Migration 299 deliberately carried no payment column and named these two
+   * rulings as the owners; this is them.
+   *
+   * `chargeClaimedAt` is the §15b PRE-FLIGHT MARKER — written by an atomic conditional BEFORE the
+   * Stripe call, so two concurrent pays produce exactly one claim and a row carrying it is never
+   * treated as provably un-attempted. NULL = no charge was ever attempted.
+   */
+  chargeClaimedAt: timestamp("charge_claimed_at"),
+  /**
+   * §19a: ONE WRITER — the apply charge path's own atomic conditional
+   * (`WHERE id = ? AND stripe_payment_intent_id IS NULL`). It is absent from
+   * `planProposalCreateSchema` (which is PICK-based, §19), so no request body can admit it and the
+   * payment-identity pass in `scripts/check-money-endpoints.cjs` sees it omitted by construction.
+   * NULL = no PaymentIntent was created, which is the permanent and CORRECT state of a
+   * Trip-Pass-covered apply (Locked Decision 41 (a): a covered run takes no claim and spends no PI).
+   */
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  /**
+   * What was actually charged, SERVER-DERIVED at apply from the band (§14/§8). NULL = nothing was
+   * charged — deliberately not `0`, which would read as "we charged them nothing", a claim, where
+   * NULL reads as "no charge was made" (§13; `fee_ledger`'s `amount <> 0` CHECK is the same rule).
+   */
+  chargedAmountCents: integer("charged_amount_cents"),
+  /**
+   * `trip_pass` | `paid` — app-enforced by `PLAN_PROPOSAL_CHARGE_BASES` (`shared/plan-proposals.ts`,
+   * stated once — §18 rule 1), **NO DB CHECK** (publish-trap posture) and **NO DEFAULT** (a basis is
+   * a claim about what happened, never a filler). NULL = never applied. A basis is never written
+   * into the payment-identity column and a payment identity is never written here (§19a).
+   */
+  chargeBasis: varchar("charge_basis", { length: 20 }),
 }, (table) => [
   index("plan_proposals_trip_idx").on(table.tripId),
 ]);
@@ -364,6 +399,15 @@ export type PlanProposal = typeof planProposals.$inferSelect;
  *                                   would be a second, uncharged apply rail.
  *   `discardedAt`                 — stamped only by `discardPlanProposal`'s atomic conditional
  *                                   (§15/§18b), never handed in by a caller.
+ *   `chargeClaimedAt`,            — the CHARGE columns (migration 300, punchlist D-20/D-21). The
+ *   `stripePaymentIntentId`,        claim is an atomic conditional taken by the pay rail; the
+ *   `chargedAmountCents`,           PaymentIntent id is §19a (ONE writer, server-verified only);
+ *   `chargeBasis`                   the amount is server-derived from the `concierge:ai_task` band
+ *                                   (§8/§14); the basis is what the server decided, not what a
+ *                                   caller asserted. Under a DENYLIST schema a freshly-added
+ *                                   column is client-settable BY DEFAULT — the §19 class — so the
+ *                                   fact that this schema is a PICK is what keeps all four
+ *                                   unreachable without anyone editing a list.
  *
  * `status` IS picked and is REQUIRED — the column has no DEFAULT precisely so a writer states it
  * (see the table comment) — and its value set comes from `PLAN_PROPOSAL_STATUSES`
