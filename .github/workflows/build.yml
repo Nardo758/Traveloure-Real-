@@ -1544,6 +1544,54 @@ jobs:
       - name: The ready-made authoring price contract (A1-A5)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/authored-item-price-contract.db.test.ts
 
+  from-state-guards:
+    name: from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # §18b: "the pre-check is only the error message, the transition itself is the guard." Three
+      # status writers on two tables were breaking it in the same shape — a SELECT, a decision taken
+      # against what that SELECT returned, and an unconditional `UPDATE ... WHERE id = ?`. F1/F2 are
+      # the dispute rail (V-23: a `payment_pending` provisional claim was disputable, which strands
+      # the slot per SD-1); F3/F4 are the admin dispute-reject (V-24: the flip MINTS earnings and
+      # re-stamped `completed_at`, restarting the traveler's dispute window and the payout anchor);
+      # F5/F6 are the coordination writer (V-25b: a losing writer's transition was erased from
+      # `state_history` by a read-modify-write). F7 keeps the from-state lists in ONE home.
+      # F4/F4b/F5/F5b/F5c fail on main's storage; F1c/F3b/F6b/F7 fail on main's routes. No server
+      # boot, so no ALLOW_TEST_ACCOUNTS.
+      - name: The transition is the guard (F1-F7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/from-state-guards.db.test.ts
+
   reconciliation-detection:
     name: reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)
     runs-on: ubuntu-latest
