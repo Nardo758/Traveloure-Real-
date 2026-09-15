@@ -353,6 +353,20 @@ jobs:
       # wired, never deleted; its total-amount assertion is repaired to the ruled composition.
       - name: AI-item price provenance pin (§14)
         run: npx tsx --test server/__tests__/booking-ai-price-guard.test.ts
+      # 2026-09-15-d12-service-bookings-canonical (punchlist D-12): `service_bookings` is the
+      # canonical booking rail and this one takes a DATED no-new-writes switch, read through the ONE
+      # accessor in `server/config/legacy-bookings.config.ts`. C1-C7 pin the three states (unset =
+      # nobody has decided ⇒ open; future = decided, not in force; past = 410 before ANY read or
+      # write, proven by zero DB statements rather than by "no booking row", since `processCart` can
+      # mint a trip first), the refusal's stated reason, the fail-loud refusal of a malformed value,
+      # the switch's placement as the handler's FIRST statement, and that no cutoff date is set
+      # anywhere in the repo — the date is the decision-maker's. C8/C9 pin what does NOT move: every
+      # read, `confirm-payment`, `bulk-status`, `/refund` and §17's `scanLegacyRail`.
+      # (Pure — `db.execute`/`db.transaction` are stubbed and no query is issued — but it imports
+      # `shared/schema.ts` through the router, so it belongs in this `npm ci` job. The two env vars
+      # above are the same import-time placeholders the suites beside it need.)
+      - name: Legacy-rail dated no-new-writes switch (D-12)
+        run: npx tsx --test server/__tests__/legacy-rail-closed.test.ts
 
   claims-only-lookup-guard:
     name: claims-only-lookup-guard (session-user extraction)

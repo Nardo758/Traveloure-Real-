@@ -1,6 +1,15 @@
 /**
  * BookingConfirmation Component
  * Displays booking confirmation after successful payment
+ *
+ * NO MOUNT SINCE D-12 (ledger `2026-09-15-d12-service-bookings-canonical`). Its only importer was
+ * `BookingFlowModal`, the legacy `bookings` rail's client, which was deleted with that rail's two
+ * surfaces. It is KEPT rather than deleted, and the reason is the predicate: §18c's rule is "no
+ * consumer PLUS an irreversible, state-bearing effect ⇒ delete, don't gate", and this component
+ * writes nothing, calls nothing and holds no rail — it renders a receipt. It is also the subject of
+ * two live pins (`confirm-honesty` B4: an absent confirmation code is said out loud, never filled;
+ * `no-expense-reimbursement` E4: a receipt records a charge that happened). Deleting it is its own
+ * §18c call and needs those two pins repaired, not a side effect of retiring a booking rail.
  */
 
 import React from 'react';

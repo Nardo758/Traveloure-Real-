@@ -16,6 +16,11 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getUserId, getDbRole } from '../utils/auth';
 import { sanitizeBookingForExpert } from '../utils/data-sanitizer';
 import { holdWindowDays } from '../config/earnings-hold.config';
+import {
+  CANONICAL_BOOKING_RAIL,
+  LEGACY_BOOKINGS_CLOSED_REASON,
+  legacyBookingsClosedToNewWrites,
+} from '../config/legacy-bookings.config';
 import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
 import Stripe from 'stripe';
 import { getStripeSecretKey } from '../utils/stripe-key';
@@ -93,10 +98,33 @@ router.get('/:id', isAuthenticated, async (req, res) => {
 
 /**
  * POST /api/bookings/process-cart
- * Process cart and create bookings
+ * Process cart and create bookings — the LEGACY `bookings` rail.
+ *
+ * D-12 (decision-maker 2026-09-15, ledger `2026-09-15-d12-service-bookings-canonical`):
+ * `service_bookings` is the CANONICAL rail, and this one takes a DATED no-new-writes switch. From
+ * the instant `legacyBookingsNoNewWritesFrom()` names, this endpoint refuses — 410, with the reason
+ * said out loud and the canonical rail named — and it refuses BEFORE any read or write, so a
+ * refused call leaves no `bookings` row, no `booking_requests` row, no auto-minted trip and no
+ * Stripe PaymentIntent behind it. While no cutoff has been decided the handler is UNCHANGED.
+ *
+ * Nothing that READS this rail is gated by the switch: the single-booking GET, `confirm-payment`,
+ * `bulk-status`, `POST /api/bookings/refund`, the legacy confirm/cancel paths and §17's
+ * `scanLegacyRail` all keep working on the rows that exist (CLAUDE.md §15c, §17).
  */
 router.post('/process-cart', isAuthenticated, async (req, res) => {
   try {
+    // D-12's switch, FIRST — before the session read, the body parse and every DB statement.
+    if (legacyBookingsClosedToNewWrites()) {
+      return res.status(410).json({
+        success: false,
+        message:
+          'This booking path is closed to new bookings. Add the item to your plan and check out ' +
+          'from there — your existing bookings, receipts and refunds are unaffected.',
+        reason: LEGACY_BOOKINGS_CLOSED_REASON,
+        canonical: CANONICAL_BOOKING_RAIL,
+      });
+    }
+
     // Acting user = session, NEVER the body. (Was: `userId` from req.body — an IDOR letting an
     // authenticated user create trips/bookings under another user's id.)
     const sessionUserId = getUserId(req)!;
@@ -266,7 +294,9 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
       });
     }
 
-    // ── LEGACY RAIL (`bookings`) — process-cart / booking-demo flow. Unchanged. ──────────
+    // ── LEGACY RAIL (`bookings`) — the process-cart flow. Unchanged, and deliberately so: D-12
+    // closes that rail to NEW writes on a date and leaves every confirmation of an EXISTING row
+    // exactly where it was. ──────────────────────────────────────────────────────────────
     // Fast-path: if the webhook already confirmed this booking, return success immediately
     const existing = await storage.getBookingStatusForUser(bookingId, userId);
     if (existing?.status === 'confirmed') {
