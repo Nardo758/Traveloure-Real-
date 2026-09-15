@@ -31,6 +31,13 @@ export const IDENTITY_EDIT_FIELDS = [
   // a lane nobody can trigger, and the handler iterates this list against the parsed body.
   "serviceOfferingTypeId", "expertOfferingTypeKey", "offeringTypeKey",
   "deliveryMethod", "productShape",
+  // `declaredArtifactDeliverable` is migration 303's column (ledger
+  // `2026-09-15-d24-d26-acceptance-columns`, punchlist D-40): a `hybrid` listing DECLARING that it
+  // also produces one artifact, which then takes D-6 traveler acceptance on its own. It is an
+  // IDENTITY edit because it changes WHAT A BUYER IS COMMITTING TO — adding (or withdrawing) an
+  // acceptance obligation on an approved listing is not a wording change — so on an APPROVED
+  // listing it re-enters review beside the delivery method rather than moving the live row.
+  "declaredArtifactDeliverable",
 ] as const;
 
 export type IdentityEditField = (typeof IDENTITY_EDIT_FIELDS)[number];
@@ -52,6 +59,7 @@ export const IDENTITY_EDIT_LANE: { fields: IdentityEditField[]; label: string }[
   },
   { fields: ["deliveryMethod"], label: "Delivery method" },
   { fields: ["productShape"], label: "Product shape (service / bundle / property)" },
+  { fields: ["declaredArtifactDeliverable"], label: "Declared artifact deliverable" },
 ];
 
 // Every identity field must be named by exactly one display row — a field added to

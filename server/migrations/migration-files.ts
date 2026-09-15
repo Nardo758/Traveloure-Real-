@@ -1647,4 +1647,36 @@ export const MIGRATION_FILES = [
   // a stamped 0 would claim a pass examined zero ready-made purchases, a fact nobody has (§13).
   // No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no manifest entry.
   "301_reconciliation_runs_ready_made_tallies.sql",
+  // Ledger `2026-09-15-d22-dates-confirmed` (punchlist D-22 = yes). `trips.dates_confirmed_at` —
+  // the fact that separates a window the TRAVELER chose from one the platform filled in because
+  // `start_date`/`end_date` are NOT NULL (the ready-made clone's `new Date()` placeholder, the two
+  // expert authoring builds' synthetic window, the cart mints' today-fallback). Additive,
+  // NULLABLE, NO DEFAULT and NO CHECK (the publish-trap posture), no index, declared in
+  // `shared/schema.ts` in the same commit (deploy-push durability rule), and **NO BACKFILL**:
+  // NULL = NOT CONFIRMED, which every reader renders as a placeholder window — never as "no
+  // dates" (the columns are NOT NULL) and never as a confirmed one (§13). Never client-settable
+  // (§19 — `insertTripSchema` omits it); written only by `storage.createTrip` (opt-in, when the
+  // caller states the dates came from the traveler) and `storage.updateTrip` (the R-4 re-date
+  // rail). No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no manifest entry.
+  "302_trips_dates_confirmed_at.sql",
+  // Ledger `2026-09-15-d24-d26-acceptance-columns` (punchlist D-24/D-25/D-26/D-40, all option A).
+  // AN ARTIFACT IS ACCEPTED, AND A REVISION IS A ROW. `service_bookings.accepted_at` (D-24 — the
+  // answer that causes completion; the DEADLINE is DERIVED from the delivery instant plus
+  // `acceptanceWindowDays()`, never stored, because a stored end date is a second authority that
+  // disagrees with the config the moment it moves), `service_bookings.delivered_at` +
+  // `service_bookings.deliverable_file` (D-26 — the PER-BOOKING delivery, without which a revision
+  // for one traveler rewrites the file every other buyer downloads), the child table
+  // `booking_revision_requests` with its UNIQUE (booking_id, "position") and parent index (D-25 —
+  // on the `service_route_points` pattern; the count is DERIVED from the rows, never stored, and
+  // there is no `revision_status` mirror), and `provider_services.declared_artifact_deliverable`
+  // (D-40 — a hybrid listing may declare ONE artifact that takes D-6 acceptance on its own while
+  // the booking keeps D-7 completion; accepting it gates NOTHING about the mint). All additive,
+  // NULLABLE, NO DEFAULT and NO CHECK (the publish-trap posture), declared in `shared/schema.ts` in
+  // the same commit (deploy-push durability rule), and NO BACKFILL: NULL means never accepted /
+  // never delivered / no per-booking artifact / not declared, each OMITTED by its readers rather
+  // than zero-filled (§13). The two new `service_bookings.status` values (`awaiting_acceptance`,
+  // `revision_requested`) need no migration — the column is `varchar(30)` with no CHECK, the
+  // LD 44(e) posture. No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no
+  // manifest entry.
+  "303_booking_acceptance_and_revisions.sql",
 ] as const;
