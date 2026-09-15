@@ -1544,6 +1544,55 @@ jobs:
       - name: The ready-made authoring price contract (A1-A5)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/authored-item-price-contract.db.test.ts
 
+  plan-proposals:
+    name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # WHERE AN AI PROPOSAL LIVES (punchlist D-19 = option (b), migration 299). The expert
+      # `trip_suggestions` rail cannot carry one — `expert_id` is NOT NULL and the approve path
+      # hardcodes `origin:'expert'`, the false attribution Locked Decision 42 D4/D23 forbid by
+      # name — so `plan_proposals` is a new child table of `trips`. P1 derives the column
+      # expectation from `getTableColumns` so schema.ts and the database cannot drift (the
+      # deploy-push durability rule), P2 pins CASCADE on the plan and SET NULL on the thread, P3
+      # pins that the expert rail is untouched and no source mints an AI sentinel author, P4 is
+      # the atomic discard (§15/§18b) and the refusal to discard an applied row (D18 — there is
+      # no undo), P5 is the §19 allowlist pin over the route file SET, and P6/P7 mount the real
+      # trips router against this job's Postgres (no server boot) for the §12 WRITE gate and the
+      # 404-never-403 posture.
+      - name: plan_proposals — the store, its refusals and its two routes (P1-P7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/plan-proposals.db.test.ts
+
   from-state-guards:
     name: from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)
     runs-on: ubuntu-latest

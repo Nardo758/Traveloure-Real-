@@ -1609,4 +1609,18 @@ export const MIGRATION_FILES = [
   // (`rate × quantity` reads the cart row). No CHECK added or changed, so
   // `preflight-prod-constraints.cjs` needs no manifest entry.
   "298_itinerary_items_quantity.sql",
+  // Ledger `2026-09-15-d19-plan-proposals` (punchlist D-19 = option (b)). CREATES
+  // `plan_proposals` — the home of an AI proposal before the traveler applies it (CLAUDE.md
+  // Locked Decision 45 (3)). A child table of `trips` on the `dmo_extracted_places` /
+  // `service_route_points` pattern: FK ON DELETE CASCADE, additive, declared in
+  // `shared/schema.ts` in the same commit (deploy-push durability rule). The EXPERT
+  // `trip_suggestions` rail is UNTOUCHED — its `expert_id` is NOT NULL and its approve path
+  // hardcodes `origin:'expert'`, so an AI author there would be the false attribution Locked
+  // Decision 42 D4/D23 forbid by name. `status` is app-enforced (proposed|applied|discarded)
+  // with NO DB CHECK and NO DEFAULT — the publish-trap posture, and a writer always states it.
+  // `conversation_id` is ON DELETE SET NULL: deleting a thread never deletes the proposals it
+  // produced. NO position and NO UNIQUE — proposals are a LOG, not an ordered list. NO payment
+  // or claim column: the charge point is punchlist D-20/D-21 and adds its own. No CHECK added
+  // or changed, so `preflight-prod-constraints.cjs` needs no manifest entry.
+  "299_plan_proposals.sql",
 ] as const;
