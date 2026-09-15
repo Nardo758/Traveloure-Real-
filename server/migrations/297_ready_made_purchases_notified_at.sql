@@ -1,0 +1,51 @@
+-- Migration 297: A DELIVERED READY-MADE PURCHASE RECORDS THAT IT WAS ANNOUNCED.
+-- Decision-maker ruling 2026-09-15, punchlist **D-18** = option A; ledger
+-- `2026-09-15-d18-announced-marker`. Additive, nullable, NO DEFAULT, NO CHECK, no backfill (the
+-- migration-181/195/273/275/277/279/280/281/282/284/287/295 posture — a CHECK here is exactly the
+-- publish-time drizzle-push failure CLAUDE.md's Coordination Prevention rules warn about). The
+-- column is ALSO declared in `shared/schema.ts` in this same commit: per the deploy-push
+-- durability rule, a DB object the code depends on that `schema.ts` does not declare is dropped by
+-- Replit's publish-time push and NEVER recreated (the stamped migration will not re-run).
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHY: THE LIVENESS GAP LEDGER `2026-09-14-readymade-notifications` STATED OUT LOUD
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Ledger `2026-09-14-readymade-notifications` hung the buyer's bell row + email on the winner of
+-- `fulfillReadyMadePurchase`'s atomic `paid → cloned` claim, and made them exactly-once through
+-- migration 209's partial UNIQUE index
+-- on `notifications.dedupe_key` (the email is GATED on that insert). That closes the
+-- duplicate-send half completely. What it could not close without a column is the LIVENESS half:
+-- a process that dies between the claim and the send leaves a purchase that is DELIVERED — the
+-- buyer's clone trip and its items are committed before the claim — and ANNOUNCED TO NOBODY, with
+-- nothing anywhere recording that fact and therefore nothing able to retry it. That lane stopped
+-- rather than write an unratified migration and filed it as punchlist D-18. This is the column.
+--
+-- §13 — NULL = NEVER ANNOUNCED, WHICH IS THE ONLY READING EVERY EXISTING ROW CAN BEAR.
+-- There is NO BACKFILL and none is possible: nothing on disk records when (or whether) a buyer was
+-- told. A stamped `now()` default would claim every historical purchase was announced at deploy
+-- time, which is a fact nobody has. NULL is therefore "we have no record of an announcement", and
+-- the recovery path below is what turns that into one.
+--
+-- WHO WRITES IT (§18 rule 1 — ONE stamp site). `notifyBuyerOfReadyMadeDelivery`
+-- (`server/services/ready-made-notifications.service.ts`) — the ONE shared sender — stamps it
+-- itself, through an ATOMIC CONDITIONAL (`SET notified_at = now() WHERE id = ? AND notified_at IS
+-- NULL`, `storage.markReadyMadePurchaseNotified`), once it knows the buyer's notification row
+-- exists. Both of that function's callers therefore stamp: the claim winner inside
+-- `fulfillReadyMadePurchase`, and §17's drift job handing an unannounced delivery back to it. The
+-- DRIFT JOB NEVER WRITES THIS COLUMN ITSELF — a detector that stamps "announced" without sending
+-- anything would silence the very finding it exists to raise (§17: detect, don't repair; the ONE
+-- narrow exception is handing a row to an EXISTING shared writer, which is what this is).
+--
+-- ADMISSION (§19): `insertReadyMadePurchaseSchema` OMITS it, beside the revision and dispute
+-- families, and NO pick-based schema re-admits it — under a denylist schema a freshly added column
+-- is client-settable BY DEFAULT, and a client that could stamp this column could silence its own
+-- undelivered-purchase finding. There is nothing here for a client to say.
+--
+-- NO INDEX. The one reader is §17's ready-made scan, which already loads its rows by
+-- `purchased_at >= window` / `stripe_payment_intent_id IN (…)` and reads this column off the rows
+-- it has; an index chosen for a predicate nothing runs is an object the deploy push would have to
+-- keep alive for no reader.
+--
+-- Idempotent; safe to re-run.
+
+ALTER TABLE ready_made_purchases ADD COLUMN IF NOT EXISTS notified_at TIMESTAMP;

@@ -35,8 +35,8 @@
  *       date — and NO party size is fabricated from `quantity` (D-14).
  *   G7  THE ROUND TRIP IS FAITHFUL, WHICH IS THE ADMISSION TEST: running the REAL
  *       `syncItemProjection` over a materialized item reproduces the SAME single cart row — same
- *       id, same service, same slot, same scheduled date. A line the projection could not
- *       reproduce is refused instead, and the reasons are NAMED on the response, not dropped.
+ *       id, same service, same slot, same scheduled date, SAME UNIT COUNT. A line the projection
+ *       could not reproduce is refused instead, and the reasons are NAMED on the response.
  *   G8  A PRICELESS LISTING CANNOT ARRIVE HERE (ledger `2026-09-13-cart-priceless-gap`): the cart
  *       rails refuse it, so the only way onto the table is a direct seed — and such a row is
  *       refused by the materializer through the SAME `hasPublishedPrice` predicate, because the
@@ -47,6 +47,13 @@
  *       once — in the projection module — and has exactly ONE caller. Its negative space is stated
  *       in the proof itself.
  *
+ * D-41 — ruling 2026-09-15, ledger `2026-09-15-d41-item-quantity`, migration 298. The LAST of
+ * G7's original four refusals to fall, and for the same reason as D-16 (b)/(c): the plan had no
+ * column for the fact, so the round trip could not reproduce the traveler's row. `quantity` on
+ * `itinerary_items` is that column, NULL = one unit. G7 and G13 below assert the LIFT — a 3-unit
+ * line becomes an item carrying 3, and `syncItemProjection` writes 3 back, not 1 — which is the
+ * invariant `quantity_gt_one` used to protect, now satisfied instead of refused.
+ *
  * D-16 (b)/(c) — ruling 2026-09-15, ledger `2026-09-15-d16-plan-holds-venues-and-content`,
  * migration 295. Two of G7's four refusals existed for ONE reason: `itinerary_items` had no column
  * for the line's own subject, so the round trip could not reproduce the traveler's row.
@@ -55,8 +62,8 @@
  *       never an invented one) and the projection re-derives the same single cart row.
  *   G12 A CONTENT line keeps its `content_type`/`content_id` link back to the source, and the
  *       round trip preserves the display keys the ITEM has no column for (the image).
- *   G13 THE TWO REFUSALS THAT REMAIN still refuse and are still NAMED: a multi-unit line (D-16 (a)
- *       — `itinerary_items` has no unit column; that is punchlist D-41) and a priceless listing.
+ *   G13 THE ONE REFUSAL THAT REMAINS still refuses and is still NAMED: a priceless listing. The
+ *       multi-unit refusal that stood beside it is GONE — see D-41 below.
  *   G14 §14 — a venue belonging to someone else is refused, in ONE sentence that cannot be used to
  *       tell "no such venue" from "not yours".
  *   G15 `POST /api/cart/convert-to-itinerary`: the §19 `.strict()` allowlist (an unknown key is a
@@ -219,7 +226,9 @@ async function itemsOn(tripId: string): Promise<any[]> {
   const r = await db.execute(sql`
     SELECT id, title, description, provider_service_id, custom_venue_id, content_type, content_id,
            scheduled_date, slot_id, day_number, origin, routing_status, item_type, location_name,
-           estimated_cost, notes, latitude, longitude
+           estimated_cost, notes, latitude, longitude,
+           -- Migration 298 / D-41: the plan's own unit count. NULL = one unit (§13).
+           quantity
     FROM itinerary_items WHERE trip_id = ${tripId} ORDER BY title
   `);
   return r.rows as any[];
@@ -454,14 +463,26 @@ test("G6: nothing is invented — no guessed date, no fabricated party size", as
   );
   assert.equal(item.title, `Kyoto tea ceremony ${RUN}`, "the LISTING's own name, never an invented one");
 
-  // D-14: `quantity` is units of the listing and is NEVER promoted into a party count. No column
-  // on `itinerary_items` holds one, and the materializer writes none — there is nothing to read
-  // a fabricated party size out of.
+  // D-14 / D-41: `quantity` is UNITS OF THE LISTING and is NEVER promoted into a party count. The
+  // plan gained a UNIT column at migration 298 (ruling 2026-09-15, punchlist D-41) and gained NO
+  // party column, which is the distinction this proof now holds — it used to hold "neither column
+  // exists", which stopped being true and would have passed for the wrong reason.
   const cols = await db.execute(sql`
     SELECT column_name FROM information_schema.columns
     WHERE table_name = 'itinerary_items' AND column_name IN ('party_size', 'quantity')
   `);
-  assert.equal(cols.rows.length, 0, "D-14 stays undecided here: no party/quantity is written");
+  assert.deepEqual(
+    (cols.rows as any[]).map((r) => r.column_name),
+    ["quantity"],
+    "a UNIT column exists; a PARTY column on a plan item is a separate decision nobody has made",
+  );
+  // §13: ONE UNIT IS CARRIED AS NULL. This line's `quantity` is the cart column's DEFAULT 1 — the
+  // traveler was never asked — so the item says nothing rather than claiming they answered one.
+  assert.equal(
+    item.quantity,
+    null,
+    "NULL = one unit: a default is not an answer, and writing 1 would make the two indistinguishable",
+  );
 });
 
 // ── G7 ────────────────────────────────────────────────────────────────────────────────────────
@@ -494,25 +515,41 @@ test("G7: the round trip is faithful, and a line that could not round-trip is NA
     dated,
   );
 
-  // And the refusal that REMAINS: a multi-unit line (D-14) cannot round-trip — `itinerary_items`
-  // has no unit column (punchlist D-41) — so it is NOT materialized, and the reason travels back
-  // rather than the line silently vanishing. (A custom-venue line used to be refused here for a
-  // comparable reason; migration 295 gave it a column and G11 proves it now lands.)
+  // AND THE UNIT COUNT ROUND-TRIPS, which is D-41's whole claim (ruling 2026-09-15, ledger
+  // `2026-09-15-d41-item-quantity`, migration 298). A 3-unit line used to be REFUSED here
+  // (`quantity_gt_one`) because `itinerary_items` had no unit column, so the projection would have
+  // written the traveler's 3 back down to 1 and silently changed what they are charged
+  // (`resolveItemBaseAmount` prices a line rate × quantity). The column exists now: the line
+  // materializes CARRYING the count, and the projection writes the SAME count back.
   await resetTravelerState();
   const s2 = `gcart-${RUN}-sess-7b`;
   const multi = await seedGuestCartRow(s2, ids.svcA, { quantity: 3 });
   await api("/api/cart/migrate", travelerCookie, "POST", { guestSessionId: s2 });
   const second = await resolveTrip({ destination: "Kyoto" });
-  assert.equal(second.planItems?.created, 0, "a 3-unit line is refused, not silently reduced to 1");
-  assert.deepEqual(
+  assert.equal(second.planItems?.created, 1, "a 3-unit line is materialized, not refused");
+  assert.equal(
     second.planItems?.skipped,
-    [{ cartItemId: multi, reason: "quantity_gt_one" }],
-    "§13: the refusal is NAMED — `resolveItemBaseAmount` prices a line rate × quantity, so " +
-      "materializing it would silently change what the traveler is charged",
+    undefined,
+    "and nothing is reported as skipped — there is no refusal left to name",
   );
-  const stillThere = await cartRows();
-  assert.equal(stillThere.length, 1, "the line is untouched — nothing is deleted on their behalf");
-  assert.equal(stillThere[0].quantity, 3, "and its quantity is exactly what they chose");
+  const [multiItem] = await itemsOn(second.tripId!);
+  assert.equal(
+    Number(multiItem.quantity),
+    3,
+    "D-41: the plan item carries the traveler's OWN count — never reduced, never defaulted",
+  );
+  const multiSync = await cartProjection.syncItemProjection(multiItem.id);
+  assert.equal(multiSync.action, "upserted", "the multi-unit item projects, it does not delete its line");
+  const multiRows = await cartRows();
+  assert.equal(multiRows.length, 1, "ONE cart row");
+  assert.equal(multiRows[0].id, multi, "the SAME row the traveler built");
+  assert.equal(
+    Number(multiRows[0].quantity),
+    3,
+    "THE ADMISSION TEST: the projection reproduces the count instead of writing 1 over it — " +
+      "which is exactly what the old `quantity_gt_one` refusal existed to prevent",
+  );
+  assert.equal(multiRows[0].itinerary_item_id, multiItem.id, "and the line is linked");
 });
 
 // ── G8 ────────────────────────────────────────────────────────────────────────────────────────
@@ -715,34 +752,44 @@ test("G12: a CONTENT line becomes an item that keeps its link, and round-trips w
 });
 
 // ── G13 ───────────────────────────────────────────────────────────────────────────────────────
-test("G13: the TWO remaining refusals still refuse, on a venue/content cart too", async () => {
+test("G13: the ONE remaining refusal still refuses, beside a multi-unit line that now lands", async () => {
   await resetTravelerState();
   const guestSession = `gcart-${RUN}-sess-13`;
   const venueId = await seedCustomVenue(travelerId, `Multi venue ${RUN}`);
-  // A multi-UNIT venue line: D-16 (a) / D-14. `itinerary_items` has no unit column (punchlist
-  // D-41, NOT authorized by this ruling), so the next sync would write `quantity: 1` back over it.
+  // A multi-UNIT VENUE line. This was the second half of D-16 (a): with no unit column on
+  // `itinerary_items` the next sync would write `quantity: 1` back over it. Migration 298 gave the
+  // plan that column (punchlist D-41), so the line lands — AND on a non-service subject, which is
+  // what proves the count travels in `buildPlanItemValues`'s COMMON values rather than on the
+  // service branch alone.
   const multiId = `gcart-${RUN}-cart-${crypto.randomUUID().slice(0, 6)}`;
   await db.execute(sql`
     INSERT INTO cart_items (id, guest_session_id, custom_venue_id, quantity)
     VALUES (${multiId}, ${guestSession}, ${venueId}, 3)
   `);
-  // And the priceless listing, which the projection would delete on its very next run.
+  // And the priceless listing, which the projection would delete on its very next run. NOTHING in
+  // D-41 lifts this one, and that is the point of asserting the two together.
   const pricelessId = await seedGuestCartRow(guestSession, ids.svcNull);
   await api("/api/cart/migrate", travelerCookie, "POST", { guestSessionId: guestSession });
 
   const resolved = await resolveTrip({ destination: "Kyoto" });
-  assert.equal(resolved.planItems?.created, 0, "neither line may become an item");
+  assert.equal(resolved.planItems?.created, 1, "the multi-unit venue line lands; the priceless one does not");
   assert.deepEqual(
-    [...(resolved.planItems?.skipped ?? [])].sort((a, b) => a.cartItemId.localeCompare(b.cartItemId)),
-    [
-      { cartItemId: multiId, reason: "quantity_gt_one" },
-      { cartItemId: pricelessId, reason: "no_published_price" },
-    ].sort((a, b) => a.cartItemId.localeCompare(b.cartItemId)),
-    "§13: BOTH refusals are NAMED — D-41 is what would lift the first, and nothing lifts the second",
+    resolved.planItems?.skipped,
+    [{ cartItemId: pricelessId, reason: "no_published_price" }],
+    "§13: the refusal that REMAINS is still NAMED, and no refusal is invented for the line that landed",
   );
+  const items = await itemsOn(resolved.tripId!);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].custom_venue_id, venueId, "the item names the traveler's own venue");
+  assert.equal(Number(items[0].quantity), 3, "D-41: carrying the count, on a venue subject too");
+
   const rows = await cartRows();
-  assert.equal(rows.length, 2, "and both lines stay exactly where the traveler left them");
-  assert.ok(rows.every((r) => r.itinerary_item_id === null), "neither is linked");
+  assert.equal(rows.length, 2, "both lines stay exactly where the traveler left them — nothing is deleted");
+  const multiRow = rows.find((r) => r.id === multiId)!;
+  const pricelessRow = rows.find((r) => r.id === pricelessId)!;
+  assert.equal(multiRow.itinerary_item_id, items[0].id, "the materialized line is linked");
+  assert.equal(Number(multiRow.quantity), 3, "and its count is untouched");
+  assert.equal(pricelessRow.itinerary_item_id, null, "the refused line is not");
 });
 
 // ── G14 ───────────────────────────────────────────────────────────────────────────────────────
