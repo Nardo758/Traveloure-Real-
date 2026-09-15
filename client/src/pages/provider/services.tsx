@@ -84,7 +84,7 @@ import { EmptyState } from "@/components/backoffice/primitives";
 import { StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
 import { CatalogMapView } from "@/components/provider/catalog-map-view";
 // (No drawer import: availability is the standalone /provider/availability page — workspace
-//  lane; the offer-card Preview renders CatalogPreviewOfferCard defined below, not OfferingCard.)
+//  lane; the offer-card Preview renders CatalogPreviewOfferCard defined below.)
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import {
@@ -762,9 +762,10 @@ function ListingDemandFunnel({ row, floor }: { row: DemandRollupRow | undefined;
 // transcription of docs/design/catalog-preview-mock.html's `.offer` storefront card — the
 // mock's OWN coral/dark-theme tokens (traveler-side branding, distinct from Manage's
 // ink/teal idiom), not the generic shared `OfferingCard` the C2/C3 lanes originally reused.
-// `OfferingCard` (client/src/components/OfferingCard.tsx) stays untouched here — it is also
-// the LIVE public /p/:handle storefront card (storefront.tsx), which this directive does not
-// cover; changing it would be scope creep onto a surface no mock authorizes yet.
+// That shared card is GONE (ledger `2026-09-15-buy-label-cards`, §18c): this transcription and
+// the storefront's own `StorefrontOfferingCard` between them left it with ZERO importers, so it
+// was deleted rather than kept standing as an unrendered author of a buy label. The LIVE public
+// storefront card is `StorefrontOfferingCard` in `client/src/pages/storefront.tsx`.
 // `catalog-preview-presentation.ts` carries the pure pin-chip / CTA / price / rating
 // derivations this card renders — same honesty rule as the Manage-mode sibling module: real
 // data only, absence renders as absence (§13).
@@ -1004,8 +1005,8 @@ function previewPhotoGradient(id: string): string {
  * --card #fff, --brand #E85D55, --brand-soft #FDEFEE) — light-only, matching this console's
  * existing (light-only) convention; see the lane report for the dark-mode note.
  *
- * Not the shared `OfferingCard` (that stays the live public-storefront card, untouched here —
- * see the block comment above this section). This card owns its own markup so the mock's photo
+ * Not the shared `OfferingCard` the C2/C3 lanes reused — that card is deleted (see the block
+ * comment above this section). This card owns its own markup so the mock's photo
  * pin chip / ribbon / hover-Edit / category eyebrow / balanced title / 2-line clamp / price+CTA
  * anatomy can be transcribed exactly.
  */
