@@ -12,7 +12,11 @@
  *
  * WHAT THE ROWS CARRY TODAY — the LEGACY FOUR, written by `content.routes.ts`:
  *   `pending`   the create path, no agent yet
- *   `assigned`  the create path when an agent was auto-assigned (a HUMAN, `getExpertUserIds`)
+ *   `assigned`  the create path when an agent was auto-assigned (a HUMAN, `getExpertUserIds`).
+ *               That auto-assignment is RETIRED (ledger `2026-09-08-assignment-is-claimed`,
+ *               executed by `2026-09-15-booking-agent-claim`): no assignee is stamped at
+ *               create any more, so NO NEW ROW carries this value. Rows already on disk do
+ *               — there is no backfill — which is why this arm stays exactly as it is.
  *   `confirmed` the agent's PATCH — with or WITHOUT a `confirmationRef`
  *   `failed`    the agent's PATCH — which LD 44 names as the bucket that CONFLATES a question
  *               (flagged) with the partner's answer (unavailable)

@@ -563,13 +563,15 @@ export async function insertTouristPlacesSearch(values: Record<string, any>): Pr
   return row;
 }
 
-// ─── Expert Users (for affiliate booking) ────────────────────────────────────
-
-export async function getExpertUserIds(limit = 10): Promise<string[]> {
-  const rows = await db.select({ id: users.id }).from(users)
-    .where(eq((users as any).role, "expert")).limit(limit);
-  return rows.map(r => r.id);
-}
+// ─── Expert Users (for affiliate booking) — DELETED ──────────────────────────
+//
+// `getExpertUserIds` lived here and had ONE consumer: the two affiliate-booking create sites, which
+// took `[0]` as the request's booking agent. Ledger `2026-09-08-assignment-is-claimed` retired that
+// auto-assignment (a request is CLAIMED from the pool), which left this function with no caller at
+// all — §18c: no consumer plus a state-bearing effect is a DELETE, not a gate. It is recorded here
+// rather than silently removed because its absence is the point: nothing in this codebase picks a
+// booking agent for anyone. If a future lane wants matching, LD 44's ruling is that matching may
+// ORDER the pooled queue and never bind a person.
 
 // ─── Gem by ID ────────────────────────────────────────────────────────────────
 
