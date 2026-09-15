@@ -7,7 +7,7 @@
  * Rules (hard):
  *  • This is a NAMED, EXPLICIT check comparing PRESENT values — `author_id IS NOT NULL` is enforced
  *    in the query itself, so the house `null === null` bug class cannot re-enter here.
- *  • It must NEVER be routed through getTripRole/canMutateTrip (known pre-launch bypass — separate
+ *  • It must NEVER be routed through getTripRole (known pre-launch bypass — separate
  *    fix). Where authoring must coexist with getTripRole-gated handlers (plancard read, the two
  *    per-item edit/delete routes), this check is added as a PARALLEL branch beside it.
  *  • It must not copy the advisor lookup's status handling — authorship has no status; it is a

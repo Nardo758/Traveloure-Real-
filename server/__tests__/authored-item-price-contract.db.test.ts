@@ -152,8 +152,9 @@ before(async () => {
     INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status)
     VALUES (${travelerTripId}, ${ownerId}, ${`Plan ${RUN}`}, 'Kyoto, Japan',
             '2027-04-10', '2027-04-13', 'draft')`);
-  // `getTripWriteRole` resolves "owner" from `trip_collaborators`, not from `trips.user_id` — the
-  // real owner row, so the traveler branch under test is the one production takes.
+  // The owner row is written explicitly: the READ resolver `getTripRole` still resolves "owner"
+  // from `trip_collaborators` (the WRITE arm moved onto `trips.user_id` with V-29), so the traveler
+  // branch under test is the one production takes on both rails.
   await db.execute(sql`
     INSERT INTO trip_collaborators (trip_id, user_id, role)
     VALUES (${travelerTripId}, ${ownerId}, 'owner')`);
