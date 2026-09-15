@@ -666,9 +666,10 @@ class StripePaymentService {
    *
    * TWO RAILS, BOTH SERVED (task #212, legacy-reconciliation lane)
    * ─────────────────────────────────────────────────────────────
-   * This handler used to query ONLY the legacy `bookings` table. That table is still live — the
-   * `/booking-demo` and `/itinerary-comparison/:id` flows write it through
-   * `POST /api/bookings/process-cart` — so its loop below is KEPT verbatim. But the CART CHECKOUT
+   * This handler used to query ONLY the legacy `bookings` table. That table is still live —
+   * `POST /api/bookings/process-cart` writes it (its two client surfaces were retired and the
+   * endpoint took a DATED no-new-writes switch under D-12, but the ROWS remain and this is how
+   * they get confirmed) — so its loop below is KEPT verbatim. But the CART CHECKOUT
    * rail (`POST /api/checkout`) writes `service_bookings`, and its PaymentIntent metadata carries
    * `service_bookings` ids. Passing those ids to `SELECT … FROM bookings` matched zero rows, so
    * the documented "authoritative confirmation path" did nothing at all for a cart checkout
@@ -780,7 +781,8 @@ class StripePaymentService {
       return;
     }
 
-    // ── LEGACY RAIL (`bookings`) — process-cart / booking-demo flow. Unchanged. ────────────
+    // ── LEGACY RAIL (`bookings`) — the process-cart flow. Unchanged (D-12 closes that rail to
+    // NEW writes on a date; confirming rows it already wrote is untouched). ──────────────────
     const bookingIdList = bookingIds.split(',').map((id: string) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
       // `bookings.id` is a UUID column; `service_bookings.id` is a varchar. A cart-checkout PI

@@ -189,7 +189,6 @@ const PressPage = lazy(() => import("@/pages/press"));
 const HelpPage = lazy(() => import("@/pages/help"));
 const ExpertDetailPage = lazy(() => import("@/pages/expert-detail"));
 const QuickStartItinerary = lazy(() => import("@/pages/quick-start-itinerary"));
-const BookingDemo = lazy(() => import("@/pages/booking-demo"));
 const MyItineraryPage = lazy(() => import("@/pages/my-itinerary"));
 const ItineraryViewPage = lazy(() => import("@/pages/itinerary-view"));
 const SharedTripPage = lazy(() => import("@/pages/shared-trip"));
@@ -613,9 +612,6 @@ function Router() {
           visits every registered route) instead of crashing. */}
       <Route path="/payment">
         <Redirect to="/cart" />
-      </Route>
-      <Route path="/booking-demo">
-        {process.env.NODE_ENV === "development" ? <BookingDemo /> : <Redirect to="/" />}
       </Route>
       <Route path="/visa-help">
         <Layout><VisaHelpPage /></Layout>

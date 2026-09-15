@@ -10,10 +10,14 @@
  * two id spaces are disjoint, and the queries matched zero rows without erroring. Nothing in the
  * platform told anyone that money and the database disagreed about a cart purchase.
  *
- * ONE JOB, BOTH RAILS. The legacy rail is still live (`/booking-demo`, `/itinerary-comparison/:id`
- * → `POST /api/bookings/process-cart`, CLAUDE.md §15c), so its two original checks are kept
- * verbatim in behaviour and simply re-expressed as two of the classifications below. The cart rail
- * gains seven more.
+ * ONE JOB, BOTH RAILS. The legacy rail is still live (`POST /api/bookings/process-cart`,
+ * CLAUDE.md §15c), so its two original checks are kept verbatim in behaviour and simply
+ * re-expressed as two of the classifications below. The cart rail gains seven more.
+ * D-12 (ledger `2026-09-15-d12-service-bookings-canonical`) gave that endpoint a DATED
+ * no-new-writes switch and retired its two client surfaces (`/booking-demo`, the
+ * itinerary-comparison board's "Book Now"). THIS SCAN IS DELIBERATELY UNCHANGED BY THAT: a rail
+ * that stops taking new rows still owns every row it already wrote, and a detector that stopped
+ * looking would make the oldest money on the platform the least watched (§17).
  *
  * ONE JOB, *THREE* RAILS (ready-made-reconciliation-rail lane; punchlist V-3)
  * ─────────────────────────────────────────────────────────────────────────

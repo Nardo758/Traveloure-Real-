@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import { BookThisTripButton } from '@/components/ItineraryComparisonWithBooking';
-import { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
+import VariantActionButtons, { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
 import { useLocation, useParams, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -2073,7 +2072,16 @@ export default function ItineraryComparisonPage() {
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-col gap-2">
-                    <BookThisTripButton
+                    {/* D-12 (ledger 2026-09-15-d12-service-bookings-canonical): the "Book Now"
+                        CTA that used to sit here drove the LEGACY `bookings` rail
+                        (`POST /api/bookings/process-cart`) from cart lines the BROWSER assembled
+                        out of the variant's display fields — no `provider_service_id` was ever
+                        carried, so nothing on this board was service-linked and there was nothing
+                        honest to book. It is REMOVED rather than re-pointed: the way a proposal
+                        becomes purchasable is to adopt it (`apply-to-trip`, which DOES preserve
+                        each item's catalog link) and then check out from the slip — LD 39's one
+                        store, LD 45 (4)'s one checkout door. Expert Review is untouched. */}
+                    <VariantActionButtons
                       variant={userVariant}
                       comparison={data.comparison}
                       userId={userId}
@@ -2322,7 +2330,9 @@ export default function ItineraryComparisonPage() {
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-col gap-2">
-                    <BookThisTripButton
+                    {/* D-12: same removal as the baseline card above — the board's book CTA is
+                        gone and adopting is how a proposal reaches the slip. */}
+                    <VariantActionButtons
                       variant={variant}
                       comparison={data.comparison}
                       userId={userId}

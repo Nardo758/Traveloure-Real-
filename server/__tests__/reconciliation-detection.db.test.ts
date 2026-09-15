@@ -585,8 +585,9 @@ test("N20h: a refund the `refunds` table already records is NOT drift", async ()
 });
 
 test("N20i: ONE JOB, BOTH RAILS — a legacy charge with no booking is still classified, and a legacy PaymentIntent is not indicted by the cart rail", async () => {
-  // The legacy `bookings` rail is still live (CLAUDE.md §15c: /booking-demo,
-  // /itinerary-comparison/:id → POST /api/bookings/process-cart), so extending the scan must not
+  // The legacy `bookings` rail is still live (CLAUDE.md §15c:
+  // POST /api/bookings/process-cart — D-12 dated its no-new-writes switch and retired its two
+  // client surfaces; the rows and this scan are untouched), so extending the scan must not
   // cost its two original checks — nor may the new cart rail report every legacy PI as "no
   // booking", which is what a naive extension would do.
   const legacyChargeId = `ch_${RUN}_legacy`;

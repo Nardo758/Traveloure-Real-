@@ -1614,10 +1614,22 @@ voided row** — void wins after TTL, and the signal lands in a **reconciliation
 `GET /api/admin/bookings/reconciliation-exceptions`) — ops-visible, never silent; (4) the promotion is the **money
 leg only** — it must never re-run `promoteAuthorizedCheckout`'s non-idempotent effects (counter increments, provider
 emails); the one effect it does retry is `markItemPurchased`, an atomic conditional flip and therefore safe.
-The legacy `bookings` rail is **still live** (`/booking-demo`, `/itinerary-comparison/:id` →
-`POST /api/bookings/process-cart`) — do **not** delete it while making the cart rail work; both rails run, each
-no-ops on ids it does not own. Proven by `server/__tests__/checkout-payment-promotion.db.test.ts` (negatives
-**N17/N18/N19**); the sweep's 9/9 suite is untouched and still green — redundancy means every layer stands alone.
+The legacy `bookings` rail is **still live** (`POST /api/bookings/process-cart`) — do **not** delete it while
+making the cart rail work; both rails run, each no-ops on ids it does not own. Proven by
+`server/__tests__/checkout-payment-promotion.db.test.ts` (negatives **N17/N18/N19**); the sweep's 9/9 suite is
+untouched and still green — redundancy means every layer stands alone.
+**AMENDED BY D-12 (decision-maker 2026-09-15, ledger `2026-09-15-d12-service-bookings-canonical`):
+`service_bookings` is the CANONICAL rail, and the legacy one takes a DATED no-new-writes switch** —
+`legacyBookingsNoNewWritesFrom()` (`server/config/legacy-bookings.config.ts`, env
+`LEGACY_BOOKINGS_NO_NEW_WRITES_FROM`; **unset = no cutoff decided ⇒ writes allowed**, and the date is the
+decision-maker's, set in no environment by that lane). From the cutoff `process-cart` answers 410
+`legacy_rail_closed` **before any read or write**. The two CLIENT surfaces this clause used to name are GONE:
+`/booking-demo` (route and page retired) and `/itinerary-comparison/:id`'s "Book Now" (its cart lines carried no
+`provider_service_id`, so nothing on that board was service-linked — a proposal reaches purchase by
+`apply-to-trip` and the slip, LD 39/LD 45 (4)). **Nothing that READS the rail moves**: its GET,
+`confirm-payment`, `bulk-status`, `POST /api/bookings/refund`, the legacy confirm/cancel paths, the webhook's
+legacy branch and §17's `scanLegacyRail` all survive retirement, and the sentence above still binds — a rail
+that stops taking new rows is not a rail that forgets the rows it has.
 
 **§15d — a balance may be paid by the OWNER or by a `payer`-role participant, and nothing else moves
 (ledger `2026-09-04-cost-split-phase-one`).** `POST /api/bookings/:id/pay-balance` was owner-only; it now also
