@@ -102,6 +102,12 @@ Exactly the figures the 2026-09-15 section-3 re-sweep predicted by deleting the 
 (`docs/lane-reports/2026-09-15-section3-resweep.md`, lines 74-76). **203 suites** were reachable
 through nothing but that sentence.
 
+**After merging `origin/main` (PR #935, head `cc855f9f`)** the tree carries one more test file —
+`client/src/lib/__tests__/reconciliation-kind-labels.test.ts`, which the `unit-suite-client-lib`
+directory glob reaches by construction — so the guard reads **275/508 reachable; 233 orphan(s)**.
+The **orphan count is unchanged at 233**; the denominator and numerator each moved by one because
+main added a wired suite. The 233-row list below is unchanged by that merge.
+
 Two directional checks were run rather than assumed:
 
 - **Nothing was lost.** Every one of the 30 previously-reported orphans is still an orphan
