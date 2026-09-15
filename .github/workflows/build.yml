@@ -1676,6 +1676,54 @@ jobs:
       - name: The transition is the guard (F1-F7)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/from-state-guards.db.test.ts
 
+  one-trip-write-resolver:
+    name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # LD 42 D17 rules ONE "may this person rewrite the plan?" predicate; there were two, and they
+      # disagreed about the OWNER, the trip AUTHOR and an admin. V-29 = option B: every write-gating
+      # caller moves onto `authorizeTripLogistics(..., { requireWriteAccess: true })` and the
+      # collaborator-only `getTripWriteRole`/`canMutateTrip` is deleted (§18c). W1 proves an owner
+      # with NO `trip_collaborators` row passes every moved gate and really PATCHes and DELETEs;
+      # W2 keeps §12 in both directions (pending refused, accepted/assigned pass, rejected denies);
+      # W3 pins the refusal status and each router's own body shape; W4/W5 are the stated delta
+      # (author, audit-logged admin); W6 is the file-set pin that a second resolver cannot come
+      # back and that every moved gate carries the narrowing and its route label. No server boot,
+      # so no ALLOW_TEST_ACCOUNTS.
+      - name: One trip-write resolver (W1-W6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/one-trip-write-resolver.db.test.ts
+
   slot-units:
     name: slot-units (V-26; ledger 2026-09-15-v26-slot-units)
     runs-on: ubuntu-latest

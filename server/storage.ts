@@ -1510,7 +1510,7 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     // Write the owner's trip_collaborators row in the same operation that creates the
-    // trip — getTripRole()/canMutateTrip() resolve access by assignment only (never
+    // trip — getTripRole(), the READ resolver, resolves access by assignment only (never
     // trips.userId), so without this row the trip's own creator is 403'd from
     // GET /api/trips/:id/plancard until the next startup backfill (server/seeds/trip-ownership.seed.ts)
     // happens to run. That seed remains as a defensive one-time repair for pre-existing
