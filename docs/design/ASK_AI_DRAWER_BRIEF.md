@@ -101,10 +101,30 @@ question for the decision-maker** — filed as **D-19** (§5), with the two opti
 **Nothing in this lane may reach an AI proposal into `trip_suggestions` by sentinel author or by
 stamping `origin:'expert'`.**
 
+> **ANSWERED 2026-09-15 — option (b), and the store LANDED the same day** (decision-maker ruling;
+> ledger `2026-09-15-d19-plan-proposals`; **migration 299**). An AI proposal lives in
+> **`plan_proposals`**, a new child table of `trips` — CASCADE, additive, **no DB CHECK and no
+> default on `status`**, table and index declared in `shared/schema.ts`, and **no `position` and no
+> UNIQUE: it is a LOG, not an ordered list**. The expert rail is untouched exactly as this section
+> requires. What landed: the table, `shared/plan-proposals.ts` (the status set and the
+> `PlanProposalChangeSet` type for the jsonb), one service
+> (`server/services/plan-proposals.service.ts` — create / list / an **atomic-conditional** discard),
+> and read+discard routes. What deliberately did NOT land, because D-20/D-21 own it: **the apply and
+> the charge**, and therefore any payment/claim column at all. `applied_at` / `applied_item_ids`
+> exist, are unwritten, and are **not in the pick-based admission schema**, so the apply cannot be
+> wired without going through those rulings.
+
 **What does not change whichever store wins:**
 
-1. **Apply is the traveler's click**, authorized by `getTripWriteRole` + `canMutateTrip`
+1. **Apply is the traveler's click**, authorized by the owner-or-§12-WRITE-advisor predicate
    (D17). Owner or a §12 WRITE-status advisor; a `pending` advisor never applies.
+   **CORRECTION recorded by the D-19 lane, and it matters for whichever rail applies:** this line
+   originally named `getTripWriteRole` + `canMutateTrip`, and that resolver finds an OWNER only
+   through a `trip_collaborators` row — a plan whose owner has none resolves `null` and is refused.
+   The D-19 routes therefore use `authorizeTripLogistics(..., { requireWriteAccess: true })`, the
+   same shared gate the itinerary REORDER mutation rail uses, which resolves the owner through
+   `verifyTripOwnership`. Both narrow the advisor branch to `accepted`/`assigned`; they differ only
+   in how they find the owner. Reconciling the two resolvers is its own lane, not this one's.
 2. **The applied item is stamped `origin: 'ai'`** — server-side at create, as ruling 12 requires;
    `origin` is client-settable nowhere.
 3. **Expert rows are never emitted, deleted or rewritten** (D3). The proposal builder reads the
@@ -167,7 +187,10 @@ stamping `origin:'expert'`.**
 
 **Needs a ruling before any code (each filed as a punch-list §1 decision row):**
 
-- **D-19 — where does an AI proposal live?** `trip_suggestions` cannot hold one (§2). Option (a):
+- **D-19 — where does an AI proposal live? — ANSWERED (option (b)), store landed 2026-09-15**
+  (ledger `2026-09-15-d19-plan-proposals`, migration 299; see the callout in §2). Step 2 below now
+  has a store to write into, and step 4 still needs D-20/D-21. Original framing:
+  `trip_suggestions` cannot hold one (§2). Option (a):
   widen it — nullable `expert_id` plus an explicit author/origin column the approve path *derives*
   instead of hardcoding `'expert'`. Option (b): a new `plan_proposals` child table of `trips`, on the
   `dmo_extracted_places`/`service_route_points` pattern (CASCADE, ordered, additive-nullable, **no DB
@@ -178,14 +201,16 @@ stamping `origin:'expert'`.**
   charged on apply; it does not say whether re-applying a second proposal from the same question
   charges again. Recommendation: **per distinct proposal applied**, idempotent on the proposal id.
 
-**Buildable now on ratified ground, in order, once D-19 lands:**
+**Buildable now on ratified ground, in order (D-19 has landed; steps 1-3 are unblocked, step 4
+still waits on D-20/D-21):**
 
 1. **The plan reader.** A server-side context builder over the trip, its items (through the existing
    baseline read) and its events — and the conversation bound to the plan by `trip_id`. Writes
    `ai_cost_tracking` through `trackAnthropicResponse`, carrying a `userId` (the existing chat rail
    does not, which is its own small honesty gap).
-2. **The proposal writer** into D-19's store, reading the protected set, emitting nothing over
-   expert work.
+2. **The proposal writer** into D-19's store — `createPlanProposal`
+   (`server/services/plan-proposals.service.ts`), the ONE writer — reading the protected set,
+   emitting nothing over expert work.
 3. **The task authorization predicate**, on the `resolveOptimizerRunAuthorization` shape:
    dependency-free, injected reads, discriminated result, pass-first ordering.
 4. **The charge point and the apply**, §15b claim-first, apply through `canMutateTrip`, item stamped
