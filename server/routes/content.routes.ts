@@ -23,6 +23,7 @@ import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
 import { api } from "@shared/routes";
 import {
   bookingAgentStatusRefusal,
+  isHumanPurchaseBookingAgentStatus,
   isHumanSettableBookingAgentStatus,
 } from "@shared/booking-agent-vocabulary";
 // The booking-agent CLAIM (ledger `2026-09-08-assignment-is-claimed`) — the gate, the atomic write
@@ -7979,6 +7980,12 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       // state. The allowlist and its refusal wording are the SHARED ones
       // (`shared/booking-agent-vocabulary.ts`), never restated here (§18 rule 1). A status the
       // caller did not send is untouched — this refuses a bad value, it never invents one.
+      //
+      // D-10 (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): `confirmed` LEFT that
+      // allowlist, so this same line is now what refuses it — a body carrying `status:'confirmed'`
+      // gets a 400 naming the rule, whoever sends it. The ONE writer of `confirmed` is the sub_id
+      // reconciliation matcher, on the partner's own reported conversion
+      // (`server/services/affiliate-booking-confirmation.service.ts`).
       if (data.status !== undefined && !isHumanSettableBookingAgentStatus(data.status)) {
         return res.status(400).json({ message: bookingAgentStatusRefusal(data.status) });
       }
@@ -7995,12 +8002,25 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       // anomaly (durable note + response flag). Never log onto a trip the traveler
       // doesn't own.
       const requestedTripId = typeof req.body.tripId === "string" ? req.body.tripId : null;
-      const isConfirming = data.status === "confirmed" && prior.status !== "confirmed";
+      // D-10: the transition that carries the side-effects is now the PURCHASE, not a confirmation.
+      // A human press records that a named actor bought the thing (`purchased_by_human` /
+      // `purchased_by_traveler`, LD 44 (e)); the partner's later report is what makes the row read
+      // as confirmed, and it arrives through the matcher with no session and no side-effects.
+      //
+      // WHY THE SIDE-EFFECTS MOVED WITH IT rather than staying on `confirmed`: the affiliate
+      // earning row written below IS the internal row the reconciliation matcher adopts the
+      // partner's reported commission onto. If it were only written at `confirmed`, the matcher
+      // would have nothing to match and `confirmed` could never be reached — the rail would
+      // deadlock. The trip attachment moved for a second, independent reason: its guard needs a
+      // SESSION actor (the confirming expert must be assigned to the trip), which the matcher does
+      // not have and must never fabricate.
+      const purchaseStatus = isHumanPurchaseBookingAgentStatus(data.status) ? data.status : null;
+      const isRecordingPurchase = purchaseStatus !== null;
       let trip: Awaited<ReturnType<typeof storage.getTrip>> | undefined;
       let attachmentBlocked = false;
       let attachmentReason: string | null = null;
 
-      if (requestedTripId && isConfirming) {
+      if (requestedTripId && isRecordingPurchase) {
         trip = await storage.getTrip(requestedTripId);
         const ownerOk = !!trip && !!prior.userId && prior.userId === trip.userId;
         const assignedOk = await storage.isExpertAssignedToTrip(requestedTripId, sessionUserId);
@@ -8014,51 +8034,64 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
               ? "booking_not_owned_by_trip_traveler"
               : "expert_not_assigned_to_trip";
           // Durable, non-destructive anomaly note the expert/admin can see.
-          const marker = `[ATTACHMENT BLOCKED] ${attachmentReason} — confirmed without linking to trip ${requestedTripId} @ ${new Date().toISOString()}`;
+          const marker = `[ATTACHMENT BLOCKED] ${attachmentReason} — purchase recorded without linking to trip ${requestedTripId} @ ${new Date().toISOString()}`;
           const baseNotes = data.expertNotes ?? prior.expertNotes ?? "";
           data.expertNotes = baseNotes ? `${baseNotes}\n${marker}` : marker;
         }
       }
 
-      // R4/F7 (§15): the confirm transition is claimed atomically so a duplicate/concurrent PATCH
-      // can't double-fire the confirm side-effects (itinerary logging + affiliate earning). Every
-      // OTHER field update (notes, price edits after the fact, non-confirm status changes) keeps
-      // using the plain update — only the pending→confirmed transition needs the atomic guard.
-      const updated = isConfirming
-        ? await storage.confirmAffiliateBookingRequest(id, data)
+      // R4/F7 (§15): the purchase transition is claimed atomically so a duplicate/concurrent PATCH
+      // can't double-fire its side-effects (itinerary logging + affiliate earning). Every OTHER
+      // field update (notes, price edits after the fact, non-purchase status changes) keeps using
+      // the plain update — only the transition needs the atomic guard. The from-list lives in the
+      // shared vocabulary and refuses a row already `confirmed` or already purchased (D-10).
+      const updated = purchaseStatus
+        ? await storage.recordAffiliateBookingPurchase(id, purchaseStatus, data)
         : await storage.updateAffiliateBookingRequest(id, data);
       if (!updated) {
-        if (isConfirming) {
-          // Lost the atomic claim race — another request already confirmed this booking.
-          // Idempotent no-op: return the current (already-confirmed) row, not a 404/error.
+        if (isRecordingPurchase) {
+          // Lost the atomic claim race, or the row is already purchased / already confirmed by the
+          // partner. Idempotent no-op: return the current row, not a 404/error. It is deliberately
+          // NOT called "alreadyConfirmed" — the row may be at `purchased_by_*`, and saying
+          // "confirmed" for it would be exactly the claim D-10 exists to stop (§13).
           const current = await storage.getAffiliateBookingRequestById(id);
           if (current) {
             // §16: same strip as the success path below — never publish the partner URL.
             const { affiliateUrl: _currentUrl, ...safeCurrent } = current;
-            return res.json({ ...safeCurrent, alreadyConfirmed: true });
+            return res.json({ ...safeCurrent, alreadyRecorded: true });
           }
         }
         return res.status(404).json({ message: "Request not found" });
       }
 
-      // Log onto the canonical Trip/PlanCard only when attachment was granted (first
-      // confirm wins — guarded on the transition so a repeat PATCH never duplicates).
-      if (updated.status === "confirmed" && updated.tripId && isConfirming) {
+      // Log onto the canonical Trip/PlanCard only when attachment was granted (first purchase
+      // wins — guarded on the atomic transition so a repeat PATCH never duplicates).
+      //
+      // D-10 (§13): the item lands on the plan because a NAMED ACTOR BOUGHT IT, and it says only
+      // that. `status: "booked"` (the `itineraryItemStatusEnum` value for exactly this) replaces
+      // the old `"confirmed"`, and `bookingStatus: "pending"` replaces it too — so no surface
+      // renders a "Confirmed" tick for a booking the partner has not confirmed. The agent's typed
+      // reference still rides along, because it is a real fact.
+      // NAMED LIMITATION, not a silent gap: when the partner's report later flips the REQUEST to
+      // `confirmed`, this plan item is NOT upgraded — there is no column linking an itinerary item
+      // back to its booking request, and matching one by trip + name would be exactly the guess
+      // §13 refuses. Recorded in the D-10 ledger row as open.
+      if (updated.tripId && isRecordingPurchase) {
         await storage.createItineraryItem({
           tripId: updated.tripId,
           title: updated.itemName,
           description: updated.itemDescription ?? `Booked via ${updated.partnerName}`,
           itemType: "activity",
-          status: "confirmed",
+          status: "booked",
           dayNumber: deriveItineraryDayNumber(updated.travelDate, trip),
           scheduledDate: updated.travelDate ?? null,
           bookingReference: updated.confirmationRef ?? null,
-          bookingStatus: "confirmed",
+          bookingStatus: "pending",
           confirmationNumber: updated.confirmationRef ?? null,
           estimatedCost: updated.price ?? null,
           actualCost: updated.price ?? null,
           suggestedBy: "expert",
-          // D2: confirmed by the assigned booking agent/expert (isExpertAssignedToTrip-gated
+          // D2: purchased by the assigned booking agent/expert (isExpertAssignedToTrip-gated
           // above) on the traveler's behalf — provenance is the expert.
           origin: "expert",
         } as any);
@@ -8081,13 +8114,16 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       }
 
       // R4/F7 — affiliate reconciliation ledger spine. Runs exactly once per booking (gated on the
-      // atomic isConfirming claim above, same as the itinerary-item write). §14: bookingAmount is
+      // atomic purchase claim above, same as the itinerary-item write). §14: bookingAmount is
       // read back from the persisted row (updated.price), never trusted off req.body directly for
       // the money decision. §13: the partner's REAL commission is unknown until they report it
       // (that's the whole F7 problem) — never invent a rate/amount here; commission fields are
       // honestly recorded 0 pending reconciliation (the reconciliationStatus/reconciliationNotes
       // fields exist precisely for an admin to fill these in once the partner report arrives).
-      if (isConfirming) {
+      // D-10: this runs at the PURCHASE, not at a confirmation — and it must, because this row is
+      // precisely what the reconciliation matcher adopts the partner's reported commission onto,
+      // and that adoption is what later produces `confirmed`. The honest `"0.00"` is unchanged.
+      if (isRecordingPurchase) {
         try {
           // §8: admin-editable band (migration 143), falls back to the AFFILIATE_PLATFORM_FEE /
           // AFFILIATE_EXPERT_SHARE code constants — snapshotted for the eventual reconciliation

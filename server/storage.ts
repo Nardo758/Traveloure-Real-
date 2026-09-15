@@ -136,6 +136,12 @@ import {
   vendorContracts,
 } from "@shared/schema";
 import { stripServerAuthoredBookingDetails } from "@shared/booking-details-admission";
+// D-10 (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): the purchase writer's §15
+// from-list and its target type come from the ONE vocabulary module — never restated here.
+import {
+  PURCHASE_CLAIMABLE_FROM_STATUSES,
+  type HumanPurchaseBookingAgentStatus,
+} from "@shared/booking-agent-vocabulary";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
 import type {
   NeighborhoodRow as MarketNeighborhoodRow,
@@ -1120,7 +1126,7 @@ export interface IStorage {
   // confirm can't double-insert the affiliate earning it triggers. Returns undefined when the row
   // was already confirmed (lost the race) — caller must treat that as an idempotent no-op.
 
-  confirmAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
+  recordAffiliateBookingPurchase(id: string, purchaseStatus: HumanPurchaseBookingAgentStatus, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
   // AI booking copilot verification leg (migration 170). Persists ONLY the verification jsonb
   // snapshot — never touches affiliateUrl or any other column. §16: the snapshot itself must never
   // carry the URL; that's enforced by the caller (booking-verification.service.ts) never putting it
@@ -7540,21 +7546,44 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async confirmAffiliateBookingRequest(
+  /**
+   * RECORD A HUMAN PURCHASE — punchlist D-10 (option A), ledger
+   * `2026-09-15-d10-confirmed-needs-partner-evidence`. This REPLACES the old
+   * `confirmAffiliateBookingRequest`, which wrote `status='confirmed'` on an agent's press.
+   *
+   * THE RULE IT EXECUTES: a human agent's press means a named actor ATTEMPTED A PURCHASE, which
+   * LD 44 (e) calls `purchased_by_*`. It is NOT a confirmation — only PARTNER-ORIGINATED evidence
+   * produces `confirmed` (`server/services/affiliate-booking-confirmation.service.ts`, the ONE
+   * writer). The agent's typed `confirmationRef` rides along and stays visible; it is our record of
+   * what they did, not the partner's word.
+   *
+   * §15/§18b: the transition IS the guard — a single
+   * `UPDATE … WHERE id = ? AND status IN (<claimable from-list>)`, never a check-then-update. The
+   * from-list is DERIVED in `shared/booking-agent-vocabulary.ts` and excludes `confirmed` (a human
+   * press must never pull a row back off the partner's word) and every `purchased_by_*` (so a
+   * double press matches ZERO rows and the confirm side-effects — the plan item and the
+   * earning-ledger row — fire exactly once). A NULL status is treated as the birth value the column
+   * defaults to, so a legacy row with no status is still claimable rather than silently stuck.
+   *
+   * Same layer-2 strip as the update path above: recording a purchase never reassigns the row.
+   */
+  async recordAffiliateBookingPurchase(
     id: string,
+    purchaseStatus: HumanPurchaseBookingAgentStatus,
     data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "tripId">>,
   ): Promise<AffiliateBookingRequest | undefined> {
-    // §15 atomic claim: transitions pending/failed/etc → 'confirmed' ONLY when the row is not
-    // already 'confirmed'. A concurrent/duplicate confirm request matches 0 rows and returns
-    // undefined — the caller (the R4/F7 earning-ledger write) must treat that as "already
-    // confirmed" and skip re-running the confirm side-effects (itinerary item + affiliate earning),
-    // not retry the insert.
-    // Same layer-2 strip as the update path above: confirming a booking never reassigns it.
-    const { expertId: _assigneeIsClaimedNotConfirmed, ...safe } = data as Record<string, unknown>;
+    const { expertId: _assigneeIsClaimedNotPurchased, status: _statusIsTheParameter, ...safe } =
+      data as Record<string, unknown>;
     const [updated] = await db
       .update(affiliateBookingRequests)
-      .set({ ...(safe as typeof data), status: "confirmed", updatedAt: new Date() })
-      .where(and(eq(affiliateBookingRequests.id, id), ne(affiliateBookingRequests.status, "confirmed")))
+      .set({ ...(safe as typeof data), status: purchaseStatus, updatedAt: new Date() })
+      .where(and(
+        eq(affiliateBookingRequests.id, id),
+        or(
+          inArray(affiliateBookingRequests.status, [...PURCHASE_CLAIMABLE_FROM_STATUSES]),
+          isNull(affiliateBookingRequests.status),
+        )!,
+      ))
       .returning();
     return updated;
   }

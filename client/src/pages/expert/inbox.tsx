@@ -559,12 +559,18 @@ function AgentBookingRequestsSection() {
                   ) : r.status === "pending" ? (
                     <div className="flex items-center gap-2 flex-wrap">
                       <Input
-                        placeholder="Confirmation ref (optional)"
+                        placeholder="Partner reference (optional)"
                         className="h-8 text-sm max-w-xs"
                         value={confirmRefById[r.id] ?? ""}
                         onChange={(e) => setConfirmRefById((prev) => ({ ...prev, [r.id]: e.target.value }))}
                         data-testid={`input-confirmation-ref-${r.id}`}
                       />
+                      {/* D-10 (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): the
+                          agent records a PURCHASE, never a confirmation. `confirmed` left the
+                          human-settable allowlist — only the partner's own reported conversion
+                          writes it — so this press sends `purchased_by_human` and carries the
+                          reference the agent holds. The traveler then reads "awaiting the
+                          partner's confirmation". */}
                       <Button
                         size="sm"
                         className="bg-green-600 hover:bg-green-700 text-white"
@@ -572,7 +578,7 @@ function AgentBookingRequestsSection() {
                           updateMutation.mutate({
                             id: r.id,
                             data: {
-                              status: "confirmed",
+                              status: "purchased_by_human",
                               ...(confirmRefById[r.id]?.trim() ? { confirmationRef: confirmRefById[r.id].trim() } : {}),
                             },
                           })
@@ -580,7 +586,7 @@ function AgentBookingRequestsSection() {
                         disabled={updateMutation.isPending}
                         data-testid={`button-confirm-agent-booking-${r.id}`}
                       >
-                        Mark confirmed
+                        Record purchase
                       </Button>
                       <Button
                         size="sm"
