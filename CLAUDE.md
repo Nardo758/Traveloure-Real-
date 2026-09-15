@@ -913,6 +913,15 @@ This document captures architectural decisions to maintain consistency across co
     enforces. Owner = the **memberships-checkout lane** (starts 2026-10-01 per
     `docs/design/PRICING_AND_FEATURE_MAP.md`). Naming it is not fixing it: until that lane lands,
     do not describe those two as enforced benefits.
+    **`ai_task` NOW HAS ONE (ledger `2026-09-15-d20-d21-proposal-charge`, migration 300;
+    decision-maker sentence applied 2026-09-15).** The AI proposal APPLY is the charge point:
+    `coversAction(tripId, "ai_task")` is the FIRST basis of the one pure predicate
+    `resolveProposalApplyAuthorization`, so a covered plan applies with `charge_basis='trip_pass'`,
+    takes no claim, creates no PaymentIntent and writes no ledger row, while an uncovered one is
+    charged FLAT from the `concierge:ai_task` `fee_bands` row — ONCE per distinct proposal,
+    idempotent on the proposal id (`ai-apply-<proposalId>`), the §15b claim on the proposal row
+    taken BEFORE the Stripe call. **`expert_revision` is still unenforced** and its owner is
+    unchanged; do not describe it as an enforced benefit.
 42. **THE SLIP IS THE ONE PLANNING SURFACE; SEVENTEEN RULINGS ON HOW EVERY FINISH, DOOR, MINT AND
     EXPERT TOUCH LANDS THERE (decision-maker ratified Sep 5, 2026, evening — ledger
     `2026-09-05-slip-one-surface-seventeen`).** (Locked Decision NUMBERS are this file's own frozen series and are unrelated to ledger ids, which are date-slugs per ruling 25.) Rulings 32, 33 and 39 each named one half of the
@@ -1514,6 +1523,24 @@ This document captures architectural decisions to maintain consistency across co
     information lives on My plans, the slip, Experts, Discover and Inbox; no component file and no
     endpoint was deleted, and the now-importerless panels are recorded in that ledger row as
     §18c candidates for a later lane, not acted on here.
+    **(3) HAS ITS STORE AND ITS CHARGE POINT (ledger `2026-09-15-d19-plan-proposals`, migration 299;
+    `2026-09-15-d20-d21-proposal-charge`, migration 300; punchlist D-19 = option (b), D-20 = A,
+    D-21 = A; decision-maker sentence applied 2026-09-15).** An AI proposal lives in
+    **`plan_proposals`** — a child table of `trips` (CASCADE, additive, **NO DB CHECK and NO DEFAULT
+    on `status`**, table and index declared in `shared/schema.ts`), a **LOG and not an ordered list**
+    (no `position`, no UNIQUE), with a nullable `conversation_id` **ON DELETE SET NULL** so deleting a
+    thread never deletes the proposals it produced. It is deliberately **NOT** the expert
+    `trip_suggestions` rail, whose `expert_id` is NOT NULL and whose approve path hardcodes
+    `origin:'expert'` — the false attribution LD 42 D4/D23 forbid by name — and that rail is
+    untouched. The value set is app-enforced and stated ONCE (`shared/plan-proposals.ts`, §18 rule
+    1); admission is **pick-based and reaches no request body** (§19, no `createInsertSchema`
+    denylist exists at all); ONE service owns the table and its discard is an **atomic conditional**
+    (§15/§18b), so an applied proposal is never discardable — **D18: `applied_item_ids` is a record,
+    never an undo**. Read exposure, discard, pay and apply are gated by the same owner/§12-WRITE
+    advisor predicate item mutations use, with **one 404 for every refusal**. The APPLY is charged as
+    LD 41 (f) now records; additions are born `origin:'ai'` (server-stamped), and a `replaces` naming
+    protected expert work is REFUSED with the item ids, never skipped (D3). The Ask-AI drawer UI and
+    the CREATE rail are the lane that follows; nothing produces a proposal outside tests yet.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
@@ -1838,6 +1865,20 @@ load-bearing. Because a wrong predicate is invisible by construction, both guard
 `--self-test` fixtures that run in CI **immediately before** the guard itself (the ledger-lint
 precedent). The gate also honours ruling 32's second disposition: `fee-literal-debt:#<task>` exempts a
 line from failing but is **reported on every run**, so filed debt never becomes a silent baseline.
+
+**A GUARD THAT PARSES COMMANDS MUST READ ONLY COMMANDS (ledger `2026-09-15-test-guard-prose-echo`;
+decision-maker sentence applied 2026-09-15).** `check-test-files-wired.cjs` searched a workflow's `run:`
+text for a runner NAME rather than for a runner INVOCATION, so a failure-summary `echo` whose prose
+contained "npx tsx --test server/__tests__/<file>" donated the bare noun `server` as a directory
+selector and reported 203 unrun suites as reachable for eight days, greenly, across two ledger rows
+that quoted its numbers (the true inventory is 274/507 reachable, 233 orphans; both earlier rows
+carry a dated correction). The predicate now takes selectors only from a segment whose LEADING
+command is the runner, with quotes, heredocs, comments and annotations excluded, and both the old
+blind spot and the new assumption are written into the script's own `CANNOT DETECT` block (it still
+excludes `e2e/` and still exits 0 — both are stated limits awaiting a ruling, not omissions). **A
+predicate that can be satisfied by documentation ABOUT the thing it measures is not measuring the
+thing** — and an advisory guard is exactly where such a defect survives longest, because nothing
+ever goes red.
 
 ### §19 — Privileged-field mass-assignment is a STANDING CLASS; the fix shape is an ALLOWLIST (ruling 46)
 
