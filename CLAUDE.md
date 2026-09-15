@@ -1793,6 +1793,25 @@ parameter keep the previous unconditional behaviour verbatim. Note the money lay
 the **inventory** layer failed — so an assertion that watches only `status` is not sufficient
 (P3 asserts the slot; P4 asserts the row stays reclaimable by both recovery layers).
 
+**THREE MORE WRITERS, AND ONE HOME FOR THE LISTS (ledger `2026-09-15-v23-v25-from-state-guards`;
+decision-maker sentence applied 2026-09-15).** SD-1 was the first instance, not the class.
+`POST /api/bookings/:id/dispute` (three-argument call), `POST /api/admin/disputes/:bookingId/reject`
+(two-argument) and `storage.updateCoordinationStatus` (no such parameter at all) each flipped a status
+against a row a prior SELECT had returned. The dispute rail made a `payment_pending` provisional claim
+disputable — the same stranding, one rail over; the admin reject's target status **MINTS** earnings and
+stamped `completed_at` inside the writer's own transaction, so a rejection on a since-refunded row minted
+real money and restarted the traveler's dispute window; the coordination writer read-modify-wrote its
+`state_history`, so a losing writer's transition was **erased from the audit trail**. All three now pass a
+named from-state list and answer **409** on `undefined` — a lost race is never `success: true`. Two rules
+fall out. **(a) A COLUMN THAT ANCHORS A DEADLINE IS STAMPED ONCE.** `completed_at` is
+`COALESCE(completed_at, NOW())` **in the SET expression**, because a read-then-decide would reintroduce
+the very shape this rule exists to refuse. **(b) THE LISTS HAVE ONE HOME** —
+`server/utils/booking-from-states.ts`, on the `server/utils/trip-advisor-status.ts` precedent — so "which
+statuses may become X" on `service_bookings` is answered once (§18 rule 1). `payment_pending` is absent
+from every list, permanently and by name. The traveler arm's coordination ORDERING rule is **not** part of
+this and stays D-39's (punch list); the code says so at the line that passes the from-state. Proven by
+`server/__tests__/from-state-guards.db.test.ts` (F1–F7, CI job `from-state-guards`).
+
 **§18c — no consumer + irreversible effect ⇒ DELETE, don't gate (ruling 42, AC-1).**
 `POST /api/vendor-availability/:id/book` was `storage.bookSlot(req.params.id)` behind `isAuthenticated`
 and nothing else: any account could exhaust any provider's inventory, and because it created no booking
