@@ -1603,6 +1603,16 @@ the external call and (b) an **atomic conditional DB update** (`UPDATE … WHERE
 transition itself is the concurrency guard. A check-then-update (`if status==X { update }`) is the TOCTOU bug, **not**
 a guard. Claim the row atomically **first**, then make the external call — so a concurrent caller can't also pass.
 
+**THE CLAIM'S SIZE IS PART OF THE CLAIM (ledger `2026-09-15-v26-slot-units`; decision-maker sentence applied
+2026-09-15).** An inventory claim takes the quantity the line actually bought, and the arithmetic and its guard live
+in the SAME single statement (`booked_count + units <= capacity`) — a claim that adds a fixed 1 while the charge
+multiplies by N is a guard that cannot refuse the case it exists for. A claim is REFUSED, never clamped. And the
+RELEASE reads what the claim RECORDED taking (`bookingDetails.claimedSlotUnits`, a server-authored §19d key), never
+what the line was PRICED at: a row born before a claim widened carries the old size, so the record travels on the row
+(§13) and an absent record means the smallest claim that rail ever took. The checkout passes the ONE number the price
+multiplies by (`resolveItemUnitCount`, §18 rule 1); a stay claims one unit of each night's slot and says why.
+Proven by `server/__tests__/slot-units.db.test.ts` (S1–S8, CI job `slot-units`).
+
 **§15b — the CLAIM is not the COMMITMENT (ruling 38, checkout atomicity).** "Claim first, then call" says what must
 be written *before* the external call; it does **not** license writing everything else there too. Irreversible state —
 cart clears, `purchased` flips and their diary rows, counters, notifications, **emails** — must follow the operation
