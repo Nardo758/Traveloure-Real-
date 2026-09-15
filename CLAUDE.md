@@ -1138,6 +1138,18 @@ This document captures architectural decisions to maintain consistency across co
     largest item write on the platform and was gated by the wrong one of the two. ONE predicate,
     one more caller — a second "may this person rewrite the plan?" test is the drift class §18
     rule 1 names.
+    **D17 IS NOW ONE PREDICATE IN FACT (ledger `2026-09-15-v29-one-trip-write-resolver`, punchlist
+    V-29 = option B; decision-maker sentence applied 2026-09-15).** The ONE "may this person rewrite
+    the plan?" test is `authorizeTripLogistics(tripId, userId, route, { requireWriteAccess: true })`;
+    the collaborator-only `getTripWriteRole`/`canMutateTrip` resolver is DELETED (§18c), and
+    `getTripRole` survives as the READ resolver only. Stated delta, because it is a behaviour change
+    on eight rails and not a refactor: an OWNER with no `trip_collaborators` row is no longer refused
+    on their own plan (ownership is read from `trips.user_id`), and the trip AUTHOR and an
+    AUDIT-LOGGED ADMIN gain write on the item PATCH/DELETE, the backup-plan and transport-leg writes
+    and the four optimizer run gates — exactly the principals B already granted on reorder,
+    expert-traveler-note and the proposal rails. §12 is unweakened: `pending` never writes, and the
+    two rails that gated a write through the READ resolver stop granting it. Open and recorded: the
+    plancard READ still resolves the owner only through `trip_collaborators` (the read-side twin).
 
     **BUILD ORDER — THREE WAVES, AND EACH LANE APPENDS ITS OWN LEDGER ROW.**
     **Wave 1** is everything that needed no decision beyond what is ratified here and touches no
@@ -1759,6 +1771,11 @@ was never delivered), and a buyer who deleted their own clone trip is not indict
 2. **Every pass writes a `reconciliation_runs` row — including a clean one and a skipped one.** Silence must
    be distinguishable from the job not having run; the previous version logged "Clean" to stdout and left no
    durable trace, so a healthy quiet day and a scheduler dead since the last deploy rendered identically.
+   Every per-rail tally the pass computes is written onto that row by the ONE run-row writer — including
+   the ready-made rail's `checked_ready_made_purchases` and `ready_made_announce_hand_offs` (ledger
+   `2026-09-15-d42-reconciliation-tallies`, migration 301; decision-maker sentence applied 2026-09-15) —
+   and those columns are additive **nullable with no default**, because **NULL = not tallied** is the only
+   reading a pre-migration run can bear and a stamped `0` would claim a pass examined nothing (§13).
 3. **The expected charge is SERVER-DERIVED** — `SUM(total_amount + platform_fee)` over the PaymentIntent's own
    booking rows (§14), with a tolerance that is the checkout's accumulated `.toFixed(2)` rounding, **not** a
    rate (§8). Never taken from Stripe, never from a client.
