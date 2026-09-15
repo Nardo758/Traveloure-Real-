@@ -1636,4 +1636,15 @@ export const MIGRATION_FILES = [
   // ever been applied, so there is nothing true to backfill. No CHECK added or changed, so
   // `preflight-prod-constraints.cjs` needs no manifest entry.
   "300_plan_proposals_charge.sql",
+  // Ledger `2026-09-15-d42-reconciliation-tallies` (punchlist D-42 = option A). The READY-MADE
+  // rail finally gets the per-pass tally columns every other rail on `reconciliation_runs`
+  // already has: `checked_ready_made_purchases` and `ready_made_announce_hand_offs`. Written on
+  // EVERY pass — completed, skipped and failed — by the EXISTING run-row writer (`closeRun`,
+  // §18 rule 1), so a scheduled pass leaves a durable record of this rail's work rather than only
+  // a log line (§17 rule 2). Additive, NULLABLE, NO DEFAULT and NO CHECK (the publish-trap
+  // posture), declared in `shared/schema.ts` in the same commit (deploy-push durability rule),
+  // NO BACKFILL: **NULL = not tallied**, which is the only reading a pre-migration run can bear —
+  // a stamped 0 would claim a pass examined zero ready-made purchases, a fact nobody has (§13).
+  // No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no manifest entry.
+  "301_reconciliation_runs_ready_made_tallies.sql",
 ] as const;

@@ -1598,6 +1598,10 @@ router.get("/api/admin/reconciliation/exceptions", isAuthenticated, async (req, 
       SELECT id, started_at, finished_at, triggered_by, status, window_start,
              scanned_payment_intents, scanned_charges, scanned_refunds,
              scanned_cart_bookings, scanned_legacy_bookings,
+             -- D-42 (migration 301): the ready-made rail's per-pass tallies. NULLABLE with no
+             -- default and no backfill, so a pre-migration run reads NULL — "not tallied", never
+             -- 0 (§13). Emitted as-is; the page omits the figure rather than zero-filling it.
+             checked_ready_made_purchases, ready_made_announce_hand_offs,
              exceptions_detected, exceptions_new, promoted, note
       FROM reconciliation_runs
       ORDER BY started_at DESC
@@ -1636,6 +1640,10 @@ router.get("/api/admin/reconciliation/runs", isAuthenticated, async (req, res) =
       SELECT id, started_at, finished_at, triggered_by, status, window_start,
              scanned_payment_intents, scanned_charges, scanned_refunds,
              scanned_cart_bookings, scanned_legacy_bookings,
+             -- D-42 (migration 301): the ready-made rail's per-pass tallies. NULLABLE with no
+             -- default and no backfill, so a pre-migration run reads NULL — "not tallied", never
+             -- 0 (§13). Emitted as-is; the page omits the figure rather than zero-filling it.
+             checked_ready_made_purchases, ready_made_announce_hand_offs,
              exceptions_detected, exceptions_new, promoted, note
       FROM reconciliation_runs
       ORDER BY started_at DESC

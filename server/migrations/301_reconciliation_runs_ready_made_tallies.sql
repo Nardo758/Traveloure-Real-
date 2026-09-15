@@ -1,0 +1,63 @@
+-- Migration 301: THE READY-MADE RAIL'S PER-PASS TALLIES ARE RECORDED ON THE RUN ROW.
+-- Decision-maker ruling 2026-09-15, punchlist **D-42** = option A; ledger
+-- `2026-09-15-d42-reconciliation-tallies`. Additive, NULLABLE, NO DEFAULT, NO CHECK, no backfill
+-- (the migration-181/195/273/275/277/279/280/281/282/284/287/295/297 posture — a CHECK here is
+-- exactly the publish-time drizzle-push failure CLAUDE.md's Coordination Prevention rules warn
+-- about). Both columns are ALSO declared in `shared/schema.ts` in this same commit: per the
+-- deploy-push durability rule, a DB object the code depends on that `schema.ts` does not declare is
+-- dropped by Replit's publish-time push and NEVER recreated (the stamped migration will not re-run).
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHY: §17 RULE 2, AND THE ONE RAIL THAT HAD NO COLUMN
+-- ─────────────────────────────────────────────────────────────────────────────
+-- §17 rule 2 requires that EVERY pass writes a `reconciliation_runs` row — including a clean one
+-- and a skipped one — so that silence is distinguishable from the job not having run. Every rail
+-- the job scans has a per-pass tally column on that row: `scanned_payment_intents`,
+-- `scanned_charges`, `scanned_refunds`, `scanned_cart_bookings`, `scanned_legacy_bookings`.
+-- The READY-MADE rail (the store lane, punchlist V-3) had none. Its two per-pass numbers — how
+-- many `ready_made_purchases` rows the pass examined, and how many DELIVERED-but-unannounced
+-- purchases it handed back to the shared sender (D-18) — were computed and then reached ONLY the
+-- manual `run-now` response and the clean-pass log line. The D-18 lane said so out loud in the
+-- result type rather than write an unratified migration, and filed it as D-42. These are the
+-- columns.
+--
+-- An announce hand-off that FAILED was already durable, as an `rm_delivery_not_announced`
+-- exception row. What had no durable record was the work that SUCCEEDED.
+--
+-- §13 — NULL = NOT TALLIED, AND IT IS NOT ZERO.
+-- There is NO BACKFILL and NO DEFAULT, deliberately. Every row already on this table was written
+-- by a job that did not count these things: the passes from before the ready-made rail existed did
+-- not examine the rail at all, and the passes after it examined it and simply did not record the
+-- number. `DEFAULT 0` would rewrite both of those into "this pass examined zero ready-made
+-- purchases" — a claim nobody has, and precisely the kind of zero-fill §13 forbids. NULL is
+-- therefore "we have no tally for this pass", which is the only reading every existing row can
+-- bear, and the admin surface renders it as not-tallied rather than as 0. A genuine 0 (a pass in a
+-- quiet window) is a DIFFERENT fact and is stored as 0.
+--
+-- (The punchlist's own sketch of option A proposed `NOT NULL DEFAULT 0`; the ruling as dispatched
+-- is nullable with no default, for the reason above. Recorded here so the difference is not left
+-- to be discovered.)
+--
+-- WHO WRITES THEM (§18 rule 1 — ONE writer). `closeRun` in
+-- `server/jobs/stripeReconciliation.ts` — the EXISTING run-row writer, the same single `UPDATE`
+-- that already sets the five per-rail columns beside these two. It runs on every terminal path:
+-- completed, skipped (no Stripe key) and failed. `openRun` is unchanged and leaves them unset,
+-- exactly as it leaves the other tallies unset. No second writer and no new insert path.
+--
+-- ADMISSION (§19): nothing here is client-settable. `reconciliation_runs` has no insert schema
+-- reachable from a request body and no client rail of any kind; the job writes it with raw SQL.
+--
+-- NO INDEX. The one reader is the admin run log, which orders by the already-indexed `started_at`
+-- and reads these columns off the rows it has; an index chosen for a predicate nothing runs is an
+-- object the deploy push would have to keep alive for no reader.
+--
+-- NO CHECK IS ADDED OR CHANGED, so `scripts/preflight-prod-constraints.cjs` needs NO manifest
+-- entry.
+--
+-- Idempotent; safe to re-run.
+
+ALTER TABLE reconciliation_runs
+  ADD COLUMN IF NOT EXISTS checked_ready_made_purchases INTEGER;
+
+ALTER TABLE reconciliation_runs
+  ADD COLUMN IF NOT EXISTS ready_made_announce_hand_offs INTEGER;
