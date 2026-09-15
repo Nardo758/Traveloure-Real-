@@ -115,3 +115,12 @@ Reconciling the two resolvers is its own lane. The correction is written into th
 DB suites ran against a local Postgres stood up in this sandbox
 (`/var/tmp/pgdata-d19`, port 5433, database `traveloure_d19`), with all **299** migrations applied
 from empty by `server/migrations/migrate-entry.ts`.
+
+## PR and CI
+
+- **PR #932** — https://github.com/Nardo758/Traveloure-Real-/pull/932
+- **Head sha** `e0182ae0c1384f63aeef32f7ad5495e14dc6eb48`
+- **CI: fully green** — 133 check runs on the head, **132 `success` + 1 `skipped`** (the
+  staging auth smoke, skipped by design: "STAGING NOT CONFIGURED"). The lane's own job,
+  `plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)`, is green.
+- **NOT MERGED** — left for the coordinator.
