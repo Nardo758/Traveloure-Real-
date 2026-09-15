@@ -1508,30 +1508,35 @@ export async function registerRoutes(
       //
       // SCOPED STOPGAP, deliberately conservative: the mutation is authorized against the SAME
       // access set that can already READ the page hosting the Generate/Regenerate button, i.e.
-      // `GET /api/trips/:id` above (`isOwner || isExpert || isManagingEa || isGuestWithToken`,
-      // where `isExpert` is the `trips.expertId` COLUMN and `isManagingEa` is
-      // `trips.managedByEaId`). So: allow when the canonical `authorizeTripLogistics` passes
-      // (owner ‖ trip-assigned expert via trip_expert_advisors ‖ trip author ‖ audit-logged
-      // admin) OR when the caller matches one of those two trip columns, which that helper does
-      // not read. Because the endpoint is open to EVERYONE today, narrowing it to its host
-      // page's existing read-access set is a strict improvement that regresses nobody
-      // (EA-managed and expertId-linked trips keep working) while closing it to strangers.
+      // `GET /api/trips/:id` (trips.routes.ts), whose arms are owner ‖ assigned advisor ‖
+      // `trips.managedByEaId` ‖ share-token guest. So: allow when the canonical
+      // `authorizeTripLogistics` passes (owner ‖ trip-assigned expert via trip_expert_advisors ‖
+      // trip author ‖ audit-logged admin) OR when the caller matches the EA column, which that
+      // helper does not read. Because the endpoint was open to EVERYONE before this check existed,
+      // narrowing it to its host page's read-access set is a strict improvement that regresses
+      // nobody (EA-managed trips keep working) while closing it to strangers.
       // The read gate's fourth branch (guest with `shareToken`) is deliberately NOT mirrored:
       // `isAuthenticated` already excludes unauthenticated guests here and the client hook
       // (`useGenerateItinerary`) sends no token, so mirroring it would WIDEN today's reachable
       // set rather than preserve it.
       //
-      // This is explicitly NOT a new platform policy. Whether `authorizeTripLogistics` itself
-      // should admit `trips.expertId` + `trips.managedByEaId` (and the owner/status-blind
-      // divergences around it) is the trip-role lane's call — see CLAUDE.md §13 "Trip-access
-      // model divergence + owner under-grant (L10)". Do not generalise from this local predicate.
+      // V-33 (ledger `2026-09-15-v32-v33-leads-door-item-read-gate`): this block used to carry a
+      // third arm, `isTripColumnExpert = trip.expertId === callerUserId`. `trips.expert_id` has NO
+      // writer anywhere under `server/`, so that arm could never be true — dead code on an
+      // authorization path, which is worse than useless because it reads as a live grant (§18c:
+      // no consumer ⇒ delete, don't gate). Removing it narrows NOTHING: the expert principal it was
+      // reaching for is admitted by `authorizeTripLogistics` through `trip_expert_advisors`, which
+      // is where an assigned expert actually lives. The EA arm is untouched.
       //
-      // Placed after the trip fetch (it needs the two columns) but BEFORE the AI call and BEFORE
+      // This is explicitly NOT a new platform policy. Whether `authorizeTripLogistics` itself
+      // should admit `trips.managedByEaId` (and the owner/status-blind divergences around it) is
+      // the trip-role lane's call. Do not generalise from this local predicate.
+      //
+      // Placed after the trip fetch (it needs the EA column) but BEFORE the AI call and BEFORE
       // the destructive delete, so a denied caller costs zero AI tokens and destroys nothing.
       const callerUserId = getUserId(req)!;
-      const isTripColumnExpert = callerUserId != null && (trip as any).expertId === callerUserId;
       const isManagingEa = callerUserId != null && (trip as any).managedByEaId === callerUserId;
-      if (!isTripColumnExpert && !isManagingEa) {
+      if (!isManagingEa) {
         const denied = await authorizeTripLogistics(
           req.params.id,
           callerUserId,

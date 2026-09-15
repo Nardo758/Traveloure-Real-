@@ -73,18 +73,29 @@ async function apiPatch<T = unknown>(page: Page, path: string, body: Record<stri
 // ══════════════════════════════════════════════════════════════════════════════
 // SEAM 1 — Lead Pipeline
 //
-// Source:  Traveler POSTs to /api/leads/route → expert_requests row created.
+// Source:  Traveler POSTs to /api/expert-requests → expert_requests row created.
 // Check A: GET /api/admin/routing-queue contains the row with String(trip_id)===tripId.
 // Check B: POST /api/admin/leads/:id/confirm returns assignment; String(tripId) matches.
 // Check C: Expert GET /api/expert/assigned-trips includes tripId (string-normalised).
 // Check D: /expert/workspace/:tripId URL contains tripId AND workspace sentinel visible.
+//
+// THE SOURCE MOVED, AND THE SCENARIO DID NOT (punchlist V-32, ledger
+// `2026-09-15-v32-v33-leads-door-item-read-gate`). This step used to POST `/api/leads/route`, a
+// door that has answered 404 since the June 2026 route defragmentation and that the same ledger
+// row RETIRES rather than restores: a second "score experts and auto-assign" rail would be a
+// second author of the advisor row, which Locked Decision 42 D7 and ledger
+// `2026-09-04-advisor-row-one-author` both forbid. The LIVE rail for exactly this scenario is
+// `POST /api/expert-requests` (Locked Decision 32): it creates the `expert_requests` row
+// synchronously, returns its id as `requestId`, and then runs `leadRoutingService.routeLead`
+// itself — the same scoring service the dead door called. The step is rewritten onto it rather
+// than deleted, because no other step in this suite exercises the lead → routing-queue seam.
 // ══════════════════════════════════════════════════════════════════════════════
-test('[Seam 1] Lead pipeline: /leads/route → routing-queue → expert/workspace', async ({ page }) => {
+test('[Seam 1] Lead pipeline: /expert-requests → routing-queue → expert/workspace', async ({ page }) => {
   // trips.id is UUID (varchar) — always treated as string throughout this test.
   let tripId: string;
   let expertRequestId: string;
 
-  await test.step('Traveler: create a FRESH Kyoto trip (no reuse), POST /api/leads/route, capture expertRequestId', async () => {
+  await test.step('Traveler: create a FRESH Kyoto trip (no reuse), POST /api/expert-requests, capture requestId', async () => {
     await loginAs(page, kyotoTraveler.email, kyotoTraveler.password);
 
     // Always create a fresh trip so this test never passes on stale queue data.
@@ -109,17 +120,23 @@ test('[Seam 1] Lead pipeline: /leads/route → routing-queue → expert/workspac
     tripId = String(created.id);
     expect(tripId, 'tripId must be a non-empty string').toBeTruthy();
 
-    // POST the routing request; capture the returned expertRequestId.
-    // The routing service creates an expert_requests row whose id IS the expertRequestId.
+    // POST the lead through the LIVE rail; capture the returned request id.
+    // `POST /api/expert-requests` writes the `expert_requests` row inside the request
+    // (`bookingService.submitExpertRequest`) and answers with its id as `requestId`, so the queue
+    // check below is reading a row that already exists. The expert SCORING it kicks off is
+    // fire-and-forget by design, which is why check B still drives the admin confirm explicitly
+    // instead of assuming an auto-assignment has landed.
+    // `tripId` makes this a trip-based request, so no variantId/comparisonId is required; the
+    // route verifies the caller OWNS that trip, which the step above guarantees.
     const routeResult = await apiPost<{ expertRequestId?: string; id?: string; requestId?: string }>(
-      page, '/api/leads/route',
-      { destination: 'Kyoto', topic: 'food and culinary', tripId, requestType: 'expert_match' }
+      page, '/api/expert-requests',
+      { destination: 'Kyoto', tripId, requestType: 'expert_match', notes: 'food and culinary' }
     );
-    expertRequestId = routeResult.expertRequestId ?? routeResult.id ?? routeResult.requestId ?? '';
+    expertRequestId = routeResult.requestId ?? routeResult.expertRequestId ?? routeResult.id ?? '';
 
     expect(
       expertRequestId,
-      '[Seam 1 BROKEN] POST /api/leads/route returned no expert request ID — lead never entered the pipeline.'
+      '[Seam 1 BROKEN] POST /api/expert-requests returned no expert request ID — lead never entered the pipeline.'
     ).toBeTruthy();
   });
 
