@@ -51,8 +51,11 @@
  * question to ask and which of two columns the answer belongs in. Every amount stays
  * server-derived exactly where it already is, and CHECKOUT IS UNTOUCHED by this lane: a stay is
  * still billed nights × the nightly rate regardless of `quantity`, and slot capacity is still
- * claimed by `storage.bookSlot`, which increments `booked_count` by exactly ONE per slot-bound
- * line and reads neither column (recorded, not changed).
+ * claimed by `storage.bookSlot`. That claim USED to increment `booked_count` by exactly ONE per
+ * slot-bound line whatever the line held — recorded here by D-14, and CLOSED as punchlist V-26
+ * (ledger `2026-09-15-v26-slot-units`): the checkout now hands `bookSlot` the line's own unit
+ * count, read from the same `resolveItemUnitCount` the charge multiplies by. This module is still
+ * the rail EARLIER: it decides which question was asked, never how much capacity moves.
  *
  * NOT TO BE CONFUSED WITH `client/src/lib/cart-quantity.ts`, which normalises what a traveler
  * TYPES into a count box (digits, floor, the empty-draft rule). That module says how a number is

@@ -658,6 +658,56 @@ export function deriveClaimedSlotIds(
 }
 
 /**
+ * V-26 (ledger `2026-09-15-v26-slot-units`): the `booking_details` key a slot-bound checkout claim
+ * stamps to record HOW MANY units of capacity it took on EACH slot in `claimedSlotIds` (or on the
+ * single `slotId`, for a line that claims one slot).
+ *
+ * It is a record of the CLAIM, not a copy of the price. `booking_details.quantity` is the cart
+ * line's unit count — what `resolveItemBaseAmount` multiplied by — and for a row born BEFORE this
+ * lane it is NOT what was claimed: `bookSlot` took exactly one unit whatever the line held, so a
+ * pre-fix booking carrying `quantity: 3` holds ONE unit of that slot. Releasing three would hand
+ * back capacity nobody took — V-26's defect in the other direction — which is why the release
+ * reads this key and not that one.
+ */
+export const CLAIMED_SLOT_UNITS_KEY = "claimedSlotUnits";
+
+/**
+ * How many units of capacity to give back PER SLOT for one booking.
+ *
+ * §13 — ABSENT MEANS ONE, AND THAT IS A RECORDED FACT, NOT A GUESS. A row with no
+ * `claimedSlotUnits` was claimed by the pre-V-26 writer, which took exactly one unit per slot; a
+ * row whose value is not a positive integer is equally un-trustworthy as a claim record. Both
+ * release ONE — never guess more than was recorded. (A stay is unaffected either way: it claims
+ * one slot PER NIGHT and stamps `1`, so its per-night release is unchanged.)
+ *
+ * ONE decider, every release path a caller (§18 rule 1) — `voidClaim` here,
+ * `refundServiceBooking` and `updateServiceBookingStatus` — exactly as `deriveClaimedSlotIds`
+ * decides WHICH slots for all three, so the two halves of a release can never drift apart.
+ */
+export function deriveClaimedSlotUnits(
+  bookingDetails: Record<string, unknown> | null | undefined,
+): number {
+  const recorded = bookingDetails?.[CLAIMED_SLOT_UNITS_KEY];
+  if (typeof recorded === "number" && Number.isInteger(recorded) && recorded > 0) return recorded;
+  return 1;
+}
+
+/**
+ * The refusal §15/C3 asks for: a slot claim/release is meaningless for a non-positive or
+ * fractional unit count, so the writers REFUSE it by name rather than defaulting silently to 1
+ * (§13 — a caller that computed nonsense must hear about it, not have it quietly rounded into a
+ * real inventory movement). Exported so `server/storage.ts`'s two writers and any future caller
+ * share ONE rule (§18 rule 1).
+ */
+export function assertPositiveSlotUnits(units: number, caller: string): void {
+  if (typeof units !== "number" || !Number.isInteger(units) || units <= 0) {
+    throw new Error(
+      `${caller}: slot units must be a positive integer, received ${String(units)} (V-26 — a claim is refused, never clamped)`,
+    );
+  }
+}
+
+/**
  * Void ONE provisional claim: atomic conditional status flip, slot release, and the diary row —
  * all in ONE transaction so reclaimed inventory is auditable rather than silently reappearing
  * (rulings 12/16/18; the flip and its log entry are an atomic pair, exactly like
@@ -702,13 +752,17 @@ async function voidClaim(
 
       let slotsReleased = 0;
       const slotIdsToRelease = deriveClaimedSlotIds(row.bookingDetails, row.slotId);
+      // V-26: how many units each of those slots holds — the claim's own record, not the line's
+      // priced quantity (see `deriveClaimedSlotUnits`). The void PREDICATE above is untouched:
+      // this changes only the size of the give-back, never who wins the race (§15b/§15c).
+      const slotUnitsToRelease = deriveClaimedSlotUnits(row.bookingDetails);
       if (slotIdsToRelease.length > 0) {
         await tx.execute(sql`
           UPDATE vendor_availability_slots
-          SET booked_count = GREATEST(COALESCE(booked_count, 0) - 1, 0),
+          SET booked_count = GREATEST(COALESCE(booked_count, 0) - ${slotUnitsToRelease}, 0),
               status = CASE
                 WHEN status = 'fully_booked'
-                     AND GREATEST(COALESCE(booked_count, 0) - 1, 0) < COALESCE(capacity, 1)
+                     AND GREATEST(COALESCE(booked_count, 0) - ${slotUnitsToRelease}, 0) < COALESCE(capacity, 1)
                   THEN 'available'
                 ELSE status
               END,

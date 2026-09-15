@@ -345,16 +345,16 @@ test("P-CLAIM: storage.bookSlot/releaseSlot still work on a materialized row (§
   // bookSlot/releaseSlot are raw db.execute(...) calls (server/storage.ts) — the returned row is
   // the RAW Postgres shape (snake_case columns), not passed through Drizzle's camelCase mapping,
   // so this asserts booked_count/status as the function actually returns them.
-  const claimed = await storage.bookSlot(slotId) as any;
+  const claimed = await storage.bookSlot(slotId, 1) as any;
   assert.ok(claimed, "bookSlot claims the materialized slot");
   assert.equal(claimed.booked_count, 1);
   assert.equal(claimed.status, "fully_booked", "capacity 1 ⇒ fully_booked after one claim");
 
   // A second claim on a fully-booked slot must fail (the atomic conditional holds).
-  const secondClaim = await storage.bookSlot(slotId);
+  const secondClaim = await storage.bookSlot(slotId, 1);
   assert.equal(secondClaim, undefined, "a second claim on a full slot is refused");
 
-  await storage.releaseSlot(slotId);
+  await storage.releaseSlot(slotId, 1);
   const released = await storage.getVendorAvailabilitySlot(slotId);
   assert.equal(released?.bookedCount, 0);
   assert.equal(released?.status, "available", "release re-opens the slot");

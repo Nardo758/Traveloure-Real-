@@ -34,9 +34,10 @@
  * the status AND that no row landed); V5 fails against the pre-lane `+ 1`; V6 fails against one
  * that lets the body's quantity win.
  *
- * NEGATIVE SPACE (§18d): nothing here asserts slot CAPACITY. `storage.bookSlot` increments
- * `booked_count` by exactly one per slot-bound line and reads neither `quantity` nor `party_size`;
- * that is recorded by this lane and deliberately NOT changed.
+ * NEGATIVE SPACE (§18d): nothing here asserts slot CAPACITY. `storage.bookSlot` used to increment
+ * `booked_count` by exactly one per slot-bound line whatever the line held — recorded by this lane
+ * and deliberately NOT changed by it, then CLOSED as punchlist V-26 (ledger
+ * `2026-09-15-v26-slot-units`), whose own suite owns those proofs.
  *
  * SERVER REQUIRED (JOURNEY_BASE_URL, default :5000) + DISPOSABLE DB ONLY. Every row this file
  * writes is created and deleted by it. No Stripe key is exercised — nothing here checks out.

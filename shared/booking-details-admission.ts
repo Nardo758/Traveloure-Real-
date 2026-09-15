@@ -76,6 +76,12 @@ export const SERVER_AUTHORED_BOOKING_DETAIL_KEYS = [
   "stripeIdempotencyKey",
   // The complete inventory claim a checkout took. Reader: the slot-release path.
   "claimedSlotIds",
+  // V-26 (ledger `2026-09-15-v26-slot-units`): HOW MANY units of each of those slots it took.
+  // Reader: the same slot-release path, through `deriveClaimedSlotUnits`. A body that could plant
+  // it would decide how much of a provider's capacity its own cancellation hands back — inventory,
+  // not money, but the same shape of move as planting `claimedSlotIds` one line up. Spelled here
+  // to match `CLAIMED_SLOT_UNITS_KEY` in `checkout-claim.service.ts`; B7 asserts the two agree.
+  "claimedSlotUnits",
   // §15c's ops-visible late-signal record. Reader: GET /api/admin/bookings/reconciliation-exceptions.
   "reconciliationException",
   // Fee-lane provenance (which lane priced the line). Reader: fee-ledger.service.ts.

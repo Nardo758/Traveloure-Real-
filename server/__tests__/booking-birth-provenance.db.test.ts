@@ -82,7 +82,7 @@ import {
 import type { BuyRefusalReason } from "@shared/buy-action";
 import { resolveServiceOwnerShareRate } from "../services/commission";
 import { hasPublishedPrice } from "../services/buy-action-payload";
-import { BALANCE_PAYER_DETAIL_KEY } from "../services/checkout-claim.service";
+import { BALANCE_PAYER_DETAIL_KEY, CLAIMED_SLOT_UNITS_KEY } from "../services/checkout-claim.service";
 import { travelerChargeBasis } from "../services/traveler-charge";
 import { runStripeReconciliation, type StripeReader } from "../jobs/stripeReconciliation";
 
@@ -608,6 +608,8 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
       // The rest of the family, each one a fact only a server path may state.
       travelerServiceFee: { charged: "0.00" },
       claimedSlotIds: ["some-slot"],
+      // V-26: how much capacity the cancellation of this row would hand back.
+      claimedSlotUnits: 99,
       reconciliationException: { note: "forged" },
       railsAttribution: { lane: "forged" },
       directRateResolution: { shareRate: "1.0000" },
@@ -686,6 +688,7 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
       "stripeAttemptAt",
       "stripeIdempotencyKey",
       "claimedSlotIds",
+      "claimedSlotUnits",
       "reconciliationException",
       "railsAttribution",
       "directRateResolution",
@@ -706,6 +709,11 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
     (SERVER_AUTHORED_BOOKING_DETAIL_KEYS as readonly string[]).includes(NO_ITEM_REASON_KEY),
     "D-11's named-class mark is server-authored — a client that could plant it would exempt its " +
       "own row from the detector the mark feeds",
+  );
+  assert.ok(
+    (SERVER_AUTHORED_BOOKING_DETAIL_KEYS as readonly string[]).includes(CLAIMED_SLOT_UNITS_KEY),
+    "V-26's claim record is server-authored — a client that could plant it would decide how much " +
+      "of a provider's capacity its own cancellation hands back",
   );
 
   // STATED NEGATIVE SPACE, asserted rather than only written down: the strip is TOP-LEVEL, because
