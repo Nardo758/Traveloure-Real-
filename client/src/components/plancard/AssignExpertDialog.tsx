@@ -43,7 +43,6 @@ interface Expert {
   bio: string | null;
   specialties: string[];
   destinations: string[];
-  hourly_rate: string | null;
   years_of_experience: string | null;
   availability: string | null;
   response_time: string | null;
@@ -301,7 +300,14 @@ export function AssignExpertDialog({
                           {parseFloat(expert.avg_rating).toFixed(1)}
                         </span>
                       )}
-                      {expert.hourly_rate && <span>${expert.hourly_rate}/hr</span>}
+                      {/* D-5 (ledger `2026-09-15-d5-no-milestone-billing`): no hourly rate is
+                          shown here. Planning work is bought as a LISTING at its listed price,
+                          charged once at checkout (ruling 11, `2026-09-15-plan-work-one-rail`) —
+                          the very next step of this dialog picks that offering — so an "$X/hr"
+                          chip promised a billing shape no rail performs (§13). The applicant's
+                          `local_expert_forms.hourly_rate` is a free-text self-description no fee,
+                          amount or payout decision reads, and the public expert projection
+                          already withholds it (`FORM_MUST_NOT_APPEAR`). */}
                       {expert.response_time && <span>Responds {expert.response_time}</span>}
                     </div>
                   </div>

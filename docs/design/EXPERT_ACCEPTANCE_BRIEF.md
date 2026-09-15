@@ -448,7 +448,7 @@ a timer rule whose owner arm opens only for a booking the platform holds no serv
    a provider's fee for a day they worked behind an acceptance of a document.
 3. **The alternative already exists and is cheaper.** An artifact obligation on a hybrid listing is
    a **separate declared deliverable** — and the honest way to give it D-6's acceptance is to let
-   the listing say so, not to reclassify the whole booking. That is filed below as **D-32**, not
+   the listing say so, not to reclassify the whole booking. That is filed below as **D-40**, not
    assumed here.
 
 `in_person` keeps its `service_date_timer` normal path — it is a timer, and Part I's ruling about
@@ -516,7 +516,7 @@ definition**, so the intent is readable where the rule is read and the number ca
 window it is supposed to track. Env-overridable through the existing `EARNINGS_HOLD_DAYS` family; no
 literal anywhere (§8 posture).
 
-**WHERE THE MINT SITS IS THE ONE MONEY QUESTION, AND IT IS A DECISION ROW (D-29).** The recommended
+**WHERE THE MINT SITS IS THE ONE MONEY QUESTION, AND IT IS A DECISION ROW (D-37).** The recommended
 answer, spelled out because getting it wrong is a silent payout delay: **mint at the window's close,
 with the held earning's `availableAt` anchored to the DECLARATION instant**, using `availableAtFor`'s
 existing `from` parameter. That keeps ONE mint trigger (`completed`, unchanged), ONE dispute window
@@ -535,35 +535,35 @@ does not block the balance charge, and **the dispute window is never a payment g
 
 ## 13 · Columns proposed — decision rows, not a migration
 
-Filed in `docs/PUNCHLIST.md` §1 as **D-28 … D-32**, continuing Part I's D-24 … D-27. All proposals
+Filed in `docs/PUNCHLIST.md` §1 as **D-36 … D-40**, continuing Part I's D-24 … D-27. All proposals
 are additive, nullable, **NO DEFAULT and NO DB CHECK** (publish-trap posture — migrations
 181/195/273/275/277/279/281/282/284), **declared in `shared/schema.ts`** (deploy-push durability
 rule), **no backfill**, and written only through a pick-based allowlist or a targeted server-side
 UPDATE (§19).
 
-- **D-28 — `service_bookings.completion_declared_at`, and is the deadline stored or derived?**
+- **D-36 — `service_bookings.completion_declared_at`, and is the deadline stored or derived?**
   *Recommend:* the column (timestamp; NULL = never declared, and the row is OMITTED from every
   surface rather than rendered as "not declared" on a booking whose rule is a timer), plus
   `completion_declared` as a `status` value (no migration needed — `varchar(30)`, no CHECK).
   **Derive the deadline; do not store it** — the same answer D-24 gives one table over, for the same
   reason: a stored end date is a second authority that disagrees with the config the moment the
   config moves.
-- **D-29 — where does the earnings MINT sit relative to the declared window?** The money row. Three
+- **D-37 — where does the earnings MINT sit relative to the declared window?** The money row. Three
   shapes, one recommendation (§12): mint at the close with `availableAt` anchored to the
   declaration. The alternatives — minting at the declaration (a second status that triggers
   `mintCompletionEarningsForBooking`) and minting at the close with a fresh anchor (a doubled hold)
   — are named there so neither is chosen by accident.
-- **D-30 — is a pre-completion dispute the SAME row as today's post-completion one?**
+- **D-38 — is a pre-completion dispute the SAME row as today's post-completion one?**
   *Recommend:* **yes — reuse it.** `status='disputed'` + `booking_metadata.disputeReason` + the
   existing `GET /api/admin/disputes`, whose predicate is literally `WHERE sb.status = 'disputed'`.
   **Do not add an `admin_review` status that queue cannot see, and do not create a disputes table.**
   If the queue must tell the two apart, that is derived from `completion_declared_at` and the
   absence of `completed_at`, never a second status (§18 rule 1). **§13 sub-point that must not be
-  lost:** under D-29's recommendation there is no earning yet when a declared-window dispute
+  lost:** under D-37's recommendation there is no earning yet when a declared-window dispute
   arrives, so `setBookingEarningsDispute` flags **zero rows** — and zero must never be read as
   *cleared*. The block is the status itself: the booking never reaches `completed`, so nothing
   mints.
-- **D-31 — coordination: who declares, what does the window gate, and is a coordinator ever paid an
+- **D-39 — coordination: who declares, what does the window gate, and is a coordinator ever paid an
   earning?** *Recommend:* the **assigned coordinator** declares (`assigned_expert_id`), the traveler
   gets the same config window, and — because **no coordinator earning exists** (§9) — the window
   gates the **admin refund**, not a release. `coordination_states.status` takes the new value with
@@ -571,7 +571,7 @@ UPDATE (§19).
   there is a publish trap). **Whether a coordinator is ever paid an earning out of the captured
   coordination fee is a separate, unruled money question** — owner = the memberships/engagement
   lane — and must not be invented as a side effect of a completion state.
-- **D-32 — build the expense object?** See §16. One row, not five: the shape is ruled (option B —
+- **D-40 — build the expense object?** See §16. One row, not five: the shape is ruled (option B —
   not yet), so what is open is only *when*, and the columns a future object would need are listed
   there so the next lane starts from a shape rather than a blank page. **Same row carries the
   hybrid-artifact sub-question** §10 raised: may a `hybrid` listing DECLARE an artifact deliverable
@@ -668,9 +668,9 @@ column), `approved_by_user_id` (the session user at approval, never `req.body`),
 `payment_intent_id` (the platform charge, written only by the promotion path — §19a),
 `evidence_url`, `refunded_at`. Every one additive-nullable with no DB CHECK; the vocabulary
 app-enforced. **This list exists so the next lane argues with a shape instead of inventing one, and
-it is filed as ONE decision row (D-32), not as five.**
+it is filed as ONE decision row (D-40), not as five.**
 
-**NEGATIVE SPACE, and it is the load-bearing half.** Until D-32 is ruled and built: no surface
+**NEGATIVE SPACE, and it is the load-bearing half.** Until D-40 is ruled and built: no surface
 says *reimbursable*, *expenses covered*, *out-of-pocket*, *per diem*, *submit your receipts* or any
 cousin of them; no seller is told to spend and claim; no traveler is told a cost will be added
 later. A seller who must spend money to deliver **prices it into the listing** — the rail that
@@ -682,10 +682,10 @@ saying it out loud is what stops one being improvised on a surface.
 
 ## 17 · Build sequence, and the negative space
 
-**Schema first, and only after D-28 – D-31 are ruled.** (D-32 blocks nothing here — it is the
+**Schema first, and only after D-36 – D-39 are ruled.** (D-40 blocks nothing here — it is the
 expense lane's own gate.)
 
-1. **Lane 1 — columns.** The ruled subset of D-28 – D-31, one migration, declared in
+1. **Lane 1 — columns.** The ruled subset of D-36 – D-39, one migration, declared in
    `shared/schema.ts`, registered in `server/migrations/migration-files.ts`. No behaviour.
 2. **Lane 2 — the declared state.** The owner completion rail stops calling `completeBooking` and
    claims `confirmed → completion_declared` instead, recording the same evidence; the window's close
@@ -699,7 +699,7 @@ expense lane's own gate.)
    section (LD 42 **D9** — owner and `payer`-role audience, gated by the same predicate the route
    runs); the seller's declare affordance and what it says; the countdown, read from the server's
    own remaining-days answer.
-5. **Lane 5 — coordination.** D-31's ruled shape on `coordination_states`, plus F3's traveler-arm
+5. **Lane 5 — coordination.** D-39's ruled shape on `coordination_states`, plus F3's traveler-arm
    rule. Deliberately last: it moves no money and depends on the vocabulary lanes 2–4 settle.
 
 **Negative space — what Part II does not decide, and nobody may take as decided.**
@@ -709,8 +709,8 @@ expense lane's own gate.)
   is policy, not machinery. Admin review resolves through the **existing** refund rails and invents
   none. Adjacent: the still-unruled **SD-2** cancel-a-confirmed-booking refund gap named in
   `OWNER_BOOKING_TRANSITIONS`.
-- **Whether a coordinator is ever paid an earning** out of the captured coordination fee (D-31).
-- **The expense object** (D-32), and with it the `hybrid`-declares-an-artifact sub-question.
+- **Whether a coordinator is ever paid an earning** out of the captured coordination fee (D-39).
+- **The expense object** (D-40), and with it the `hybrid`-declares-an-artifact sub-question.
 - **`voice_notes` / `async_messaging`** keep `provider_declared` and gain the declared window like
   every other owner-declared rule — but Part I's honest limit still holds for their DELIVERY:
   `ARTIFACT_DELIVERY_METHODS` is `{"pdf"}`, so neither has a delivery rail, and nothing here builds

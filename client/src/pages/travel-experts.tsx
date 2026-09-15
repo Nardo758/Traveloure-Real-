@@ -1726,7 +1726,7 @@ export default function TravelExpertsPage() {
                 </div>
 
                 <div>
-                  <Label className="text-[#374151]">Desired Hourly Rate (USD)</Label>
+                  <Label className="text-[#374151]">Indicative Hourly Rate (USD)</Label>
                   <div className="relative mt-2">
                     <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <Input
@@ -1738,8 +1738,15 @@ export default function TravelExpertsPage() {
                       data-testid="input-hourly-rate"
                     />
                   </div>
+                  {/* D-5 (ledger `2026-09-15-d5-no-milestone-billing`): the platform does not
+                      bill planning work by the hour, in instalments or against milestones. This
+                      figure is context for the reviewer only — `local_expert_forms.hourly_rate`
+                      is read into no fee, amount or payout decision anywhere on the server — so
+                      the copy says what a local expert is actually paid for. */}
                   <p className="text-sm text-muted-foreground mt-2">
-                    Average expert rates: $50-150/hour depending on experience
+                    Context for your application only — it is not how you get paid. Your planning
+                    work sells as a listing at the price you set on each offering, charged once
+                    when a traveler checks out.
                   </p>
                 </div>
               </CardContent>
