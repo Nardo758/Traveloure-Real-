@@ -2761,3 +2761,324 @@ jobs:
         run: npx tsx --test client/src/components/__tests__/*.test.ts*
       - name: client/src/components/plancard/__tests__ (all)
         run: npx tsx --test client/src/components/plancard/__tests__/*.test.ts*
+
+  # ---------------------------------------------------------------------------
+  # 2026-09-15-orphans-t1-t3-green-directories — T-1/T-2/T-3 of the orphan plan
+  # (docs/lane-reports/2026-09-15-orphan-triage.md §7). Forty suites whose
+  # assertions no workflow command could reach are run here.
+  #
+  # STATED NEGATIVE SPACE, and it is the half that will bite first: A DIRECTORY
+  # IN THIS REPO IS NOT ONE RUNNER. Five files under these roots import from
+  # `vitest` and `tsx --test` CANNOT LOAD THEM (it dies in @vitest/runner before
+  # a single assertion runs), while `vitest` in turn cannot run a `node:test`
+  # file. So each mixed directory is covered by TWO steps, one per runner, and
+  # the split is by NAME, not by glob — a new file added to such a directory is
+  # orphaned until somebody names it, and `scripts/check-test-files-wired.cjs`
+  # is what says so. Where a directory has ONE runner (T-1, and
+  # server/routes/__tests__) the selector IS a whole-directory glob and the
+  # directory is closed by construction.
+  #
+  # ONE SUITE IN THESE DIRECTORIES IS DELIBERATELY LEFT ORPHANED:
+  # `server/services/__tests__/content-matching.test.ts` fetches
+  # http://localhost:5000 and needs the built app, which none of these jobs
+  # boots. Wiring it here would put a red in a green job; it stays on
+  # `scripts/test-orphan-baseline.txt` and is owed an app-backed lane.
+  # ---------------------------------------------------------------------------
+  unit-suite-server-units:
+    name: unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine __tests__ — whole directories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # T-1: four single-purpose directories, each holding ONLY these files, so
+      # one glob closes each exactly. No database and no app — these are pure.
+      - name: server/utils/__tests__ (all)
+        run: npx tsx --test server/utils/__tests__/*.test.ts*
+      - name: server/seeds/__tests__ (all)
+        run: npx tsx --test server/seeds/__tests__/*.test.ts*
+      - name: server/services/travelpayouts/__tests__ (all)
+        run: npx tsx --test server/services/travelpayouts/__tests__/*.test.ts*
+      - name: server/services/trend-engine/__tests__ (all)
+        run: npx tsx --test server/services/trend-engine/__tests__/*.test.ts*
+
+  suite-server-services:
+    name: suite-server-services (server/services/__tests__ — DB-backed)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # T-2. The directory mixes pure and DB suites, so one database is cheaper
+      # than a split; seven of these files were already reachable through their
+      # own per-file jobs and are re-run here, which is the 2026-09-14 precedent
+      # (a per-file job is a ledger-named record of why that pin exists and stays
+      # exactly where it is).
+      - name: server/services/__tests__ (node:test suites)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/services/__tests__/activity-schedule.test.ts server/services/__tests__/background-job-runner.test.ts server/services/__tests__/booking-verification.db.test.ts server/services/__tests__/booking-verification.test.ts server/services/__tests__/cancellation-policy.test.ts server/services/__tests__/commission-phase1.test.ts server/services/__tests__/experience-cart-band.db.test.ts server/services/__tests__/expert-split-band.db.test.ts server/services/__tests__/expertise-scoring.test.ts server/services/__tests__/gem-teaser.test.ts server/services/__tests__/golf-presets.test.ts server/services/__tests__/landing-hero.test.ts server/services/__tests__/location-view-neighbourhood-match.test.ts server/services/__tests__/occasion-schedule.test.ts server/services/__tests__/provider-health.test.ts server/services/__tests__/ready-made-clone-routing.test.ts server/services/__tests__/startup-delay.test.ts server/services/__tests__/trailhead-crosswalk.test.ts server/services/__tests__/trailhead-derived-targets.test.ts server/services/__tests__/transport-leg-calculator.test.ts server/services/__tests__/traveler-profile.service.test.ts server/services/__tests__/upcoming.test.ts server/services/__tests__/upsell-engine.test.ts server/services/__tests__/upsell-query-any-array.test.ts server/services/__tests__/wedding-presets.test.ts
+      # The two vitest suites in the same directory. `anchor-*` is their whole
+      # set, so this selector IS a glob and cannot silently drop one.
+      - name: server/services/__tests__ (vitest suites)
+        run: npx vitest run --root . server/services/__tests__/anchor-*.test.ts
+
+  suite-server-routes-migrations:
+    name: suite-server-routes-migrations (server/routes/__tests__ + server/migrations/__tests__ — DB-backed)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # T-3a. Every file in this directory is a node:test suite, so the selector
+      # is the whole-directory glob and a file added tomorrow is reachable by
+      # construction. `booking-idor-guard` was the directory's one red and is
+      # repaired in this lane — its FIXTURE was, not its assertions: the auth
+      # layer's account-status check is FAIL-CLOSED (503) and the mock did not
+      # answer the `users` reads it makes.
+      - name: server/routes/__tests__ (all)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/routes/__tests__/*.test.ts
+      # T-3b. server/migrations/__tests__ holds three vitest suites beside
+      # chain-integrity.test.ts, which is a node:test file already run by the
+      # migration-chain-integrity job. Named, not globbed, for the reason in the
+      # block comment above.
+      - name: server/migrations/__tests__ (vitest suites)
+        run: npx vitest run --root . server/migrations/__tests__/1577-cart-booking-revenue-dedup.test.ts server/migrations/__tests__/244-platform-revenue-payment-intent-dedup.test.ts server/migrations/__tests__/ready-made-purchase-revenue-dedup.test.ts
+
+  # ---------------------------------------------------------------------------
+  # 2026-09-15-orphans-t4-t7-red-suites — T-4/T-5/T-6 of the orphan plan
+  # (docs/lane-reports/2026-09-15-orphan-triage.md §7). Ten suites whose
+  # assertions no workflow command could reach are run here, all of them
+  # RED-when-found and repaired in the same lane.
+  #
+  # BOTH JOBS BOOT THE BUILT APP, which is what made these ten unreachable in
+  # the first place: every one of them is an HTTP or HTTP+DB suite, and the
+  # DB-only job shapes the T-1..T-3 lane added cannot carry them. The build is
+  # the production bundle (`npm run build` → `node dist/index.cjs`) rather than
+  # `npx tsx server/index.ts`, because that is the shape these suites were
+  # verified against locally before this workflow was written.
+  #
+  # STATED NEGATIVE SPACE, and it is the half that will bite first: THESE ARE
+  # NAMED FILE LISTS, NOT DIRECTORY GLOBS. `server/__tests__` is not all-green
+  # (triage §5 and T-8), so a whole-directory selector would import a red into
+  # a green job — the reason T-9 is last. A suite added to that directory
+  # tomorrow is orphaned until somebody names it, and
+  # `scripts/check-test-files-wired.cjs` is what says so.
+  # ---------------------------------------------------------------------------
+  suite-mutation-auth:
+    name: suite-mutation-auth (server/__tests__/mutation-auth — live authorization probes, DB + app)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      BASE_URL: http://127.0.0.1:5000
+      # MUTATION_AUTH_AUDIT_OK is the opt-in these audits require. WITHOUT IT
+      # `admin-mutation-auth` executes 1 test and SKIPS 124, which is the
+      # green-but-vacuous shape triage note 3 forbids wiring: a job that runs a
+      # suite it cannot execute satisfies the inventory and protects nothing.
+      MUTATION_AUTH_AUDIT_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # Deliberately 'false': every suite in this directory creates and
+          # deletes its OWN disposable ordinary-user fixture over
+          # POST /api/auth/register, so no ci-* account is read here and a seed
+          # step nothing uses would be a step nobody could later remove safely.
+          seed-ci-users: 'false'
+      - name: Build production bundle
+        run: npm run build
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          EMAIL_FROM: noreply@ci.traveloure.test
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://127.0.0.1:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then echo "Server ready"; exit 0; fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"; exit 1
+      # T-4. Six suites. The two static ones need no server; the four live ones
+      # probe the running app as an UNAUTHENTICATED caller and as an
+      # AUTHENTICATED ORDINARY USER, and assert the exact refusal status.
+      - name: server/__tests__/mutation-auth (all six suites)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/mutation-auth/admin-mutation-auth.test.ts server/__tests__/mutation-auth/expert-provider-mutation-auth.test.ts server/__tests__/mutation-auth/mutation-auth.http.test.ts server/__tests__/mutation-auth/mutation-auth.inventory.test.ts server/__tests__/mutation-auth/non-admin-payments-user-data-mutation-auth.http.test.ts server/__tests__/mutation-auth/payment-mutation-auth.manifest.test.ts
+      # The generated manifest three of those suites read is a DERIVED
+      # inventory, and it had drifted far enough to probe four retired
+      # /api/expert/templates routes (ledger
+      # `2026-09-03-expert-templates-consumer-sunset`) and to miss 43 live
+      # ones. Nothing in CI checked it, which is why it rotted.
+      - name: Generated mutation-auth manifest is current
+        run: npm run check:mutation-auth
+
+  suite-ai-draft-and-availability:
+    name: suite-ai-draft-and-availability (R-12/R-13 + the two LD 41 (b) suites — DB + app)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+      JOURNEY_BASE_URL: http://127.0.0.1:5000
+      BASE_URL: http://127.0.0.1:5000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      - name: Build production bundle
+        run: npm run build
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          EMAIL_FROM: noreply@ci.traveloure.test
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://127.0.0.1:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then echo "Server ready"; exit 0; fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"; exit 1
+      # T-5. Both suites create their actor over HTTP in the SERVER process and
+      # then insert fixture rows from the TEST process; the missing read-back
+      # between the two is the race triage §6 measured (0/13 on six runs). The
+      # repair is one shared fixture, server/__tests__/fixtures/registered-actor.ts.
+      - name: R-12/R-13 availability + stay booking
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/availability-model.db.test.ts server/__tests__/s11-stay-booking.db.test.ts
+      # T-6. Both suites were overtaken by Locked Decision 41 (b) — the free AI
+      # draft runs only on an EMPTY slip — and their fixtures seeded a slip that
+      # already held items. Restated, not weakened: every slip is born empty and
+      # every expected rejection is now IDENTIFIED rather than merely awaited.
+      - name: LD 41 (b) snapshot atomicity + rebuild guard
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/generated-itinerary-atomicity.db.test.ts server/__tests__/regenerate-booking-guard.db.test.ts

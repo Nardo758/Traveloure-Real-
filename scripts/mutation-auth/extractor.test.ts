@@ -30,8 +30,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 570);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 546);
+  assert.equal(result.mutations.length, 584);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 575);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -41,13 +41,13 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 546);
-  assert.equal(manifest.rawRegistrationCount, 570);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 546);
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 138, "user-data": 181, other: 196 });
+  assert.equal(endpointRows.length, 575);
+  assert.equal(manifest.rawRegistrationCount, 584);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 575);
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 147, "user-data": 191, other: 206 });
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 138, "session-self": 293, "resource-owner": 82,
-    signature: 5, "public-or-system": 28, unknown: 0,
+    "admin-role": 147, "session-self": 294, "resource-owner": 90,
+    signature: 6, "public-or-system": 38, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,
