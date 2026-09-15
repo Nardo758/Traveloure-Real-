@@ -697,6 +697,24 @@ This document captures architectural decisions to maintain consistency across co
     onto its item row, and it carries the slot and the stay dates (migration 275). A second copier —
     a route that spreads its own subset onto the row — is the derivation-drift class §18 rule 1
     names, and it is how a slip and a cart start disagreeing about the same booking.
+    **A PLAN ITEM MAY CARRY A UNIT COUNT, AND NULL MEANS ONE (ledger `2026-09-15-d41-item-quantity`,
+    migration 298; decision-maker D-41 = yes, sentence applied 2026-09-15).** `itinerary_items.quantity`
+    is additive-nullable with no DEFAULT, no CHECK and no backfill, declared in `shared/schema.ts`.
+    **NULL = ONE UNIT** — the item model's own historical shape, never 0 and never a guessed count
+    (§13). It is written by `server/services/cart-projection.service.ts` and by nothing else, in BOTH
+    directions: `syncItemProjection` carries the item's count onto the cart row, and both cart→item
+    rails carry the line's count onto the item through the ONE shared `buildPlanItemValues`. That
+    lifts D-16 (a) — the `quantity_gt_one` refusal is DELETED, not left unreachable (§18c) — because
+    the round trip is now faithful above one unit. **There is ONE admission rule for units and it is
+    D-14's** (ledger `2026-09-15-d14-quantity-is-units`): a traveler sets them on the CART LINE, where
+    the archetype rule validates the question, and the item receives the count by PROJECTION;
+    `insertItineraryItemSchema` omits the column and storage strips it (§19). A single-unit line is
+    carried as NULL rather than 1, because `cart_items.quantity` is `DEFAULT 1` and writing it would
+    turn "never asked" into "the traveler answered one". **A ready-made clone does not carry it** — a
+    plan item's unit count is the BUYER's cart-line answer, and the author's count is not an answer
+    the buyer gave. **It is a UNIT count, not a party count** — a plan item carrying a party size is a
+    separate decision nobody has made — and checkout math is untouched: the money path still prices
+    `rate × quantity` off the CART row.
     **THE TRIP-LESS GUEST CART IS SANCTIONED, and it is a FALLBACK.** A visitor with no plan yet
     still has somewhere to put a thing; that path stays until G2 (guest trips) replaces it, and G2
     is HELD as its own architecture (ledger `2026-09-04-held-decisions`). It is not a licence to
@@ -1682,6 +1700,19 @@ repairs is a fourth, unreviewed writer on the money path. **ONE narrow exception
 succeeded whose booking is still an unpromoted claim is handed to the **EXISTING shared** `promotePaidCheckout`
 with `actor="reconciliation"`, diary-logged — that is recovery layer 2's own logic arriving late, not new
 repair code. Nothing else.
+
+**§17's narrow exception now stands on the READY-MADE rail too, and it moves no money (ledger
+`2026-09-15-d18-announced-marker`, migration 297; decision-maker D-18 = A, sentence applied 2026-09-15).**
+`ready_made_purchases.notified_at` records that a delivered purchase's buyer announcement EXISTS. Its ONE
+writer is `notifyBuyerOfReadyMadeDelivery` (§18 rule 1), stamping through an atomic conditional
+(`WHERE notified_at IS NULL`, §15) the moment it knows the buyer's notification row exists — **existing** and
+**inserted by this call** are deliberately different tests, because the already-inserted case IS the
+half-finished state the column records; the email stays gated on the insert. The drift job DETECTS a `cloned`
+purchase whose marker is NULL past a config grace (`server/config/ready-made-announce.config.ts` — no literal,
+§8 untouched) and HANDS IT BACK to that sender; it composes no message and **writes the column never**. A
+successful hand-off records nothing; only a failed one appends `rm_delivery_not_announced` (`warning`).
+**NULL = no record of an announcement (§13), and there is no backfill** — a `paid` row is never announced (it
+was never delivered), and a buyer who deleted their own clone trip is not indicted for housekeeping.
 
 **Rules that must not be weakened:**
 1. **Exceptions are APPEND-ONLY** (`reconciliation_exceptions`, migration 177). No UPDATE, no DELETE path.
