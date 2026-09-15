@@ -172,6 +172,7 @@ import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import transportLegsRoutes from "./routes/transport-legs.routes";
 import { resolveItemEventLink } from "./services/item-event-link.service";
+import { authoredItemPriceRefusal } from "@shared/item-kind";
 import { enforceTripComparisonRetention } from "./services/comparison-retention.service";
 // LD 41 (ledger `2026-09-05-trip-pass-run-gate`): the ONE optimizer run-authorization predicate,
 // shared by the comparison create and regenerate handlers below.
@@ -11886,6 +11887,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       );
       if (!resolvedEvent.ok) return res.status(400).json({ message: resolvedEvent.message });
       if (resolvedEvent.action === "set") itemData.userExperienceId = resolvedEvent.value;
+      // ── THE AUTHORING CONTRACT (decision-maker ruling 2026-09-15, punchlist D-4 option A;
+      // ledger `2026-09-15-d4-item-kind-contract`) ────────────────────────────────────────────
+      // A READY-MADE AUTHOR MAY NOT PUBLISH A PRICED ITEM THAT NAMES NO BOOKABLE THING. Checkout
+      // skips an item with no service on BOTH loops (`if (!item.service) continue;`,
+      // payments.routes.ts), so a price on such a row is a number nobody can ever charge — a claim
+      // (§13), and one a BUYER would read as part of what they were sold.
+      //
+      // THE AUTHOR BRANCH ONLY, and that is the whole point: `authored` is `isTripAuthor` on an
+      // authoring build (userId NULL by design), i.e. someone publishing a PRODUCT. An owner or an
+      // advisor jotting "dinner, about $60" on a real traveler's plan is writing a note, not
+      // publishing a price, and is deliberately untouched — their branch is byte-identical to
+      // before this lane.
+      //
+      // ONE PREDICATE, TWO CALLERS (§18 rule 1): the other is the PATCH rail in trips.routes.ts,
+      // which applies it to the MERGED row so the same item cannot acquire a price a moment later.
+      // It reads the row it is judging — the parsed `itemData`, whose link fields are exactly the
+      // ones the item-kind derivation reads — so the rule and the label a surface renders can never
+      // disagree. NEW WRITES ONLY: nothing is backfilled and no existing row is rewritten (§19b
+      // posture); a legacy priced free-text item simply renders as `recommended`, its price hidden
+      // by the reader rather than deleted from the row.
+      const authoringRefusal = authored ? authoredItemPriceRefusal(itemData) : null;
+      if (authoringRefusal) return res.status(400).json({ message: authoringRefusal });
       const item = await storage.createItineraryItem(itemData);
       logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
 
