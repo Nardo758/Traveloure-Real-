@@ -70,6 +70,10 @@ import { getAcquisitionRef } from "@/lib/acquisition";
 import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
 import { trackEvent } from "@/lib/analytics";
 import { itemKindChipFor } from "@shared/item-kind";
+// D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): which count control this
+// line draws — units, seats, or none — is the SERVER'S OWN derivation, read here rather than
+// restated. A second copy of "does a stay have a quantity?" is the drift class §18 rule 1 names.
+import { archetypeAsks, cartUnitLabel } from "@shared/cart-quantity";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -95,6 +99,9 @@ interface CartItem {
     price: string | null;
   } | null;
   quantity: number;
+  // D-14 / ruling 83: the traveler's own head-count for this line. NULL = never answered — the
+  // control renders EMPTY and the D7 gate does not apply; it is never shown as 0 or 1 (§13).
+  partySize?: number | null;
   scheduledDate: string | null;
   slotId?: string | null;
   // Slot detail joined server-side (_enrichCartItems) — real times, never fabricated client-side.
@@ -114,6 +121,10 @@ interface CartItem {
     // §17 property rooms (migration 153): 'per_night' marks a room-stay item —
     // charge is nights × price, never quantity × price. NULL/undefined = flat price.
     pricingUnit?: string | null;
+    // D-14 archetype facts, read by `archetypeAsks`. Both already ride this payload (the cart
+    // read serves the listing row minus serviceFile/joinLink) — nothing new is published.
+    productShape?: string | null;
+    deliveryMethod?: string | null;
     // B1 (ruling 81): the listing's surcharge mode — non-'none' means this line prompts for a
     // pickup location so a travel surcharge can be applied honestly.
     surchargeMode?: string | null;
@@ -266,16 +277,29 @@ function checkoutAnalyticsData(items: CartItem[]) {
  *
  * NO PRICE, FEE OR TOTAL IS TOUCHED HERE (§14) — those stay server-derived, exactly as before.
  */
+/**
+ * D-14 (ruling 2026-09-15): THIS IS THE LINE'S ONE COUNT CONTROL, AND WHAT IT COUNTS IS THE
+ * ARCHETYPE'S ANSWER, NOT THIS COMPONENT'S. On an ordinary listing it counts UNITS and writes
+ * `quantity`; on a seat-shaped place service it counts SEATS and writes `party_size`, from which
+ * the SERVER derives the unit count (`@shared/cart-quantity`). The control is the same control —
+ * same testids, same normaliser — because it is the same question wearing the archetype's noun.
+ */
 function CartQuantityStepper({
   item,
   pending,
+  value,
+  countLabel,
   onCommit,
 }: {
   item: CartItem;
   pending: boolean;
-  onCommit: (quantity: number) => void;
+  /** The number this control shows. Defaults to the line's unit count. */
+  value?: number | null;
+  /** The noun the control is counting, for its accessible labels. */
+  countLabel: string;
+  onCommit: (count: number) => void;
 }) {
-  const current = clampCartQuantity(item.quantity || MIN_CART_QUANTITY);
+  const current = clampCartQuantity((value ?? item.quantity) || MIN_CART_QUANTITY);
   const [draft, setDraft] = useState<string>(String(current));
   const [editing, setEditing] = useState(false);
 
@@ -296,7 +320,7 @@ function CartQuantityStepper({
         variant="outline"
         size="icon"
         className="h-8 w-8"
-        aria-label="Decrease quantity"
+        aria-label={`Decrease ${countLabel.toLowerCase()}`}
         onClick={() => onCommit(clampCartQuantity(current - 1))}
         disabled={current <= MIN_CART_QUANTITY || pending}
         data-testid={`button-decrease-${item.id}`}
@@ -311,7 +335,7 @@ function CartQuantityStepper({
           pattern="[0-9]*"
           autoComplete="off"
           maxLength={MAX_CART_QUANTITY_DIGITS}
-          aria-label="Quantity"
+          aria-label={countLabel}
           value={draft}
           disabled={pending}
           className="w-full min-w-0 rounded-md border border-input bg-transparent px-1 py-1 text-center text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
@@ -341,13 +365,90 @@ function CartQuantityStepper({
         variant="outline"
         size="icon"
         className="h-8 w-8"
-        aria-label="Increase quantity"
+        aria-label={`Increase ${countLabel.toLowerCase()}`}
         onClick={() => onCommit(clampCartQuantity(current + 1))}
         disabled={pending}
         data-testid={`button-increase-${item.id}`}
       >
         <Plus className="w-3 h-3" />
       </Button>
+    </div>
+  );
+}
+
+/**
+ * D-14: THE PARTY QUESTION, for the archetypes that ask it INSTEAD of a unit count — a stay and a
+ * bundle, each of which is ONE booking however many people are on it.
+ *
+ * IT MAY BE EMPTY, AND EMPTY IS AN ANSWER (§13, ruling 83). `cart_items.party_size` is NULL until
+ * the traveler tells us, and NULL means the D7 party-size gate does not apply — so the field is
+ * blank rather than pre-filled with 1 or 2, and clearing it writes an explicit `null` rather than
+ * a number nobody stated. No price, fee or total is touched here: a party count is never a
+ * multiplier (§14), which is exactly what separates it from the stepper above.
+ */
+function CartPartyField({
+  item,
+  pending,
+  onCommit,
+}: {
+  item: CartItem;
+  pending: boolean;
+  onCommit: (partySize: number | null) => void;
+}) {
+  const stored = typeof item.partySize === "number" && item.partySize > 0 ? String(item.partySize) : "";
+  const [draft, setDraft] = useState<string>(stored);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(stored);
+  }, [stored, editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const digits = draft.replace(/[^0-9]/g, "");
+    const next = digits === "" ? null : clampCartQuantity(Number(digits));
+    setDraft(next === null ? "" : String(next));
+    if (String(next ?? "") !== stored) onCommit(next);
+  };
+
+  return (
+    <div className="flex items-center justify-end gap-2 mt-2">
+      <label className="text-xs text-muted-foreground" htmlFor={`cart-party-input-${item.id}`}>
+        Guests
+      </label>
+      <input
+        id={`cart-party-input-${item.id}`}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        maxLength={MAX_CART_QUANTITY_DIGITS}
+        aria-label="Guests"
+        placeholder="—"
+        value={draft}
+        disabled={pending}
+        className="w-14 rounded-md border border-input bg-transparent px-1 py-1 text-center text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+        onFocus={(e) => {
+          setEditing(true);
+          e.currentTarget.select();
+        }}
+        onChange={(e) => {
+          setEditing(true);
+          setDraft(e.target.value.replace(/[^0-9]/g, ""));
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setEditing(false);
+            setDraft(stored);
+          }
+        }}
+        data-testid={`cart-party-input-${item.id}`}
+      />
     </div>
   );
 }
@@ -833,9 +934,11 @@ export default function CartPage() {
     }
   }, [flowStep, cart?.items?.length, isLoading, toast, checkoutPaymentIntent]);
 
+  // D-14: ONE line-update mutation, two fields. Which of `quantity` / `partySize` a line's control
+  // writes is decided by `archetypeAsks` at the render below — never by a second mutation.
   const updateItemMutation = useMutation({
-    mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
-      return apiRequest("PATCH", `/api/cart/${id}`, { quantity });
+    mutationFn: async ({ id, patch }: { id: string; patch: { quantity?: number; partySize?: number | null } }) => {
+      return apiRequest("PATCH", `/api/cart/${id}`, patch);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
@@ -2012,6 +2115,10 @@ export default function CartPage() {
                     const roomStay = getRoomStay(item);
                     const roomRate = parseFloat(item.service?.price || "0");
                     const roomTotal = roomStay ? roomRate * roomStay.nights : null;
+                    // D-14: the line's own archetype answer — which count control to draw, and the
+                    // honest unit noun where it draws none.
+                    const lineAsks = archetypeAsks(item.service);
+                    const lineUnitLabel = cartUnitLabel(lineAsks.rule) ?? "1";
 
                     return (
                     <Card key={item.id} data-testid={`cart-item-${item.id}`} className={slotFlagged ? "border-destructive/60" : undefined}>
@@ -2083,18 +2190,39 @@ export default function CartPage() {
                             <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
                               {formatPrice(roomStay ? (roomTotal || 0) : parseFloat(item.service?.price || "0"))}
                             </p>
-                            {roomStay ? (
-                              // A room stay is one room for the whole date range — quantity
-                              // is meaningless here (the server ignores it, see resolveItemBaseAmount)
-                              // so no stepper is shown, just an honest "1 room" label.
-                              <p className="text-xs text-muted-foreground mt-2" data-testid={`text-room-unit-${item.id}`}>
-                                1 room
-                              </p>
-                            ) : (
+                            {/* ── D-14 (ruling 2026-09-15): THE ARCHETYPE CHOOSES THE CONTROL ──────────
+                                Which question this line asks is the ONE server-side derivation, read
+                                here and never restated: a stay or a bundle is ONE unit whose GUESTS
+                                vary; a scheduled place service is sold by the SEAT (so its seat count
+                                IS its unit count, derived server-side); an artifact or async listing
+                                is delivered once and asks neither. The previous test on `roomStay`
+                                caught only the per-night case, so a bundle still drew a unit stepper
+                                that multiplied its price. */}
+                            {lineAsks.asksUnits ? (
                               <CartQuantityStepper
                                 item={item}
                                 pending={updateItemMutation.isPending}
-                                onCommit={(quantity) => updateItemMutation.mutate({ id: item.id, quantity })}
+                                value={lineAsks.unitsFollowParty ? (item.partySize ?? item.quantity) : item.quantity}
+                                countLabel={lineAsks.unitsFollowParty ? "Seats" : "Quantity"}
+                                onCommit={(count) =>
+                                  updateItemMutation.mutate({
+                                    id: item.id,
+                                    patch: lineAsks.unitsFollowParty ? { partySize: count } : { quantity: count },
+                                  })
+                                }
+                              />
+                            ) : (
+                              // No unit control at all — the honest count instead, from the same
+                              // module, so the label and the rule cannot disagree.
+                              <p className="text-xs text-muted-foreground mt-2" data-testid={`text-room-unit-${item.id}`}>
+                                {lineUnitLabel}
+                              </p>
+                            )}
+                            {lineAsks.asksParty && !lineAsks.unitsFollowParty && (
+                              <CartPartyField
+                                item={item}
+                                pending={updateItemMutation.isPending}
+                                onCommit={(partySize) => updateItemMutation.mutate({ id: item.id, patch: { partySize } })}
                               />
                             )}
                           </div>

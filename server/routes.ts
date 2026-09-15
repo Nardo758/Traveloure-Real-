@@ -180,6 +180,11 @@ import transportHubRoutes from "./routes/transport-hub.routes";
 import transportLegsRoutes from "./routes/transport-legs.routes";
 import { resolveItemEventLink } from "./services/item-event-link.service";
 import { authoredItemPriceRefusal } from "@shared/item-kind";
+// D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): `cart_items.quantity` is
+// UNITS of the listing (the price multiplier) and `cart_items.party_size` is the PARTY fact. Which
+// question a cart rail admits is the ONE derivation in `@shared/cart-quantity`, called by all three
+// write rails below so they cannot disagree (§18 rule 1).
+import { archetypeAsks, resolveCartLineCounts, PINNED_UNIT_QUANTITY } from "@shared/cart-quantity";
 import { enforceTripComparisonRetention } from "./services/comparison-retention.service";
 // LD 41 (ledger `2026-09-05-trip-pass-run-gate`): the ONE optimizer run-authorization predicate,
 // shared by the comparison create and regenerate handlers below.
@@ -678,6 +683,31 @@ const optimizerRunAuthorizationDeps: OptimizerRunAuthorizationDeps = {
 };
 
 // hint: Logic changed on both sides. Requires understanding intent of each change.
+/**
+ * D-14 / ruling 83: read a `partySize` off a cart write body. ONE parser for all three cart write
+ * rails (`POST /api/cart`, `POST /api/cart/items`, `PATCH /api/cart/:id`) so the three cannot
+ * validate the same field three ways (§18 rule 1).
+ *
+ * Three OUTCOMES, deliberately distinct (§13): the key was ABSENT (do not touch a saved answer),
+ * the key was an explicit `null` (the traveler cleared it — "never told us" again), or it is a
+ * positive integer. Anything else is refused rather than coerced. No amount or rate is derived
+ * from it anywhere (§14) — it is a booking input like `scheduledDate`.
+ */
+function readCartPartySize(
+  body: any,
+): { ok: true; present: boolean; value: number | null } | { ok: false; message: string } {
+  if (!body || !Object.prototype.hasOwnProperty.call(body, "partySize")) {
+    return { ok: true, present: false, value: null };
+  }
+  const raw = body.partySize;
+  if (raw === null) return { ok: true, present: true, value: null };
+  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+  if (!Number.isInteger(n) || n < 1 || n > 100000) {
+    return { ok: false, message: "partySize must be a positive integer, or null to clear" };
+  }
+  return { ok: true, present: true, value: n };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -6560,11 +6590,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!serviceId && !customVenueId) {
         return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
       }
+      // Hoisted out of the block below (was block-scoped) — the D-14 admission further down reads
+      // the resolved listing row for its archetype facts.
+      let itemsService: any = null;
       if (serviceId) {
         const service = await storage.getProviderServiceById(serviceId);
         if (!service) {
           return res.status(404).json({ message: "Service not found" });
         }
+        itemsService = service;
         // The SECOND live add-to-cart rail (ledger `2026-09-13-cart-priceless-gap`). It takes the
         // same `serviceId` and calls the same single cart writer as `POST /api/cart`, so it is
         // reachable with a priceless listing in exactly the same way and carries the same
@@ -6586,10 +6620,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
+      // D-14: the SECOND live add rail carries the SAME admission as `POST /api/cart` — one
+      // derivation, one more caller (§18 rule 1). A service was resolved above when `serviceId` is
+      // present; a custom-venue add passes `null` facts and keeps today's behaviour exactly.
+      const itemsPartyRead = readCartPartySize(req.body);
+      if (!itemsPartyRead.ok) {
+        return res.status(400).json({ message: itemsPartyRead.message });
+      }
+      const itemsCounts = resolveCartLineCounts(itemsService, {
+        quantity: quantity == null ? undefined : Number(quantity),
+        partySize: itemsPartyRead.present ? itemsPartyRead.value : undefined,
+      });
+      if (!itemsCounts.ok) {
+        return res.status(400).json({ message: itemsCounts.message, reason: itemsCounts.reason, rule: itemsCounts.rule });
+      }
       const item = await cartProjection.addToCart(userId, {
         serviceId: serviceId || undefined,
         customVenueId: customVenueId || undefined,
-        quantity: quantity || 1,
+        quantity: itemsCounts.quantity ?? PINNED_UNIT_QUANTITY,
+        ...(itemsPartyRead.present ? { partySize: itemsCounts.partySize ?? null } : {}),
+        unitsPinnedToOne: !archetypeAsks(itemsService).asksUnits,
         tripId,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
@@ -8658,12 +8708,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // ── D-14 (ruling 2026-09-15): WHICH COUNT THIS ARCHETYPE ACCEPTS ──────────────────────
+      // `quantity` is UNITS of the listing and prices the line `rate × quantity`; `party_size` is
+      // the traveler's head-count and prices nothing. `@shared/cart-quantity` is the ONE place that
+      // says which of the two an archetype asks for — a stay and a bundle are ONE unit whose party
+      // varies, a scheduled place service is sold by the SEAT (so its unit count IS its party
+      // count), and an artifact/async listing is delivered once and asks neither.
+      //
+      // REFUSED, NOT CLAMPED (§13): a multi-unit body on a pinned archetype is a 400 naming the
+      // rule, because silently reducing it would change what the traveler is charged without
+      // telling them. A seat body's `quantity` is SERVER-DERIVED from the party answer (§14's
+      // posture applied to the multiplier) — never read off the body.
+      const partyRead = readCartPartySize(req.body);
+      if (!partyRead.ok) {
+        return res.status(400).json({ message: partyRead.message });
+      }
+      const counts = resolveCartLineCounts(service, {
+        quantity: quantity == null ? undefined : Number(quantity),
+        partySize: partyRead.present ? partyRead.value : undefined,
+      });
+      if (!counts.ok) {
+        return res.status(400).json({ message: counts.message, reason: counts.reason, rule: counts.rule });
+      }
+
       const item = await cartProjection.addToCart(userId, {
         serviceId: serviceId || undefined,
         customVenueId: customVenueId || undefined,
         ...(isContentAdd ? { contentType, contentId, contentMeta: safeContentMeta } : {}),
         ...(roomStayMeta ? { contentMeta: roomStayMeta } : {}),
-        quantity: quantity || 1,
+        quantity: counts.quantity ?? PINNED_UNIT_QUANTITY,
+        ...(partyRead.present ? { partySize: counts.partySize ?? null } : {}),
+        // A re-add of a units-pinned archetype must not INCREMENT the stored count: adding a
+        // villa to the cart twice is the same one booking, and the dedupe branch's `+ 1` is
+        // exactly how D-14's defect reached a charge.
+        unitsPinnedToOne: !archetypeAsks(service).asksUnits,
         tripId,
         scheduledDate: slotScheduledDate ?? (scheduledDate ? new Date(scheduledDate) : undefined),
         ...(validatedSlotId ? { slotId: validatedSlotId } : {}),
@@ -8713,28 +8791,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       // T2 (ruling 83): the traveler's CONFIRMED party count — the D7 party-size eligibility gate's
-      // trigger-input. Validated to a positive integer (or null to clear); the gate DERIVES nothing
-      // from a body amount/rate (§14) — this is a booking input like quantity. Only touched when the
-      // key is present, so an ordinary quantity/notes/pickup PATCH never disturbs a saved party size.
-      let partySizeUpdate: { partySize?: number | null } = {};
-      if (Object.prototype.hasOwnProperty.call(req.body, "partySize")) {
-        const raw = req.body.partySize;
-        if (raw === null) {
-          partySizeUpdate = { partySize: null };
-        } else {
-          const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
-          if (!Number.isInteger(n) || n < 1 || n > 100000) {
-            return res.status(400).json({ message: "partySize must be a positive integer, or null to clear" });
-          }
-          partySizeUpdate = { partySize: n };
-        }
+      // trigger-input. Validated to a positive integer (or null to clear) by the ONE parser both
+      // add rails use; the gate DERIVES nothing from a body amount/rate (§14) — this is a booking
+      // input like quantity. Only touched when the key is present, so an ordinary
+      // quantity/notes/pickup PATCH never disturbs a saved party size.
+      const partyRead = readCartPartySize(req.body);
+      if (!partyRead.ok) {
+        return res.status(400).json({ message: partyRead.message });
+      }
+      // ── D-14 (ruling 2026-09-15): THE SAME ADMISSION THE ADD RAILS RUN ────────────────────
+      // The archetype facts live on the listing this line names, so the row is read here (a line
+      // naming no listing — a content row, a custom venue — passes `null` facts and keeps today's
+      // behaviour byte-for-byte). A multi-unit PATCH on a stay / bundle / artifact is REFUSED with
+      // the rule named, never clamped (§13); on a seat-shaped listing a stated `partySize` DERIVES
+      // the unit count, and clearing it returns the line to one unit.
+      const patchService = existing.serviceId
+        ? await storage.getProviderServiceById(existing.serviceId)
+        : null;
+      const counts = resolveCartLineCounts(patchService ?? null, {
+        quantity: quantity == null ? undefined : Number(quantity),
+        partySize: partyRead.present ? partyRead.value : undefined,
+      });
+      if (!counts.ok) {
+        return res.status(400).json({ message: counts.message, reason: counts.reason, rule: counts.rule });
       }
       const updated = await cartProjection.updateCartItem(req.params.id, {
-        quantity,
+        quantity: counts.quantity,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
         ...pickupLocationUpdate,
-        ...partySizeUpdate,
+        ...(partyRead.present ? { partySize: counts.partySize ?? null } : {}),
       });
       res.json(updated);
     } catch (err) {
