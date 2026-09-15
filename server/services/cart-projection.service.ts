@@ -365,10 +365,15 @@ async function deleteProjectionFor(itemId: string): Promise<number> {
 // has. Section 2 writes `quantity: 1`, `customVenueId: null`, and — for an item with no
 // `providerServiceId` — a `contentType: "itinerary_item"` content shape. Therefore:
 //
-//   • quantity > 1   — REFUSED. `resolveItemBaseAmount` prices a line `rate * quantity`, so a
-//                      silent 3 -> 1 is a silent change to what the traveler is charged. What a
-//                      multi-unit line SHOULD become is punchlist D-14 (`quantity` is units of
-//                      the listing, NOT a party count) and is deliberately NOT decided here.
+//   • quantity > 1   — STILL REFUSED, and now for a NAMED reason rather than an undecided one.
+//                      `resolveItemBaseAmount` prices a line `rate * quantity`, so a silent 3 -> 1
+//                      is a silent change to what the traveler is charged. D-14 is ANSWERED
+//                      (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): `quantity`
+//                      is UNITS of the listing and `party_size` is the party. But `itinerary_items`
+//                      has NO unit column, so the plan cannot CARRY a multi-unit line faithfully —
+//                      Section 2 would write `quantity: 1` back over it on the next sync. Adding
+//                      that column is punchlist D-41 and needs the decision-maker; until it lands
+//                      the refusal stands and is reported per line (s13), never silently reduced.
 //   • custom venue   — REFUSED. `itinerary_items` has no column pointing at `custom_venues`, so
 //                      the line's own subject could not survive the round trip.
 //   • content line   — REFUSED. A gem/hotel/activity row names a piece of CONTENT, not a

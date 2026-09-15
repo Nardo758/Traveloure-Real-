@@ -3845,7 +3845,7 @@ export class DatabaseStorage implements IStorage {
     return enriched;
   }
 
-  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; slotId?: string; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
+  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; partySize?: number | null; unitsPinnedToOne?: boolean; tripId?: string; scheduledDate?: Date; slotId?: string; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
     if (!userId && !item.guestSessionId) {
       throw new Error("Either userId or guestSessionId is required");
     }
@@ -3884,9 +3884,22 @@ export class DatabaseStorage implements IStorage {
       // the additive-quantity behavior unchanged.
       const isRoomStayUpdate =
         item.contentMeta && typeof (item.contentMeta as Record<string, unknown>).checkIn === "string";
+      // D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): an archetype that asks
+      // NO unit count — a stay, a bundle, an artifact — is ONE unit however many times it is added.
+      // The `+ 1` below is how a villa added twice came to be priced twice (`rate × quantity`), so a
+      // pinned archetype's re-add SETS the count to one rather than incrementing it. The caller
+      // decides which archetype that is through the ONE derivation (`@shared/cart-quantity`); this
+      // writer never re-derives it (§18 rule 1). Every other listing keeps the additive behaviour.
       const [updated] = await db.update(cartItems)
         .set({
-          quantity: isRoomStayUpdate ? (existing.quantity || 1) : (existing.quantity || 1) + (item.quantity || 1),
+          quantity: item.unitsPinnedToOne
+            ? 1
+            : isRoomStayUpdate
+              ? (existing.quantity || 1)
+              : (existing.quantity || 1) + (item.quantity || 1),
+          // The traveler's party answer rides a re-add only when they gave one — an absent key
+          // never clears a saved count (§13, ruling 83's own posture).
+          ...(item.partySize !== undefined ? { partySize: item.partySize } : {}),
           // C3: re-adding with a picked slot attaches (or replaces) the slot + its derived date.
           ...(item.slotId ? { slotId: item.slotId, scheduledDate: item.scheduledDate } : {}),
           ...(isRoomStayUpdate ? { contentMeta: item.contentMeta } : {}),
@@ -3906,6 +3919,9 @@ export class DatabaseStorage implements IStorage {
       contentMeta: item.contentMeta || {},
       experienceSlug: item.experienceSlug,
       quantity: item.quantity || 1,
+      // D-14: written at birth when the add rail asked for it; `undefined` leaves the column NULL,
+      // which is ruling 83's honest "the traveler never told us".
+      ...(item.partySize !== undefined ? { partySize: item.partySize } : {}),
       tripId: item.tripId,
       scheduledDate: item.scheduledDate,
       slotId: item.slotId || null,

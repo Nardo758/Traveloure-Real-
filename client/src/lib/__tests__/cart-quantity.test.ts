@@ -179,13 +179,19 @@ describe("the typed cart box has ONE write path", () => {
       src.includes("parseCartQuantityInput") && src.includes("commitCartQuantity"),
       "and it normalises through the one shared module, not a local regex",
     );
+    // REPAIRED, NOT DELETED (D-14, ledger `2026-09-15-d14-quantity-is-units`). This asserted the
+    // commit handler's exact text — `onCommit={(quantity) => …mutate({ id: item.id, quantity })}` —
+    // which D-14 changed when the stepper learned to count SEATS as well as units and the mutation
+    // started taking a `patch`. The INVARIANT it was written for is untouched and is what is
+    // asserted now: the stepper's only write is that one existing mutation, and there is no second
+    // PATCH rail for a count.
     assert.ok(
-      /onCommit=\{\(quantity\) => updateItemMutation\.mutate\(\{ id: item\.id, quantity \}\)\}/.test(src),
-      "the stepper's only write is the EXISTING quantity mutation",
+      /onCommit=\{\((quantity|count)\) =>\s*updateItemMutation\.mutate\(/.test(src),
+      "the stepper's only write is the EXISTING cart-line mutation",
     );
     assert.ok(
-      !/apiRequest\("PATCH", `\/api\/cart\/\$\{item\.id\}`, \{ quantity/.test(src),
-      "no second PATCH rail for quantity",
+      !/apiRequest\("PATCH", `\/api\/cart\/\$\{item\.id\}`, \{ (quantity|partySize)/.test(src),
+      "no second PATCH rail for a count",
     );
     // Both controls go through the same clamp, so they cannot drift into two different bounds.
     assert.ok(

@@ -5,7 +5,9 @@ name: Cart Priceless Listing Gate
 # the cart at 201 and render as `subtotal "0.00"`, while `POST /api/bookings` refused the same
 # listing 400 — and `POST /api/checkout` then reached the Stripe call with nothing in front of
 # it. C1-C10 assert the refusal at every guarded rail, that a PRICED listing is unaffected, and
-# that an EMPTY cart is still genuinely zero.
+# that an EMPTY cart is still genuinely zero. A SECOND STEP on the same boot carries D-14's
+# archetype quantity admission (V1-V10, ledger `2026-09-15-d14-quantity-is-units`) — same booted
+# bundle, same throwaway database, one build.
 #
 # WHY ITS OWN WORKFLOW AND NOT A build.yml JOB. This suite needs a REAL booted server (the hole
 # was an HTTP status code), and a throwaway-DB boot of the production bundle needs
@@ -116,6 +118,20 @@ jobs:
       # with every assertion already passed. The flag cannot hide a failed assertion.
       - name: Priceless listing is refused at every cart rail (C1-C10)
         run: npx tsx --test --test-force-exit server/__tests__/cart-priceless-listing.http.test.ts
+        timeout-minutes: 15
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          JOURNEY_DB_WRITES_OK: '1'
+
+      # D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`). A SECOND STEP on this
+      # gate rather than a second workflow: it needs the same booted production bundle against the
+      # same throwaway Postgres, and the boot is the expensive half. Its failures name this step.
+      - name: Cart quantity means units, per archetype (V1-V10)
+        run: npx tsx --test --test-force-exit server/__tests__/cart-quantity-admission.http.test.ts
         timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
