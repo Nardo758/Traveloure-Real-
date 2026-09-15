@@ -293,9 +293,23 @@ describe("A3 — the call sites (a composition is worth what its callers are)", 
   it("S8 the reconciliation job derives the expected charge through the SAME helper", () => {
     assert.match(recon, /function expectedChargeForRow\(r: CartBookingRow\): number \{/);
     assert.match(recon, /travelerChargeForRow\(\{/);
-    // three call sites, one derivation
-    const uses = recon.match(/expectedChargeForRow\(r\)/g) ?? [];
-    assert.equal(uses.length, 3);
+    // ONE DERIVATION, EVERY CALLER — and the pin derives its count from the FILE rather than
+    // restating a literal (the operating procedure's static-pin rule). It previously asserted
+    // exactly three call sites and went red when D-11's `trip_booking_without_item` detector added
+    // a fourth honest one (ledger `2026-09-15-d11-no-item-booking-exception`); the invariant it was
+    // reaching for is that EVERY expected amount this job records is either the shared per-row
+    // helper or the PaymentIntent-level SUM the amount_mismatch branch builds from those same rows.
+    // A new detector therefore extends this for free; a second composition still fails, here and
+    // in the negative below.
+    const perRow = recon.match(/expectedAmount: round2\([^\n]*?\),/g) ?? [];
+    const viaHelper = perRow.filter((m) => m.includes("expectedChargeForRow(r)"));
+    const aggregate = perRow.filter((m) => /round2\(expected\),/.test(m));
+    assert.equal(
+      viaHelper.length + aggregate.length,
+      perRow.length,
+      `every cart-rail expectedAmount must come from expectedChargeForRow(r) or the amount_mismatch sum; found: ${perRow.join(" | ")}`,
+    );
+    assert.ok(viaHelper.length >= 3, `the shared per-row derivation lost callers: ${viaHelper.length}`);
     assert.ok(
       !/parseFloat\(r\.totalAmount \|\| "0"\) \+ parseFloat\(r\.platformFee \|\| "0"\)/.test(recon),
       "a second copy here is how the drift job indicts every honest booking",

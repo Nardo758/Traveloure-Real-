@@ -321,9 +321,12 @@ test("C9: the cart rail and the booking rail refuse in ONE voice, not two (§18 
   const cartRes = await api("/api/cart", buyerCookie, "POST", { serviceId: ids.nullPrice, quantity: 1 });
   const cartBody = (await cartRes.json()) as any;
 
+  // No `tripId`: D-11 (ledger `2026-09-15-d11-no-item-booking-exception`) refuses a trip-bearing
+  // body on this rail BEFORE the price gate, because the rail has no way to link the plan item the
+  // booking would pay for. That refusal is a different fact from this one and is pinned by B10;
+  // naming a trip here would prove the wrong refusal.
   const bookRes = await api("/api/bookings", buyerCookie, "POST", {
     serviceId: ids.nullPrice,
-    tripId: ids.trip,
     bookingDetails: {},
   });
   const bookBody = (await bookRes.json()) as any;

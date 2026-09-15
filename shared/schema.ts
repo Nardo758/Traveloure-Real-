@@ -8119,6 +8119,25 @@ export const RECONCILIATION_EXCEPTION_KINDS = [
    *  (§17 DETECT, DON'T REPAIR). It is a `warning`, not `critical` — the row may be perfectly fine;
    *  what is not fine is that nothing can tell. */
   "payment_provenance_unverified",
+  /** D-11 / ledger `2026-09-15-d11-no-item-booking-exception` — A TRIP-LEVEL OBLIGATION THE PLAN
+   *  DOES NOT KNOW ABOUT. The booking NAMES a trip (`trip_id`), no `itinerary_items.booking_id`
+   *  points at it, and it carries no `booking_details.noItemReason` naming one of the ratified
+   *  classes (`transport_commerce`, `expert_booking_request` — see `shared/no-item-booking.ts`).
+   *
+   *  Under LD 39 `itinerary_items` is the ONE store of a plan's contents and `booking_id`
+   *  (migration 159) is the item→booking link, so such a row is a purchase the slip renders with
+   *  no place in the itinerary: it cannot be reordered, the refund reversal edge
+   *  (`revertItemsOnRefund`, which keys on `booking_id`) cannot reach it, and it carries no
+   *  `origin`. The 2026-09-15 ruling makes it a MIGRATION EXCEPTION — marked and audited — rather
+   *  than a supported pattern, so an UNMARKED one is reported here.
+   *
+   *  `warning`, not `critical`: the money may be perfectly correct — this is a plan-integrity
+   *  fact, not a payment one. NO BACKFILL and NO REPAIR (§17/§19b): a row born before the marks
+   *  existed is indistinguishable from one born outside the classes, and inventing a reason for
+   *  it would manufacture exactly the fact the mark exists to state. In-flight claims
+   *  (`payment_pending`) and rows that are no longer obligations (`cancelled`/`expired`/
+   *  `refunded`) are out of the predicate — see `NO_ITEM_EXEMPT_STATUSES` in the job. */
+  "trip_booking_without_item",
   // ── READY-MADE rail (`ready_made_purchases`) ──────────────────────────────────────────────
   // The store lane (CLAUDE.md "ready_made_trips is the single store lane") was invisible to this
   // job for the same reason cart checkout once was: disjoint id spaces. A ready-made PaymentIntent
