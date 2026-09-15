@@ -21,19 +21,32 @@ permissions:
   contents: read
 
 jobs:
+  # Status context (for branch-protection required checks):
+  #   * `test-file-reachability (ratchet - new orphans fail)` — safe to mark as a REQUIRED
+  #     branch-protection check. Node built-ins only: no npm ci, no DB, no browser, seconds
+  #     to run, deterministic.
+  #
+  # RATCHET, not advisory (ledger `2026-09-15-orphan-ratchet`, punchlist D-44). The scan
+  # still PRINTS the whole orphan inventory, and now compares it against the recorded debt
+  # in `scripts/test-orphan-baseline.txt`: a NEW orphan fails, and a baseline row that has
+  # since been wired or deleted fails until its line is removed. The baseline may only
+  # SHRINK — it is recorded debt, never an allowlist (`2026-09-14-test-files-wired-orphans`:
+  # a suite leaves the orphan list by being RUN or by being GONE, never by being named an
+  # exception). It does not make the 233 rows it carries acceptable, and `e2e/` stays out of
+  # TEST_ROOTS by the same ruling, so no e2e spec is seen either way.
   test-file-reachability:
-    name: test-file-reachability (advisory inventory)
+    name: test-file-reachability (ratchet - new orphans fail)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      # Predicate fixtures run first. The inventory intentionally reports current
-      # orphans without failing; wiring those suites is outside this lane.
+      # Predicate fixtures run first (§18d): 7 reachability + 5 ratchet. A wrong predicate
+      # is invisible by construction, so the fixtures gate the scan and not the reverse.
       - name: Test-file reachability predicate self-test
         run: node scripts/check-test-files-wired.cjs --self-test
-      - name: Report test files not reached by CI workflows
+      - name: Test-file reachability ratchet (prints the inventory; fails on drift)
         run: node scripts/check-test-files-wired.cjs
 
   build:
