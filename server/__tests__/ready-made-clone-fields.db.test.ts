@@ -522,7 +522,13 @@ test("R1: the fulfilment tells the buyer exactly once — one bell row, one outb
   const body = `${m.subject}\n${m.text_body}`.toLowerCase();
   assert.ok(body.includes("placeholder dates"), "the copy says the dates are placeholders");
   assert.ok(body.includes("nothing in the plan is booked yet"), "the copy says nothing is booked");
-  for (const forbidden of ["finished trip", "your trip is booked", "we have booked", "confirmed booking"]) {
+  // D-2 (decision-maker ruling 2026-09-15, option A; ledger
+  // `2026-09-15-d2-one-revision-not-a-consultation`): the purchase includes ONE asynchronous
+  // REVISION and nothing else. `ready_made_purchases` stores `revision_status` and has no
+  // consultation column, rail or scheduling, so "consult" in this email would be selling something
+  // no code path can deliver — the same §13 lie as the booked/finished claims beside it.
+  assert.ok(body.includes("one revision"), "the copy names the one entitlement the row actually stores");
+  for (const forbidden of ["finished trip", "your trip is booked", "we have booked", "confirmed booking", "consult"]) {
     assert.ok(!body.includes(forbidden), `the copy must never say "${forbidden}"`);
   }
 

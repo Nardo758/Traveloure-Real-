@@ -10145,7 +10145,10 @@ export const readyMadePurchases = pgTable("ready_made_purchases", {
   status: varchar("status", { length: 20 }).notNull().default("paid"), // CHECK paid|cloned|refunded|revoked
   purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
   // Concierge revision entitlement (ledger 2026-08-22-concierge-revision, migration 252).
-  // Every ready-made purchase includes ONE consultation + ONE revision from the selling expert.
+  // Every ready-made purchase includes ONE asynchronous REVISION from the selling expert — and that
+  // is the whole entitlement (ruling 2026-09-15, punchlist D-2, ledger
+  // `2026-09-15-d2-one-revision-not-a-consultation`). There is NO consultation column here and none
+  // is added: the platform could never schedule, track or deliver one, so no surface promises one.
   // App-enforced vocabulary, NO DB CHECK (publish-trap rule; same posture as `status` above):
   // NULL = available (never requested), 'requested' = buyer asked, 'in_progress' = expert working,
   // 'delivered' = revision approved. Additive-nullable → behavior-neutral on apply.

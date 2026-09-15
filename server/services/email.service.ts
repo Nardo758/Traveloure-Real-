@@ -298,8 +298,11 @@ export function buildOccasionReminderEmailPayload(params: OccasionReminderParams
 // in their account, carrying PLACEHOLDER DATES they re-date themselves. It is NOT a finished trip
 // and NOTHING in it is booked; the clone deliberately carries no booking linkage at all
 // (ledger 2026-09-13-clone-carries-content-not-state). Neither builder may say or imply otherwise,
-// and neither states anything about what happens next beyond the revision/consult entitlement,
-// which IS true of every purchase (ledger 2026-08-22-concierge-p3 (a)).
+// and neither states anything about what happens next beyond the ONE REVISION entitlement, which IS
+// true of every purchase (ledger 2026-08-22-concierge-p3 (a); narrowed to the revision alone by the
+// decision-maker ruling of 2026-09-15 — punchlist D-2, ledger
+// `2026-09-15-d2-one-revision-not-a-consultation`: only the revision has storage and a rail, so a
+// consultation is never promised here).
 
 export interface ReadyMadeDeliveredEmailParams {
   firstName?: string | null;
@@ -354,8 +357,8 @@ export function buildReadyMadeDeliveredEmailPayload(params: ReadyMadeDeliveredEm
         change or remove.
       </p>
       <p style="color: #374151;">
-        Your purchase also includes one consultation and one revision with the expert who built it.
-        You can request those from the plan whenever you are ready.
+        Your purchase also includes one revision with the expert who built it. You can request it
+        from the plan whenever you are ready.
       </p>
       <a href="${planUrl}"
          style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
@@ -383,7 +386,7 @@ export function buildReadyMadeDeliveredEmailPayload(params: ReadyMadeDeliveredEm
     `It opens on placeholder dates — set your real dates on the plan and everything moves with them.`,
     `Nothing in the plan is booked yet: each item is a recommendation you can book, change or remove.`,
     ``,
-    `Your purchase also includes one consultation and one revision with the expert who built it.`,
+    `Your purchase also includes one revision with the expert who built it.`,
     ``,
     `Open your plan: ${planUrl}`,
   ].join("\n");
