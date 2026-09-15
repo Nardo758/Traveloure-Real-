@@ -4,6 +4,7 @@
  *
  * UNDERSTOOD INVOCATION SHAPES
  * - `tsx --test <file|directory|glob>` (including `npx tsx` and env prefixes)
+ * - `node --test <file|directory|glob>`
  * - `vitest run <file|directory|glob>` (including `npx vitest`)
  * - `playwright test [file|directory|glob|path-substring]`, `--project`, and
  *   `-c|--config <config>`; a selector-free invocation reaches the config's
@@ -11,7 +12,17 @@
  * - direct paths, directory prefixes, basic shell globs (`*`, `**`, `?`)
  * - `npm test`, `npm run <script>`, and recursively referenced npm scripts
  * - YAML inline and block-scalar `run:` commands, shell continuations, and
- *   multiple commands separated by newlines, `&&`, or `;`
+ *   multiple commands separated by newlines, `&&`, `||`, `;`, `|` or a redirect
+ *
+ * WHAT COUNTS AS AN INVOCATION (the 2026-09-15 repair — see CANNOT DETECT)
+ * A selector is read ONLY from a command segment whose LEADING command is a
+ * runner. A `run:` block is split into lines; heredoc bodies and `#` comment
+ * lines are dropped; each line is split at top-level `&&`, `||`, `;`, `|`,
+ * `<`, `>`, `>>`, `(` and `)` with quotes respected; leading `NAME=value`
+ * assignments and wrapper commands (`npx`, `pnpm`, `yarn`, `env`, `time`, …)
+ * are skipped to find that leading command. A runner name appearing anywhere
+ * else — inside an `echo`/`printf` string, a `::error::` annotation, a comment
+ * or a heredoc — yields NO selectors.
  *
  * CANNOT DETECT
  * - generated/eval'd commands, shell variables that contain selectors, custom
@@ -19,10 +30,35 @@
  *   test discovery changed at runtime
  * - config values that are computed rather than literal `testDir`/`testMatch`
  * - shell glob features beyond `*`, `**`, and `?`
+ * - PROSE THAT NAMES A RUNNER WAS A BLIND SPOT UNTIL 2026-09-15 (V-30). A
+ *   failure-summary `echo` containing "npx tsx --test server/__tests__/<file>"
+ *   was parsed as a real invocation, and the sentence's later words — among
+ *   them the bare noun `server` — became directory-prefix selectors, so every
+ *   suite under `server/` read as reachable (477/507 reachable, 30 orphans;
+ *   the truth was 274 reachable, 233 orphans). The parser now ASSUMES a
+ *   selector appears only in a real invocation, on a line that is not an
+ *   echo/printf/annotation/comment/heredoc body, at the head of its own
+ *   command segment. That assumption is the predicate: a runner invoked
+ *   through a shell construct this tokenizer does not model (an `eval`, a
+ *   `$(...)` substitution, a `for`-loop body written on one line after `do`)
+ *   is NOT read, and its selectors are missed rather than invented.
+ * - A BARE DIRECTORY-PREFIX SELECTOR MUST NAME A DIRECTORY THAT EXISTS in the
+ *   repository, which removes prose nouns (`against`, `local`, `dev`) but NOT
+ *   a real root name such as `server`. It is a second filter, not the fix:
+ *   the invocation-position rule above is what removes `server`.
+ * - `TEST_ROOTS` IS `server`, `shared`, `client`, `playwright` — `e2e/` IS NOT
+ *   SCANNED, so no `e2e/` spec is counted as reachable OR as an orphan (the
+ *   ten `e2e/specs/*.spec.ts` files are invisible to this inventory). They do
+ *   have a real, schedule-only CI reach through `playwright.e2e.config.ts`'s
+ *   `testDir` (`npm run test:e2e:staging`), so adding the root would move both
+ *   the numerator and the denominator. Widening the inventory's scope is a
+ *   decision about what it MEASURES and is left to a ruling; the limit is
+ *   stated here rather than silently closed.
  *
  * This is intentionally an advisory inventory: current orphans are printed and
- * the normal scan exits 0. `--self-test` is the predicate gate and exits nonzero
- * on a broken fixture.
+ * the normal scan exits 0. That exit posture is unchanged by the 2026-09-15
+ * repair — this lane corrected WHAT the guard reports, not whether it blocks.
+ * `--self-test` is the predicate gate and exits nonzero on a broken fixture.
  *
  * Node built-ins only. Self-test: node scripts/check-test-files-wired.cjs --self-test
  */
@@ -33,6 +69,14 @@ const ROOT = path.resolve(__dirname, "..");
 const WORKFLOW_DIR = path.join(ROOT, ".github", "workflows");
 const TEST_ROOTS = ["server", "shared", "client", "playwright"];
 const TEST_RE = /\.(?:test\.ts|test\.tsx|spec\.ts)$/;
+
+/** Commands that merely wrap another command; the runner is what follows. */
+const WRAPPERS = new Set([
+  "npx", "pnpm", "yarn", "bun", "bunx", "exec", "env", "time", "sudo",
+  "xvfb-run", "cross-env", "dotenv", "command", "--",
+]);
+const ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const RUNNERS = new Set(["tsx", "node", "vitest", "playwright"]);
 
 function posix(value) {
   return value.replaceAll(path.sep, "/").replace(/^\.\//, "");
@@ -92,12 +136,81 @@ function shellWords(text) {
   return words;
 }
 
+/**
+ * Drop heredoc bodies and comment lines, join shell continuations, and return
+ * the remaining executable lines of a `run:` script.
+ */
+function scriptLines(command) {
+  const joined = command.replace(/\\[ \t]*\n[ \t]*/g, " ");
+  const out = [];
+  let heredoc = null;
+  for (const raw of joined.split("\n")) {
+    const line = raw.trim();
+    if (heredoc !== null) {
+      if (line === heredoc) heredoc = null;
+      continue;
+    }
+    if (!line || line.startsWith("#")) continue;
+    const opener = line.match(/<<-?\s*(["']?)([A-Za-z_][A-Za-z0-9_]*)\1/);
+    if (opener) {
+      heredoc = opener[2];
+      continue;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+/** Split one shell line at top-level control operators, respecting quotes. */
+function splitSegments(line) {
+  const segments = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quote) {
+      if (ch === "\\" && quote === '"') {
+        current += ch + (line[++i] ?? "");
+        continue;
+      }
+      current += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "\\") {
+      current += ch + (line[++i] ?? "");
+      continue;
+    }
+    if (ch === "&" || ch === "|" || ch === ";" || ch === ">" || ch === "<" || ch === "(" || ch === ")") {
+      segments.push(current);
+      current = "";
+      if ((ch === "&" || ch === "|" || ch === ">") && line[i + 1] === ch) i++;
+      continue;
+    }
+    current += ch;
+  }
+  segments.push(current);
+  return segments.map((segment) => segment.trim()).filter(Boolean);
+}
+
 function commandSegments(command) {
-  return command
-    .replace(/\\\s*\n/g, " ")
-    .split(/\n|&&|;/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("#"));
+  return scriptLines(command).flatMap((line) => splitSegments(line));
+}
+
+/** The first token that is a command name, skipping assignments and wrappers. */
+function commandHead(words) {
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    if (ASSIGNMENT_RE.test(word)) continue;
+    if (WRAPPERS.has(word)) continue;
+    return { name: word, index: i };
+  }
+  return null;
 }
 
 function globRegex(glob) {
@@ -119,11 +232,25 @@ function globRegex(glob) {
   return new RegExp(`${out}$`);
 }
 
-function selectorMatches(file, selector, kind) {
+function realDirExists(root) {
+  return (candidate) => {
+    const full = path.resolve(root, candidate);
+    if (!full.startsWith(root)) return false;
+    try {
+      return fs.statSync(full).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+}
+
+function selectorMatches(file, selector, kind, dirExists = () => true) {
   const clean = posix(selector.replace(/^[("'`]+|[)"'`,]+$/g, ""));
   if (!clean || clean === ".") return true;
   if (clean.includes("*") || clean.includes("?")) return globRegex(clean).test(file);
-  if (file === clean || file.startsWith(clean.replace(/\/$/, "") + "/")) return true;
+  if (file === clean) return true;
+  const asDir = clean.replace(/\/$/, "");
+  if (file.startsWith(asDir + "/") && dirExists(asDir)) return true;
   // Playwright treats non-option arguments as regular expressions matched
   // against the complete test-file path.
   if (kind === "playwright") {
@@ -157,14 +284,14 @@ function literalPlaywrightConfig(configPath, root) {
 }
 
 function parseRunner(tokens) {
-  let index = tokens.findIndex((word) => ["tsx", "vitest", "playwright"].includes(word));
-  if (index < 0) return null;
-  const kind = tokens[index];
-  const args = tokens.slice(index + 1);
-  if (kind === "tsx" && !args.includes("--test")) return null;
+  const head = commandHead(tokens);
+  if (!head || !RUNNERS.has(head.name)) return null;
+  const kind = head.name;
+  const args = tokens.slice(head.index + 1);
+  if ((kind === "tsx" || kind === "node") && !args.includes("--test")) return null;
   if (kind === "vitest" && args[0] !== "run") return null;
   if (kind === "playwright" && args[0] !== "test") return null;
-  return { kind, args: args.slice(kind === "tsx" ? 0 : 1) };
+  return { kind, args: kind === "tsx" || kind === "node" ? args : args.slice(1) };
 }
 
 function runnerSelectors(parsed) {
@@ -173,7 +300,8 @@ function runnerSelectors(parsed) {
   const valueOptions = new Set([
     "-c", "--config", "--project", "--workers", "--max-workers", "--grep",
     "--grep-invert", "--reporter", "--shard", "--repeat-each", "--retries",
-    "--test-timeout", "--timeout",
+    "--test-timeout", "--timeout", "--root", "--loader", "--import",
+    "--require", "-r",
   ]);
   for (let i = 0; i < parsed.args.length; i++) {
     const arg = parsed.args[i];
@@ -196,7 +324,8 @@ function runnerSelectors(parsed) {
   return { selectors, config };
 }
 
-function inventory({ root = ROOT, tests, workflowCommands, packageScripts }) {
+function inventory({ root = ROOT, tests, workflowCommands, packageScripts, dirExists }) {
+  const isDir = dirExists || realDirExists(root);
   const reachable = new Set();
   const pending = [...workflowCommands];
   const seenScripts = new Set();
@@ -204,10 +333,11 @@ function inventory({ root = ROOT, tests, workflowCommands, packageScripts }) {
   while (pending.length) {
     for (const segment of commandSegments(pending.shift())) {
       const words = shellWords(segment);
-      const npm = words.findIndex((word) => word === "npm");
-      if (npm >= 0) {
-        const action = words[npm + 1];
-        const script = action === "test" ? "test" : action === "run" ? words[npm + 2] : null;
+      const head = commandHead(words);
+      if (head && head.name === "npm") {
+        const action = words[head.index + 1];
+        const script =
+          action === "test" ? "test" : action === "run" ? words[head.index + 2] : null;
         if (script && packageScripts[script] && !seenScripts.has(script)) {
           seenScripts.add(script);
           pending.push(packageScripts[script]);
@@ -224,9 +354,11 @@ function inventory({ root = ROOT, tests, workflowCommands, packageScripts }) {
         if (!effective.length) effective = [playwrightConfig.testDir];
       }
       for (const file of tests) {
-        if (!effective.some((selector) => selectorMatches(file, selector, parsed.kind))) continue;
+        if (!effective.some((selector) => selectorMatches(file, selector, parsed.kind, isDir))) continue;
         if (playwrightConfig?.testMatches.length) {
           const withinDir = posix(path.relative(playwrightConfig.testDir, file));
+          // testMatch is matched against a path RELATIVE to testDir, which is not
+          // a repository path, so the directory-existence filter does not apply.
           if (!playwrightConfig.testMatches.some((match) => selectorMatches(withinDir, match, "tsx"))) continue;
         }
         reachable.add(file);
@@ -248,28 +380,123 @@ function workflowCommands(dir = WORKFLOW_DIR) {
 function selfTest() {
   const tests = [
     "server/direct.test.ts",
+    "server/__tests__/prose-only.test.ts",
     "shared/directory/covered.test.ts",
     "client/unreferenced.test.ts",
   ];
-  const result = inventory({
-    root: ROOT,
-    tests,
-    workflowCommands: [
-      "npx tsx --test server/direct.test.ts",
-      "npx vitest run shared/directory",
-    ],
-    packageScripts: {},
-  });
-  const expectedReachable = ["server/direct.test.ts", "shared/directory/covered.test.ts"];
-  const expectedOrphans = ["client/unreferenced.test.ts"];
-  const ok =
-    JSON.stringify(result.reachable) === JSON.stringify(expectedReachable) &&
-    JSON.stringify(result.orphans) === JSON.stringify(expectedOrphans);
-  if (!ok) {
-    console.error("SELF-TEST FAILED", { result, expectedReachable, expectedOrphans });
+  // Synthetic tree: every ancestor directory of a fixture test file "exists".
+  const dirs = new Set();
+  for (const file of tests) {
+    const parts = file.split("/");
+    for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
+  }
+  const dirExists = (candidate) => dirs.has(candidate);
+
+  const cases = [
+    {
+      // Baseline (the original two fixtures): a direct file selector and a
+      // directory selector are both reachable; an unreferenced test is an orphan.
+      name: "direct file + directory reachability, unreferenced orphan",
+      commands: [
+        "npx tsx --test server/direct.test.ts",
+        "npx vitest run shared/directory",
+      ],
+      reachable: ["server/direct.test.ts", "shared/directory/covered.test.ts"],
+      orphans: ["server/__tests__/prose-only.test.ts", "client/unreferenced.test.ts"],
+    },
+    {
+      // V-30 (a): a runner named only inside an echo string yields NO selectors.
+      // This is the `publish-gate-and-fundamentals-gate.yml` failure-summary line:
+      // the sentence's bare noun `server` must not become a directory prefix.
+      name: "prose echo naming a runner yields no selectors",
+      commands: [
+        'echo "One or more suites failed. Run solo: npx tsx --test server/__tests__/<file> against a local dev server for reproduction." >> "$GITHUB_STEP_SUMMARY"',
+      ],
+      reachable: [],
+      orphans: tests,
+    },
+    {
+      // V-30 (b): a REAL invocation followed by `&& echo "…tsx --test server…"`
+      // contributes its own selector and nothing from the echo.
+      name: "real invocation plus trailing prose echo yields only the real selector",
+      commands: [
+        'npx tsx --test server/direct.test.ts && echo "rerun with npx tsx --test server/__tests__/<file>"',
+      ],
+      reachable: ["server/direct.test.ts"],
+      orphans: [
+        "server/__tests__/prose-only.test.ts",
+        "shared/directory/covered.test.ts",
+        "client/unreferenced.test.ts",
+      ],
+    },
+    {
+      // V-30 (c): the same shape as (a) in the other two prose carriers — a
+      // `::error::` annotation and a `#` comment line inside a block scalar.
+      name: "annotation and comment lines yield no selectors",
+      commands: [
+        '::error::rerun npx tsx --test server locally\n# npx vitest run shared/directory',
+      ],
+      reachable: [],
+      orphans: tests,
+    },
+    {
+      // V-30 (d): a heredoc body that contains a runner line is data, not a command.
+      name: "heredoc body yields no selectors",
+      commands: [
+        "cat > /tmp/x.yml <<'YAML'\nrun: npx tsx --test server/direct.test.ts\nYAML",
+      ],
+      reachable: [],
+      orphans: tests,
+    },
+    {
+      // A bare selector that names no existing directory matches nothing, even
+      // when it is a prefix-shaped word.
+      name: "non-existent directory prefix matches nothing",
+      commands: ["npx tsx --test nosuchdir"],
+      reachable: [],
+      orphans: tests,
+    },
+    {
+      // Redirections and pipes end the selector list.
+      name: "redirect target is not a selector",
+      commands: ["npx tsx --test server/direct.test.ts > /tmp/out.log 2>&1 | tail -5"],
+      reachable: ["server/direct.test.ts"],
+      orphans: [
+        "server/__tests__/prose-only.test.ts",
+        "shared/directory/covered.test.ts",
+        "client/unreferenced.test.ts",
+      ],
+    },
+  ];
+
+  let failed = 0;
+  for (const testCase of cases) {
+    const result = inventory({
+      root: ROOT,
+      tests,
+      workflowCommands: testCase.commands,
+      packageScripts: {},
+      dirExists,
+    });
+    const ok =
+      JSON.stringify(result.reachable) === JSON.stringify([...testCase.reachable].sort()) &&
+      JSON.stringify(result.orphans) === JSON.stringify(testCase.orphans);
+    if (!ok) {
+      failed++;
+      console.error(`SELF-TEST FAILED: ${testCase.name}`, {
+        result,
+        expectedReachable: [...testCase.reachable].sort(),
+        expectedOrphans: testCase.orphans,
+      });
+    } else {
+      console.log(`self-test OK — ${testCase.name}`);
+    }
+  }
+  if (failed) {
+    console.error(`SELF-TEST FAILED: ${failed} of ${cases.length} fixture(s)`);
     process.exit(1);
   }
-  console.log("self-test OK (direct file, directory reachability, unreferenced orphan)");
+  console.log(`self-test OK (${cases.length}/${cases.length} fixtures)`);
 }
 
 if (process.argv.includes("--self-test")) {
