@@ -20,6 +20,16 @@
  * never shown here: on purchase it clones into the buyer's own editable trip, which is where they
  * see it.
  *
+ * D-3 (decision-maker ruling 2026-09-15, option A; ledger
+ * `2026-09-15-d3-readymade-separate-checkout`): A READY-MADE TRIP AND A SERVICE BOOKING ARE NEVER
+ * MIXED IN ONE CHECKOUT, and this page says so. The ready-made purchase is its own PaymentIntent
+ * against its own table — a digital product; the bookable services the plan recommends are
+ * reservations the buyer carts separately at their own listing price (LD 39: the cart is the
+ * `ready_for_checkout` projection of `itinerary_items`, and a cloned item is born `in_planning`
+ * carrying no booking at all). Nothing on this page may imply the price covers them, so the
+ * contents block is headed "What's inside the plan", the price caption names what it buys, and the
+ * separation is stated once beside each (§13).
+ *
  * The AUTHOR of a not-yet-approved listing sees this exact page flagged "Preview" (the server
  * returns the same redacted DTO with preview:true) — what they ship is what they previewed.
  * Purchase: the safe 2-step (POST /purchase 202 → shared StripeCheckout → POST /purchase/confirm
@@ -66,6 +76,7 @@ import {
   ShoppingBag,
   Sun,
   UserRound,
+  Wallet,
 } from "lucide-react";
 
 interface DetailListing {
@@ -484,11 +495,21 @@ export default function ReadyMadeDetailPage() {
               </div>
             </RmCard>
 
-            {/* What's included — the approval-time snapshot; honest empty state if none. */}
+            {/* What's inside the plan — the approval-time snapshot; honest empty state if none.
+
+                THE HEADING IS NOT "What's included" ANY MORE (decision-maker ruling 2026-09-15,
+                punchlist D-3, option A; ledger `2026-09-15-d3-readymade-separate-checkout`). These
+                counts describe what the plan PLANS — stays, food, transport, venues — and the word
+                "included" beside a price reads as "your $X covers these", which it does not and
+                structurally cannot: a ready-made purchase is its own PaymentIntent against
+                `ready_made_trips`, and the bookable services inside the plan are reservations bought
+                separately through the cart at their own listing price. The separation notice below
+                says so out loud (§13). */}
             <RmCard>
-              <RmSectionHeading>What's included</RmSectionHeading>
+              <RmSectionHeading>What's inside the plan</RmSectionHeading>
               <p className="text-[#738091] text-[13px] leading-[1.5] mt-2 mb-[19px]">
-                A useful contents snapshot, without revealing the itinerary itself.
+                A useful contents snapshot of what this plan covers, without revealing the itinerary
+                itself.
               </p>
               {inside?.days ? (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="inside-counts">
@@ -501,7 +522,22 @@ export default function ReadyMadeDetailPage() {
               ) : (
                 <p className="rounded-[8px] bg-[#f5f7f8] p-[14px] text-[#738091] text-[12px]">Contents are finalized at approval.</p>
               )}
-              <div className="flex items-start gap-[10px] mt-[18px] p-[14px] rounded-[9px] border border-[#e4e7ec] text-[#475467] text-[12px] leading-[1.45]">
+              {/* D-3: the separation, stated where the contents are counted. A ready-made trip and a
+                  service booking are NEVER mixed in one checkout — this price is a digital product
+                  against its own PaymentIntent, and every bookable thing the plan recommends is a
+                  reservation bought at its own listing price. Nothing here may imply otherwise. */}
+              <div
+                className="flex items-start gap-[10px] mt-[18px] p-[14px] rounded-[9px] border border-[#e4e7ec] bg-[#fdf7ef] text-[#475467] text-[12px] leading-[1.45]"
+                data-testid="text-separate-bookings"
+              >
+                <Wallet className="w-4 h-4 shrink-0 mt-0.5 text-[#a67015]" aria-hidden="true" />
+                <p className="m-0">
+                  <span className="font-semibold text-[#193752]">The price buys the plan.</span> Stays,
+                  tours, transport and anything else it recommends are booked separately, each at its
+                  own price — buying this plan books nothing.
+                </p>
+              </div>
+              <div className="flex items-start gap-[10px] mt-[14px] p-[14px] rounded-[9px] border border-[#e4e7ec] text-[#475467] text-[12px] leading-[1.45]">
                 <Pencil className="w-4 h-4 shrink-0 mt-0.5 text-[#247d78]" aria-hidden="true" />
                 <p className="m-0">
                   <span className="font-semibold text-[#193752]">Unlocked means fully yours.</span> After checkout, the
@@ -548,7 +584,10 @@ export default function ReadyMadeDetailPage() {
                   <span className="ml-1.5 text-[#738091] text-[12px] font-normal">/ traveler</span>
                 )}
               </div>
-              <p className="text-[#738091] text-[11px] mt-[7px] mb-[18px]">No recurring fee · copied into your editable trips</p>
+              {/* D-3: the caption says WHAT the number buys, next to the number itself. */}
+              <p className="text-[#738091] text-[11px] mt-[7px] mb-[18px]" data-testid="text-rm-price-caption">
+                For the plan itself · no recurring fee · copied into your editable trips
+              </p>
               <Button
                 size="lg"
                 onClick={startPurchase}
@@ -564,6 +603,12 @@ export default function ReadyMadeDetailPage() {
                 <span className="flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Keep it in your Trip Slip</span>
                 <span className="flex items-center gap-2"><UserRound className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> 1 revision from the expert after purchase</span>
                 <span className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Pay once, keep the plan</span>
+                {/* D-3: the included-with list must not end where a buyer would assume the rest is
+                    included too. Bookings are their own purchase, on their own rail. */}
+                <span className="flex items-center gap-2" data-testid="text-buy-card-separate">
+                  <Wallet className="w-3.5 h-3.5 text-[#a67015]" aria-hidden="true" /> Stays, tours and
+                  transport are booked separately, at their own price
+                </span>
               </div>
               <Button
                 variant="outline"

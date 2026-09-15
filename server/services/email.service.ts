@@ -303,6 +303,14 @@ export function buildOccasionReminderEmailPayload(params: OccasionReminderParams
 // decision-maker ruling of 2026-09-15 — punchlist D-2, ledger
 // `2026-09-15-d2-one-revision-not-a-consultation`: only the revision has storage and a rail, so a
 // consultation is never promised here).
+//
+// D-3 (decision-maker ruling 2026-09-15, option A; ledger `2026-09-15-d3-readymade-separate-checkout`):
+// a ready-made trip and a service booking are NEVER mixed in one checkout. What this email reports
+// paid is the PLAN — its own PaymentIntent against `ready_made_trips`. Every bookable thing inside
+// the plan is a separate reservation at its own listing price, carted by the buyer on the slip
+// (LD 39). The delivered email already said nothing is booked; it now also says the bookings are a
+// separate purchase, because "not booked yet" alone still leaves "…and already paid for" available
+// to the reader (§13).
 
 export interface ReadyMadeDeliveredEmailParams {
   firstName?: string | null;
@@ -357,6 +365,10 @@ export function buildReadyMadeDeliveredEmailPayload(params: ReadyMadeDeliveredEm
         change or remove.
       </p>
       <p style="color: #374151;">
+        What you paid for is the plan itself. Stays, tours, transport and anything else it recommends
+        are booked separately, each at its own price.
+      </p>
+      <p style="color: #374151;">
         Your purchase also includes one revision with the expert who built it. You can request it
         from the plan whenever you are ready.
       </p>
@@ -385,6 +397,9 @@ export function buildReadyMadeDeliveredEmailPayload(params: ReadyMadeDeliveredEm
     ``,
     `It opens on placeholder dates — set your real dates on the plan and everything moves with them.`,
     `Nothing in the plan is booked yet: each item is a recommendation you can book, change or remove.`,
+    ``,
+    `What you paid for is the plan itself. Stays, tours, transport and anything else it recommends`,
+    `are booked separately, each at its own price.`,
     ``,
     `Your purchase also includes one revision with the expert who built it.`,
     ``,
