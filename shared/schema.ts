@@ -144,6 +144,20 @@ export const trips = pgTable("trips", {
   momentKey: varchar("moment_key", { length: 30 }),
   travelers: integer("travelers"),
   specialRequests: text("special_requests"),
+  // WRITTEN BY NOTHING (punchlist V-33, ledger `2026-09-15-v32-v33-leads-door-item-read-gate`).
+  // No code path under `server/` — neither a drizzle `.set({ expertId … })` nor a raw `expert_id =`
+  // — writes this column on `trips`; the only same-named writer is
+  // `affiliate_booking_requests.expert_id` (`storage.claimAffiliateBookingRequest`), a different
+  // table. A trip's assigned expert lives in `trip_expert_advisors`, whose ONE author is
+  // `upsertTripAdvisorRow` (Locked Decision 32's CORRECTION paragraph) and whose §12 access
+  // statuses `server/utils/trip-advisor.ts` owns. Two authorization gates used to grant on this
+  // column and could therefore never grant at all — the trip GET (a refused read for a legitimately
+  // assigned advisor, plus a §13 falsehood in the `[IDOR ATTEMPT]` log) and the generate-itinerary
+  // stopgap; both now resolve the expert through `trip_expert_advisors` and neither mentions it.
+  // The column is DECLARED and KEPT: dropping it is a schema change nobody has ratified. Do not
+  // build a new grant, fallback or display on it without first giving it a writer and ratifying
+  // that writer. The one surviving reader is `trip-plan.service.ts::resolveDeliveredBy`, where it
+  // is an explicit last-resort fallback that can never resolve — recorded, not relied upon.
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
   // PRIVATE Workstation build notes (PATCH /api/trips/:id/expert-notes) — never delivered to the
   // traveler. The traveler-facing trip-level note is expertTravelerNote below (§21) — never merge.
