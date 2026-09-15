@@ -51,7 +51,6 @@ interface PricingBundle {
   tripPass: PricingPlanRow;
   plusAnnual: PricingPlanRow;
   proMonthly: PricingPlanRow;
-  doneForYouDepositPct: number;
   proRateStandard: number;
   proRateStepped: number;
   railsRate: number;
@@ -172,7 +171,12 @@ export default function PricingPage() {
       checklist: [
         "A named expert takes your trip end to end",
         "They review, re-route, and book for you",
-        `Events: custom quote · ${pct(pricing.doneForYouDepositPct)} deposit`,
+        // D-5 (ledger `2026-09-15-d5-no-milestone-billing`): there is NO deposit-then-balance,
+        // milestone or instalment billing for expert planning work. A done-for-you event is a
+        // coordination engagement whose fee is quoted server-side and captured ONCE
+        // (`coordination_states.fee_payment_status` unpaid|pending|paid, one PaymentIntent), so
+        // the old `N% deposit` line promised a split no rail performs (§13).
+        "Events: custom quote · one coordination fee",
       ],
       cta: "Find a local expert",
       variant: "outline" as const,

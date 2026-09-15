@@ -28,7 +28,6 @@ interface PricingBundle {
   optimizerRunDisplay?: { priceCents: number };
   aiTaskCents?: number;
   tripPass?: { priceCents: number };
-  doneForYouDepositPct?: number;
   plusAnnual?: { priceCents: number; interval: string };
   plusSalesEnabled?: boolean;
 }
@@ -128,17 +127,11 @@ export function HowItWorks() {
               />
             )}
             {i === 2 && <Price eyebrow="With a local" main="expert-priced" mainNote="per offering" />}
-            {i === 3 && (
-              <Price
-                eyebrow="Done for you"
-                main="quote"
-                mainNote={
-                  pricing?.doneForYouDepositPct !== undefined
-                    ? `${pricing.doneForYouDepositPct}% deposit`
-                    : undefined
-                }
-              />
-            )}
+            {/* D-5 (ledger `2026-09-15-d5-no-milestone-billing`): a done-for-you event is a
+                coordination engagement whose fee is quoted server-side and captured ONCE — there
+                is no deposit-then-balance, milestone or instalment rail behind it, so the former
+                `N% deposit` note promised a split nothing performs (§13). */}
+            {i === 3 && <Price eyebrow="Done for you" main="quote" mainNote="one coordination fee" />}
           </div>
         ))}
       </div>
