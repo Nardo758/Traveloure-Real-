@@ -150,6 +150,20 @@ test.describe("Finalize booking chooser", () => {
     expect(before.final_count).toBe(0);
     await capture(page, "01-pre-final");
 
+    // Locked Decision 42 D8, the POSITIVE half. /trip/:id is not a planning surface: before a final
+    // exists it renders an honest notice naming the slip with ONE action to it. This spec already
+    // asserted the notice's ABSENCE on a finalized card (step 09) — absence alone cannot tell "the
+    // notice is correctly gone" from "the notice never rendered at all", so the same trip is read
+    // in both states here. "One action" is a COUNT, not an implication of naming one testid.
+    await page.goto(`${BASE_URL}/trip/${tripId}`, { waitUntil: "domcontentloaded" });
+    const preFinalNotice = page.getByTestId("trip-not-final-notice");
+    await expect(preFinalNotice).toBeVisible({ timeout: 30_000 });
+    await expect(preFinalNotice.locator("a")).toHaveCount(1);
+    await expect(page.getByTestId("button-go-to-slip")).toBeVisible();
+    await capture(page, "01b-pre-final-trip-card-notice");
+    await page.getByTestId("button-go-to-slip").click();
+    await expect(page).toHaveURL(new RegExp(`/plans/${tripId}$`), { timeout: 15_000 });
+
     const finalize = await openFinalize(page, tripId);
     await expect(page.getByTestId(`slip-item-${itemId}`)).toContainText("Nishiki Market walk");
     await capture(page, "02-pre-final-ui");

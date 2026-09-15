@@ -206,8 +206,17 @@ test.describe('Stage 1 component wiring', () => {
     // escalation CTA — is the full-stage PlanCard's, which /trip/:id renders only once a trip is
     // FINALIZED; a not-yet-final trip renders the honest "Not final yet" notice + one action to the
     // slip (the Trip Card does not exist before Make final). Assert whichever ratified state applies.
-    await page.locator(SELECTORS.tripCard).first().click();
-    await page.waitForURL(/\/trip\//, { timeout: 10_000 });
+    // The My Plans tile is FINAL-AWARE (ledger 2026-08-31-stage-a-dashboard — asserted by the very
+    // next test in this file): a PRE-final plan's tile lands on /plans/:id, never /trip/:id. So
+    // clicking the tile and waiting for /trip/ could only ever reach the route for a plan that is
+    // already final, and it timed out on a pre-final one — a stale navigation assumption, not a
+    // product regression. Address /trip/:id directly from the tile's own id; that route is what
+    // Locked Decision 42 D8 rules on, and both of its ratified states are asserted below.
+    const tile = page.locator(SELECTORS.tripCard).first();
+    const tileTestId = await tile.getAttribute('data-testid');
+    const tripId = tileTestId?.replace('trip-card-', '');
+    expect(tripId, 'the My Plans tile carries a trip id').toBeTruthy();
+    await page.goto(`/trip/${tripId}`, { waitUntil: 'domcontentloaded' });
 
     await Promise.race([
       page.waitForSelector(SELECTORS.escalationCta, { timeout: 30_000 }).catch(() => null),
@@ -221,9 +230,15 @@ test.describe('Stage 1 component wiring', () => {
     }
 
     // Not finalized → the Trip Card (and its EscalationCTA) don't exist yet; the honest notice
-    // and its single action to the slip must render instead.
-    await expect(page.locator('[data-testid="trip-not-final-notice"]')).toBeVisible();
+    // and its SINGLE action to the slip must render instead (Locked Decision 42 D8). "One action"
+    // is asserted as a count, not implied by naming one testid — a second escape hatch appearing
+    // beside it is the thing D8 forbids, and a bare visibility check would not see it.
+    const notice = page.locator('[data-testid="trip-not-final-notice"]');
+    await expect(notice).toBeVisible();
+    await expect(notice.locator('a')).toHaveCount(1);
     await expect(page.locator('[data-testid="button-go-to-slip"]')).toBeVisible();
+    await page.locator('[data-testid="button-go-to-slip"]').click();
+    await page.waitForURL(new RegExp(`/plans/${tripId}`), { timeout: 15_000 });
   });
 
   test('My Plans tile is final-aware: View Trip Card (post-final) XOR Open slip (pre-final)', async ({ page }) => {
