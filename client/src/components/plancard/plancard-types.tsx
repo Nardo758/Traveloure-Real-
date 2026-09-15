@@ -329,6 +329,19 @@ export interface PlanCardActivity {
    * and is client-settable on no rail.
    */
   origin?: string | null;
+  /**
+   * D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`) — the two LINK columns the
+   * item-kind derivation reads, mirroring `TripPlanActivity` (shared/trip-plan.ts):
+   * `itinerary_items.provider_service_id` (the bookable platform listing) and
+   * `affiliate_product_id` (the partner grounding). PRESENT ONLY when the row really names one,
+   * so an ABSENT key and a NULL both mean "names none" — the honest, weaker reading (§13).
+   *
+   * They are the input to `itemKind()` (@shared/item-kind) together with `booking` above, whose
+   * PRESENCE is the booked state (ROUTING_STATE_CONTRACT §2 — never inferred from
+   * `routingStatus` alone). Read-only on this contract: neither column is client-settable.
+   */
+  providerServiceId?: string | null;
+  affiliateProductId?: string | null;
 }
 
 export interface PlanCardTransport {

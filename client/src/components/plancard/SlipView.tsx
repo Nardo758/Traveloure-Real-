@@ -43,7 +43,7 @@ import {
   type PlanCardTransport,
   type RoutingStatus,
 } from "./plancard-types";
-import { OriginBadge, RoutingActions, RoutingBadge } from "./ActivitiesSection";
+import { ItemKindBadge, OriginBadge, RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
@@ -680,9 +680,19 @@ function SlipItemRow({
             chip answers WHO PUT IT THERE, and they are two taxonomies rather than one — which is
             why the chip is a second pill and never a fourth routing value. Both render from the
             DTO alone; `OriginBadge` returns null (no chip, no gap) for an item whose `origin` was
-            never stamped, so a legacy plan's rows are byte-identical to before this lane (§13). */}
+            never stamped, so a legacy plan's rows are byte-identical to before this lane (§13).
+
+            AND THE KIND CHIP IS THE THIRD TAXONOMY (ruling 2026-09-15, punchlist D-4; ledger
+            `2026-09-15-d4-item-kind-contract`): the routing pill says WHERE the item is, the origin
+            chip says WHO put it there, and `ItemKindBadge` says HOW IT CAN BE OBTAINED — included /
+            book separately / partner booking / recommended. Three questions, three chips; folding
+            the kind into the routing pill would make it a fifth routing value, which it is not
+            (LD 44 — a kind and a routing status are never merged). It is DERIVED from the row's own
+            link columns on every render and stored nowhere, so it cannot drift from what checkout
+            charges; unlike the other two it is total, so every item wears exactly one. */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <RoutingBadge activity={a} showPlanning />
+          <ItemKindBadge activity={a} />
           <OriginBadge activity={a} />
         </div>
       </div>

@@ -93,6 +93,7 @@ import { getExtractedPlacesCounts, isConcludedEmptyMarker } from "../services/dm
 import { getLatestDmoExtractionRun } from "../services/dmo-extraction-runs.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoExtractedPlaces } from "@shared/schema";
 import { messageReports, userBlocks } from "@shared/schema";
+import { itemKind } from "@shared/item-kind";
 import { emailOutbox } from "@shared/schema";
 import { drainOutbox } from "../services/email-outbox.service";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
@@ -983,10 +984,33 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
       .from(itineraryItems)
       .where(eq(itineraryItems.tripId, listing.sourceTripId))
       .groupBy(itineraryItems.dayNumber);
+    // D-4 (decision-maker ruling 2026-09-15, punchlist D-4 option A; ledger
+    // `2026-09-15-d4-item-kind-contract`): the same snapshot also counts the items by KIND, so a
+    // shopper can see how much of a plan is a bookable Traveloure listing and how much is a
+    // recommendation BEFORE they buy — the honesty D-3 asked for, one level finer than its
+    // separation notice. Derived through the ONE shared derivation (`itemKind`, shared/item-kind.ts)
+    // from the rows' own link columns; nothing is stored on the item and no label is invented.
+    // Counted here rather than at read time because `insideCounts` is the approval-time SNAPSHOT
+    // of the build — the same reason `byType` is computed here (§13: it describes the plan as
+    // approved, not as it drifts afterwards).
+    const kindRows = await db
+      .select({
+        bookingId: itineraryItems.bookingId,
+        providerServiceId: itineraryItems.providerServiceId,
+        affiliateProductId: itineraryItems.affiliateProductId,
+      })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, listing.sourceTripId));
+    const byKind: Record<string, number> = {};
+    for (const row of kindRows) {
+      const kind = itemKind(row);
+      byKind[kind] = (byKind[kind] ?? 0) + 1;
+    }
     const insideCounts = {
       days: dayRows.length,
       items: typeRows.reduce((sum, r) => sum + r.count, 0),
       byType: Object.fromEntries(typeRows.map((r) => [r.itemType ?? "activity", r.count])),
+      byKind,
       snapshotAt: new Date().toISOString(),
     };
 

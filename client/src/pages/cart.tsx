@@ -69,6 +69,7 @@ import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
 import { getAcquisitionRef } from "@/lib/acquisition";
 import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
 import { trackEvent } from "@/lib/analytics";
+import { itemKindChipFor } from "@shared/item-kind";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -1918,6 +1919,29 @@ export default function CartPage() {
                                   <Badge variant="outline" className="text-xs border-primary/40 text-primary flex-shrink-0">
                                     {contentTypeLabel}
                                   </Badge>
+                                  {/* D-4: the item's KIND, from the ONE derivation (@shared/item-kind)
+                                      every surface calls. A projected plan item names no service by
+                                      construction in this branch, and the partner grounding rides the
+                                      projection's display envelope, so `recommended` and `external`
+                                      are told apart from the row's own facts rather than guessed. */}
+                                  {isTripRoutedItem && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs flex-shrink-0 text-muted-foreground"
+                                      title={itemKindChipFor({
+                                        providerServiceId: item.serviceId ?? null,
+                                        affiliateProductId:
+                                          ((item.contentMeta ?? {}) as any).affiliateProductId ?? null,
+                                      }).blurb}
+                                      data-testid={`badge-kind-${item.id}`}
+                                    >
+                                      {itemKindChipFor({
+                                        providerServiceId: item.serviceId ?? null,
+                                        affiliateProductId:
+                                          ((item.contentMeta ?? {}) as any).affiliateProductId ?? null,
+                                      }).label}
+                                    </Badge>
+                                  )}
                                 </div>
                                 {contentDisplay.description && (
                                   <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
@@ -1931,7 +1955,18 @@ export default function CartPage() {
                                       {contentDisplay.city}
                                     </span>
                                   )}
-                                  {contentDisplay.price && (
+                                  {/* D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`):
+                                      a TRIP-ROUTED line that names no `provider_services` row is a
+                                      `recommended` or `external` item, and checkout skips it —
+                                      `if (!item.service) continue;` in BOTH the subtotal and the
+                                      booking-creation loops. A number printed beside it is a price
+                                      nobody can charge, i.e. a claim (§13), so it is not printed:
+                                      the KIND is shown instead, and the honest line below already
+                                      says the row is not in this total. The number is hidden by the
+                                      reader, never deleted from the row. A Discover-saved content
+                                      line is a DIFFERENT shape (it still resolves at checkout) and
+                                      keeps its price exactly as before. */}
+                                  {contentDisplay.price && !isTripRoutedItem && (
                                     <span className="flex items-center gap-1 font-medium text-foreground">
                                       {contentDisplay.price}
                                     </span>

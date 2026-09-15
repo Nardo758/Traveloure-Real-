@@ -140,6 +140,7 @@ import {
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
 } from "@shared/schema";
+import { authoredItemPriceRefusal } from "@shared/item-kind";
 import {
   resolveCommissionRates,
   type CommissionRates,
@@ -3025,6 +3026,38 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       // ABSENT ≠ NULL: `ignore` leaves the existing link untouched, `set` writes it (including an
       // explicit null, which moves the item back to the plan's implicit event).
       if (resolvedEvent.action === "set") (safeBody as any).userExperienceId = resolvedEvent.value;
+      // THE AUTHORING CONTRACT, on the EDIT side (decision-maker ruling 2026-09-15, punchlist D-4;
+      // ledger `2026-09-15-d4-item-kind-contract`). ONE predicate, two callers — the other is the
+      // create rail in server/routes.ts (§18 rule 1); a second wording of the same refusal is the
+      // derivation-drift class, and a create-only rule is a one-request bypass.
+      //
+      // JUDGED ON THE MERGED ROW, not on the patch: an edit that adds a price to an already
+      // unlinked item, and an edit that REMOVES the service link from an already priced one, are
+      // the same violation arrived at from two directions. `undefined` means "this patch does not
+      // mention the field", so the existing value stands.
+      //
+      // THE AUTHOR BRANCH ONLY (`authorMayMutate` — the ready-made build's author, never the owner
+      // and never an advisor), for the reason spelled out at the create rail: a traveler's own cost
+      // estimate on their own plan is a note, not a published price. Nothing is rewritten and
+      // nothing is backfilled — a refusal writes NOTHING and the item keeps exactly what it had.
+      const CONTRACT_FIELDS = ["estimatedCost", "providerServiceId", "affiliateProductId"];
+      // IT GOVERNS THE FIELDS IT IS ABOUT, AND NO OTHERS. A patch that mentions none of the three
+      // cannot introduce the violation, so it is not judged: refusing an author's TITLE fix on a
+      // row that was already priced-and-unlinked would force a rewrite of exactly the legacy rows
+      // this ruling said not to touch (§19b — no backfill), i.e. a backfill by another name. Such a
+      // row stays as its author left it and is rendered honestly as `recommended` with its price
+      // hidden by the derivation.
+      if (authorMayMutate && CONTRACT_FIELDS.some((k) => (safeBody as any)[k] !== undefined)) {
+        const merged = (key: string) =>
+          (safeBody as any)[key] !== undefined ? (safeBody as any)[key] : (existing as any)[key];
+        const refusal = authoredItemPriceRefusal({
+          estimatedCost: merged("estimatedCost") ?? null,
+          providerServiceId: merged("providerServiceId") ?? null,
+          affiliateProductId: merged("affiliateProductId") ?? null,
+          bookingId: merged("bookingId") ?? null,
+        });
+        if (refusal) return res.status(400).json({ message: refusal });
+      }
       const updated = await storage.updateItineraryItem(itemId, safeBody);
       if (!updated) return res.status(404).json({ message: "Item not found" });
       res.json(updated);
