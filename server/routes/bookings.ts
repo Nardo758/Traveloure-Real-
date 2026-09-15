@@ -18,6 +18,13 @@ import { sanitizeBookingForExpert } from '../utils/data-sanitizer';
 import { holdWindowDays } from '../config/earnings-hold.config';
 import { DISPUTABLE_FROM_STATUSES } from '../utils/booking-from-states';
 import {
+  acceptDeliverable,
+  deliverArtifact,
+  describeAcceptance,
+  requestRevision,
+} from '../services/booking-acceptance.service';
+import { bookingRevisionNoteSchema } from '@shared/schema';
+import {
   CANONICAL_BOOKING_RAIL,
   LEGACY_BOOKINGS_CLOSED_REASON,
   legacyBookingsClosedToNewWrites,
@@ -65,7 +72,17 @@ router.get('/:id', isAuthenticated, async (req, res) => {
     // Traveler (owner) sees full booking. Checked FIRST so the common case costs no
     // extra query — the tier below is identical for an owner who is also an admin.
     if (booking.travelerId === userId) {
-      return res.json(booking);
+      // D-6 READ EXPOSURE (ledger `2026-09-15-d24-d26-acceptance-columns`). The acceptance read-out
+      // is the ONE derivation (`describeAcceptance`) — the mode, the stamped instants, whether a
+      // PER-BOOKING artifact exists (presence, never the path: the pointer is an object-storage key
+      // the D3 rail exists to withhold), the DERIVED deadline and the live revision allowance.
+      //
+      // §13: it returns `null` for a booking whose listing takes no acceptance at all, and the key
+      // is then OMITTED ENTIRELY — never `accepted: false`, never "no artifact", never a zero. The
+      // raw `acceptedAt`/`deliveredAt` columns ride the full row for the owner as they are; the
+      // read-out is what says whether they MEAN anything on this booking.
+      const acceptance = await describeAcceptance(booking.id);
+      return res.json({ ...booking, ...(acceptance ? { acceptance } : {}) });
     }
 
     // Audit finding 8: the admin tier (full row, Stripe payment-intent ids included) and
@@ -830,6 +847,118 @@ router.post('/:id/dispute', isAuthenticated, async (req, res) => {
     res.json({ success: true, blocked });
   } catch (error: any) {
     console.error('Dispute error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// D-6 ACCEPTANCE RAILS (punchlist D-24/D-25/D-26/D-40, option A; ledger
+// `2026-09-15-d24-d26-acceptance-columns`). Content of record:
+// `docs/design/EXPERT_ACCEPTANCE_BRIEF.md` Part I §3-§7 and Part II §10.
+//
+// ALL THREE DECISIONS LIVE IN `server/services/booking-acceptance.service.ts` — these handlers
+// read the ACTOR off the session (§14) and hand it the id from the path, and they decide nothing
+// else. A second copy of "may this person accept?" beside the service's own is the
+// derivation-drift class §18 rule 1 names.
+//
+// ACCEPTANCE GATES NO CHARGE (§15d). Deposits and balances are untouched by every rail below: an
+// unaccepted artifact does not block a balance payment, and nothing here reads or writes an
+// amount, a rate or a fee band.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/bookings/:id/accept-deliverable — THE TRAVELER ACCEPTS.
+ *
+ * On a `pdf` listing this is what COMPLETES the booking and mints the held earning, through the ONE
+ * `completeBooking` implementation as a new CALLER with the `traveler_accepted` actor tag — the
+ * flip is its §15 atomic conditional, so a double-click produces one completion and one earning set.
+ * On D-40's hybrid declared artifact it records `accepted_at` and COMPLETES NOTHING.
+ *
+ * NO BODY IS READ AT ALL. There is nothing a client could honestly say here beyond "I accept",
+ * which the request itself is.
+ */
+router.post('/:id/accept-deliverable', isAuthenticated, async (req, res) => {
+  try {
+    const actorUserId = getUserId(req)!;
+    if (!actorUserId) return res.status(401).json({ error: 'Not authenticated' });
+    const result = await acceptDeliverable({ bookingId: req.params.id, actorUserId });
+    if ('ok' in result && result.ok) return res.json(result);
+    const refusal = result as { status: number; code: string; message: string };
+    return res.status(refusal.status).json({ error: refusal.code, message: refusal.message });
+  } catch (error: any) {
+    console.error('Accept-deliverable error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/bookings/:id/request-revision — THE TRAVELER ASKS FOR A REVISION.
+ *
+ * §19: the body is a pick-based `.strict()` allowlist of exactly ONE field (`note`). An unknown key
+ * is REFUSED rather than silently stripped, so nobody can smuggle a count, an allowance or a status
+ * alongside their words — the allowance is the LISTING's own `revisions_included`, read server-side
+ * on every decision.
+ *
+ * A REQUEST BEYOND THE ALLOWANCE IS REFUSED WITH THE NUMBER STATED, and it NEVER becomes a dispute:
+ * a revision is an entitlement the listing sold; a dispute is a claim that something went wrong, and
+ * it has its own rail (`POST /api/bookings/:id/dispute`), its own word and its own consequence.
+ */
+router.post('/:id/request-revision', isAuthenticated, async (req, res) => {
+  try {
+    const actorUserId = getUserId(req)!;
+    if (!actorUserId) return res.status(401).json({ error: 'Not authenticated' });
+    const parsed = bookingRevisionNoteSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: 'invalid_revision_body',
+        message: 'Send only a note describing what you would like changed.',
+      });
+    }
+    const result = await requestRevision({
+      bookingId: req.params.id,
+      actorUserId,
+      note: parsed.data.note ?? null,
+    });
+    if ('ok' in result && result.ok) return res.json(result);
+    const refusal = result as { status: number; code: string; message: string; allowance?: unknown };
+    return res.status(refusal.status).json({
+      error: refusal.code,
+      message: refusal.message,
+      ...(refusal.allowance ? { allowance: refusal.allowance } : {}),
+    });
+  } catch (error: any) {
+    console.error('Request-revision error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/bookings/:id/deliver-artifact — THE PROVIDER (RE-)DELIVERS.
+ *
+ * §14: the actor is the session and must be the booking's `provider_id`; an undifferentiated 404
+ * covers both "no such booking" and "not yours". It sets the PER-BOOKING pointer (D-26 — never the
+ * listing file every other buyer downloads), stamps `delivered_at`, resolves the open revision rows
+ * and re-opens the acceptance window from `revision_requested` alone.
+ *
+ * `fileValue` IS NOT A LOCATION A CLIENT INVENTS: it is the SAME stored value shape the existing
+ * owner-gated upload rail writes (`POST /api/provider/services/:id/deliverable-file` produces an
+ * `objstore:`-prefixed managed key). This rail builds NO second file store; it points a booking at
+ * a value that rail already produced, or at the provider's own legacy pasted URL. Omitting it
+ * re-stamps the delivery instant on the artifact the booking already carries.
+ */
+router.post('/:id/deliver-artifact', isAuthenticated, async (req, res) => {
+  try {
+    const actorUserId = getUserId(req)!;
+    if (!actorUserId) return res.status(401).json({ error: 'Not authenticated' });
+    const raw = (req.body ?? {}) as Record<string, unknown>;
+    const fileValue = typeof raw.fileValue === 'string' ? raw.fileValue : null;
+    const result = await deliverArtifact({ bookingId: req.params.id, actorUserId, fileValue });
+    if ('ok' in result && result.ok) return res.json(result);
+    const refusal = result as { status: number; code: string; message: string };
+    return res.status(refusal.status).json({ error: refusal.code, message: refusal.message });
+  } catch (error: any) {
+    console.error('Deliver-artifact error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

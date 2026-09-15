@@ -68,6 +68,8 @@ import {
   PROPERTY_AUTO_COMPLETE_GRACE_DAYS,
   serviceDateCompletionDays,
 } from "../config/completion-windows.config";
+import { acceptanceModeFor } from "@shared/acceptance-window";
+import { ACCEPTANCE_FROM_STATUSES } from "../utils/booking-from-states";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
 import { storage } from "../storage";
 
@@ -87,7 +89,15 @@ export type CompletionActor =
   | "auto_complete_service_date"
   | "provider_session_end"
   | "provider_declared"
-  | "provider_bundle_components";
+  | "provider_bundle_components"
+  /**
+   * D-6 (ledger `2026-09-15-d24-d26-acceptance-columns`): THE TRAVELER ACCEPTED THE ARTIFACT.
+   * A new CALLER of the ONE completion implementation, with its own actor tag — never a second
+   * minting path (§18 rule 1, and the brief's own non-negotiable rule 3). It is the only actor
+   * whose from-state is `awaiting_acceptance` rather than `confirmed`, and the only one that
+   * stamps `accepted_at`.
+   */
+  | "traveler_accepted";
 
 const DIARY_ACTOR: Record<CompletionActor, TransitionActorType> = {
   auto_complete_pdf: "auto_complete",
@@ -96,7 +106,13 @@ const DIARY_ACTOR: Record<CompletionActor, TransitionActorType> = {
   provider_session_end: "provider",
   provider_declared: "provider",
   provider_bundle_components: "provider",
+  traveler_accepted: "traveler",
 };
+
+/** TRUE for the ONE actor whose completion is a traveler's acceptance rather than a rule firing. */
+function isAcceptanceActor(actor: CompletionActor): boolean {
+  return actor === "traveler_accepted";
+}
 
 /** Why a booking is NOT (yet) completable. Stable, machine-readable, §13-honest. */
 export type IneligibleReason =
@@ -115,7 +131,14 @@ export type IneligibleReason =
   | "slot_has_no_end_time"
   | "session_not_ended"
   | "bundle_components_unknown"
-  | "bundle_components_incomplete";
+  | "bundle_components_incomplete"
+  /**
+   * D-6/D-40: the traveler accepted, but this listing's acceptance does NOT complete the booking.
+   * Either it takes no acceptance at all, or it is a `hybrid` with a DECLARED artifact, whose
+   * acceptance is `records_only` — it records `accepted_at` and revision rows and gates NOTHING
+   * about completion or the mint. Handled by the acceptance service's own arm, never here.
+   */
+  | "acceptance_does_not_complete";
 
 export interface CompletionEligibility {
   bookingId: string;
@@ -152,6 +175,8 @@ interface ServiceRow {
   deliveryMethod: string | null;
   productShape: string | null;
   deliverableUploadedAt: Date | null;
+  /** D-40: a hybrid listing's declared artifact. NULL = not declared (§13). */
+  declaredArtifactDeliverable: string | null;
 }
 
 async function loadBooking(bookingId: string): Promise<BookingRow | null> {
@@ -178,6 +203,7 @@ async function loadService(serviceId: string): Promise<ServiceRow | null> {
       deliveryMethod: providerServices.deliveryMethod,
       productShape: providerServices.productShape,
       deliverableUploadedAt: providerServices.deliverableUploadedAt,
+      declaredArtifactDeliverable: providerServices.declaredArtifactDeliverable,
     })
     .from(providerServices)
     .where(eq(providerServices.id, serviceId));
@@ -239,10 +265,21 @@ const no = (
 export async function resolveCompletionEligibility(
   bookingId: string,
   now: Date = new Date(),
+  opts: {
+    /**
+     * D-6: resolve for a TRAVELER'S ACCEPTANCE rather than for a rule firing. The from-state
+     * becomes `awaiting_acceptance` (not `confirmed`), and the acceptance itself IS the condition —
+     * exactly as `provider_declared` returns `evidence: { declared: true }` because the declaration
+     * is the condition there. It is a MODE of the one resolver, not a second one (§18 rule 1).
+     */
+    acceptance?: boolean;
+  } = {},
 ): Promise<CompletionEligibility> {
+  const forAcceptance = opts.acceptance === true;
+  const allowedFrom = forAcceptance ? ACCEPTANCE_FROM_STATUSES : COMPLETION_ALLOWED_FROM_STATUSES;
   const booking = await loadBooking(bookingId);
   if (!booking) return no(bookingId, null, "booking_not_found");
-  if (!COMPLETION_ALLOWED_FROM_STATUSES.includes(booking.status ?? "")) {
+  if (!allowedFrom.includes(booking.status ?? "")) {
     return no(bookingId, null, "wrong_status", { status: booking.status });
   }
   if (!booking.serviceId) return no(bookingId, null, "service_not_found");
@@ -253,6 +290,27 @@ export async function resolveCompletionEligibility(
     deliveryMethod: service.deliveryMethod,
     productShape: service.productShape,
   });
+  // D-6: the acceptance arm answers BEFORE the per-rule switch, and deliberately so. A traveler's
+  // acceptance is not a rule firing — it is the strongest evidence on the platform (the payer
+  // saying "this is what I bought"), so it must not be made to satisfy the `artifact_timer`
+  // window it exists to replace. It still resolves the RULE above, because the provenance the flip
+  // records must name the rule the booking actually falls under.
+  if (forAcceptance) {
+    const mode = acceptanceModeFor({
+      deliveryMethod: service.deliveryMethod,
+      productShape: service.productShape,
+      declaredArtifactDeliverable: service.declaredArtifactDeliverable,
+    });
+    if (mode !== "gates_completion") {
+      return no(bookingId, rule, "acceptance_does_not_complete", { acceptanceMode: mode });
+    }
+    return {
+      bookingId,
+      rule,
+      eligible: true,
+      evidence: { accepted: true, basis: "traveler_acceptance", acceptanceMode: mode },
+    };
+  }
   if (!rule) {
     return no(bookingId, null, "unclassifiable_service", {
       deliveryMethod: service.deliveryMethod,
@@ -484,7 +542,13 @@ export async function completeBooking(input: {
   allowOwnerDeclaredFallback?: boolean;
 }): Promise<CompleteBookingResult> {
   const now = input.now ?? new Date();
-  const eligibility = await resolveCompletionEligibility(input.bookingId, now);
+  // D-6: the acceptance arm is chosen by the ACTOR, never by a caller-supplied flag — the actor tag
+  // is the caller's one statement of which rail it is, and the SERVICE decides everything else
+  // (the same posture ruling 69's `allowOwnerDeclaredFallback` takes one arm over).
+  const forAcceptance = isAcceptanceActor(input.actor);
+  const eligibility = await resolveCompletionEligibility(input.bookingId, now, {
+    acceptance: forAcceptance,
+  });
   const takesNoDateFallback =
     !eligibility.eligible && !!input.allowOwnerDeclaredFallback && !!eligibility.ownerDeclarableFallback;
   if (!eligibility.eligible && !takesNoDateFallback) {
@@ -501,7 +565,11 @@ export async function completeBooking(input: {
     input.bookingId,
     "completed",
     input.reason,
-    COMPLETION_ALLOWED_FROM_STATUSES,
+    // §15/§18b: THE TRANSITION IS THE GUARD, and the acceptance rail claims its OWN from-state.
+    // `awaiting_acceptance` is deliberately NOT added to `COMPLETION_ALLOWED_FROM_STATUSES`: that
+    // list is also the timer's candidate predicate (`findAutoCompleteCandidates`), and widening it
+    // would hand the nightly job the very bookings D-6 forbids it to complete.
+    forAcceptance ? ACCEPTANCE_FROM_STATUSES : COMPLETION_ALLOWED_FROM_STATUSES,
   );
   if (!updated) {
     // Lost the atomic race (or the row vanished). Exactly one caller wins; the loser mints no
@@ -520,6 +588,11 @@ export async function completeBooking(input: {
   await db
     .update(serviceBookings)
     .set({
+      // D-24: `accepted_at` records the ANSWER that caused the completion, where `completed_at`
+      // records the money event. Written HERE — after this caller provably WON the atomic
+      // conditional above — and by this actor only, so a future admin-review completion out of the
+      // same `awaiting_acceptance` state can never be read as a traveler's acceptance (§13).
+      ...(forAcceptance ? { acceptedAt: now } : {}),
       bookingDetails: sql`COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) || ${JSON.stringify({
         completion: {
           rule: eligibility.rule,
@@ -548,7 +621,9 @@ export async function completeBooking(input: {
             ? ((updated.bookingDetails as any).itineraryItemId as string)
             : null,
         eventType: "booking_completed",
-        fromStatus: "confirmed",
+        // The state this flip actually consumed — `awaiting_acceptance` on the acceptance rail.
+        // A diary row that always said "confirmed" would misreport the one transition that is not.
+        fromStatus: forAcceptance ? "awaiting_acceptance" : "confirmed",
         toStatus: "completed",
         actorType: DIARY_ACTOR[input.actor],
       });

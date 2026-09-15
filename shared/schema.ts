@@ -1376,6 +1376,29 @@ export const providerServices = pgTable("provider_services", {
   // downloaded arm rides deliverable_downloads and is unaffected. Declared here per the
   // publish-trap rule — a column only in migration SQL is dropped by the deploy push.
   deliverableUploadedAt: timestamp("deliverable_uploaded_at"),
+  // D-40 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`; punchlist D-40 = option A,
+  // hybrid sub-question = YES). A `hybrid` listing MAY DECLARE ONE ARTIFACT DELIVERABLE that takes
+  // D-6 traveler acceptance on its own WHILE THE BOOKING KEEPS D-7 COMPLETION
+  // (`docs/design/EXPERT_ACCEPTANCE_BRIEF.md` Part II §10). Free text naming that one artifact —
+  // deliberately NOT a boolean, because a boolean beside a NULL is two ways to say nothing and a
+  // reader then has to guess which was meant (the LD 31 empty-array reasoning).
+  //
+  // §13: NULL = NOT DECLARED ⇒ the hybrid booking is pure D-7 and NO acceptance affordance exists.
+  // It is never rendered as "no artifact", which is a claim only the seller can make. Additive
+  // nullable, NO DEFAULT and NO DB CHECK (publish-trap posture); declared here per the deploy-push
+  // durability rule.
+  //
+  // GATES NOTHING ABOUT MONEY, and that is the ruling's load-bearing half: accepting or revising
+  // the declared artifact records `service_bookings.accepted_at` and `booking_revision_requests`
+  // rows and moves no completion, no mint and no payout timing. The booking keeps
+  // `service_date_timer`.
+  //
+  // NEVER ADMITTED BY THE GENERIC BODY (§19): `.omit()`'d from `insertProviderServiceSchema` below
+  // and re-admitted by the pick-based `providerServiceDeclaredArtifactSchema`, because under a
+  // denylist a freshly-added column is client-settable BY DEFAULT. It is an IDENTITY edit under
+  // CLAUDE.md §23 (`shared/edit-split.ts`) on an APPROVED listing — adding an acceptance obligation
+  // changes what a buyer is committing to — and that split stays decided ONLY in the PATCH handler.
+  declaredArtifactDeliverable: text("declared_artifact_deliverable"),
   
   // Status & Analytics
   status: varchar("status", { length: 20 }).default("active"), // active, paused, draft
@@ -1675,6 +1698,38 @@ export const serviceBookings = pgTable("service_bookings", {
   // Timestamps
   confirmedAt: timestamp("confirmed_at"),
   completedAt: timestamp("completed_at"),
+
+  // ══ D-6 ACCEPTANCE (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`) ═══════════
+  // D-24: WHEN THE TRAVELER ACCEPTED THE DELIVERED ARTIFACT. `completed_at` records the MONEY
+  // event; this records the ANSWER that caused it. NULL = NEVER ACCEPTED, and every reader OMITS
+  // the field rather than rendering "not accepted", which would be a claim about a booking whose
+  // completion rule is not an artifact at all (§13).
+  //
+  // THE ACCEPTANCE DEADLINE IS DELIBERATELY NOT A COLUMN. It is DERIVED from `deliveredAt` plus
+  // `acceptanceWindowDays()` (`server/config/completion-windows.config.ts`), the way
+  // `resolveCompletionEligibility` already derives `eligibleAt`. A stored end date is a second
+  // authority that disagrees with the config the moment the config moves, and it would have to be
+  // re-stamped on every re-delivery.
+  //
+  // §19: `.omit()`'d from `insertServiceBookingSchema` and stripped again in storage. Its one
+  // writer is the traveler-gated accept rail (`server/services/booking-acceptance.service.ts` and
+  // `completeBooking`'s acceptance arm).
+  acceptedAt: timestamp("accepted_at"),
+  // D-26: THE PER-BOOKING DELIVERY INSTANT, moved by every re-delivery. The listing's
+  // `provider_services.deliverable_uploaded_at` is the LISTING's clock — shared by every buyer —
+  // and is the wrong anchor for one traveler's acceptance window; that mismatch is why D-26 exists.
+  // NULL = NOTHING WAS DELIVERED ON THIS BOOKING ⇒ no acceptance clock starts and the reason is
+  // stated, the way the existing `no_delivery_timestamp` skip already is. Never back-filled from
+  // the listing's clock (§13).
+  deliveredAt: timestamp("delivered_at"),
+  // D-26: THE PER-BOOKING ARTIFACT POINTER. Same value shape as `provider_services.service_file`
+  // (an `objstore:`-prefixed managed key, or a legacy pasted URL), so the existing serve rail
+  // branches on the stored value exactly as it already does — NO second file store. NULL = no
+  // per-booking artifact ⇒ the LISTING's file is the honest FALLBACK, and the serve rail says which
+  // one it served. Without this column a revision delivered to one traveler would rewrite the file
+  // every other buyer of the listing downloads.
+  deliverableFile: text("deliverable_file"),
+
   cancelledAt: timestamp("cancelled_at"),
   cancellationReason: text("cancellation_reason"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -2816,7 +2871,7 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // clamped, so this was a false-audit-trail write, not an approval bypass; the real admin
 // approve/reject writers below unconditionally overwrite all four the moment a real review
 // happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true }).extend({
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, declaredArtifactDeliverable: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // deliveryMethod vocabulary — UNLIKE the publish-trap fields below, a DB CHECK exists here
@@ -2982,6 +3037,16 @@ export const insertServiceBookingSchema = createInsertSchema(serviceBookings).om
   // `createServiceBooking`/`createServiceBookingAtomic` (layer 2, which also covers the internal
   // `as any` callers a type-level omit cannot reach).
   offeringContractSnapshot: true,
+  // D-6 acceptance (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`). The same §19
+  // class as the PI-linkage columns above: under a denylist schema a freshly-added column is
+  // client-settable BY DEFAULT, and these three decide when an artifact booking completes, how long
+  // the traveler has to accept it, and which file they are served. A crafted body could otherwise
+  // birth a row already claiming it was delivered and accepted. Named here (layer 1) and stripped
+  // again in `createServiceBooking`/`createServiceBookingAtomic` (layer 2, which also covers the
+  // internal `as any` callers a type-level omit cannot reach).
+  acceptedAt: true,
+  deliveredAt: true,
+  deliverableFile: true,
   confirmedAt: true,
   completedAt: true,
   cancelledAt: true,
@@ -3263,6 +3328,19 @@ export const providerServiceExpertOfferingSchema = createInsertSchema(providerSe
   .pick({ expertOfferingTypeKey: true })
   .partial()
   .extend({ expertOfferingTypeKey: z.string().min(1).max(100).nullish() });
+
+/**
+ * D-40 (§19): the ONE re-admission of `provider_services.declared_artifact_deliverable`. The
+ * generic body schema `.omit()`s the column (see its declaration), so this pick is the only way a
+ * request body can reach it — a denylist would have made a freshly-added column client-settable by
+ * default. `.strict()` REFUSES an unknown key rather than silently stripping it (the
+ * `replaceTripDestinations` posture, LD 34), and an explicit `null` is a CLEAR: withdrawing the
+ * declaration is an honest state, and it is a different fact from an absent key, which means "this
+ * write is not about the declared artifact" (the `itineraryItemEventLinkSchema` convention, LD 29).
+ */
+export const providerServiceDeclaredArtifactSchema = z
+  .object({ declaredArtifactDeliverable: z.string().trim().min(1).max(200).nullable() })
+  .strict();
 export type BundleComponent = typeof bundleComponents.$inferSelect;
 export type FAQ = typeof faqs.$inferSelect;
 export type InsertFAQ = z.infer<typeof insertFaqSchema>;
@@ -10713,6 +10791,55 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   index("service_route_points_service_idx").on(table.serviceId),
 ]);
 export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
+
+/**
+ * D-25 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`; punchlist D-25 = option A).
+ * ONE ROW PER REVISION A TRAVELER ASKED FOR, on the `service_route_points` / `dmo_extracted_places`
+ * child-row pattern: FK -> `service_bookings(id)` ON DELETE CASCADE, UNIQUE (booking_id,
+ * "position"), an index on the parent. Table, UNIQUE and index are all declared HERE per the
+ * deploy-push durability rule (an object this file does not declare is dropped at publish and never
+ * recreated, because the migration is already stamped).
+ *
+ * WHY A TABLE AND NOT A COUNTER. A `revisions_used` integer answers *how many* and nothing else: it
+ * cannot carry the traveler's WORDS — which are the evidence an admin review needs — and it cannot
+ * say when a revision was asked for or when it was answered. The COUNT is DERIVED from these rows
+ * and never stored beside them (§18 rule 1), and the ALLOWANCE is the listing's own
+ * `provider_services.revisions_included`, READ on every decision and never copied onto the booking
+ * (§19 — a copied allowance is a second authority a client could have influenced at birth).
+ *
+ * THERE IS DELIBERATELY NO `revision_status` MIRROR of the ready-made shape. Ready-made needs one
+ * because its entitlement is exactly one and lives on the purchase row; here the allowance is N and
+ * these rows say the same thing more precisely.
+ *
+ * §13: `resolvedAt` NULL = STILL OPEN — the seller has not re-delivered. A resolved row is never
+ * deleted and the position is never reused, because the history IS the evidence.
+ */
+export const bookingRevisionRequests = pgTable("booking_revision_requests", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bookingId: varchar("booking_id").notNull().references(() => serviceBookings.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based, derived server-side from the existing rows
+  note: text("note"),
+  requestedAt: timestamp("requested_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("booking_revision_requests_booking_position_unique").on(table.bookingId, table.position),
+  index("booking_revision_requests_booking_idx").on(table.bookingId),
+]);
+export type BookingRevisionRequest = typeof bookingRevisionRequests.$inferSelect;
+
+/**
+ * D-25 (§19): the ONE body a traveler's revision request may carry — exactly one field, and
+ * `.strict()` REFUSES an unknown key rather than silently stripping it. There is deliberately no
+ * `revisionsUsed`, no `position`, no `bookingId` and no status: the position is derived server-side
+ * from the existing rows, the allowance is read LIVE off `provider_services.revisions_included`, and
+ * the status flip is the transaction's own atomic conditional. A pick over the insert schema would
+ * have admitted `bookingId` and `position`, which is exactly the mass-assignment shape §19 exists to
+ * refuse — so this is hand-written and names only the traveler's own words.
+ */
+export const bookingRevisionNoteSchema = z
+  .object({ note: z.string().trim().max(2000).nullish() })
+  .strict();
 
 // Ordered collection points for a provider service. These are NOT the places the experience
 // visits (serviceRoutePoints); they describe a provider's pickup route only.
