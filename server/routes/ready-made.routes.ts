@@ -1413,7 +1413,9 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
 // ─── Concierge concern — the buyer's recourse after the self-serve refund removal ───────────
 //
 // Ledger 2026-08-22-concierge-p3: the D7 self-serve refund route that lived here is RETIRED —
-// ratified model: no self-serve refunds; every purchase includes 1 consult + 1 revision, and a
+// ratified model: no self-serve refunds; every purchase includes 1 REVISION (and nothing else —
+// ruling 2026-09-15, punchlist D-2: the consultation half had no storage and no rail, so it is
+// gone from every buyer-facing surface rather than promised), and a
 // buyer who is still unhappy opens a CONCERN for admin review (refund = the admin escape hatch,
 // /api/admin/ready-made/disputes). The buyer-actor branch of refundReadyMadePurchaseLedger is
 // intentionally kept (proven by verify-ready-made-phase2) — it simply has no route anymore.
@@ -1486,11 +1488,13 @@ router.post("/api/ready-made/purchases/:id/concern", isAuthenticated, async (req
 
 // ─── Concierge revision (ledger 2026-08-22-concierge-revision) ──────────────────────────────
 //
-// Every ready-made purchase includes ONE consultation + ONE revision from the selling expert.
+// Every ready-made purchase includes ONE asynchronous REVISION from the selling expert, and that is
+// the whole entitlement (ruling 2026-09-15, punchlist D-2 — wording and storage must agree, and only
+// the revision has a column and a rail).
 // P1 = the entitlement spine: the buyer's slip reads the entitlement by clone trip, and the
 // buyer requests the revision — which grants the selling expert WRITE access to the buyer's own
 // clone (§12 advisor write-status) so they can make the changes (P2 wires the Suggest→approve
-// delivery + the consult chat + the escrow SLA).
+// delivery + the escrow SLA).
 
 // GET the entitlement for the buyer's cloned trip — the Concierge card's data source. Owner-scoped
 // (the purchase's buyerId must be the session). Returns null when this trip is not a ready-made

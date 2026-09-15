@@ -2,15 +2,18 @@
  * ConciergeCard — the Ready-Made purchase's included support, shown on the buyer's Trip Slip
  * (ledger 2026-08-22-concierge-revision, P1).
  *
- * Every ready-made purchase includes ONE consultation + ONE revision from the selling expert.
+ * Every ready-made purchase includes ONE asynchronous REVISION from the selling expert — and that
+ * is the whole entitlement (decision-maker ruling 2026-09-15, punchlist D-2, ledger
+ * `2026-09-15-d2-one-revision-not-a-consultation`). The purchase row stores only the revision
+ * (`ready_made_purchases.revision_status`); there is no consultation column, rail or scheduling, so
+ * no surface offers one.
  * This card is the buyer's entry: it renders ONLY when the current trip is a ready-made clone the
  * caller owns (the server's by-clone lookup returns null otherwise → the card renders nothing, never
  * on a non-purchased trip). Requesting the revision grants the selling expert write access to this
- * clone server-side (§12) so they can make the changes; the consult chat + Suggest→approve delivery
- * land in P2.
+ * clone server-side (§12) so they can make the changes; the Suggest→approve delivery lands in P2.
  *
- * Honest framing (§13): the card promises only the one consult + one revision the expert committed
- * to — never unlimited edits or a money-back guarantee.
+ * Honest framing (§13): the card promises only the ONE revision the expert committed to — never a
+ * consultation (nothing schedules one), never unlimited edits, never a money-back guarantee.
  */
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -79,7 +82,6 @@ export function ConciergeCard({ tripId }: { tripId: string }) {
         {p.revisionStatus === "available" && (
           <>
             <ul className="text-sm text-foreground space-y-1 mb-3">
-              <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-primary" /> 1 consultation with {expert}</li>
               <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-primary" /> 1 revision — have {expert} adjust the itinerary for your dates &amp; taste</li>
             </ul>
             <Textarea
