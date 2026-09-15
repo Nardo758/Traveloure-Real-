@@ -27,9 +27,10 @@ const signedInTraveler = testAccounts.travelers[0];
 test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page, signedInTraveler.email, signedInTraveler.password);
-    // loginAs resolves when the post-login URL changes. Await the document
-    // itself before a test replaces that navigation with /discover/location;
-    // without this, a direct goto can intermittently abort during handoff.
+    // `loginAs` now proves the session and leaves the page on `/` (punchlist V-31, ledger
+    // `2026-09-15-v31-loginas-verifies`; it used to resolve on the post-login URL change and
+    // prove nothing). Await the document itself before a test replaces that navigation with
+    // /discover/location; without this, a direct goto can intermittently abort during handoff.
     await page.waitForLoadState('domcontentloaded');
   });
 
