@@ -16,6 +16,7 @@ import {
   resolveExternalAttributionToken,
   selectTokenMatchCandidate,
 } from "./affiliate-attribution.service";
+import { confirmFromPartnerReport } from "./affiliate-booking-confirmation.service";
 import { resolveCommissionRates } from "./commission";
 
 // ---------------------------------------------------------------------------
@@ -459,6 +460,43 @@ class AffiliateReconciliationService {
         }
       } catch (linkErr) {
         console.error(`[Reconciliation] F-5 expert-earning adoption failed for affiliate_earnings ${candidate.id}:`, linkErr);
+      }
+
+      // D-10 (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): THIS is the moment the
+      // platform is entitled to say an external booking is CONFIRMED — the partner has reported a
+      // conversion against this request's own attribution token, which is the only
+      // partner-ORIGINATED evidence that exists today (no partner provides a callback). The flip
+      // goes through the ONE writer (`affiliate-booking-confirmation.service.ts`), which takes the
+      // §15 atomic conditional; a replayed pass flips nothing.
+      //
+      // IT NEVER BREAKS THE ADOPTION IT RIDES ON (§15b's posture: an ancillary effect may not break
+      // the operation that authorizes it). The commission is already adopted and the earnings row
+      // already linked; a failure here is logged and the next pass re-tries the flip, because the
+      // adoption's own `reconciliation_status <> 'matched'` guard has by then consumed the external
+      // row — so the ONLY thing that can be lost is the status flip, not the money linkage.
+      if (linkedRequestId) {
+        try {
+          const outcome = await confirmFromPartnerReport(linkedRequestId, {
+            partner: ext.partner,
+            partnerReferenceId: ext.partnerReferenceId,
+            // §13: the partner's REPORTED number, verbatim. Nothing is estimated here and no
+            // amount is written onto the request row itself — it lives on the earnings row this
+            // pass just adopted, joined by `booking_request_id`.
+            reportedAmount: ext.amount,
+            reportedCurrency: ext.currency,
+            reportedAt: ext.reportedAt,
+          });
+          if (!outcome.confirmed) {
+            console.warn(
+              `[Reconciliation] D-10 confirm no-op for booking request ${linkedRequestId}: ${outcome.reason}`,
+            );
+          }
+        } catch (confirmErr) {
+          console.error(
+            `[Reconciliation] D-10 partner-evidence confirm failed for booking request ${linkedRequestId}:`,
+            confirmErr,
+          );
+        }
       }
     }
 

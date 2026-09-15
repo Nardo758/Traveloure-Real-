@@ -1342,7 +1342,7 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/checkout-payment-promotion.db.test.ts
 
   booking-agent-claim:
-    name: booking-agent-claim (LD 44; ledger 2026-09-08-assignment-is-claimed / 2026-09-15-booking-agent-claim)
+    name: booking-agent-claim (LD 44; ledger 2026-09-08-assignment-is-claimed / 2026-09-15-booking-agent-claim / 2026-09-15-d10-confirmed-needs-partner-evidence)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -1384,6 +1384,16 @@ jobs:
       # NEGATIVE RUN: with the atomic conditional removed from the writer, C2/C3/C4/C10 fail.
       - name: Booking-agent claim (C1-C10)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/booking-agent-claim.db.test.ts
+      # D-10, option A (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): an external
+      # booking reaches `confirmed` ONLY on PARTNER-ORIGINATED evidence. D1 is the two-layer
+      # narrowing (allowlist + the one writer under server/); D2-D4 are the human press as a
+      # §15 atomic purchase claim that never pulls a row off the partner's word; D5-D6 are the
+      # matcher's idempotent flip and its never-invented evidence; D7 is the route's 400; D8 is
+      # the no-backfill rule.
+      # NEGATIVE RUN: put `confirmed` back in HUMAN_SETTABLE_… and D1/D7 fail; drop the atomic
+      # conditional from recordAffiliateBookingPurchase and D3/D4 fail.
+      - name: Booking-agent confirmed needs partner evidence (D1-D8)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/booking-agent-confirmed.db.test.ts
 
   transport-payment-intent:
     name: transport-payment-intent (punchlist R-1; ledger 2026-09-14-transport-confirm-stamps-pi)
