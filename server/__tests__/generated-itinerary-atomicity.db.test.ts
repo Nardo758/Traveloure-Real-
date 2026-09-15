@@ -1,6 +1,24 @@
 /**
  * Real-DB regression coverage for atomic AI itinerary snapshots.
  *
+ * THE FIXTURE WAS OVERTAKEN BY A RULING AND IS RESTATED, NOT WEAKENED (ledger
+ * `2026-09-15-orphans-t4-t7-red-suites`). This suite used to seed its fixture trip with two
+ * pre-existing items and prove that a rolled-back snapshot restored them. CLAUDE.md Locked
+ * Decision 41 (b) / ledger `2026-09-05-draft-only-on-empty` has since ruled that the free AI
+ * draft runs ONLY on an EMPTY slip, so `saveGeneratedItinerarySnapshot` refuses a non-empty slip
+ * inside its own transaction — which made two proofs die on the refusal before they asserted
+ * anything, and would have made the two `assert.rejects` proofs pass for the WRONG REASON (a
+ * rejection is a rejection; nothing said it came from the trigger). Both halves are fixed here:
+ * every slip is born EMPTY, and every rejection is IDENTIFIED rather than merely awaited.
+ *
+ * EACH TEST OWNS ITS OWN TRIP. The ruling makes slip emptiness a precondition of the rail, so a
+ * suite whose tests share one trip is a suite whose tests depend on each other's leftovers —
+ * a commit in one test silently disqualifies the next. A trip per test removes the ordering.
+ *
+ * The protection the old fixture was reaching for — "a failed rebuild never destroys the
+ * traveler's rows" — is now proven by `regenerate-booking-guard.db.test.ts` G1a in the form the
+ * ruling takes: the rail REFUSES a non-empty slip and changes nothing.
+ *
  * Run:
  *   JOURNEY_DB_WRITES_OK=1 npx tsx --test server/__tests__/generated-itinerary-atomicity.db.test.ts
  */
@@ -21,6 +39,20 @@ import {
   insertAiInteraction,
   saveGeneratedItinerarySnapshot,
 } from "../services/content-query.service";
+import { isAiDraftSlipHasItemsError } from "../services/ai-draft-eligibility";
+
+/**
+ * The forced failure surfaces as a drizzle wrapper ("Failed query: …") whose `cause` carries the
+ * trigger's own message, so the whole chain is searched. Matching only `err.message` would have
+ * looked at the wrapper and reported the wrong reason for the failure (§13) — the same class of
+ * mistake as accepting any rejection at all.
+ */
+function isForcedComparisonFailure(err: unknown): boolean {
+  for (let current: any = err, depth = 0; current && depth < 8; current = current.cause, depth += 1) {
+    if (/forced AI snapshot comparison failure/.test(String(current?.message ?? current))) return true;
+  }
+  return false;
+}
 import type { NormalizedGeneratedCanonicalItem } from "../utils/generated-itinerary";
 
 if (process.env.JOURNEY_DB_WRITES_OK !== "1") {
@@ -29,7 +61,7 @@ if (process.env.JOURNEY_DB_WRITES_OK !== "1") {
 
 const suffix = randomUUID().slice(0, 8);
 const userId = `ai-atomic-${suffix}`;
-const existingTripId = `ai-atomic-trip-${suffix}`;
+let tripSeq = 0;
 const triggerFunction = `ai_atomic_fail_${suffix.replaceAll("-", "_")}`;
 const triggerName = `ai_atomic_fail_trigger_${suffix.replaceAll("-", "_")}`;
 const generatedTripTitle = `Atomic generated trip ${suffix}`;
@@ -49,7 +81,7 @@ const item = (title: string, dayNumber = 1): NormalizedGeneratedCanonicalItem =>
 function snapshotInput(
   label: string,
   canonicalItems: NormalizedGeneratedCanonicalItem[],
-  tripId: string | null = existingTripId,
+  tripId: string | null,
 ) {
   return {
     userId,
@@ -91,7 +123,22 @@ function snapshotInput(
   };
 }
 
-async function itemTitles(tripId = existingTripId): Promise<string[]> {
+/** An EMPTY trip owned by the fixture user — LD 41 (b)'s precondition, met by construction. */
+async function freshEmptyTrip(label: string): Promise<string> {
+  tripSeq += 1;
+  const id = `ai-atomic-trip-${suffix}-${tripSeq}`;
+  await db.insert(trips).values({
+    id,
+    userId,
+    title: `Atomic fixture ${label}`,
+    destination: "Kyoto",
+    startDate: "2033-05-01",
+    endDate: "2033-05-03",
+  } as any);
+  return id;
+}
+
+async function itemTitles(tripId: string): Promise<string[]> {
   const rows = await db.select({ title: itineraryItems.title })
     .from(itineraryItems)
     .where(eq(itineraryItems.tripId, tripId))
@@ -131,30 +178,6 @@ before(async () => {
     lastName: "Atomic",
     role: "user",
   } as any);
-  await db.insert(trips).values({
-    id: existingTripId,
-    userId,
-    title: "Existing atomic fixture",
-    destination: "Kyoto",
-    startDate: "2033-05-01",
-    endDate: "2033-05-03",
-  } as any);
-  await db.insert(itineraryItems).values([
-    {
-      tripId: existingTripId,
-      title: "Old one",
-      dayNumber: 1,
-      sortOrder: 0,
-      origin: "ai",
-    },
-    {
-      tripId: existingTripId,
-      title: "Old two",
-      dayNumber: 2,
-      sortOrder: 1,
-      origin: "ai",
-    },
-  ] as any);
 });
 
 after(async () => {
@@ -169,27 +192,34 @@ after(async () => {
   await pool.end().catch(() => {});
 });
 
-test("a comparison failure rolls back the plan and complete canonical replacement", async () => {
+test("a comparison failure rolls back every row the snapshot wrote", async () => {
+  const tripId = await freshEmptyTrip("rollback-existing");
   await installComparisonFailureTrigger();
   try {
+    // The rejection is IDENTIFIED. A bare `assert.rejects` here would also be satisfied by
+    // LD 41 (b)'s own refusal, which is exactly how this proof went silent for a release.
     await assert.rejects(
-      saveGeneratedItinerarySnapshot(snapshotInput("FAIL-existing", [item("Rejected new item")])),
+      saveGeneratedItinerarySnapshot(snapshotInput("FAIL-existing", [item("Rejected new item")], tripId)),
+      (err: unknown) => {
+        assert.ok(!isAiDraftSlipHasItemsError(err), "this slip is empty; the refusal must be the trigger's");
+        return isForcedComparisonFailure(err);
+      },
     );
   } finally {
     await removeComparisonFailureTrigger();
   }
 
-  assert.deepEqual(await itemTitles(), ["Old one", "Old two"]);
+  assert.deepEqual(await itemTitles(tripId), [], "a rolled-back snapshot leaves no item rows behind");
   const plans = await db.select({ id: aiGeneratedItineraries.id })
     .from(aiGeneratedItineraries)
     .where(and(
-      eq(aiGeneratedItineraries.tripId, existingTripId),
+      eq(aiGeneratedItineraries.tripId, tripId),
       eq(aiGeneratedItineraries.title, "Plan FAIL-existing"),
     ));
   const comparisons = await db.select({ id: itineraryComparisons.id })
     .from(itineraryComparisons)
     .where(and(
-      eq(itineraryComparisons.tripId, existingTripId),
+      eq(itineraryComparisons.tripId, tripId),
       eq(itineraryComparisons.title, "Comparison FAIL-existing"),
     ));
   assert.equal(plans.length, 0);
@@ -203,6 +233,10 @@ test("a mid-transaction failure also rolls back newly required trip creation", a
       saveGeneratedItinerarySnapshot(
         snapshotInput("FAIL-new-trip", [item("Never persisted")], null),
       ),
+      (err: unknown) => {
+        assert.ok(!isAiDraftSlipHasItemsError(err), "a mint has no slip to be ineligible");
+        return isForcedComparisonFailure(err);
+      },
     );
   } finally {
     await removeComparisonFailureTrigger();
@@ -215,8 +249,9 @@ test("a mid-transaction failure also rolls back newly required trip creation", a
 });
 
 test("analytics failure is best-effort and cannot weaken the committed snapshot", async () => {
+  const tripId = await freshEmptyTrip("analytics");
   const committed = [item("Committed despite analytics failure")];
-  const snapshot = await saveGeneratedItinerarySnapshot(snapshotInput("analytics", committed));
+  const snapshot = await saveGeneratedItinerarySnapshot(snapshotInput("analytics", committed, tripId));
 
   await insertAiInteraction({
     taskType: "autonomous_itinerary",
@@ -226,7 +261,7 @@ test("analytics failure is best-effort and cannot weaken the committed snapshot"
     success: true,
   });
 
-  assert.deepEqual(await itemTitles(), committed.map((entry) => entry.title));
+  assert.deepEqual(await itemTitles(tripId), committed.map((entry) => entry.title));
   const [plan] = await db.select({ id: aiGeneratedItineraries.id })
     .from(aiGeneratedItineraries)
     .where(eq(aiGeneratedItineraries.id, snapshot.savedItinerary.id));
@@ -237,32 +272,47 @@ test("analytics failure is best-effort and cannot weaken the committed snapshot"
   assert.ok(comparison);
 });
 
-test("concurrent regenerations leave one complete generation, never a mixed item set", async () => {
+test("concurrent drafts on one empty slip leave ONE complete generation, never a mixed item set", async () => {
+  // RESTATED FOR LD 41 (b), NOT WEAKENED. Two free drafts can both be ELIGIBLE only while the slip
+  // is empty; the `FOR UPDATE` lock serialises them, so the loser re-reads a slip that now holds
+  // the winner's rows and is refused by the ruling rather than overwriting them. The property this
+  // proof has always been about — the slip never ends up holding half of each set — is unchanged,
+  // and the refusal is now part of what makes that true.
+  const tripId = await freshEmptyTrip("concurrent");
   const setA = [item("A one"), item("A two", 2)];
   const setB = [item("B one"), item("B two", 2), item("B three", 3)];
 
-  await Promise.all([
-    saveGeneratedItinerarySnapshot(snapshotInput("A", setA)),
-    saveGeneratedItinerarySnapshot(snapshotInput("B", setB)),
+  const settled = await Promise.allSettled([
+    saveGeneratedItinerarySnapshot(snapshotInput("A", setA, tripId)),
+    saveGeneratedItinerarySnapshot(snapshotInput("B", setB, tripId)),
   ]);
+  const fulfilled = settled.filter((r) => r.status === "fulfilled");
+  const rejected = settled.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+  assert.equal(fulfilled.length, 1, `exactly one draft may win, received ${JSON.stringify(settled.map((r) => r.status))}`);
+  assert.equal(rejected.length, 1);
+  assert.ok(
+    isAiDraftSlipHasItemsError(rejected[0].reason),
+    `the loser must be refused by LD 41 (b), received: ${String(rejected[0].reason)}`,
+  );
 
-  const finalTitles = await itemTitles();
+  const finalTitles = await itemTitles(tripId);
   const isA = JSON.stringify(finalTitles) === JSON.stringify(setA.map((entry) => entry.title));
   const isB = JSON.stringify(finalTitles) === JSON.stringify(setB.map((entry) => entry.title));
   assert.ok(isA || isB, `expected one complete set, received ${JSON.stringify(finalTitles)}`);
 
+  // Exactly ONE plan and ONE comparison: the refused draft's rows rolled back with its transaction.
   const plans = await db.select({ title: aiGeneratedItineraries.title })
     .from(aiGeneratedItineraries)
     .where(and(
-      eq(aiGeneratedItineraries.tripId, existingTripId),
+      eq(aiGeneratedItineraries.tripId, tripId),
       inArray(aiGeneratedItineraries.title, ["Plan A", "Plan B"]),
     ));
   const comparisons = await db.select({ title: itineraryComparisons.title })
     .from(itineraryComparisons)
     .where(and(
-      eq(itineraryComparisons.tripId, existingTripId),
+      eq(itineraryComparisons.tripId, tripId),
       inArray(itineraryComparisons.title, ["Comparison A", "Comparison B"]),
     ));
-  assert.equal(plans.length, 2);
-  assert.equal(comparisons.length, 2);
+  assert.equal(plans.length, 1, "the refused draft's plan row must have rolled back");
+  assert.equal(comparisons.length, 1, "the refused draft's comparison row must have rolled back");
 });

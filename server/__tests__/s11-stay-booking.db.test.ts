@@ -61,6 +61,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { resolveStayNightlyRates, resolveItemBaseAmount } from "../routes/payments.routes";
+import { registerActorWithReadBack, type RegisteredActor } from "./fixtures/registered-actor";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -99,21 +100,24 @@ async function readOnce(res: Response): Promise<{ status: number; body: any; tex
   return { status: res.status, body, text };
 }
 
-interface Actor { id: string; email: string; cookie: string; }
+/** The actor is created in the SERVER process and every fixture row below is inserted from
+ *  THIS process, so the register must be READ BACK on this connection before anything can
+ *  reference it — see server/__tests__/fixtures/registered-actor.ts for the race this closes
+ *  (orphan triage §6, R-12/R-13). One implementation, two callers (§18 rule 1). */
+type Actor = RegisteredActor;
 async function registerActor(label: string, role?: string): Promise<Actor> {
   const email = `s11-${RUN}-${label}@t.test`;
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: "S11", lastName: label }),
+  const actor = await registerActorWithReadBack({
+    baseUrl: BASE_URL,
+    email,
+    password: PASSWORD,
+    firstName: "S11",
+    lastName: label,
+    role,
+    db,
   });
-  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  const setCookie = res.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  const body = (await res.json()) as any;
   createdEmails.push(email);
-  if (role) await db.execute(sql`UPDATE users SET role = ${role} WHERE id = ${body.user.id}`);
-  return { id: body.user.id, email, cookie: setCookie!.split(";")[0] };
+  return actor;
 }
 
 /** A minimal property_room fixture, inserted directly (travel-surcharge.db.test.ts precedent) —
