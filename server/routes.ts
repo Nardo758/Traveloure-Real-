@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { getUserId, getDbRole } from "./utils/auth";
 // ONE ownership predicate for a custom venue (ledger `2026-09-05-custom-venues-owner-scope`).
 import { isCustomVenueOwner } from "./utils/custom-venue-owner";
+import { OWNER_BOOKING_TRANSITIONS } from "./utils/booking-from-states";
 import {
   normalizeGeneratedActivityDurationMinutes,
   normalizeGeneratedDayNumber,
@@ -6832,38 +6833,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // traveler/escrow-driven (POST /api/bookings/:id/confirm-completion + the release
   // job). Applied to BOTH the expert and provider status endpoints.
   const OWNER_SETTABLE_BOOKING_STATUSES = ["confirmed", "cancelled"];
-  // ── SD-1 (provider money-hardening lane, ruling 42): the FROM-state allow-list ────────────────
-  // The handler previously checked only the TARGET status, never the CURRENT one. `service_bookings`
-  // rows in `payment_pending` with no `stripe_payment_intent_id` are UNAUTHORIZED PROVISIONAL CLAIMS
-  // by construction (§15b / ruling 38) — written before the Stripe call, and visible to the provider
-  // (GET /api/provider/bookings applies no status filter; the calendar renders them "Booked"). A
-  // provider clicking Accept on one promoted a purchase nobody had paid for, and — because both
-  // recovery predicates key on `status='payment_pending'` — permanently stranded the availability
-  // slot the claim had consumed: `voidClaim` and `promotePaidCheckout` both matched 0 rows
-  // afterwards, and nothing in the codebase gives `vendor_availability_slots.booked_count` back.
-  //
-  // A provisional claim is UNACCEPTABLE INPUT — rejected, never promoted. The owner rail does not
-  // participate in the claim state machine at all; `checkout-claim.service.ts` remains its sole
-  // author. `expired` (a swept claim) and the terminal states are likewise not owner-movable.
-  const OWNER_BOOKING_TRANSITIONS: Record<string, readonly string[]> = {
-    // Accept: only a request-rail booking awaiting the owner's answer.
-    confirmed: ["pending"],
-    // Decline / cancel: an unanswered request, an already-accepted booking, or a DEPOSIT-PAID one.
-    //
-    // `deposit_paid` added by ledger `2026-09-03-deposit-paid-cancel`. Its absence was not a policy
-    // — it was an omission: a listing that takes deposits produced bookings its own provider could
-    // not cancel, answering every attempt with a 409 that named no remedy. The traveler's money sat
-    // at Stripe and the claimed availability slot stayed consumed. The RULING is narrow: a provider
-    // cancel of a deposit-paid booking refunds exactly what was CAPTURED — the deposit — and
-    // nothing else, because the balance was never charged and there is nothing on it to refund.
-    //
-    // NOTE this still keeps the pre-existing cancel-a-CONFIRMED-booking behaviour verbatim — the
-    // missing-refund question on that edge is a SEPARATE, still-unruled finding (audit SD-2 / Q2)
-    // and is deliberately not changed here rather than silently altered under cover of this fix.
-    // `resolveCapturedDeposit` keys strictly on `status = 'deposit_paid'` for exactly that reason:
-    // a booking that has paid its balance is `confirmed`, and stays that sibling gap's business.
-    cancelled: ["pending", "confirmed", "deposit_paid"],
-  };
+  // The FROM-state allow-list (SD-1, ruling 42) now lives in `server/utils/booking-from-states.ts`
+  // beside the dispute and dispute-reject lists that ledger `2026-09-15-v23-v25-from-state-guards`
+  // added — ONE home for "which statuses may become X" on this table (§18 rule 1). The behaviour
+  // here is unchanged: the list and its reasoning moved verbatim.
   const handleOwnerBookingStatus = async (req: any, res: any) => {
     try {
       const userId = getUserId(req)!;
@@ -9910,20 +9883,41 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       const { status, ...historyEntry } = req.body;
 
+      // The status this request was decided against. V-25(b) (§15/§18b; ledger
+      // `2026-09-15-v23-v25-from-state-guards`): BOTH arms pass it to the writer, which turns the
+      // UPDATE into `… WHERE id = ? AND status IN (…)`. Everything below is a PRE-CHECK and
+      // therefore only the error message — the row is read here, so two concurrent requests both
+      // pass their own check and the guard is what makes exactly one of them land.
+      const fromStatus = state.status ?? "intake";
+
       // Coordinators can only advance status forward — never regress or cancel.
       if (isCoordinator && !isTraveler) {
         const FORWARD_ORDER = [
           "intake", "expert_matching", "vendor_discovery", "itinerary_generation",
           "optimization", "booking_coordination", "confirmed", "in_progress", "completed",
         ];
-        const currentIdx = FORWARD_ORDER.indexOf(state.status ?? "intake");
+        const currentIdx = FORWARD_ORDER.indexOf(fromStatus);
         const nextIdx = FORWARD_ORDER.indexOf(status);
         if (nextIdx === -1 || nextIdx <= currentIdx) {
           return res.status(403).json({ message: "Coordinators can only advance status forward" });
         }
       }
 
-      const updated = await storage.updateCoordinationStatus(req.params.id, status, historyEntry);
+      // THE TRAVELER ARM HAS NO ORDERING RULE, AND THIS LANE DELIBERATELY ADDS NONE. V-25(a) —
+      // a traveler may still set any string in any direction — is OWNED BY D-36..D-39 (punchlist
+      // D-39; `docs/design/EXPERT_ACCEPTANCE_BRIEF.md` F3), because under that ruling the
+      // COORDINATOR declares and the traveler arm needs a rule before a declared state means
+      // anything. What this lane gives that arm is the ATOMICITY it also lacked: whatever status it
+      // is one day allowed to set, it will set it against the row it actually read.
+      const updated = await storage.updateCoordinationStatus(req.params.id, status, historyEntry, [fromStatus]);
+      if (!updated) {
+        // Lost race (or the row moved between the read and the write). Nothing was written and
+        // nothing was appended to `state_history`.
+        return res.status(409).json({
+          message: "This engagement changed while your update was in flight. Reload and try again.",
+          currentStatus: fromStatus,
+        });
+      }
       res.json(updated);
     } catch (error) {
       console.error("Error updating coordination status:", error);

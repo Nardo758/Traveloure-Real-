@@ -16,6 +16,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getUserId, getDbRole } from '../utils/auth';
 import { sanitizeBookingForExpert } from '../utils/data-sanitizer';
 import { holdWindowDays } from '../config/earnings-hold.config';
+import { DISPUTABLE_FROM_STATUSES } from '../utils/booking-from-states';
 import {
   CANONICAL_BOOKING_RAIL,
   LEGACY_BOOKINGS_CLOSED_REASON,
@@ -798,7 +799,34 @@ router.post('/:id/dispute', isAuthenticated, async (req, res) => {
 
     // Block release: flag the booking's unpaid earnings disputed (pulled back to held), mark booking disputed.
     const blocked = await storage.setBookingEarningsDispute(bookingId, true);
-    await storage.updateServiceBookingStatus(bookingId, 'disputed', reason);
+    // V-23 (§18b; ledger `2026-09-15-v23-v25-from-state-guards`): THE TRANSITION IS THE GUARD. This
+    // call used to pass three arguments, so the writer's guard fell back to `eq(id)` — an
+    // unconditional UPDATE that would flip ANY row to `disputed`, a `payment_pending` provisional
+    // claim included (§15b — after which `voidClaim` and `promotePaidCheckout` both match zero rows
+    // and the claimed availability slot is stranded with no code path to return it). The named list
+    // is `DISPUTABLE_FROM_STATUSES`, declared beside `OWNER_BOOKING_TRANSITIONS` in
+    // `server/utils/booking-from-states.ts` — ONE home for this table's from-state lists (§18 rule 1).
+    //
+    // The `completed_at` window read above stays exactly what it is: THE ERROR MESSAGE. It bounds a
+    // dispute in TIME and can tell the traveler why theirs is too late; it pins nothing, so a
+    // concurrent completion / refund / cancel between that SELECT and this write is caught HERE,
+    // by the UPDATE's own predicate, and by nothing else.
+    const disputed = await storage.updateServiceBookingStatus(
+      bookingId,
+      'disputed',
+      reason,
+      DISPUTABLE_FROM_STATUSES,
+    );
+    if (!disputed) {
+      // `undefined` is a LOST RACE or a wrong state — never a success. Reporting `success: true` for
+      // a write that changed nothing is the honesty half of this fix (§13): the earnings flag above
+      // is already reversible by the admin queue, and telling the traveler their dispute was opened
+      // when the row never moved is the one answer that leaves them with no remedy.
+      return res.status(409).json({
+        error: 'dispute_not_applicable',
+        message: 'This booking is no longer in a state that can be disputed. Reload and try again.',
+      });
+    }
     res.json({ success: true, blocked });
   } catch (error: any) {
     console.error('Dispute error:', error);

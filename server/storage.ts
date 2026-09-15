@@ -737,7 +737,9 @@ export interface IStorage {
 
   updateCoordinationState(id: string, updates: Partial<InsertCoordinationState>): Promise<CoordinationState | undefined>;
 
-  updateCoordinationStatus(id: string, status: string, historyEntry?: any): Promise<CoordinationState | undefined>;
+  /** `expectedFromStatuses` is the §18b atomic conditional — SAME shape and SAME 4th position as
+   *  `updateServiceBookingStatus`, delegated rather than re-invented (§18 rule 1). */
+  updateCoordinationStatus(id: string, status: string, historyEntry?: any, expectedFromStatuses?: readonly string[]): Promise<CoordinationState | undefined>;
 
   deleteCoordinationState(id: string): Promise<void>;
 
@@ -3274,7 +3276,16 @@ export class DatabaseStorage implements IStorage {
 
     const updates: any = { status, updatedAt: new Date() };
     if (status === "confirmed") updates.confirmedAt = new Date();
-    if (status === "completed") updates.completedAt = new Date();
+    // V-24 (§18b; ledger `2026-09-15-v23-v25-from-state-guards`): `completed_at` is stamped ONCE —
+    // on the FIRST completion — and a RE-completion leaves the original instant alone. This was an
+    // unconditional `new Date()`, so the admin dispute-reject rail (completed → disputed →
+    // re-completed) silently moved it forward, and TWO durable things anchor on that column: the
+    // traveler's own dispute window (`server/routes/bookings.ts` reads `completedAt` +
+    // `holdWindowDays('service_booking')`) and, through it, the earnings-release timing the escrow
+    // spine lines up with it. Re-stamping restarted both — a rejected dispute handed the traveler a
+    // fresh window to re-dispute in and pushed the earner's money further out. COALESCE in the SET
+    // expression rather than a read-then-decide, so the single UPDATE stays the whole decision.
+    if (status === "completed") updates.completedAt = sql`COALESCE(${serviceBookings.completedAt}, NOW())`;
     if (status === "cancelled" || status === "refunded") {
       updates.cancelledAt = new Date();
       if (reason) updates.cancellationReason = reason;
@@ -4592,24 +4603,57 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateCoordinationStatus(id: string, status: string, historyEntry?: any): Promise<CoordinationState | undefined> {
-    const [current] = await db.select().from(coordinationStates).where(eq(coordinationStates.id, id));
-    if (!current) return undefined;
-    
-    const currentHistory = (current.stateHistory as any[]) || [];
-    const newHistory = [...currentHistory, {
+  /**
+   * V-25(b) (§15/§18b; ledger `2026-09-15-v23-v25-from-state-guards`). THE TRANSITION IS THE GUARD.
+   *
+   * This writer was a SELECT, a JS append and an unconditional `UPDATE … WHERE id = ?`, with the
+   * route's ordering check done against the row that SELECT returned. §15 names that shape by hand:
+   * a check-then-update is the TOCTOU bug, not a guard. Two concurrent advances both read
+   * `vendor_discovery`, both passed the forward check, and the later write won — and because the
+   * history was read-modify-written, the LOSER'S TRANSITION WAS ERASED from the one record of who
+   * advanced what, which is the worse half: the audit trail disagreed with the row silently.
+   *
+   * Three things changed and all three are load-bearing:
+   *   1. `expectedFromStatuses` — the SAME parameter shape, in the SAME 4th position, as
+   *      `updateServiceBookingStatus` (§18 rule 1: the guard is delegated, not re-invented). Absent
+   *      ⇒ the previous unconditional behaviour verbatim, so no caller is changed by existing.
+   *   2. The history append is ONE SQL expression inside the same UPDATE —
+   *      `COALESCE(state_history,'[]'::jsonb) || <entry>::jsonb` — so the entry is appended to
+   *      whatever the row holds AT WRITE TIME. A losing writer now appends nothing (its UPDATE
+   *      matches no row); a winning writer can never clobber a concurrent append.
+   *   3. `completed_at` is stamped only on the transition INTO completed
+   *      (`COALESCE(completed_at, NOW())`), never re-stamped by a second `completed` write.
+   *
+   * §13 on the history entry: `status` and `timestamp` are written LAST, so the row's own record of
+   * what happened is the SERVER's answer and never a value the caller put in `historyEntry` — an
+   * audit trail whose subject the client can name is not an audit trail.
+   *
+   * NOT IN THIS WRITER: which transitions are LEGAL for which actor. That is the route's question,
+   * and the traveler arm's ordering rule is owned by D-36..D-39 (punchlist D-39) — see the route.
+   */
+  async updateCoordinationStatus(id: string, status: string, historyEntry?: any, expectedFromStatuses?: readonly string[]): Promise<CoordinationState | undefined> {
+    // The entry is wrapped in an ARRAY so the `||` is an array-to-array concat: `state_history` is
+    // jsonb defaulting to `[]` at both the ORM and the DB (migration 000), and array || object also
+    // appends, but array || array says what is meant and cannot be read as a merge.
+    const entry = JSON.stringify([{ ...historyEntry, status, timestamp: new Date().toISOString() }]);
+
+    const guard = expectedFromStatuses && expectedFromStatuses.length > 0
+      ? and(eq(coordinationStates.id, id), inArray(coordinationStates.status, expectedFromStatuses as string[]))
+      : eq(coordinationStates.id, id);
+
+    const updateData: any = {
       status,
-      timestamp: new Date().toISOString(),
-      ...historyEntry
-    }];
-    
-    const updateData: any = { status, stateHistory: newHistory, updatedAt: new Date() };
-    if (status === "completed") updateData.completedAt = new Date();
-    
+      stateHistory: sql`COALESCE(${coordinationStates.stateHistory}, '[]'::jsonb) || ${entry}::jsonb`,
+      updatedAt: new Date(),
+    };
+    if (status === "completed") updateData.completedAt = sql`COALESCE(${coordinationStates.completedAt}, NOW())`;
+
     const [updated] = await db.update(coordinationStates)
       .set(updateData)
-      .where(eq(coordinationStates.id, id))
+      .where(guard)
       .returning();
+    // `undefined` now means EITHER no such row OR a lost race / wrong from-state. The route reads the
+    // row for its own 404, so it can tell those apart; this writer deliberately does not guess.
     return updated;
   }
 
