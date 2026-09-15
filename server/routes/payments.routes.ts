@@ -2863,7 +2863,28 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
     }
   });
 
-  // ─── Smart Lead Routing ──────────────────────────────────────────────────────
-  // POST /api/leads/route  — score experts and auto-assign
+// ─── Smart Lead Routing: the HTTP door is RETIRED, deliberately ──────────────────────────────
+// (punchlist V-32, ledger `2026-09-15-v32-v33-leads-door-item-read-gate`.)
+//
+// A `// POST /api/leads/route — score experts and auto-assign` comment stood here with no handler
+// under it: the body lived at `server/routes.ts:18777` until the June 2026 route-defragmentation
+// commit `a8d7a8bf2`, which carried the comment across and left the handler behind, so the door
+// answered 404 for three months while its own comment claimed it existed. It is NOT restored, and
+// the comment is removed so the file stops describing a route it does not serve.
+//
+// WHY RETIRED RATHER THAN REPAIRED. A door whose job is "score experts and auto-assign" would be a
+// SECOND author of the advisor row. Locked Decision 42 D7 rules ONE advisor-add rail
+// (`POST /api/trips/:tripId/advisors` → `upsertTripAdvisorRow`) and Locked Decision 32 routes a
+// LEAD through `POST /api/expert-requests`, which creates the `expert_requests` row and then runs
+// `leadRoutingService.routeLead` itself, stamping the assignment and calling
+// `ensureTripAdvisorRow` — the same one author. `scripts/check-advisor-row-author.cjs` would refuse
+// a new insert here anyway (ledger `2026-09-04-advisor-row-one-author`). Restoring the door would
+// re-create the derivation-drift shape §18 rule 1 names, for a rail two ratified ones already
+// serve.
+//
+// `server/services/lead-routing.service.ts` is UNTOUCHED and stays live: what was missing was the
+// HTTP door, not the scoring logic, and it has real importers
+// (`server/routes/booking-actions.ts`, `server/services/content-matching.service.ts`).
+// Do not re-add `/api/leads/route`.
 
 export default router;
