@@ -1274,9 +1274,19 @@ export default function CartPage() {
         toast({ variant: "destructive", title: "Please enter a trip name" });
         return;
       }
+      // LD 42 D12 — A MINT MAY NOT INVENT A DESTINATION (ledger
+      // `2026-09-15-d16-plan-holds-venues-and-content`). This field used to be optional and the
+      // server wrote the literal "To be determined" in its place, which is a manufactured answer to
+      // the one question `trips.destination` exists to record — and the fact the plan's market and
+      // timezone are both derived from. The traveler is ASKED; the server refuses without it too,
+      // so this check is the message, not the gate.
+      if (!newTripDestination.trim()) {
+        toast({ variant: "destructive", title: "Please enter a destination" });
+        return;
+      }
       convertToItineraryMutation.mutate({
         newTripName: newTripName.trim(),
-        destination: newTripDestination.trim() || undefined,
+        destination: newTripDestination.trim(),
         cartItemIds,
       });
     }
@@ -3321,7 +3331,7 @@ export default function CartPage() {
                   </div>
                   <div>
                     <Label htmlFor="new-trip-destination" className="text-xs text-muted-foreground mb-1 block">
-                      Destination (optional)
+                      Destination *
                     </Label>
                     <Input
                       id="new-trip-destination"

@@ -56,6 +56,16 @@
  *    lands here ON PURPOSE — that column's own contract is "informational: a real pin + official
  *    link, NOT platform-bookable" (shared/schema.ts), which is precisely `recommended`.
  *
+ *    THE TWO MIGRATION-295 LINKS LAND HERE TOO, AND NO RULE WAS ADDED FOR THEM (ruling 2026-09-15,
+ *    punchlist D-16 (b)/(c); ledger `2026-09-15-d16-plan-holds-venues-and-content`). An item
+ *    naming `customVenueId` (the traveler's OWN venue) or `contentType`/`contentId` (a Discover
+ *    gem / hotel / activity) names nothing the platform can charge for: checkout skips an item
+ *    with no service on both loops, and a venue the traveler typed in has no listing behind it at
+ *    all. So rule 4 is already the right answer, and writing a fifth rule — or a branch in a
+ *    component — would be a second "what kind of item is this?" expression saying the same thing
+ *    (§18 rule 1). The columns are named here so the silence is deliberate rather than an
+ *    oversight, and `shared/__tests__/item-kind.test.ts` pins it.
+ *
  * ── WAS `recommended` vs `external` DERIVABLE? YES — AND THAT IS WHY THIS FILE FILED NO COLUMN ──
  * The lane brief required a STOP-AND-ASK (punchlist row D-23, an `author_intent` column) if the
  * two could not be told apart from fields that already exist. They can: `affiliateProductId` is a
@@ -89,6 +99,10 @@ export type ItemKind = (typeof ITEM_KINDS)[number];
  * honest reading for a caller whose projection simply does not carry the column (§13).
  */
 export interface ItemKindInput {
+  // NOTE (migration 295): `customVenueId` / `contentType` / `contentId` are deliberately NOT in
+  // this shape. They do not change the answer — an item naming one of them names nothing bookable
+  // and is `recommended` by rule 4 — and admitting a field the derivation never reads would invite
+  // a caller to believe it does.
   /** `itinerary_items.booking_id` — a real `service_bookings` row. Rule 1. */
   bookingId?: string | null;
   /** `itinerary_items.provider_service_id` — the bookable platform listing. Rule 2. */

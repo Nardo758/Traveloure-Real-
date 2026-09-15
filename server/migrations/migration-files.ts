@@ -1560,4 +1560,14 @@ export const MIGRATION_FILES = [
   // `preflight-prod-constraints.cjs` manifest entry), deduped first on 203's preference order,
   // and DECLARED in `shared/schema.ts` in the same commit (deploy-push durability rule).
   "294_ready_made_sale_earning_uniq.sql",
+  // Ruling 2026-09-15, punchlist **D-16** (b)/(c); ledger `2026-09-15-d16-plan-holds-venues-and-content`.
+  // A plan item may now name the traveler's OWN venue (`custom_venue_id`, FK → `custom_venues`
+  // ON DELETE SET NULL) or the Discover CONTENT it came from (`content_type`/`content_id`,
+  // mirroring `cart_items`' own two columns; soft reference, no FK — the content lives across
+  // several tables). Additive-nullable, NO CHECK and NO DEFAULT (so no
+  // `preflight-prod-constraints.cjs` manifest entry), no backfill. Columns AND the index are
+  // DECLARED in `shared/schema.ts` in the same commit (deploy-push durability rule). They are
+  // stamped server-side by the ONE projection module and OMITTED from
+  // `insertItineraryItemSchema` with no pick-based re-admission (§19).
+  "295_itinerary_items_venue_and_content_links.sql",
 ] as const;

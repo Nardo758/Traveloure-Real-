@@ -294,11 +294,19 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
         "Planning dialog should open"
       ).toBeVisible({ timeout: 5_000 });
 
-      // 9. Switch to "New trip" mode and enter a name.
+      // 9. Switch to "New trip" mode and enter a name AND a destination.
+      //    The destination became REQUIRED on 2026-09-15 (ledger
+      //    `2026-09-15-d16-plan-holds-venues-and-content`, LD 42 D12): the mint used to write the
+      //    literal "To be determined" when it was left blank, which is a manufactured answer to
+      //    the one question `trips.destination` exists to record. Both the dialog and the server
+      //    now refuse without it, so this step fills it.
       await page.locator('[data-testid="button-mode-new"]').click();
       await page
         .locator('[data-testid="input-new-trip-name"]')
         .fill("E2E TripStrip Test Trip");
+      await page
+        .locator('[data-testid="input-new-trip-destination"]')
+        .fill("Kyoto, Japan");
 
       // 10. Click "Add items to trip" — fires convertToItineraryMutation.
       //     onSuccess order: invalidateQueries(["/api/cart"]) → setLocation().
