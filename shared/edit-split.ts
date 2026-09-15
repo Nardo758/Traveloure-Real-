@@ -24,12 +24,12 @@ export const IDENTITY_EDIT_FIELDS = [
   // `expertOfferingTypeKey` is migration 292's column (ledger
   // `2026-09-12-listing-names-its-expert-offering`) — what the listing SELLS, which §23 names
   // under "category/offering" as an identity edit: changing it changes the archetype a buyer is
-  // committing to, so on an APPROVED listing it re-enters review beside the two ids rather than
-  // moving the live row. (`offeringTypeKey` beside it is the /earn URL param spelling; neither it
-  // nor `expertOfferingTypeId`/`serviceOfferingTypeId` is removed here — `expertOfferingTypeId` is
-  // now unwritable by any rail (ledger `2026-09-12-offering-key-is-canonical` omits it from the
-  // body schema), so its entry is inert rather than wrong, and it leaves with the column in lane 2.)
-  "serviceOfferingTypeId", "expertOfferingTypeId", "expertOfferingTypeKey", "offeringTypeKey",
+  // committing to, so on an APPROVED listing it re-enters review beside the ids rather than
+  // moving the live row. (`offeringTypeKey` beside it is the /earn URL param spelling.)
+  // `expertOfferingTypeId` used to sit here and is GONE with its column (migration 295, ledger
+  // `2026-09-15-offering-key-id-drop`): a lane that names a dropped column in the review split is
+  // a lane nobody can trigger, and the handler iterates this list against the parsed body.
+  "serviceOfferingTypeId", "expertOfferingTypeKey", "offeringTypeKey",
   "deliveryMethod", "productShape",
 ] as const;
 
@@ -46,7 +46,7 @@ export const IDENTITY_EDIT_LANE: { fields: IdentityEditField[]; label: string }[
   {
     fields: [
       "categoryId", "subcategoryId", "serviceOfferingTypeId",
-      "expertOfferingTypeId", "expertOfferingTypeKey", "offeringTypeKey",
+      "expertOfferingTypeKey", "offeringTypeKey",
     ],
     label: "Category and offering",
   },

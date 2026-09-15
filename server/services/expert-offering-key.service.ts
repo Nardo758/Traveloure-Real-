@@ -25,11 +25,12 @@
  *     owner may name any key the expert catalog carries. Naming an offering type says WHAT IS
  *     SOLD, never WHO THE SELLER IS — it is not a credential, it grants nothing, and LD 27's
  *     verification machinery is untouched by it.
- *   · **A STORED DISAGREEMENT IS NOT REPAIRED HERE.** A PATCH naming the key, against a row whose
- *     legacy `expert_offering_type_id` points elsewhere, leaves that older column exactly as it
- *     found it. The relationship between the two is now RULED — the key is canonical, the id is
- *     dropped in lane 2 (ledger `2026-09-12-offering-key-is-canonical`) — and migration 293 copies
- *     the id onto an EMPTY key only, so this rail neither creates a disagreement nor resolves one.
+ *   · **THERE IS NO SECOND OFFERING COLUMN LEFT TO DISAGREE WITH.** The legacy
+ *     `expert_offering_type_id` was dropped by migration 295 (ledger
+ *     `2026-09-15-offering-key-id-drop`, lane 2 of `2026-09-12-offering-key-is-canonical`) after
+ *     migration 293 copied its answer onto an EMPTY key. This rail writes the key and nothing
+ *     else; re-introducing a second column for the same fact is the §18 rule 1 class the ruling
+ *     closed.
  */
 import { eq } from "drizzle-orm";
 
@@ -59,12 +60,12 @@ const ABSENT: ExpertOfferingKeyAdmission = { present: false, key: null, refusal:
  * convention, LD 29).
  *
  * THE SAME-BODY CONTRADICTION CHECK IS GONE, and its subject with it (ledger
- * `2026-09-12-offering-key-is-canonical`). It compared a body's `expertOfferingTypeKey` against the
- * legacy `expertOfferingTypeId` beside it and refused a body naming two different offerings. That
- * body can no longer be authored: the key is CANONICAL and the id is read-only legacy — omitted
- * from `insertProviderServiceSchema`, written by no rail and by no surface — so there is no second
- * half for a body to contradict. A pin that passes because its subject no longer exists is worse
- * than no pin (the `2026-09-12-delete-dead-transport-status` posture), and so is a refusal.
+ * `2026-09-12-offering-key-is-canonical`, then `2026-09-15-offering-key-id-drop`). It compared a
+ * body's `expertOfferingTypeKey` against the legacy uuid beside it and refused a body naming two
+ * different offerings. That body can no longer be authored: the key is CANONICAL and the uuid
+ * column was dropped by migration 295, so there is no second half for a body to contradict. A pin
+ * that passes because its subject no longer exists is worse than no pin (the
+ * `2026-09-12-delete-dead-transport-status` posture), and so is a refusal.
  */
 export async function admitExpertOfferingTypeKey(
   body: unknown,

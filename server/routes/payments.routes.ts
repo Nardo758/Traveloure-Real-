@@ -1318,14 +1318,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
 
       // Phase 3.4: which lines sell `booking_concierge`. Ledger `2026-09-12-offering-key-is-canonical`:
       // the listing's OWN key (migration 292) answers this, through the ONE resolver every money
-      // surface calls — the per-site `expertOfferingTypeId → offeringTypeKey` map this block used to
-      // build is gone, and with it the chance of this quote and the charge loop below disagreeing
-      // about the same cart (§18 rule 1). The resolver keeps the legacy id→key lookup as its
-      // fallback for a row the backfill has not reached, so no answer moves. No rate and no amount
-      // is decided there.
+      // surface calls — the per-site legacy-uuid → offering-key map this block used to build is
+      // gone, and with it the chance of this quote and the charge loop below disagreeing about the
+      // same cart (§18 rule 1). The legacy column itself is gone too (migration 295, ledger
+      // `2026-09-15-offering-key-id-drop`), so the resolver now reaches no database at all. No rate
+      // and no amount is decided there.
       const conciergeLines = await resolveBookingConciergeItems(
         cartData.map(i => i.service ?? null),
-        ids => storage.getExpertOfferingTypeKeysByIds(ids),
       );
       // Phase 3.4: Load the Booking Concierge facilitation fee RATE once.
       // expert_concierge_booking is rate_type='percent' since migration 066 (a
@@ -2209,10 +2208,10 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
 
       // Which lines sell `booking_concierge` — the SAME resolver /api/checkout calls (ledger
       // `2026-09-12-offering-key-is-canonical`), so the preview cannot classify a cart one way and
-      // the charge another. Reads the listing's own key first; the legacy id is its fallback.
+      // the charge another. Reads the listing's own key, which since migration 295 is the only
+      // offering column there is (ledger `2026-09-15-offering-key-id-drop`).
       const previewConciergeLines = await resolveBookingConciergeItems(
         cartData.map(i => i.service ?? null),
-        ids => storage.getExpertOfferingTypeKeysByIds(ids),
       );
 
       // Load the concierge rate once. Task 1108: if the cart actually CONTAINS a

@@ -1560,4 +1560,18 @@ export const MIGRATION_FILES = [
   // `preflight-prod-constraints.cjs` manifest entry), deduped first on 203's preference order,
   // and DECLARED in `shared/schema.ts` in the same commit (deploy-push durability rule).
   "294_ready_made_sale_earning_uniq.sql",
+  // Ledger `2026-09-15-offering-key-id-drop` (lane 2 of two; lane 1 was
+  // `2026-09-12-offering-key-is-canonical`, migration 293). DROPs the legacy
+  // `provider_services.expert_offering_type_id` — the migration-057 uuid FK that named the same
+  // offering as `expert_offering_type_key` (migration 292), which the ruling made CANONICAL
+  // because the offering catalogs are read BY KEY. Two columns for one fact is the
+  // derivation-drift class §18 rule 1 names. DDL only, and only this column's own objects (its
+  // partial index and its FK constraint, named explicitly); every statement is `IF EXISTS`, so a
+  // second run and a database that never carried the column are both no-ops. No CHECK added or
+  // changed, so `preflight-prod-constraints.cjs` needs no manifest entry. The declaration leaves
+  // `shared/schema.ts` in the same commit — that is what makes the deploy push remove the column,
+  // and a surviving declaration would have the push re-add it. HELD BEHIND A PRODUCTION READ:
+  // `scripts/preview-offering-key-id-drop.cjs` must return ZERO rows carrying the uuid and no key
+  // (docs/RELEASE.md step 3) — a drop is unrecoverable and a stamped migration never re-runs.
+  "295_drop_provider_services_expert_offering_type_id.sql",
 ] as const;

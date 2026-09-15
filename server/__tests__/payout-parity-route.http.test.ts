@@ -72,6 +72,7 @@ const ids = {
 };
 const createdServiceIds: string[] = [];
 const createdBookingIds: string[] = [];
+const createdTripIds: string[] = [];
 let travelerId: string | null = null;
 let travelerCookie = "";
 
@@ -111,30 +112,70 @@ function api(path: string, method: string, body?: unknown) {
   });
 }
 
-/** Fixture service; no category ⇒ the route's "default" fee-category fallback. Owner defaults to the expert. */
+/**
+ * Fixture service; no category ⇒ the route's "default" fee-category fallback. Owner defaults to
+ * the expert.
+ *
+ * THE OFFERING IS NAMED BY KEY. `provider_services.expert_offering_type_id` (the migration-057
+ * uuid this fixture used to insert) was DROPPED by migration 295, ledger
+ * `2026-09-15-offering-key-id-drop`; `expert_offering_type_key` (migration 292) is the column the
+ * route's concierge predicate reads and the only one there is. The fixture states exactly what it
+ * always stated — "this listing sells booking_concierge" — through the column that now carries it.
+ */
 async function makeService(
   price: string,
   revenueShareRate?: string,
-  expertOfferingTypeId?: string,
+  expertOfferingTypeKey?: string,
   ownerId: string = ids.expert,
 ): Promise<string> {
   const id = `ppr-${RUN}-svc-${crypto.randomUUID().slice(0, 6)}`;
   await db.execute(sql`
-    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, revenue_share_rate, expert_offering_type_id)
-    VALUES (${id}, ${ownerId}, ${`Payout parity route service ${RUN}`}, 'fixture', ${price}, 'active', 'approved', ${revenueShareRate ?? null}, ${expertOfferingTypeId ?? null})
+    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, revenue_share_rate, expert_offering_type_key)
+    VALUES (${id}, ${ownerId}, ${`Payout parity route service ${RUN}`}, 'fixture', ${price}, 'active', 'approved', ${revenueShareRate ?? null}, ${expertOfferingTypeKey ?? null})
   `);
   createdServiceIds.push(id);
   return id;
 }
 
-/** Live expert_offering_types row for key booking_concierge (seeded by migrations; must exist). */
-async function bookingConciergeOfferingTypeId(): Promise<string> {
+/**
+ * The live `expert_offering_types` key for booking_concierge, READ FROM THE CATALOG rather than
+ * typed here: the FK on `provider_services.expert_offering_type_key` means an absent catalog row
+ * fails the fixture INSERT, and this assertion says so in one sentence instead.
+ */
+async function bookingConciergeOfferingTypeKey(): Promise<string> {
   const r = await db.execute(sql`
-    SELECT id FROM expert_offering_types WHERE offering_type_key = 'booking_concierge' LIMIT 1
+    SELECT offering_type_key FROM expert_offering_types WHERE offering_type_key = 'booking_concierge' LIMIT 1
   `);
-  const id = (r.rows[0] as any)?.id as string | undefined;
-  assert.ok(id, "expert_offering_types must contain the seeded booking_concierge row");
-  return id!;
+  const key = (r.rows[0] as any)?.offering_type_key as string | undefined;
+  assert.ok(key, "expert_offering_types must contain the seeded booking_concierge row");
+  return key!;
+}
+
+/**
+ * A plan for the traveler, because `booking_concierge` IS PLAN WORK and plan work needs a plan.
+ *
+ * Ruling 11 (ledger `2026-09-08-rulings-11-12`, lane `2026-09-15-plan-work-one-rail`) refuses a
+ * plan-work line at the checkout CLAIM when the cart resolves to no trip — `booking_concierge` sits
+ * in the `coordination` tier, which `impactClassFor` maps to `plan_work`. These fixtures used to
+ * escape that gate by accident, not by design: they named the offering through the legacy
+ * `expert_offering_type_id`, which `impactClassFor` cannot read, so the fee rail saw a concierge
+ * listing (through its id→key fallback) while the plan-work rail saw an unclassified one. That is
+ * exactly the two-columns-disagree pathology ledger `2026-09-12-offering-key-is-canonical` names,
+ * and migration 295 (`2026-09-15-offering-key-id-drop`) ends it: both rails now read the KEY and
+ * agree. Production converged at migration 293, which copied every id onto its key.
+ *
+ * So the concierge tests give the cart a plan. THE FEE MATH IS UNCHANGED BY IT: a fresh trip holds
+ * no `trip_entitlements`, so the route's `coversAction(tripId, 'traveler_service_fee')` branch is
+ * false exactly as it is with no trip at all, and the recipe expectation below is untouched.
+ */
+async function makeTrip(): Promise<string> {
+  const id = `ppr-${RUN}-trip-${crypto.randomUUID().slice(0, 6)}`;
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, destination, start_date, end_date, status)
+    VALUES (${id}, ${travelerId}, 'Kyoto', '2027-05-01', '2027-05-05', 'planning')
+  `);
+  createdTripIds.push(id);
+  return id;
 }
 
 /** safeParseRate — verbatim behaviour of the checkout route's local helper (and the db suite's). */
@@ -176,7 +217,7 @@ async function recipeExpectation(
  * contract (503 payment_unavailable with a stub key, 201 with a real one — anything else
  * fails loudly), then read back the row the route stamped.
  */
-async function checkoutThroughRoute(serviceId: string): Promise<{
+async function checkoutThroughRoute(serviceId: string, tripId?: string): Promise<{
   status: number;
   row: { provider_earnings: string; platform_fee: string; insurance_fee: string; total_amount: string; status: string };
 }> {
@@ -189,7 +230,11 @@ async function checkoutThroughRoute(serviceId: string): Promise<{
   assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
 
   const checkoutKey = `ppr-${RUN}-${crypto.randomUUID()}`;
-  const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
+  const res = await api(
+    "/api/checkout",
+    "POST",
+    tripId ? { idempotencyKey: checkoutKey, tripId } : { idempotencyKey: checkoutKey },
+  );
   const bodyText = await res.text();
   if (res.status === 503) {
     // Ruling 38 negative contract: payment provider unreachable ⇒ machine-readable code,
@@ -263,6 +308,14 @@ after(async () => {
     await db.execute(sql`DELETE FROM content_registry WHERE content_id = ${id}`).catch(() => {});
     await db.execute(sql`DELETE FROM provider_services WHERE id = ${id}`).catch(() => {});
   }
+  for (const id of createdTripIds) {
+    // Ruling 11 grants the seller a `trip_expert_advisors` row at the authorization stamp, so the
+    // trip is only deletable once that is gone. On the CI stub-key (503) leg no authorization ever
+    // happens and there is nothing to clear; the delete is unconditional so the fixture cleans up
+    // on a real-key run too.
+    await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${id}`).catch(() => {});
+    await db.execute(sql`DELETE FROM trips WHERE id = ${id}`).catch(() => {});
+  }
   await db.execute(sql`DELETE FROM users WHERE id IN (${ids.expert}, ${ids.provider})`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE email = ${ids.travelerEmail}`).catch(() => {});
 });
@@ -310,8 +363,11 @@ test("R2: per-service revenueShareRate override flows through the route's safePa
 
 test("R3: booking_concierge facilitation fee lands in platform_fee, NEVER in provider_earnings", async () => {
   const price = 160;
-  const offeringTypeId = await bookingConciergeOfferingTypeId();
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+  const offeringTypeKey = await bookingConciergeOfferingTypeKey();
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeKey);
+  // `booking_concierge` is plan work (ruling 11) — see makeTrip's header for why this is a plan
+  // and why the fee math below is unmoved by it.
+  const tripId = await makeTrip();
 
   // The recipe expectation is IDENTICAL to a plain default-band item: the concierge fee is
   // charged ON TOP (rider on the platform take), so the expert's promised figure must not move.
@@ -328,7 +384,7 @@ test("R3: booking_concierge facilitation fee lands in platform_fee, NEVER in pro
   assert.ok(conciergeRate > 0, "expert_concierge_booking band must be active with a positive rate (migrations 064–066)");
   const conciergeFeeAmt = price * conciergeRate;
 
-  const { row } = await checkoutThroughRoute(serviceId);
+  const { row } = await checkoutThroughRoute(serviceId, tripId);
 
   // THE CLAIM: provider_earnings EXCLUDES the concierge fee — same figure as a non-concierge item.
   assert.equal(
@@ -355,8 +411,12 @@ test("R3: booking_concierge facilitation fee lands in platform_fee, NEVER in pro
 
 test("R4: missing concierge band ⇒ requireConciergeBookingRate 500s honestly, no row stamped", async () => {
   const price = 90;
-  const offeringTypeId = await bookingConciergeOfferingTypeId();
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+  const offeringTypeKey = await bookingConciergeOfferingTypeKey();
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeKey);
+  // `booking_concierge` is plan work (ruling 11): the claim's plan precondition is checked BEFORE
+  // the concierge-band gate, so without a plan this test would assert the 500 against a 409 and
+  // never reach the loader it exists to prove. See makeTrip's header.
+  const tripId = await makeTrip();
 
   // Simulate the misconfigured-DB posture the strict loader guards against by deactivating the
   // band for the duration of this single checkout. Restored in finally — verify below.
@@ -367,7 +427,7 @@ test("R4: missing concierge band ⇒ requireConciergeBookingRate 500s honestly, 
     assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
 
     const checkoutKey = `ppr-${RUN}-${crypto.randomUUID()}`;
-    const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
+    const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey, tripId });
     const bodyText = await res.text();
     assert.equal(res.status, 500, `checkout with a concierge item and a missing band must 500 honestly, got ${res.status}: ${bodyText}`);
     const body = JSON.parse(bodyText);
@@ -425,10 +485,10 @@ test("R5: provider-owned service routes through the provider-source branch (isPr
 
 test("R6: fee-preview total equals what checkout charges — price + concierge + traveler fee, and NOT the withheld commission (ledger 2026-09-08-cart-fee-line)", async () => {
   const price = 140;
-  const offeringTypeId = await bookingConciergeOfferingTypeId();
+  const offeringTypeKey = await bookingConciergeOfferingTypeKey();
   // Service owned by the expert (no concierge offering type on provider path — tests the expert
   // booking_concierge path, which is the route's primary concierge scenario).
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeKey);
 
   // Live concierge rate from fee_bands (no fee literal); must be positive so the preview figure
   // is distinguishable from a $0 concierge fee (misconfigured-band silent failure).
@@ -527,8 +587,8 @@ test("R6: fee-preview total equals what checkout charges — price + concierge +
 
 test("R7: fee-preview with a concierge item and a missing band ⇒ machine-readable 503, never a $0 fee", async () => {
   const price = 110;
-  const offeringTypeId = await bookingConciergeOfferingTypeId();
-  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+  const offeringTypeKey = await bookingConciergeOfferingTypeKey();
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeKey);
 
   // Same misconfigured-DB posture as R4, but on the PREVIEW surface: the broken config must
   // surface BEFORE the traveler hits "Pay", not as a silent $0 concierge fee.

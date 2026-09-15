@@ -1187,8 +1187,6 @@ export interface IStorage {
 
   getServiceCategorySlugsByIds(ids: string[]): Promise<{ id: string; slug: string | null }[]>;
 
-  getExpertOfferingTypeKeysByIds(ids: string[]): Promise<{ id: string; key: string }[]>;
-
   getFeeBandByKey(bandKey: string): Promise<any | null>;
   // === Trip-level mutations ===
 
@@ -7666,14 +7664,6 @@ export class DatabaseStorage implements IStorage {
     return db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
       .from(serviceCategories)
       .where(inArray(serviceCategories.id, ids));
-  }
-
-  async getExpertOfferingTypeKeysByIds(ids: string[]): Promise<{ id: string; key: string }[]> {
-    if (ids.length === 0) return [];
-    const rows = await db.select({ id: expertOfferingTypes.id, key: expertOfferingTypes.offeringTypeKey })
-      .from(expertOfferingTypes)
-      .where(inArray(expertOfferingTypes.id, ids));
-    return rows.map(r => ({ id: r.id, key: r.key }));
   }
 
   async getFeeBandByKey(bandKey: string): Promise<any | null> {

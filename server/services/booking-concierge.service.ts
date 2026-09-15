@@ -1,56 +1,50 @@
 /**
  * IS THIS LINE A BOOKING-CONCIERGE LINE? — ONE implementation, every money surface.
  *
- * Ledger `2026-09-12-offering-key-is-canonical` (lane 1 of two). CLAUDE.md §18 rule 1 (one
- * derivation), §14 (nothing here is client-sourced), §8 (no rate and no fee literal lives here),
- * §13 (an absent answer is an answer).
+ * Ledger `2026-09-12-offering-key-is-canonical` (lane 1) and `2026-09-15-offering-key-id-drop`
+ * (lane 2, migration 295 — the legacy uuid and its fallback arm are gone). CLAUDE.md §18 rule 1
+ * (one derivation), §14 (nothing here is client-sourced), §8 (no rate and no fee literal lives
+ * here), §13 (an absent answer is an answer).
  *
  * WHAT IT DECIDES, AND WHAT IT DELIBERATELY DOES NOT. It answers exactly one question — does this
  * cart line's listing sell the `booking_concierge` offering — because that answer selects whether
  * the Booking Concierge facilitation fee applies. It resolves NO rate and computes NO amount: the
  * rate is loaded from `fee_bands` by `getConciergeBookingRate` / `requireConciergeBookingRate` and
- * multiplied by the caller, exactly as before. Moving the PREDICATE here moves no money.
+ * multiplied by the caller. Moving the PREDICATE here moved no money, and neither did dropping the
+ * legacy arm.
  *
  * WHY IT EXISTS. The decision lived inline at six sites across three route blocks (the checkout
  * quote loop, the checkout charge loop, and the two cart/preview quotes), each building its own
- * `expertOfferingTypeId` → `offeringTypeKey` map and each comparing the mapped key to the same
+ * `expert_offering_type_id` → `offering_type_key` map and each comparing the mapped key to the same
  * literal. Six copies of one decision on the money path is the derivation-drift class §18 rule 1
  * names: the day one of them moves to the canonical column and the others do not, a quote and a
  * charge disagree about the same cart.
  *
- * THE KEY IS CANONICAL (the ruling). `provider_services.expert_offering_type_key` (migration 292)
- * is the column the offering catalogs are actually read BY — `impactClassFor` and the whole
- * commerce-contract resolver take a key — and it is what this predicate reads first. The older
- * `expert_offering_type_id` (migration 057) exists only to be translated back into a key, which is
- * exactly what the deleted per-site maps were doing.
+ * THE KEY IS CANONICAL, AND NOW IT IS THE ONLY COLUMN THERE IS (the ruling).
+ * `provider_services.expert_offering_type_key` (migration 292) is the column the offering catalogs
+ * are actually read BY — `impactClassFor` and the whole commerce-contract resolver take a key.
+ * The older `expert_offering_type_id` (migration 057) existed only to be translated back into one;
+ * migration 293 copied its answer onto the key for every row that carried one, and migration 295
+ * dropped it after a human read the production count of rows that could still answer only through
+ * it. There is no id→key lookup here any more, and this module reaches no database at all.
  *
- * THE LEGACY FALLBACK IS LANE 2'S REMOVAL TARGET, and it is here for one reason: migration 293
- * copies the id's answer onto the key, but a DATABASE THAT HAS NOT APPLIED IT YET still holds rows
- * with an id and no key. Treating those as non-concierge would move money. So a row with NO key
- * and an id is resolved through the same id→key lookup that used to be inline — identical to
- * today's answer — and lane 2 deletes this arm together with the column.
- * `lane2-removal-target: expert_offering_type_id`
- *
- * NEGATIVE SPACE (§18d). Where a row's key and its legacy id name DIFFERENT offerings — a stored
- * disagreement migration 293 never creates and never repairs — the KEY wins, because the ruling
- * makes it canonical. That is the one input class whose answer can differ from the pre-lane code,
- * and the read-only query that lists those rows is recorded on lane 2's punchlist entry so a human
- * sees them before the column is dropped. This module detects nothing and repairs nothing (§17).
+ * NEGATIVE SPACE (§18d). A listing that states NO key is NOT a concierge line — which is the same
+ * answer it gave before the drop for a row with neither identifier, and the ruled answer for a row
+ * whose key and legacy id once disagreed (the KEY wins; the rows where they did were listed to a
+ * human by `scripts/preview-offering-key-id-drop.cjs` before the column went). §13: an
+ * unclassified listing is read as unclassified, never as one offering or the other. This module
+ * detects nothing and repairs nothing (§17).
  */
 import { CONCIERGE_BOOKING_CONCERN } from "./commission";
 
 /**
- * The two columns a listing can name its expert offering with. Deliberately structural rather than
- * the `provider_services` row type: cart rows arrive as `any` from several storage readers, and the
- * predicate needs exactly these two fields.
+ * How a listing names its expert offering. Deliberately structural rather than the
+ * `provider_services` row type: cart rows arrive as `any` from several storage readers, and the
+ * predicate needs exactly this one field.
  */
 export interface ConciergeOfferingFacts {
   expertOfferingTypeKey?: string | null;
-  expertOfferingTypeId?: string | null;
 }
-
-/** The id→key lookup, INJECTED so the predicate itself reaches no database and can be proven pure. */
-export type OfferingKeysByIdLookup = (ids: string[]) => Promise<{ id: string; key: string }[]>;
 
 export interface BookingConciergeResolution {
   /** Does this line's listing sell `booking_concierge`? A null/absent listing is never one. */
@@ -68,36 +62,19 @@ function hasStatedKey(
 /**
  * Resolve the predicate once for a whole cart, then ask it per line.
  *
- * The lookup is issued ONLY for lines that still need it (a key-less row carrying a legacy id), so
- * a fully migrated cart makes no query at all — and a cart with no expert offering anywhere makes
- * none either, exactly as the inline versions did.
+ * It stays `async` and keeps its per-cart shape deliberately: every money surface already awaits
+ * it, and the shape is what keeps the quote, the preview and the charge asking ONE question of ONE
+ * implementation. It issues no query — since the drop there is nothing to look up.
  */
 export async function resolveBookingConciergeItems(
   services: ReadonlyArray<ConciergeOfferingFacts | null | undefined>,
-  lookupKeysByIds: OfferingKeysByIdLookup,
 ): Promise<BookingConciergeResolution> {
-  // lane2-removal-target: everything from here to the map build goes with the column.
-  const legacyIds = Array.from(new Set(
-    services
-      .filter((s): s is ConciergeOfferingFacts => !!s && !hasStatedKey(s))
-      .map((s) => s.expertOfferingTypeId)
-      .filter((id): id is string => typeof id === "string" && id.length > 0),
-  ));
-  const legacyKeyById = new Map<string, string>();
-  if (legacyIds.length > 0) {
-    for (const row of await lookupKeysByIds(legacyIds)) legacyKeyById.set(row.id, row.key);
-  }
-
   const isBookingConcierge = (service: ConciergeOfferingFacts | null | undefined): boolean => {
     if (!service) return false;
-    // THE KEY IS THE ANSWER when the listing states one — including when it states a DIFFERENT
-    // offering from the legacy id beside it (the ruling: the key is canonical).
-    if (hasStatedKey(service)) return service.expertOfferingTypeKey === CONCIERGE_BOOKING_CONCERN;
-    // lane2-removal-target: no key on this row yet (migration 293 has not reached this database, or
-    // the row's catalog link was deleted). Answer exactly as the pre-lane code did.
-    const legacyId = service.expertOfferingTypeId;
-    if (typeof legacyId !== "string" || legacyId.length === 0) return false;
-    return legacyKeyById.get(legacyId) === CONCIERGE_BOOKING_CONCERN;
+    // THE KEY IS THE ANSWER, and the only one. A listing that never stated an offering is not a
+    // concierge line — it is unclassified, which is a different and honest thing (§13).
+    if (!hasStatedKey(service)) return false;
+    return service.expertOfferingTypeKey === CONCIERGE_BOOKING_CONCERN;
   };
 
   return {
