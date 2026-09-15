@@ -29,6 +29,13 @@ import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guar
 import { resolveAiDraftModel } from "./services/ai-draft-model";
 import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
 import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
+// D-11 (ledger 2026-09-15-d11-no-item-booking-exception): the named no-item classes, the ONE
+// composer of their mark, and the refusal the item-referenceless birth rail answers with.
+import {
+  noItemBookingDetail,
+  PLAN_BOOKING_NEEDS_CART_REFUSAL,
+  type PlanBookingRefusalReason,
+} from "@shared/no-item-booking";
 import { BOOKING_CANCELLABLE_FROM_STATUSES, isBookingCancellable } from "@shared/booking-cancellation"; // §18b/§18 rule 1 — the ONE traveler-cancellation from-state list (ledger 2026-09-14-transport-card-cancel)
 import { parseAiJsonObjectOrThrow } from "./utils/ai-json";
 import {
@@ -1857,7 +1864,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           travelerId: userId,
           providerId,
           tripId: tripId || null,
-          bookingDetails: { notes },
+          // D-11 (ledger `2026-09-15-d11-no-item-booking-exception`): the NAMED-CLASS mark. This
+          // rail births a booking REQUEST for an expert's help on a plan — what attaches it to the
+          // trip is the advisor row below, never an `itinerary_items` row, and the rail carries no
+          // item reference it could link. So a trip-bearing row here is the ratified migration
+          // EXCEPTION and says so on itself, rather than surfacing as unexplained drift.
+          // Composed SERVER-SIDE through the ONE composer (§18 rule 1); the key is in
+          // `SERVER_AUTHORED_BOOKING_DETAIL_KEYS`, so no client body can plant it.
+          bookingDetails: { notes, ...noItemBookingDetail("expert_booking_request") },
           status: "pending",
           totalAmount: String(totalAmount),
           platformFee: platformFeeAmt,
@@ -6653,6 +6667,32 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = getUserId(req)!;
       const input = createBookingRequestSchema.parse(req.body);
+
+      // ── D-11 (ledger `2026-09-15-d11-no-item-booking-exception`): NO STRAY PLAN OBLIGATIONS ───
+      // A `service_bookings` row that NAMES a trip while no `itinerary_items.booking_id` points at
+      // it is a plan-level obligation the plan itself does not know about (LD 39: `itinerary_items`
+      // is the ONE store of a plan's contents, and `booking_id` is the item→booking link). The
+      // 2026-09-15 ruling makes that a MIGRATION EXCEPTION confined to named classes, never a
+      // supported pattern.
+      //
+      // THIS RAIL HAS NO ITEM REFERENCE AT ALL. Its body allowlist is
+      // {serviceId, tripId, contractId, bookingDetails, bookingMetadata} (B6 pins it) and nothing
+      // downstream writes `itinerary_items.booking_id` — so every trip-bearing booking it births is
+      // a stray BY CONSTRUCTION, and it is not one of the named classes. Marking the row would be a
+      // reason that is not true; the honest disposition is to refuse the `tripId` and say why.
+      // The plan-linked path is the CART: add the service to the plan and check out, where the
+      // claim spine links item to booking at promote (`markItemPurchased`).
+      //
+      // BEFORE ANY WRITE, and before the catalog read — a refusal is not a booking, and no row,
+      // counter or content-registry entry is touched. Plain commerce with no `tripId` is
+      // byte-identical to before; this rail has no client caller in `client/` today either way.
+      if (input.tripId) {
+        const reason: PlanBookingRefusalReason = PLAN_BOOKING_NEEDS_CART_REFUSAL.reason;
+        return res.status(400).json({
+          message: PLAN_BOOKING_NEEDS_CART_REFUSAL.message,
+          reason,
+        });
+      }
 
       // Verify service exists and is active
       const service = await storage.getProviderServiceById(input.serviceId);
