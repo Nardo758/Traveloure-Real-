@@ -10,6 +10,7 @@
  * offering-gated wizard; see client/src/components/ServiceForm.tsx).
  */
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { loginAs as sharedLoginAs } from "../../utils/auth";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -74,16 +75,22 @@ export const CI_ADMIN_PASSWORD = "CITestAdmin!99";
 export const KYOTO = "Kyoto";
 
 /** Log in via the app's own email/password endpoint; the request context's cookie jar carries
- *  the session for both further `request.*` calls and `page` navigation (j1/j13 pattern). */
+ *  the session for both further `request.*` calls and `page` navigation (j1/j13 pattern).
+ *
+ *  THIS IS A CALLER, NOT A SECOND IMPLEMENTATION (punchlist V-31, ledger
+ *  `2026-09-15-v31-loginas-verifies`). It used to be the only `loginAs` in the repo that proved
+ *  anything, while `playwright/utils/auth.ts` exported a same-named helper that proved nothing —
+ *  two contracts behind one name, which is the §18 rule 1 shape that let the silent one survive.
+ *  The proof now lives in ONE place (`assertAuthenticatedSession`) and the login rail with it;
+ *  what survives here is this lane's own default (the persona password) and the narrower
+ *  request-scoped type the persona suites call it with. */
 export async function loginAs(
   request: APIRequestContext,
   email: string,
   password: string = PERSONA_PASSWORD,
 ): Promise<{ id: string; email: string; role: string }> {
-  const res = await request.post(`${BASE_URL}/api/auth/login`, { data: { email, password } });
-  expect(res.status(), `login failed for ${email} (${res.status()}): ${await res.text()}`).toBe(200);
-  const body = await res.json();
-  return body.user;
+  const user = await sharedLoginAs(request, email, password);
+  return user as { id: string; email: string; role: string };
 }
 
 // ── Journey report JSON (docs/testing/PERSONA_LANE_B_HANDOFF.md "Reporting") ────────────────
