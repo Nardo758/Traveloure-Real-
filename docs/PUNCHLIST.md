@@ -224,6 +224,51 @@
 
 ## 5 · Landed in this program (context, not work)
 
+> **THE 233 ORPHANED TEST SUITES ARE NOW CLASSIFIED — `docs/lane-reports/2026-09-15-orphan-triage.md`**
+> (ledger `2026-09-15-orphan-triage`, advisory, docs only). `2026-09-15-test-guard-prose-echo`
+> published the true orphan list and said re-classifying it was unscheduled; that triage has run.
+> **203 of the 233 were each executed** against a Postgres built from empty by
+> `migrate-entry.ts` plus `ci-db-setup`'s other two steps, and — for the HTTP suites — the
+> production bundle on `:5000`; the 30 Playwright specs were classified statically, because the
+> 2026-09-14 lane already ran all 41. **Result: 85 PURE-GREEN · 72 DB-GREEN · 7 HTTP-GREEN ·
+> 30 RED-FIXTURE · 7 RED-ASSERTION · 2 DEAD · 30 PLAYWRIGHT.** Four out of five of the node suites
+> pass today with no repair at all; the report proposes ten ordered, sized lanes (T-1..T-10) and
+> recommends **wiring the green 164 before repairing the red 39**, since the two are independent.
+> **Nothing was wired, deleted, skipped, allowlisted or repaired and no assertion was edited**, per
+> `2026-09-14-test-files-wired-orphans`' rule that a suite leaves the list by being run or by being
+> gone. **No new R-row is filed**, for reasons the report states in full:
+>
+> - **R-12 / R-13 have their cause.** Both fail in their own fixture helper before any assertion on
+>   `provider_services_user_id_users_id_fk` — the V-26 lane's guess, **confirmed** — and the cause
+>   under it is a **race**, not a gap: the actor `POST /api/auth/register` creates in the server
+>   process is intermittently invisible to the test process's own connection when it inserts the
+>   fixture row, and `before()` asserts only the 201. Measured **13/13 and 8/8 when the race does
+>   not bite**, and 13/13 with one extra round-trip inserted. Their rows are otherwise unchanged:
+>   the recommendation stays "(c) split the pure half, then (a) wire", and they stay ONE lane.
+> - **V-29 now has a live reproduction.** `server/__tests__/item-event-link.db.test.ts:222` expects
+>   Locked Decision 29's cross-trip `400` and gets **403**, because its trip is born by a direct
+>   `db.insert(trips)` with no `trip_collaborators` row — V-29's mechanism exactly. Evidence for the
+>   open row, not a new one.
+> - **One candidate, named and not filed:** with `MUTATION_AUTH_AUDIT_OK=1`,
+>   `mutation-auth/admin-mutation-auth.test.ts` runs 143 real probes and finds three answering
+>   **401 where its contract says 403** for an authenticated ordinary user
+>   (`DELETE /api/admin/service-offering-types/:key`, `DELETE /api/admin/slow-queries`,
+>   `DELETE /api/ea/executives/:id`). All three still refuse, so it is a refusal-vocabulary
+>   divergence on 3 rails of 143 and picking the right side is a ruling, not a measurement.
+> - **One near-miss, recorded because avoiding it was the point.**
+>   `city-case-match.db.test.ts` fails `27 !== 30` and reads like a case-sensitivity leak in the
+>   city feed; querying the canonical and mis-cased URLs directly returns **27 and 27**. The suite
+>   is flaky, not the product.
+>
+> Two suites are **DEAD** and named (`text-sanitization.test.ts` imports a removed export;
+> `mutation-auth/non-admin-payments-…` asserts a rail retired by
+> `2026-09-03-expert-templates-consumer-sunset`), and **three are GREEN-BUT-VACUOUS and must not be
+> wired as-is** — `deposit-cancel.db` (5 of 5 skipped, needs a real Stripe key),
+> `admin-mutation-auth` (124 skipped without its flag) and `admin-query-role-changes` (skips itself
+> without `DATABASE_URL`). A job that runs a suite it cannot execute satisfies the inventory and
+> protects nothing, which is the shape of V-30 itself.
+
+
 Twelve lanes plus the decisions record: the console grammar, home honesty, my-plans rows, trip-card
 honesty, the start-with-AI door, the concierge door, the Trip Card one page, Home's time axis, the
 client pen scope, the expert-request review sheet, the impact-class lookup, the buy-action resolver,
