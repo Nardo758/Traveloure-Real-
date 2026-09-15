@@ -1758,6 +1758,16 @@ jobs:
       # announced, and a buyer who deleted their own clone trip is not indicted for housekeeping.
       - name: Reconciliation detection + ready-made recovery, retry and announce (N20–N27)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/reconciliation-detection.db.test.ts
+      # D-42 (ledger 2026-09-15-d42-reconciliation-tallies, migration 301). §17 rule 2 says every
+      # pass writes a run row; every rail had a per-pass tally column on it EXCEPT the ready-made
+      # one, whose two numbers reached only the manual run-now response and a log line. T1 proves
+      # both are now written and equal what the pass reported (including a real, non-zero announce
+      # hand-off), T2 proves a clean pass and a skipped pass write them too, T3 proves a
+      # pre-migration run reads NULL and the admin projection emits null rather than 0 (§13 — "not
+      # tallied" is not "examined none"), and T4 pins the schema/DB parity plus the nullable,
+      # default-free, CHECK-free posture the deploy-push durability rule requires.
+      - name: Reconciliation run tallies — the ready-made rail is durable (T1–T4)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/reconciliation-run-tallies.db.test.ts
   roles-needed-reachability-guard:
     name: roles-needed-reachability-guard (ledger 2026-09-04-roles-needed)
     runs-on: ubuntu-latest

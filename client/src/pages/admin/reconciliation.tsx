@@ -86,6 +86,12 @@ interface ReconciliationRun {
   scanned_payment_intents: number;
   scanned_cart_bookings: number;
   scanned_legacy_bookings: number;
+  /* D-42 (migration 301, ledger 2026-09-15-d42-reconciliation-tallies): the ready-made rail's two
+   * per-pass tallies. NULLABLE by ruling — a run written before that migration never tallied this
+   * rail, so it reads NULL, which is "not tallied" and NOT zero (§13). Rendered only when a real
+   * number is present; never zero-filled. */
+  checked_ready_made_purchases: number | null;
+  ready_made_announce_hand_offs: number | null;
   note: string | null;
 }
 
@@ -814,9 +820,24 @@ export default function AdminReconciliation() {
                 </span>
                 {" · "}scanned {lastRun.scanned_payment_intents} PaymentIntent(s),{" "}
                 {lastRun.scanned_cart_bookings} cart + {lastRun.scanned_legacy_bookings} legacy booking(s)
+                {/* D-42: the ready-made rail's tally. NULL means this pass never tallied the rail
+                    (it predates migration 301) — the clause is OMITTED rather than rendered as 0,
+                    because "examined none" is a claim that run never made (§13). */}
+                {lastRun.checked_ready_made_purchases != null ? (
+                  <> + {lastRun.checked_ready_made_purchases} ready-made purchase(s)</>
+                ) : (
+                  <> · <span className="text-gray-500" data-testid="text-ready-made-not-tallied">ready-made rail: not tallied on this run</span></>
+                )}
                 {" · "}{lastRun.exceptions_detected} detected ({lastRun.exceptions_new} new)
                 {lastRun.promoted > 0 && (
                   <> · <strong>{lastRun.promoted}</strong> paid claim(s) recovered via the shared promotion</>
+                )}
+                {/* D-18's hand-off count, persisted by D-42. Shown only when the pass actually did
+                    it, on the same reasoning as `promoted` directly above; NULL (not tallied) and 0
+                    (tallied, nothing to hand back) are both silent here, and neither is claimed to
+                    be the other elsewhere on this line. */}
+                {lastRun.ready_made_announce_hand_offs != null && lastRun.ready_made_announce_hand_offs > 0 && (
+                  <> · <strong>{lastRun.ready_made_announce_hand_offs}</strong> delivered ready-made purchase(s) handed back to the announcement sender</>
                 )}
                 {lastRun.note && <> · {lastRun.note}</>}
               </div>

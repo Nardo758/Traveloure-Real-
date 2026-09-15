@@ -234,22 +234,24 @@ export interface ReconciliationResult {
   /**
    * Ready-made purchase rows examined this pass.
    *
-   * §13 — STATED, NOT HIDDEN: this count is NOT persisted on the `reconciliation_runs` row, which
-   * carries `scanned_cart_bookings` and `scanned_legacy_bookings` and no third column. Adding one
-   * is a migration PLUS an edit to the two admin SELECTs that name their columns explicitly, and
-   * this lane deliberately took neither (a sibling lane owns `admin.routes.ts`). What the run row
-   * DOES carry is unaffected and is what §17 rule 2 requires: every pass is recorded, and
-   * `exceptions_detected` / `exceptions_new` already include this rail's kinds, so "still drifting"
-   * stays visible. The per-rail tally lives in this response (the manual `run-now` read) and in the
-   * pass's log line; persisting it is a named follow-up in the lane's ledger row.
+   * NOW PERSISTED (D-42, migration 301, ledger `2026-09-15-d42-reconciliation-tallies`). The V-3
+   * lane recorded here that this count reached only this response and the pass's log line, leaving
+   * a SCHEDULED pass with no durable record of the rail's work — the asymmetry §17 rule 2 exists
+   * to prevent, since every other rail has a column. It is now written onto
+   * `reconciliation_runs.checked_ready_made_purchases` by `closeRun`, the existing run-row writer,
+   * on every terminal path. §13 on the column: it is NULLABLE with no default and there is no
+   * backfill, so NULL on a row means that pass never tallied this rail — never that it examined
+   * zero purchases.
    */
   checkedReadyMadePurchases: number;
   /**
    * D-18 — purchase ids this pass handed BACK to the shared notifier and which now carry an
-   * announcement (ledger `2026-09-15-d18-announced-marker`). NOT persisted on the run row, for the
-   * same stated reason as `checkedReadyMadePurchases` directly above: a new column there is a
-   * migration plus two admin SELECT edits this lane did not take. A hand-off that FAILED is not
-   * here — it is an `rm_delivery_not_announced` exception row, which IS durable.
+   * announcement (ledger `2026-09-15-d18-announced-marker`). The COUNT is now persisted too, on
+   * `reconciliation_runs.ready_made_announce_hand_offs` (D-42, migration 301) — the same nullable,
+   * no-default, no-backfill posture. The IDS stay here and are deliberately not stored: which
+   * purchases were announced is a per-purchase fact and lives on the purchase
+   * (`ready_made_purchases.notified_at`), not on a run summary. A hand-off that FAILED is in
+   * neither place — it is an `rm_delivery_not_announced` exception row, which IS durable.
    */
   readyMadeAnnounceHandOffs: string[];
   ranAt: string;
@@ -1558,6 +1560,12 @@ async function closeRun(runId: string | null, result: ReconciliationResult, note
           scanned_refunds = ${result.checkedRefunds},
           scanned_cart_bookings = ${result.checkedCartBookings},
           scanned_legacy_bookings = ${result.checkedBookings},
+          /* D-42 (migration 301): the ready-made rail's two per-pass tallies, written by the SAME
+             statement as the five above — on EVERY terminal path, clean, skipped and failed alike
+             (§17 rule 2). Nullable columns with no default, but this writer always states a real
+             number; NULL on a row means the pass predates the migration (§13). */
+          checked_ready_made_purchases = ${result.checkedReadyMadePurchases},
+          ready_made_announce_hand_offs = ${result.readyMadeAnnounceHandOffs.length},
           exceptions_detected = ${result.exceptions.length},
           exceptions_new = ${result.newExceptions},
           promoted = ${result.promoted},
