@@ -16,8 +16,16 @@
  * The job DETECTS; it does not decide and it does not implement completion. Every flip is driven
  * through the SHARED `completeBooking` in `booking-completion.service.ts` — the same function the
  * owner rail calls — with an actor tag so the diary and the booking row record which signal fired
- * (`auto_complete_pdf` / `auto_complete_property`). It contains NO method list of its own: which
- * rule a booking falls under comes from `completionRuleFor` in `shared/service-fundamentals.ts`.
+ * (`auto_complete_property` / `auto_complete_service_date`). It contains NO method list of its own:
+ * which rule a booking falls under comes from `completionRuleFor` in `shared/service-fundamentals.ts`.
+ *
+ * D-27 (ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`): THIS JOB NO LONGER COMPLETES AN
+ * ARTIFACT. `artifact_timer` left `TIMER_DRIVEN_COMPLETION_RULES`, so `timerActorFor` returns null
+ * for it and pass 1 accounts for every pdf booking as `rule_not_timer_driven`. The same clock now
+ * drives PASS 3 instead (`artifact-acceptance-timer.service.ts`): ASK
+ * (`confirmed → awaiting_acceptance`) and ESCALATE (`awaiting_acceptance → disputed`, the EXISTING
+ * admin dispute queue). Neither completes and neither mints. The `auto_complete_pdf` actor is GONE
+ * — one fewer caller of `completeBooking`, never a renamed one.
  *
  * PAYMENT GATE (money-safety, §14/§15 — the replit line's earnings-mint invariant): a booking can
  * reach `confirmed` UNPAID via the owner-accept rail (§18b maps pending→confirmed; a stamped PI is
@@ -57,6 +65,7 @@ import {
   timerActorFor,
 } from "../services/booking-completion.service";
 import { bookingAutoCompleteScheduler, type PiVerifier } from "../services/booking-auto-complete.service";
+import { runArtifactAcceptancePass } from "../services/artifact-acceptance-timer.service";
 
 /** How long a non-succeeded-PI candidate stays excluded after a stamp (matches the replit line). */
 const UNPAID_RECHECK_HOURS = 24;
@@ -77,6 +86,18 @@ export interface AutoCompletionRunResult {
   completedBookingIds: string[];
   /** Pass 2: `completed` bookings whose missing ledger rows were healed this run. */
   reconciled: number;
+  /**
+   * PASS 3 (D-27) — the ARTIFACT ACCEPTANCE arm. `prompted` = `confirmed → awaiting_acceptance`;
+   * `escalated` = `awaiting_acceptance → disputed`. Neither completes anything and neither mints,
+   * which is why they are counted separately from `completed` rather than folded into it: a run
+   * that asked fifty travelers and completed nothing is a healthy run, and a reader must be able to
+   * see that (§13).
+   */
+  prompted: number;
+  escalated: number;
+  artifactSkipped: Record<string, number>;
+  promptedBookingIds: string[];
+  escalatedBookingIds: string[];
   error?: string;
 }
 
@@ -91,6 +112,11 @@ export async function runBookingAutoCompletion(
     skipped: {},
     completedBookingIds: [],
     reconciled: 0,
+    prompted: 0,
+    escalated: 0,
+    artifactSkipped: {},
+    promptedBookingIds: [],
+    escalatedBookingIds: [],
   };
   const bump = (reason: string) => {
     result.skipped[reason] = (result.skipped[reason] ?? 0) + 1;
@@ -199,6 +225,32 @@ export async function runBookingAutoCompletion(
     logger.error({ err }, "[auto-complete] pass failed");
   }
 
+  // PASS 3 — THE ARTIFACT ACCEPTANCE ARM (D-27; ledger
+  // `2026-09-15-d27-artifact-timer-acceptance-prompt`). `artifact_timer` is no longer in
+  // `TIMER_DRIVEN_COMPLETION_RULES`, so pass 1 above now accounts for every artifact booking it
+  // scans as `rule_not_timer_driven` and completes none of them — the retirement falls out of the
+  // shared predicate rather than out of a special case in this file. THIS pass is what the clock
+  // drives instead: it ASKS (`confirmed → awaiting_acceptance`) and it ESCALATES
+  // (`awaiting_acceptance → disputed`, into the EXISTING admin dispute queue). It completes
+  // nothing, mints nothing, and touches no amount, rate or fee band.
+  //
+  // It has its OWN candidate query rather than widening `findAutoCompleteCandidates`, whose
+  // predicate is also `completeBooking`'s guard — widening that would hand this job the very
+  // bookings D-6 forbids it to complete (the D-24 invariant).
+  //
+  // A failure here never fails the pass above: the two arms are independent, and the next run
+  // retries under the same atomic conditionals.
+  try {
+    const artifact = await runArtifactAcceptancePass(now, verifyPi);
+    result.prompted = artifact.prompted;
+    result.escalated = artifact.escalated;
+    result.artifactSkipped = artifact.skipped;
+    result.promptedBookingIds = artifact.promptedBookingIds;
+    result.escalatedBookingIds = artifact.escalatedBookingIds;
+  } catch (err) {
+    logger.error({ err }, "[auto-complete] artifact acceptance pass failed");
+  }
+
   // PASS 2 — reconciliation (replit line's earnings-mint healing): the flip and its mint commit as
   // one transaction (updateServiceBookingStatus), but a crash between confirm-completion's status
   // set and a prior partial mint, or a legacy pre-merge completion, can leave a `completed` booking
@@ -218,6 +270,9 @@ export async function runBookingAutoCompletion(
       completed: result.completed,
       skipped: result.skipped,
       reconciled: result.reconciled,
+      prompted: result.prompted,
+      escalated: result.escalated,
+      artifactSkipped: result.artifactSkipped,
       ...(result.error ? { error: result.error } : {}),
     },
     "[auto-complete] D8 booking auto-completion pass",

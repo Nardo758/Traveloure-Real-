@@ -143,9 +143,26 @@ export function completionRuleFor(s: FundamentalsShape): CompletionRule | null {
   return null;
 }
 
-/** Rules a scheduled TIMER may fire on its own (no human in the loop). */
+/**
+ * Rules a scheduled TIMER may fire on its own (no human in the loop) — meaning a clock may drive
+ * the booking to `completed` and mint the held earning.
+ *
+ * `artifact_timer` IS DELIBERATELY ABSENT (D-27; ledger
+ * `2026-09-15-d27-artifact-timer-acceptance-prompt`). D-6 forbids a silent timeout completing in
+ * the seller's favour, and membership of this set is what made that timeout possible: the nightly
+ * job read this set, found `artifact_timer` in it, and flipped a pdf booking to `completed`.
+ *
+ * THE RULE IS NOT DELETED — `completionRuleFor` still returns it, because it is still the true
+ * answer to "which rule governs this booking". What changed is what the rule DOES: it is now an
+ * ACCEPTANCE-PROMPT rule. The job's artifact arm moves `confirmed → awaiting_acceptance` and then,
+ * on a window nobody answered, `awaiting_acceptance → disputed` — the EXISTING admin dispute queue,
+ * never a second queue and never a new `admin_review` status. The only things that complete an
+ * artifact are the traveler's acceptance and a human resolving that dispute.
+ *
+ * NO BACKFILL (LD 44(e)): a booking completed under the old timer WAS completed, and rewriting it
+ * would invent a fact. The new arm reads only rows still `confirmed` / `awaiting_acceptance`.
+ */
 export const TIMER_DRIVEN_COMPLETION_RULES: ReadonlySet<CompletionRule> = new Set<CompletionRule>([
-  "artifact_timer",
   "checkout_date",
   // Ruling 69 disposition 1 — in_person/hybrid joins the timer rules. The NORMAL path for an
   // in-person booking is this timer; the owner's provider-declared arm opens ONLY for a booking
