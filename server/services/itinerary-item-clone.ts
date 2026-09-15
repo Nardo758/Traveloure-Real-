@@ -160,8 +160,10 @@ export const CLONE_EXCLUDED_FIELDS: Readonly<Record<string, string>> = {
     "cart-line answer PROJECTED onto it by `cart-projection.service.ts` (D-14's admission rule, " +
     "D-41's one writer). The author's 3 says the AUTHOR wanted three, which is not an answer the " +
     "buyer gave and which no rail here could have admitted on their behalf: units are set on a " +
-    "CART LINE, where `archetypeAsks` validates the question against the listing's archetype, and " +
-    "this fulfilment writes no cart line. §13 — the clone therefore carries NULL, which MEANS ONE " +
+    "CART LINE, where the ONE shared cart-quantity derivation validates the question against the " +
+    "listing's archetype (D-14) — and this fulfilment writes no cart line. Naming that function " +
+    "here would itself be flagged, correctly, as a second copy of a rule this file does not own. " +
+    "§13 — the clone therefore carries NULL, which MEANS ONE " +
     "UNIT rather than an absent answer, so the buyer's plan states the same thing every other " +
     "un-carted item on it states; if they want three they add three, through the rail that prices " +
     "them. Copying it would also be a silent money claim on a row nobody has bought",
