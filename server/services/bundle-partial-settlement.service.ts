@@ -38,8 +38,21 @@
  * ══ §13 ══════════════════════════════════════════════════════════════════════════════════════════
  * Every refusal is NAMED (`BundlePartialSettlementResult`): a bundle with no allocation cannot settle
  * and says so; a bundle with no PaymentIntent has unknown custody and is refused, never assumed; a
- * `cancelled` component is the traveler-cancel path, not built, and refuses the whole settlement rather
- * than guessing a tier. The booking's status is never moved here — it STAYS `partially_completed`.
+ * `cancelled` component with no PINNED policy outcome (`cancel_refund_percent`, migration 308) refuses
+ * the whole settlement rather than guessing a tier. The booking's status is never moved here — it
+ * STAYS `partially_completed`.
+ *
+ * ══ THE TRAVELER-CANCELLED COMPONENT (Locked Decision 50, second half; ledger
+ * `2026-09-16-bundle-component-traveler-cancel`) ═══════════════════════════════════════════════════
+ * A `cancelled` component's allocation is refunded at the percent the SNAPSHOTTED policy yielded at the
+ * cancel instant — pinned on the row by the cancel writer, read by the derivation, never re-resolved —
+ * and the seller retains the remainder (already minted as delivered value by the D-35 flip). The fees
+ * follow at the same refunded share. A settlement whose pinned `traveler_refund_cents` is ZERO (a late
+ * strict cancel beside delivered components) is a VALID settlement that moves no money: the claim row
+ * records the immutable outcome set, NO Stripe call is made (Stripe refuses a zero refund, and there is
+ * nothing to refund), `stripe_refund_id` stays NULL — honestly, nothing was refunded — and the row is
+ * promoted at once. Component refund columns are stamped only where `refundCents > 0`: a cancelled row
+ * refunded 0 was NOT refunded, and `refunded_at` on it would say it was (§13).
  *
  * IMPORTS NO `storage` and nothing from `booking-completion.service` (which imports THIS): the flip and
  * its mint are that module's; the entry `settleBundlePartially` there calls `issueBundlePartialSettlement`
@@ -111,7 +124,8 @@ interface ClaimedOutcomes {
   components: ComponentOutcome[];
   feeRefundCents: number;
   travelerServiceFeeRefundCents: number;
-  undeliveredFraction: number;
+  /** The share of the price refunded to the traveler — the share every traveler-paid fee was refunded at. */
+  refundedFraction: number;
   initiatedBy: string;
 }
 
@@ -177,7 +191,7 @@ export async function issueBundlePartialSettlement(input: {
     components: derived.componentOutcomes,
     feeRefundCents: derived.feeRefundCents,
     travelerServiceFeeRefundCents: derived.travelerServiceFeeRefundCents,
-    undeliveredFraction: derived.undeliveredFraction,
+    refundedFraction: derived.refundedFraction,
     initiatedBy: input.actor ?? "unspecified",
   };
   const inserted = await db
@@ -237,6 +251,27 @@ export async function issueBundlePartialSettlement(input: {
     claim = reclaimed[0];
   }
 
+  // ── NOTHING TO REFUND — a valid settlement that moves no money ───────────────────────────────
+  // Every undelivered component was a traveler cancel whose snapshotted policy yielded 0 (a late strict
+  // cancel, a non-refundable bundle). The seller kept everything (the mint already said so); the outcome
+  // set is the record. No Stripe call — there is no amount, and Stripe refuses a zero refund — and the
+  // promote stamps a NULL refund id, because none exists (§13).
+  if (claim.travelerRefundCents === 0) {
+    const { promoted } = await promoteBundlePartialSettlement({ bookingId, stripeRefundId: null, now });
+    logger.info(
+      { bookingId, settledAmountCents: claim.settledAmountCents, promoted },
+      "[bundle-settlement] partial settlement recorded with nothing to refund (policy yielded 0) — no Stripe call",
+    );
+    return {
+      settled: true,
+      bookingId,
+      alreadySettled: !promoted,
+      stripeRefundId: null,
+      travelerRefundCents: 0,
+      settledAmountCents: claim.settledAmountCents,
+    };
+  }
+
   // ── STRIPE — the CLAIM ROW's cents, never a recomputation ────────────────────────────────────
   const claimedOutcomes = (claim.componentOutcomes ?? {}) as Partial<ClaimedOutcomes>;
   let refund: { id: string; status: string | null };
@@ -279,12 +314,15 @@ export async function issueBundlePartialSettlement(input: {
 /**
  * THE PROMOTE — ONE atomic conditional, two callers (the settlement above and the `charge.refunded`
  * webhook). `WHERE settled_at IS NULL` is the guard: the loser matches zero rows and stamps nothing.
- * The failed components' refund columns (D-32 declared them; they waited for this lane) are stamped in
- * the same transaction, each guarded by its own `refunded_at IS NULL`.
+ * Every component that was actually refunded something — a `failed` one at its full allocation, a
+ * `cancelled` one at its pinned policy share — has its refund columns (D-32 declared them) stamped in
+ * the same transaction, each guarded by its own `refunded_at IS NULL`. A component whose refund is 0
+ * is NOT stamped: nothing was refunded, and `refunded_at` would say otherwise (§13).
+ * `stripeRefundId` is NULL only for a settlement that moved no money (see the module header).
  */
 export async function promoteBundlePartialSettlement(input: {
   bookingId: string;
-  stripeRefundId: string;
+  stripeRefundId: string | null;
   now?: Date;
 }): Promise<{ promoted: boolean }> {
   const now = input.now ?? new Date();
@@ -297,7 +335,7 @@ export async function promoteBundlePartialSettlement(input: {
     if (rows.length === 0) return { promoted: false };
     const outcomes = ((rows[0].componentOutcomes ?? {}) as Partial<ClaimedOutcomes>).components ?? [];
     for (const o of outcomes) {
-      if (o.outcome !== "failed") continue;
+      if (o.outcome === "delivered" || !(o.refundCents > 0)) continue;
       await tx
         .update(bookingComponentStates)
         .set({ refundedAt: now, refundAmountCents: o.refundCents, stripeRefundId: input.stripeRefundId, updatedAt: now })

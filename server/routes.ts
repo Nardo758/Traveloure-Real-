@@ -7551,6 +7551,113 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/provider/bookings/:id/component-failed", isAuthenticated, handleOwnerBookingComponentFailed);
   app.post("/api/expert/bookings/:id/component-failed", isAuthenticated, handleOwnerBookingComponentFailed);
 
+  // ── THE TRAVELER CANCELS ONE BUNDLE COMPONENT (Locked Decision 50, third paragraph, second sentence;
+  // ledger `2026-09-16-bundle-component-traveler-cancel`; migration 308) ───────────────────────────
+  //
+  // "When the traveler voluntarily cancels an outstanding component, the component's allocated amount
+  // follows the SNAPSHOTTED cancellation policy and deadline." The third component recorder, and the
+  // only traveler-side one: the two rails above are the SELLER's answers (delivered / will not deliver).
+  //
+  // GATE: the session user must be the booking's TRAVELER (§14 — never a body field); a mismatch and
+  // a missing booking answer the same undifferentiated 404 (§13 posture, the `/api/bookings/:id/cancel`
+  // twin above). The component comes from the PATH. BODY IS A `.strict()` PICK (§19): an optional
+  // free-text `reason` and NOTHING else — no status (the transition is this rail's), no percent, no
+  // amount, no timestamp; an unknown key is REFUSED, not stripped.
+  //
+  // WHAT IT MAY CAUSE, all server-decided: the component flips `pending → cancelled` in ONE atomic
+  // conditional with the parent `confirmed` in the same WHERE, pinning the snapshotted policy's
+  // percent on the row; if that was the last answer outstanding and another component was delivered,
+  // the parent moves to `partially_completed`, mints ONCE over the kept share (the retained remainder
+  // of this cancel INCLUDED, named in the mint's basis) and settles — one Stripe refund of the refunded
+  // allocation plus the same share of every traveler-paid fee, or NO Stripe call when the policy
+  // yielded 0. If nothing was delivered, nothing flips — the whole-row cancel above owns that case.
+  //
+  // WHAT IT REFUSES, by name (§13): a component no longer pending (`component_not_pending`, the current
+  // state stated); a bundle with no per-component rows or no allocation (`bundle_component_states_
+  // unavailable` / `allocation_missing` — nothing to apply a percent to, so no cancel at a guessed
+  // share); a booking with NO purchase-time policy snapshot (`policy_snapshot_missing` — the tier the
+  // traveler bought under is unknown, and the live listing is deliberately NOT read: that is the
+  // retroactive tightening the snapshot exists to prevent). A refused cancel moves nothing; the
+  // whole-row cancel rail and support remain.
+  const componentCancelBody = z
+    .object({
+      reason: z.string().trim().max(500).optional(),
+    })
+    .strict();
+  app.post("/api/bookings/:id/components/:componentServiceId/cancel", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const parsed = componentCancelBody.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: "Optionally say why you are cancelling this component (reason); nothing else is accepted.",
+          issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+        });
+      }
+      const { recordBundleComponentCancellation } = await import("./services/booking-completion.service");
+      const outcome = await recordBundleComponentCancellation({
+        bookingId: req.params.id,
+        componentServiceId: req.params.componentServiceId,
+        travelerUserId: userId,
+        reason: parsed.data.reason ?? null,
+      });
+      if (!outcome.recorded) {
+        switch (outcome.reason) {
+          case "booking_not_found":
+          case "not_traveler":
+            return res.status(404).json({ message: "Booking not found or not yours" });
+          case "unknown_component":
+            return res.status(404).json({ message: "That service is not one of this bundle's components.", reason: outcome.reason });
+          case "rule_not_bundle":
+            return res.status(409).json({
+              message: "Only a bundle's components can be cancelled one at a time — cancel the booking itself instead.",
+              reason: outcome.reason,
+              ...(outcome.detail ? { detail: outcome.detail } : {}),
+            });
+          case "bundle_component_states_unavailable":
+            return res.status(409).json({
+              message: "This bundle was bought before per-component records existed, so a single component cannot be cancelled — cancel the booking itself, or contact support.",
+              reason: outcome.reason,
+            });
+          case "allocation_missing":
+            return res.status(409).json({
+              message: "This bundle's purchase did not record a per-component allocation, so a component refund cannot be computed — cancel the booking itself, or contact support.",
+              reason: outcome.reason,
+            });
+          case "policy_snapshot_missing":
+            return res.status(409).json({
+              message: "This booking did not record the cancellation policy it was bought under, so a component cannot be cancelled under it — cancel the booking itself, or contact support.",
+              reason: outcome.reason,
+            });
+          case "component_not_pending":
+            return res.status(409).json({
+              message: "This component is no longer outstanding, so it cannot be cancelled.",
+              reason: outcome.reason,
+              currentStatus: outcome.currentStatus ?? null,
+              ...(outcome.detail ? { detail: outcome.detail } : {}),
+            });
+        }
+      }
+      // The terms STATED, never estimated: the pinned percent, the allocation share coming back and the
+      // share the seller retains. The fees follow at the same share when the bundle settles — that total
+      // is the settlement's own pinned amount, present only when a settlement was attempted on this call.
+      return res.json({
+        cancelled: true,
+        alreadyRecorded: outcome.alreadyRecorded,
+        componentServiceId: outcome.componentServiceId,
+        terms: outcome.terms,
+        partiallyCompleted: outcome.partiallyCompleted,
+        ...(outcome.settlement ? { settlement: outcome.settlement } : {}),
+        ...(outcome.parentOutcome ? { parentOutcome: outcome.parentOutcome } : {}),
+        reason: outcome.reason,
+        evidence: outcome.evidence,
+      });
+    } catch (err) {
+      console.error("Traveler bundle component cancel error:", err);
+      res.status(500).json({ message: "Failed to cancel the component" });
+    }
+  });
+
   // Update visa application status on a service booking (expert/provider action)
   app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {
     try {

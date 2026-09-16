@@ -6,7 +6,7 @@
  * `docs/design/BUNDLE_PARTIAL_COMPLETION_BRIEF.md`. The PURE half — the parent derivation and the
  * reduced figures — is `shared/bundle-component-states.ts`; this module is the three things that
  * touch the database: BIRTH (the checkout composer), READ (rows first, legacy jsonb second, the
- * source NAMED), and the two atomic component TRANSITIONS.
+ * source NAMED), and the three atomic component TRANSITIONS (two the seller's, one the traveler's).
  *
  * IMPORTS NO `storage`. `storage.createServiceBooking` calls `bornBundleComponentRows` inside its
  * birth transaction and `storage.mintCompletionEarningsForBooking` calls `readBundleComponentRows`
@@ -143,6 +143,7 @@ export async function readBundleComponentStates(input: {
         status: r.status,
         snapshotPriceCents: r.snapshotPriceCents ?? null,
         allocationCents: r.allocationCents ?? null, // D-51: the contract fact; null = not captured
+        cancelRefundPercent: r.cancelRefundPercent ?? null, // LD 50 second half: the pinned policy outcome; null = never traveler-cancelled here
         serviceName: r.serviceName ?? null,
         position: r.position ?? null,
       })),
@@ -256,7 +257,52 @@ export async function claimComponentFailed(input: {
   return { claimed: false, currentStatus: await readComponentStatus(exec, input.bookingId, input.componentServiceId) };
 }
 
-/** The parent-status half of both guards, as a SQL predicate inside the one UPDATE. */
+/**
+ * TRANSITION — `pending → cancelled` for ONE component: THE TRAVELER's statement that they no longer
+ * want this component (Locked Decision 50, third paragraph; ledger
+ * `2026-09-16-bundle-component-traveler-cancel`; migration 308). Same guard shape as the two seller
+ * claims — the component must still be `pending` AND the parent still in `parentFromStatuses`, one
+ * statement, so a double click or a concurrent cancel is ONE flip and the loser is told the state.
+ *
+ * `refundPercent` is the SNAPSHOTTED policy's outcome at this instant (`resolveSnapshottedCancellationTerms`,
+ * resolved by the caller from the parent's `offering_contract_snapshot` and scheduled start) and is
+ * PINNED in the same UPDATE as the flip, so a cancelled row can never lack the terms it was cancelled
+ * under — the mint and the settlement read the pin and never re-resolve. `reason` is the traveler's
+ * words (bounded by the route's `.strict()` allowlist), verbatim; NULL = none given (§13).
+ */
+export async function claimComponentCancelled(input: {
+  bookingId: string;
+  componentServiceId: string;
+  parentFromStatuses: readonly string[];
+  refundPercent: number;
+  reason: string | null;
+  now: Date;
+  exec?: Executor;
+}): Promise<ComponentClaimResult> {
+  const exec = input.exec ?? db;
+  const updated = await exec
+    .update(bookingComponentStates)
+    .set({
+      status: BUNDLE_COMPONENT_STATUS.cancelled,
+      cancelledAt: input.now,
+      cancelRefundPercent: input.refundPercent,
+      cancelReason: input.reason,
+      updatedAt: input.now,
+    })
+    .where(
+      and(
+        eq(bookingComponentStates.bookingId, input.bookingId),
+        eq(bookingComponentStates.componentServiceId, input.componentServiceId),
+        eq(bookingComponentStates.status, BUNDLE_COMPONENT_STATUS.pending),
+        parentInStatuses(input.bookingId, input.parentFromStatuses),
+      ),
+    )
+    .returning({ id: bookingComponentStates.id });
+  if (updated.length > 0) return { claimed: true };
+  return { claimed: false, currentStatus: await readComponentStatus(exec, input.bookingId, input.componentServiceId) };
+}
+
+/** The parent-status half of all three guards, as a SQL predicate inside the one UPDATE. */
 function parentInStatuses(bookingId: string, statuses: readonly string[]) {
   const list = statuses.length > 0 ? statuses : ["__none__"];
   return sql`EXISTS (

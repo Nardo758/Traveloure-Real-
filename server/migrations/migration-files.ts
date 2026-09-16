@@ -1721,4 +1721,12 @@ export const MIGRATION_FILES = [
   // commit (deploy-push durability rule). No CHECK added or changed, so
   // `preflight-prod-constraints.cjs` needs no entry.
   "307_bundle_partial_settlements.sql",
+  // 308 — Locked Decision 50's second half (ledger `2026-09-16-bundle-component-traveler-cancel`):
+  // the traveler-CANCELLED component. Two additive nullable columns on `booking_component_states`:
+  // `cancel_refund_percent` (the snapshotted policy's outcome at the cancel instant, pinned in the
+  // same atomic UPDATE as the `pending → cancelled` flip; the mint and the settlement read it and
+  // never re-resolve) and `cancel_reason` (the traveler's words, verbatim). NO DEFAULT, NO CHECK,
+  // NO BACKFILL; DECLARED in `shared/schema.ts` in the same commit (deploy-push durability rule).
+  // No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no entry.
+  "308_bundle_component_cancel_terms.sql",
 ] as const;

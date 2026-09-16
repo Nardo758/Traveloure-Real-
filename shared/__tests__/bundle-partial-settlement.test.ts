@@ -10,6 +10,10 @@
  *   SP6  historical snapshot: a later catalog price is NOT an input — nothing moves
  *   SP7  custody: no PaymentIntent ⇒ unknown ⇒ refused; explicit foreign custody ⇒ refused
  *   SP8  failed vs cancelled asymmetry, and every other refusal is NAMED
+ *   SP9  Locked Decision 50, second half (ledger `2026-09-16-bundle-component-traveler-cancel`): a
+ *        CANCELLED component follows its PINNED policy percent — the one refund arithmetic, the retained
+ *        remainder in the mint, the fee share at the refunded fraction, a zero-refund settlement, and a
+ *        cancelled row with no pin refused by name in BOTH the mint and the settlement
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,6 +21,8 @@ import {
   BUNDLE_COMPONENT_STATUS,
   allocateBundleCents,
   allocationsAreComplete,
+  cancelledComponentRefundCents,
+  isValidCancelRefundPercent,
   reducedBundleFigures,
   type BundleComponentView,
 } from "../bundle-component-states";
@@ -146,8 +152,8 @@ test("SP5 — the derivation: seller keeps the delivered allocation less the ORI
   const d = deriveBundlePartialSettlement({ ...BASE, components: THREE() });
   assert.ok(d.ok);
   assert.equal(d.settledAmountCents, 8000, "Σ delivered allocations");
-  assert.equal(d.undeliveredAllocationCents, 2000);
-  assert.equal(d.undeliveredFraction, 0.2);
+  assert.equal(d.refundedAllocationCents, 2000);
+  assert.equal(d.refundedFraction, 0.2);
   assert.equal(d.feeRefundCents, 100, "20% of the 5.00 concierge fee");
   assert.equal(d.travelerServiceFeeRefundCents, 200, "20% of the 10.00 traveler service fee");
   assert.equal(d.travelerRefundCents, 2300, "allocation + both fee shares; no processing cost deducted");
@@ -202,16 +208,20 @@ test("SP7 — CUSTODY: no PaymentIntent ⇒ UNKNOWN ⇒ refused, never assumed; 
   assert.ok(marked.ok);
 });
 
-test("SP8 — FAILED refunds its FULL allocation regardless of policy; CANCELLED is the unbuilt traveler path and is refused; every refusal is NAMED", () => {
-  // Seller nonperformance: no policy input exists on this derivation at all — there is no way to
-  // pass a non-refundable tier in, which is the point. The failed component refunds 100% of its allocation.
+test("SP8 — FAILED refunds its FULL allocation regardless of policy; a CANCELLED row without its pinned policy outcome is refused; every refusal is NAMED", () => {
+  // Seller nonperformance: no policy input exists for a FAILED component — there is no way to pass a
+  // non-refundable tier in for it, which is the point. The failed component refunds 100% of its allocation,
+  // and states NO policy percent (none was applied).
   const failed = deriveBundlePartialSettlement({ ...BASE, components: THREE(BUNDLE_COMPONENT_STATUS.failed) });
   assert.ok(failed.ok);
   assert.equal(failed.componentOutcomes[2].refundCents, 2000);
+  assert.equal(failed.componentOutcomes[2].refundPercent, null);
 
+  // A CANCELLED row with no pinned `cancelRefundPercent` (a row no writer of the rail produced) is refused
+  // by name — never settled under a guessed tier (LD 50 second half; the pin is migration 308's column).
   const cancelled = deriveBundlePartialSettlement({ ...BASE, components: THREE(BUNDLE_COMPONENT_STATUS.cancelled) });
   assert.equal(cancelled.ok, false);
-  assert.equal((cancelled as any).reason, "traveler_cancel_path_not_built");
+  assert.equal((cancelled as any).reason, "cancel_terms_missing");
   assert.equal((cancelled as any).detail, "c");
 
   const refunded = deriveBundlePartialSettlement({ ...BASE, components: THREE(BUNDLE_COMPONENT_STATUS.refunded) });
@@ -243,4 +253,114 @@ test("SP8 — FAILED refunds its FULL allocation regardless of policy; CANCELLED
     components: THREE().map((c) => ({ ...c, allocationCents: null })),
   });
   assert.equal((custodyFirst as any).reason, "custody_unknown");
+});
+
+test("SP9 — LD 50 second half: a CANCELLED component follows its PINNED policy percent; the seller retains the rest; a zero-refund settlement is valid; no pin ⇒ refused in mint AND settlement", () => {
+  // THE ONE ARITHMETIC: allocation × percent / 100, rounded half-up to a cent — deterministic.
+  assert.equal(cancelledComponentRefundCents(2000, 100), 2000);
+  assert.equal(cancelledComponentRefundCents(2000, 50), 1000);
+  assert.equal(cancelledComponentRefundCents(2000, 0), 0);
+  assert.equal(cancelledComponentRefundCents(2001, 50), 1001, "an odd cent under 50% rounds half-up, as the whole-row quote does");
+  assert.equal(cancelledComponentRefundCents(2001, 50), cancelledComponentRefundCents(2001, 50), "a re-run reproduces it");
+  // THE PIN's validity: an integer in [0, 100] and nothing else.
+  for (const ok of [0, 50, 100]) assert.equal(isValidCancelRefundPercent(ok), true);
+  for (const bad of [101, -1, 50.5, null, undefined, "50", NaN]) assert.equal(isValidCancelRefundPercent(bad), false, String(bad));
+
+  const cancelledAt = (pct: number | null) =>
+    THREE().map((c) => (c.componentServiceId === "c" ? { ...c, status: BUNDLE_COMPONENT_STATUS.cancelled, cancelRefundPercent: pct } : c));
+
+  // THE MINT (reducedBundleFigures): the seller keeps the delivered allocations PLUS the retained half.
+  const mint50 = reducedBundleFigures({ totalAmount: "100.00", platformFee: "25.00", providerEarnings: "75.00", components: cancelledAt(50) });
+  assert.ok(mint50.ok);
+  assert.equal(mint50.basis, "allocation");
+  assert.equal(mint50.grossAmount, "90.00", "80.00 delivered + 10.00 retained under the policy");
+  assert.equal(mint50.deductedAmount, "10.00", "only the refunded half leaves the seller");
+  assert.equal(mint50.keptFraction, 0.9);
+  assert.equal(mint50.platformFee, "22.50", "the row's own 25.00 × 0.9 — the original commission scaled");
+  assert.equal(mint50.providerEarnings, "67.50");
+  assert.equal(mint50.cancelledRetainedCents, 1000);
+  assert.deepEqual(mint50.cancelledComponentIds, ["c"]);
+  assert.deepEqual(mint50.undeliveredComponentIds, ["c"], "still NOT delivered — the parent is partial, not complete");
+  // A late strict cancel (0%): nothing leaves the seller; the parent is still partially completed.
+  const mint0 = reducedBundleFigures({ totalAmount: "100.00", platformFee: "25.00", providerEarnings: "75.00", components: cancelledAt(0) });
+  assert.ok(mint0.ok);
+  assert.equal(mint0.grossAmount, "100.00");
+  assert.equal(mint0.deductedAmount, "0.00");
+  assert.equal(mint0.cancelledRetainedCents, 2000);
+  // A full-refund cancel (100%) reduces exactly like a failure — the outcome differs, the money does not.
+  const mint100 = reducedBundleFigures({ totalAmount: "100.00", platformFee: "25.00", providerEarnings: "75.00", components: cancelledAt(100) });
+  const mintFailed = reducedBundleFigures({ totalAmount: "100.00", platformFee: "25.00", providerEarnings: "75.00", components: THREE() });
+  assert.ok(mint100.ok && mintFailed.ok);
+  assert.equal(mint100.grossAmount, mintFailed.grossAmount);
+  assert.equal(mint100.cancelledRetainedCents, 0);
+  // NO PIN ⇒ the kept share is unknowable ⇒ REFUSED by name (the flip must roll back, never mint a guess).
+  const mintNoPin = reducedBundleFigures({ totalAmount: "100.00", platformFee: "25.00", providerEarnings: "75.00", components: cancelledAt(null) });
+  assert.equal(mintNoPin.ok, false);
+  assert.equal((mintNoPin as any).reason, "cancel_terms_missing");
+  assert.equal((mintNoPin as any).detail, "c");
+  // The snapshot FALLBACK (no allocation, pre-307) predates the rail: cancelled reads as fully undelivered
+  // and retains nothing — stated, and unreachable through the writer (it refuses `allocation_missing`).
+  const legacy = reducedBundleFigures({
+    totalAmount: "100.00", platformFee: "25.00", providerEarnings: "75.00",
+    components: cancelledAt(50).map((c) => ({ ...c, allocationCents: null })),
+  });
+  assert.ok(legacy.ok);
+  assert.equal(legacy.basis, "snapshot_pro_rata");
+  assert.equal(legacy.cancelledRetainedCents, 0);
+  assert.deepEqual(legacy.cancelledComponentIds, ["c"]);
+
+  // THE SETTLEMENT: refund = allocation × pin; fees follow at the REFUNDED fraction (terms §8.1 — the
+  // percent applies to the fees too); the seller's figures equal the mint's.
+  const d50 = deriveBundlePartialSettlement({ ...BASE, components: cancelledAt(50) });
+  assert.ok(d50.ok);
+  assert.equal(d50.refundedAllocationCents, 1000);
+  assert.equal(d50.refundedFraction, 0.1);
+  assert.equal(d50.settledAmountCents, 9000, "delivered 8000 + retained 1000");
+  assert.equal(d50.feeRefundCents, 50, "10% of the 5.00 concierge fee");
+  assert.equal(d50.travelerServiceFeeRefundCents, 100, "10% of the 10.00 traveler service fee");
+  assert.equal(d50.travelerRefundCents, 1150);
+  assert.equal(d50.sellerEarningCents, 6750);
+  assert.equal(d50.platformRevenueCents, 2250);
+  assert.deepEqual(
+    d50.componentOutcomes.map((o) => [o.componentServiceId, o.outcome, o.refundCents, o.retainedCents, o.refundPercent]),
+    [
+      ["a", "delivered", 0, 4000, null],
+      ["b", "delivered", 0, 4000, null],
+      ["c", "cancelled", 1000, 1000, 50],
+    ],
+  );
+  // A zero-refund cancel beside delivered components is a VALID settlement that moves no money.
+  const d0 = deriveBundlePartialSettlement({ ...BASE, components: cancelledAt(0) });
+  assert.ok(d0.ok);
+  assert.equal(d0.travelerRefundCents, 0);
+  assert.equal(d0.feeRefundCents, 0);
+  assert.equal(d0.settledAmountCents, 10000);
+  assert.equal(d0.componentOutcomes[2].retainedCents, 2000);
+  // 100% under the policy refunds exactly what a failure refunds; the OUTCOME still says which it was.
+  const d100 = deriveBundlePartialSettlement({ ...BASE, components: cancelledAt(100) });
+  const dFailed = deriveBundlePartialSettlement({ ...BASE, components: THREE() });
+  assert.ok(d100.ok && dFailed.ok);
+  assert.equal(d100.travelerRefundCents, dFailed.travelerRefundCents);
+  assert.equal(d100.componentOutcomes[2].outcome, "cancelled");
+  assert.equal(d100.componentOutcomes[2].refundPercent, 100);
+  // MIXED: B failed (full 4000) + C cancelled at 50% (1000) ⇒ refunded 5000, fees at 50%.
+  const mixed = deriveBundlePartialSettlement({
+    ...BASE,
+    components: cancelledAt(50).map((c) => (c.componentServiceId === "b" ? { ...c, status: BUNDLE_COMPONENT_STATUS.failed } : c)),
+  });
+  assert.ok(mixed.ok);
+  assert.equal(mixed.refundedAllocationCents, 5000);
+  assert.equal(mixed.refundedFraction, 0.5);
+  assert.equal(mixed.travelerRefundCents, 5000 + 250 + 500);
+  assert.equal(mixed.settledAmountCents, 5000);
+  assert.equal(mixed.sellerEarningCents, 3750);
+  // THE PIN IS THE INPUT, never a re-resolution: a different pin, a different answer, nothing else consulted.
+  const d100b = deriveBundlePartialSettlement({ ...BASE, components: cancelledAt(100) });
+  assert.notEqual(d100b.ok && d100b.travelerRefundCents, d50.ok && d50.travelerRefundCents);
+  // A cancelled row with no pin refuses the WHOLE settlement — the same name the mint uses.
+  const noPin = deriveBundlePartialSettlement({ ...BASE, components: cancelledAt(null) });
+  assert.equal(noPin.ok, false);
+  assert.equal((noPin as any).reason, "cancel_terms_missing");
+  const badPin = deriveBundlePartialSettlement({ ...BASE, components: cancelledAt(150) });
+  assert.equal((badPin as any).reason, "cancel_terms_missing", "an out-of-range pin is not a pin");
 });

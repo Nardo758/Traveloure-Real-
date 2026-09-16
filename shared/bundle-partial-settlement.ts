@@ -25,6 +25,8 @@
 import {
   BUNDLE_COMPONENT_STATUS,
   allocationsAreComplete,
+  cancelledComponentRefundCents,
+  isValidCancelRefundPercent,
   type BundleComponentView,
 } from "./bundle-component-states";
 
@@ -53,10 +55,23 @@ export interface ComponentOutcome {
   status: string;
   allocationCents: number;
   custody: string;
-  /** `delivered` — kept by the seller; `failed` — refunded at full allocation (seller nonperformance). */
-  outcome: "delivered" | "failed";
+  /**
+   * `delivered` — kept by the seller; `failed` — refunded at full allocation (seller nonperformance,
+   * no policy input); `cancelled` — the traveler's voluntary cancel, refunded at the percent the
+   * SNAPSHOTTED cancellation policy yielded at the cancel instant (Locked Decision 50, second half;
+   * ledger `2026-09-16-bundle-component-traveler-cancel`), the remainder retained by the seller.
+   */
+  outcome: "delivered" | "failed" | "cancelled";
   /** The cents of this component's allocation the traveler is refunded (0 for a delivered one). */
   refundCents: number;
+  /** The cents of this component's allocation the seller keeps (allocation − refundCents). */
+  retainedCents: number;
+  /**
+   * The policy percent applied — ONLY for a `cancelled` outcome (the pinned `cancelRefundPercent`).
+   * NULL for `delivered` and `failed`: no policy was applied to either, and stating "100" on a failed
+   * component would claim a policy answer nobody resolved (§13).
+   */
+  refundPercent: number | null;
 }
 
 export type BundlePartialSettlementRefusal =
@@ -73,11 +88,12 @@ export type BundlePartialSettlementRefusal =
   /** Nothing was delivered — the EXISTING whole-row refund rail's case, never this one. */
   | "nothing_delivered"
   /**
-   * A component is `cancelled` (the traveler's voluntary cancel), whose allocation follows the
-   * SNAPSHOTTED cancellation policy and deadline. That writer does not exist on `main` yet; a bundle
-   * carrying one is refused rather than settled under a guessed tier. The next lane.
+   * A `cancelled` component carries no pinned `cancelRefundPercent` — the snapshotted policy's outcome
+   * at the cancel instant was never recorded (a row no writer of this rail produced). Refused by name
+   * rather than settled under a guessed tier (§13). The writer that pins it is the traveler's
+   * component-cancel rail (ledger `2026-09-16-bundle-component-traveler-cancel`, migration 308).
    */
-  | "traveler_cancel_path_not_built"
+  | "cancel_terms_missing"
   /** A component already reads `refunded` — no writer exists; a human decides, never a second refund. */
   | "component_already_refunded"
   /** The pre-fee price is not a nonnegative integer number of cents. */
@@ -86,12 +102,15 @@ export type BundlePartialSettlementRefusal =
 export type BundlePartialSettlementDerivation =
   | {
       ok: true;
-      /** Σ allocation of the DELIVERED components — what the sale settled at. */
+      /**
+       * What the sale settled at: Σ allocation of the DELIVERED components + Σ RETAINED cents of the
+       * cancelled ones (allocation − policy refund). Equals `totalCents − refundedAllocationCents`.
+       */
       settledAmountCents: number;
-      /** Σ allocation of the UNDELIVERED (failed) components. */
-      undeliveredAllocationCents: number;
-      /** undelivered / total — the share every traveler-paid fee is refunded at. */
-      undeliveredFraction: number;
+      /** The allocation cents going back to the traveler: Σ failed allocations + Σ cancelled refunds. */
+      refundedAllocationCents: number;
+      /** refunded / total — the share every traveler-paid fee is refunded at (terms §8.1: the percent applies to the fees too). */
+      refundedFraction: number;
       /** The proportional share of `travelerFeesChargedCents` refunded. */
       feeRefundCents: number;
       /** The proportional share of `travelerServiceFeeChargedCents` refunded. */
@@ -124,7 +143,12 @@ const toCents = (v: string | number | null | undefined): number | null => {
  * - `travelerServiceFeeChargedCents` — `booking_details.travelerServiceFee.charged`, 0 when waived.
  *
  * Seller nonperformance (`failed`) refunds the FULL allocation regardless of the listing's
- * cancellation policy. A `cancelled` (traveler) component is REFUSED here — see the refusal's doc.
+ * cancellation policy. A `cancelled` (traveler) component refunds `allocation × cancelRefundPercent /
+ * 100` — the percent the SNAPSHOTTED policy yielded at the cancel instant, PINNED on the row by the
+ * cancel writer and read here, never re-resolved — and the seller retains the remainder. A cancelled
+ * row with no pinned percent is REFUSED (`cancel_terms_missing`). A settlement whose every refund is
+ * 0 (a late strict cancel beside delivered components) is a VALID settlement that moves no money: the
+ * caller records the outcome set and makes no Stripe call.
  */
 export function deriveBundlePartialSettlement(input: {
   components: readonly SettlementComponentView[];
@@ -152,11 +176,15 @@ export function deriveBundlePartialSettlement(input: {
 
   const delivered: SettlementComponentView[] = [];
   const failed: SettlementComponentView[] = [];
+  const cancelled: SettlementComponentView[] = [];
   for (const c of input.components) {
     if (c.status === BUNDLE_COMPONENT_STATUS.completed) delivered.push(c);
     else if (c.status === BUNDLE_COMPONENT_STATUS.failed) failed.push(c);
     else if (c.status === BUNDLE_COMPONENT_STATUS.cancelled) {
-      return { ok: false, reason: "traveler_cancel_path_not_built", detail: c.componentServiceId };
+      if (!isValidCancelRefundPercent(c.cancelRefundPercent)) {
+        return { ok: false, reason: "cancel_terms_missing", detail: c.componentServiceId };
+      }
+      cancelled.push(c);
     } else if (c.status === BUNDLE_COMPONENT_STATUS.refunded) {
       return { ok: false, reason: "component_already_refunded", detail: c.componentServiceId };
     } else {
@@ -164,19 +192,26 @@ export function deriveBundlePartialSettlement(input: {
       return { ok: false, reason: "component_pending", detail: c.componentServiceId };
     }
   }
-  if (failed.length === 0) return { ok: false, reason: "nothing_undelivered" };
+  if (failed.length === 0 && cancelled.length === 0) return { ok: false, reason: "nothing_undelivered" };
   if (delivered.length === 0) return { ok: false, reason: "nothing_delivered" };
 
-  const settledAmountCents = delivered.reduce((s, c) => s + (c.allocationCents as number), 0);
-  const undeliveredAllocationCents = failed.reduce((s, c) => s + (c.allocationCents as number), 0);
-  const undeliveredFraction = totalCents > 0 ? undeliveredAllocationCents / totalCents : 0;
-  const keptFraction = 1 - undeliveredFraction;
+  // Per-component refund: the whole allocation for nonperformance; the pinned percent of it for a cancel.
+  const refundOf = (c: SettlementComponentView): number =>
+    c.status === BUNDLE_COMPONENT_STATUS.cancelled
+      ? cancelledComponentRefundCents(c.allocationCents as number, c.cancelRefundPercent as number)
+      : c.status === BUNDLE_COMPONENT_STATUS.failed
+        ? (c.allocationCents as number)
+        : 0;
+  const refundedAllocationCents = input.components.reduce((s, c) => s + refundOf(c), 0);
+  const settledAmountCents = totalCents - refundedAllocationCents;
+  const refundedFraction = totalCents > 0 ? refundedAllocationCents / totalCents : 0;
+  const keptFraction = 1 - refundedFraction;
 
   const fees = Math.max(0, Math.trunc(input.travelerFeesChargedCents || 0));
   const tsf = Math.max(0, Math.trunc(input.travelerServiceFeeChargedCents || 0));
-  const feeRefundCents = Math.round(fees * undeliveredFraction);
-  const travelerServiceFeeRefundCents = Math.round(tsf * undeliveredFraction);
-  const travelerRefundCents = undeliveredAllocationCents + feeRefundCents + travelerServiceFeeRefundCents;
+  const feeRefundCents = Math.round(fees * refundedFraction);
+  const travelerServiceFeeRefundCents = Math.round(tsf * refundedFraction);
+  const travelerRefundCents = refundedAllocationCents + feeRefundCents + travelerServiceFeeRefundCents;
 
   // The seller's side is the D-35 mint's arithmetic over the SAME kept share: the row's own purchase-
   // time `provider_earnings` and `platform_fee` scaled — the ORIGINAL commission, never re-resolved.
@@ -186,23 +221,27 @@ export function deriveBundlePartialSettlement(input: {
   const platformRevenueCents = Math.round(Math.max(feeCents, 0) * keptFraction);
 
   const componentOutcomes: ComponentOutcome[] = input.components.map((c) => {
-    const isFailed = c.status === BUNDLE_COMPONENT_STATUS.failed;
+    const alloc = c.allocationCents as number;
+    const refundCents = refundOf(c);
+    const isCancelled = c.status === BUNDLE_COMPONENT_STATUS.cancelled;
     return {
       componentServiceId: c.componentServiceId,
       serviceName: c.serviceName ?? null,
       status: c.status,
-      allocationCents: c.allocationCents as number,
+      allocationCents: alloc,
       custody: c.custody ?? COMPONENT_CUSTODY.traveloure,
-      outcome: isFailed ? "failed" : "delivered",
-      refundCents: isFailed ? (c.allocationCents as number) : 0,
+      outcome: isCancelled ? "cancelled" : c.status === BUNDLE_COMPONENT_STATUS.failed ? "failed" : "delivered",
+      refundCents,
+      retainedCents: alloc - refundCents,
+      refundPercent: isCancelled ? (c.cancelRefundPercent as number) : null,
     };
   });
 
   return {
     ok: true,
     settledAmountCents,
-    undeliveredAllocationCents,
-    undeliveredFraction,
+    refundedAllocationCents,
+    refundedFraction,
     feeRefundCents,
     travelerServiceFeeRefundCents,
     travelerRefundCents,
