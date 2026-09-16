@@ -91,6 +91,31 @@ export function takesArtifactAcceptance(s: ArtifactAcceptanceShape): boolean {
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * WHERE A DELIVERY INSTANT CAME FROM (D-27; ledger
+ * `2026-09-15-d27-artifact-timer-acceptance-prompt`). There are exactly two, and telling them apart
+ * is the honest half of putting a booking on an acceptance clock:
+ *
+ *   `per_booking`    `service_bookings.delivered_at` — THIS traveler's own delivery, stamped by the
+ *                    deliver rail and MOVED by every re-delivery (D-26).
+ *   `listing_clock`  the pre-D-26 derivation the `artifact_timer` arms already used — the first
+ *                    `deliverable_downloads` row for this booking, else
+ *                    `max(confirmed_at, provider_services.deliverable_uploaded_at)`. It is a
+ *                    LISTING-level clock shared by every buyer, which is exactly why it is named
+ *                    rather than presented as the traveler's own delivery.
+ *
+ * NEITHER IS EVER WRITTEN BACK TO `delivered_at` — D-26's rule. A listing-clock instant is a
+ * derivation, and stamping it on the row would turn "we inferred this" into "the seller delivered
+ * on this date".
+ */
+export const DELIVERY_INSTANT_SOURCES = ["per_booking", "listing_clock"] as const;
+export type DeliveryInstantSource = (typeof DELIVERY_INSTANT_SOURCES)[number];
+
+export interface DeliveryInstant {
+  at: Date | string;
+  source: DeliveryInstantSource;
+}
+
+/**
  * WHEN THE ACCEPTANCE WINDOW CLOSES — derived, never stored (D-24).
  *
  * §13, and it is the reason this returns `null` rather than a date: a booking whose delivery
@@ -100,13 +125,27 @@ export const DAY_MS = 24 * 60 * 60 * 1000;
  * exists for) or on "now".
  *
  * `windowDays` is passed in from `acceptanceWindowDays()` so this file states no number of its own.
+ *
+ * D-27 EXTENDED THE INPUT, NOT THE COUNT OF DEADLINE HELPERS. It now also accepts a SOURCED
+ * instant (`DeliveryInstant`), so the escalation arm cannot compute a window without also saying
+ * what it measured from — and so no caller ever forks a second deadline helper beside this one
+ * (§18 rule 1). The bare `Date | string` form is unchanged for every existing caller.
  */
 export function acceptanceDeadline(
-  deliveredAt: Date | string | null | undefined,
+  deliveredAt: Date | string | DeliveryInstant | null | undefined,
   windowDays: number,
 ): string | null {
   if (deliveredAt === null || deliveredAt === undefined) return null;
-  const ms = deliveredAt instanceof Date ? deliveredAt.getTime() : Date.parse(String(deliveredAt));
+  let at: Date | string;
+  if (typeof deliveredAt === "object" && !(deliveredAt instanceof Date)) {
+    // D-27: the SOURCED form. An instant whose provenance is not one this module knows is not a
+    // deadline anyone may stand behind — refused rather than silently measured (§13).
+    if (!DELIVERY_INSTANT_SOURCES.includes(deliveredAt.source)) return null;
+    at = deliveredAt.at;
+  } else {
+    at = deliveredAt;
+  }
+  const ms = at instanceof Date ? at.getTime() : Date.parse(String(at));
   if (!Number.isFinite(ms)) return null;
   if (!Number.isFinite(windowDays) || windowDays < 0) return null;
   return new Date(ms + windowDays * DAY_MS).toISOString();

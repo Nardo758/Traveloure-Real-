@@ -171,7 +171,13 @@ const PI_SUCCEEDED = "succeeded";
 
 /** Booking statuses that assert the traveler HAS paid — each one must have a real PaymentIntent
  *  behind it (the `paid-service-bookings-have-payment-intent` invariant, scripts/invariants.mjs). */
-const PAID_EQUIVALENT_STATUSES = ["confirmed", "in_progress", "completed", "delivered", "disputed"];
+//
+// D-34 (ledger `2026-09-16-d32-d35-bundle-components`): `partially_completed` JOINS this list. A
+// partially completed bundle is an ordinary cart-rail row with a real PaymentIntent behind it, and
+// a status nobody's list knows is a paid state with no money-integrity oversight (brief §3). It does
+// NOT join `TERMINAL_STATUSES` below — the row can still be refunded per component, and its
+// `total_amount` is never rewritten (brief §2 rule 5), so kinds A and C must keep seeing it.
+const PAID_EQUIVALENT_STATUSES = ["confirmed", "in_progress", "completed", "delivered", "disputed", "partially_completed"];
 
 /** Statuses a claim can be in that are NOT yet a purchase — an in-flight checkout, not drift. */
 const PROVISIONAL_STATUSES = ["payment_pending", "pending"];

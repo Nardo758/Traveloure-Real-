@@ -31,6 +31,28 @@
  *     `checkout-claim.service.ts` and this rail must not participate in the claim machine (§18b);
  *   - there is no compensating rollback anywhere in here. A lost race changes nothing.
  *
+ * ══ D-7: THE SELLER DECLARES, THE WINDOW CLOSES, AND ONLY THEN IS "COMPLETED" SAID ═════════
+ * (punchlist D-36/D-37/D-38, ruled A 2026-09-15; ledger `2026-09-15-d36-d39-completion-declared`;
+ * brief Part II §11-§12.) For the owner-declared rules and the place-anchored timer the flip
+ * above is now TWO flips with a window between them:
+ *
+ *   confirmed ──(declare)──> completion_declared ──(window elapses, undisputed)──> completed
+ *
+ * `declareBookingCompletion` makes the FIRST — the same eligibility the owner rail always resolved
+ * (session ended per the booked slot; scope declared; the service date passed), the same evidence,
+ * and it MINTS NOTHING: the money event is the second flip, made by `completeBooking`'s
+ * `window_elapsed` arm when `completion_declared_at + declaredCompletionWindowDays()` has passed.
+ * D-37: the held earning's `availableAt` is then ANCHORED to the DECLARATION instant
+ * (`storage.mintCompletionEarningsForBooking` reads `completionDeclaredAt`), so the window is
+ * served once and the seller's payout lands where it did before, to within a scheduler pass. A
+ * traveler's dispute inside the window flips the row to `disputed` — the SAME row and queue as a
+ * post-completion dispute (D-38) — and the close then matches zero rows by construction.
+ *
+ * What did NOT move: `checkout_date` (property) still completes directly on its timer;
+ * `bundle_components` still completes directly when its last component lands (the bundles lane,
+ * D-32..D-35, owns whether a bundle declares); `traveler_accepted` is D-6's own arm. The declared
+ * window is ONE more caller of the ONE completion implementation — never a second mint path.
+ *
  * ══ §13 SHAPE ═══════════════════════════════════════════════════════════════════════════════
  * Every "not yet" answer carries a machine-readable REASON. A booking that lacks the data to
  * decide (no slot end time, no delivery timestamp, no checkout date, an unclassifiable service)
@@ -50,7 +72,6 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
-  bundleComponents,
   deliverableDownloads,
   providerServices,
   serviceBookings,
@@ -66,10 +87,31 @@ import {
   ARTIFACT_AUTO_COMPLETE_DAYS,
   DAY_MS,
   PROPERTY_AUTO_COMPLETE_GRACE_DAYS,
+  declaredCompletionWindowDays,
   serviceDateCompletionDays,
 } from "../config/completion-windows.config";
-import { acceptanceModeFor } from "@shared/acceptance-window";
-import { ACCEPTANCE_FROM_STATUSES } from "../utils/booking-from-states";
+import { acceptanceModeFor, type DeliveryInstantSource } from "@shared/acceptance-window";
+import {
+  COMPLETION_DECLARED_STATUS,
+  declaredCompletionDeadline,
+} from "@shared/declared-completion-window";
+import {
+  ACCEPTANCE_FROM_STATUSES,
+  COMPLETION_DECLARABLE_FROM_STATUSES,
+  DECLARED_WINDOW_CLOSE_FROM_STATUSES,
+  PARTIAL_COMPLETION_FROM_STATUSES,
+} from "../utils/booking-from-states";
+import {
+  PARTIALLY_COMPLETED_STATUS,
+  deriveBundleOutcome,
+  reducedBundleFigures,
+} from "@shared/bundle-component-states";
+import {
+  claimComponentCompleted,
+  claimComponentFailed,
+  readBundleComponentStates,
+  type ComponentStateSource,
+} from "./bundle-component-states.service";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
 import { storage } from "../storage";
 
@@ -83,7 +125,16 @@ export const COMPLETION_ALLOWED_FROM_STATUSES: readonly string[] = ["confirmed"]
 
 /** Who drove this completion. Recorded on the booking row; mapped to a diary actorType below. */
 export type CompletionActor =
-  | "auto_complete_pdf"
+  /*
+   * `auto_complete_pdf` IS GONE (D-27; ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`).
+   * It was the actor of the silent timeout D-6 forbids: a clock that completed an artifact booking
+   * and minted the seller's earning without the traveler ever answering. `artifact_timer` left
+   * `TIMER_DRIVEN_COMPLETION_RULES`, so `timerActorFor` returns null for it and this union has ONE
+   * FEWER member — never a renamed one. An artifact completes on `traveler_accepted`, or by a human
+   * resolving the dispute the unanswered window escalates into. Rows already stamped
+   * `actor: "auto_complete_pdf"` in `bookingDetails.completion` are NOT rewritten (LD 44(e)): that
+   * actor did complete those bookings, and editing the record would invent a different history.
+   */
   | "auto_complete_property"
   /** Ruling 69 disposition 1 — the in_person/hybrid booked-service-date timer. */
   | "auto_complete_service_date"
@@ -97,21 +148,53 @@ export type CompletionActor =
    * whose from-state is `awaiting_acceptance` rather than `confirmed`, and the only one that
    * stamps `accepted_at`.
    */
-  | "traveler_accepted";
+  | "traveler_accepted"
+  /**
+   * D-7 (ledger `2026-09-15-d36-d39-completion-declared`): THE DECLARED WINDOW CLOSED UNDISPUTED.
+   * The nightly job's caller of the ONE completion implementation for a booking the seller declared
+   * done (`completion_declared`), once `completion_declared_at + declaredCompletionWindowDays()` has
+   * passed. It is the only actor whose from-state is `completion_declared`, and the flip it wins is
+   * the one that MINTS — with `availableAt` anchored to the declaration (D-37). It never declares:
+   * WHO declared, and on what evidence, is already on the row (`bookingDetails.completionDeclaration`).
+   */
+  | "window_elapsed";
 
 const DIARY_ACTOR: Record<CompletionActor, TransitionActorType> = {
-  auto_complete_pdf: "auto_complete",
   auto_complete_property: "auto_complete",
   auto_complete_service_date: "auto_complete",
   provider_session_end: "provider",
   provider_declared: "provider",
   provider_bundle_components: "provider",
   traveler_accepted: "traveler",
+  window_elapsed: "auto_complete",
 };
 
 /** TRUE for the ONE actor whose completion is a traveler's acceptance rather than a rule firing. */
 function isAcceptanceActor(actor: CompletionActor): boolean {
   return actor === "traveler_accepted";
+}
+
+/** TRUE for the ONE actor whose completion is a declared window closing rather than a rule firing. */
+function isWindowCloseActor(actor: CompletionActor): boolean {
+  return actor === "window_elapsed";
+}
+
+/**
+ * D-7: WHICH TIMER RULE OPENS THE TRAVELER'S WINDOW INSTEAD OF ENDING IT. Brief §10: for
+ * `in_person`/`hybrid` "the timer's job becomes *open the traveler's window*, not *end it*" — the
+ * `service_date_timer` fires exactly when it always did (ruling 69's N days after the booked
+ * service day, `serviceDateCompletionDays()`), but its flip is now `confirmed → completion_declared`
+ * and the window's close completes N days later. NO money instant moves: the earning's
+ * `availableAt` is anchored to the declaration (D-37), so it lands where today's mint-plus-hold
+ * landed, and the traveler's dispute cutoff (`disputeWindowAnchor`) is the same instant it is today.
+ * Opening the window at the day boundary instead — an earlier payout by N days — is a timing
+ * change this ruling did not authorize, so it was not taken.
+ *
+ * `checkout_date` (property) is deliberately NOT here: D-7 rules physical-action and coordination
+ * work, and a stay's checkout is neither. It completes directly, as before.
+ */
+export function timerOpensDeclaredWindow(rule: CompletionRule): boolean {
+  return rule === "service_date_timer";
 }
 
 /** Why a booking is NOT (yet) completable. Stable, machine-readable, §13-honest. */
@@ -133,12 +216,46 @@ export type IneligibleReason =
   | "bundle_components_unknown"
   | "bundle_components_incomplete"
   /**
+   * D-34 (ledger `2026-09-16-d32-d35-bundle-components`): every component has an answer, at least
+   * one delivered and at least one NOT — the bundle is PARTIALLY complete, which `completeBooking`
+   * must never turn into `completed` (that word still means EVERY component). The flip this state
+   * takes is `settleBundlePartialCompletion`'s, and it carries the undelivered ids as evidence.
+   */
+  | "bundle_partially_completed"
+  /** D-34: every component answered and NONE delivered — the EXISTING whole-row refund lane's case;
+   *  nothing here flips it, and the reason says so rather than reporting "incomplete" (§13). */
+  | "bundle_components_undelivered"
+  /**
+   * D-32: the write asked for needs a `booking_component_states` ROW and this booking has none —
+   * a LEGACY bundle, read from `booking_details` and unable to hold FAILED. Stated, never filed into
+   * a jsonb key no atomic conditional could later claim; such a bundle keeps the all-or-nothing rule
+   * and the existing refund lane.
+   */
+  | "bundle_component_states_unavailable"
+  /**
+   * D-33/§13: the partial flip's REDUCED figures cannot be derived because a component carries no
+   * snapshotted price. The parent stays `confirmed` for a human — never a guessed share.
+   */
+  | "component_prices_unknown"
+  /**
    * D-6/D-40: the traveler accepted, but this listing's acceptance does NOT complete the booking.
    * Either it takes no acceptance at all, or it is a `hybrid` with a DECLARED artifact, whose
    * acceptance is `records_only` — it records `accepted_at` and revision rows and gates NOTHING
    * about completion or the mint. Handled by the acceptance service's own arm, never here.
    */
-  | "acceptance_does_not_complete";
+  | "acceptance_does_not_complete"
+  /**
+   * D-27: the booking's rule IS `artifact_timer`, and `artifact_timer` no longer completes
+   * anything. Stated rather than silently absent, because "this rule cannot complete" and "this
+   * window is still open" are different facts and a reader must be able to tell them apart (§13).
+   */
+  | "artifact_takes_acceptance"
+  /**
+   * D-7: the booking is `completion_declared` but carries no `completion_declared_at` — a row the
+   * guarded writer could not have produced (it stamps both in one UPDATE), so it is stated rather
+   * than guessed onto a clock (§13). A window the server cannot date does not start.
+   */
+  | "no_declaration_timestamp";
 
 export interface CompletionEligibility {
   bookingId: string;
@@ -166,8 +283,16 @@ interface BookingRow {
   serviceId: string | null;
   providerId: string | null;
   confirmedAt: Date | null;
+  /** D-26's per-booking delivery instant. NULL = the per-booking source has no answer (§13). */
+  deliveredAt: Date | null;
+  /** D-36: when the seller declared the work done. NULL = never declared (§13). */
+  completionDeclaredAt: Date | null;
   slotId: string | null;
   bookingDetails: Record<string, any> | null;
+  /** D-35: the three figures the partial settlement's reduced mint is derived FROM (read, never written here). */
+  totalAmount: string | null;
+  platformFee: string | null;
+  providerEarnings: string | null;
 }
 
 interface ServiceRow {
@@ -188,8 +313,13 @@ async function loadBooking(bookingId: string): Promise<BookingRow | null> {
       serviceId: serviceBookings.serviceId,
       providerId: serviceBookings.providerId,
       confirmedAt: serviceBookings.confirmedAt,
+      deliveredAt: serviceBookings.deliveredAt,
+      completionDeclaredAt: serviceBookings.completionDeclaredAt,
       slotId: serviceBookings.slotId,
       bookingDetails: serviceBookings.bookingDetails,
+      totalAmount: serviceBookings.totalAmount,
+      platformFee: serviceBookings.platformFee,
+      providerEarnings: serviceBookings.providerEarnings,
     })
     .from(serviceBookings)
     .where(eq(serviceBookings.id, bookingId));
@@ -250,6 +380,71 @@ export async function resolveServiceDate(
   return null;
 }
 
+/**
+ * THE ARTIFACT'S DELIVERY INSTANT — ONE derivation, stated with its SOURCE (D-27; ledger
+ * `2026-09-15-d27-artifact-timer-acceptance-prompt`).
+ *
+ * This is the question "when was this artifact delivered to THIS traveler?", and it has exactly
+ * two answers plus an honest third:
+ *
+ *   `per_booking`    `service_bookings.delivered_at` — the per-booking instant D-26 added, stamped
+ *                    by the deliver rail and MOVED by every re-delivery. Preferred whenever it is
+ *                    set, because it is the only one that is about this traveler.
+ *   `listing_clock`  the pre-D-26 derivation ruling 63's two arms already used, kept verbatim:
+ *                    the FIRST `deliverable_downloads` row for this booking (arm `downloaded` —
+ *                    tried first because it covers a listing whose `deliverable_uploaded_at`
+ *                    predates the column), else `max(confirmed_at, deliverable_uploaded_at)`
+ *                    (arm `undownloaded`). It is a LISTING-level clock shared by every buyer,
+ *                    which is why it is NAMED rather than presented as this traveler's delivery.
+ *   `null`           NEITHER source answers. §13: the booking is NOT put on an acceptance clock,
+ *                    is skipped with `no_delivery_timestamp`, and is never anchored on
+ *                    `confirmed_at` alone, on the listing's upload instant alone, or on "now".
+ *
+ * IT NEVER WRITES. D-26's rule: a `listing_clock` instant is a DERIVATION, and stamping it onto
+ * `delivered_at` would turn "we inferred this" into "the seller delivered on this date" — and would
+ * move every other buyer's window with it the moment the listing's file changed.
+ *
+ * ONE IMPLEMENTATION, TWO READERS (§18 rule 1): the `artifact_timer` eligibility arm above and the
+ * acceptance-prompt/escalation arm in `artifact-acceptance-timer.service.ts`. A second copy in the
+ * job is exactly the derivation-drift class that rule names.
+ */
+export interface ArtifactDeliveryInstant {
+  at: Date;
+  source: DeliveryInstantSource;
+  /** Which listing-clock arm produced it. `null` on the per-booking source. */
+  arm: "downloaded" | "undownloaded" | null;
+}
+
+export async function resolveArtifactDeliveryInstant(
+  booking: Pick<BookingRow, "id" | "confirmedAt"> & { deliveredAt?: Date | null },
+  service: Pick<ServiceRow, "deliverableUploadedAt">,
+): Promise<ArtifactDeliveryInstant | null> {
+  // D-26's per-booking instant wins outright when it exists — it is the only one that moves with a
+  // re-delivery, which is the whole reason the column was added.
+  const perBooking = booking.deliveredAt ?? null;
+  if (perBooking && Number.isFinite(new Date(perBooking).getTime())) {
+    return { at: new Date(perBooking), source: "per_booking", arm: null };
+  }
+
+  const [first] = await db
+    .select({ downloadedAt: deliverableDownloads.downloadedAt })
+    .from(deliverableDownloads)
+    .where(eq(deliverableDownloads.bookingId, booking.id))
+    .orderBy(asc(deliverableDownloads.downloadedAt))
+    .limit(1);
+  if (first?.downloadedAt) {
+    return { at: new Date(first.downloadedAt), source: "listing_clock", arm: "downloaded" };
+  }
+
+  if (!booking.confirmedAt || !service.deliverableUploadedAt) return null;
+  const ms = Math.max(
+    new Date(booking.confirmedAt).getTime(),
+    new Date(service.deliverableUploadedAt).getTime(),
+  );
+  if (!Number.isFinite(ms)) return null;
+  return { at: new Date(ms), source: "listing_clock", arm: "undownloaded" };
+}
+
 const no = (
   bookingId: string,
   rule: CompletionRule | null,
@@ -273,10 +468,22 @@ export async function resolveCompletionEligibility(
      * is the condition there. It is a MODE of the one resolver, not a second one (§18 rule 1).
      */
     acceptance?: boolean;
+    /**
+     * D-7: resolve for the DECLARED WINDOW'S CLOSE rather than for a rule firing. The from-state
+     * becomes `completion_declared`, and the condition is "the derived deadline has passed" —
+     * `completion_declared_at + declaredCompletionWindowDays()`. A MODE of the one resolver, like
+     * `acceptance` (§18 rule 1).
+     */
+    declaredWindow?: boolean;
   } = {},
 ): Promise<CompletionEligibility> {
   const forAcceptance = opts.acceptance === true;
-  const allowedFrom = forAcceptance ? ACCEPTANCE_FROM_STATUSES : COMPLETION_ALLOWED_FROM_STATUSES;
+  const forDeclaredWindow = opts.declaredWindow === true && !forAcceptance;
+  const allowedFrom = forAcceptance
+    ? ACCEPTANCE_FROM_STATUSES
+    : forDeclaredWindow
+      ? DECLARED_WINDOW_CLOSE_FROM_STATUSES
+      : COMPLETION_ALLOWED_FROM_STATUSES;
   const booking = await loadBooking(bookingId);
   if (!booking) return no(bookingId, null, "booking_not_found");
   if (!allowedFrom.includes(booking.status ?? "")) {
@@ -319,6 +526,37 @@ export async function resolveCompletionEligibility(
   }
 
   const details = (booking.bookingDetails ?? {}) as Record<string, any>;
+
+  // D-7: THE DECLARED WINDOW'S CLOSE answers before the per-rule switch, and deliberately so. The
+  // per-rule conditions were ALREADY satisfied when the seller declared (they are what
+  // `declareBookingCompletion` resolved, and their evidence is on the row); re-running them here
+  // would let a slot edited after the declaration, or a listing reclassified, un-declare a
+  // declaration the traveler was told about. The one condition that is this arm's own is time.
+  if (forDeclaredWindow) {
+    const declaredAt = booking.completionDeclaredAt;
+    if (!declaredAt || !Number.isFinite(new Date(declaredAt).getTime())) {
+      // §13: a declared row with no declaration instant is not guessed onto a clock.
+      return no(bookingId, rule, "no_declaration_timestamp", { status: booking.status });
+    }
+    const windowDays = declaredCompletionWindowDays();
+    const deadline = declaredCompletionDeadline(declaredAt, windowDays);
+    const evidence = {
+      basis: "declared_window_elapsed",
+      declaredAt: new Date(declaredAt).toISOString(),
+      windowDays,
+      deadline,
+      // The declaration this close is answering — rule, actor, evidence — copied so the
+      // completion record can be read on its own months later (§13: who said done, and on what).
+      declaration: details.completionDeclaration ?? null,
+    };
+    if (deadline === null) {
+      return no(bookingId, rule, "no_declaration_timestamp", evidence);
+    }
+    if (now.getTime() < Date.parse(deadline)) {
+      return { ...no(bookingId, rule, "window_open", evidence), eligibleAt: deadline };
+    }
+    return { bookingId, rule, eligible: true, evidence };
+  }
 
   switch (rule) {
     // ── in_person / hybrid: the BOOKED SERVICE DATE timer (ruling 69 disposition 1, amending
@@ -383,58 +621,34 @@ export async function resolveCompletionEligibility(
       return { bookingId, rule, eligible: true, evidence };
     }
 
-    // ── pdf: TWO arms, exactly as ruling 63 words them. ───────────────────────────────────────
+    // ── pdf: RETIRED AS A COMPLETION RULE (D-27; ledger
+    // `2026-09-15-d27-artifact-timer-acceptance-prompt`). ─────────────────────────────────────
+    //
+    // Ruling 63's two arms — "7 days after FIRST download" and "7 days UNDOWNLOADED post-delivery"
+    // — no longer COMPLETE anything. D-6 forbids a silent timeout completing in the seller's
+    // favour, so an artifact booking completes only when the traveler accepts it
+    // (`traveler_accepted`, the acceptance rail) or when a human resolves the dispute an
+    // unanswered window escalates into.
+    //
+    // §13, AND IT IS THE REASON THIS ARM ANSWERS `false` RATHER THAN BEING DELETED. `artifact_timer`
+    // is still the TRUE answer to "which rule governs this booking", so `completionRuleFor` still
+    // returns it and this switch still has a case for it. What it must never do again is report
+    // `eligible: true` for a booking nothing may complete — an eligibility nobody can act on is
+    // worse than a stated refusal, because every reader takes it as a pending completion. The
+    // refusal names the reason and carries the DERIVED delivery instant as evidence, so an ops
+    // question ("why has this not completed?") is answerable from the row.
+    //
+    // The two arms themselves did not disappear: they ARE the delivery-instant derivation, lifted
+    // into `resolveArtifactDeliveryInstant` below and read by the acceptance-prompt arm (§18 rule 1
+    // — one derivation, two readers, never a second copy in the job).
     case "artifact_timer": {
-      const [first] = await db
-        .select({ downloadedAt: deliverableDownloads.downloadedAt })
-        .from(deliverableDownloads)
-        .where(eq(deliverableDownloads.bookingId, booking.id))
-        .orderBy(asc(deliverableDownloads.downloadedAt))
-        .limit(1);
-
-      // ARM A — "7 days after FIRST download". Needs only migration 194's log, so it covers every
-      // booking regardless of how old the listing is.
-      if (first?.downloadedAt) {
-        const eligibleAtMs =
-          new Date(first.downloadedAt).getTime() + ARTIFACT_AUTO_COMPLETE_DAYS * DAY_MS;
-        const evidence = {
-          arm: "downloaded",
-          firstDownloadAt: new Date(first.downloadedAt).toISOString(),
-          eligibleAt: new Date(eligibleAtMs).toISOString(),
-        };
-        if (now.getTime() < eligibleAtMs) {
-          return { ...no(bookingId, rule, "window_open", evidence), eligibleAt: evidence.eligibleAt };
-        }
-        return { bookingId, rule, eligible: true, evidence };
-      }
-
-      // ARM B — "7 days UNDOWNLOADED POST-DELIVERY". Delivery is the moment BOTH halves of the
-      // entitlement existed: the booking was confirmed AND the provider's file was there. Missing
-      // either half ⇒ ineligible with the reason (§13) — never fire a completion timer on a
-      // booking where nothing was ever delivered.
-      if (!booking.confirmedAt || !service.deliverableUploadedAt) {
-        return no(bookingId, rule, "no_delivery_timestamp", {
-          arm: "undownloaded",
-          confirmedAt: booking.confirmedAt ? new Date(booking.confirmedAt).toISOString() : null,
-          deliverableUploadedAt: service.deliverableUploadedAt
-            ? new Date(service.deliverableUploadedAt).toISOString()
-            : null,
-        });
-      }
-      const deliveredAtMs = Math.max(
-        new Date(booking.confirmedAt).getTime(),
-        new Date(service.deliverableUploadedAt).getTime(),
-      );
-      const eligibleAtMs = deliveredAtMs + ARTIFACT_AUTO_COMPLETE_DAYS * DAY_MS;
-      const evidence = {
-        arm: "undownloaded",
-        deliveredAt: new Date(deliveredAtMs).toISOString(),
-        eligibleAt: new Date(eligibleAtMs).toISOString(),
-      };
-      if (now.getTime() < eligibleAtMs) {
-        return { ...no(bookingId, rule, "window_open", evidence), eligibleAt: evidence.eligibleAt };
-      }
-      return { bookingId, rule, eligible: true, evidence };
+      const instant = await resolveArtifactDeliveryInstant(booking, service);
+      return no(bookingId, rule, "artifact_takes_acceptance", {
+        acceptanceRule: "traveler_acceptance",
+        ...(instant
+          ? { deliveredAt: instant.at.toISOString(), deliveryInstantSource: instant.source, arm: instant.arm }
+          : { deliveredAt: null, deliveryInstantSource: null }),
+      });
     }
 
     // ── call / video / voice_notes: "session end PER BOOKED SLOT, provider-confirmed". ────────
@@ -472,39 +686,50 @@ export async function resolveCompletionEligibility(
     case "provider_declared":
       return { bookingId, rule, eligible: true, evidence: { declared: true } };
 
-    // ── bundle: "ALL components complete; partial routes to the EXISTING refund lane, never a
-    // partial payout." The component list is the snapshot locked into bookingDetails at purchase
-    // (payments.routes.ts §17); per-component completions are recorded on the same jsonb by
-    // `recordBundleComponentCompletion` below — no new table, no new column. ──────────────────
+    // ── bundle (D-32..D-35, ledger `2026-09-16-d32-d35-bundle-components`): the component states are
+    // read ROWS FIRST (`booking_component_states`, migration 306) and the legacy `componentCompletions`
+    // jsonb SECOND, and the evidence NAMES which source answered (`componentStateSource`, §13). The
+    // parent's outcome is the ONE derivation `deriveBundleOutcome` (§18 rule 1 — brief §2 rule 1: the
+    // parent state is DERIVED, never stored twice), and `completed` still means EVERY component
+    // (brief §2 rule 2). A partially complete bundle is a NEW answer beside the old ones — never a
+    // looser version of them — and it is refused HERE so `completeBooking` can never mint the full
+    // figures for it; `settleBundlePartialCompletion` owns that flip and its reduced mint. ────────
     case "bundle_components": {
-      const snapshot = Array.isArray(details.bundleComponents) ? details.bundleComponents : null;
-      const componentIds = snapshot
-        ? snapshot.map((c: any) => String(c?.id ?? "")).filter(Boolean)
-        : await db
-            .select({ id: bundleComponents.componentServiceId })
-            .from(bundleComponents)
-            .where(eq(bundleComponents.bundleServiceId, service.id))
-            .orderBy(asc(bundleComponents.position))
-            .then((rows) => rows.map((r) => r.id));
-      if (componentIds.length === 0) {
+      const states = await readBundleComponentStates({
+        bookingId: booking.id,
+        bookingDetails: details,
+        bundleServiceId: service.id,
+      });
+      if (states.components.length === 0) {
         // §13: a bundle whose contents we cannot enumerate is never "all complete" by default.
-        return no(bookingId, rule, "bundle_components_unknown");
+        return no(bookingId, rule, "bundle_components_unknown", { componentStateSource: states.source });
       }
-      const done = (details.componentCompletions ?? {}) as Record<string, unknown>;
-      const missing = componentIds.filter((id: string) => !done[id]);
+      const outcome = deriveBundleOutcome(states.components);
       const evidence = {
-        componentIds,
-        completedComponentIds: componentIds.filter((id: string) => !!done[id]),
-        missingComponentIds: missing,
+        componentStateSource: states.source,
+        componentIds: states.components.map((c) => c.componentServiceId),
+        completedComponentIds: outcome.completedComponentIds,
+        missingComponentIds: outcome.pendingComponentIds,
+        // NAMED, not counted (brief §4): the undelivered components carry the name they were bought under.
+        undeliveredComponents: states.components
+          .filter((c) => outcome.undeliveredComponentIds.includes(c.componentServiceId))
+          .map((c) => ({ id: c.componentServiceId, serviceName: c.serviceName, status: c.status })),
+        outcome: outcome.outcome,
       };
-      if (missing.length > 0) {
-        // PARTIAL COMPLETION NEVER PAYS OUT. There is no partial release path here by design —
-        // a bundle the provider only half-delivered goes to the EXISTING refund lane
-        // (admin refund / owner-cancel-with-refund), which this module deliberately does not
-        // duplicate.
-        return no(bookingId, rule, "bundle_components_incomplete", evidence);
+      switch (outcome.outcome) {
+        case "completed":
+          return { bookingId, rule, eligible: true, evidence };
+        case "incomplete":
+          // At least one component is still pending: the parent stays `confirmed`, exactly as before.
+          return no(bookingId, rule, "bundle_components_incomplete", evidence);
+        case "partially_completed":
+          return no(bookingId, rule, "bundle_partially_completed", evidence);
+        case "all_undelivered":
+          // Nothing was delivered: the EXISTING whole-row refund rail's case, untouched by this lane.
+          return no(bookingId, rule, "bundle_components_undelivered", evidence);
+        case "no_components":
+          return no(bookingId, rule, "bundle_components_unknown", evidence);
       }
-      return { bookingId, rule, eligible: true, evidence };
     }
   }
 }
@@ -546,8 +771,10 @@ export async function completeBooking(input: {
   // is the caller's one statement of which rail it is, and the SERVICE decides everything else
   // (the same posture ruling 69's `allowOwnerDeclaredFallback` takes one arm over).
   const forAcceptance = isAcceptanceActor(input.actor);
+  const forDeclaredWindow = isWindowCloseActor(input.actor);
   const eligibility = await resolveCompletionEligibility(input.bookingId, now, {
     acceptance: forAcceptance,
+    declaredWindow: forDeclaredWindow,
   });
   const takesNoDateFallback =
     !eligibility.eligible && !!input.allowOwnerDeclaredFallback && !!eligibility.ownerDeclarableFallback;
@@ -569,7 +796,15 @@ export async function completeBooking(input: {
     // `awaiting_acceptance` is deliberately NOT added to `COMPLETION_ALLOWED_FROM_STATUSES`: that
     // list is also the timer's candidate predicate (`findAutoCompleteCandidates`), and widening it
     // would hand the nightly job the very bookings D-6 forbids it to complete.
-    forAcceptance ? ACCEPTANCE_FROM_STATUSES : COMPLETION_ALLOWED_FROM_STATUSES,
+    //
+    // D-7: the window's close claims ITS OWN from-state too (`completion_declared`), for the same
+    // reason. A `disputed` row is in neither list, so a dispute inside the window stops this flip by
+    // construction — no check, no flag, the UPDATE simply matches nothing.
+    forAcceptance
+      ? ACCEPTANCE_FROM_STATUSES
+      : forDeclaredWindow
+        ? DECLARED_WINDOW_CLOSE_FROM_STATUSES
+        : COMPLETION_ALLOWED_FROM_STATUSES,
   );
   if (!updated) {
     // Lost the atomic race (or the row vanished). Exactly one caller wins; the loser mints no
@@ -621,9 +856,14 @@ export async function completeBooking(input: {
             ? ((updated.bookingDetails as any).itineraryItemId as string)
             : null,
         eventType: "booking_completed",
-        // The state this flip actually consumed — `awaiting_acceptance` on the acceptance rail.
-        // A diary row that always said "confirmed" would misreport the one transition that is not.
-        fromStatus: forAcceptance ? "awaiting_acceptance" : "confirmed",
+        // The state this flip actually consumed — `awaiting_acceptance` on the acceptance rail,
+        // `completion_declared` at the declared window's close. A diary row that always said
+        // "confirmed" would misreport the two transitions that are not.
+        fromStatus: forAcceptance
+          ? "awaiting_acceptance"
+          : forDeclaredWindow
+            ? COMPLETION_DECLARED_STATUS
+            : "confirmed",
         toStatus: "completed",
         actorType: DIARY_ACTOR[input.actor],
       });
@@ -637,18 +877,192 @@ export async function completeBooking(input: {
   return { completed: true, bookingId: input.bookingId, rule: eligibility.rule, evidence: eligibility.evidence };
 }
 
+export interface DeclareCompletionResult {
+  declared: boolean;
+  bookingId: string;
+  rule: CompletionRule | null;
+  reason?: IneligibleReason | "lost_race";
+  evidence: Record<string, unknown>;
+  /** Present on success: the stamped declaration instant and the DERIVED window the traveler has. */
+  declaredAt?: string;
+  disputeBy?: string;
+  windowDays?: number;
+}
+
 /**
- * Record ONE bundle component as delivered, then complete the booking if that was the last one.
- * State lives on the existing `bookingDetails` jsonb — no new table, no new column (build charter
- * §5: prefer existing state). The write is a jsonb merge keyed by component id, so a repeat
- * declaration is idempotent (same key, same-or-later timestamp, still one component).
+ * D-7: THE DECLARATION — the FIRST of the two flips (`confirmed → completion_declared`). It MINTS
+ * NOTHING; the money event is `completeBooking`'s `window_elapsed` arm at the window's close.
+ *
+ * 1. Re-resolve eligibility server-side exactly as `completeBooking` does for an owner rule — the
+ *    session ended per the booked slot, the scope was declared, the booked service day (plus
+ *    ruling 69's N) passed — so a seller cannot declare a session before its slot says it ended
+ *    (brief §14: "a session the server cannot evidence is refused, not guessed").
+ * 2. Flip through `storage.updateServiceBookingStatus` with `COMPLETION_DECLARABLE_FROM_STATUSES`
+ *    (§15: the transition is the guard — a double declaration is ONE flip; the loser sees
+ *    `undefined`). The writer stamps `completion_declared_at` in the SAME UPDATE.
+ * 3. Record the provenance (`bookingDetails.completionDeclaration` + a `booking_completion_declared`
+ *    diary row) AFTER the flip — a declaration nobody won must leave no trace claiming it did.
+ */
+export async function declareBookingCompletion(input: {
+  bookingId: string;
+  actor: CompletionActor;
+  now?: Date;
+  reason?: string;
+  /** Ruling 69 disposition 1's NARROW no-date arm — the owner rail only; the SERVICE still decides. */
+  allowOwnerDeclaredFallback?: boolean;
+}): Promise<DeclareCompletionResult> {
+  const now = input.now ?? new Date();
+  // The declaration is a RULE firing (an owner's, or the service-date timer's); the acceptance and
+  // window-close actors have their own arms of `completeBooking` and are refused here by the
+  // ordinary eligibility path (their from-states are not `confirmed`).
+  const eligibility = await resolveCompletionEligibility(input.bookingId, now);
+  const takesNoDateFallback =
+    !eligibility.eligible && !!input.allowOwnerDeclaredFallback && !!eligibility.ownerDeclarableFallback;
+  if (!eligibility.eligible && !takesNoDateFallback) {
+    return {
+      declared: false,
+      bookingId: input.bookingId,
+      rule: eligibility.rule,
+      reason: eligibility.reason,
+      evidence: eligibility.evidence,
+    };
+  }
+
+  const updated = await storage.updateServiceBookingStatus(
+    input.bookingId,
+    COMPLETION_DECLARED_STATUS,
+    input.reason,
+    COMPLETION_DECLARABLE_FROM_STATUSES,
+  );
+  if (!updated) {
+    return {
+      declared: false,
+      bookingId: input.bookingId,
+      rule: eligibility.rule,
+      reason: "lost_race",
+      evidence: eligibility.evidence,
+    };
+  }
+
+  const windowDays = declaredCompletionWindowDays();
+  const declaredAt = updated.completionDeclaredAt ? new Date(updated.completionDeclaredAt) : now;
+  const disputeBy = declaredCompletionDeadline(declaredAt, windowDays);
+
+  // (a) Provenance on the booking row — the declaration's rule, actor, instant and evidence, under
+  // its OWN key. `bookingDetails.completion` stays the COMPLETION's record and is written only by
+  // the flip that mints; a reader must be able to tell "declared" from "completed" on the row.
+  await db
+    .update(serviceBookings)
+    .set({
+      bookingDetails: sql`COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) || ${JSON.stringify({
+        completionDeclaration: {
+          rule: eligibility.rule,
+          actor: input.actor,
+          at: declaredAt.toISOString(),
+          evidence: eligibility.evidence,
+          windowDays,
+          disputeBy,
+          ...(takesNoDateFallback
+            ? { fallback: "owner_declared_no_service_date", ineligibleReason: eligibility.reason }
+            : {}),
+        },
+      })}::jsonb`,
+      updatedAt: now,
+    })
+    .where(eq(serviceBookings.id, input.bookingId));
+
+  // (b) The diary row — trip-scoped by construction, so a tripless booking honestly gets (a) only.
+  if (updated.tripId) {
+    try {
+      await logItemTransition(db, {
+        tripId: updated.tripId,
+        itemId:
+          typeof (updated.bookingDetails as any)?.itineraryItemId === "string"
+            ? ((updated.bookingDetails as any).itineraryItemId as string)
+            : null,
+        eventType: "booking_completion_declared",
+        fromStatus: "confirmed",
+        toStatus: COMPLETION_DECLARED_STATUS,
+        actorType: DIARY_ACTOR[input.actor],
+      });
+    } catch (err) {
+      console.error("[booking-completion] diary row failed after a successful declaration:", err);
+    }
+  }
+
+  return {
+    declared: true,
+    bookingId: input.bookingId,
+    rule: eligibility.rule,
+    evidence: eligibility.evidence,
+    declaredAt: declaredAt.toISOString(),
+    ...(disputeBy ? { disputeBy } : {}),
+    windowDays,
+  };
+}
+
+/**
+ * THE DECLARED-WINDOW DETECTOR: bookings whose seller declared and whose derived deadline MAY have
+ * passed. Narrow SQL pre-filter (status + a floor on the declaration instant), then
+ * `resolveCompletionEligibility({ declaredWindow: true })` decides — one predicate, not a second
+ * copy in SQL. The floor is exact: a window cannot close before `declared_at + windowDays`.
+ *
+ * `disputed` rows never appear (the status predicate), so a traveler's objection stops the timer
+ * here AND at the guarded flip — two independent layers, each sufficient. The UNPAID-RECHECK stamp
+ * the pass-1 payment gate writes is honoured the same way pass 1 honours it.
+ */
+export async function findDeclaredWindowCandidates(now: Date = new Date(), limit = 2000): Promise<string[]> {
+  const floor = new Date(now.getTime() - declaredCompletionWindowDays() * DAY_MS);
+  const nowIso = now.toISOString();
+  const rows = await db
+    .select({ id: serviceBookings.id })
+    .from(serviceBookings)
+    .where(
+      and(
+        inArray(serviceBookings.status, DECLARED_WINDOW_CLOSE_FROM_STATUSES),
+        sql`${serviceBookings.completionDeclaredAt} IS NOT NULL`,
+        sql`${serviceBookings.completionDeclaredAt} <= ${floor}`,
+        sql`(
+          ${serviceBookings.bookingMetadata}->>'autoCompleteUnpaidRecheckAt' IS NULL
+          OR (${serviceBookings.bookingMetadata}->>'autoCompleteUnpaidRecheckAt')::timestamptz <= ${nowIso}::timestamptz
+        )`,
+      ),
+    )
+    .orderBy(asc(serviceBookings.completionDeclaredAt))
+    .limit(limit);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Record ONE bundle component as delivered, then complete — or PARTIALLY complete — the booking if
+ * that was the last answer outstanding.
+ *
+ * D-32 (ledger `2026-09-16-d32-d35-bundle-components`): a booking born with `booking_component_states`
+ * rows is written THERE — `pending → completed` as an atomic conditional (`claimComponentCompleted`:
+ * the component must still be pending AND the parent still `confirmed`, one statement, so a double
+ * call is ONE flip and the second caller is told `alreadyRecorded`). A LEGACY booking (no rows) keeps
+ * the jsonb merge it always had — the old map is still read, never rewritten into rows (no backfill).
+ *
+ * After the write, the ONE derivation decides the parent: all complete ⇒ the SAME shared
+ * `completeBooking`; some delivered and the rest failed ⇒ `settleBundlePartialCompletion` (D-34/D-35);
+ * anything still pending ⇒ a successful record and an explicitly uncompleted booking.
  */
 export async function recordBundleComponentCompletion(input: {
   bookingId: string;
   componentServiceId: string;
   actor: CompletionActor;
   now?: Date;
-}): Promise<CompleteBookingResult & { recorded: boolean; unknownComponent?: boolean }> {
+}): Promise<
+  CompleteBookingResult & {
+    recorded: boolean;
+    unknownComponent?: boolean;
+    /** D-32: this call found the component already out of `pending` — a retry, not a second delivery. */
+    alreadyRecorded?: boolean;
+    /** D-34: the parent moved to `partially_completed` (and minted the reduced figures) on this call. */
+    partiallyCompleted?: boolean;
+    componentStateSource?: ComponentStateSource;
+  }
+> {
   const now = input.now ?? new Date();
   const pre = await resolveCompletionEligibility(input.bookingId, now);
   if (pre.rule !== "bundle_components") {
@@ -678,25 +1092,345 @@ export async function recordBundleComponentCompletion(input: {
       evidence: pre.evidence,
     };
   }
+  const source = (pre.evidence as any).componentStateSource as ComponentStateSource;
 
+  let alreadyRecorded = false;
+  if (source === "rows") {
+    const claim = await claimComponentCompleted({
+      bookingId: input.bookingId,
+      componentServiceId: input.componentServiceId,
+      parentFromStatuses: COMPLETION_ALLOWED_FROM_STATUSES,
+      now,
+    });
+    if (!claim.claimed) {
+      if (claim.currentStatus !== "completed") {
+        // The component is `failed` (or the parent left `confirmed`): a delivery cannot be recorded
+        // over a failure, and the caller is told which state refused it rather than a bare false.
+        return {
+          recorded: false,
+          completed: false,
+          bookingId: input.bookingId,
+          rule: pre.rule,
+          reason: pre.reason ?? "bundle_components_incomplete",
+          evidence: { ...pre.evidence, componentServiceId: input.componentServiceId, componentStatus: claim.currentStatus },
+          componentStateSource: source,
+        };
+      }
+      alreadyRecorded = true; // idempotent: same component, already delivered, ONE row flip ever
+    }
+  } else {
+    // LEGACY (no rows): the jsonb merge, byte-for-byte the pre-306 write. A repeat declaration is
+    // idempotent (same key, same-or-later timestamp, still one component).
+    await db
+      .update(serviceBookings)
+      .set({
+        bookingDetails: sql`
+          jsonb_set(
+            COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb),
+            '{componentCompletions}',
+            COALESCE(${serviceBookings.bookingDetails} -> 'componentCompletions', '{}'::jsonb)
+              || ${JSON.stringify({ [input.componentServiceId]: now.toISOString() })}::jsonb,
+            true
+          )`,
+        updatedAt: now,
+      })
+      .where(and(eq(serviceBookings.id, input.bookingId), inArray(serviceBookings.status, COMPLETION_ALLOWED_FROM_STATUSES)));
+  }
+
+  // All components in? Then — and only then — the SAME shared completion event fires. Some in and the
+  // rest failed? Then the partial settlement (D-34/D-35). `completeBooking` re-derives, so a partial
+  // bundle is refused there (`bundle_partially_completed`) and handed to the settle path here.
+  const result = await completeBooking({ bookingId: input.bookingId, actor: input.actor, now });
+  if (!result.completed && result.reason === "bundle_partially_completed") {
+    const settled = await settleBundlePartialCompletion({ bookingId: input.bookingId, actor: input.actor, now });
+    return {
+      ...result,
+      reason: settled.settled ? undefined : settled.reason,
+      evidence: settled.evidence,
+      recorded: true,
+      alreadyRecorded,
+      partiallyCompleted: settled.settled,
+      componentStateSource: source,
+    };
+  }
+  // `partiallyCompleted: false` is STATED, not omitted: a caller that reads it must get the truth on
+  // every branch, not only on the one that flipped (§13 — the same reason the declare rail states
+  // `completed: false`).
+  return { ...result, recorded: true, alreadyRecorded, partiallyCompleted: false, componentStateSource: source };
+}
+
+export interface BundleComponentFailureResult {
+  recorded: boolean;
+  bookingId: string;
+  rule: CompletionRule | null;
+  reason?: IneligibleReason | "lost_race";
+  evidence: Record<string, unknown>;
+  unknownComponent?: boolean;
+  /** This call found the component already out of `pending` — a retry, not a second failure. */
+  alreadyRecorded?: boolean;
+  /** The parent moved to `partially_completed` (and minted the reduced figures) on this call. */
+  partiallyCompleted: boolean;
+  /**
+   * `all_undelivered`: every component has now failed. Nothing flips — the EXISTING whole-row refund
+   * rail owns that case (brief §2) — and the caller is told so rather than left to infer it.
+   */
+  parentOutcome?: string;
+  componentStateSource?: ComponentStateSource;
+}
+
+/**
+ * D-32/D-34 — record ONE bundle component as FAILED: the seller's statement that this component
+ * will NOT be delivered. `pending → failed` as an atomic conditional (`claimComponentFailed` — the
+ * component must still be pending AND the parent still `confirmed`; a double call is ONE flip). Then
+ * the ONE derivation decides the parent: the rest delivered ⇒ `settleBundlePartialCompletion`;
+ * nothing delivered ⇒ `all_undelivered`, nothing flips; some still pending ⇒ recorded, waiting.
+ *
+ * A LEGACY bundle (no rows) is REFUSED with `bundle_component_states_unavailable`: the jsonb never
+ * held FAILED and cannot be claimed atomically, so such a bundle keeps the all-or-nothing rule and
+ * the existing refund lane (§13 — stated, never approximated).
+ *
+ * `reason` is the seller's words, already bounded by the route's `.strict()` allowlist; NULL = none
+ * given. No amount, rate or status arrives from the caller (§14/§19): the status written is this
+ * function's, the money is the mint's, both server-side.
+ */
+export async function recordBundleComponentFailure(input: {
+  bookingId: string;
+  componentServiceId: string;
+  actor: CompletionActor;
+  reason?: string | null;
+  now?: Date;
+}): Promise<BundleComponentFailureResult> {
+  const now = input.now ?? new Date();
+  const pre = await resolveCompletionEligibility(input.bookingId, now);
+  if (pre.rule !== "bundle_components") {
+    return {
+      recorded: false,
+      partiallyCompleted: false,
+      bookingId: input.bookingId,
+      rule: pre.rule,
+      reason: pre.reason ?? "rule_not_owner_declared",
+      evidence: pre.evidence,
+    };
+  }
+  const source = (pre.evidence as any).componentStateSource as ComponentStateSource | undefined;
+  if (source !== "rows") {
+    return {
+      recorded: false,
+      partiallyCompleted: false,
+      bookingId: input.bookingId,
+      rule: pre.rule,
+      reason: "bundle_component_states_unavailable",
+      evidence: pre.evidence,
+      componentStateSource: source,
+    };
+  }
+  const known = Array.isArray((pre.evidence as any).componentIds)
+    ? ((pre.evidence as any).componentIds as string[])
+    : [];
+  if (!known.includes(input.componentServiceId)) {
+    return {
+      recorded: false,
+      unknownComponent: true,
+      partiallyCompleted: false,
+      bookingId: input.bookingId,
+      rule: pre.rule,
+      reason: "bundle_components_incomplete",
+      evidence: pre.evidence,
+      componentStateSource: source,
+    };
+  }
+
+  const claim = await claimComponentFailed({
+    bookingId: input.bookingId,
+    componentServiceId: input.componentServiceId,
+    parentFromStatuses: COMPLETION_ALLOWED_FROM_STATUSES,
+    reason: typeof input.reason === "string" && input.reason.trim().length > 0 ? input.reason.trim() : null,
+    now,
+  });
+  let alreadyRecorded = false;
+  if (!claim.claimed) {
+    if (claim.currentStatus !== "failed") {
+      // Already delivered (or the parent left `confirmed`): a failure cannot be declared over a
+      // delivery. The caller learns which state refused it.
+      return {
+        recorded: false,
+        partiallyCompleted: false,
+        bookingId: input.bookingId,
+        rule: pre.rule,
+        reason: pre.reason ?? "bundle_components_incomplete",
+        evidence: { ...pre.evidence, componentServiceId: input.componentServiceId, componentStatus: claim.currentStatus },
+        componentStateSource: source,
+      };
+    }
+    alreadyRecorded = true;
+  }
+
+  // Re-derive AFTER the write — the resolver is the one authority on what the components now say.
+  const post = await resolveCompletionEligibility(input.bookingId, now);
+  const outcome = (post.evidence as any).outcome as string | undefined;
+  if (post.reason === "bundle_partially_completed") {
+    const settled = await settleBundlePartialCompletion({ bookingId: input.bookingId, actor: input.actor, now });
+    return {
+      recorded: true,
+      alreadyRecorded,
+      partiallyCompleted: settled.settled,
+      bookingId: input.bookingId,
+      rule: pre.rule,
+      reason: settled.settled ? undefined : settled.reason,
+      evidence: settled.evidence,
+      parentOutcome: outcome,
+      componentStateSource: source,
+    };
+  }
+  return {
+    recorded: true,
+    alreadyRecorded,
+    partiallyCompleted: false,
+    bookingId: input.bookingId,
+    rule: pre.rule,
+    reason: post.reason,
+    evidence: post.evidence,
+    parentOutcome: outcome,
+    componentStateSource: source,
+  };
+}
+
+export interface SettleBundlePartialResult {
+  settled: boolean;
+  bookingId: string;
+  reason?: IneligibleReason | "lost_race";
+  evidence: Record<string, unknown>;
+}
+
+/**
+ * D-34/D-35 — THE PARTIAL SETTLEMENT: `confirmed → partially_completed`, the ONE flip a bundle takes
+ * when every component has an answer, at least one was delivered and at least one was not. It is the
+ * money event for the delivered share: `storage.updateServiceBookingStatus` mints ONCE, inside the
+ * flip's transaction, over the REDUCED figures the mint derives from the component rows
+ * (`reducedBundleFigures` — the row's own three figures scaled by the delivered share of the
+ * snapshotted prices; never a second mint, never a per-component mint, never a rate literal).
+ *
+ * 1. Re-derive server-side (the caller's opinion is never trusted): the outcome must be
+ *    `partially_completed` and the reduced figures must be DERIVABLE — a component with no
+ *    snapshotted price refuses the flip with `component_prices_unknown` and leaves the parent
+ *    `confirmed` for a human (§13). The mint re-checks and throws inside the transaction, so the
+ *    flip can never land without its reduced mint.
+ * 2. Flip with `PARTIAL_COMPLETION_FROM_STATUSES` (§15/§18b — the transition is the guard; a
+ *    concurrent settle is ONE flip, the loser sees `lost_race`).
+ * 3. Provenance AFTER the flip: `bookingDetails.completion` with `partial: true`, the undelivered
+ *    components NAMED (brief §4 — never a count), the reduced figures, and a
+ *    `booking_partially_completed` diary row. `completed_at` is NOT stamped: the row is not completed.
+ *
+ * The component REFUND — the undelivered components' pro-rata share of what the traveler was charged
+ * — is NOT issued here. The existing `refundServiceBooking` rail flips the WHOLE row to `refunded`,
+ * which would be a lie about the delivered components (brief §1), so it cannot express this refund;
+ * that rail is the brief's lane 4 and is recorded, not built, in this lane's report. The amount it
+ * will owe is already on the row (`completion.reduced.deductedAmount`) and in the child rows' prices.
+ */
+export async function settleBundlePartialCompletion(input: {
+  bookingId: string;
+  actor: CompletionActor;
+  now?: Date;
+}): Promise<SettleBundlePartialResult> {
+  const now = input.now ?? new Date();
+  const eligibility = await resolveCompletionEligibility(input.bookingId, now);
+  if (eligibility.reason !== "bundle_partially_completed") {
+    return {
+      settled: false,
+      bookingId: input.bookingId,
+      reason: eligibility.reason ?? "bundle_components_incomplete",
+      evidence: eligibility.evidence,
+    };
+  }
+  const booking = await loadBooking(input.bookingId);
+  if (!booking) return { settled: false, bookingId: input.bookingId, reason: "booking_not_found", evidence: {} };
+  const states = await readBundleComponentStates({
+    bookingId: input.bookingId,
+    bookingDetails: booking.bookingDetails as Record<string, unknown> | null,
+    bundleServiceId: booking.serviceId ?? null,
+  });
+  if (states.source !== "rows") {
+    return {
+      settled: false,
+      bookingId: input.bookingId,
+      reason: "bundle_component_states_unavailable",
+      evidence: eligibility.evidence,
+    };
+  }
+  const reduced = reducedBundleFigures({
+    totalAmount: booking.totalAmount,
+    platformFee: booking.platformFee,
+    providerEarnings: booking.providerEarnings,
+    components: states.components,
+  });
+  if (!reduced.ok) {
+    return {
+      settled: false,
+      bookingId: input.bookingId,
+      reason: "component_prices_unknown",
+      evidence: { ...eligibility.evidence, reducedFiguresRefused: reduced.reason },
+    };
+  }
+
+  const updated = await storage.updateServiceBookingStatus(
+    input.bookingId,
+    PARTIALLY_COMPLETED_STATUS,
+    `d34_partial:${input.actor}`,
+    PARTIAL_COMPLETION_FROM_STATUSES,
+  );
+  if (!updated) {
+    return { settled: false, bookingId: input.bookingId, reason: "lost_race", evidence: eligibility.evidence };
+  }
+
+  const evidence = {
+    ...eligibility.evidence,
+    reduced: {
+      keptFraction: reduced.keptFraction,
+      grossAmount: reduced.grossAmount,
+      platformFee: reduced.platformFee,
+      providerEarnings: reduced.providerEarnings,
+      deductedAmount: reduced.deductedAmount,
+      undeliveredSnapshotCents: reduced.undeliveredSnapshotCents,
+      totalSnapshotCents: reduced.totalSnapshotCents,
+    },
+  };
   await db
     .update(serviceBookings)
     .set({
-      bookingDetails: sql`
-        jsonb_set(
-          COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb),
-          '{componentCompletions}',
-          COALESCE(${serviceBookings.bookingDetails} -> 'componentCompletions', '{}'::jsonb)
-            || ${JSON.stringify({ [input.componentServiceId]: now.toISOString() })}::jsonb,
-          true
-        )`,
+      bookingDetails: sql`COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) || ${JSON.stringify({
+        completion: {
+          rule: "bundle_components",
+          actor: input.actor,
+          at: now.toISOString(),
+          partial: true,
+          outcome: PARTIALLY_COMPLETED_STATUS,
+          failedComponentIds: reduced.undeliveredComponentIds,
+          evidence,
+        },
+      })}::jsonb`,
       updatedAt: now,
     })
-    .where(and(eq(serviceBookings.id, input.bookingId), inArray(serviceBookings.status, COMPLETION_ALLOWED_FROM_STATUSES)));
+    .where(eq(serviceBookings.id, input.bookingId));
 
-  // All components in? Then — and only then — the SAME shared completion event fires.
-  const result = await completeBooking({ bookingId: input.bookingId, actor: input.actor, now });
-  return { ...result, recorded: true };
+  if (updated.tripId) {
+    try {
+      await logItemTransition(db, {
+        tripId: updated.tripId,
+        itemId:
+          typeof (updated.bookingDetails as any)?.itineraryItemId === "string"
+            ? ((updated.bookingDetails as any).itineraryItemId as string)
+            : null,
+        eventType: "booking_partially_completed",
+        fromStatus: "confirmed",
+        toStatus: PARTIALLY_COMPLETED_STATUS,
+        actorType: DIARY_ACTOR[input.actor],
+      });
+    } catch (err) {
+      console.error("[booking-completion] diary row failed after a successful partial settlement:", err);
+    }
+  }
+
+  return { settled: true, bookingId: input.bookingId, evidence };
 }
 
 /**
@@ -760,8 +1494,11 @@ export async function findAutoCompleteCandidates(now: Date = new Date(), limit =
 
 /** Which timer actor a rule belongs to. Keeps the job free of any method knowledge of its own. */
 export function timerActorFor(rule: CompletionRule): CompletionActor | null {
+  // D-27: `artifact_timer` is no longer in `TIMER_DRIVEN_COMPLETION_RULES`, so it falls out HERE —
+  // through the set, not through a second special case. That is the whole retirement: the job asks
+  // this function for an actor, gets `null`, and accounts for the booking as
+  // `rule_not_timer_driven` instead of completing it.
   if (!TIMER_DRIVEN_COMPLETION_RULES.has(rule)) return null;
-  if (rule === "artifact_timer") return "auto_complete_pdf";
   if (rule === "service_date_timer") return "auto_complete_service_date";
   return "auto_complete_property";
 }

@@ -1287,6 +1287,49 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/offering-archetype-fixtures.db.test.ts
 
 
+  service-quotes:
+    name: service-quotes (punchlist D-28..D-31; ledger 2026-09-15-d28-d31-service-quotes)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # A custom quote is a `service_quotes` row with an expiry (migration 305). Q1 proves a
+      # REQUEST mints no booking; Q2 that validity is config and an over-ceiling choice is refused
+      # with the number stated; Q4 that the accept claim's own WHERE clause refuses an expired
+      # quote; Q5 that an expired quote is re-quoted as a NEW row; Q6 that a double accept mints
+      # exactly ONE booking priced off the quote (§14/§15); Q7 that the listing's deposit config
+      # applies unchanged and the snapshot says deposit_balance (D-31); Q8 the V-22 $0-hole pin.
+      - name: Service quotes — request, issue, expiry, re-quote, accept, deposit, V-22
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/service-quotes.db.test.ts
+
   booking-birth-provenance:
     name: booking-birth-provenance (rulings 41/46; ledger 2026-09-12-booking-birth-holes)
     runs-on: ubuntu-latest
@@ -1610,7 +1653,7 @@ jobs:
         run: npx tsx --test --test-force-exit client/src/lib/__tests__/plan-dates.test.ts
 
   acceptance-rails:
-    name: acceptance-rails (D-24..D-26 + D-40; ledger 2026-09-15-d24-d26-acceptance-columns)
+    name: acceptance-rails (D-24..D-27 + D-40 + D-36..D-39 + D-32..D-35; ledgers 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt, 2026-09-15-d36-d39-completion-declared, 2026-09-16-d32-d35-bundle-components)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -1648,15 +1691,51 @@ jobs:
       # ONE completion, ONE accepted_at and ONE earning set — a check-then-update lets both through.
       # R3 proves the allowance counts down from the LISTING's own revisions_included and that a
       # refusal STATES the number without becoming a dispute. R7 is D-40's load-bearing half: a
-      # hybrid's declared artifact is accepted and completion/the mint do not move. R9 pins the
-      # sequenced gap — `artifact_timer` is D-27's lane and is untouched here.
-      - name: The accept / revision / deliver rails (R1-R10)
+      # hybrid's declared artifact is accepted and completion/the mint do not move.
+      #
+      # D-27 (ledger 2026-09-15-d27-artifact-timer-acceptance-prompt) RE-PINNED R9 and added
+      # R11-R19. R9 used to pin the sequenced gap ("artifact_timer is untouched"); it now pins the
+      # retirement itself, so a re-added artifact_timer fails here rather than silently restoring
+      # the silent timeout D-6 forbids. R13 is the negative that fails on the pre-D-27 head: the
+      # whole nightly job may never complete an artifact, however old. R12 pins D-26's rule that a
+      # DERIVED listing-clock instant is never written back to delivered_at, and R18 pins that the
+      # payment gate lives on the ASK (which opens the rail that mints) and deliberately not on the
+      # escalation.
+      - name: The accept / revision / deliver / escalation rails (R1-R19)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/acceptance-rails.db.test.ts
       # The PURE layer beside it: the ONE derivation of the mode, the derived deadline, the allowance
       # arithmetic and the per-booking file fallback. No DB and no server — wired in a job that runs
       # `npm ci` because it imports `@shared/` (the #812 lesson, docs/OPERATING_PROCEDURE.md §3).
       - name: The one acceptance derivation (A1-A5)
         run: npx tsx --test --test-force-exit shared/__tests__/acceptance-window.test.ts
+      # D-7 DECLARED COMPLETION (D-36..D-39; ledger 2026-09-15-d36-d39-completion-declared). The seller
+      # DECLARES (`confirmed → completion_declared`, mints nothing); the nightly job says "completed" and
+      # mints at the window's close with the held earning anchored to the declaration (D-37); a dispute
+      # inside the window is the SAME `disputed` row (D-38) and stops the timer by construction; the
+      # coordination rail's window gates the admin REFUND only, and no coordinator earning is ever
+      # minted (D-39). W1-W10b drive the real service functions and the real job against this database.
+      - name: The declare / window-close / dispute / coordination rails (W1-W10b)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/declared-completion.db.test.ts
+      # The PURE layer beside it: the derived deadline, the ONE dispute anchor, the queue's derived
+      # stage and the coordination declaration instant. No DB — wired in this `npm ci` job because it
+      # imports `@shared/` (the #812 lesson).
+      - name: The one declared-window derivation (P1-P6)
+        run: npx tsx --test --test-force-exit shared/__tests__/declared-completion-window.test.ts
+      # D-32..D-35 BUNDLES (ledger 2026-09-16-d32-d35-bundle-components; migration 306). The checkout
+      # claim's composer births one `booking_component_states` row per component WITH the
+      # server-derived snapshot price (C1); the client-facing birth rail births none (C1b); a component
+      # flip is ONE row under a concurrent double call (C2); `partially_completed` is reached exactly
+      # when every component has an answer, at least one delivered and at least one failed (C3/C3b),
+      # and NEVER when nothing delivered (C3c); the flip mints ONCE over the REDUCED pro-rata figures
+      # and a second run mints nothing (C4); an unpriced component refuses the flip and rolls it back
+      # (C4b); a legacy jsonb bundle is still read with its source NAMED and can never become partial
+      # (C5); the lists that learned the status, and the ones that deliberately did not (C6).
+      - name: The bundle component rails (C1-C6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/bundle-component-states.db.test.ts
+      # The PURE layer beside it: the ONE parent derivation and the pro-rata reduction. No DB — wired in
+      # this `npm ci` job because it imports `@shared/` (the #812 lesson).
+      - name: The one bundle derivation (B-P1-B-P6)
+        run: npx tsx --test --test-force-exit shared/__tests__/bundle-component-states.test.ts
 
   plan-proposals:
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)

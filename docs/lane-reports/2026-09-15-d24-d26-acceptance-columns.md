@@ -44,15 +44,36 @@ clock (§13).
 of `→ completed`, and `storage.updateServiceBookingStatus` remains the one writer that mints inside
 its own transaction. This lane added **one caller**, not a path.
 
+> **CORRECTION 2026-09-15 (D-27; ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`).** The
+> first row below is **RETIRED**. `artifact_timer` left `TIMER_DRIVEN_COMPLETION_RULES`, so
+> `timerActorFor` returns `null` for it and the `auto_complete_pdf` actor no longer exists —
+> `completeBooking` is still untouched and now has **one fewer caller**, never a renamed one. The
+> nightly job's artifact arm ASKS (`confirmed → awaiting_acceptance`) and ESCALATES
+> (`awaiting_acceptance → disputed`, the existing admin dispute queue); neither completes and
+> neither mints. **Rows already stamped `actor: "auto_complete_pdf"` are NOT rewritten** (LD 44(e)):
+> that actor did complete those bookings. Everything else in this table stands.
+
 | Actor | From-state | Who asks | Mints? |
 |---|---|---|---|
-| `auto_complete_pdf` | `confirmed` | the nightly job (**untouched**) | yes |
+| ~~`auto_complete_pdf`~~ | ~~`confirmed`~~ | **RETIRED by D-27** — see the correction above | — |
 | `auto_complete_property` | `confirmed` | the nightly job | yes |
 | `auto_complete_service_date` | `confirmed` | the nightly job | yes |
 | `provider_session_end` | `confirmed` | the owner completion rail | yes |
 | `provider_declared` | `confirmed` | the owner completion rail | yes |
 | `provider_bundle_components` | `confirmed` | the owner completion rail | yes |
 | **`traveler_accepted` (NEW)** | **`awaiting_acceptance`** | `POST /api/bookings/:id/accept-deliverable` | yes — through the same writer, in the same transaction |
+
+> **CORRECTION 2026-09-15 (D-36..D-39; ledger `2026-09-15-d36-d39-completion-declared`).** Three
+> rows above changed MEANING, not existence: `auto_complete_service_date`, `provider_session_end`
+> and `provider_declared` now call `declareBookingCompletion` — `confirmed → completion_declared`,
+> which **mints NOTHING** — and the mint they used to trigger moved to ONE NEW caller of
+> `completeBooking`: **`window_elapsed`** (from-state `completion_declared`, the nightly job's pass
+> 1b, payment gate at that flip), with `available_at` anchored to the declaration (D-37). The
+> traveler's `confirm-completion` may also consume `completion_declared` and then mints as it always
+> did. `auto_complete_property`, `provider_bundle_components` and `traveler_accepted` are unchanged.
+> `completeBooking` is still the ONE implementation; it has one more caller, never a second path.
+
+| **`window_elapsed` (NEW, D-7)** | **`completion_declared`** | the nightly job's declared-window pass | yes — anchored to `completion_declared_at` |
 
 `awaiting_acceptance` is deliberately **NOT** added to `COMPLETION_ALLOWED_FROM_STATUSES`: that list
 is also the timer's candidate predicate (`findAutoCompleteCandidates`), and widening it would hand
@@ -87,8 +108,11 @@ different word, different consequence.
 
 ## 5 · What was deliberately left
 
-- **D-27 — the escalation timer.** `artifact_timer`, `TIMER_DRIVEN_COMPLETION_RULES` and
-  `server/jobs/bookingAutoCompletion.ts` are **untouched**. **The sequenced gap, stated plainly: an
+- ~~**D-27 — the escalation timer.**~~ **CLOSED 2026-09-15** by ledger
+  `2026-09-15-d27-artifact-timer-acceptance-prompt` — the paragraph below records what this lane
+  left, and is kept verbatim as the record of the sequenced gap it named. `artifact_timer`,
+  `TIMER_DRIVEN_COMPLETION_RULES` and
+  `server/jobs/bookingAutoCompletion.ts` were **untouched here**. **The sequenced gap, stated plainly: an
   artifact booking still auto-completes under the old timer, and nothing in production yet moves
   `confirmed → awaiting_acceptance`.** The deliver rail's re-open list is `revision_requested`
   ALONE, deliberately — adding `confirmed` here would take every artifact booking off the only

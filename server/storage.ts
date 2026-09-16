@@ -10,6 +10,10 @@ import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-adviso
 import { upsertTripAdvisorRow } from "./services/booking-actions.service";
 import type { TripAdvisorRowStatus } from "./utils/trip-advisor-status";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
+// D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
+// claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
+import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
+import { PARTIALLY_COMPLETED_STATUS, reducedBundleFigures } from "@shared/bundle-component-states";
 import { isProviderRole } from "@shared/roles";
 import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
@@ -3158,6 +3162,10 @@ export class DatabaseStorage implements IStorage {
       acceptedAt: _clientSuppliedAcceptedAt,
       deliveredAt: _clientSuppliedDeliveredAt,
       deliverableFile: _clientSuppliedDeliverableFile,
+      // D-7 (ledger `2026-09-15-d36-d39-completion-declared`) joins the strip: a row born already
+      // carrying a declaration instant would be swept into the window's close and minted for work
+      // nobody declared. Its one writer is the guarded `completion_declared` flip.
+      completionDeclaredAt: _clientSuppliedCompletionDeclaredAt,
       ...safeBooking
     } = booking as InsertServiceBooking & {
       stripePaymentIntentId?: unknown;
@@ -3167,6 +3175,7 @@ export class DatabaseStorage implements IStorage {
       acceptedAt?: unknown;
       deliveredAt?: unknown;
       deliverableFile?: unknown;
+      completionDeclaredAt?: unknown;
     };
     if (_clientSuppliedPi !== undefined && _clientSuppliedPi !== null) {
       // Ops-visible, never silent: reaching here means a caller tried to birth an authorized-looking
@@ -3186,14 +3195,31 @@ export class DatabaseStorage implements IStorage {
       serviceId: (safeBooking as { serviceId?: string | null }).serviceId ?? null,
       ownerUserId: (safeBooking as { providerId?: string | null }).providerId ?? null,
     });
-    const [newBooking] = await db
-      .insert(serviceBookings)
-      .values({
-        ...safeBooking,
-        trackingNumber,
-        ...(offeringContractSnapshot ? { offeringContractSnapshot } : {}),
-      })
-      .returning();
+    // D-32/D-33 (ledger `2026-09-16-d32-d35-bundle-components`): THE CHECKOUT CLAIM'S COMPOSER births
+    // the bundle's component rows in the SAME transaction as the booking row, from the purchase-time
+    // `bookingDetails.bundleComponents` snapshot the checkout route composed server-side (id, name and
+    // — D-33 — the catalog price at purchase, in cents). This writer is the §19d NAMED EXEMPTION: it
+    // is the checkout claim's writer and legitimately composes that key, which is why the V-10 strip
+    // lives on `createServiceBookingAtomic` (the client-facing birth rail) and not here — a body can
+    // never reach this path with a snapshot of its own. One transaction, so a booking can never be
+    // born with half its components; a non-bundle booking (no snapshot) is byte-identical to before.
+    const bundleSnapshot = Array.isArray((safeBooking as { bookingDetails?: any }).bookingDetails?.bundleComponents)
+      ? ((safeBooking as { bookingDetails?: any }).bookingDetails.bundleComponents as unknown[])
+      : null;
+    const newBooking = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(serviceBookings)
+        .values({
+          ...safeBooking,
+          trackingNumber,
+          ...(offeringContractSnapshot ? { offeringContractSnapshot } : {}),
+        })
+        .returning();
+      if (bundleSnapshot && bundleSnapshot.length > 0) {
+        await bornBundleComponentRows(tx, row.id, bundleSnapshot);
+      }
+      return row;
+    });
     
     // Auto-register in content tracking system
     await this.registerContent({
@@ -3232,6 +3258,7 @@ export class DatabaseStorage implements IStorage {
       acceptedAt: _acceptedAt,
       deliveredAt: _deliveredAt,
       deliverableFile: _deliverableFile,
+      completionDeclaredAt: _completionDeclaredAt, // D-7 — same strip as createServiceBooking
       ...safeBooking
     } = booking as InsertServiceBooking & {
       stripePaymentIntentId?: unknown;
@@ -3241,6 +3268,7 @@ export class DatabaseStorage implements IStorage {
       acceptedAt?: unknown;
       deliveredAt?: unknown;
       deliverableFile?: unknown;
+      completionDeclaredAt?: unknown;
     };
     if (_pi !== undefined && _pi !== null) {
       console.error(
@@ -3371,6 +3399,14 @@ export class DatabaseStorage implements IStorage {
     // fresh window to re-dispute in and pushed the earner's money further out. COALESCE in the SET
     // expression rather than a read-then-decide, so the single UPDATE stays the whole decision.
     if (status === "completed") updates.completedAt = sql`COALESCE(${serviceBookings.completedAt}, NOW())`;
+    // D-36 (ledger `2026-09-15-d36-d39-completion-declared`): the declaration instant is stamped in
+    // the SAME guarded UPDATE that moves the row to `completion_declared` — one statement, so a row
+    // can never be declared without its instant (the window's close refuses such a row with
+    // `no_declaration_timestamp`, §13). COALESCE for the same reason `completed_at` has it: the
+    // first instant is the one the traveler was told, and nothing re-stamps it.
+    if (status === "completion_declared") {
+      updates.completionDeclaredAt = sql`COALESCE(${serviceBookings.completionDeclaredAt}, NOW())`;
+    }
     if (status === "cancelled" || status === "refunded") {
       updates.cancelledAt = new Date();
       if (reason) updates.cancellationReason = reason;
@@ -3400,7 +3436,13 @@ export class DatabaseStorage implements IStorage {
       // never a completed booking with no earnings. Mint is idempotent under conflict (partial
       // unique indexes + ON CONFLICT DO NOTHING), which also fixes the latent dispute-reject
       // double-mint (completed → disputed → re-completed).
-      if (status === "completed") {
+      //
+      // D-35 (ledger `2026-09-16-d32-d35-bundle-components`): `partially_completed` is ALSO a money
+      // event — the ONE mint for a bundle that delivered in part, over REDUCED figures the mint itself
+      // derives from the component rows (below). Same transaction, same idempotent indexes, same
+      // "no flip without its mint" guarantee. `completed_at` is deliberately NOT stamped for it: the
+      // row is not completed, and a reader that anchors on `completed_at` must not think it is.
+      if (status === "completed" || status === PARTIALLY_COMPLETED_STATUS) {
         await this.mintCompletionEarningsForBooking(u, tx);
       }
 
@@ -3503,11 +3545,55 @@ export class DatabaseStorage implements IStorage {
       console.error(`[mintCompletionEarnings] booking ${booking.id} missing providerId/serviceId — cannot mint`);
       return false;
     }
-    const grossAmount = parseFloat(booking.totalAmount || '0');
-    const platformFee = parseFloat(booking.platformFee || '0');
-    const providerEarningsAmount = parseFloat(booking.providerEarnings || '0');
-    // Earnings become available after the configurable hold period (default 7 days)
-    const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
+    let grossAmount = parseFloat(booking.totalAmount || '0');
+    let platformFee = parseFloat(booking.platformFee || '0');
+    let providerEarningsAmount = parseFloat(booking.providerEarnings || '0');
+    let mintBasis = '';
+    // ── D-35 (ledger `2026-09-16-d32-d35-bundle-components`): ONE MINT OVER REDUCED FIGURES ──────
+    // A `partially_completed` bundle mints exactly ONCE — this call, through migration 203's
+    // one-row-per-booking indexes, never per component — over the row's own three figures scaled by
+    // the share of the SNAPSHOTTED component prices that was delivered (`reducedBundleFigures`, the
+    // ONE derivation in `shared/bundle-component-states.ts`; D-33's pro-rata clause). The rows are
+    // read through the caller's transaction so the flip and the figures it mints are one unit.
+    // A bundle whose reduction cannot be derived (a component with no snapshotted price, §13) THROWS
+    // here — inside the flip's transaction — so the flip rolls back and the parent stays `confirmed`
+    // for a human, rather than minting a guessed share or minting nothing behind a state that says
+    // money moved. The settle path refuses the same case BEFORE flipping; this is the second layer.
+    if (booking.status === PARTIALLY_COMPLETED_STATUS) {
+      const rows = await readBundleComponentRows(outerTx ?? db, booking.id);
+      const reduced = reducedBundleFigures({
+        totalAmount: booking.totalAmount,
+        platformFee: booking.platformFee,
+        providerEarnings: booking.providerEarnings,
+        components: rows.map((r) => ({
+          componentServiceId: r.componentServiceId,
+          status: r.status,
+          snapshotPriceCents: r.snapshotPriceCents ?? null,
+        })),
+      });
+      if (!reduced.ok) {
+        throw new Error(
+          `[mintCompletionEarnings] booking ${booking.id} is partially_completed but its reduced figures ` +
+          `cannot be derived (${reduced.reason}) — refusing to mint a guessed share`,
+        );
+      }
+      grossAmount = parseFloat(reduced.grossAmount);
+      platformFee = parseFloat(reduced.platformFee);
+      providerEarningsAmount = parseFloat(reduced.providerEarnings);
+      mintBasis = ` (partially completed — ${reduced.undeliveredComponentIds.length} undelivered component(s) deducted)`;
+    }
+    // Earnings become available after the configurable hold period (config, `holdWindowDays`).
+    //
+    // D-37 (ledger `2026-09-15-d36-d39-completion-declared`): ANCHORED TO THE DECLARATION when the
+    // seller declared (`completion_declared_at` set) — so the traveler's dispute window and the
+    // earning's hold are ONE span served ONCE, and the seller's payout lands where today's
+    // declare-and-mint landed, to within a scheduler pass. Anchoring to `now` here would serve the
+    // window twice (declared + held) and quietly double every seller's wait — the money-timing
+    // change D-37 named and rejected. A booking with NO declaration (a traveler's own confirm, an
+    // artifact acceptance, a property checkout, an admin dispute-reject on an undeclared row) keeps
+    // today's `now` anchor verbatim — `availableAtFor`'s existing `from` parameter, nothing new.
+    const declaredAnchor = booking.completionDeclaredAt ? new Date(booking.completionDeclaredAt) : undefined;
+    const availableAt = availableAtFor('service_booking', declaredAnchor); // escrow P2: per-surface clearance window (config)
     // RACE-PROOF + ATOMIC (task 1091 review): the DB is the guard, not a SELECT. Each ledger
     // effect is an INSERT ... ON CONFLICT DO NOTHING against migration 203's partial unique
     // indexes, so under concurrent callers (traveler confirm vs scheduler vs reconciliation)
@@ -3531,7 +3617,7 @@ export class DatabaseStorage implements IStorage {
         processingFees: String(platformFee * PROCESSING_FEE_RATE),
         providerId,
         providerEarnings: String(providerEarningsAmount),
-        description: `Booking commission from ${booking.trackingNumber || booking.id}`,
+        description: `Booking commission from ${booking.trackingNumber || booking.id}${mintBasis}`,
         status: 'recorded',
         transactionDate: new Date(),
       }).onConflictDoNothing({
@@ -3573,7 +3659,7 @@ export class DatabaseStorage implements IStorage {
         sourceType: 'booking',
         sourceId: booking.id,
         trackingNumber: booking.trackingNumber || undefined,
-        description: `Earnings from booking ${booking.trackingNumber || booking.id}`,
+        description: `Earnings from booking ${booking.trackingNumber || booking.id}${mintBasis}`,
         status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
         availableAt,
       }).onConflictDoNothing({
@@ -3594,7 +3680,7 @@ export class DatabaseStorage implements IStorage {
         amount: String(providerEarningsAmount),
         referenceId: booking.id,
         referenceType: 'service_booking',
-        description: `Service booking earnings from ${booking.trackingNumber || booking.id}`,
+        description: `Service booking earnings from ${booking.trackingNumber || booking.id}${mintBasis}`,
         status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
         availableAt,
       }).onConflictDoNothing({

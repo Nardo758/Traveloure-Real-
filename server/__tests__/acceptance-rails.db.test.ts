@@ -48,10 +48,24 @@ import {
 } from "../services/booking-acceptance.service";
 import { acceptanceWindowDays } from "../config/completion-windows.config";
 import {
+  ACCEPTANCE_ESCALATION_FROM_STATUSES,
+  ACCEPTANCE_PROMPT_FROM_STATUSES,
   ARTIFACT_REDELIVERY_REOPEN_FROM_STATUSES,
   DISPUTABLE_FROM_STATUSES,
 } from "../utils/booking-from-states";
-import { TIMER_DRIVEN_COMPLETION_RULES } from "@shared/service-fundamentals";
+import { completionRuleFor, TIMER_DRIVEN_COMPLETION_RULES } from "@shared/service-fundamentals";
+// D-27 (ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`): the acceptance-prompt arm and
+// the whole nightly job, both driven here so a proof says something about production.
+import {
+  ACCEPTANCE_WINDOW_ELAPSED_REASON,
+  runArtifactAcceptancePass,
+  type PaymentVerifier,
+} from "../services/artifact-acceptance-timer.service";
+import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
+import { COMPLETION_ALLOWED_FROM_STATUSES, timerActorFor } from "../services/booking-completion.service";
+
+/** Every fixture here models a PAID booking; the gate is proven separately, never via Stripe. */
+const verifyPaid: PaymentVerifier = async () => true;
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -111,15 +125,22 @@ async function seedBooking(opts: {
   status: string;
   deliveredAt?: Date | null;
   deliverableFile?: string | null;
+  /** D-27: the acceptance PROMPT carries the payment gate, so an arm fixture needs a PI. */
+  paymentIntentId?: string | null;
+  confirmedDaysAgo?: number;
 }): Promise<string> {
   const id = `acc-${RUN}-bk-${crypto.randomUUID().slice(0, 6)}`;
+  const confirmedDaysAgo = opts.confirmedDaysAgo ?? 2;
   await db.execute(sql`
     INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status,
                                   total_amount, platform_fee, provider_earnings,
-                                  confirmed_at, delivered_at, deliverable_file)
+                                  confirmed_at, delivered_at, deliverable_file,
+                                  stripe_payment_intent_id)
     VALUES (${id}, ${opts.serviceId}, ${ids.traveler}, ${ids.provider}, ${opts.status},
-            '100.00', '25.00', '75.00', NOW() - INTERVAL '2 days',
-            ${opts.deliveredAt ?? null}, ${opts.deliverableFile ?? null})
+            '100.00', '25.00', '75.00',
+            NOW() - (${confirmedDaysAgo} || ' days')::interval,
+            ${opts.deliveredAt ?? null}, ${opts.deliverableFile ?? null},
+            ${opts.paymentIntentId === undefined ? `pi_${RUN}_${id}` : opts.paymentIntentId})
   `);
   createdBookingIds.push(id);
   return id;
@@ -127,7 +148,8 @@ async function seedBooking(opts: {
 
 async function readBooking(id: string): Promise<any> {
   const r = await db.execute(sql`
-    SELECT status, accepted_at, completed_at, delivered_at, deliverable_file
+    SELECT status, accepted_at, completed_at, delivered_at, deliverable_file,
+           booking_details, booking_metadata
       FROM service_bookings WHERE id = ${id}
   `);
   return r.rows[0];
@@ -490,19 +512,37 @@ test("R8: the acceptance deadline is DERIVED from delivered_at, and an undated b
 //      NEW STATUS WRITERS
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-test("R9: artifact_timer is untouched (D-27's lane), and the new from-states live in ONE home", async () => {
-  // D-27 retires `artifact_timer` as a completion rule. This lane must NOT have done it early — an
-  // artifact booking still auto-completes under the old timer, which is the stated, sequenced gap.
+test("R9 (RE-PINNED by D-27): artifact_timer has LEFT the completion rules, and the from-states live in ONE home", async () => {
+  // ══ WHAT THIS ASSERTION USED TO SAY, AND WHY IT CHANGED ═══════════════════════════════════════
+  // Before D-27 this pinned the SEQUENCED GAP: the D-24 lane must not retire the timer early,
+  // because an artifact booking would have had nowhere to go. D-27 (ledger
+  // `2026-09-15-d27-artifact-timer-acceptance-prompt`) closes exactly that gap, so the pin is
+  // INVERTED onto the post-D-27 invariant rather than deleted — a deleted pin would leave the
+  // retirement unguarded, and a re-added `artifact_timer` would silently restore the silent
+  // timeout D-6 forbids.
   assert.ok(
-    TIMER_DRIVEN_COMPLETION_RULES.has("artifact_timer"),
-    "D-27 owns the timer's amendment; removing it here would leave an artifact booking nowhere to go",
+    !TIMER_DRIVEN_COMPLETION_RULES.has("artifact_timer"),
+    "D-6 forbids a clock completing an artifact — membership of this set is what made it possible",
   );
-  const job = code("server/jobs/bookingAutoCompletion.ts");
-  assert.ok(!/awaiting_acceptance|revision_requested/.test(job), "the job is untouched by this lane");
+  // The RULE itself survives: it is still the true answer to "which rule governs this booking".
+  // What it no longer does is complete anything.
+  assert.equal(completionRuleFor({ deliveryMethod: "pdf", productShape: null }), "artifact_timer");
 
-  // The delivery rail re-opens the window from `revision_requested` ALONE. Adding `confirmed` here
-  // would take every artifact booking off the only completion path that exists today.
-  assert.deepEqual([...ARTIFACT_REDELIVERY_REOPEN_FROM_STATUSES], ["revision_requested"]);
+  // `awaiting_acceptance` is STILL NOT a completion from-state (the D-24 invariant, unmoved): that
+  // list is also the completion timer's candidate predicate, and widening it would hand the nightly
+  // job the very bookings D-6 forbids it to complete.
+  assert.deepEqual([...COMPLETION_ALLOWED_FROM_STATUSES], ["confirmed"]);
+
+  // The job now READS the acceptance arm — the half of the retirement that gives artifacts a place
+  // to go. (Comments stripped, so this is the code saying it, not the prose.)
+  const job = code("server/jobs/bookingAutoCompletion.ts");
+  assert.match(job, /runArtifactAcceptancePass/, "the job must drive the acceptance arm");
+
+  // The delivery rail now re-opens the window from `confirmed` TOO — a provider's first per-booking
+  // delivery asks the traveler, exactly as the scheduler's listing-clock arm does.
+  assert.deepEqual([...ARTIFACT_REDELIVERY_REOPEN_FROM_STATUSES], ["confirmed", "revision_requested"]);
+  assert.deepEqual([...ACCEPTANCE_PROMPT_FROM_STATUSES], ["confirmed"]);
+  assert.deepEqual([...ACCEPTANCE_ESCALATION_FROM_STATUSES], ["awaiting_acceptance"]);
 
   // The new statuses ARE disputable — the money is in escrow and nothing has minted — and the
   // dispute rail still reads its list from the one home (§18 rule 1).
@@ -546,4 +586,287 @@ test("R10: acceptance cannot consume `confirmed` on a pdf booking — that state
   });
   assert.equal("ok" in deliverDead && deliverDead.ok, false);
   assert.equal((await readBooking(cancelled)).delivered_at, null);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// D-27 — `artifact_timer` RETIRES AS A COMPLETION RULE AND BECOMES THE ACCEPTANCE-PROMPT RULE
+// (ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`; punchlist D-27 ruled A, 7 days).
+//
+// NEGATIVE SPACE for this block, stated because green means green-within-stated-bounds (§18d):
+//  · These prove the SCHEDULER ARM and the deliver rail's newly-opened `confirmed` entry. They say
+//    nothing about any SURFACE (brief §7 lane 4 — no traveler, seller or admin UI ships here), and
+//    nothing about the refund on a rejected artifact, which brief §5 leaves explicitly unruled.
+//  · The escalation's TARGET is asserted as `status = 'disputed'` plus the system reason — the
+//    EXISTING admin queue's own predicate. That the admin READER selects the field is pinned
+//    statically; no HTTP is driven here.
+//  · The payment gate is proven by injecting a verifier, never by reaching Stripe.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+// ── R11 — THE ASK, from the PER-BOOKING delivery instant ────────────────────────────────────────
+
+test("R11: a delivered `confirmed` artifact is PROMPTED to awaiting_acceptance, source `per_booking`", async () => {
+  const deliveredAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  const bk = await seedBooking({ serviceId: ids.pdfSvc, status: "confirmed", deliveredAt });
+
+  const run = await runArtifactAcceptancePass(new Date(), verifyPaid);
+  assert.ok(run.promptedBookingIds.includes(bk), `must prompt ${bk}; skipped=${JSON.stringify(run.skipped)}`);
+
+  const row = await readBooking(bk);
+  assert.equal(row.status, "awaiting_acceptance");
+  assert.equal(row.completed_at, null, "the prompt completes NOTHING");
+  assert.equal(row.accepted_at, null, "and it records no answer — nobody answered");
+  assert.equal(await mintedRowCount(bk), 0, "D-6's whole point: a clock mints nothing");
+
+  // The SOURCE is recorded, not just the instant (§13 — "the file your expert made for you" and
+  // "the clock we derived" are different facts).
+  const stamp = (row.booking_details as any)?.acceptancePrompt;
+  assert.equal(stamp?.deliveryInstantSource, "per_booking");
+  assert.equal(new Date(stamp?.deliveredAt).toISOString(), deliveredAt.toISOString());
+  assert.ok(stamp?.acceptanceDeadline, "the derived deadline is recorded with the instant it came from");
+});
+
+// ── R12 — THE ASK, from the LISTING CLOCK, and `delivered_at` is NOT written back ───────────────
+
+test("R12: an artifact delivered through the LISTING is prompted with source `listing_clock`, and `delivered_at` stays NULL", async () => {
+  await db.execute(sql`
+    UPDATE provider_services SET deliverable_uploaded_at = NOW() - INTERVAL '3 days' WHERE id = ${ids.pdfSvc}
+  `);
+  const bk = await seedBooking({ serviceId: ids.pdfSvc, status: "confirmed", deliveredAt: null, confirmedDaysAgo: 5 });
+
+  const run = await runArtifactAcceptancePass(new Date(), verifyPaid);
+  assert.ok(run.promptedBookingIds.includes(bk), `must prompt ${bk}; skipped=${JSON.stringify(run.skipped)}`);
+
+  const row = await readBooking(bk);
+  assert.equal(row.status, "awaiting_acceptance");
+  const stamp = (row.booking_details as any)?.acceptancePrompt;
+  assert.equal(stamp?.deliveryInstantSource, "listing_clock");
+  assert.equal(stamp?.arm, "undownloaded");
+  // D-26'S RULE, and it is the load-bearing half of this proof: a DERIVED instant is never stamped
+  // onto the row. Writing it would turn "we inferred this" into "the seller delivered on this
+  // date", and would move every other buyer's window the moment the listing's file changed.
+  assert.equal(row.delivered_at, null, "a listing-clock instant is NEVER written back to delivered_at");
+  assert.equal(await mintedRowCount(bk), 0);
+
+  await db.execute(sql`UPDATE provider_services SET deliverable_uploaded_at = NULL WHERE id = ${ids.pdfSvc}`);
+});
+
+// ── R13 — THE NEGATIVE THAT FAILS ON THE PRE-D-27 HEAD ─────────────────────────────────────────
+
+test("R13: the nightly job NEVER completes an artifact, however old — and mints nothing", async () => {
+  await db.execute(sql`
+    UPDATE provider_services SET deliverable_uploaded_at = NOW() - INTERVAL '90 days' WHERE id = ${ids.pdfSvc}
+  `);
+  const bk = await seedBooking({
+    serviceId: ids.pdfSvc,
+    status: "confirmed",
+    deliveredAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+    confirmedDaysAgo: 120,
+  });
+
+  // The WHOLE job, not just the arm — this is the assertion that fails on the pre-D-27 head, where
+  // `auto_complete_pdf` flipped exactly this row to `completed` and minted the seller's earning.
+  const run = await runBookingAutoCompletion(new Date(), async () => true);
+  assert.ok(!run.completedBookingIds.includes(bk), "D-6: a silent timeout may never complete in the seller's favour");
+  assert.notEqual((await readBooking(bk)).status, "completed");
+  assert.equal(await mintedRowCount(bk), 0, "no held earning is born on any clock-driven artifact transition");
+
+  await db.execute(sql`UPDATE provider_services SET deliverable_uploaded_at = NULL WHERE id = ${ids.pdfSvc}`);
+});
+
+// ── R14 — THE ESCALATION, into the EXISTING dispute queue ───────────────────────────────────────
+
+test("R14: an unanswered window escalates to `disputed` with `acceptance_window_elapsed`, and mints nothing", async () => {
+  // Delivered far enough in the past that the window (config, `acceptanceWindowDays()`) has closed.
+  const longAgo = new Date(Date.now() - (acceptanceWindowDays() + 3) * 24 * 60 * 60 * 1000);
+  const bk = await seedBooking({
+    serviceId: ids.pdfSvc,
+    status: "awaiting_acceptance",
+    deliveredAt: longAgo,
+    confirmedDaysAgo: acceptanceWindowDays() + 5,
+  });
+
+  const run = await runArtifactAcceptancePass(new Date(), verifyPaid);
+  assert.ok(run.escalatedBookingIds.includes(bk), `must escalate ${bk}; skipped=${JSON.stringify(run.skipped)}`);
+
+  const row = await readBooking(bk);
+  // THE EXISTING QUEUE'S OWN PREDICATE — `GET /api/admin/disputes` is `WHERE status = 'disputed'`.
+  // Never a second queue, and never a new `admin_review` status.
+  assert.equal(row.status, "disputed");
+  assert.equal(row.completed_at, null, "escalation completes nothing");
+  assert.equal(row.accepted_at, null, "and records no acceptance — nobody accepted");
+  assert.equal(await mintedRowCount(bk), 0, "nothing had minted, and nothing mints now");
+
+  // §13: the SYSTEM reason lives in its own field. `disputeReason` holds a TRAVELER'S OWN WORDS,
+  // and nobody typed this sentence.
+  const meta = row.booking_metadata as any;
+  assert.equal(meta?.systemDisputeReason, ACCEPTANCE_WINDOW_ELAPSED_REASON);
+  assert.equal(meta?.disputeReason ?? null, null, "a system escalation never fabricates a traveler's reason");
+  const stamp = (row.booking_details as any)?.acceptanceEscalation;
+  assert.equal(stamp?.reason, ACCEPTANCE_WINDOW_ELAPSED_REASON);
+  assert.equal(stamp?.windowDays, acceptanceWindowDays(), "the period is CONFIG, read once, never a literal");
+});
+
+test("R14b: a window that is still OPEN is not escalated", async () => {
+  const bk = await seedBooking({
+    serviceId: ids.pdfSvc,
+    status: "awaiting_acceptance",
+    deliveredAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+  });
+  const run = await runArtifactAcceptancePass(new Date(), verifyPaid);
+  assert.ok(!run.escalatedBookingIds.includes(bk));
+  assert.ok((run.skipped["window_open"] ?? 0) >= 1, "the pass ACCOUNTS for it rather than falling silent");
+  assert.equal((await readBooking(bk)).status, "awaiting_acceptance");
+});
+
+// ── R15 — §13: NO DELIVERY INSTANT ⇒ NO CLOCK ──────────────────────────────────────────────────
+
+test("R15 (§13): a booking with no delivery instant from EITHER source is skipped, never put on a clock", async () => {
+  // No per-booking `delivered_at`, no listing `deliverable_uploaded_at`, no download.
+  await db.execute(sql`UPDATE provider_services SET deliverable_uploaded_at = NULL WHERE id = ${ids.pdfSvc}`);
+  const bk = await seedBooking({ serviceId: ids.pdfSvc, status: "confirmed", deliveredAt: null, confirmedDaysAgo: 400 });
+
+  const run = await runArtifactAcceptancePass(new Date(), verifyPaid);
+  assert.ok(!run.promptedBookingIds.includes(bk));
+  assert.ok(
+    (run.skipped["no_delivery_timestamp"] ?? 0) >= 1,
+    "the reason must be STATED — never anchored on confirmed_at alone, on the listing's upload instant alone, or on now",
+  );
+  const row = await readBooking(bk);
+  assert.equal(row.status, "confirmed", "not prompted, not escalated, not completed");
+  assert.equal(row.delivered_at, null, "and nothing was invented to make a clock possible");
+  assert.equal(await mintedRowCount(bk), 0);
+});
+
+// ── R16 — THE RETIRED ACTOR IS GONE, NOT RENAMED ───────────────────────────────────────────────
+
+test("R16: `auto_complete_pdf` no longer exists as an actor anywhere in the completion machinery", () => {
+  const svc = code("server/services/booking-completion.service.ts");
+  assert.ok(
+    !/"auto_complete_pdf"/.test(svc),
+    "the actor is GONE — one FEWER caller of completeBooking, never a renamed one",
+  );
+  // And it is gone through the SET, not through a deleted special case: `timerActorFor` asks
+  // `TIMER_DRIVEN_COMPLETION_RULES` and gets `null` for an artifact.
+  assert.equal(timerActorFor("artifact_timer"), null);
+  assert.equal(timerActorFor("checkout_date"), "auto_complete_property");
+
+  // The escalation reuses THE ONE dispute writer with a narrower named list — never a second
+  // `UPDATE … SET status = 'disputed'` (§18 rule 1).
+  const arm = code("server/services/artifact-acceptance-timer.service.ts");
+  assert.match(arm, /updateServiceBookingStatus\([\s\S]{0,200}ACCEPTANCE_ESCALATION_FROM_STATUSES/);
+  assert.ok(
+    !/SET\s+status\s*=\s*'disputed'/i.test(arm),
+    "no second raw UPDATE may set `disputed` beside the one writer the traveler rail uses",
+  );
+  // And it declares no from-state list of its own.
+  assert.ok(!/const\s+ACCEPTANCE_(PROMPT|ESCALATION)_FROM_STATUSES\s*[:=]/.test(arm));
+
+  // The admin queue surfaces the system reason as its OWN field (reader-side exposure, no UI).
+  const admin = src("server/routes/admin.routes.ts");
+  assert.match(admin, /booking_metadata->>'systemDisputeReason' AS system_dispute_reason/);
+  assert.match(admin, /booking_metadata->>'disputeReason' AS dispute_reason/);
+});
+
+// ── R17 — §15: A DOUBLE RUN IS ONE FLIP, ON BOTH TRANSITIONS ───────────────────────────────────
+
+test("R17 (§15): a double pass produces exactly one prompt and exactly one escalation", async () => {
+  const prompt = await seedBooking({
+    serviceId: ids.pdfSvc,
+    status: "confirmed",
+    deliveredAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+  });
+  const escalate = await seedBooking({
+    serviceId: ids.pdfSvc,
+    status: "awaiting_acceptance",
+    deliveredAt: new Date(Date.now() - (acceptanceWindowDays() + 3) * 24 * 60 * 60 * 1000),
+  });
+
+  // Raced rather than sequenced: a check-then-update would let both through (§15's own words).
+  const [a, b] = await Promise.all([
+    runArtifactAcceptancePass(new Date(), verifyPaid),
+    runArtifactAcceptancePass(new Date(), verifyPaid),
+  ]);
+  const prompts = [a, b].filter((r) => r.promptedBookingIds.includes(prompt)).length;
+  const escalations = [a, b].filter((r) => r.escalatedBookingIds.includes(escalate)).length;
+  assert.equal(prompts, 1, "the transition IS the guard — exactly one pass may win the prompt");
+  assert.equal(escalations, 1, "…and exactly one may win the escalation");
+
+  // A THIRD pass finds the prompted booking again (it is now `awaiting_acceptance`) but its window
+  // is open, so it does nothing — and the escalated one has left the candidate set entirely.
+  const third = await runArtifactAcceptancePass(new Date(), verifyPaid);
+  assert.ok(!third.promptedBookingIds.includes(prompt));
+  assert.ok(!third.escalatedBookingIds.includes(escalate));
+  assert.equal((await readBooking(prompt)).status, "awaiting_acceptance");
+  assert.equal((await readBooking(escalate)).status, "disputed");
+  assert.equal(await mintedRowCount(prompt), 0);
+  assert.equal(await mintedRowCount(escalate), 0);
+});
+
+// ── R18 — THE PAYMENT GATE MOVED TO THE ASK, AND IT IS LOAD-BEARING ────────────────────────────
+
+test("R18: an UNPAID confirmed artifact is never prompted — the prompt opens the rail that mints", async () => {
+  const unpaid = await seedBooking({
+    serviceId: ids.pdfSvc,
+    status: "confirmed",
+    deliveredAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+  });
+  const noPi = await seedBooking({
+    serviceId: ids.pdfSvc,
+    status: "confirmed",
+    deliveredAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    paymentIntentId: null,
+  });
+
+  const run = await runArtifactAcceptancePass(new Date(), async () => false);
+  assert.ok(!run.promptedBookingIds.includes(unpaid), "a PI that has not succeeded is not a payment");
+  assert.ok(!run.promptedBookingIds.includes(noPi), "and no PI at all is not a payment either");
+  assert.ok((run.skipped["unpaid"] ?? 0) >= 1);
+  assert.ok((run.skipped["no_payment_on_record"] ?? 0) >= 1);
+  assert.equal((await readBooking(unpaid)).status, "confirmed");
+  assert.equal((await readBooking(noPi)).status, "confirmed");
+
+  // The ESCALATION carries no such gate: it takes money nowhere, and a booking nobody answered must
+  // reach a human whether or not Stripe is reachable tonight.
+  const stale = await seedBooking({
+    serviceId: ids.pdfSvc,
+    status: "awaiting_acceptance",
+    deliveredAt: new Date(Date.now() - (acceptanceWindowDays() + 3) * 24 * 60 * 60 * 1000),
+    paymentIntentId: null,
+  });
+  const run2 = await runArtifactAcceptancePass(new Date(), async () => {
+    throw new Error("Stripe must not be consulted on the escalation arm");
+  });
+  assert.ok(run2.escalatedBookingIds.includes(stale));
+  assert.equal((await readBooking(stale)).status, "disputed");
+});
+
+// ── R19 — THE DELIVER RAIL NOW OPENS THE WINDOW FROM `confirmed` ───────────────────────────────
+
+test("R19: a provider's FIRST per-booking delivery moves `confirmed` -> awaiting_acceptance and stamps delivered_at", async () => {
+  const bk = await seedBooking({ serviceId: ids.pdfSvc, status: "confirmed", deliveredAt: null });
+
+  const result = await deliverArtifact({
+    bookingId: bk,
+    actorUserId: ids.provider,
+    fileValue: "objstore:bk/first-delivery.pdf",
+  });
+  assert.ok("ok" in result && result.ok);
+  assert.equal((result as any).reopenedAcceptance, true, "the first delivery ASKS — that is D-27's other half");
+
+  const row = await readBooking(bk);
+  assert.equal(row.status, "awaiting_acceptance");
+  assert.equal(row.deliverable_file, "objstore:bk/first-delivery.pdf");
+  assert.ok(row.delivered_at, "the PROVIDER'S own delivery does stamp the instant (unlike the derived listing clock)");
+  assert.equal(await mintedRowCount(bk), 0, "delivering is not completing");
+
+  // A D-40 `records_only` hybrid is untouched by this: it moves no status at all.
+  const hyb = await seedBooking({ serviceId: ids.hybridSvc, status: "confirmed", deliveredAt: null });
+  const hybResult = await deliverArtifact({
+    bookingId: hyb,
+    actorUserId: ids.provider,
+    fileValue: "objstore:bk/hybrid.pdf",
+  });
+  assert.ok("ok" in hybResult && hybResult.ok);
+  assert.equal((hybResult as any).reopenedAcceptance, false);
+  assert.equal((await readBooking(hyb)).status, "confirmed", "D-7's timing is untouched by an artifact declaration");
 });

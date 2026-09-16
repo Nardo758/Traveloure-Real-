@@ -1071,13 +1071,22 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // slot claim / booking row / Stripe call otherwise. The component list is
       // snapshot into bookingDetails below (contents locked at purchase — the
       // ready-made snapshot posture). No-op for non-bundle services.
-      const bundleSnapshots = new Map<string, Array<{ id: string; serviceName: string }>>();
+      //
+      // D-33 (ledger `2026-09-16-d32-d35-bundle-components`): the snapshot carries each component's
+      // PRICE AS IT WAS AT PURCHASE, in integer cents, SERVER-DERIVED from the catalog row in this
+      // same SELECT (§14 — no request body is read here, and no rate touches it). It is the price a
+      // component refund and a partial mint are later PRO-RATED over; reading the listing's price
+      // at THAT time instead would let a seller's repricing move money on a sale already made. A
+      // catalog price that does not parse is NOT CAPTURED (the key is omitted, §13) — never 0.
+      // `storage.createServiceBooking` births one `booking_component_states` row per entry from it.
+      const bundleSnapshots = new Map<string, Array<{ id: string; serviceName: string; priceCents?: number }>>();
       for (const item of cartData) {
         if (item.service?.productShape !== "bundle" || bundleSnapshots.has(item.service.id)) continue;
         const components = await db
           .select({
             id: providerServices.id,
             serviceName: providerServices.serviceName,
+            price: providerServices.price,
             approvalStatus: providerServices.approvalStatus,
             status: providerServices.status,
           })
@@ -1091,7 +1100,17 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         ) {
           return res.status(409).json({ message: "bundle_component_unavailable" });
         }
-        bundleSnapshots.set(item.service.id, components.map((c) => ({ id: c.id, serviceName: c.serviceName })));
+        bundleSnapshots.set(
+          item.service.id,
+          components.map((c) => {
+            const cents = Math.round(parseFloat(String(c.price ?? "")) * 100);
+            return {
+              id: c.id,
+              serviceName: c.serviceName,
+              ...(Number.isInteger(cents) && cents >= 0 ? { priceCents: cents } : {}),
+            };
+          }),
+        );
       }
 
       // ── §17 property rooms: re-verify room + parent property BEFORE any claim/write ────

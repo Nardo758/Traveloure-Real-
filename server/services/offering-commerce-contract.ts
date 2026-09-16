@@ -421,8 +421,16 @@ function chargeModeFor(
 ): ChargeMode {
   if (archetype === "X1") return "external";
   if (archetype === "N1" || commitment === "not_purchasable") return "none";
-  if (commitment === "quote_approve") return "after_quote";
+  // D-31 (ledger `2026-09-15-d28-d31-service-quotes`): the DEPOSIT fact is consulted BEFORE the
+  // commitment mode. Until this lane `quote_approve` was tested first, so a custom-quote listing
+  // with deposits switched on resolved `after_quote` and the deposit never reached the contract —
+  // which is snapshotted onto the booking at birth (`offering_contract_snapshot`), so a quote-born
+  // booking that actually took a deposit carried a snapshot misdescribing its own money schedule.
+  // The ruling: an ACCEPTED quote's listing `deposit_*` config applies UNCHANGED (brief §3), so its
+  // charge mode is `deposit_balance` exactly as an instant or request listing's is. No amount, rate
+  // or band moves either way; `after_quote` survives for a quote listing WITHOUT deposits.
   if (input.depositEnabled === true) return "deposit_balance";
+  if (commitment === "quote_approve") return "after_quote";
   if (commitment === "request_accept") return "after_acceptance";
   return "full";
 }

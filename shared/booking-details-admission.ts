@@ -101,6 +101,18 @@ export const SERVER_AUTHORED_BOOKING_DETAIL_KEYS = [
   // `trip_booking_without_item` predicate — so a body that could plant it would exempt its own
   // row from the detector this key exists to feed.
   NO_ITEM_REASON_KEY,
+  // D-32/D-33 (ledger `2026-09-16-d32-d35-bundle-components`): the purchase-time BUNDLE SNAPSHOT —
+  // which components were bought and, since D-33, at what SERVER-DERIVED price. Readers: the
+  // completion resolver's `bundle_components` arm (which components must complete) and the checkout
+  // composer that births `booking_component_states` rows from it. A body that could plant it would
+  // choose its own component list AND its own refund/mint shares — a §14 amount reaching a money
+  // decision through a jsonb key, the exact class V-10 named. `createServiceBooking` (the checkout
+  // claim's writer) is the NAMED EXEMPTION that composes it server-side (§19d).
+  "bundleComponents",
+  // The LEGACY per-component completion map. Written no more (rows replace it) but still READ for
+  // bookings born before migration 306; a body that could plant it would declare components
+  // delivered on the traveler's behalf.
+  "componentCompletions",
 ] as const;
 
 export type ServerAuthoredBookingDetailKey = (typeof SERVER_AUTHORED_BOOKING_DETAIL_KEYS)[number];

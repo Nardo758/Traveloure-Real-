@@ -876,9 +876,9 @@ export async function getExpertAssignedTrips(expertId: string): Promise<any[]> {
  * (claude/chat-plan-events): the existing `partnerAssignedTrip` logic in chat.tsx resolves the
  * shared trip for an EXPERT viewing a traveler counterpart via `/api/expert/assigned-trips`; there
  * is no reverse read for a TRAVELER viewing an expert counterpart, and `trips.expertId` is a dead
- * fallback column no assignment path writes (see resolveDeliveredBy's comment + a repo-wide grep —
- * only trip_expert_advisors is truly written), so it cannot serve as the real link. This is that
- * real, minimal, read-only reverse.
+ * column no assignment path writes (V-33; its last reader, the `resolveDeliveredBy` fallback, was
+ * deleted by ledger `2026-09-15-d36-d39-completion-declared` — only trip_expert_advisors is truly
+ * written), so it cannot serve as the real link. This is that real, minimal, read-only reverse.
  */
 // L2 home-honesty (ledger `2026-09-07-home-honesty`): the expert NAME fields are additive —
 // the original consumer (chat.tsx plan-events) reads only trip_id/expert_id/status, and the

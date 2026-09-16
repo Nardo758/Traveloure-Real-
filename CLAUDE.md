@@ -1593,6 +1593,126 @@ This document captures architectural decisions to maintain consistency across co
     protected expert work is REFUSED with the item ids, never skipped (D3). The Ask-AI drawer UI and
     the CREATE rail are the lane that follows; nothing produces a proposal outside tests yet.
 
+46. **AN ARTIFACT IS ACCEPTED, NOT TIMED OUT; A REVISION IS A ROW; AND A HYBRID MAY DECLARE ONE ARTIFACT
+    WITHOUT MOVING ITS MONEY (decision-maker ratified Sep 15, 2026 — punchlist D-24/D-25/D-26/D-40, all
+    option A, and D-27 (7 days); ledger `2026-09-15-d24-d26-acceptance-columns`, migration 303, and
+    `2026-09-15-d27-artifact-timer-acceptance-prompt`).** `service_bookings.accepted_at` records the
+    traveler's ANSWER where `completed_at` records the money event, and **the acceptance deadline is
+    DERIVED** from the per-booking `service_bookings.delivered_at` plus `acceptanceWindowDays()` (config,
+    default 7, env-overridable) and **never stored** — a stored end date is a second authority that
+    disagrees with the config the moment it moves. Delivery is **PER BOOKING** (`delivered_at` +
+    `deliverable_file`, the listing's `service_file` as the honest fallback with the reader saying which it
+    served), because a listing-level artifact means a revision for one traveler rewrites the file every
+    other buyer downloads. A revision is a **CHILD ROW** (`booking_revision_requests`, FK CASCADE,
+    `UNIQUE (booking_id, "position")`) whose **count is DERIVED and never stored**, with **no
+    `revision_status` mirror**; the allowance is the listing's own `revisions_included`, **read on every
+    decision and never copied onto the booking**, and a request beyond it is refused **with the number
+    stated and is never a dispute**. Acceptance completes through the **EXISTING `completeBooking` as a
+    new CALLER** (`traveler_accepted`) over its own atomic conditional — **no second minting path**, and
+    `awaiting_acceptance` is deliberately kept out of `COMPLETION_ALLOWED_FROM_STATUSES` because that list
+    is also the timer's candidate predicate. **`provider_services.declared_artifact_deliverable` lets a
+    `hybrid` listing declare ONE artifact that takes acceptance on its own while the booking keeps D-7
+    completion: accepting or revising it GATES NOTHING about completion or the mint.** All columns
+    additive-nullable, NO DEFAULT, NO CHECK, declared in `shared/schema.ts`, no backfill; the two new
+    `status` values are app-enforced (LD 44(e)). **§13: NULL = never accepted / never delivered / no
+    per-booking artifact / not declared, each OMITTED — never "not accepted", never "no artifact", never
+    "0 revisions remaining" beside a button that refuses; an undated booking is on NO acceptance clock and
+    says so.**
+    **`artifact_timer` IS AN ACCEPTANCE-PROMPT RULE, NEVER A COMPLETION RULE (D-27; no migration).** A
+    clock may never complete an artifact booking in the seller's favour: the nightly job ASKS
+    (`confirmed → awaiting_acceptance` once a delivery instant exists) and ESCALATES
+    (`awaiting_acceptance → disputed`, system reason `acceptance_window_elapsed`, after
+    `acceptanceWindowDays()` — CONFIG, default 7) into the **EXISTING** admin dispute queue through **the
+    ONE dispute writer**; never a second queue and never an `admin_review` status. Only the traveler's
+    acceptance, or a human resolving that dispute, completes an artifact and mints its held earning. The
+    delivery instant is ONE derivation stated with its source (`per_booking` | `listing_clock`), and a
+    derived listing-clock instant is **never written back to `delivered_at`**. The payment verification
+    sits on the ASK, because opening the acceptance rail on an unpaid booking would hand the traveler a
+    button that mints. **NULL = no instant ⇒ the booking is skipped with `no_delivery_timestamp` and never
+    put on a clock (§13)**, and rows completed under the old timer are never rewritten. Left for later
+    lanes, named: brief §7 lane 4 (every surface), and the refund on a rejected artifact, still UNRULED.
+
+47. **THE SELLER DECLARES; THE TRAVELER HAS A WINDOW; "COMPLETED" IS SAID AT ITS CLOSE (decision-maker
+    ratified Sep 15, 2026 — ledger `2026-09-15-d36-d39-completion-declared`; migration 304).** For the
+    owner-declared rules and the place-anchored timer, completion is TWO guarded flips with the traveler's
+    dispute window between them: `confirmed → completion_declared` (the seller, or `service_date_timer`,
+    stamps `service_bookings.completion_declared_at` and MINTS NOTHING) and `completion_declared →
+    completed` (the nightly job, actor `window_elapsed`, the ONE `completeBooking`, payment gate at that
+    flip). The window is `declaredCompletionWindowDays()` — a DELEGATION to `holdWindowDays('service_booking')`,
+    never a parallel constant — and its deadline is DERIVED (`shared/declared-completion-window.ts`), never
+    stored. **D-37:** the held earning's `available_at` is anchored to the DECLARATION, so the window is served
+    once and no payout instant moved; a NULL anchor keeps `now`. **D-38:** a dispute inside the window is the
+    SAME `disputed` row and queue (no `admin_review`, no disputes table); the queue tells stages apart by
+    derivation; zero flagged earnings is never read as cleared — the status is the block. **D-39:** on
+    `coordination_states` the ASSIGNED COORDINATOR declares, `completed` is the window's word, the traveler's
+    one move is `completion_declared → disputed`, and the window gates the admin REFUND only — **no coordinator
+    earning is ever minted**, and whether one should be stays unruled. Bundles and property still complete
+    directly. "Completed" is never rendered before the window closes. **The in-person timer opens the window at
+    its EXISTING fire instant (service date + 1 + N days), preserving every payout instant (decision-maker kept
+    this Sep 16, 2026)** — opening it at the day boundary would pay sellers earlier and needs its own ruling.
+
+48. **A BUNDLE'S COMPONENTS ARE ROWS, AND A PARTIALLY COMPLETED BUNDLE IS ITS OWN STATE THAT MINTS ONCE OVER
+    REDUCED FIGURES (decision-maker ratified Sep 15, 2026 — ledger `2026-09-16-d32-d35-bundle-components`;
+    migration 306).** `booking_component_states` is the child-row home for a purchased bundle's components (FK
+    → `service_bookings` ON DELETE CASCADE, UNIQUE (booking_id, component_service_id), `status` app-enforced
+    with NO CHECK, declared in `shared/schema.ts`), BORN by the checkout claim's composer
+    (`storage.createServiceBooking`, the §19d named exemption) from a snapshot that — D-33 — carries each
+    component's catalog price at purchase in cents, SERVER-DERIVED (§14) and never re-read from the listing;
+    the client-facing birth rail strips `bundleComponents`/`componentCompletions`. Every component transition
+    is ONE atomic conditional (`pending → completed|failed`, parent `confirmed` in the same WHERE); the parent's
+    outcome is the ONE derivation `deriveBundleOutcome`, never stored. `completed` still means EVERY component.
+    **D-34:** `partially_completed` (code-only, LD 44(e)) is reached exactly when every component has an
+    answer, ≥1 delivered and ≥1 failed, from `confirmed` only, NAMING the failed component; it joins the PAID
+    lists and the money-integrity invariant, not the terminal, disputable or timer-candidate lists —
+    **`COMPLETION_ALLOWED_FROM_STATUSES` is deliberately NOT widened (ratified Sep 16, 2026)**: the state is
+    entered only when nothing is pending, so nothing late exists. **D-35:** that flip mints ONCE, inside its
+    transaction, through the SAME `mintCompletionEarningsForBooking`, over the row's own figures scaled by the
+    delivered share of the snapshot (pro-rata — bundles are discounted), never per component and never a rate
+    literal; **the platform fee is the PURCHASE-TIME resolver output SCALED, never a band re-resolved at
+    completion (ratified Sep 16, 2026)** — a band edit after the sale must not move a payout, the same logic
+    that snapshots the price. A NULL snapshot price refuses the flip. NO BACKFILL: a legacy bundle is read
+    from its jsonb with the source NAMED and can never be partially completed. The component REFUND is
+    Locked Decision 50.
+
+49. **A CUSTOM QUOTE IS A `service_quotes` ROW WITH AN EXPIRY, NEVER A PRICE ON THE LISTING (decision-maker
+    ratified Sep 15, 2026 — ledger `2026-09-15-d28-d31-service-quotes`; migration 305).** A REQUEST mints no
+    booking; the owner issues `amount_cents` with `expires_at` derived from `QUOTE_VALIDITY_DAYS` or a choice
+    under the ONE platform `QUOTE_VALIDITY_CEILING_DAYS` (refused with the number stated, never clamped); an
+    expired quote is re-quoted as a NEW row (`superseded_by`), never edited, and `expired` is derived, never
+    stored; acceptance is an atomic claim carrying `expires_at > NOW()` in its WHERE clause (§15) that mints
+    through the EXISTING birth-rail writer with the quote's amount as `total_amount` (§14 — the accept body
+    carries no amount) and stamps `booking_id`; a quote-approve listing with deposits enabled resolves
+    `deposit_balance` (D-31). The quote-born booking is born UNPAID; the charge through `/api/checkout` is its
+    own lane.
+
+50. **A PARTIALLY FULFILLED BUNDLE SETTLES ONCE BY ITS PURCHASE-TIME COMPONENT ALLOCATION (decision-maker
+    ruling, Sep 16, 2026 — ledger `2026-09-16-bundle-partial-settlement`; build lane dispatched the same
+    day).** Every Traveloure-custody bundle must snapshot a nonnegative gross allocation for each required
+    component when purchased, and those allocations must sum exactly to the bundle's pre-fee purchase price. A
+    component's current catalog price, seller tier, or later configuration must never change that snapshot.
+    When final bundle fulfillment establishes that some required components were delivered and others will not
+    be delivered, Traveloure records one partial settlement. The seller earns only the purchase-time allocated
+    value of the delivered components, less the commission applicable to the original purchase. The traveler
+    is refunded the allocated value of the undelivered components plus the same proportional share of
+    traveler-paid Traveloure fees and surcharges. Stripe processing costs are not deducted from the traveler's
+    refund; Traveloure absorbs any nonrecoverable processing cost. A listing's traveler-cancellation policy
+    does not excuse seller nonperformance: when the seller or provider fails to deliver a component, that
+    component's allocated amount is refundable even if the bundle was labeled non-refundable; when the
+    traveler voluntarily cancels an outstanding component, the component's allocated amount follows the
+    snapshotted cancellation policy and deadline. Partial settlement is NOT whole-row cancellation: the booking
+    remains fulfilled in part, records component-level outcomes, and must not use the terminal whole-row
+    `refunded` state or release all reserved capacity. The settlement creates reduced seller earnings,
+    proportional platform revenue, an amount-specific refund audit record, and a Stripe refund to the original
+    payment method as ONE retry-safe operation. The settlement amount and component outcome set are immutable
+    after successful settlement; repeated requests, concurrent requests, Stripe retries and webhook redelivery
+    must converge on one seller earning, one platform-revenue result, and at most one Stripe refund for the
+    settled amount. Historical purchases always use their stored component, fee, commission, custody and
+    cancellation snapshots. Traveloure may issue refunds only for components whose payment custody belongs to
+    Traveloure; affiliate or partner-custody components retain the external partner's cancellation and refund
+    process and must not produce a Traveloure Stripe refund. **Settlement happens only when the undelivered
+    components are conclusively cancelled, failed or otherwise closed — never inside the component-completion
+    recorder, and no partial completion is reinterpreted as immediately final.**
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

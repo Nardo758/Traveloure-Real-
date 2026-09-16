@@ -469,7 +469,7 @@ test("F6: a legal coordination move still lands (the guard narrows nothing that 
   assert.equal(history[history.length - 1].action, "traveler-arm-legal-move");
 });
 
-test("F6b: both arms pass the status they read, and V-25(a) is left to D-39 (static pin)", () => {
+test("F6b (re-pinned, D-39): both arms pass the status they read, and V-25(a) is now ANSWERED by D-39 (static pin)", () => {
   const s = src("server/routes.ts");
   assert.match(
     s,
@@ -486,18 +486,29 @@ test("F6b: both arms pass the status they read, and V-25(a) is left to D-39 (sta
     /if \(!updated\)[\s\S]{0,500}?status\(409\)/,
     "a lost race must be reported as one",
   );
-  // The ruled omission, pinned so a later lane cannot add the ordering rule here by accident and
-  // call it housekeeping. D-36..D-39 owns it (EXPERT_ACCEPTANCE_BRIEF F3).
-  assert.match(
-    s,
-    /THE TRAVELER ARM HAS NO ORDERING RULE, AND THIS LANE DELIBERATELY ADDS NONE[\s\S]{0,400}?D-39/,
-    "the omission must stay NAMED in the code, with its owner",
+  // V-25(a) WAS the ruled omission this pin used to protect ("THE TRAVELER ARM HAS NO ORDERING
+  // RULE… owned by D-39"). D-39 landed (ledger `2026-09-15-d36-d39-completion-declared`) and
+  // ANSWERED it: the traveler's one move is `completion_declared → disputed` (`travelerMaySet`),
+  // the coordinator declares and may not say `completed` (`coordinatorMayAdvance`), and BOTH rules
+  // live in ONE module — `server/utils/coordination-from-states.ts` — so the ordering list left the
+  // monolith. RE-PINNED, never deleted: the invariant is still "exactly ONE ordering list", and the
+  // monolith must not grow a second one back.
+  assert.match(s, /travelerMaySet\(fromStatus, status\)/, "F3: the traveler arm has its rule, read from the one module");
+  assert.match(s, /coordinatorMayAdvance\(fromStatus, String\(status\)\)/, "the coordinator arm reads the same module");
+  assert.ok(
+    !/THE TRAVELER ARM HAS NO ORDERING RULE/.test(s),
+    "the omission notice is gone because the omission is gone — a stale notice would be a §13 falsehood",
   );
-  const forwardOrderBlocks = s.match(/const FORWARD_ORDER = \[/g) ?? [];
   assert.equal(
-    forwardOrderBlocks.length,
+    (s.match(/const FORWARD_ORDER = \[/g) ?? []).length,
+    0,
+    "the inline list left the monolith — a copy re-appearing here would be the drift class §18 rule 1 names",
+  );
+  const home = src("server/utils/coordination-from-states.ts");
+  assert.equal(
+    (home.match(/COORDINATION_FORWARD_ORDER: readonly string\[\] = \[/g) ?? []).length,
     1,
-    "still exactly ONE ordering list, still on the coordinator arm only — a second one would be V-25(a) fixed by the wrong lane",
+    "still exactly ONE ordering list, in its one home",
   );
 });
 

@@ -156,8 +156,10 @@ export const trips = pgTable("trips", {
   // stopgap; both now resolve the expert through `trip_expert_advisors` and neither mentions it.
   // The column is DECLARED and KEPT: dropping it is a schema change nobody has ratified. Do not
   // build a new grant, fallback or display on it without first giving it a writer and ratifying
-  // that writer. The one surviving reader is `trip-plan.service.ts::resolveDeliveredBy`, where it
-  // is an explicit last-resort fallback that can never resolve — recorded, not relied upon.
+  // that writer. It now has NO reader under `server/` at all: the last one — the dead fallback in
+  // `trip-plan.service.ts::resolveDeliveredBy` — was DELETED by ledger
+  // `2026-09-15-d36-d39-completion-declared` (§18c: no writer + a fallback that can never
+  // resolve ⇒ delete, don't keep). `deliveredBy` resolves through `trip_expert_advisors` alone.
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
   // PRIVATE Workstation build notes (PATCH /api/trips/:id/expert-notes) — never delivered to the
   // traveler. The traveler-facing trip-level note is expertTravelerNote below (§21) — never merge.
@@ -1744,6 +1746,30 @@ export const serviceBookings = pgTable("service_bookings", {
   // every other buyer of the listing downloads.
   deliverableFile: text("deliverable_file"),
 
+  // ══ D-7 DECLARED COMPLETION (migration 304, ledger `2026-09-15-d36-d39-completion-declared`) ═══
+  // D-36: WHEN THE SELLER DECLARED THE WORK DONE. Under D-7 the seller DECLARES and the traveler
+  // then has a stated window to dispute before anything mints; `completed_at` records the MONEY
+  // event, which now happens at the window's CLOSE, so nothing on the row recorded the declaration
+  // that opened it. This column is that declaration. It is stamped ONCE, inside the same guarded
+  // UPDATE that moves `confirmed → completion_declared` (`storage.updateServiceBookingStatus`,
+  // `COALESCE(existing, NOW())`), and by nothing else.
+  //
+  // THE DISPUTE DEADLINE IS DELIBERATELY NOT A COLUMN — the same answer D-24 gives one column up,
+  // for the same reason. It is DERIVED from this instant plus `declaredCompletionWindowDays()`
+  // (`server/config/completion-windows.config.ts`, a DELEGATION to `holdWindowDays('service_booking')`
+  // — never a parallel constant) by the ONE helper in `shared/declared-completion-window.ts`.
+  //
+  // D-37: this instant is ALSO the anchor of the held earning's `availableAt` when the window's
+  // close mints (`availableAtFor('service_booking', completionDeclaredAt)`), so the window is
+  // served ONCE, not twice — a NULL anchor keeps today's `now` and today's payout timing.
+  //
+  // §13: NULL = NEVER DECLARED. Every reader OMITS the field rather than rendering "not declared"
+  // on a booking whose rule is a timer or an acceptance. NO BACKFILL: a booking completed under the
+  // immediate flip WAS completed. §19: `.omit()`'d from `insertServiceBookingSchema` and stripped
+  // again in storage — a row born already declared would look, to the window's close, exactly
+  // like one the seller declared.
+  completionDeclaredAt: timestamp("completion_declared_at"),
+
   cancelledAt: timestamp("cancelled_at"),
   cancellationReason: text("cancellation_reason"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -3061,6 +3087,11 @@ export const insertServiceBookingSchema = createInsertSchema(serviceBookings).om
   acceptedAt: true,
   deliveredAt: true,
   deliverableFile: true,
+  // D-7 declared completion (migration 304, ledger `2026-09-15-d36-d39-completion-declared`): the
+  // same class again. A row born already carrying a declaration instant would be swept into the
+  // window's close and minted for work nobody declared. Layer 1 here; layer 2 in
+  // `createServiceBooking`/`createServiceBookingAtomic`.
+  completionDeclaredAt: true,
   confirmedAt: true,
   completedAt: true,
   cancelledAt: true,
@@ -10841,6 +10872,121 @@ export const bookingRevisionRequests = pgTable("booking_revision_requests", {
   index("booking_revision_requests_booking_idx").on(table.bookingId),
 ]);
 export type BookingRevisionRequest = typeof bookingRevisionRequests.$inferSelect;
+
+/**
+ * D-32 (migration 306, ledger `2026-09-16-d32-d35-bundle-components`; punchlist D-32 = option A).
+ * ONE ROW PER COMPONENT OF A PURCHASED BUNDLE, on the `booking_revision_requests` / `service_route_points`
+ * child-row pattern: FK -> `service_bookings(id)` ON DELETE CASCADE, UNIQUE (booking_id,
+ * component_service_id), an index on the parent. Table, UNIQUE and index are all declared HERE per the
+ * deploy-push durability rule (an object this file does not declare is dropped at publish and never
+ * recreated, because the migration is already stamped).
+ *
+ * WHY A TABLE AND NOT THE EXISTING JSONB. Per-component COMPLETION already lived on
+ * `booking_details.componentCompletions` (a `{componentId: ISO}` map). It cannot carry FAILED, and —
+ * the load-bearing half — a jsonb key cannot be the target of an atomic conditional the way a row
+ * can, so every §15 claim the partial-completion state machine needs would be a read-modify-write
+ * on the whole document. A row is claimed with `UPDATE … WHERE status = 'pending'`; the statement is
+ * the guard (§15/§18b).
+ *
+ * BORN AT CHECKOUT, by the checkout claim's composer (`storage.createServiceBooking`, from the
+ * purchase-time `bundleComponents` snapshot, inside the birth transaction) and by nothing else — the
+ * §19d "server composer keeps a named exemption" posture: the client-facing birth rail strips the
+ * snapshot key (`shared/booking-details-admission.ts`) so no body can plant components or prices.
+ * `snapshot_price_cents` is D-33's price — SERVER-DERIVED from the catalog at checkout (§14), never
+ * from a body, and never re-read from the listing later (a seller repricing must not move a refund).
+ *
+ * `status` is app-enforced with NO DB CHECK (`shared/bundle-component-states.ts`,
+ * `BUNDLE_COMPONENT_STATUS`), the publish-trap posture. `delivered_at`, `accepted_at`, `cancelled_at`,
+ * `refunded_at`, `refund_amount_cents` and `stripe_refund_id` are the D-32 ruling's columns for the
+ * per-component acceptance (D-6/D-7, inherited) and the component REFUND (brief lane 4); they have
+ * NO WRITER in this lane and every reader OMITS them when NULL (§13).
+ *
+ * NO BACKFILL. A booking born before this table has no rows; its `componentCompletions` jsonb stays
+ * the legacy source of record, read as such and NAMED as such (`componentStateSource:
+ * "legacy_jsonb"`), and it can never become `partially_completed` — that state needs a price.
+ *
+ * `component_service_id` deliberately carries NO FK to `provider_services`: the row is a SNAPSHOT of
+ * what was bought (the ready-made posture), and a component the seller later deletes must not take
+ * the traveler's record of it away.
+ */
+export const bookingComponentStates = pgTable("booking_component_states", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bookingId: varchar("booking_id").notNull().references(() => serviceBookings.id, { onDelete: "cascade" }),
+  componentServiceId: varchar("component_service_id").notNull(),
+  position: integer("position"), // the snapshot's order, 0-based; NULL = not recorded
+  serviceName: text("service_name"), // the component's name AS BOUGHT (the snapshot's), for §13-honest naming
+  status: varchar("status", { length: 20 }).notNull(), // app-enforced; the composer writes `pending`
+  snapshotPriceCents: integer("snapshot_price_cents"), // D-33; NULL = not captured, never 0
+  deliveredAt: timestamp("delivered_at"),
+  acceptedAt: timestamp("accepted_at"),
+  completedAt: timestamp("completed_at"),
+  failedAt: timestamp("failed_at"),
+  failureReason: text("failure_reason"),
+  cancelledAt: timestamp("cancelled_at"),
+  refundedAt: timestamp("refunded_at"),
+  refundAmountCents: integer("refund_amount_cents"),
+  stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("booking_component_states_booking_component_unique").on(table.bookingId, table.componentServiceId),
+  index("booking_component_states_booking_idx").on(table.bookingId),
+]);
+export type BookingComponentState = typeof bookingComponentStates.$inferSelect;
+// There is deliberately NO `createInsertSchema(bookingComponentStates)` — under a denylist schema every
+// column is client-settable by default (§19), and this table has NO client writer at all: the composer
+// and the two owner-rail transitions write it server-side. The owner rails' bodies are explicit
+// `.strict()` picks in `server/routes.ts` that admit a component ID and a reason and never a status,
+// a price or a timestamp.
+
+/**
+ * D-28 (ledger `2026-09-15-d28-d31-service-quotes`; migration 305): A CUSTOM QUOTE IS A CHILD ROW
+ * WITH AN EXPIRY. One row per OFFER between a traveler and a listing, on the `service_route_points`
+ * / `booking_revision_requests` pattern — FK -> `provider_services` ON DELETE CASCADE, UNIQUE
+ * (service_id, traveler_id, "position"). A re-quote is a NEW row with `supersededBy` stamped on the
+ * old; a row is never edited in place, so the record of what was offered and when it died survives.
+ *
+ * DECLARED HERE (table + UNIQUE + both indexes) because the deploy push is authoritative over
+ * objects this file does not carry. NO DB CHECK and NO DEFAULT on any decision-bearing column
+ * (publish-trap posture): the status vocabulary and the lifecycle reading live in
+ * `shared/service-quotes.ts`. There is deliberately NO `createInsertSchema(serviceQuotes)` — under
+ * a denylist every privileged column here (`amountCents`, `expiresAt`, `acceptedAt`,
+ * `supersededBy`, `bookingId`, `status`, `position`) would be client-settable by default (§19);
+ * the server writes them by explicit column and the two admissible bodies are the `.strict()`
+ * picks in that module.
+ *
+ * §13: `amountCents` NULL = NOT YET QUOTED, never $0.00. `expiresAt` NULL on a `requested` row =
+ * no offer yet, never "no deadline". `expired` is DERIVED (`status = 'quoted' AND expiresAt <= now`)
+ * and never stored. `bookingId` NULL on an `accepted` row is the narrow window between the claim
+ * and the stamp inside one transaction, or the failure the accept rail records — never a
+ * booking that was silently not minted.
+ */
+export const serviceQuotes = pgTable("service_quotes", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  travelerId: varchar("traveler_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based per (listing, traveler), derived server-side
+  status: varchar("status", { length: 20 }).notNull(), // app-enforced: shared/service-quotes.ts
+  amountCents: integer("amount_cents"),                 // provider-entered, integer-exact; NULL while requested
+  currency: varchar("currency", { length: 3 }),         // USD until a currency decision exists
+  requestNote: text("request_note"),                    // the traveler's words at request
+  note: text("note"),                                   // the provider's words on the offer
+  quotedBy: varchar("quoted_by").references(() => users.id, { onDelete: "set null" }),
+  quotedAt: timestamp("quoted_at"),
+  expiresAt: timestamp("expires_at"),                   // part of the accept claim's WHERE clause (§15)
+  acceptedAt: timestamp("accepted_at"),                 // written only by the atomic accept claim
+  declinedAt: timestamp("declined_at"),
+  withdrawnAt: timestamp("withdrawn_at"),
+  supersededBy: varchar("superseded_by").references((): AnyPgColumn => serviceQuotes.id, { onDelete: "set null" }),
+  bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_quotes_service_traveler_position_unique").on(table.serviceId, table.travelerId, table.position),
+  index("service_quotes_service_idx").on(table.serviceId),
+  index("service_quotes_traveler_idx").on(table.travelerId),
+]);
+export type ServiceQuote = typeof serviceQuotes.$inferSelect;
 
 /**
  * D-25 (§19): the ONE body a traveler's revision request may carry — exactly one field, and

@@ -11,6 +11,10 @@
  *                      It is not booked and it may be voided by the TTL sweep; say so.
  *   `deposit_paid`     authorized and paid in part — booked, with a balance still due (§15d).
  *   `confirmed`        authorized and paid — booked.
+ *   `completion_declared`  the seller says it is done and the traveler's dispute window is OPEN
+ *                      (D-7, ledger `2026-09-15-d36-d39-completion-declared`). Booked — and NOT
+ *                      completed: brief Part II §14, "completed is never said before the window
+ *                      closes". The word here is the seller's claim, named as a claim.
  *   `completed`        booked and fulfilled.
  *   anything else      shown VERBATIM (refunded, cancelled, disputed…) — never folded into
  *                      "booked", never into "prepared".
@@ -34,8 +38,17 @@ export function readPurchaseStatus(status: string | null | undefined): PurchaseS
       return { kind: "booked", label: "Booked · balance due" };
     case "confirmed":
       return { kind: "booked", label: "Booked" };
+    case "completion_declared":
+      return { kind: "booked", label: "Booked · your expert says this is done" };
     case "completed":
       return { kind: "booked", label: "Booked · completed" };
+    // D-34 (ledger `2026-09-16-d32-d35-bundle-components`): a bundle with at least one component
+    // delivered and at least one NOT. Never folded into "completed" (that word still means EVERY
+    // component) and never into "refunded" (a lie about the delivered ones). WHICH component failed
+    // is on the row (`bookingDetails.completion.failedComponentIds`), not in this label — the label
+    // is one spelling for one state.
+    case "partially_completed":
+      return { kind: "booked", label: "Booked · partially completed" };
     default:
       return { kind: "other", label: raw.replace(/_/g, " ") };
   }

@@ -187,6 +187,27 @@ test("A10 · P5 custom quote — charged only after the quote, priced by the ser
   assert.equal(contract.chargeMode, "after_quote");
 });
 
+test("A10b · P5 custom quote WITH deposits — D-31: the deposit fact reaches the contract (deposit_balance)", () => {
+  // Ledger `2026-09-15-d28-d31-service-quotes`, punchlist D-31. Before the reorder `chargeModeFor`
+  // tested `quote_approve` ahead of `depositEnabled`, so this exact listing resolved `after_quote`
+  // and the snapshot on a quote-born booking that took a deposit misdescribed its own schedule.
+  const { contract } = resolved(
+    providerListing({ priceType: "custom_quote", bookingMode: "request", depositEnabled: true }),
+  );
+  assert.equal(contract.commerceArchetype, "P5");
+  assert.equal(contract.commitmentMode, "quote_approve", "the commitment is still the quote");
+  assert.equal(contract.priceAuthority, "server_quote", "the price is still the server's to quote");
+  assert.equal(contract.chargeMode, "deposit_balance", "and the deposit config applies UNCHANGED");
+  // The reorder moves NOTHING for a quote listing without deposits (A10 above) nor for a request
+  // listing with them (S4 below) — pinned here beside the case that changed.
+  const noDeposit = resolved(providerListing({ priceType: "custom_quote", bookingMode: "request" }));
+  assert.equal(noDeposit.contract.chargeMode, "after_quote");
+  const requestDeposit = resolved(
+    providerListing({ bookingMode: "request", depositEnabled: true, categoryKey: "photography" }),
+  );
+  assert.equal(requestDeposit.contract.chargeMode, "deposit_balance");
+});
+
 test("A11 · P6 stay — the property owns inventory and the rate; completion is the checkout date", () => {
   const { contract } = resolved(
     providerListing({ productShape: "property", deliveryMethod: "in_person", categoryKey: "accommodation" }),
