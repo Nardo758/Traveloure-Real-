@@ -6,13 +6,10 @@
  * `experienceType` its CTA prefills (ruling 2026-09-01-moment-key — momentKey carries the fine
  * identity, and it equals `key`). The `label` is the tab-strip pill text.
  *
- * PHOTO GATE — a TRUST surface (ruling 2026-09-01-photo-tiers): a moment's photos are ATTRIBUTED
- * REAL photos ONLY — an expert-curated gem whose image is NOT stock, with the curating expert's
- * `@handle` resolving the caption. Stock hosts (unsplash/pexels/google) are excluded, so seeded
- * gem imagery never counts. `resolveLandingMoments` returns only moments with ≥1 such photo;
- * with today's data that is [] (Phase 0: every photo-bearing gem is Unsplash stock), so the
- * client suppresses the section (empty state B). Builder byline is the curating expert's real
- * handle + review count, honest-omitted when absent (§13).
+ * PHOTO GATE — a TRUST surface (ruling 2026-09-01-photo-tiers): attributed expert photos remain
+ * subject to the strict non-stock gate. Until one qualifies, the moment uses a bundled Creative
+ * Commons representative photo with visible license credit and no expert attribution. A real
+ * photo automatically replaces that fallback without loosening the gate.
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
@@ -47,11 +44,9 @@ export const MOMENTS: MomentConfig[] = [
     // order the live set is built in, and the section's rotation starts at index 0 — so the
     // artboard's "Wedding active by default" is exactly this position, not a second concept.
     //
-    // NO PHOTO IS SEEDED FOR THIS ROW, deliberately (§13 + the PHOTO GATE above): a moment goes
-    // live only when its city has ≥1 attributed real, non-stock, expert-curated gem photo. Kyoto
-    // has none in production today, so this row is configured and INVISIBLE until a real
-    // attributed photo exists. That is the honest state, not a gap to route around — the gate is
-    // never loosened to make a moment appear.
+    // No expert photo is seeded for this row. Until a qualifying attributed photo exists, the
+    // resolver uses the visibly labeled representative image; the real-photo gate is never
+    // loosened to make a stock image appear expert-supplied.
     key: "wedding",
     label: "Wedding",
     eyebrow: "A wedding weekend in Kyoto",
@@ -214,7 +209,11 @@ export function occasionPromptLine(momentKey: unknown): string {
 export interface MomentPhoto {
   url: string;
   place: string;
-  handle: string;
+  source: "expert" | "representative";
+  handle: string | null;
+  credit?: string;
+  license?: string;
+  sourceUrl?: string;
 }
 export interface LiveMoment {
   key: string;
@@ -228,6 +227,84 @@ export interface LiveMoment {
   photos: MomentPhoto[];
   builder: { handle: string; reviews: number } | null;
 }
+
+const REPRESENTATIVE_PHOTOS: Record<
+  string,
+  Pick<MomentPhoto, "url" | "place" | "source" | "handle" | "credit" | "license" | "sourceUrl">
+> = {
+  wedding: {
+    url: "/images/moments/kyoto-wedding.jpg",
+    place: "Ninna-ji temple, Kyoto",
+    source: "representative",
+    handle: null,
+    credit: "Carles Tomás Martí",
+    license: "CC BY 2.0",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:Kusho_My%C5%8Djin_shrine,_Ninna-ji_temple,_Kyoto_-_Oct_25,_2009.jpg",
+  },
+  proposal: {
+    url: "/images/moments/kyoto-proposal.jpg",
+    place: "Pontocho Alley, Kyoto",
+    source: "representative",
+    handle: null,
+    credit: "Sergiy Galyonkin",
+    license: "CC BY-SA 2.0",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:Friday_evening_in_Pontocho_Alley,_Kyoto_(52270424607).jpg",
+  },
+  golf: {
+    url: "/images/moments/edinburgh-golf.jpg",
+    place: "Balcomie Links, Scotland",
+    source: "representative",
+    handle: null,
+    credit: "Mat Fascione",
+    license: "CC BY-SA 2.0",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:Balcomie_Links_Golf_Course_at_Fife_Ness_-_geograph.org.uk_-_7375989.jpg",
+  },
+  girls_trip: {
+    url: "/images/moments/cartagena-girls-trip.jpg",
+    place: "Cartagena at night",
+    source: "representative",
+    handle: null,
+    credit: "Joe Ross",
+    license: "CC BY-SA 2.0",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:Night_Scenes,_Cartagena,_Colombia_(24431322999).jpg",
+  },
+  anniversary: {
+    url: "/images/moments/porto-anniversary.jpg",
+    place: "Porto at sunset",
+    source: "representative",
+    handle: null,
+    credit: "Jorge Franganillo",
+    license: "CC BY 2.0",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:Sunset_in_Porto_(48520058582).jpg",
+  },
+  honeymoon: {
+    url: "/images/moments/goa-honeymoon.jpg",
+    place: "Morjim Beach, Goa",
+    source: "representative",
+    handle: null,
+    credit: "Rodrick Rajive Lal",
+    license: "CC BY-SA 4.0",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:Sunset_at_Morjim_Beach,_Goa.jpg",
+  },
+  milestone_birthday: {
+    url: "/images/moments/mumbai-birthday.jpg",
+    place: "Marine Drive, Mumbai",
+    source: "representative",
+    handle: null,
+    credit: "Av9",
+    license: "CC BY-SA 4.0",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:Mumbai_Skyline_Marine_Drive_Night.jpg",
+  },
+  family_occasion: {
+    url: "/images/moments/jaipur-family.jpg",
+    place: "Hawa Mahal courtyard, Jaipur",
+    source: "representative",
+    handle: null,
+    credit: "Aktron",
+    license: "CC BY-SA 4.0",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:Jaipur,_Hawa_Mahala,_n%C3%A1dvo%C5%99%C3%AD.jpg",
+  },
+};
 
 /**
  * Attributed real photos for a market: an expert-curated gem whose image is NOT stock, with the
@@ -262,7 +339,12 @@ async function attributedPhotosForCity(
       LIMIT 4
     `);
     const list = (rows.rows ?? []) as Array<{ url: string; place: string; handle: string }>;
-    const photos: MomentPhoto[] = list.map((r) => ({ url: r.url, place: r.place, handle: r.handle }));
+    const photos: MomentPhoto[] = list.map((r) => ({
+      url: r.url,
+      place: r.place,
+      source: "expert",
+      handle: r.handle,
+    }));
     const builder = list.length > 0 ? { handle: list[0].handle, reviews: 0 } : null;
     return { photos, builder };
   } catch (e: any) {
@@ -271,12 +353,14 @@ async function attributedPhotosForCity(
   }
 }
 
-/** Only moments with ≥1 attributed real photo. Today: [] (the section suppresses — empty state B). */
+/** Real attributed photos win; otherwise each configured moment uses its honest representative fallback. */
 export async function resolveLandingMoments(): Promise<LiveMoment[]> {
   const live: LiveMoment[] = [];
   for (const m of MOMENTS) {
     const { photos, builder } = await attributedPhotosForCity(m.city);
-    if (photos.length === 0) continue;
+    const representative = REPRESENTATIVE_PHOTOS[m.key];
+    const resolvedPhotos = photos.length > 0 ? photos : representative ? [representative] : [];
+    if (resolvedPhotos.length === 0) continue;
     live.push({
       key: m.key,
       label: m.label,
@@ -285,8 +369,8 @@ export async function resolveLandingMoments(): Promise<LiveMoment[]> {
       pieces: [...m.pieces],
       experienceType: m.experienceType,
       experienceSlug: m.experienceSlug,
-      photos,
-      builder,
+      photos: resolvedPhotos,
+      builder: photos.length > 0 ? builder : null,
     });
   }
   return live;

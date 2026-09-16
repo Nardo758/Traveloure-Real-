@@ -1,9 +1,8 @@
 /**
  * landing-moments.db.test.ts — the Moments photo gate (Landing v2.5 Lane 2).
  *
- * Proves resolveLandingMoments() admits ONLY an attributed real photo (ruling
- * 2026-09-01-photo-tiers): an expert-curated gem whose image is NON-stock, with the curating
- * expert's @handle. Runs against the DB directly (no HTTP server needed).
+ * Proves real photos remain behind the strict attribution gate and override the licensed
+ * representative fallback. Runs against the DB directly (no HTTP server needed).
  *
  *   M1  a curated NON-stock gem + an expert WITH a handle → the market's moment goes live, the
  *       photo carries {place, @handle} and the builder byline is that handle.
@@ -26,7 +25,9 @@ const HANDLE = `mtest-${RUN}`;
 const expertWith = `u-with-${RUN}`;
 const expertNo = `u-no-${RUN}`;
 const expertPorto = `u-porto-${RUN}`;
-const NONSTOCK = "https://cdn.traveloure.test/gion.jpg";
+const NONSTOCK_EDINBURGH = `https://cdn.traveloure.test/${RUN}-edinburgh.jpg`;
+const NONSTOCK_CARTAGENA = `https://cdn.traveloure.test/${RUN}-cartagena.jpg`;
+const NONSTOCK_PORTO = `https://cdn.traveloure.test/${RUN}-porto.jpg`;
 const STOCK = "https://images.unsplash.com/photo-x.jpg";
 
 const DISPOSABLE = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -63,13 +64,13 @@ before(async () => {
   await insertExpert(expertNo, `n-${RUN}@traveloure.test`, null, "Cartagena");
   await insertExpert(expertPorto, `p-${RUN}@traveloure.test`, `porto-${RUN}`, "Porto");
   // Golf market (Edinburgh): curated NON-stock + handle → live.
-  await insertGem("Edinburgh", NONSTOCK, expertWith);
+  await insertGem("Edinburgh", NONSTOCK_EDINBURGH, expertWith);
   // Anniversary market (Porto): curated STOCK → excluded.
   await insertGem("Porto", STOCK, expertPorto);
   // Girls' trip market (Cartagena): curated NON-stock but curator has NO handle → excluded.
-  await insertGem("Cartagena", NONSTOCK, expertNo);
+  await insertGem("Cartagena", NONSTOCK_CARTAGENA, expertNo);
   // Anniversary market (Porto): a non-stock photo curated by an Edinburgh expert → excluded.
-  await insertGem("Porto", NONSTOCK, expertWith);
+  await insertGem("Porto", NONSTOCK_PORTO, expertWith);
 });
 
 after(async () => {
@@ -81,32 +82,42 @@ test("M1 curated non-stock gem + expert handle → the moment goes live with att
   const live = await resolveLandingMoments();
   const golf = live.find((m) => m.key === "golf");
   assert.ok(golf, "golf is live (Edinburgh has a curated non-stock photo by a handled expert)");
-  assert.ok(golf!.photos.length >= 1, "golf carries the photo");
-  assert.equal(golf!.photos[0].handle, HANDLE, "the caption attributes the curating expert's handle");
-  assert.equal(golf!.photos[0].url, NONSTOCK, "the non-stock image is the photo");
-  assert.equal(golf!.builder?.handle, HANDLE, "the builder byline is that handle");
-  assert.equal(golf!.builder?.reviews, 0, "review count honest-omits (users has no review_count)");
+  const testPhoto = golf!.photos.find((photo) => photo.url === NONSTOCK_EDINBURGH);
+  assert.ok(testPhoto, "golf carries this test's qualifying photo even when other fixtures exist");
+  assert.equal(testPhoto!.handle, HANDLE, "the caption attributes the curating expert's handle");
+  assert.equal(testPhoto!.source, "expert", "a qualifying photo is explicitly expert-sourced");
 });
 
-test("M2 a STOCK (unsplash) curated gem does NOT make its market live", async () => {
+test("M2 a STOCK (unsplash) curated gem does not replace the representative fallback", async () => {
   const live = await resolveLandingMoments();
   const anniversary = live.find((m) => m.key === "anniversary");
-  assert.equal(anniversary, undefined, "anniversary stays out — its only attributed gem is Unsplash stock (gate forbids stock)");
+  assert.ok(anniversary, "anniversary remains available through its representative fallback");
+  assert.equal(
+    anniversary!.photos.some((photo) => photo.url === STOCK),
+    false,
+    "stock imagery never enters the returned photo set",
+  );
 });
 
-test("M3 a curated non-stock gem whose expert has NO handle does NOT go live", async () => {
+test("M3 a curated non-stock gem whose expert has NO handle does not replace the fallback", async () => {
   const live = await resolveLandingMoments();
   const girls = live.find((m) => m.key === "girls_trip");
-  assert.equal(girls, undefined, "girls_trip stays out — the curating expert has no handle, so attribution can't resolve");
+  assert.ok(girls);
+  assert.equal(
+    girls!.photos.some((photo) => photo.url === NONSTOCK_CARTAGENA),
+    false,
+    "the no-handle curator's photo never enters the returned photo set",
+  );
 });
 
-test("M4 a non-stock photo curated by an expert from another market does NOT go live", async () => {
+test("M4 a non-stock photo curated by an expert from another market does not replace the fallback", async () => {
   const live = await resolveLandingMoments();
   const anniversary = live.find((m) => m.key === "anniversary");
+  assert.ok(anniversary);
   assert.equal(
-    anniversary,
-    undefined,
-    "anniversary stays out — an Edinburgh curator cannot attribute a Porto photo",
+    anniversary!.photos.some((photo) => photo.url === NONSTOCK_PORTO),
+    false,
+    "a curator whose expert form belongs to another city cannot attribute this photo",
   );
 });
 
@@ -120,9 +131,13 @@ test("M5 production does not seed or resolve development-only Moment fixtures", 
   try {
     const live = await resolveLandingMoments();
     assert.equal(
-      live.some((moment) => ["golf", "girls_trip"].includes(moment.key)),
+      live.some(
+        (moment) =>
+          ["golf", "girls_trip"].includes(moment.key) &&
+          moment.photos.some((photo) => photo.source === "expert"),
+      ),
       false,
-      "production must not expose the @traveloure.test Moment fixtures",
+      "production must not expose @traveloure.test photos as expert-sourced",
     );
   } finally {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
