@@ -157,6 +157,7 @@ import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import { isArtifactDelivery, SESSION_END_METHODS } from "@shared/service-fundamentals";
+import { DELIVERABLE_READABLE_STATUSES, resolveDeliverable } from "@shared/acceptance-window";
 import { resolvePublishVerification } from "./services/publish-verification.service";
 import Stripe from "stripe";
 import { getStripeSecretKey } from "./utils/stripe-key";
@@ -299,6 +300,7 @@ import { checkOfferingActivationGate } from "./services/offering-activation-gate
 // `provider_services.expert_offering_type_key` off a request body (§19 allowlist), shared by the
 // two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
 import { admitExpertOfferingTypeKey } from "./services/expert-offering-key.service";
+import { admitDeclaredArtifactDeliverable } from "./services/declared-artifact.service";
 // The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`) — see the
 // cart quote below; it decides only which lines are concierge lines, never a rate or an amount.
 import { resolveBookingConciergeItems } from "./services/booking-concierge.service";
@@ -3762,6 +3764,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ? { expertOfferingTypeKey: expertOfferingAdmission.key }
         : {};
 
+      // D-40 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`): a `hybrid` listing may
+      // DECLARE ONE artifact deliverable that takes D-6 acceptance on its own while the booking
+      // keeps D-7 completion. §19 — the generic body schema `.omit()`s the column, so this pick-based
+      // `.strict()` admission is the ONLY way a request body reaches it. An explicit `null`
+      // withdraws the declaration; an ABSENT key leaves the column untouched.
+      const declaredArtifactAdmission = admitDeclaredArtifactDeliverable(bodyWithoutLocation);
+      if (declaredArtifactAdmission.refusal) {
+        return res
+          .status(declaredArtifactAdmission.refusal.status)
+          .json(declaredArtifactAdmission.refusal.body);
+      }
+      const declaredArtifactPatch = declaredArtifactAdmission.present
+        ? { declaredArtifactDeliverable: declaredArtifactAdmission.value }
+        : {};
+
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
       // listings (only enforced on this publish write).
@@ -3923,7 +3940,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cityPatch = await deriveCityPatch((input as any).neighborhood, {
         neighborhoodPresent: (input as any).neighborhood !== undefined,
       });
-      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, userId });
+      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, ...declaredArtifactPatch, userId });
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -4092,6 +4109,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       const expertOfferingPatch = expertOfferingAdmission.present
         ? { expertOfferingTypeKey: expertOfferingAdmission.key }
+        : {};
+
+      // D-40 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`): a `hybrid` listing may
+      // DECLARE ONE artifact deliverable that takes D-6 acceptance on its own while the booking
+      // keeps D-7 completion. §19 — the generic body schema `.omit()`s the column, so this pick-based
+      // `.strict()` admission is the ONLY way a request body reaches it. An explicit `null`
+      // withdraws the declaration; an ABSENT key leaves the column untouched.
+      const declaredArtifactAdmission = admitDeclaredArtifactDeliverable(bodyWithoutLocation);
+      if (declaredArtifactAdmission.refusal) {
+        return res
+          .status(declaredArtifactAdmission.refusal.status)
+          .json(declaredArtifactAdmission.refusal.body);
+      }
+      const declaredArtifactPatch = declaredArtifactAdmission.present
+        ? { declaredArtifactDeliverable: declaredArtifactAdmission.value }
         : {};
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
@@ -4276,7 +4308,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Migration 292: the offering key joins the patch here, BEFORE the §23 edit split below —
       // it is an IDENTITY field (`IDENTITY_EDIT_FIELDS`, "Category and offering"), so on an
       // APPROVED listing it is staged for review rather than applied to the live row.
-      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch };
+      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch };
 
       // ── Ruling 112 Q8 (CLAUDE.md §23) — the EDIT SPLIT, decided ONLY here ─────────────────
       // An APPROVED listing is never taken down for an edit. Identity-changing fields are
@@ -6528,7 +6560,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Deliverable not found" });
       }
-      if (booking.status !== "confirmed") {
+      // D-6 (ledger `2026-09-15-d24-d26-acceptance-columns`): the gate was `status === 'confirmed'`
+      // alone. An accepting traveler must be able to READ the thing they are being asked to accept,
+      // and one waiting on a revision must still hold what they were sent — so the list is
+      // `DELIVERABLE_READABLE_STATUSES`, stated ONCE in `shared/acceptance-window.ts` and read by
+      // this rail and its metadata probe below (§18 rule 1). It is a READ list, not a from-state
+      // list: `payment_pending` is still absent, so a provisional claim (§15b) never unlocks a file.
+      if (!DELIVERABLE_READABLE_STATUSES.includes(booking.status ?? "")) {
         return res.status(404).json({ message: "Deliverable not found" });
       }
       if (!booking.serviceId) {
@@ -6538,7 +6576,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!service || !isArtifactDelivery({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
         return res.status(404).json({ message: "Deliverable not found" });
       }
-      const fileValue = (service.serviceFile ?? "").trim();
+      // D-26: THE PER-BOOKING FILE WHEN SET, ELSE THE LISTING'S — and the caller is TOLD which. The
+      // fallback is honest, not silent: after a revision those are different documents, and a
+      // traveler reading "the file your expert made for you" must not be shown the one the listing
+      // ships to everyone without knowing it.
+      const resolvedDeliverable = resolveDeliverable((booking as any).deliverableFile, service.serviceFile);
+      const fileValue = resolvedDeliverable?.value ?? "";
+      const deliverableSource = resolvedDeliverable?.source ?? null;
       if (!fileValue) {
         // §13: honest absence — the booking and service are real and qualify, but the
         // provider hasn't uploaded anything yet. Distinguishable from "not found" so the
@@ -6568,12 +6612,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const filename = `${(service.serviceName || "deliverable").replace(/[^a-z0-9.-]/gi, "_").slice(0, 100)}.pdf`;
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        // D-26: a STREAMED response carries no JSON body, so the "which file did I get" answer
+        // rides a header — and it is also LOGGED below, so the server's own record says which one
+        // it served even for a client that ignores it.
+        if (deliverableSource) res.setHeader("X-Deliverable-Source", deliverableSource);
         res.setHeader("Content-Length", String(bytes.length));
+        console.log(`[deliverable] served booking=${booking.id} source=${deliverableSource ?? "none"} protected=true`);
         return res.end(bytes);
       }
 
       await logDownload(false);
-      res.json({ fileUrl: fileValue, deliveryMethod: service.deliveryMethod, protected: false });
+      console.log(`[deliverable] served booking=${booking.id} source=${deliverableSource ?? "none"} protected=false`);
+      res.json({
+        fileUrl: fileValue,
+        deliveryMethod: service.deliveryMethod,
+        protected: false,
+        // D-26: WHICH file this is — `booking` = the artifact made for this traveler,
+        // `listing` = the listing's own file, served as the honest fallback.
+        deliverableSource,
+      });
     } catch (err) {
       console.error("Deliverable fetch error:", err);
       res.status(500).json({ message: "Failed to fetch deliverable" });
@@ -6592,14 +6649,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = getUserId(req)!;
       const booking = await storage.getServiceBooking(req.params.id);
-      if (!booking || booking.travelerId !== userId || booking.status !== "confirmed" || !booking.serviceId) {
+      if (
+        !booking ||
+        booking.travelerId !== userId ||
+        !DELIVERABLE_READABLE_STATUSES.includes(booking.status ?? "") ||
+        !booking.serviceId
+      ) {
         return res.json({ available: false });
       }
       const service = await storage.getProviderServiceById(booking.serviceId);
       if (!service || !isArtifactDelivery({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
         return res.json({ available: false });
       }
-      const fileValue = (service.serviceFile ?? "").trim();
+      // D-26: same resolution as the download rail, through the SAME shared helper — a probe that
+      // answered from the listing while the download served the booking's own file would be two
+      // answers to one question (§18 rule 1).
+      const resolvedMeta = resolveDeliverable((booking as any).deliverableFile, service.serviceFile);
+      const fileValue = resolvedMeta?.value ?? "";
       if (!fileValue) {
         // §13 honest absence: qualifies, but nothing uploaded yet — distinguishable from "not a
         // deliverable booking" so the client can say "your expert hasn't uploaded it yet".
@@ -6612,6 +6678,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         available: true,
         protected: isProtected,
         deliveryMethod: service.deliveryMethod,
+        deliverableSource: resolvedMeta?.source ?? null,
         ...(isProtected ? {} : { fileUrl: fileValue }),
       });
     } catch (err) {

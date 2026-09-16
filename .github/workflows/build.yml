@@ -1609,6 +1609,55 @@ jobs:
       - name: The one placeholder-dates derivation (P1-P7)
         run: npx tsx --test --test-force-exit client/src/lib/__tests__/plan-dates.test.ts
 
+  acceptance-rails:
+    name: acceptance-rails (D-24..D-26 + D-40; ledger 2026-09-15-d24-d26-acceptance-columns)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # D-6's rails against a real database (migration 303). R1 races two acceptances and asserts
+      # ONE completion, ONE accepted_at and ONE earning set — a check-then-update lets both through.
+      # R3 proves the allowance counts down from the LISTING's own revisions_included and that a
+      # refusal STATES the number without becoming a dispute. R7 is D-40's load-bearing half: a
+      # hybrid's declared artifact is accepted and completion/the mint do not move. R9 pins the
+      # sequenced gap — `artifact_timer` is D-27's lane and is untouched here.
+      - name: The accept / revision / deliver rails (R1-R10)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/acceptance-rails.db.test.ts
+      # The PURE layer beside it: the ONE derivation of the mode, the derived deadline, the allowance
+      # arithmetic and the per-booking file fallback. No DB and no server — wired in a job that runs
+      # `npm ci` because it imports `@shared/` (the #812 lesson, docs/OPERATING_PROCEDURE.md §3).
+      - name: The one acceptance derivation (A1-A5)
+        run: npx tsx --test --test-force-exit shared/__tests__/acceptance-window.test.ts
+
   plan-proposals:
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)
     runs-on: ubuntu-latest

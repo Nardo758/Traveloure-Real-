@@ -3143,17 +3143,30 @@ export class DatabaseStorage implements IStorage {
     // record of what the traveler committed under, so a caller-supplied one would be a forged set
     // of terms that OC-D1/D3 would later branch on. Layer 1 is the `.omit()` on
     // `insertServiceBookingSchema`; this covers the `as any` callers a type-level omit cannot reach.
+    //
+    // D-6 (ledger `2026-09-15-d24-d26-acceptance-columns`) joins the same strip: `acceptedAt`,
+    // `deliveredAt` and `deliverableFile` decide when an artifact booking completes, how long the
+    // traveler has to accept it, and which file they are served. A row born already claiming it was
+    // delivered and accepted would look, to every later reader, exactly like one that was. Their
+    // writers are the traveler-gated accept rail and the provider-gated deliver rail, both in
+    // `server/services/booking-acceptance.service.ts` (plus `completeBooking`'s acceptance arm).
     const {
       stripePaymentIntentId: _clientSuppliedPi,
       stripeDepositIntentId: _clientSuppliedDepositPi,
       stripeBalanceIntentId: _clientSuppliedBalancePi,
       offeringContractSnapshot: _clientSuppliedContractSnapshot,
+      acceptedAt: _clientSuppliedAcceptedAt,
+      deliveredAt: _clientSuppliedDeliveredAt,
+      deliverableFile: _clientSuppliedDeliverableFile,
       ...safeBooking
     } = booking as InsertServiceBooking & {
       stripePaymentIntentId?: unknown;
       stripeDepositIntentId?: unknown;
       stripeBalanceIntentId?: unknown;
       offeringContractSnapshot?: unknown;
+      acceptedAt?: unknown;
+      deliveredAt?: unknown;
+      deliverableFile?: unknown;
     };
     if (_clientSuppliedPi !== undefined && _clientSuppliedPi !== null) {
       // Ops-visible, never silent: reaching here means a caller tried to birth an authorized-looking
@@ -3208,17 +3221,26 @@ export class DatabaseStorage implements IStorage {
    */
   async createServiceBookingAtomic(booking: InsertServiceBooking): Promise<ServiceBooking> {
     // ── PS15 layer 2 strip (same as createServiceBooking) ───────────────────
+    // D-6 (ledger `2026-09-15-d24-d26-acceptance-columns`): the acceptance/delivery columns are
+    // stripped on BOTH writers — unlike V-10's `booking_details` strip below, no server composer
+    // passes them through this function, so there is no exemption to state here.
     const {
       stripePaymentIntentId: _pi,
       stripeDepositIntentId: _dpi,
       stripeBalanceIntentId: _bpi,
       offeringContractSnapshot: _contractSnapshot,
+      acceptedAt: _acceptedAt,
+      deliveredAt: _deliveredAt,
+      deliverableFile: _deliverableFile,
       ...safeBooking
     } = booking as InsertServiceBooking & {
       stripePaymentIntentId?: unknown;
       stripeDepositIntentId?: unknown;
       stripeBalanceIntentId?: unknown;
       offeringContractSnapshot?: unknown;
+      acceptedAt?: unknown;
+      deliveredAt?: unknown;
+      deliverableFile?: unknown;
     };
     if (_pi !== undefined && _pi !== null) {
       console.error(
