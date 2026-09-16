@@ -125,9 +125,18 @@ class BookingService {
     // resolves to NULL and STAYS NULL: "not one of our markets" is the honest answer (§13), never a
     // nearest-looking guess.
     const marketSlug = resolveMarketSlug(destination);
+    // MINT SITE 9 of 10 (migration 302, ledger `2026-09-15-d22-dates-confirmed`, punchlist D-22).
+    // The cart AUTO-TRIP. Its window is the first cart line's own date, falling back to TODAY when
+    // no line carries one — the same fallback shape the clone's placeholder has, arrived at from
+    // the other direction. So the confirmation stamp rides `firstItem?.date` and nothing else: a
+    // today-fallback window is the platform's, and is left NULL so every reader labels it a
+    // placeholder rather than presenting today as the traveler's travel date (§13). Raw SQL here
+    // because this whole mint path is raw SQL — the same treatment Locked Decision 30's zone and
+    // Locked Decision 42 D12's `market_slug` already get on this statement.
+    const datesConfirmedAt = firstItem?.date ? new Date() : null;
     await db.execute(sql`
-      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, tracking_number, timezone, market_slug, created_at)
-      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', ${trackingNumber}, ${timezone}, ${marketSlug}, NOW())
+      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, tracking_number, timezone, market_slug, dates_confirmed_at, created_at)
+      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', ${trackingNumber}, ${timezone}, ${marketSlug}, ${datesConfirmedAt}, NOW())
     `);
 
     // L10 owner row: getTripRole() — the READ resolver — resolves access by collaborator
@@ -1202,14 +1211,20 @@ class BookingService {
     // NOT special-cased, because an unresolvable destination and a placeholder destination are the
     // same fact to this function: no operating market was stated (§13).
     const marketSlug = resolveMarketSlug(destination);
+    // MINT SITE 10 of 10 (migration 302, punchlist D-22). The SAVED-TRIP conversion. Same rule as
+    // the cart auto-trip above: the saved row's own `start_date`/`end_date` are the traveler's
+    // answer, and the `today` / `today + 7` fallbacks a few lines up are this function filling a
+    // NOT NULL column. Both halves must be real before the claim is made — a stated start with a
+    // guessed end is not a window anybody chose (§13).
+    const datesConfirmedAt = saved.start_date && saved.end_date ? new Date() : null;
     await db.execute(sql`
       INSERT INTO trips (
         id, user_id, title, destination, start_date, end_date,
-        number_of_travelers, budget, status, tracking_number, timezone, market_slug, created_at, updated_at
+        number_of_travelers, budget, status, tracking_number, timezone, market_slug, dates_confirmed_at, created_at, updated_at
       ) VALUES (
         ${tripId}, ${userId}, ${`Trip to ${destination}`}, ${destination},
         ${startDate}, ${endDate}, ${travelers}, ${budget},
-        'planning', ${trackingNumber}, ${timezone}, ${marketSlug}, NOW(), NOW()
+        'planning', ${trackingNumber}, ${timezone}, ${marketSlug}, ${datesConfirmedAt}, NOW(), NOW()
       )
     `);
 

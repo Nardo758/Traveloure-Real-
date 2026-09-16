@@ -400,8 +400,26 @@ describe("D-10 — `confirmed` needs partner evidence", () => {
     assert.equal(after.expert_notes, "legacy row, untouched");
 
     // No migration was added by this lane — the column stays varchar(30) with no CHECK.
+    //
+    // PREDICATE REPAIRED, NOT LOOSENED (2026-09-15, ledger `2026-09-15-d22-dates-confirmed`). The
+    // first alternative was a BARE `confirm`, which is not a name for this lane's subject — it is
+    // an ordinary English word that any migration about confirming anything carries. Migration 302
+    // (`302_trips_dates_confirmed_at.sql`, a PLAN's dates, nothing to do with a partner booking)
+    // was simply the first file in the repo to say it out loud, and it failed this proof while the
+    // invariant it guards — "D-10 adds no migration" — stayed perfectly true.
+    //
+    // The invariant is unchanged and is asserted more tightly than before: a D-10 migration would
+    // have to name THIS lane's subject — the affiliate booking request's confirmation
+    // (`affiliate…confirm…`), the evidence column it would have added (`confirmation_ref`), the
+    // partner evidence itself, or the lane id. Verified against the migration directory: those four
+    // alternatives match NOTHING today, while `affiliate_booking` alone would have matched three
+    // pre-existing files (060, 074, 170) and be a false pass waiting to happen. Same shape as the
+    // sibling pin in `plancard-origin-exposure.test.ts` R14, which names `origin[-_]chip` rather
+    // than the word "origin". REPAIR THIS PIN, NEVER DELETE IT.
     const migrations = fs.readdirSync(path.join(ROOT, "server", "migrations"));
-    const d10 = migrations.filter((f) => /confirm|partner_evidence|d10/i.test(f) && f.endsWith(".sql"));
+    const d10 = migrations.filter(
+      (f) => /affiliate[a-z0-9_-]*confirm|confirmation[-_]?ref|partner[-_]?evidence|d10/i.test(f) && f.endsWith(".sql"),
+    );
     assert.deepEqual(d10, [], "D-10 adds no migration");
   });
 });
