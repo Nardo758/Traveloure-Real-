@@ -38,6 +38,7 @@ import {
   type SupplyServiceRow,
   type CoverageTargetRow,
 } from "../services/market-insights.service";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const CI_PROVIDER_EMAIL = "ci-provider@traveloure.test";
@@ -227,7 +228,22 @@ test("D6 (§13 hard negative): ZERO demand rows ⇒ hasSignal=false, empty (not 
 
 // ═══ W — the WIRED endpoint (owner-gated; server-derived; real rows) ════════════════════════════
 
-const CITY = `B2City-${RUN}`;
+// T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): this used to be a RUN-unique synthetic
+// city (`B2City-<RUN>`). The W* proofs were OVERTAKEN by a ratified narrowing of the endpoint —
+// "STEP 3.7 Part B (B1, R13)", the partner-facing scope gate in `GET /api/provider/market-insights`,
+// which keeps only declared cities that `resolveMarketSlug` resolves to one of the 8 OPERATING
+// markets. A synthetic city resolves to nothing, so `cities` came back empty and the route returned
+// its honest empty surface before either layer was built: every W assertion about seeded rows failed
+// on a fixture premise the ruling had retired, not on the behaviour they exist to prove.
+//
+// The city is therefore an OPERATING market, READ from the ratified market list rather than spelled
+// here (§18 rule 1 — a hardcoded city list in a test is the second copy CLAUDE.md §13 refuses).
+// Everything else stays RUN-unique: the neighbourhoods, the category key and the supply row, so the
+// gap and neighbourhood-demand assertions remain exact. `Cartagena` is chosen because no other suite
+// in this directory writes `search_analytics` at all and nothing seeds rows for it, which is what
+// keeps the city-level count (5) and `unplaceableCount` (3) exact rather than approximate.
+const CITY = OPERATING_MARKETS.find((m) => m.marketKey === "cartagena")!.cityName;
+const CITY_COUNTRY = OPERATING_MARKETS.find((m) => m.marketKey === "cartagena")!.country;
 const NB_A = { id: `b2-na-${RUN}`, name: `Alpha ${RUN}`, slug: `b2-alpha-${RUN}`, lat: "35.0100000", lng: "135.7600000" };
 const NB_B = { id: `b2-nb-${RUN}`, name: `Beta ${RUN}`, slug: `b2-beta-${RUN}`, lat: "35.0500000", lng: "135.8000000" };
 const CAT_ID = `b2-cat-${RUN}`;
@@ -251,7 +267,7 @@ before(async () => {
   for (const n of [NB_A, NB_B]) {
     await db.execute(sql`
       INSERT INTO city_neighborhoods (id, city, country, name, slug, centroid_lat, centroid_lng, radius_km)
-      VALUES (${n.id}, ${CITY}, 'Japan', ${n.name}, ${n.slug}, ${n.lat}, ${n.lng}, '1.50')
+      VALUES (${n.id}, ${CITY}, ${CITY_COUNTRY}, ${n.name}, ${n.slug}, ${n.lat}, ${n.lng}, '1.50')
     `);
   }
   // A category carrying a categoryKey (the join key services map through).

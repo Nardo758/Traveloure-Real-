@@ -99,6 +99,13 @@ async function makeAuthoringTrip(authorId: string, label: string): Promise<strin
   return id;
 }
 
+// T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): `$5` used to appear BOTH as the value
+// of the `status` column (deduced `character varying`) and inside a `CASE WHEN $5 = 'approved'`
+// comparison (deduced `text`), so Postgres refused the statement with `inconsistent types deduced
+// for parameter $5` and all four proofs in this file died before any of them ran. The status is now
+// bound TWICE, once per position, so each parameter carries exactly one deduction — a cast on the
+// shared parameter does not help, because it only moves which of the two positions disagrees. No
+// assertion changed.
 async function makeListing(
   authorId: string,
   sourceTripId: string,
@@ -111,8 +118,8 @@ async function makeListing(
        (id, author_id, source_trip_id, market, title, duration_days, plan_type,
         pricing_mode, price_cents, status, active, reviewed_at)
      VALUES ($1, $2, $3, 'Kyoto', $4, 3, 'city_itinerary',
-             'fixed', 12000, $5, true, CASE WHEN $5 = 'approved' THEN now() ELSE NULL END)`,
-    [id, authorId, sourceTripId, `RM author-filter ${label} ${RUN}`, status],
+             'fixed', 12000, $5, true, CASE WHEN $6 = 'approved' THEN now() ELSE NULL END)`,
+    [id, authorId, sourceTripId, `RM author-filter ${label} ${RUN}`, status, status],
   );
   createdListingIds.push(id);
   return id;

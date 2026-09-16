@@ -39,6 +39,7 @@ import path from "node:path";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { resolveTravelSurcharge, haversineKm } from "../services/travel-surcharge.service";
+import { composeTravelerCharge } from "../services/traveler-charge";
 import { promotePaidCheckout } from "../services/checkout-claim.service";
 import { storage } from "../storage";
 
@@ -254,7 +255,40 @@ test("D1: GET /api/cart/fee-preview discloses travelSurcharge, server-derived; f
   const itemId = await addToCartAndPickup(traveler, svc, FAR);
   let fp = await feePreview(traveler);
   assert.equal(fp.travelSurcharge, 20, `disclosed line = 20, got ${fp.travelSurcharge}`);
-  assert.equal(Number(fp.total).toFixed(2), (Number(fp.subtotal) + Number(fp.platformFeeTotal) + Number(fp.conciergeFeeTotal) + 20).toFixed(2), "total includes the surcharge line");
+  // T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): this used to restate the total as
+  // `subtotal + platformFeeTotal + conciergeFeeTotal + 20`. That composition was OVERTAKEN by a
+  // ratified ruling — ledger `2026-09-08-cart-fee-line`: `platformFeeTotal` is still RESOLVED and
+  // still DISCLOSED (it is what the provider pays, and the effective-rate readers use it) but is no
+  // longer a term of the TRAVELER's total, and `travelerFee` is. The suite was quoting a total the
+  // platform has not charged since.
+  //
+  // The proof is not weakened and the formula is not re-restated: the total is composed with the
+  // PRODUCTION composer (`composeTravelerCharge`, the single implementation the charge itself calls
+  // — §18 rule 1) from the lines this very response disclosed, and the surcharge is isolated as the
+  // DIFFERENCE between composing with it and composing without it. That asserts exactly what the
+  // name says — the total includes the surcharge line — and it survives the next change to the
+  // composition, which is what the version it replaces did not.
+  const totalWithoutSurcharge = composeTravelerCharge({
+    subtotal: Number(fp.subtotal),
+    conciergeFee: Number(fp.conciergeFeeTotal),
+    surchargeTotal: 0,
+    travelerFee: Number(fp.travelerFee ?? 0),
+  });
+  assert.equal(
+    Number(fp.total).toFixed(2),
+    composeTravelerCharge({
+      subtotal: Number(fp.subtotal),
+      conciergeFee: Number(fp.conciergeFeeTotal),
+      surchargeTotal: Number(fp.travelSurcharge),
+      travelerFee: Number(fp.travelerFee ?? 0),
+    }).toFixed(2),
+    "the quoted total must be the production composition of the lines it disclosed",
+  );
+  assert.equal(
+    (Number(fp.total) - totalWithoutSurcharge).toFixed(2),
+    (20).toFixed(2),
+    "total includes the surcharge line",
+  );
 
   // Flip the config on the row → the disclosed line moves (server-derived, not client-held).
   await db.execute(sql`UPDATE provider_services SET surcharge_flat_amount = '45.00' WHERE id = ${svc}`);

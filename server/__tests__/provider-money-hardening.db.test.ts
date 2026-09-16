@@ -41,6 +41,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { insertProviderServiceSchema } from "@shared/schema";
+import { resolveServiceOwnerShareRate } from "../services/commission";
 import {
   CHECKOUT_CLAIM_TTL_MINUTES,
   CLAIM_EXPIRED_STATUS,
@@ -51,6 +52,9 @@ import {
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
   provider: `pmh-${RUN}-prov`,
+  // T-8: the EXPERT lane is the one that still STAMPS `revenue_share_rate` (ruling 71 Step 1
+  // retired the provider-lane snapshot), so P2's band-edit discriminator lives on this actor.
+  expert: `pmh-${RUN}-expert`,
   traveler: `pmh-${RUN}-trav`,
   trip: `pmh-${RUN}-trip`,
 };
@@ -86,17 +90,44 @@ async function assertDisposableDb(): Promise<void> {
   }
 }
 
-/** The provider band, read live. `active_provider_commission_policy` is `beta_flat` by default, and
- *  `decideBandKey` routes a provider-owned line to that band. Never hardcoded here (§8). */
-async function providerBandExpertShare(): Promise<number> {
+/**
+ * The OWNER share this platform would stamp for an EXPERT-owned listing, obtained from the
+ * PRODUCTION derivation — `resolveServiceOwnerShareRate`, the single implementation
+ * `storage.createProviderService` itself calls (§18 rule 1).
+ *
+ * T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): this used to be a hand-written SELECT
+ * that restated the band-resolution rule — "`band_key` = the `active_provider_commission_policy`
+ * setting" — and the restatement went stale in TWO ratified steps. RULING 49 DEACTIVATED
+ * `beta_flat`, so the policy value no longer names a band at all; the resolution now lands on
+ * `default_commission_band_key`. The copy returned no row, `typeof rate` was `'undefined'`, and
+ * three proofs died on the fixture rather than on the behaviour they exist to prove. That is the
+ * §18-rule-1 class the T-4..T-7 lane found in a security audit, one file over: a production rule
+ * copied into a test drifts silently, because nothing fails when the original moves.
+ */
+async function expertLaneOwnerShare(expertUserId: string): Promise<number> {
+  const rate = await resolveServiceOwnerShareRate({
+    ownerUserId: expertUserId,
+    ownerIsProvider: false,
+    feeCategory: null,
+  });
+  assert.equal(typeof rate, "number", "the owner share must be resolvable through the production derivation");
+  return rate as number;
+}
+
+/**
+ * The band key an EXPERT-lane, category-less line resolves to. Read as CONFIG
+ * (`platform_settings.default_commission_band_key`), never re-derived: `decideBandKey` returns the
+ * configured default for `category = 'default'`, and §13 says an absent setting is a different fact
+ * from a guessed one — so this asserts rather than substituting a literal (§8: no rate or band name
+ * is spelled in this file).
+ */
+async function expertLaneBandKey(): Promise<string> {
   const r = await db.execute(sql`
-    SELECT CAST(default_rate AS FLOAT) AS rate FROM fee_bands
-    WHERE band_key = (SELECT setting_value FROM platform_settings WHERE setting_key = 'active_provider_commission_policy')
-      AND is_active = true AND rate_type = 'percent' LIMIT 1
+    SELECT setting_value FROM platform_settings WHERE setting_key = 'default_commission_band_key'
   `);
-  const rate = (r.rows[0] as any)?.rate;
-  assert.equal(typeof rate, "number", "the provider band must be readable from fee_bands");
-  return 1 - rate;
+  const key = (r.rows[0] as any)?.setting_value as string | undefined;
+  assert.equal(typeof key, "string", "platform_settings.default_commission_band_key must be configured");
+  return key as string;
 }
 
 async function readRate(serviceId: string): Promise<number> {
@@ -117,11 +148,22 @@ async function readSlotBookedCount(id: string): Promise<number> {
   return Number((r.rows[0] as any)?.c ?? -1);
 }
 
+/**
+ * T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): every slot used to be seeded at the
+ * SAME `10:00` on the SAME day, and `vendor_availability_slots` carries a UNIQUE index on
+ * (service_id, date, start_time). P4 seeds TWO slots on ONE service — one per recovery layer — so
+ * the second INSERT collided and the whole proof died in its fixture. The slot hour is now distinct
+ * per call within a run; nothing else about the row changed, and no assertion moved.
+ */
+let slotSequence = 0;
 async function makeSlot(serviceId: string, capacity = 1): Promise<string> {
   const id = `pmh-${RUN}-slot-${crypto.randomUUID().slice(0, 6)}`;
+  const hour = 6 + (slotSequence++ % 12); // 06:00 … 17:00 — distinct per slot, same day
+  const startTime = `${String(hour).padStart(2, "0")}:00`;
+  const endTime = `${String(hour + 1).padStart(2, "0")}:00`;
   await db.execute(sql`
     INSERT INTO vendor_availability_slots (id, provider_id, service_id, date, start_time, end_time, capacity, booked_count, status)
-    VALUES (${id}, ${ids.provider}, ${serviceId}, CURRENT_DATE + 21, '10:00', '12:00', ${capacity}, 1, 'available')
+    VALUES (${id}, ${ids.provider}, ${serviceId}, CURRENT_DATE + 21, ${startTime}, ${endTime}, ${capacity}, 1, 'available')
   `);
   createdSlotIds.push(id);
   return id;
@@ -162,6 +204,10 @@ before(async () => {
     VALUES (${ids.provider}, ${`pmh-${RUN}-prov@t.test`}, 'PMH', 'Provider', 'service_provider')
   `);
   await db.execute(sql`
+    INSERT INTO users (id, email, first_name, last_name, role)
+    VALUES (${ids.expert}, ${`pmh-${RUN}-expert@t.test`}, 'PMH', 'Expert', 'local_expert')
+  `);
+  await db.execute(sql`
     INSERT INTO users (id, email, first_name, last_name)
     VALUES (${ids.traveler}, ${`pmh-${RUN}-trav@t.test`}, 'PMH', 'Traveler')
   `);
@@ -184,7 +230,7 @@ after(async () => {
     await db.execute(sql`DELETE FROM provider_services WHERE id = ${id}`).catch(() => {});
   }
   await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`).catch(() => {});
-  await db.execute(sql`DELETE FROM users WHERE id IN (${ids.provider}, ${ids.traveler})`).catch(() => {});
+  await db.execute(sql`DELETE FROM users WHERE id IN (${ids.provider}, ${ids.expert}, ${ids.traveler})`).catch(() => {});
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -217,13 +263,24 @@ test("P1: MI-1 INSERT — a client's revenueShareRate is stripped by the schema 
   } as any);
   createdServiceIds.push(created.id);
 
+  // T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): this used to assert the row carried
+  // "the fee_bands-resolved provider share". That was OVERTAKEN by a ratified ruling — ruling 71
+  // Step 1, "1C retirement of the provider-lane snapshot" (the note in
+  // `storage.deriveServiceRevenueShareRate`): a PROVIDER-owned row no longer carries a STAMPED
+  // `revenueShareRate` at all, because its charge path resolves the D1 category band live and that
+  // band OUTRANKS the snapshot, so stamping one would only leave a stale value an admin band edit
+  // could no longer move. The column is therefore left NULL — deliberately, and §13 says NULL here
+  // means "not stamped", never "zero share".
+  //
+  // What ruling 42 / §18 actually guarantees on this path is unchanged and is what is pinned: the
+  // client's number never reaches the row. The "resolves from fee_bands" half of the proof is not
+  // deleted — it moves to P2, onto the EXPERT lane, which is the lane that still stamps.
   const stored = await readRate(created.id);
-  const expected = await providerBandExpertShare();
   assert.notEqual(stored, 1, "the client's 1.00 must never be persisted — that is a 0.00 platform fee");
   assert.equal(
-    stored.toFixed(4),
-    expected.toFixed(4),
-    "the persisted split must be the fee_bands-resolved provider share, read from the DB",
+    stored ?? null,
+    null,
+    "a provider-owned listing carries NO stamped split (ruling 71 Step 1) — the band resolves at charge time",
   );
 });
 
@@ -245,17 +302,40 @@ test("P2: MI-1 UPDATE — a PATCH cannot move the split, and an admin BAND edit 
     "the partial (PATCH) schema must strip the split too — the audit found it stripped on NEITHER path",
   );
   await storage.updateProviderService(created.id, { ...(parsedPatch as any), revenueShareRate: "1.00" } as any);
-  assert.equal(await readRate(created.id), before, "a PATCH must not move the commission split");
+  // `before` is NULL on the provider lane (ruling 71 Step 1) — `?? null` keeps `undefined` and
+  // `null` from reading as different facts, which they are not here (§13: both mean "not stamped").
+  assert.equal((await readRate(created.id)) ?? null, before ?? null, "a PATCH must not move the commission split");
 
   // Ruling 32's proof, and the discriminator for this whole assertion: the ONE thing that DOES move
-  // the resolved rate is an admin edit to the band. Without this, "rate == 0.75" would also be
-  // satisfied by the unfixed code, because the seeded expert share equals the column's DB DEFAULT.
+  // the resolved rate is an admin edit to the band. Without it, an equality against the seeded share
+  // would also be satisfied by the unfixed code.
+  //
+  // T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): the discriminator is NOT deleted, it
+  // MOVES — onto the EXPERT lane, which is the lane that still stamps after ruling 71 Step 1. A
+  // provider-owned row now carries NULL by design (P1), so a band edit could not move anything
+  // there and the old assertion could never pass again. The band is identified as CONFIG and the
+  // expected share comes from the PRODUCTION derivation, so neither is restated here (§18 rule 1,
+  // §8 — no rate and no band name is spelled in this file).
+  const expertOwned = await storage.createProviderService({
+    serviceName: `PMH expert-lane ${RUN}`,
+    price: "100.00",
+    userId: ids.expert,
+    revenueShareRate: "1.00",
+  } as any);
+  createdServiceIds.push(expertOwned.id);
+  const expertStamp = await readRate(expertOwned.id);
+  assert.notEqual(expertStamp, 1, "the client's 1.00 must never be persisted on the expert lane either");
+  assert.equal(
+    expertStamp.toFixed(4),
+    (await expertLaneOwnerShare(ids.expert)).toFixed(4),
+    "the expert lane's stamp must equal the share the production derivation resolves from fee_bands",
+  );
+
+  const bandKey = await expertLaneBandKey();
   const original = await db.execute(sql`
-    SELECT band_key, CAST(default_rate AS FLOAT) AS rate FROM fee_bands
-    WHERE band_key = (SELECT setting_value FROM platform_settings WHERE setting_key = 'active_provider_commission_policy')
-    LIMIT 1
+    SELECT CAST(default_rate AS FLOAT) AS rate FROM fee_bands WHERE band_key = ${bandKey} LIMIT 1
   `);
-  const bandKey = (original.rows[0] as any).band_key as string;
+  assert.equal(typeof (original.rows[0] as any)?.rate, "number", `band ${bandKey} must exist in fee_bands`);
   const originalRate = (original.rows[0] as any).rate as number;
   // A platform take deliberately equal to NO seeded band and to no default in the codebase, so a
   // pass cannot be a coincidence.
@@ -265,7 +345,7 @@ test("P2: MI-1 UPDATE — a PATCH cannot move the split, and an admin BAND edit 
     const afterEdit = await storage.createProviderService({
       serviceName: `PMH band-edit ${RUN}`,
       price: "100.00",
-      userId: ids.provider,
+      userId: ids.expert,
       revenueShareRate: "1.00",
     } as any);
     createdServiceIds.push(afterEdit.id);
@@ -275,6 +355,7 @@ test("P2: MI-1 UPDATE — a PATCH cannot move the split, and an admin BAND edit 
       (1 - editedTake).toFixed(4),
       "an admin band edit must change the derived split — that is what 'resolves from fee_bands' means",
     );
+    assert.notEqual(stored.toFixed(4), expertStamp.toFixed(4), "and the edit must actually have moved it");
     assert.notEqual(stored, 1, "and the client's number still never wins");
   } finally {
     await db.execute(sql`UPDATE fee_bands SET default_rate = ${String(originalRate)} WHERE band_key = ${bandKey}`);

@@ -35,6 +35,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { seedCatalogListing } from "./fixtures/catalog-listing";
 
 process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || "re_test_dummy_journey_negatives";
 
@@ -174,6 +175,8 @@ async function expertStandardBand(): Promise<{ rate: number; rateType: string } 
 // Shared cast — created once, reused read-only-ish (each test uses its own fresh trip/item).
 let owner: Actor;
 let stranger: Actor;
+/** Cleanups for listings seeded by `seedCatalogListing` — run in `after`, before the user purge. */
+const createdListingCleanups: Array<() => Promise<void>> = [];
 
 before(async () => {
   // Fail fast if the dev server isn't up — these negatives target the assembled surface.
@@ -190,6 +193,9 @@ after(async () => {
     // (localhost/127.0.0.1 or explicit JOURNEY_DB_WRITES_OK=1). Each fixture email is
     // `jsn-<RUN>-<label>@t.test`, so the DELETEs are scoped to EXACTLY this run's users and
     // cascade to their trips/items/cart/log/bookings — never a broad delete.
+    for (const cleanup of createdListingCleanups) {
+      await cleanup().catch(() => {});
+    }
     if (createdEmails.length > 0) {
       await assertDisposableDb(readPool);
       for (const email of createdEmails) {
@@ -653,15 +659,23 @@ test("N15: no routing_status writer routes access through getTripRole (inventory
 test("N16: a checkout that cannot obtain a PaymentIntent commits NOTHING (no authorized booking, cart intact, no purchased item, no purchase diary row); a clean retry is never a false success", async () => {
   const buyer = await registerActor("n16-buyer");
 
-  // A real approved+active priced catalog service — same fixture posture as J1's pickCatalogService.
-  const svc = await readPool.query(
-    `SELECT id, price, service_name FROM provider_services
-      WHERE approval_status='approved' AND status='active'
-        AND price IS NOT NULL AND CAST(price AS FLOAT) > 0
-      ORDER BY random() LIMIT 1`,
-  );
-  assert.ok(svc.rows[0], "expected at least one approved+active priced provider_service in the DB");
-  const serviceId = svc.rows[0].id as string;
+  // T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): this used to `ORDER BY random()`
+  // over whatever approved+active priced listing happened to be on the table and assert that one
+  // came back. That is a BET on another suite's leftovers, not a fixture: a database built from
+  // empty carries ZERO `provider_services` rows — migrations seed none and neither the CI user seed
+  // nor the app's boot seeding creates a listing — so on a fresh CI database this precondition fails
+  // and N16 never reaches the checkout it exists to prove. The whole-directory run made it fail
+  // outright, because `e2e-purge-fk-naming.db.test.ts` neutralises the `@traveloure.test` namespace
+  // and the listings owned by those accounts cascade away with them.
+  //
+  // The listing is now SEEDED by this test, through the ONE shared fixture every suite in this class
+  // calls (`server/__tests__/fixtures/catalog-listing.ts`, §18 rule 1), and removed again below. No
+  // assertion changed — N16 still proves that a checkout which cannot obtain a PaymentIntent commits
+  // nothing.
+  const listing = await seedCatalogListing({ baseUrl: BASE_URL, label: "n16" });
+  const serviceId = listing.serviceId;
+
+  createdListingCleanups.push(listing.cleanup);
 
   const addRes = await api("/api/cart", buyer.cookie, "POST", { serviceId, quantity: 1 });
   assert.ok(addRes.status >= 200 && addRes.status < 300, `add-to-cart failed (${addRes.status}): ${await addRes.clone().text()}`);

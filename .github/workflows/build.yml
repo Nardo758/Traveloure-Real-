@@ -3025,3 +3025,7 @@ jobs:
   # server-booting gate. DO NOT ADD A SERVER-BOOTING JOB TO THIS FILE: a job that
   # needs the flag gets its own workflow file (see the header comment in either).
   # ---------------------------------------------------------------------------
+  # suite-server-tests (server/__tests__ as a class, T-8/T-9) lives in
+  # .github/workflows/suite-server-tests.yml: it boots the production bundle with
+  # ALLOW_TEST_ACCOUNTS=1, which `scripts/check-env-allowlist.cjs` (c) forbids in this
+  # deploy-targeting file (ledger 2026-09-16-ci-main-red-repairs). Do not move it back.

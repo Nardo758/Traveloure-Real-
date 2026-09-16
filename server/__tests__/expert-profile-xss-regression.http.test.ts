@@ -10,10 +10,16 @@
  * Transport: real HTTP against the already-running dev server (http://127.0.0.1:5000),
  * same posture as f2-verification-gate.http.test.ts / short-links-frame.http.test.ts.
  *
- * The kyoto bench fixture (kyoto-temples@traveloure.test / TestPass123!) is the
- * authenticated expert for the profile-mutation tests. Any data written to the durable
- * fixture is restored in `after`. Fresh disposable users are created only for the
- * expert-application data-URL tests; they are deleted in `after`.
+ * T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): the profile-mutation tests used to
+ * authenticate as the DURABLE kyoto bench fixture (kyoto-temples@traveloure.test), which no seed
+ * script creates — it is reconciled by K4 inside `console-sigma-kyoto-bench.http.test.ts`. On a
+ * fresh database, or in any job that does not happen to run that suite FIRST, every one of those
+ * tests died on `login failed (401)` before reaching a sanitizer. A cross-suite ordering dependency
+ * on a durable row is not a fixture; this suite now registers its OWN disposable expert through the
+ * shared `registerActorWithReadBack` helper (`server/__tests__/fixtures/registered-actor.ts`, the
+ * ONE registered-actor implementation — §18 rule 1) and inserts the one `local_expert_forms` row
+ * the profile surfaces read back. Fresh disposable users are still created for the
+ * expert-application data-URL tests; every row this file writes is deleted in `after`.
  *
  * Run solo:
  *   npx tsx --test server/__tests__/expert-profile-xss-regression.http.test.ts
@@ -21,6 +27,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { registerActorWithReadBack } from "./fixtures/registered-actor";
 
 // ── DB-write safety guard (mirrors f2-verification-gate.http.test.ts) ────────────────────
 const { Pool } = await import("pg");
@@ -54,9 +61,10 @@ async function assertDisposableDb(): Promise<void> {
 
 // ── Constants ─────────────────────────────────────────────────────────────────────────────
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
-const BENCH_EMAIL = "kyoto-temples@traveloure.test";
 const BENCH_PASSWORD = "TestPass123!";
 const RUN = crypto.randomUUID().slice(0, 8);
+/** Disposable, per-run — see the header note: NOT the durable kyoto bench. */
+const BENCH_EMAIL = `xss-reg-${RUN}-expert@t.test`;
 
 // ── State ─────────────────────────────────────────────────────────────────────────────────
 let benchCookie: string;
@@ -92,20 +100,6 @@ async function apiCall(
   });
 }
 
-async function login(email: string, password: string): Promise<{ cookie: string; userId: string }> {
-  const res = await fetch(`${BASE_URL}/api/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (res.status !== 200) {
-    assert.fail(`login failed for ${email} (${res.status}): ${await res.text()}`);
-  }
-  const body = (await res.json()) as any;
-  const cookie = res.headers.get("set-cookie")!.split(";")[0];
-  return { cookie, userId: body.user?.id ?? body.id };
-}
-
 async function register(label: string): Promise<{ cookie: string; userId: string }> {
   const email = `xss-reg-${RUN}-${label}@t.test`;
   const res = await fetch(`${BASE_URL}/api/auth/register`, {
@@ -136,14 +130,31 @@ function buildDataUrl(mime: string, byteCount: number): string {
 before(async () => {
   await assertDisposableDb();
 
-  // Login as the durable kyoto bench expert.
-  const bench = await login(BENCH_EMAIL, BENCH_PASSWORD);
+  // Register this suite's OWN expert actor. The read-back is what makes the `local_expert_forms`
+  // INSERT below safe: the register runs in the SERVER process and the insert runs here, and
+  // without it the dependent row races its owner (triage §6).
+  const bench = await registerActorWithReadBack({
+    baseUrl: BASE_URL,
+    email: BENCH_EMAIL,
+    password: BENCH_PASSWORD,
+    firstName: "XSS",
+    lastName: "Bench",
+    role: "local_expert",
+  });
   benchCookie = bench.cookie;
+  benchUserId = bench.id;
+  disposableUserIds.push(benchUserId);
 
-  // Resolve the bench user ID from the DB so we can query facts directly.
-  const row = await pool.query(`SELECT id FROM users WHERE email = $1`, [BENCH_EMAIL]);
-  assert.ok(row.rows.length > 0, "kyoto bench fixture must exist (run console-sigma-kyoto-bench first)");
-  benchUserId = row.rows[0].id;
+  // The profile surfaces read back through `local_expert_forms`; one approved row is the whole
+  // precondition. Every /api/expert/{neighborhoods,profile-notes,specializations} rail is a
+  // SELF-SERVICE prefix (server/routes.ts `EXPERT_SELF_SERVICE_PREFIXES`), so no admin lifecycle
+  // is needed to reach them — only the row they write into.
+  await pool.query(
+    `INSERT INTO local_expert_forms (id, user_id, first_name, last_name, email, city, country, status)
+     VALUES ($1, $2, 'XSS', 'Bench', $3, 'Kyoto', 'Japan', 'approved')
+     ON CONFLICT DO NOTHING`,
+    [crypto.randomUUID(), benchUserId, BENCH_EMAIL],
+  );
 
   // Save current neighborhoods, locality proof, and notes style for post-suite restoration.
   const formRow = await pool.query(

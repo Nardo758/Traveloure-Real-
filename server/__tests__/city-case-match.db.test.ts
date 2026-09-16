@@ -10,6 +10,17 @@
  * ("Kyoto"), so `/kyoto` returned an HTTP-200 but partially-EMPTY feed. The fix
  * normalizes the incoming name to canonical casing in getLocationView, and a
  * server route 301s a mis-cased page URL to the canonical casing.
+ *
+ * T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`) — WHY THIS SUITE IS SAFE TO RUN BESIDE
+ * OTHERS AND ITS NEIGHBOUR WAS NOT. `GET /api/discover/location/:city` is served from an
+ * IN-PROCESS, 5-MINUTE cache keyed `v5|<canonical city>:<country>`
+ * (`server/services/location-view.service.ts`), with every casing of one city sharing ONE entry.
+ * This suite ASSERTS THAT TWO CASINGS AGREE, so a shared cache entry is exactly the behaviour it
+ * describes and a warm cache cannot make it lie. `fp1-console-defects.db.test.ts` asserts the
+ * OPPOSITE SHAPE — that the payload contains rows it has just created — which a warm entry breaks
+ * outright, and that is why B4-b now seeds and reads a RUN-UNIQUE city of its own instead of
+ * sharing Kyoto. Neither file constrains the other's position any more; do not reintroduce a
+ * dependency on one.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";

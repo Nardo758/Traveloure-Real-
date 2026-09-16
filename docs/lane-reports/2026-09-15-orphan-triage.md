@@ -513,8 +513,8 @@ row.
 | ~~**T-5**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t4-t7-red-suites`) | **R-12 / R-13** — §6. One read-back in each fixture, plus the punchlist's own recommendation to split the pure half out first. | **2** | one DB + app job | **S** |
 | ~~**T-6**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t4-t7-red-suites`) | **The two suites LD 41 (b) overtook** (`generated-itinerary-atomicity.db`, `regenerate-booking-guard.db`) — seed an empty slip, or drive the paid rail. The ruling is settled; only the fixtures are not. | **2** | repair + wire into an existing DB job | **S** |
 | ~~**T-7**~~ ✅ **LANDED 2026-09-15 — DELETED** (ledger `2026-09-15-orphans-t4-t7-red-suites`) | **`text-sanitization.test.ts` — DELETE or rewrite.** It imports `EXPERT_LISTING_TEXT_FIELDS` from `server/utils/text-sanitizer`, which no longer exports it, and **this test is the only reference left in the tree**. A suite that cannot load is not a guard. | **1** | one decision, one file | **XS** |
-| **T-8** | **The remaining `server/__tests__` reds** — 26 fixture rows and 6 assertion rows (§5). Mostly three repeated causes: a fixture login against `ci-*`/`kyoto-*@traveloure.test` credentials the suite assumes, a fixture row inserted before its owner exists (the §6 race, several more instances), and a listing/service fixture a fresh database does not carry. | **32** | 3-5 lanes grouped **by cause, not by file** — one shared fixture helper is worth more than thirty local patches (§18 rule 1) | **L** — the real work |
-| **T-9** | **`server/__tests__` as a class.** Once T-5/T-6/T-7/T-8 are green, ONE DB + app whole-directory job closes all **157** by glob and makes the directory orphan-proof by construction, the way `unit-suite-shared` did. Do **not** do this before the reds are green: a whole-directory job cannot carry one. | **157** (of which 124 are already green today) | one job | **S once T-8 lands; impossible before** |
+| ~~**T-8**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t8-t9-server-tests-class`) | **The remaining `server/__tests__` reds** — 26 fixture rows and 6 assertion rows (§5). Mostly three repeated causes: a fixture login against `ci-*`/`kyoto-*@traveloure.test` credentials the suite assumes, a fixture row inserted before its owner exists (the §6 race, several more instances), and a listing/service fixture a fresh database does not carry. | **32** | 3-5 lanes grouped **by cause, not by file** — one shared fixture helper is worth more than thirty local patches (§18 rule 1) | **L** — the real work |
+| ~~**T-9**~~ ⚠️ **LANDED 2026-09-15, NOT COMPLETE — 2 of 238 stay orphaned** (same ledger row) | **`server/__tests__` as a class.** Once T-5/T-6/T-7/T-8 are green, ONE DB + app whole-directory job closes all **157** by glob and makes the directory orphan-proof by construction, the way `unit-suite-shared` did. Do **not** do this before the reds are green: a whole-directory job cannot carry one. | **157** (of which 124 are already green today) | one job | **S once T-8 lands; impossible before** |
 | **T-10** | **The 30 Playwright specs.** Out of this lane's scope by the brief and already classified per-spec by the 2026-09-14 lane, which RAN all 41. Its finding stands: *nothing they assert is gone; what has rotted is their EXPECTATIONS, and rewriting an expectation is a product decision.* | **30** | a product decision per spec, then wiring | **L, and gated on decisions rather than effort** |
 
 **STRUCK 2026-09-15 — T-1, T-2 and T-3 have landed** (ledger
@@ -639,3 +639,36 @@ its readers, all found by running what it proposed:
 7. **A per-test fixture trip beats a shared one now that slip emptiness is a precondition.** Under
    LD 41 (b) a suite whose tests share one trip is a suite whose tests depend on each other's
    leftovers: a commit in test 3 silently disqualifies test 4. T-8 will meet this repeatedly.
+
+**STRUCK 2026-09-15 — T-8 and T-9 have landed** (ledger `2026-09-15-orphans-t8-t9-server-tests-class`).
+Inventory **328/511 → 479/512 reachable**, baseline **183 → 33**; `server/__tests__` goes from 152
+recorded orphans to **2**. Five corrections this report owes its readers, all found by running what
+it proposed:
+
+1. **SIXTEEN of this report's 29 `server/__tests__` RED rows needed NO REPAIR.** They were RED in
+   this lane's harness and GREEN on one with a migrated database, the four `ci-*` accounts and the
+   BUILT app — among them `booking-completion-machinery`, `booking-eligibility-gates`,
+   `bundle-component-linking`, `fp3-property-room-edit`, `fp5-console-agreement`,
+   `s8-property-builder`, `service-attestations`, `service-display-options`, both
+   `service-logistics-*`, `share-link-price-redaction`, `tier2-security-audit` and
+   `expert-application-xss-sanitize` (§5 #7). The RED-FIXTURE bucket therefore over-counted real
+   work by roughly half. **Re-run before repairing.**
+2. **§5 #5 and #6 are NOT the same unresolved fixture question.** `travel-surcharge` was a stale
+   composition — ledger `2026-09-08-cart-fee-line` removed `platformFeeTotal` from the TRAVELER's
+   total — and `provider-money-hardening` was a hand-copied band-resolution rule that RULING 49 and
+   ruling 71 Step 1 had both overtaken. Neither needed a fee fixture this harness lacked; both
+   needed the test to stop restating production.
+3. **§5 #1's V-29 reproduction is half right, and the half that survives is a FIXTURE bug.** The
+   cross-trip PATCH now answers 400 as the suite expects (V-29 closed). What still failed was the
+   plancard READ, which is the gap `2026-09-15-v29-one-trip-write-resolver` states in its own
+   closing note it does not reach — and the suite reached it only because its fixture minted a trip
+   with a raw insert, skipping the `trip_collaborators` owner row every production mint writes.
+4. **A whole-directory job is unavailable here for THREE reasons, not one.** Beyond the vitest split
+   this report already recorded: `e2e-purge-fk-naming.db.test.ts`'s SUBJECT is a purge of every
+   `@traveloure.test` account — including the `ci-*` accounts three suites in the same directory log
+   in as — and two reconciliation suites assert a CLEAN platform. All three are already wired
+   elsewhere and are excluded by name.
+5. **Two suites share a five-minute in-process cache and the order decides the outcome.**
+   `fp1-console-defects` and `city-case-match` are the only suites that read
+   `GET /api/discover/location/:city` and they read the same key; reproduced deterministically in
+   both directions. `city-case-match`'s "flakiness" in §8 is that cache, not a racing row set.

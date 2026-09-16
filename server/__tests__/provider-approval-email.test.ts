@@ -16,9 +16,20 @@
  * – The admin router is imported, its route handler extracted from the stack,
  *   and called directly with mock req/res objects (bypasses isAuthenticated).
  * – storage methods are monkey-patched on the shared mutable storage object.
- * – db.select / db.insert / db.update are monkey-patched on the shared db object
- *   so internal helpers (getFullAdminUser, insertNotification, updateUserRole)
+ * – db.select / db.insert / db.update / db.transaction are monkey-patched on the shared
+ *   db object so internal helpers (getFullAdminUser, insertNotification, updateUserRole)
  *   return controlled data without touching the database.
+ *
+ * T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`) — WHY `db.transaction` IS PATCHED.
+ * Test (A) asserted the approval email fires exactly once and observed ZERO. Nothing about the
+ * email changed: `updateUserRole` (server/services/admin-query.service.ts) was made ATOMIC —
+ * "role update and audit insert commit or roll back together" — so it now runs inside
+ * `db.transaction`, which this harness never mocked. The callback therefore reached the REAL
+ * database, the `access_audit_logs` insert failed its actor foreign key on a fabricated admin id,
+ * the handler's own catch reverted and returned 500, and the send site was never reached. The
+ * suite's premise ("without touching the database") had quietly stopped being true. The tx handle
+ * is given the SAME select/insert/update mocks, so the transaction body is exercised rather than
+ * skipped — the role-transition assertion inside it still runs. No assertion in this file moved.
  * – The email service's _emailTestHooks seam captures the call params.
  */
 
@@ -47,6 +58,22 @@ function makeChain(value: unknown = null): any {
   chain.catch = (reject: any) => p.catch(reject);
   chain[Symbol.toStringTag] = 'Promise';
   return chain;
+}
+
+/**
+ * Patch `db.transaction` so the callback runs against the SAME chain mocks the caller installed on
+ * `db.select`/`db.insert`/`db.update`. Called by every test that patches those three — see the
+ * header note: `updateUserRole` runs inside a transaction, and an unmocked one reaches the real
+ * database. The body is executed, never skipped, so the role-transition check inside it still runs.
+ */
+function installTransactionMock(): void {
+  (db as any).transaction = async (fn: (tx: any) => Promise<unknown> | unknown) =>
+    fn({
+      select: (...args: unknown[]) => (db as any).select(...args),
+      insert: (...args: unknown[]) => (db as any).insert(...args),
+      update: (...args: unknown[]) => (db as any).update(...args),
+      execute: () => makeChain([]),
+    });
 }
 
 /** Finds the actual route handler (last stack entry) for the PATCH status route. */
@@ -92,6 +119,7 @@ function makeRes(): { json: (d: any) => void; status: (c: number) => any; captur
 let origDbSelect: typeof db.select;
 let origDbInsert: typeof db.insert;
 let origDbUpdate: typeof db.update;
+let origDbTransaction: typeof db.transaction;
 let origUpdateServiceProviderFormStatus: typeof storage.updateServiceProviderFormStatus;
 let origGetUser: typeof storage.getUser;
 let savedResendKey: string | undefined;
@@ -153,6 +181,7 @@ before(() => {
   origDbSelect = db.select.bind(db);
   origDbInsert = db.insert.bind(db);
   origDbUpdate = db.update.bind(db);
+  origDbTransaction = db.transaction.bind(db);
   origUpdateServiceProviderFormStatus = storage.updateServiceProviderFormStatus.bind(storage);
   origGetUser = storage.getUser.bind(storage);
 });
@@ -169,6 +198,7 @@ after(() => {
   (db as any).select = origDbSelect;
   (db as any).insert = origDbInsert;
   (db as any).update = origDbUpdate;
+  (db as any).transaction = origDbTransaction;
   storage.updateServiceProviderFormStatus = origUpdateServiceProviderFormStatus;
   storage.getUser = origGetUser;
 
@@ -181,6 +211,8 @@ afterEach(() => {
   (db as any).select = origDbSelect;
   (db as any).insert = origDbInsert;
   (db as any).update = origDbUpdate;
+  (db as any).transaction = origDbTransaction;
+  (db as any).transaction = origDbTransaction;
   storage.updateServiceProviderFormStatus = origUpdateServiceProviderFormStatus;
   storage.getUser = origGetUser;
   delete _emailTestHooks.sendProviderApplicationApprovalEmail;
@@ -200,6 +232,7 @@ describe('PATCH /api/admin/provider-applications/:id/status — approval email',
     (db as any).select = (_fields?: any) => makeChain([FAKE_ADMIN_USER]);
     (db as any).insert = (_table: any) => makeChain([]);
     (db as any).update = (_table: any) => makeChain([]);
+    installTransactionMock();
 
     storage.updateServiceProviderFormStatus = async (_id, _status, _msg) =>
       makeApprovedApplication(FAKE_PROVIDER_USER_WITH_EMAIL.id) as any;
@@ -236,6 +269,7 @@ describe('PATCH /api/admin/provider-applications/:id/status — approval email',
     (db as any).select = (_fields?: any) => makeChain([FAKE_ADMIN_USER]);
     (db as any).insert = (_table: any) => makeChain([]);
     (db as any).update = (_table: any) => makeChain([]);
+    installTransactionMock();
 
     storage.updateServiceProviderFormStatus = async () =>
       makeRejectedApplication(FAKE_PROVIDER_USER_WITH_EMAIL.id) as any;
@@ -265,6 +299,7 @@ describe('PATCH /api/admin/provider-applications/:id/status — approval email',
     (db as any).select = (_fields?: any) => makeChain([FAKE_ADMIN_USER]);
     (db as any).insert = (_table: any) => makeChain([]);
     (db as any).update = (_table: any) => makeChain([]);
+    installTransactionMock();
 
     storage.updateServiceProviderFormStatus = async () =>
       makeApprovedApplication(FAKE_PROVIDER_USER_NO_EMAIL.id) as any;
@@ -294,6 +329,7 @@ describe('PATCH /api/admin/provider-applications/:id/status — approval email',
     (db as any).select = (_fields?: any) => makeChain([FAKE_ADMIN_USER]);
     (db as any).insert = (_table: any) => makeChain([]);
     (db as any).update = (_table: any) => makeChain([]);
+    installTransactionMock();
 
     storage.updateServiceProviderFormStatus = async () =>
       makeApprovedApplication('ghost-user') as any;
@@ -322,6 +358,7 @@ describe('PATCH /api/admin/provider-applications/:id/status — approval email',
     (db as any).select = (_fields?: any) => makeChain([FAKE_ADMIN_USER]);
     (db as any).insert = (_table: any) => makeChain([]);
     (db as any).update = (_table: any) => makeChain([]);
+    installTransactionMock();
 
     storage.updateServiceProviderFormStatus = async () => expectedApp as any;
     storage.getUser = async () => FAKE_PROVIDER_USER_WITH_EMAIL as any;
