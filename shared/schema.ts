@@ -10874,6 +10874,55 @@ export const bookingRevisionRequests = pgTable("booking_revision_requests", {
 export type BookingRevisionRequest = typeof bookingRevisionRequests.$inferSelect;
 
 /**
+ * D-28 (ledger `2026-09-15-d28-d31-service-quotes`; migration 305): A CUSTOM QUOTE IS A CHILD ROW
+ * WITH AN EXPIRY. One row per OFFER between a traveler and a listing, on the `service_route_points`
+ * / `booking_revision_requests` pattern — FK -> `provider_services` ON DELETE CASCADE, UNIQUE
+ * (service_id, traveler_id, "position"). A re-quote is a NEW row with `supersededBy` stamped on the
+ * old; a row is never edited in place, so the record of what was offered and when it died survives.
+ *
+ * DECLARED HERE (table + UNIQUE + both indexes) because the deploy push is authoritative over
+ * objects this file does not carry. NO DB CHECK and NO DEFAULT on any decision-bearing column
+ * (publish-trap posture): the status vocabulary and the lifecycle reading live in
+ * `shared/service-quotes.ts`. There is deliberately NO `createInsertSchema(serviceQuotes)` — under
+ * a denylist every privileged column here (`amountCents`, `expiresAt`, `acceptedAt`,
+ * `supersededBy`, `bookingId`, `status`, `position`) would be client-settable by default (§19);
+ * the server writes them by explicit column and the two admissible bodies are the `.strict()`
+ * picks in that module.
+ *
+ * §13: `amountCents` NULL = NOT YET QUOTED, never $0.00. `expiresAt` NULL on a `requested` row =
+ * no offer yet, never "no deadline". `expired` is DERIVED (`status = 'quoted' AND expiresAt <= now`)
+ * and never stored. `bookingId` NULL on an `accepted` row is the narrow window between the claim
+ * and the stamp inside one transaction, or the failure the accept rail records — never a
+ * booking that was silently not minted.
+ */
+export const serviceQuotes = pgTable("service_quotes", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  travelerId: varchar("traveler_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based per (listing, traveler), derived server-side
+  status: varchar("status", { length: 20 }).notNull(), // app-enforced: shared/service-quotes.ts
+  amountCents: integer("amount_cents"),                 // provider-entered, integer-exact; NULL while requested
+  currency: varchar("currency", { length: 3 }),         // USD until a currency decision exists
+  requestNote: text("request_note"),                    // the traveler's words at request
+  note: text("note"),                                   // the provider's words on the offer
+  quotedBy: varchar("quoted_by").references(() => users.id, { onDelete: "set null" }),
+  quotedAt: timestamp("quoted_at"),
+  expiresAt: timestamp("expires_at"),                   // part of the accept claim's WHERE clause (§15)
+  acceptedAt: timestamp("accepted_at"),                 // written only by the atomic accept claim
+  declinedAt: timestamp("declined_at"),
+  withdrawnAt: timestamp("withdrawn_at"),
+  supersededBy: varchar("superseded_by").references((): AnyPgColumn => serviceQuotes.id, { onDelete: "set null" }),
+  bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_quotes_service_traveler_position_unique").on(table.serviceId, table.travelerId, table.position),
+  index("service_quotes_service_idx").on(table.serviceId),
+  index("service_quotes_traveler_idx").on(table.travelerId),
+]);
+export type ServiceQuote = typeof serviceQuotes.$inferSelect;
+
+/**
  * D-25 (§19): the ONE body a traveler's revision request may carry — exactly one field, and
  * `.strict()` REFUSES an unknown key rather than silently stripping it. There is deliberately no
  * `revisionsUsed`, no `position`, no `bookingId` and no status: the position is derived server-side

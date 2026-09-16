@@ -1692,4 +1692,13 @@ export const MIGRATION_FILES = [
   // HAS a CHECK, grows no value. No CHECK added or changed, so `preflight-prod-constraints.cjs`
   // needs no manifest entry.
   "304_booking_completion_declared.sql",
+  // Ledger `2026-09-15-d28-d31-service-quotes` (punchlist D-28..D-31, all option A; the D-8 ruling's
+  // columns). `service_quotes` — one row per OFFER between a traveler and a listing, FK ->
+  // provider_services ON DELETE CASCADE, UNIQUE (service_id, traveler_id, "position"), amount in
+  // CENTS, an explicit `expires_at` that is part of the accept claim's WHERE clause (§15), a
+  // `superseded_by` self-FK for the re-quote, and `booking_id` for the row acceptance mints through
+  // the EXISTING birth-rail writer (D-30). Additive, NO CHECK, NO DEFAULT on decision-bearing
+  // columns, NO BACKFILL, and DECLARED in `shared/schema.ts` in the same commit (deploy-push
+  // durability rule). Migration 304 is claimed by the parallel D-36..D-39 lane.
+  "305_service_quotes.sql",
 ] as const;

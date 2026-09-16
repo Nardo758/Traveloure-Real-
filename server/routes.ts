@@ -134,6 +134,7 @@ import { resolveOptimizerPinnedAnchor } from "./services/anchor-candidates";
 import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
 import conversationsRoutes from "./routes/conversations.routes";
+import serviceQuotesRoutes from "./routes/service-quotes.routes";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
@@ -1066,6 +1067,12 @@ export async function registerRoutes(
   // collide (that router has no POST `/api/conversations/start`).
   app.use(conversationsRoutes);
 
+  // Custom quotes — punchlist D-28..D-31 (ledger `2026-09-15-d28-d31-service-quotes`). A quote is
+  // a `service_quotes` row with an expiry; the request creates NO booking, and acceptance is an
+  // atomic claim that mints through the EXISTING birth-rail writer with the quote's amount as the
+  // server-derived total (§14/§15). Declares full `/api/...` paths; mounted without a prefix.
+  app.use(serviceQuotesRoutes);
+
   // My Itinerary routes - final itinerary view with smart sequencing
   app.use(myItineraryRoutes);
 
@@ -1865,6 +1872,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const service = await storage.getProviderServiceById(serviceId);
         if (!service) {
           return res.status(404).json({ message: "Service not found" });
+        }
+
+        // ── D-30's second half (punchlist V-22; ledger `2026-09-15-d28-d31-service-quotes`) ───────
+        // This was the FIFTH add rail, and the only one that did not refuse a listing publishing no
+        // price: `Number(service.price ?? 0)` birthed a REAL `service_bookings` row at `"0"` for
+        // every custom-quote listing, with a commission split computed off zero — the exact §13
+        // lie ("no price stated" rendered as "free") that `POST /api/bookings`, both cart add rails
+        // and `POST /api/checkout` already refuse. The ruling gives a priceless listing its own
+        // rail — a `service_quotes` row via `POST /api/services/:id/quote-requests`, and a booking
+        // ONLY at acceptance, priced off the quote — so this rail carries the SAME refusal its four
+        // siblings carry: same predicate, same sentence, same reason (§18 rule 1). A PRICED listing
+        // is untouched: for every row that passes, `Number(service.price ?? 0)` is `Number(service.price)`.
+        if (!hasPublishedPrice(service.price)) {
+          return res.status(400).json({
+            message: PRICELESS_LISTING_REFUSAL.message,
+            reason: PRICELESS_LISTING_REFUSAL.reason,
+          });
         }
 
         // Derive provider and pricing server-side — never trust client input.
