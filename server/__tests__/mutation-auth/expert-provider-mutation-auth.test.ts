@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { after, before, test } from "node:test";
+import { endpointKey } from "../../../scripts/mutation-auth/endpoint-key";
 import { eq, sql } from "drizzle-orm";
 import { users } from "@shared/models/auth";
 
@@ -37,8 +38,8 @@ const manifest = JSON.parse(fs.readFileSync(
 )) as MutationManifest;
 const scrypt = promisify(crypto.scrypt);
 
-const keyOf = (mutation: Pick<ManifestMutation, "method" | "effectivePath">) =>
-  `${mutation.method} ${mutation.effectivePath}`;
+// ONE spelling of the endpoint key (scripts/mutation-auth/endpoint-key.ts, §18 rule 1).
+const keyOf = endpointKey;
 const underRoleConsole = (pathname: string) =>
   /^\/api\/(?:expert|provider|local-expert)(?:\/|$)/.test(pathname);
 const concretePath = (template: string) => template.replace(
