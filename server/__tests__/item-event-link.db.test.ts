@@ -161,14 +161,24 @@ before(async () => {
   } as any).returning();
   experienceTypeId = et.id;
 
+  // T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): the fixture mints through
+  // `storage.createTrip` — the production door — rather than a raw `db.insert(trips)`. A raw insert
+  // skips the owner's `trip_collaborators` row, which that door writes "in the same operation that
+  // creates the trip" precisely because `getTripRole`, the READ resolver, resolves access by
+  // ASSIGNMENT and never by `trips.userId`; without it the plan's own owner is 403'd on
+  // `GET /api/trips/:id/plancard`. That is the gap the V-29 close states it does not reach
+  // (`2026-09-15-v29-one-trip-write-resolver`: "a raw-insert plan still 403s its owner on the
+  // plancard READ"). It is a real gap in the READ resolver and it is NOT papered over here — it is
+  // recorded in this lane's report; what is fixed is the FIXTURE, which was not minting a plan the
+  // way the platform mints one, so P2 was measuring the absence of a row no production mint omits.
   const mkTrip = async (label: string) => {
-    const [t] = await db.insert(trips).values({
+    const t = await storage.createTrip({
       userId,
       title: `${label} ${RUN}`,
       destination: "Kyoto, Japan",
       startDate: "2027-04-10",
       endDate: "2027-04-13",
-    } as any).returning();
+    } as any);
     return t.id;
   };
   tripId = await mkTrip("Plan under test");

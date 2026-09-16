@@ -25,6 +25,15 @@
  * Runs against the ALREADY-RUNNING dev server (the provider-office-location / service-display-options
  * posture). DISPOSABLE DB ONLY — every row created here is cleaned up in after().
  * Serialize: npx tsx --test --test-concurrency=1 server/__tests__/fp1-console-defects.db.test.ts
+ *
+ * T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`) — ORDERING CONTRACT. B4-b reads
+ * `GET /api/discover/location/Kyoto?country=Japan`, which is served from an IN-PROCESS, 5-MINUTE
+ * cache keyed by city+country (`server/services/location-view.service.ts`), and it asserts that the
+ * payload contains listings this test has just created. Any earlier read of that key — by
+ * `server/__tests__/city-case-match.db.test.ts`, the only other suite in the tree that touches the
+ * endpoint, or by a previous run of THIS file within five minutes — serves a payload minted before
+ * those rows existed, and B4-b fails. The whole-directory job in `build.yml` runs this file BEFORE
+ * city-case-match, in a step of its own, against a freshly started server. Do not reorder them.
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";

@@ -3006,6 +3006,128 @@ jobs:
       - name: Generated mutation-auth manifest is current
         run: npm run check:mutation-auth
 
+
+  suite-server-tests:
+    name: suite-server-tests (server/__tests__ as a class — DB + app)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+      JOURNEY_BASE_URL: http://127.0.0.1:5000
+      BASE_URL: http://127.0.0.1:5000
+      # `tier2-security-audit.http.test.ts` THROWS AT IMPORT without this, and
+      # without it the mutation-auth-shaped audits skip themselves — the
+      # green-but-vacuous shape triage note 3 forbids wiring.
+      TIER2_DEV_AUDIT_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table + ci-* accounts)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # 'true' here, unlike the T-4/T-5 jobs: three suites in this directory
+          # (booking-eligibility-gates, market-insights, provider-office-location)
+          # log in as ci-provider@traveloure.test, which only this seed creates.
+          seed-ci-users: 'true'
+      - name: Build production bundle
+        run: npm run build
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          EMAIL_FROM: noreply@ci.traveloure.test
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://127.0.0.1:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then echo "Server ready"; exit 0; fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"; exit 1
+      # T-9 — the `server/__tests__` CLASS. Every suite in the directory that can
+      # honestly run is named here, in four alphabetical steps so a failure points
+      # at a short list rather than at 223 files. The files are NAMED rather than
+      # globbed for one reason and it is not style: six of them must NOT run in
+      # this job, and `scripts/check-test-files-wired.cjs` cannot follow a shell
+      # substitution (`$(ls … | grep -v …)`), so an exclusion expressed that way
+      # would make the whole directory read as UNREACHABLE. The six, each with the
+      # reason, are listed at the end of this job.
+      - name: server/__tests__ 1/4 (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/admin-query-role-changes.test.ts server/__tests__/adopt-stop.db.test.ts server/__tests__/adopt-version-semantics.db.test.ts server/__tests__/advisor-conversation-context.test.ts server/__tests__/affiliate-booking-trip-link.contract.test.ts server/__tests__/affiliate-reconciliation-matching.test.ts server/__tests__/affiliate-reconciliation-token-adoption.test.ts server/__tests__/affiliate-reconciliation-travelpayouts.test.ts server/__tests__/affiliate-subid-attribution.test.ts server/__tests__/ai-draft-eligibility.test.ts server/__tests__/ai-error-sanitizer.test.ts server/__tests__/ai-json-parse.test.ts server/__tests__/ai-rate-limit-coverage.test.ts server/__tests__/audit-log-atomicity.unit.test.ts server/__tests__/authored-item-price-contract.db.test.ts server/__tests__/availability-model.db.test.ts server/__tests__/balance-payer-atomicity.db.test.ts server/__tests__/balance-payer.test.ts server/__tests__/benchmark-facts-denorm.db.test.ts server/__tests__/booking-agent-claim.db.test.ts server/__tests__/booking-agent-confirmed.db.test.ts server/__tests__/booking-ai-price-guard.test.ts server/__tests__/booking-auto-complete.db.test.ts server/__tests__/booking-birth-provenance.db.test.ts server/__tests__/booking-completion-machinery.db.test.ts server/__tests__/booking-confirm-payment-idempotency.test.ts server/__tests__/booking-decline-reason.test.ts server/__tests__/booking-eligibility-gates.db.test.ts server/__tests__/booking-fee-bootstrap-and-split-fallback.db.test.ts server/__tests__/boot-log-ordering.test.ts server/__tests__/build-info.test.ts server/__tests__/bundle-component-linking.db.test.ts server/__tests__/calendar-date-client.test.ts server/__tests__/cart-priceless-listing.http.test.ts server/__tests__/cart-quantity-admission.http.test.ts server/__tests__/cart-trip-handoff.db.test.ts server/__tests__/category-key-repair.db.test.ts server/__tests__/checkout-claim-sweep.db.test.ts server/__tests__/checkout-payment-promotion.db.test.ts server/__tests__/concierge-admin-signal.test.ts server/__tests__/confirm-honesty.test.ts server/__tests__/console-sigma-kyoto-bench.http.test.ts server/__tests__/console-sigma-lead-confirm-notify.http.test.ts server/__tests__/console-sigma-reorder-divergence.db.test.ts server/__tests__/console-sigma-workspace-machine.http.test.ts server/__tests__/contact-rails.test.ts server/__tests__/contract-stats.test.ts server/__tests__/coordination-fee-refund-guard.test.ts server/__tests__/coordination-ledger-gap-review.test.ts server/__tests__/coordination-refund-credit-release.test.ts server/__tests__/cors-allowlist.test.ts server/__tests__/custom-venues-owner-scope.test.ts server/__tests__/demand-onepager-approval.test.ts server/__tests__/demand-onepager-render.test.ts server/__tests__/demand-onepager.test.ts server/__tests__/demand-rollup.test.ts
+      - name: server/__tests__ 2/4 (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/demand-test-exclusion.test.ts server/__tests__/deposit-captured-resolution.test.ts server/__tests__/deposit-checkout.db.test.ts server/__tests__/earnings-release-idempotency.db.test.ts server/__tests__/email-outbox.test.ts server/__tests__/expert-application-content-gate.test.ts server/__tests__/expert-application-xss-sanitize.http.test.ts server/__tests__/expert-attribution-and-accept-diary.db.test.ts server/__tests__/expert-booking-request-guard.test.ts server/__tests__/expert-booking-request-rate.db.test.ts server/__tests__/expert-form-verification-strip.test.ts server/__tests__/expert-note-separation.db.test.ts server/__tests__/expert-profile-xss-regression.http.test.ts server/__tests__/expert-work-protected.test.ts server/__tests__/experts-public-projection.test.ts server/__tests__/f2-verification-gate.http.test.ts server/__tests__/fee-band-admin-guards.test.ts server/__tests__/fee-preview-entitlement.http.test.ts server/__tests__/fee-resolution-authority.db.test.ts server/__tests__/fp3-property-room-edit.db.test.ts server/__tests__/fp5-console-agreement.db.test.ts server/__tests__/fp5-payout-threshold.test.ts server/__tests__/from-state-guards.db.test.ts server/__tests__/gem-promotion.db.test.ts server/__tests__/generated-itinerary-atomicity.db.test.ts server/__tests__/generated-itinerary-normalization.test.ts server/__tests__/guest-cart-becomes-plan.http.test.ts server/__tests__/guest-invite-mailer.test.ts server/__tests__/guest-invite-send.db.test.ts server/__tests__/guest-trip-mint-responds.http.test.ts server/__tests__/hire-advisor-guards.test.ts server/__tests__/ics-calendar.test.ts server/__tests__/image-data-url-validation.test.ts server/__tests__/internal-spa-fallback-exemption.test.ts server/__tests__/item-delete-booked-guard.test.ts server/__tests__/item-event-link.db.test.ts server/__tests__/item-removed-diary.db.test.ts server/__tests__/itinerary-item-rail-unification.db.test.ts server/__tests__/journey-suite-negatives.http.test.ts server/__tests__/landing-moment-persistence.db.test.ts server/__tests__/landing-moments-prompt.test.ts server/__tests__/landing-moments.db.test.ts server/__tests__/leads-door-and-trip-read-gate.db.test.ts server/__tests__/legacy-rail-closed.test.ts server/__tests__/legacy-rail-traveler-charge.test.ts server/__tests__/market-insights.db.test.ts server/__tests__/mid-trip-purchase-versions.db.test.ts server/__tests__/mint-market-slug-invariant.test.ts server/__tests__/neighborhood-claims-copy.test.ts server/__tests__/neighborhood-claims.db.test.ts server/__tests__/occasion-drafts.db.test.ts server/__tests__/offering-activation-gate.test.ts server/__tests__/offering-archetype-fixtures.db.test.ts server/__tests__/offering-commerce-contract.test.ts server/__tests__/offering-contract-snapshot.test.ts server/__tests__/offering-type-clamp.test.ts
+      - name: server/__tests__ 3/4 (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/one-trip-write-resolver.db.test.ts server/__tests__/optimization-confirm-ownership.test.ts server/__tests__/optimization-fee-determinism.db.test.ts server/__tests__/optimize-preview-on-slip.test.ts server/__tests__/optimizer-activity-geocoder.test.ts server/__tests__/optimizer-gap-ledger.db.test.ts server/__tests__/optimizer-run-authorization.test.ts server/__tests__/optimizer-run-predicate.test.ts server/__tests__/optimizer-segmentation-bridge.test.ts server/__tests__/optimizer-variant-reconciliation.test.ts server/__tests__/parse-activity-time.test.ts server/__tests__/participant-write-rail.test.ts server/__tests__/pay-balance-idempotency.test.ts server/__tests__/payment-method-posture.test.ts server/__tests__/payout-parity-route.http.test.ts server/__tests__/payout-parity.db.test.ts server/__tests__/pending-events-drain.db.test.ts server/__tests__/pending-events.test.ts server/__tests__/plan-guest-roster.test.ts server/__tests__/plan-item-units.test.ts server/__tests__/plan-proposal-charge.db.test.ts server/__tests__/plan-proposals.db.test.ts server/__tests__/plancard-origin-exposure.test.ts server/__tests__/posting-opportunities-frame.http.test.ts server/__tests__/pricing-bundle.db.test.ts server/__tests__/privileged-field-completeness-strip.test.ts server/__tests__/proposal-apply-authorization.test.ts server/__tests__/provider-approval-email.test.ts server/__tests__/provider-money-hardening.db.test.ts server/__tests__/provider-office-location.db.test.ts server/__tests__/provider-rejection-email.test.ts server/__tests__/public-user-id.test.ts server/__tests__/publish-verification-hold.http.test.ts server/__tests__/qa2-notification-slot-durability.db.test.ts server/__tests__/rails-attribution.db.test.ts server/__tests__/ready-made-announce-marker.test.ts server/__tests__/ready-made-author-filter.http.test.ts server/__tests__/ready-made-clone-fields.db.test.ts server/__tests__/refund-retry-convergence.test.ts server/__tests__/regenerate-booking-guard.db.test.ts server/__tests__/registration-flag-gate.test.ts server/__tests__/review-moderation-atomicity.db.test.ts server/__tests__/role-audit-atomicity.db.test.ts server/__tests__/role-transition.test.ts server/__tests__/runtime-health-secrets.test.ts server/__tests__/s11-stay-booking.db.test.ts server/__tests__/s8-property-builder.db.test.ts server/__tests__/service-attestations.http.test.ts server/__tests__/service-booking-counters.db.test.ts server/__tests__/service-content-translation.http.test.ts server/__tests__/service-delete-archive.db.test.ts server/__tests__/service-delete-guard.db.test.ts server/__tests__/service-deliverable.http.test.ts server/__tests__/service-detail-traveler-representation.http.test.ts server/__tests__/service-display-options.http.test.ts server/__tests__/service-duplicate-and-tourism-fix.db.test.ts
+      - name: server/__tests__ 4/4 (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/service-logistics-capture.http.test.ts server/__tests__/service-logistics-never-clobber.http.test.ts server/__tests__/service-price-floor.test.ts server/__tests__/session-async-fields.http.test.ts server/__tests__/share-link-price-redaction.http.test.ts server/__tests__/share-money-redaction.test.ts server/__tests__/shared-cache-flush-expired.db.test.ts server/__tests__/short-links-frame.http.test.ts server/__tests__/slip-add-to-trip-targeting.db.test.ts server/__tests__/slip-grounding-matcher.test.ts server/__tests__/slip-stay-projection.db.test.ts server/__tests__/slot-units.db.test.ts server/__tests__/stay-release-all-nights.db.test.ts server/__tests__/storefront-gems-shared.db.test.ts server/__tests__/storefront-role-agnostic.http.test.ts server/__tests__/stripe-connect-reminder.test.ts server/__tests__/stripe-key-policy.test.ts server/__tests__/stripe-key-resolver.unit.test.ts server/__tests__/stripe-refs-earner-leak.http.test.ts server/__tests__/test-seed-endpoint-gate.test.ts server/__tests__/tier2-security-audit.http.test.ts server/__tests__/trailhead-t3-affiliate-matcher.test.ts server/__tests__/trailhead-t3-pass-runner.test.ts server/__tests__/trailhead-t3-provider-matcher.test.ts server/__tests__/trailhead-t4-publish-gate.test.ts server/__tests__/transport-payment-intent.db.test.ts server/__tests__/travel-surcharge.db.test.ts server/__tests__/traveler-charge-composition.test.ts server/__tests__/traveler-fee-ledger.db.test.ts server/__tests__/traveler-fee-refund.db.test.ts server/__tests__/travelpayouts-statistics.test.ts server/__tests__/travelpulse-calendar-ingest.test.ts server/__tests__/trip-advisor-row.test.ts server/__tests__/trip-card-snapshot-render.db.test.ts server/__tests__/trip-commission-band-edit.http.test.ts server/__tests__/trip-context-extraction.test.ts server/__tests__/trip-destinations.service.test.ts server/__tests__/trip-entitlement-source.db.test.ts server/__tests__/trip-entitlement.db.test.ts server/__tests__/trip-finalize.db.test.ts server/__tests__/trip-pass-suppression.db.test.ts server/__tests__/trip-pdf-render.test.ts server/__tests__/trip-segmentation.test.ts server/__tests__/trips-list-final-version.db.test.ts server/__tests__/two-surfaces-lifecycle.db.test.ts server/__tests__/unified-search.db.test.ts server/__tests__/upsell-click-payload.db.test.ts server/__tests__/user-experience-order.test.ts server/__tests__/user-experience-ownership.db.test.ts server/__tests__/user-suspension.db.test.ts server/__tests__/vendor-creator-filter.test.ts server/__tests__/vendors-read-scope.test.ts server/__tests__/websocket-auth.db.test.ts server/__tests__/wegotrip-catalog.test.ts server/__tests__/well-known-static.test.ts
+      # The two suites that read GET /api/discover/location/:city, IN THIS ORDER.
+      # That endpoint is served from an in-process 5-minute cache keyed by
+      # city+country, and both read the SAME key (Kyoto:Japan). fp1's B4-b creates
+      # three listings and then asserts the payload contains them, so a payload
+      # cached by city-case-match beforehand makes it fail — reproduced
+      # deterministically. Both files carry the same note in their headers.
+      - name: server/__tests__ location-view pair (ordered — shared 5-minute cache)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/fp1-console-defects.db.test.ts server/__tests__/city-case-match.db.test.ts
+      # The vitest files in the same directory. `tsx --test` cannot load them at
+      # all and vitest cannot run a node:test file, so a directory is only ONE
+      # runner when it happens to be — the §18d one-runner rule.
+      - name: server/__tests__ (vitest suites)
+        run: npx vitest run --root . server/__tests__/concierge-suggest-add.test.ts server/__tests__/config-completeness.test.ts server/__tests__/coordination-credit.test.ts server/__tests__/db-role-authorization.test.ts server/__tests__/egress-guard.test.ts server/__tests__/event-coordination.test.ts server/__tests__/expert-profile-xss.http.test.ts
+      # NOT RUN HERE, and each is a decision rather than an oversight:
+      #   * e2e-purge-fk-naming.db.test.ts — its SUBJECT is purgeE2EAccountsFromProd,
+      #     which neutralises EVERY @traveloure.test account. That includes the four
+      #     ci-* accounts this job's own seed creates and three suites above log in
+      #     as, and the listings those accounts own cascade away with them. It keeps
+      #     its own isolated job (.github/workflows/e2e-purge-gate.yml).
+      #   * reconciliation-detection.db.test.ts and reconciliation-run-tallies.db.test.ts —
+      #     both assert that a CLEAN platform yields ZERO drift exceptions, which no
+      #     suite sharing a database with 230 others can honestly claim. Already
+      #     wired in their own jobs.
+      #   * checkout-oneclick.stripe.db.test.ts — skips all 3 tests without a real
+      #     Stripe test key. Already wired (journey-suite.yml); running it here
+      #     would add a vacuous pass, not coverage.
+      #   * deposit-cancel.db.test.ts — 5 tests, 5 SKIPPED without a real Stripe test
+      #     key. STILL AN ORPHAN, deliberately: wiring a suite a job cannot execute
+      #     satisfies the inventory and protects nothing.
+      #   * deliverable-protected-rail.http.test.ts — needs the app started with
+      #     OBJECT_STORAGE_DRIVER=memory, and that test driver is refused when
+      #     NODE_ENV=production (server/infrastructure/object-storage.ts). A
+      #     production-bundle job cannot satisfy it BY CONSTRUCTION. STILL AN ORPHAN.
+
   suite-ai-draft-and-availability:
     name: suite-ai-draft-and-availability (R-12/R-13 + the two LD 41 (b) suites — DB + app)
     runs-on: ubuntu-latest
