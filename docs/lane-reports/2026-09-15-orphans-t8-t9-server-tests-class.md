@@ -222,7 +222,7 @@ built from **empty** (302/302 migrations), `create-sessions-table`, `seed-ci-tes
 |---|---|
 | `node scripts/check-test-files-wired.cjs` | `481/514 reachable; 33 orphan(s)`, `test-orphan-ratchet: OK` |
 | `node scripts/check-test-files-wired.cjs --self-test` | `12/12 fixtures` |
-| the job's own `run:` lines, from an EMPTY database | see §7 |
+| the job's own `run:` lines, from an EMPTY database | **all five steps exit 0** — node:test **2009 pass / 0 fail / 5 skipped**, vitest **7 files, 118 pass**. The 5 skips are the three `journey-suite-negatives` cases and the two `wegotrip-catalog` cases that skip by their own design, not whole suites. |
 | `npx tsc --noEmit -p tsconfig.json \| grep -c "error TS"` | **129** (baseline) |
 | `npm run build` | exit 0 |
 | `node scripts/check-decision-guards.cjs` | OK |
