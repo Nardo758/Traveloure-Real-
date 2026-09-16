@@ -62,6 +62,69 @@ export interface BundleComponentView {
   status: string;
   /** Integer cents snapshotted at purchase; NULL = not captured (a pre-D-33 row). */
   snapshotPriceCents: number | null;
+  /**
+   * D-51 (ledger `2026-09-16-bundle-partial-settlement`): the component's purchase-time GROSS
+   * ALLOCATION — its pro-rata share of the bundle's pre-fee price (`total_amount`), largest-remainder
+   * rounded so the bundle's allocations sum EXACTLY. The CONTRACT fact; `snapshotPriceCents` stays the
+   * CATALOG fact. NULL/absent = not captured (a pre-307 row, or an unpriced snapshot) — never 0.
+   */
+  allocationCents?: number | null;
+}
+
+/**
+ * D-51 — THE ALLOCATION, derived ONCE at birth. Given each component's snapshot price in cents and the
+ * bundle's pre-fee purchase price in cents, returns each component's nonnegative integer allocation
+ * such that Σ allocation === totalCents EXACTLY, by pro-rata share with LARGEST-REMAINDER rounding:
+ * every share is floored, then the leftover cents (always fewer than the component count) go one each
+ * to the largest fractional remainders, ties broken by POSITION (earlier first) — so the result is
+ * deterministic for a given snapshot and a re-run reproduces it byte for byte.
+ *
+ * Returns NULL — NOT CAPTURED (§13) — when any price is missing or negative, when the prices sum to 0
+ * (no share can be derived, and an equal split would be an invented fact), or when the total is not a
+ * nonnegative integer. NULL is never rendered as "free" and blocks partial settlement.
+ */
+export function allocateBundleCents(
+  priceCents: ReadonlyArray<number | null | undefined>,
+  totalCents: number,
+): number[] | null {
+  if (priceCents.length === 0) return null;
+  if (!Number.isInteger(totalCents) || totalCents < 0) return null;
+  if (priceCents.some((p) => !Number.isInteger(p) || (p as number) < 0)) return null;
+  const prices = priceCents as number[];
+  const sum = prices.reduce((s, p) => s + p, 0);
+  if (sum <= 0) return null;
+  const exact = prices.map((p) => (p * totalCents) / sum);
+  const floors = exact.map((x) => Math.floor(x));
+  let remainder = totalCents - floors.reduce((s, f) => s + f, 0);
+  const order = exact
+    .map((x, i) => ({ i, frac: x - Math.floor(x) }))
+    .sort((a, b) => (b.frac !== a.frac ? b.frac - a.frac : a.i - b.i));
+  for (const { i } of order) {
+    if (remainder <= 0) break;
+    floors[i] += 1;
+    remainder -= 1;
+  }
+  return floors;
+}
+
+/**
+ * True when EVERY component carries an allocation and they sum EXACTLY to the price — the only state
+ * in which the allocation may be read as the contract fact. A partial set, a negative, or a set that
+ * does not sum (a rewritten `total_amount`, which §17 forbids) reads as NOT CAPTURED.
+ */
+export function allocationsAreComplete(
+  components: readonly BundleComponentView[],
+  totalCents: number,
+): boolean {
+  if (components.length === 0) return false;
+  if (!Number.isInteger(totalCents) || totalCents < 0) return false;
+  let sum = 0;
+  for (const c of components) {
+    const a = c.allocationCents;
+    if (!Number.isInteger(a) || (a as number) < 0) return false;
+    sum += a as number;
+  }
+  return sum === totalCents;
 }
 
 /**
@@ -109,9 +172,18 @@ export function deriveBundleOutcome(components: readonly BundleComponentView[]):
 /** Two-decimal money as the row stores it — a string, never a float that drifts. */
 const money2 = (n: number): string => (Math.round(n * 100) / 100).toFixed(2);
 
+/**
+ * D-51: WHICH fact the reduction read. `allocation` — every component carries `allocationCents` and
+ * they sum to the price, so the kept gross is Σ delivered allocations EXACTLY (the contract fact);
+ * `snapshot_pro_rata` — the D-35 fallback over `snapshotPriceCents` for rows born before migration 307.
+ * The mint names it in `mintBasis`, so a reader can tell which a historical row was reduced by (§13).
+ */
+export type ReducedBundleBasis = "allocation" | "snapshot_pro_rata";
+
 export type ReducedBundleFigures =
   | {
       ok: true;
+      basis: ReducedBundleBasis;
       /** Fraction of the snapshotted component value that WAS delivered, in [0,1]. */
       keptFraction: number;
       /** The mint's figures, as strings in the row's own 2-decimal shape. */
@@ -121,8 +193,9 @@ export type ReducedBundleFigures =
       /** The share of what the traveler was charged that the undelivered components represent. */
       deductedAmount: string;
       undeliveredComponentIds: string[];
-      undeliveredSnapshotCents: number;
-      totalSnapshotCents: number;
+      /** Snapshot (catalog) sums when every component carries one; NULL = not captured, never 0 (§13). */
+      undeliveredSnapshotCents: number | null;
+      totalSnapshotCents: number | null;
     }
   | {
       ok: false;
@@ -161,19 +234,53 @@ export function reducedBundleFigures(input: {
 }): ReducedBundleFigures {
   const undelivered = input.components.filter((c) => BUNDLE_COMPONENT_UNDELIVERED_STATUSES.includes(c.status));
   if (undelivered.length === 0) return { ok: false, reason: "nothing_undelivered" };
-  if (input.components.some((c) => !Number.isInteger(c.snapshotPriceCents) || (c.snapshotPriceCents as number) < 0)) {
-    return { ok: false, reason: "component_price_unknown" };
-  }
-  const totalSnapshotCents = input.components.reduce((s, c) => s + (c.snapshotPriceCents as number), 0);
-  if (totalSnapshotCents <= 0) return { ok: false, reason: "zero_priced_bundle" };
-  const undeliveredSnapshotCents = undelivered.reduce((s, c) => s + (c.snapshotPriceCents as number), 0);
-  const keptFraction = Math.min(Math.max(1 - undeliveredSnapshotCents / totalSnapshotCents, 0), 1);
 
   const total = Number(input.totalAmount ?? 0) || 0;
   const fee = Number(input.platformFee ?? 0) || 0;
   const earnings = Number(input.providerEarnings ?? 0) || 0;
+  const snapshotKnown = input.components.every(
+    (c) => Number.isInteger(c.snapshotPriceCents) && (c.snapshotPriceCents as number) >= 0,
+  );
+  const totalSnapshotCents = snapshotKnown
+    ? input.components.reduce((s, c) => s + (c.snapshotPriceCents as number), 0)
+    : null;
+  const undeliveredSnapshotCents = snapshotKnown
+    ? undelivered.reduce((s, c) => s + (c.snapshotPriceCents as number), 0)
+    : null;
+
+  // ── D-51 (ledger `2026-09-16-bundle-partial-settlement`): THE ALLOCATION IS READ FIRST. When every
+  // component carries `allocationCents` and they sum EXACTLY to the price, the kept gross is Σ delivered
+  // allocations to the cent — the contract fact — and the kept FRACTION scales the row's own purchase-
+  // time `platform_fee` / `provider_earnings` (the ORIGINAL commission, never re-resolved). ───────────
+  const totalCents = Math.round(total * 100);
+  if (totalCents > 0 && allocationsAreComplete(input.components, totalCents)) {
+    const undeliveredAllocationCents = undelivered.reduce((s, c) => s + (c.allocationCents as number), 0);
+    const keptCents = totalCents - undeliveredAllocationCents;
+    const keptFraction = Math.min(Math.max(keptCents / totalCents, 0), 1);
+    return {
+      ok: true,
+      basis: "allocation",
+      keptFraction,
+      grossAmount: money2(keptCents / 100),
+      platformFee: money2(fee * keptFraction),
+      providerEarnings: money2(earnings * keptFraction),
+      deductedAmount: money2(undeliveredAllocationCents / 100),
+      undeliveredComponentIds: undelivered.map((c) => c.componentServiceId),
+      undeliveredSnapshotCents,
+      totalSnapshotCents,
+    };
+  }
+
+  // ── D-35 fallback: pro-rata over the SNAPSHOT prices, for rows born before migration 307. ──────────
+  if (!snapshotKnown) return { ok: false, reason: "component_price_unknown" };
+  if ((totalSnapshotCents as number) <= 0) return { ok: false, reason: "zero_priced_bundle" };
+  const keptFraction = Math.min(
+    Math.max(1 - (undeliveredSnapshotCents as number) / (totalSnapshotCents as number), 0),
+    1,
+  );
   return {
     ok: true,
+    basis: "snapshot_pro_rata",
     keptFraction,
     grossAmount: money2(total * keptFraction),
     platformFee: money2(fee * keptFraction),

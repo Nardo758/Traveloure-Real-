@@ -112,6 +112,12 @@ import {
   readBundleComponentStates,
   type ComponentStateSource,
 } from "./bundle-component-states.service";
+// D-51 (ledger `2026-09-16-bundle-partial-settlement`): the MONEY LEG of a partial settlement — the
+// claim, the one Stripe refund and the promote. Sits BELOW this module in the import graph.
+import {
+  issueBundlePartialSettlement,
+  type BundlePartialSettlementResult,
+} from "./bundle-partial-settlement.service";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
 import { storage } from "../storage";
 
@@ -1058,6 +1064,8 @@ export async function recordBundleComponentCompletion(input: {
     unknownComponent?: boolean;
     /** D-32: this call found the component already out of `pending` — a retry, not a second delivery. */
     alreadyRecorded?: boolean;
+    /** D-51: the money leg's NAMED result when a partial settlement was attempted on this call. */
+    settlement?: BundlePartialSettlementResult | null;
     /** D-34: the parent moved to `partially_completed` (and minted the reduced figures) on this call. */
     partiallyCompleted?: boolean;
     componentStateSource?: ComponentStateSource;
@@ -1142,14 +1150,18 @@ export async function recordBundleComponentCompletion(input: {
   // bundle is refused there (`bundle_partially_completed`) and handed to the settle path here.
   const result = await completeBooking({ bookingId: input.bookingId, actor: input.actor, now });
   if (!result.completed && result.reason === "bundle_partially_completed") {
-    const settled = await settleBundlePartialCompletion({ bookingId: input.bookingId, actor: input.actor, now });
+    // D-51: the ONE settlement entry — the flip + reduced mint, then the money leg (claim → Stripe →
+    // promote). Never a Stripe call from a single component's flip: this runs only once the derivation
+    // says every component is conclusive.
+    const settled = await settleBundlePartially({ bookingId: input.bookingId, actor: input.actor, now });
     return {
       ...result,
       reason: settled.settled ? undefined : settled.reason,
       evidence: settled.evidence,
       recorded: true,
       alreadyRecorded,
-      partiallyCompleted: settled.settled,
+      partiallyCompleted: settled.flipped,
+      settlement: settled.settlement,
       componentStateSource: source,
     };
   }
@@ -1170,6 +1182,8 @@ export interface BundleComponentFailureResult {
   alreadyRecorded?: boolean;
   /** The parent moved to `partially_completed` (and minted the reduced figures) on this call. */
   partiallyCompleted: boolean;
+  /** D-51: the money leg's NAMED result when a partial settlement was attempted on this call. */
+  settlement?: BundlePartialSettlementResult | null;
   /**
    * `all_undelivered`: every component has now failed. Nothing flips — the EXISTING whole-row refund
    * rail owns that case (brief §2) — and the caller is told so rather than left to infer it.
@@ -1269,11 +1283,13 @@ export async function recordBundleComponentFailure(input: {
   const post = await resolveCompletionEligibility(input.bookingId, now);
   const outcome = (post.evidence as any).outcome as string | undefined;
   if (post.reason === "bundle_partially_completed") {
-    const settled = await settleBundlePartialCompletion({ bookingId: input.bookingId, actor: input.actor, now });
+    // D-51: the ONE settlement entry (flip + reduced mint, then claim → Stripe → promote).
+    const settled = await settleBundlePartially({ bookingId: input.bookingId, actor: input.actor, now });
     return {
       recorded: true,
       alreadyRecorded,
-      partiallyCompleted: settled.settled,
+      partiallyCompleted: settled.flipped,
+      settlement: settled.settlement,
       bookingId: input.bookingId,
       rule: pre.rule,
       reason: settled.settled ? undefined : settled.reason,
@@ -1431,6 +1447,64 @@ export async function settleBundlePartialCompletion(input: {
   }
 
   return { settled: true, bookingId: input.bookingId, evidence };
+}
+
+export interface SettleBundlePartiallyResult extends SettleBundlePartialResult {
+  /** The `confirmed → partially_completed` flip (and its reduced mint) landed on THIS call. */
+  flipped: boolean;
+  /**
+   * D-51: the MONEY LEG's result — the settlement claim, the Stripe refund and the promote — or null
+   * when the parent never reached `partially_completed` and there was nothing to settle.
+   */
+  settlement: BundlePartialSettlementResult | null;
+}
+
+/**
+ * D-51 (ledger `2026-09-16-bundle-partial-settlement`) — THE ONE SETTLEMENT ENTRY. Two legs, in order:
+ *
+ *   1. the D-34 flip + D-35 reduced mint (`settleBundlePartialCompletion`, unchanged) — skipped when the
+ *      row is ALREADY `partially_completed` (a retry, or the sweep re-driving a row whose money leg the
+ *      process died on);
+ *   2. the money leg (`issueBundlePartialSettlement`): CLAIM the `bundle_partial_settlements` row →
+ *      ONE Stripe refund of the traveler's share through the shared issuer → PROMOTE.
+ *
+ * Called from the two component recorders exactly where the flip fired before — i.e. only once the ONE
+ * derivation says every component is conclusive and at least one failed — and from nowhere else. The
+ * nightly sweep (`sweepUnsettledBundlePartials`) drives leg 2 directly for rows the flip already moved.
+ * Leg 2 never throws for a money reason: its result is NAMED on the response (§13), and a Stripe
+ * failure leaves a reclaimable claim, never a rolled-back mint.
+ */
+export async function settleBundlePartially(input: {
+  bookingId: string;
+  actor: CompletionActor;
+  now?: Date;
+}): Promise<SettleBundlePartiallyResult> {
+  const now = input.now ?? new Date();
+  const booking = await loadBooking(input.bookingId);
+  if (!booking) {
+    return { settled: false, flipped: false, bookingId: input.bookingId, reason: "booking_not_found", evidence: {}, settlement: null };
+  }
+  let flip: SettleBundlePartialResult;
+  let flipped = false;
+  if (booking.status === PARTIALLY_COMPLETED_STATUS) {
+    flip = { settled: true, bookingId: input.bookingId, evidence: { alreadyPartiallyCompleted: true } };
+  } else {
+    flip = await settleBundlePartialCompletion({ bookingId: input.bookingId, actor: input.actor, now });
+    if (flip.settled) {
+      flipped = true;
+    } else if (flip.reason === "lost_race") {
+      // A concurrent caller won the flip. If the row is now `partially_completed`, the money leg is
+      // still owed and is idempotent — run it so both callers converge on the one settlement rather
+      // than leaving it to the sweep. Any other refusal is returned as-is with nothing to settle.
+      const after = await loadBooking(input.bookingId);
+      if (after?.status !== PARTIALLY_COMPLETED_STATUS) return { ...flip, flipped: false, settlement: null };
+      flip = { settled: true, bookingId: input.bookingId, evidence: { ...flip.evidence, lostFlipRace: true } };
+    } else {
+      return { ...flip, flipped: false, settlement: null };
+    }
+  }
+  const settlement = await issueBundlePartialSettlement({ bookingId: input.bookingId, now, actor: input.actor });
+  return { ...flip, flipped, settlement };
 }
 
 /**
