@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
+import { endpointKey, groupByEndpoint, uniqueEndpointKeys } from "../../../scripts/mutation-auth/endpoint-key";
 
 type Method = "POST" | "PUT" | "PATCH" | "DELETE";
 type Boundary = "admin-role" | "session-self" | "resource-owner" | "signature" | "public-or-system";
@@ -40,8 +41,8 @@ const BASE_URL = process.env.BASE_URL ?? "http://127.0.0.1:5000";
 const MANIFEST_PATH = path.join(process.cwd(), "generated/security/mutation-auth-manifest.json");
 const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8")) as MutationManifest;
 
-const endpointKey = (mutation: Pick<ManifestMutation, "method" | "effectivePath">) =>
-  `${mutation.method} ${mutation.effectivePath}`;
+// `endpointKey` is the generator's own spelling (scripts/mutation-auth/endpoint-key.ts) — ONE
+// implementation, so this audit and the manifest cannot disagree about what an endpoint is.
 
 // These endpoints reject a request that omits Stripe-Signature before invoking
 // their webhook processors. Keep exact statuses so a changed rejection is
@@ -101,16 +102,48 @@ function emitEvidence(evidence: Record<string, unknown>): void {
 }
 
 test("generated manifest has a complete, deduplicated non-admin payment and user-data audit scope", () => {
-  const allKeys = new Set(manifest.mutations.map(endpointKey));
+  // The expected unique-endpoint count is DERIVED from the checked-in manifest's own rows with
+  // the generator's own key — never written here as a literal. A hand-copied `575` pinned this
+  // suite red on main the moment three rails landed and the generator honestly wrote 578: the
+  // literal was a derivative of the file it was checking (§18 rule 1, ledger
+  // `2026-09-16-ci-manifest-pin-role-auth-mock`). What the pin MEANT survives below: the file
+  // is internally consistent, deduplicated, and the audit scope covers every endpoint it should.
+  const derivedKeys = uniqueEndpointKeys(manifest.mutations);
+  assert.ok(derivedKeys.size > 0, "checked-in manifest must name at least one endpoint");
   assert.equal(
     manifest.uniqueMethodNormalizedPathCount,
-    575,
-    "this audit is pinned to the checked-in 575-endpoint generated manifest",
+    derivedKeys.size,
+    "the manifest's recorded unique-endpoint count must equal the count derived from its own rows",
   );
+
+  // Dedup: exactly one effective row per endpoint in the audit scope, every one a manifest endpoint.
+  const scopeKeys = uniqueNonAdminPaymentsAndUserData.map(endpointKey);
   assert.equal(
-    allKeys.size,
-    manifest.uniqueMethodNormalizedPathCount,
-    "checked-in manifest must contain exactly one effective row per endpoint",
+    new Set(scopeKeys).size,
+    scopeKeys.length,
+    "audit scope must contain exactly one effective row per endpoint",
+  );
+  for (const key of scopeKeys) {
+    assert.ok(derivedKeys.has(key), `${key} is in the audit scope but is not a manifest endpoint`);
+  }
+
+  // Coverage: the scope is EVERY manifest endpoint whose classifying (first) registration is
+  // non-admin payments or user-data — the same first-registration rule the generator applies.
+  const expectedScope = new Set(
+    [...groupByEndpoint(manifest.mutations)]
+      .filter(([, registrations]) => {
+        const first = registrations[0];
+        return (
+          (first.risk === "payments" || first.risk === "user-data") &&
+          first.expectedBoundary !== "admin-role"
+        );
+      })
+      .map(([key]) => key),
+  );
+  assert.deepEqual(
+    new Set(scopeKeys),
+    expectedScope,
+    "audit scope must cover every non-admin payment and user-data endpoint in the manifest",
   );
   assert.ok(uniqueNonAdminPaymentsAndUserData.length > 0, "audit scope must not be empty");
   assert.ok(probes.length > 0, "authorization-required probe scope must not be empty");
