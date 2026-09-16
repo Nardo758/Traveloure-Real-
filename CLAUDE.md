@@ -1593,6 +1593,45 @@ This document captures architectural decisions to maintain consistency across co
     protected expert work is REFUSED with the item ids, never skipped (D3). The Ask-AI drawer UI and
     the CREATE rail are the lane that follows; nothing produces a proposal outside tests yet.
 
+46. **AN ARTIFACT IS ACCEPTED, NOT TIMED OUT; A REVISION IS A ROW; AND A HYBRID MAY DECLARE ONE ARTIFACT
+    WITHOUT MOVING ITS MONEY (decision-maker ratified Sep 15, 2026 — punchlist D-24/D-25/D-26/D-40, all
+    option A, and D-27 (7 days); ledger `2026-09-15-d24-d26-acceptance-columns`, migration 303, and
+    `2026-09-15-d27-artifact-timer-acceptance-prompt`).** `service_bookings.accepted_at` records the
+    traveler's ANSWER where `completed_at` records the money event, and **the acceptance deadline is
+    DERIVED** from the per-booking `service_bookings.delivered_at` plus `acceptanceWindowDays()` (config,
+    default 7, env-overridable) and **never stored** — a stored end date is a second authority that
+    disagrees with the config the moment it moves. Delivery is **PER BOOKING** (`delivered_at` +
+    `deliverable_file`, the listing's `service_file` as the honest fallback with the reader saying which it
+    served), because a listing-level artifact means a revision for one traveler rewrites the file every
+    other buyer downloads. A revision is a **CHILD ROW** (`booking_revision_requests`, FK CASCADE,
+    `UNIQUE (booking_id, "position")`) whose **count is DERIVED and never stored**, with **no
+    `revision_status` mirror**; the allowance is the listing's own `revisions_included`, **read on every
+    decision and never copied onto the booking**, and a request beyond it is refused **with the number
+    stated and is never a dispute**. Acceptance completes through the **EXISTING `completeBooking` as a
+    new CALLER** (`traveler_accepted`) over its own atomic conditional — **no second minting path**, and
+    `awaiting_acceptance` is deliberately kept out of `COMPLETION_ALLOWED_FROM_STATUSES` because that list
+    is also the timer's candidate predicate. **`provider_services.declared_artifact_deliverable` lets a
+    `hybrid` listing declare ONE artifact that takes acceptance on its own while the booking keeps D-7
+    completion: accepting or revising it GATES NOTHING about completion or the mint.** All columns
+    additive-nullable, NO DEFAULT, NO CHECK, declared in `shared/schema.ts`, no backfill; the two new
+    `status` values are app-enforced (LD 44(e)). **§13: NULL = never accepted / never delivered / no
+    per-booking artifact / not declared, each OMITTED — never "not accepted", never "no artifact", never
+    "0 revisions remaining" beside a button that refuses; an undated booking is on NO acceptance clock and
+    says so.**
+    **`artifact_timer` IS AN ACCEPTANCE-PROMPT RULE, NEVER A COMPLETION RULE (D-27; no migration).** A
+    clock may never complete an artifact booking in the seller's favour: the nightly job ASKS
+    (`confirmed → awaiting_acceptance` once a delivery instant exists) and ESCALATES
+    (`awaiting_acceptance → disputed`, system reason `acceptance_window_elapsed`, after
+    `acceptanceWindowDays()` — CONFIG, default 7) into the **EXISTING** admin dispute queue through **the
+    ONE dispute writer**; never a second queue and never an `admin_review` status. Only the traveler's
+    acceptance, or a human resolving that dispute, completes an artifact and mints its held earning. The
+    delivery instant is ONE derivation stated with its source (`per_booking` | `listing_clock`), and a
+    derived listing-clock instant is **never written back to `delivered_at`**. The payment verification
+    sits on the ASK, because opening the acceptance rail on an unpaid booking would hand the traveler a
+    button that mints. **NULL = no instant ⇒ the booking is skipped with `no_delivery_timestamp` and never
+    put on a clock (§13)**, and rows completed under the old timer are never rewritten. Left for later
+    lanes, named: brief §7 lane 4 (every surface), and the refund on a rejected artifact, still UNRULED.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs
