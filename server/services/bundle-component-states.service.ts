@@ -27,6 +27,7 @@ import { db } from "../db";
 import { bookingComponentStates, bundleComponents } from "@shared/schema";
 import {
   BUNDLE_COMPONENT_STATUS,
+  allocateBundleCents,
   snapshotPriceCentsOf,
   type BundleComponentView,
 } from "@shared/bundle-component-states";
@@ -55,12 +56,25 @@ export async function bornBundleComponentRows(
   exec: Executor,
   bookingId: string,
   snapshot: readonly unknown[],
+  /**
+   * D-51 (ledger `2026-09-16-bundle-partial-settlement`): the bundle's PRE-FEE purchase price in
+   * integer cents — the row's own `total_amount` — from which each component's `allocation_cents` is
+   * derived ONCE, here, by `allocateBundleCents` (pro-rata over the snapshot prices, largest-remainder
+   * rounded so the allocations sum EXACTLY). NULL/absent ⇒ allocations NOT CAPTURED (§13), never
+   * guessed; so is any snapshot with an unpriced component.
+   */
+  totalAmountCents?: number | null,
 ): Promise<number> {
-  const values = snapshot
+  const seen = new Set<string>();
+  const entries = snapshot
     .map((entry, position) => {
       const e = entry as BundleSnapshotEntry | null;
       const componentServiceId = typeof e?.id === "string" ? e.id.trim() : "";
       if (!componentServiceId) return null;
+      // A duplicate id inside one snapshot lands ONE row (the UNIQUE below); the allocation is derived
+      // over the DEDUPED list so the surviving rows still sum exactly to the price.
+      if (seen.has(componentServiceId)) return null;
+      seen.add(componentServiceId);
       return {
         bookingId,
         componentServiceId,
@@ -71,6 +85,14 @@ export async function bornBundleComponentRows(
       };
     })
     .filter((v): v is NonNullable<typeof v> => v !== null);
+  const allocations =
+    typeof totalAmountCents === "number"
+      ? allocateBundleCents(entries.map((v) => v.snapshotPriceCents), totalAmountCents)
+      : null;
+  const values = entries.map((v, i) => ({
+    ...v,
+    allocationCents: allocations ? allocations[i] : null, // null = not captured, never 0 (§13)
+  }));
   if (values.length === 0) return 0;
   const inserted = await exec
     .insert(bookingComponentStates)
@@ -120,6 +142,7 @@ export async function readBundleComponentStates(input: {
         componentServiceId: r.componentServiceId,
         status: r.status,
         snapshotPriceCents: r.snapshotPriceCents ?? null,
+        allocationCents: r.allocationCents ?? null, // D-51: the contract fact; null = not captured
         serviceName: r.serviceName ?? null,
         position: r.position ?? null,
       })),

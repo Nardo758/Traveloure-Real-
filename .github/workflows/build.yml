@@ -1736,6 +1736,22 @@ jobs:
       # this `npm ci` job because it imports `@shared/` (the #812 lesson).
       - name: The one bundle derivation (B-P1-B-P6)
         run: npx tsx --test --test-force-exit shared/__tests__/bundle-component-states.test.ts
+      # D-51 PARTIAL SETTLEMENT (ledger 2026-09-16-bundle-partial-settlement; migration 307). The
+      # composer births `allocation_cents` that sum EXACTLY to total_amount (S1); the settlement is ONE
+      # reduced mint + ONE Stripe refund at the undelivered allocation plus the same share of every
+      # traveler-paid fee, under the `bundle-settle-<id>` key, ONE refunds row, and the booking STAYS
+      # partially_completed with no reversal rows (S2); a retry is alreadySettled (S3); two concurrent
+      # callers produce one Stripe call (S4); a Stripe failure leaves a reclaimable claim that the sweep
+      # re-drives past the TTL and nobody re-drives inside it (S5); the charge.refunded webhook promotes
+      # once and a redelivery matches zero rows (S6); repricing after purchase moves nothing (S7); no
+      # PaymentIntent ⇒ custody unknown ⇒ refused (S8); cancelled refuses, failed settles (S9); a pre-307
+      # row mints by snapshot pro-rata and cannot settle (S10). Stripe.refunds.create is stubbed.
+      - name: The bundle partial settlement (S1-S10)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/bundle-partial-settlement.db.test.ts
+      # The PURE layer beside it: the allocation arithmetic, the basis the mint reads, the ONE settlement
+      # derivation. No DB — wired in this `npm ci` job because it imports `@shared/` (the #812 lesson).
+      - name: The one settlement derivation (SP1-SP8)
+        run: npx tsx --test --test-force-exit shared/__tests__/bundle-partial-settlement.test.ts
 
   plan-proposals:
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)

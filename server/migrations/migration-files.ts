@@ -1711,4 +1711,14 @@ export const MIGRATION_FILES = [
   // status` value `partially_completed` (D-34) needs no migration — `varchar(30)`, no CHECK, the
   // LD 44(e) posture. No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no entry.
   "306_booking_component_states.sql",
+  // 307 (D-51; ledger `2026-09-16-bundle-partial-settlement`): A PARTIALLY FULFILLED BUNDLE SETTLES
+  // ONCE BY ITS PURCHASE-TIME COMPONENT ALLOCATION. Additive nullable `booking_component_states.
+  // allocation_cents` (the contract fact beside D-33's catalog fact — pro-rata of `total_amount`,
+  // largest-remainder rounded to sum EXACTLY, written once at birth, NULL = not captured) and ONE
+  // new table `bundle_partial_settlements` (UNIQUE (booking_id) = the §15 claim; `settled_at IS
+  // NULL` = claimed-but-unpromoted, TTL-reclaimed; amounts pinned at claim). NO DEFAULT on any
+  // decision-bearing column, NO CHECK, NO BACKFILL; DECLARED in `shared/schema.ts` in the same
+  // commit (deploy-push durability rule). No CHECK added or changed, so
+  // `preflight-prod-constraints.cjs` needs no entry.
+  "307_bundle_partial_settlements.sql",
 ] as const;
