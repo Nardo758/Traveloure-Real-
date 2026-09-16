@@ -153,14 +153,18 @@ themselves.
    `reconciliation-run-tallies.db` assert zero drift exceptions and a clean run row — a claim no
    suite sharing a database with 230 others can honestly make. Excluded; their own jobs are the
    right shape.
-3. **Two suites share a 5-minute in-process cache and the order matters.**
-   `GET /api/discover/location/:city` is served from `locationViewCache`, keyed
+3. **Two suites share a 5-minute in-process cache, the order matters, and the pair must run
+   FIRST.** `GET /api/discover/location/:city` is served from `locationViewCache`, keyed
    `v5|<canonical city>:<country>`, with every casing of one city sharing ONE entry.
-   `city-case-match.db` and `fp1-console-defects.db` are the only two suites in the tree that read
-   that endpoint and they read the same key. fp1's B4-b creates three listings and then asserts the
-   payload contains them, so a payload cached beforehand makes it fail — **reproduced
-   deterministically**, twice, in both orders. They run in their own step, fp1 first, and **both
-   files carry the contract in their headers** so a later reorder is a deliberate act.
+   `city-case-match.db` and `fp1-console-defects.db` are the only two suites that read that URL, and
+   they read the same key. fp1's B4-b creates three listings and then asserts the payload contains
+   them, so a payload cached beforehand makes it fail — **reproduced deterministically**, in both
+   orders. **A second measurement corrected the first fix:** running the ordered pair AFTER the four
+   alphabetical steps still failed B4-b, because the URL grep only finds suites that fetch the
+   endpoint directly and the same view is resolved behind other surfaces (the landing feed's own
+   comment says it *"can never disagree with /discover/location/:city"*). So the pair runs **FIRST**,
+   immediately after the server is ready, against a **cold** cache — and **both files carry the
+   contract in their headers** so a later reorder is a deliberate act.
 
 ---
 
