@@ -197,12 +197,19 @@ async function earningCounts(bookingId: string): Promise<{ provider: number; exp
     held: Number((p.rows[0] as any)?.h ?? 0) + Number((e.rows[0] as any)?.h ?? 0),
   };
 }
-async function diaryCount(bookingId: string): Promise<number> {
+// The three diary events the machinery under test writes, named ONCE here so a proof counts the
+// row the service actually writes rather than a hand-typed string: `booking_completed` is the
+// completion spine's row (booking-completion.service.ts), `booking_acceptance_prompted` the
+// acceptance prompt's and `booking_acceptance_elapsed` the ESCALATE flip's
+// (artifact-acceptance-timer.service.ts). A count filtered on the wrong one reads 0 and looks
+// like a missing write.
+type DiaryEvent = "booking_completed" | "booking_acceptance_prompted" | "booking_acceptance_elapsed";
+async function diaryCount(bookingId: string, eventType: DiaryEvent): Promise<number> {
   // The diary is trip-scoped; every fixture booking that carries a trip carries THIS trip, so the
   // count is scoped by event type + the run's trip and cross-checked against the flip count.
   const r = await db.execute(sql`
     SELECT COUNT(*)::int AS n FROM item_transition_log
-    WHERE trip_id = ${ids.trip} AND event_type = 'booking_completed'
+    WHERE trip_id = ${ids.trip} AND event_type = ${eventType}
   `);
   void bookingId;
   return Number((r.rows[0] as any)?.n ?? 0);
@@ -348,15 +355,15 @@ test("D8-P3 (§15, re-pinned): a DOUBLE job run is exactly ONE prompt and ONE di
   const bk = await makeBooking({ serviceId: ids.pdfSvc, confirmedDaysAgo: 20 });
   await logDownload(bk, ids.pdfSvc, 10);
 
-  const diaryBefore = await diaryCount(bk);
+  const diaryBefore = await diaryCount(bk, "booking_acceptance_prompted");
   await runBookingAutoCompletion(undefined, verifyPaid);
-  const diaryAfterFirst = await diaryCount(bk);
+  const diaryAfterFirst = await diaryCount(bk, "booking_acceptance_prompted");
   assert.equal(await statusOf(bk), "awaiting_acceptance");
   assert.equal(diaryAfterFirst, diaryBefore + 1, "exactly one diary row for the prompt");
 
   const second = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(!second.promptedBookingIds.includes(bk), "the transition IS the guard — a prompted booking is not prompted twice");
-  assert.equal(await diaryCount(bk), diaryAfterFirst, "no second diary row");
+  assert.equal(await diaryCount(bk, "booking_acceptance_prompted"), diaryAfterFirst, "no second diary row");
   assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 }, "still nothing minted");
 
   // …and the direct completion caller loses the same way: `awaiting_acceptance` is NOT in
@@ -547,7 +554,7 @@ test("D8-P9 (§15): a DOUBLE run of the in-person timer is exactly ONE flip and 
   const past = new Date(Date.now() - (windowDays + 4) * DAY).toISOString();
   const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: windowDays + 8, details: { scheduledDate: past } });
 
-  const diaryBefore = await diaryCount(bk);
+  const diaryBefore = await diaryCount(bk, "booking_completed");
   const first = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(first.completedBookingIds.includes(bk));
   const afterFirst = await earningCounts(bk);
@@ -557,7 +564,7 @@ test("D8-P9 (§15): a DOUBLE run of the in-person timer is exactly ONE flip and 
   const second = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(!second.completedBookingIds.includes(bk), "the second pass must not re-complete it");
   assert.deepEqual(await earningCounts(bk), afterFirst, "no second earning set");
-  assert.equal(await diaryCount(bk), diaryBefore + 1, "exactly one diary row");
+  assert.equal(await diaryCount(bk, "booking_completed"), diaryBefore + 1, "exactly one diary row");
 });
 
 test("D8-P10: the traveler's EARLY confirm-completion still releases, unchanged by the timer", async () => {
