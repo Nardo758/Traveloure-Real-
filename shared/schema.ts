@@ -156,8 +156,10 @@ export const trips = pgTable("trips", {
   // stopgap; both now resolve the expert through `trip_expert_advisors` and neither mentions it.
   // The column is DECLARED and KEPT: dropping it is a schema change nobody has ratified. Do not
   // build a new grant, fallback or display on it without first giving it a writer and ratifying
-  // that writer. The one surviving reader is `trip-plan.service.ts::resolveDeliveredBy`, where it
-  // is an explicit last-resort fallback that can never resolve — recorded, not relied upon.
+  // that writer. It now has NO reader under `server/` at all: the last one — the dead fallback in
+  // `trip-plan.service.ts::resolveDeliveredBy` — was DELETED by ledger
+  // `2026-09-15-d36-d39-completion-declared` (§18c: no writer + a fallback that can never
+  // resolve ⇒ delete, don't keep). `deliveredBy` resolves through `trip_expert_advisors` alone.
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
   // PRIVATE Workstation build notes (PATCH /api/trips/:id/expert-notes) — never delivered to the
   // traveler. The traveler-facing trip-level note is expertTravelerNote below (§21) — never merge.
@@ -1744,6 +1746,30 @@ export const serviceBookings = pgTable("service_bookings", {
   // every other buyer of the listing downloads.
   deliverableFile: text("deliverable_file"),
 
+  // ══ D-7 DECLARED COMPLETION (migration 304, ledger `2026-09-15-d36-d39-completion-declared`) ═══
+  // D-36: WHEN THE SELLER DECLARED THE WORK DONE. Under D-7 the seller DECLARES and the traveler
+  // then has a stated window to dispute before anything mints; `completed_at` records the MONEY
+  // event, which now happens at the window's CLOSE, so nothing on the row recorded the declaration
+  // that opened it. This column is that declaration. It is stamped ONCE, inside the same guarded
+  // UPDATE that moves `confirmed → completion_declared` (`storage.updateServiceBookingStatus`,
+  // `COALESCE(existing, NOW())`), and by nothing else.
+  //
+  // THE DISPUTE DEADLINE IS DELIBERATELY NOT A COLUMN — the same answer D-24 gives one column up,
+  // for the same reason. It is DERIVED from this instant plus `declaredCompletionWindowDays()`
+  // (`server/config/completion-windows.config.ts`, a DELEGATION to `holdWindowDays('service_booking')`
+  // — never a parallel constant) by the ONE helper in `shared/declared-completion-window.ts`.
+  //
+  // D-37: this instant is ALSO the anchor of the held earning's `availableAt` when the window's
+  // close mints (`availableAtFor('service_booking', completionDeclaredAt)`), so the window is
+  // served ONCE, not twice — a NULL anchor keeps today's `now` and today's payout timing.
+  //
+  // §13: NULL = NEVER DECLARED. Every reader OMITS the field rather than rendering "not declared"
+  // on a booking whose rule is a timer or an acceptance. NO BACKFILL: a booking completed under the
+  // immediate flip WAS completed. §19: `.omit()`'d from `insertServiceBookingSchema` and stripped
+  // again in storage — a row born already declared would look, to the window's close, exactly
+  // like one the seller declared.
+  completionDeclaredAt: timestamp("completion_declared_at"),
+
   cancelledAt: timestamp("cancelled_at"),
   cancellationReason: text("cancellation_reason"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -3061,6 +3087,11 @@ export const insertServiceBookingSchema = createInsertSchema(serviceBookings).om
   acceptedAt: true,
   deliveredAt: true,
   deliverableFile: true,
+  // D-7 declared completion (migration 304, ledger `2026-09-15-d36-d39-completion-declared`): the
+  // same class again. A row born already carrying a declaration instant would be swept into the
+  // window's close and minted for work nobody declared. Layer 1 here; layer 2 in
+  // `createServiceBooking`/`createServiceBookingAtomic`.
+  completionDeclaredAt: true,
   confirmedAt: true,
   completedAt: true,
   cancelledAt: true,

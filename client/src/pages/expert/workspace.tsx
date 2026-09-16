@@ -3313,10 +3313,18 @@ export default function ExpertWorkspace() {
   });
 
   // ── Coordination status advance (coordinator-side) ──
+  // D-39 (ledger `2026-09-15-d36-d39-completion-declared`): the coordinator DECLARES
+  // (`completion_declared`); "completed" is the WINDOW'S word, said by the server once the
+  // traveler's dispute window has closed undisputed — so the advance control stops at the
+  // declaration and never offers `completed`, which the server refuses to a coordinator
+  // (`window_closes_engagement`). This mirrors `COORDINATION_FORWARD_ORDER`
+  // (`server/utils/coordination-from-states.ts`) for DISPLAY; the server's list is the authority.
   const COORD_STATUS_ORDER = [
     "intake", "expert_matching", "vendor_discovery", "itinerary_generation",
-    "optimization", "booking_coordination", "confirmed", "in_progress", "completed",
+    "optimization", "booking_coordination", "confirmed", "in_progress", "completion_declared", "completed",
   ] as const;
+  /** The last status a coordinator may SET; everything after it is the server's. */
+  const COORD_LAST_COORDINATOR_STATUS = "completion_declared";
 
   const coordStatusLabel: Record<string, string> = {
     intake: "Intake",
@@ -3327,14 +3335,21 @@ export default function ExpertWorkspace() {
     booking_coordination: "Booking Coordination",
     confirmed: "Confirmed",
     in_progress: "In Progress",
+    completion_declared: "Declared done · traveler window open",
     completed: "Completed",
+    // A traveler's objection inside the window (D-39). Not in the forward order — it is a
+    // side state an admin resolves — but it must never render as a raw token.
+    disputed: "Disputed by traveler",
   };
 
   const currentCoordStatus = (eventCoordState?.status ?? "intake") as string;
   const currentCoordIdx = COORD_STATUS_ORDER.indexOf(currentCoordStatus as any);
-  const nextCoordStatus = currentCoordIdx >= 0 && currentCoordIdx < COORD_STATUS_ORDER.length - 1
-    ? COORD_STATUS_ORDER[currentCoordIdx + 1]
-    : null;
+  const nextCoordStatus =
+    currentCoordIdx >= 0 &&
+    currentCoordIdx < COORD_STATUS_ORDER.length - 1 &&
+    currentCoordStatus !== COORD_LAST_COORDINATOR_STATUS
+      ? COORD_STATUS_ORDER[currentCoordIdx + 1]
+      : null;
 
   const advanceCoordStatusMutation = useMutation({
     mutationFn: async (targetStatus: string) => {

@@ -16,7 +16,11 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getUserId, getDbRole } from '../utils/auth';
 import { sanitizeBookingForExpert } from '../utils/data-sanitizer';
 import { holdWindowDays } from '../config/earnings-hold.config';
-import { DISPUTABLE_FROM_STATUSES } from '../utils/booking-from-states';
+import { DISPUTABLE_FROM_STATUSES, TRAVELER_CONFIRMABLE_FROM_STATUSES } from '../utils/booking-from-states';
+// D-7 (ledger `2026-09-15-d36-d39-completion-declared`): the ONE derivation of the declared window
+// — the dispute anchor, the derived deadline — read here, never restated.
+import { declaredCompletionDeadline, disputeWindowAnchor } from '@shared/declared-completion-window';
+import { declaredCompletionWindowDays } from '../config/completion-windows.config';
 import {
   acceptDeliverable,
   deliverArtifact,
@@ -82,7 +86,22 @@ router.get('/:id', isAuthenticated, async (req, res) => {
       // raw `acceptedAt`/`deliveredAt` columns ride the full row for the owner as they are; the
       // read-out is what says whether they MEAN anything on this booking.
       const acceptance = await describeAcceptance(booking.id);
-      return res.json({ ...booking, ...(acceptance ? { acceptance } : {}) });
+      // D-7 READ EXPOSURE (ledger `2026-09-15-d36-d39-completion-declared`). While the seller's
+      // declaration is OPEN — declared and not yet completed — the traveler is told what the
+      // window costs them, from the server's own derivation (brief §14: "read from the server's
+      // own answer — never restated on the client"). §13: OMITTED entirely on every other row —
+      // never `declared: false`, never "not declared" on a timer or an artifact booking.
+      const windowDays = declaredCompletionWindowDays();
+      const disputeBy = declaredCompletionDeadline(booking.completionDeclaredAt, windowDays);
+      const completionDeclaration =
+        booking.completionDeclaredAt && !booking.completedAt && disputeBy
+          ? { declaredAt: new Date(booking.completionDeclaredAt).toISOString(), disputeBy, windowDays }
+          : null;
+      return res.json({
+        ...booking,
+        ...(acceptance ? { acceptance } : {}),
+        ...(completionDeclaration ? { completionDeclaration } : {}),
+      });
     }
 
     // Audit finding 8: the admin tier (full row, Stripe payment-intent ids included) and
@@ -731,7 +750,11 @@ router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
     // payer, never the earner — self-crediting is impossible on this rail) confirms delivery,
     // which drives confirmed → completed (minting held earnings in updateServiceBookingStatus)
     // and then early-releases them, matching the pre-existing Phase 3 semantics.
-    if (booking.status === 'confirmed') {
+    // D-7 (ledger `2026-09-15-d36-d39-completion-declared`): the traveler may confirm a `confirmed`
+    // booking exactly as before AND a `completion_declared` one — the seller's declaration must not
+    // lock the payer out of confirming their own booking, and this rail is what SHORT-CIRCUITS the
+    // window (brief §8). The list is `TRAVELER_CONFIRMABLE_FROM_STATUSES`, ONE home (§18 rule 1).
+    if (TRAVELER_CONFIRMABLE_FROM_STATUSES.includes(booking.status)) {
       // Not before delivery: completing releases the earner's money, so it is gated on the
       // service being plausibly delivered (slot day over / 24h past acceptance).
       if (raw.confirmable_at && new Date(raw.confirmable_at).getTime() > Date.now()) {
@@ -752,13 +775,15 @@ router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
       if (pi.status !== 'succeeded') {
         return res.status(400).json({ error: 'Payment for this booking has not completed, so it cannot be confirmed as completed.' });
       }
-      // Atomic guarded transition — a concurrent cancel/refund wins and this mints nothing.
-      const completed = await storage.updateServiceBookingStatus(bookingId, 'completed', undefined, ['confirmed']);
+      // Atomic guarded transition — a concurrent cancel/refund/dispute wins and this mints nothing.
+      // On a declared booking the mint anchors `availableAt` to the declaration (D-37) and the
+      // release below then clears it — a traveler's confirm is still the early release it always was.
+      const completed = await storage.updateServiceBookingStatus(bookingId, 'completed', undefined, TRAVELER_CONFIRMABLE_FROM_STATUSES);
       if (!completed) {
         return res.status(409).json({ error: 'This booking changed before your confirmation was applied. Reload and try again.' });
       }
     } else if (booking.status !== 'completed') {
-      return res.status(400).json({ error: 'Only a confirmed or completed booking can be confirmed' });
+      return res.status(400).json({ error: 'Only a confirmed, declared-complete or completed booking can be confirmed' });
     }
 
     const released = await storage.releaseEarningsForBooking(bookingId);
@@ -785,16 +810,25 @@ router.post('/:id/dispute', isAuthenticated, async (req, res) => {
     // decision 4 there is NO automated post-payout claw-back. So a late dispute must be REJECTED
     // here — silently accepting one would strand a refund the escrow spine can't fund. The cutoff
     // uses the same holdWindowDays('service_booking') config the release job uses, so the dispute
-    // window and the payout timing line up exactly (default 7 days, env-overridable). completedAt
-    // null (not yet completed) → no matured earning → the window doesn't apply (dispute allowed).
+    // window and the payout timing line up exactly (default 7 days, env-overridable).
+    //
+    // D-7 (ledger `2026-09-15-d36-d39-completion-declared`): THE ANCHOR IS THE DECLARATION when
+    // there is one (`disputeWindowAnchor`, the ONE derivation). D-37 anchors the earning's
+    // `availableAt` to `completion_declared_at`, so for a declared booking the window the money
+    // obeys begins at the declaration — and the cutoff the traveler is held to must begin there too,
+    // or they would be told they may still dispute a booking whose money has already released. An
+    // UNDECLARED completion (a traveler's own confirm, an artifact acceptance, an admin reject) keeps
+    // `completed_at` verbatim; no anchor at all (not completed, not declared) → no matured earning →
+    // the window doesn't apply (dispute allowed; the STATE bound below still holds).
     const [bk] = await db
-      .select({ completedAt: serviceBookings.completedAt })
+      .select({ completedAt: serviceBookings.completedAt, completionDeclaredAt: serviceBookings.completionDeclaredAt })
       .from(serviceBookings)
       .where(eq(serviceBookings.id, bookingId));
     if (!bk) return res.status(404).json({ error: 'Booking not found' });
-    if (bk.completedAt) {
+    const anchor = disputeWindowAnchor(bk);
+    if (anchor) {
       const windowDays = holdWindowDays('service_booking');
-      const deadline = new Date(bk.completedAt).getTime() + windowDays * 24 * 60 * 60 * 1000;
+      const deadline = anchor.getTime() + windowDays * 24 * 60 * 60 * 1000;
       if (Date.now() > deadline) {
         return res.status(409).json({
           error: 'dispute_window_closed',

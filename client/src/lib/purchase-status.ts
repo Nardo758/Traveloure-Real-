@@ -11,6 +11,10 @@
  *                      It is not booked and it may be voided by the TTL sweep; say so.
  *   `deposit_paid`     authorized and paid in part — booked, with a balance still due (§15d).
  *   `confirmed`        authorized and paid — booked.
+ *   `completion_declared`  the seller says it is done and the traveler's dispute window is OPEN
+ *                      (D-7, ledger `2026-09-15-d36-d39-completion-declared`). Booked — and NOT
+ *                      completed: brief Part II §14, "completed is never said before the window
+ *                      closes". The word here is the seller's claim, named as a claim.
  *   `completed`        booked and fulfilled.
  *   anything else      shown VERBATIM (refunded, cancelled, disputed…) — never folded into
  *                      "booked", never into "prepared".
@@ -34,6 +38,8 @@ export function readPurchaseStatus(status: string | null | undefined): PurchaseS
       return { kind: "booked", label: "Booked · balance due" };
     case "confirmed":
       return { kind: "booked", label: "Booked" };
+    case "completion_declared":
+      return { kind: "booked", label: "Booked · your expert says this is done" };
     case "completed":
       return { kind: "booked", label: "Booked · completed" };
     default:

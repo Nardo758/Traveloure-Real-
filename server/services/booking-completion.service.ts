@@ -31,6 +31,28 @@
  *     `checkout-claim.service.ts` and this rail must not participate in the claim machine (§18b);
  *   - there is no compensating rollback anywhere in here. A lost race changes nothing.
  *
+ * ══ D-7: THE SELLER DECLARES, THE WINDOW CLOSES, AND ONLY THEN IS "COMPLETED" SAID ═════════
+ * (punchlist D-36/D-37/D-38, ruled A 2026-09-15; ledger `2026-09-15-d36-d39-completion-declared`;
+ * brief Part II §11-§12.) For the owner-declared rules and the place-anchored timer the flip
+ * above is now TWO flips with a window between them:
+ *
+ *   confirmed ──(declare)──> completion_declared ──(window elapses, undisputed)──> completed
+ *
+ * `declareBookingCompletion` makes the FIRST — the same eligibility the owner rail always resolved
+ * (session ended per the booked slot; scope declared; the service date passed), the same evidence,
+ * and it MINTS NOTHING: the money event is the second flip, made by `completeBooking`'s
+ * `window_elapsed` arm when `completion_declared_at + declaredCompletionWindowDays()` has passed.
+ * D-37: the held earning's `availableAt` is then ANCHORED to the DECLARATION instant
+ * (`storage.mintCompletionEarningsForBooking` reads `completionDeclaredAt`), so the window is
+ * served once and the seller's payout lands where it did before, to within a scheduler pass. A
+ * traveler's dispute inside the window flips the row to `disputed` — the SAME row and queue as a
+ * post-completion dispute (D-38) — and the close then matches zero rows by construction.
+ *
+ * What did NOT move: `checkout_date` (property) still completes directly on its timer;
+ * `bundle_components` still completes directly when its last component lands (the bundles lane,
+ * D-32..D-35, owns whether a bundle declares); `traveler_accepted` is D-6's own arm. The declared
+ * window is ONE more caller of the ONE completion implementation — never a second mint path.
+ *
  * ══ §13 SHAPE ═══════════════════════════════════════════════════════════════════════════════
  * Every "not yet" answer carries a machine-readable REASON. A booking that lacks the data to
  * decide (no slot end time, no delivery timestamp, no checkout date, an unclassifiable service)
@@ -66,10 +88,19 @@ import {
   ARTIFACT_AUTO_COMPLETE_DAYS,
   DAY_MS,
   PROPERTY_AUTO_COMPLETE_GRACE_DAYS,
+  declaredCompletionWindowDays,
   serviceDateCompletionDays,
 } from "../config/completion-windows.config";
 import { acceptanceModeFor, type DeliveryInstantSource } from "@shared/acceptance-window";
-import { ACCEPTANCE_FROM_STATUSES } from "../utils/booking-from-states";
+import {
+  COMPLETION_DECLARED_STATUS,
+  declaredCompletionDeadline,
+} from "@shared/declared-completion-window";
+import {
+  ACCEPTANCE_FROM_STATUSES,
+  COMPLETION_DECLARABLE_FROM_STATUSES,
+  DECLARED_WINDOW_CLOSE_FROM_STATUSES,
+} from "../utils/booking-from-states";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
 import { storage } from "../storage";
 
@@ -106,7 +137,16 @@ export type CompletionActor =
    * whose from-state is `awaiting_acceptance` rather than `confirmed`, and the only one that
    * stamps `accepted_at`.
    */
-  | "traveler_accepted";
+  | "traveler_accepted"
+  /**
+   * D-7 (ledger `2026-09-15-d36-d39-completion-declared`): THE DECLARED WINDOW CLOSED UNDISPUTED.
+   * The nightly job's caller of the ONE completion implementation for a booking the seller declared
+   * done (`completion_declared`), once `completion_declared_at + declaredCompletionWindowDays()` has
+   * passed. It is the only actor whose from-state is `completion_declared`, and the flip it wins is
+   * the one that MINTS — with `availableAt` anchored to the declaration (D-37). It never declares:
+   * WHO declared, and on what evidence, is already on the row (`bookingDetails.completionDeclaration`).
+   */
+  | "window_elapsed";
 
 const DIARY_ACTOR: Record<CompletionActor, TransitionActorType> = {
   auto_complete_property: "auto_complete",
@@ -115,11 +155,35 @@ const DIARY_ACTOR: Record<CompletionActor, TransitionActorType> = {
   provider_declared: "provider",
   provider_bundle_components: "provider",
   traveler_accepted: "traveler",
+  window_elapsed: "auto_complete",
 };
 
 /** TRUE for the ONE actor whose completion is a traveler's acceptance rather than a rule firing. */
 function isAcceptanceActor(actor: CompletionActor): boolean {
   return actor === "traveler_accepted";
+}
+
+/** TRUE for the ONE actor whose completion is a declared window closing rather than a rule firing. */
+function isWindowCloseActor(actor: CompletionActor): boolean {
+  return actor === "window_elapsed";
+}
+
+/**
+ * D-7: WHICH TIMER RULE OPENS THE TRAVELER'S WINDOW INSTEAD OF ENDING IT. Brief §10: for
+ * `in_person`/`hybrid` "the timer's job becomes *open the traveler's window*, not *end it*" — the
+ * `service_date_timer` fires exactly when it always did (ruling 69's N days after the booked
+ * service day, `serviceDateCompletionDays()`), but its flip is now `confirmed → completion_declared`
+ * and the window's close completes N days later. NO money instant moves: the earning's
+ * `availableAt` is anchored to the declaration (D-37), so it lands where today's mint-plus-hold
+ * landed, and the traveler's dispute cutoff (`disputeWindowAnchor`) is the same instant it is today.
+ * Opening the window at the day boundary instead — an earlier payout by N days — is a timing
+ * change this ruling did not authorize, so it was not taken.
+ *
+ * `checkout_date` (property) is deliberately NOT here: D-7 rules physical-action and coordination
+ * work, and a stay's checkout is neither. It completes directly, as before.
+ */
+export function timerOpensDeclaredWindow(rule: CompletionRule): boolean {
+  return rule === "service_date_timer";
 }
 
 /** Why a booking is NOT (yet) completable. Stable, machine-readable, §13-honest. */
@@ -152,7 +216,13 @@ export type IneligibleReason =
    * anything. Stated rather than silently absent, because "this rule cannot complete" and "this
    * window is still open" are different facts and a reader must be able to tell them apart (§13).
    */
-  | "artifact_takes_acceptance";
+  | "artifact_takes_acceptance"
+  /**
+   * D-7: the booking is `completion_declared` but carries no `completion_declared_at` — a row the
+   * guarded writer could not have produced (it stamps both in one UPDATE), so it is stated rather
+   * than guessed onto a clock (§13). A window the server cannot date does not start.
+   */
+  | "no_declaration_timestamp";
 
 export interface CompletionEligibility {
   bookingId: string;
@@ -182,6 +252,8 @@ interface BookingRow {
   confirmedAt: Date | null;
   /** D-26's per-booking delivery instant. NULL = the per-booking source has no answer (§13). */
   deliveredAt: Date | null;
+  /** D-36: when the seller declared the work done. NULL = never declared (§13). */
+  completionDeclaredAt: Date | null;
   slotId: string | null;
   bookingDetails: Record<string, any> | null;
 }
@@ -205,6 +277,7 @@ async function loadBooking(bookingId: string): Promise<BookingRow | null> {
       providerId: serviceBookings.providerId,
       confirmedAt: serviceBookings.confirmedAt,
       deliveredAt: serviceBookings.deliveredAt,
+      completionDeclaredAt: serviceBookings.completionDeclaredAt,
       slotId: serviceBookings.slotId,
       bookingDetails: serviceBookings.bookingDetails,
     })
@@ -355,10 +428,22 @@ export async function resolveCompletionEligibility(
      * is the condition there. It is a MODE of the one resolver, not a second one (§18 rule 1).
      */
     acceptance?: boolean;
+    /**
+     * D-7: resolve for the DECLARED WINDOW'S CLOSE rather than for a rule firing. The from-state
+     * becomes `completion_declared`, and the condition is "the derived deadline has passed" —
+     * `completion_declared_at + declaredCompletionWindowDays()`. A MODE of the one resolver, like
+     * `acceptance` (§18 rule 1).
+     */
+    declaredWindow?: boolean;
   } = {},
 ): Promise<CompletionEligibility> {
   const forAcceptance = opts.acceptance === true;
-  const allowedFrom = forAcceptance ? ACCEPTANCE_FROM_STATUSES : COMPLETION_ALLOWED_FROM_STATUSES;
+  const forDeclaredWindow = opts.declaredWindow === true && !forAcceptance;
+  const allowedFrom = forAcceptance
+    ? ACCEPTANCE_FROM_STATUSES
+    : forDeclaredWindow
+      ? DECLARED_WINDOW_CLOSE_FROM_STATUSES
+      : COMPLETION_ALLOWED_FROM_STATUSES;
   const booking = await loadBooking(bookingId);
   if (!booking) return no(bookingId, null, "booking_not_found");
   if (!allowedFrom.includes(booking.status ?? "")) {
@@ -401,6 +486,37 @@ export async function resolveCompletionEligibility(
   }
 
   const details = (booking.bookingDetails ?? {}) as Record<string, any>;
+
+  // D-7: THE DECLARED WINDOW'S CLOSE answers before the per-rule switch, and deliberately so. The
+  // per-rule conditions were ALREADY satisfied when the seller declared (they are what
+  // `declareBookingCompletion` resolved, and their evidence is on the row); re-running them here
+  // would let a slot edited after the declaration, or a listing reclassified, un-declare a
+  // declaration the traveler was told about. The one condition that is this arm's own is time.
+  if (forDeclaredWindow) {
+    const declaredAt = booking.completionDeclaredAt;
+    if (!declaredAt || !Number.isFinite(new Date(declaredAt).getTime())) {
+      // §13: a declared row with no declaration instant is not guessed onto a clock.
+      return no(bookingId, rule, "no_declaration_timestamp", { status: booking.status });
+    }
+    const windowDays = declaredCompletionWindowDays();
+    const deadline = declaredCompletionDeadline(declaredAt, windowDays);
+    const evidence = {
+      basis: "declared_window_elapsed",
+      declaredAt: new Date(declaredAt).toISOString(),
+      windowDays,
+      deadline,
+      // The declaration this close is answering — rule, actor, evidence — copied so the
+      // completion record can be read on its own months later (§13: who said done, and on what).
+      declaration: details.completionDeclaration ?? null,
+    };
+    if (deadline === null) {
+      return no(bookingId, rule, "no_declaration_timestamp", evidence);
+    }
+    if (now.getTime() < Date.parse(deadline)) {
+      return { ...no(bookingId, rule, "window_open", evidence), eligibleAt: deadline };
+    }
+    return { bookingId, rule, eligible: true, evidence };
+  }
 
   switch (rule) {
     // ── in_person / hybrid: the BOOKED SERVICE DATE timer (ruling 69 disposition 1, amending
@@ -604,8 +720,10 @@ export async function completeBooking(input: {
   // is the caller's one statement of which rail it is, and the SERVICE decides everything else
   // (the same posture ruling 69's `allowOwnerDeclaredFallback` takes one arm over).
   const forAcceptance = isAcceptanceActor(input.actor);
+  const forDeclaredWindow = isWindowCloseActor(input.actor);
   const eligibility = await resolveCompletionEligibility(input.bookingId, now, {
     acceptance: forAcceptance,
+    declaredWindow: forDeclaredWindow,
   });
   const takesNoDateFallback =
     !eligibility.eligible && !!input.allowOwnerDeclaredFallback && !!eligibility.ownerDeclarableFallback;
@@ -627,7 +745,15 @@ export async function completeBooking(input: {
     // `awaiting_acceptance` is deliberately NOT added to `COMPLETION_ALLOWED_FROM_STATUSES`: that
     // list is also the timer's candidate predicate (`findAutoCompleteCandidates`), and widening it
     // would hand the nightly job the very bookings D-6 forbids it to complete.
-    forAcceptance ? ACCEPTANCE_FROM_STATUSES : COMPLETION_ALLOWED_FROM_STATUSES,
+    //
+    // D-7: the window's close claims ITS OWN from-state too (`completion_declared`), for the same
+    // reason. A `disputed` row is in neither list, so a dispute inside the window stops this flip by
+    // construction — no check, no flag, the UPDATE simply matches nothing.
+    forAcceptance
+      ? ACCEPTANCE_FROM_STATUSES
+      : forDeclaredWindow
+        ? DECLARED_WINDOW_CLOSE_FROM_STATUSES
+        : COMPLETION_ALLOWED_FROM_STATUSES,
   );
   if (!updated) {
     // Lost the atomic race (or the row vanished). Exactly one caller wins; the loser mints no
@@ -679,9 +805,14 @@ export async function completeBooking(input: {
             ? ((updated.bookingDetails as any).itineraryItemId as string)
             : null,
         eventType: "booking_completed",
-        // The state this flip actually consumed — `awaiting_acceptance` on the acceptance rail.
-        // A diary row that always said "confirmed" would misreport the one transition that is not.
-        fromStatus: forAcceptance ? "awaiting_acceptance" : "confirmed",
+        // The state this flip actually consumed — `awaiting_acceptance` on the acceptance rail,
+        // `completion_declared` at the declared window's close. A diary row that always said
+        // "confirmed" would misreport the two transitions that are not.
+        fromStatus: forAcceptance
+          ? "awaiting_acceptance"
+          : forDeclaredWindow
+            ? COMPLETION_DECLARED_STATUS
+            : "confirmed",
         toStatus: "completed",
         actorType: DIARY_ACTOR[input.actor],
       });
@@ -693,6 +824,162 @@ export async function completeBooking(input: {
   }
 
   return { completed: true, bookingId: input.bookingId, rule: eligibility.rule, evidence: eligibility.evidence };
+}
+
+export interface DeclareCompletionResult {
+  declared: boolean;
+  bookingId: string;
+  rule: CompletionRule | null;
+  reason?: IneligibleReason | "lost_race";
+  evidence: Record<string, unknown>;
+  /** Present on success: the stamped declaration instant and the DERIVED window the traveler has. */
+  declaredAt?: string;
+  disputeBy?: string;
+  windowDays?: number;
+}
+
+/**
+ * D-7: THE DECLARATION — the FIRST of the two flips (`confirmed → completion_declared`). It MINTS
+ * NOTHING; the money event is `completeBooking`'s `window_elapsed` arm at the window's close.
+ *
+ * 1. Re-resolve eligibility server-side exactly as `completeBooking` does for an owner rule — the
+ *    session ended per the booked slot, the scope was declared, the booked service day (plus
+ *    ruling 69's N) passed — so a seller cannot declare a session before its slot says it ended
+ *    (brief §14: "a session the server cannot evidence is refused, not guessed").
+ * 2. Flip through `storage.updateServiceBookingStatus` with `COMPLETION_DECLARABLE_FROM_STATUSES`
+ *    (§15: the transition is the guard — a double declaration is ONE flip; the loser sees
+ *    `undefined`). The writer stamps `completion_declared_at` in the SAME UPDATE.
+ * 3. Record the provenance (`bookingDetails.completionDeclaration` + a `booking_completion_declared`
+ *    diary row) AFTER the flip — a declaration nobody won must leave no trace claiming it did.
+ */
+export async function declareBookingCompletion(input: {
+  bookingId: string;
+  actor: CompletionActor;
+  now?: Date;
+  reason?: string;
+  /** Ruling 69 disposition 1's NARROW no-date arm — the owner rail only; the SERVICE still decides. */
+  allowOwnerDeclaredFallback?: boolean;
+}): Promise<DeclareCompletionResult> {
+  const now = input.now ?? new Date();
+  // The declaration is a RULE firing (an owner's, or the service-date timer's); the acceptance and
+  // window-close actors have their own arms of `completeBooking` and are refused here by the
+  // ordinary eligibility path (their from-states are not `confirmed`).
+  const eligibility = await resolveCompletionEligibility(input.bookingId, now);
+  const takesNoDateFallback =
+    !eligibility.eligible && !!input.allowOwnerDeclaredFallback && !!eligibility.ownerDeclarableFallback;
+  if (!eligibility.eligible && !takesNoDateFallback) {
+    return {
+      declared: false,
+      bookingId: input.bookingId,
+      rule: eligibility.rule,
+      reason: eligibility.reason,
+      evidence: eligibility.evidence,
+    };
+  }
+
+  const updated = await storage.updateServiceBookingStatus(
+    input.bookingId,
+    COMPLETION_DECLARED_STATUS,
+    input.reason,
+    COMPLETION_DECLARABLE_FROM_STATUSES,
+  );
+  if (!updated) {
+    return {
+      declared: false,
+      bookingId: input.bookingId,
+      rule: eligibility.rule,
+      reason: "lost_race",
+      evidence: eligibility.evidence,
+    };
+  }
+
+  const windowDays = declaredCompletionWindowDays();
+  const declaredAt = updated.completionDeclaredAt ? new Date(updated.completionDeclaredAt) : now;
+  const disputeBy = declaredCompletionDeadline(declaredAt, windowDays);
+
+  // (a) Provenance on the booking row — the declaration's rule, actor, instant and evidence, under
+  // its OWN key. `bookingDetails.completion` stays the COMPLETION's record and is written only by
+  // the flip that mints; a reader must be able to tell "declared" from "completed" on the row.
+  await db
+    .update(serviceBookings)
+    .set({
+      bookingDetails: sql`COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) || ${JSON.stringify({
+        completionDeclaration: {
+          rule: eligibility.rule,
+          actor: input.actor,
+          at: declaredAt.toISOString(),
+          evidence: eligibility.evidence,
+          windowDays,
+          disputeBy,
+          ...(takesNoDateFallback
+            ? { fallback: "owner_declared_no_service_date", ineligibleReason: eligibility.reason }
+            : {}),
+        },
+      })}::jsonb`,
+      updatedAt: now,
+    })
+    .where(eq(serviceBookings.id, input.bookingId));
+
+  // (b) The diary row — trip-scoped by construction, so a tripless booking honestly gets (a) only.
+  if (updated.tripId) {
+    try {
+      await logItemTransition(db, {
+        tripId: updated.tripId,
+        itemId:
+          typeof (updated.bookingDetails as any)?.itineraryItemId === "string"
+            ? ((updated.bookingDetails as any).itineraryItemId as string)
+            : null,
+        eventType: "booking_completion_declared",
+        fromStatus: "confirmed",
+        toStatus: COMPLETION_DECLARED_STATUS,
+        actorType: DIARY_ACTOR[input.actor],
+      });
+    } catch (err) {
+      console.error("[booking-completion] diary row failed after a successful declaration:", err);
+    }
+  }
+
+  return {
+    declared: true,
+    bookingId: input.bookingId,
+    rule: eligibility.rule,
+    evidence: eligibility.evidence,
+    declaredAt: declaredAt.toISOString(),
+    ...(disputeBy ? { disputeBy } : {}),
+    windowDays,
+  };
+}
+
+/**
+ * THE DECLARED-WINDOW DETECTOR: bookings whose seller declared and whose derived deadline MAY have
+ * passed. Narrow SQL pre-filter (status + a floor on the declaration instant), then
+ * `resolveCompletionEligibility({ declaredWindow: true })` decides — one predicate, not a second
+ * copy in SQL. The floor is exact: a window cannot close before `declared_at + windowDays`.
+ *
+ * `disputed` rows never appear (the status predicate), so a traveler's objection stops the timer
+ * here AND at the guarded flip — two independent layers, each sufficient. The UNPAID-RECHECK stamp
+ * the pass-1 payment gate writes is honoured the same way pass 1 honours it.
+ */
+export async function findDeclaredWindowCandidates(now: Date = new Date(), limit = 2000): Promise<string[]> {
+  const floor = new Date(now.getTime() - declaredCompletionWindowDays() * DAY_MS);
+  const nowIso = now.toISOString();
+  const rows = await db
+    .select({ id: serviceBookings.id })
+    .from(serviceBookings)
+    .where(
+      and(
+        inArray(serviceBookings.status, DECLARED_WINDOW_CLOSE_FROM_STATUSES),
+        sql`${serviceBookings.completionDeclaredAt} IS NOT NULL`,
+        sql`${serviceBookings.completionDeclaredAt} <= ${floor}`,
+        sql`(
+          ${serviceBookings.bookingMetadata}->>'autoCompleteUnpaidRecheckAt' IS NULL
+          OR (${serviceBookings.bookingMetadata}->>'autoCompleteUnpaidRecheckAt')::timestamptz <= ${nowIso}::timestamptz
+        )`,
+      ),
+    )
+    .orderBy(asc(serviceBookings.completionDeclaredAt))
+    .limit(limit);
+  return rows.map((r) => r.id);
 }
 
 /**

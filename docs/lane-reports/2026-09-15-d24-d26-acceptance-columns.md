@@ -63,6 +63,18 @@ its own transaction. This lane added **one caller**, not a path.
 | `provider_bundle_components` | `confirmed` | the owner completion rail | yes |
 | **`traveler_accepted` (NEW)** | **`awaiting_acceptance`** | `POST /api/bookings/:id/accept-deliverable` | yes — through the same writer, in the same transaction |
 
+> **CORRECTION 2026-09-15 (D-36..D-39; ledger `2026-09-15-d36-d39-completion-declared`).** Three
+> rows above changed MEANING, not existence: `auto_complete_service_date`, `provider_session_end`
+> and `provider_declared` now call `declareBookingCompletion` — `confirmed → completion_declared`,
+> which **mints NOTHING** — and the mint they used to trigger moved to ONE NEW caller of
+> `completeBooking`: **`window_elapsed`** (from-state `completion_declared`, the nightly job's pass
+> 1b, payment gate at that flip), with `available_at` anchored to the declaration (D-37). The
+> traveler's `confirm-completion` may also consume `completion_declared` and then mints as it always
+> did. `auto_complete_property`, `provider_bundle_components` and `traveler_accepted` are unchanged.
+> `completeBooking` is still the ONE implementation; it has one more caller, never a second path.
+
+| **`window_elapsed` (NEW, D-7)** | **`completion_declared`** | the nightly job's declared-window pass | yes — anchored to `completion_declared_at` |
+
 `awaiting_acceptance` is deliberately **NOT** added to `COMPLETION_ALLOWED_FROM_STATUSES`: that list
 is also the timer's candidate predicate (`findAutoCompleteCandidates`), and widening it would hand
 the nightly job the very bookings D-6 forbids it to complete. The acceptance rail claims its own

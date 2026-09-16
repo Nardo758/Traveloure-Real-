@@ -188,6 +188,11 @@ async function completionStamp(bookingId: string): Promise<any> {
   const r = await db.execute(sql`SELECT booking_details -> 'completion' AS c FROM service_bookings WHERE id = ${bookingId}`);
   return (r.rows[0] as any)?.c ?? null;
 }
+/** D-7 (ledger `2026-09-15-d36-d39-completion-declared`): the DECLARATION's own provenance key. */
+async function declarationStamp(bookingId: string): Promise<any> {
+  const r = await db.execute(sql`SELECT booking_details -> 'completionDeclaration' AS c FROM service_bookings WHERE id = ${bookingId}`);
+  return (r.rows[0] as any)?.c ?? null;
+}
 async function earningCounts(bookingId: string): Promise<{ provider: number; expert: number; held: number }> {
   const p = await db.execute(sql`SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE status = 'held')::int AS h FROM provider_earnings WHERE source_id = ${bookingId}`);
   const e = await db.execute(sql`SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE status = 'held')::int AS h FROM expert_earnings WHERE reference_id = ${bookingId}`);
@@ -436,7 +441,13 @@ test("D8-N5: in_person/hybrid is a TIMER rule now, and the owner may not simply 
 // are that the door is now open, that it opens on the DATE and not on purchase time, and that it
 // stays shut for every case §13 says the platform cannot decide.
 
-test("D8-P7: an IN-PERSON booking auto-completes once its service date + the dispute window has fully passed", async () => {
+/**
+ * RE-PINNED (D-7; ledger `2026-09-15-d36-d39-completion-declared`). The timer still FIRES at the same
+ * instant (ruling 69's N days after the service day — no money instant moved), but what it does at
+ * that instant is now DECLARE (`confirmed → completion_declared`, mints nothing). The window's close,
+ * N days later, is what completes and mints — proven in `declared-completion.db.test.ts` W7.
+ */
+test("D8-P7 (re-pinned, D-7): an IN-PERSON booking is DECLARED by the timer once its service date + window has passed — not completed", async () => {
   const windowDays = serviceDateCompletionDays();
   // Comfortably past: the service day, plus the whole window, plus a day.
   const past = new Date(Date.now() - (windowDays + 2) * DAY).toISOString();
@@ -449,16 +460,14 @@ test("D8-P7: an IN-PERSON booking auto-completes once its service date + the dis
   assert.equal((e.evidence as any).windowDays, windowDays, "N is the REUSED dispute window, not a new constant");
 
   const run = await runBookingAutoCompletion(undefined, verifyPaid);
-  assert.ok(run.completedBookingIds.includes(done), `must complete; skipped=${JSON.stringify(run.skipped)}`);
-  assert.equal(await statusOf(done), "completed");
-  const stamp = await completionStamp(done);
+  assert.ok(run.declaredBookingIds.includes(done), `must DECLARE; skipped=${JSON.stringify(run.skipped)}`);
+  assert.ok(!run.completedBookingIds.includes(done), "the timer opens the window; it does not end it");
+  assert.equal(await statusOf(done), "completion_declared");
+  const stamp = await declarationStamp(done);
   assert.equal(stamp?.actor, "auto_complete_service_date");
   assert.equal(stamp?.rule, "service_date_timer");
-  // The SAME payout machinery as every other rule — held earnings, no per-method fork.
-  const earned = await earningCounts(done);
-  assert.equal(earned.provider, 1);
-  assert.equal(earned.expert, 1);
-  assert.equal(earned.held, 2, "born HELD — completion is not payout");
+  // NOTHING mints at the declaration — the window's close is the money event (D-37).
+  assert.deepEqual(await earningCounts(done), { provider: 0, expert: 0, held: 0 });
 });
 
 test("D8-N11: it does NOT fire before the service date + window has passed", async () => {
@@ -529,12 +538,14 @@ test("D8-N13 (§13): NO service date ⇒ skipped with the reason, and ONLY then 
   const res = await api(`/api/provider/bookings/${bk}/complete`, owner.cookie, "POST", {});
   const raw = await res.text();
   assert.equal(res.status, 200, raw);
-  assert.equal(JSON.parse(raw).completed, true);
-  assert.equal(await statusOf(bk), "completed");
-  const stamp = await completionStamp(bk);
+  // RE-PINNED (D-7): the owner rail DECLARES. `completed: false` is stated on the response.
+  assert.equal(JSON.parse(raw).declared, true);
+  assert.equal(JSON.parse(raw).completed, false);
+  assert.equal(await statusOf(bk), "completion_declared");
+  const stamp = await declarationStamp(bk);
   assert.equal(stamp?.actor, "provider_declared");
   assert.equal(stamp?.fallback, "owner_declared_no_service_date", "the row must SAY it took the fallback");
-  assert.equal((await earningCounts(bk)).held, 2, "still HELD — disputable for the whole window");
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 }, "nothing mints at a declaration");
 });
 
 test("D8-N15: the owner rail REFUSES an in-person booking that HAS a service date — the timer is the normal path", async () => {
@@ -549,35 +560,38 @@ test("D8-N15: the owner rail REFUSES an in-person booking that HAS a service dat
   assert.deepEqual(await earningCounts(dated), { provider: 0, expert: 0, held: 0 });
 });
 
-test("D8-P9 (§15): a DOUBLE run of the in-person timer is exactly ONE flip and ONE earning set", async () => {
+test("D8-P9 (§15, re-pinned D-7): a DOUBLE run of the in-person timer is exactly ONE declaration and ONE diary row", async () => {
   const windowDays = serviceDateCompletionDays();
   const past = new Date(Date.now() - (windowDays + 4) * DAY).toISOString();
   const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: windowDays + 8, details: { scheduledDate: past } });
 
-  const diaryBefore = await diaryCount(bk, "booking_completed");
+  const diaryBefore = await diaryCount(bk, "booking_completion_declared");
   const first = await runBookingAutoCompletion(undefined, verifyPaid);
-  assert.ok(first.completedBookingIds.includes(bk));
-  const afterFirst = await earningCounts(bk);
-  assert.equal(afterFirst.provider, 1);
-  assert.equal(afterFirst.expert, 1);
+  assert.ok(first.declaredBookingIds.includes(bk));
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 }, "a declaration mints nothing");
 
   const second = await runBookingAutoCompletion(undefined, verifyPaid);
-  assert.ok(!second.completedBookingIds.includes(bk), "the second pass must not re-complete it");
-  assert.deepEqual(await earningCounts(bk), afterFirst, "no second earning set");
-  assert.equal(await diaryCount(bk, "booking_completed"), diaryBefore + 1, "exactly one diary row");
+  assert.ok(!second.declaredBookingIds.includes(bk), "the second pass must not re-declare it");
+  assert.ok(!second.completedBookingIds.includes(bk), "nor complete it — its window is still open");
+  assert.equal(await diaryCount(bk, "booking_completion_declared"), diaryBefore + 1, "exactly one diary row");
 });
 
-test("D8-P10: the traveler's EARLY confirm-completion still releases, unchanged by the timer", async () => {
+test("D8-P10 (re-pinned, D-7): the traveler's EARLY confirm short-circuits the declared window and still releases", async () => {
   const windowDays = serviceDateCompletionDays();
   const past = new Date(Date.now() - (windowDays + 4) * DAY).toISOString();
   const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: windowDays + 8, details: { scheduledDate: past } });
   const run = await runBookingAutoCompletion(undefined, verifyPaid);
-  assert.ok(run.completedBookingIds.includes(bk));
-  assert.equal((await earningCounts(bk)).held, 2, "the timer mints HELD earnings");
+  assert.ok(run.declaredBookingIds.includes(bk), "the timer DECLARES");
+  assert.equal((await earningCounts(bk)).held, 0, "nothing is minted at the declaration");
 
-  // `POST /api/bookings/:id/confirm-completion` is the traveler's EARLY release and requires the
-  // booking to already be `completed` — which, before this ruling, nothing could make it. Driven
-  // through the same storage call that endpoint uses (the fixture traveler holds no session).
+  // `POST /api/bookings/:id/confirm-completion` is the traveler's EARLY release. It now consumes
+  // `completion_declared` too (`TRAVELER_CONFIRMABLE_FROM_STATUSES`) — the payer's confirm is what
+  // short-circuits the window — and that flip is the one that mints. Driven through the same storage
+  // calls that endpoint uses (the fixture traveler holds no session).
+  const { TRAVELER_CONFIRMABLE_FROM_STATUSES } = await import("../utils/booking-from-states");
+  const confirmed = await storage.updateServiceBookingStatus(bk, "completed", undefined, TRAVELER_CONFIRMABLE_FROM_STATUSES);
+  assert.ok(confirmed, "a declared booking is traveler-confirmable");
+  assert.equal((await earningCounts(bk)).held, 2, "the traveler's confirm mints the HELD earnings");
   const released = await storage.releaseEarningsForBooking(bk);
   assert.ok(released >= 1, "the traveler's early confirm must still release the held earning");
   assert.equal((await earningCounts(bk)).held, 0, "nothing left held after an early confirm");
@@ -602,12 +616,15 @@ test("D8-P11: voice_notes is PROVIDER-DECLARED — the ruling-66 no_booked_slot 
   const raw = await res.text();
   assert.equal(res.status, 200, raw);
   assert.equal(JSON.parse(raw).rule, "provider_declared");
-  assert.equal(await statusOf(bk), "completed");
-  assert.equal((await earningCounts(bk)).held, 2, "the same held-earning machinery, no per-method fork");
+  // RE-PINNED (D-7): the owner rail DECLARES; the window's close is what mints.
+  assert.equal(await statusOf(bk), "completion_declared");
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 }, "a declaration mints nothing");
 
-  // …and no timer may fire it — provider_declared is the owner's to declare.
+  // …and no timer may declare it either — provider_declared is the owner's to declare — and its
+  // window, just opened, is not yet closeable.
   const run = await runBookingAutoCompletion(undefined, verifyPaid);
   assert.ok(!run.completedBookingIds.includes(bk));
+  assert.ok(!run.declaredBookingIds.includes(bk));
 });
 
 // ══ property ════════════════════════════════════════════════════════════════════════════════
@@ -647,16 +664,17 @@ test("D8-P5: provider-confirmed CALL completion routes through the shared spine 
   const raw = await res.text();
   assert.equal(res.status, 200, raw);
   const body: any = JSON.parse(raw);
-  assert.equal(body.completed, true);
+  // RE-PINNED (D-7): the owner rail DECLARES, and says so — `completed: false` on the response.
+  assert.equal(body.declared, true);
+  assert.equal(body.completed, false);
   assert.equal(body.rule, "session_end");
-  assert.equal(await statusOf(bk), "completed");
+  assert.ok(body.disputeBy, "the traveler's window end comes from the server's own derivation");
+  assert.equal(await statusOf(bk), "completion_declared");
   const after = await earningCounts(bk);
-  assert.equal(after.provider, 1);
-  assert.equal(after.expert, 1);
-  assert.equal(after.held, 2, "the SAME held-earning machinery as the in-person flip");
-  assert.equal((await completionStamp(bk))?.actor, "provider_session_end");
+  assert.deepEqual(after, { provider: 0, expert: 0, held: 0 }, "a declaration mints NOTHING — the window's close does");
+  assert.equal((await declarationStamp(bk))?.actor, "provider_session_end");
 
-  // A second click is a no-op, not a second earning set.
+  // A second click is a no-op, not a second declaration.
   const again = await api(`/api/provider/bookings/${bk}/complete`, owner.cookie, "POST", {});
   assert.equal(again.status, 409);
   assert.deepEqual(await earningCounts(bk), after);
@@ -679,24 +697,25 @@ test("D8-N7 (§13): a call whose session has NOT ended is refused, and one with 
   assert.equal(await statusOf(noSlot), "confirmed");
 });
 
-test("D8-P6: ASYNC is provider-declared, and the reused dispute window BLOCKS release inside it", async () => {
+test("D8-P6 (re-pinned, D-7): ASYNC is provider-declared, and the reused dispute window is served ONCE — nothing mints inside it", async () => {
   const bk = await makeBooking({ serviceId: ids.asyncSvc, confirmedDaysAgo: 2 });
   const res = await api(`/api/provider/bookings/${bk}/complete`, owner.cookie, "POST", {});
   const raw = await res.text();
   assert.equal(res.status, 200, raw);
-  assert.equal(JSON.parse(raw).rule, "provider_declared");
-  assert.equal(await statusOf(bk), "completed");
+  const body = JSON.parse(raw);
+  assert.equal(body.rule, "provider_declared");
+  assert.equal(await statusOf(bk), "completion_declared", "'completed' is never said before the window closes");
 
-  const held = await earningCounts(bk);
-  assert.equal(held.held, 2, "earnings are born HELD — a declaration is not a payout");
-  const avail = await db.execute(sql`SELECT available_at FROM provider_earnings WHERE source_id = ${bk}`);
-  const availableAt = new Date((avail.rows[0] as any).available_at).getTime();
-  assert.ok(availableAt > Date.now(), "availableAt must sit at the END of the existing dispute window");
-
-  // The EXISTING release job must not release inside that window — no second constant, no fork.
+  // What used to be asserted — a HELD earning whose availableAt sat at the window's end — is now
+  // stronger: NO earning exists inside the window at all, and the window's end is the derived
+  // `disputeBy` the response states. The release job therefore has nothing to release.
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
+  assert.ok(Date.parse(body.disputeBy) > Date.now(), "the traveler's window sits in the future");
   await storage.releaseMaturedEarnings();
-  const stillHeld = await earningCounts(bk);
-  assert.equal(stillHeld.held, 2, "the release job must NOT release inside the dispute window");
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 }, "nothing to release inside the window");
+  // The timer will not close a window that is still open, either.
+  const run = await runBookingAutoCompletion(undefined, verifyPaid);
+  assert.ok(!run.completedBookingIds.includes(bk));
 });
 
 // ══ G — bundles: partial completion never pays out ═══════════════════════════════════════════
