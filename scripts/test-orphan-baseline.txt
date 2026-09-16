@@ -60,7 +60,6 @@ server/__tests__/affiliate-reconciliation-travelpayouts.test.ts
 server/__tests__/ai-error-sanitizer.test.ts
 server/__tests__/ai-rate-limit-coverage.test.ts
 server/__tests__/audit-log-atomicity.unit.test.ts
-server/__tests__/availability-model.db.test.ts
 server/__tests__/balance-payer-atomicity.db.test.ts
 server/__tests__/balance-payer.test.ts
 server/__tests__/benchmark-facts-denorm.db.test.ts
@@ -113,7 +112,6 @@ server/__tests__/fp3-property-room-edit.db.test.ts
 server/__tests__/fp5-console-agreement.db.test.ts
 server/__tests__/fp5-payout-threshold.test.ts
 server/__tests__/gem-promotion.db.test.ts
-server/__tests__/generated-itinerary-atomicity.db.test.ts
 server/__tests__/generated-itinerary-normalization.test.ts
 server/__tests__/guest-invite-mailer.test.ts
 server/__tests__/guest-invite-send.db.test.ts
@@ -129,12 +127,6 @@ server/__tests__/landing-moments-prompt.test.ts
 server/__tests__/landing-moments.db.test.ts
 server/__tests__/market-insights.db.test.ts
 server/__tests__/mid-trip-purchase-versions.db.test.ts
-server/__tests__/mutation-auth/admin-mutation-auth.test.ts
-server/__tests__/mutation-auth/expert-provider-mutation-auth.test.ts
-server/__tests__/mutation-auth/mutation-auth.http.test.ts
-server/__tests__/mutation-auth/mutation-auth.inventory.test.ts
-server/__tests__/mutation-auth/non-admin-payments-user-data-mutation-auth.http.test.ts
-server/__tests__/mutation-auth/payment-mutation-auth.manifest.test.ts
 server/__tests__/neighborhood-claims-copy.test.ts
 server/__tests__/neighborhood-claims.db.test.ts
 server/__tests__/occasion-drafts.db.test.ts
@@ -156,13 +148,11 @@ server/__tests__/provider-rejection-email.test.ts
 server/__tests__/qa2-notification-slot-durability.db.test.ts
 server/__tests__/ready-made-author-filter.http.test.ts
 server/__tests__/refund-retry-convergence.test.ts
-server/__tests__/regenerate-booking-guard.db.test.ts
 server/__tests__/registration-flag-gate.test.ts
 server/__tests__/review-moderation-atomicity.db.test.ts
 server/__tests__/role-audit-atomicity.db.test.ts
 server/__tests__/role-transition.test.ts
 server/__tests__/runtime-health-secrets.test.ts
-server/__tests__/s11-stay-booking.db.test.ts
 server/__tests__/s8-property-builder.db.test.ts
 server/__tests__/service-attestations.http.test.ts
 server/__tests__/service-booking-counters.db.test.ts
@@ -188,7 +178,6 @@ server/__tests__/stripe-connect-reminder.test.ts
 server/__tests__/stripe-key-policy.test.ts
 server/__tests__/stripe-key-resolver.unit.test.ts
 server/__tests__/test-seed-endpoint-gate.test.ts
-server/__tests__/text-sanitization.test.ts
 server/__tests__/tier2-security-audit.http.test.ts
 server/__tests__/trailhead-t3-affiliate-matcher.test.ts
 server/__tests__/trailhead-t3-pass-runner.test.ts
