@@ -333,6 +333,16 @@ export interface SaveGeneratedItinerarySnapshotInput {
      *  ruling 2026-09-01-moment-key). Server-validated by the caller against the moments allowlist
      *  (never raw req.body). Nullable — no key, no stamp (§13). */
     momentKey?: string | null;
+    /**
+     * DID THE TRAVELER CHOOSE THIS WINDOW? (migration 302, ledger
+     * `2026-09-15-d22-dates-confirmed`, punchlist D-22.) Only the CALLER knows: this rail is
+     * reached from the Grok generate routes, where the dates ride the request, and from the Plus
+     * occasion-draft scheduler, where they are derived from the occasion's own cycle date. OPT-IN
+     * — omitting it makes NO claim and `dates_confirmed_at` stays NULL, which every reader renders
+     * as a placeholder window (§13, and the same default `storage.createTrip`'s `TripMintOptions`
+     * takes). Never reachable from a request body (§19).
+     */
+    datesChosenByTraveler?: boolean;
   };
   generatedPlan: Record<string, any>;
   canonicalItems: NormalizedGeneratedCanonicalItem[];
@@ -400,6 +410,12 @@ export async function saveGeneratedItinerarySnapshot(
         // storage.createTrip. Outside the operating markets this is NULL — "not captured", which
         // readers honour rather than guessing a zone (§13).
         timezone: resolveTripTimezone(input.trip.destination),
+        // MINT SITE 8 of 10 (migration 302, ledger `2026-09-15-d22-dates-confirmed`, punchlist
+        // D-22). The AI snapshot mint. The window above is the caller's, so whether it was CHOSEN
+        // is the caller's fact too — stated on the input rather than guessed here. Absent ⇒ NULL ⇒
+        // the slip labels the window a placeholder; it is never stamped just because a plan came
+        // out of a generator (§13).
+        datesConfirmedAt: input.trip.datesChosenByTraveler ? new Date() : null,
       } as any).returning();
 
       await tx.insert(tripCollaborators).values({

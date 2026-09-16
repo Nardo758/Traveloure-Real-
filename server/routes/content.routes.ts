@@ -1848,6 +1848,10 @@ router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
           : null;
         const today = new Date().toISOString().split("T")[0];
         const startDate = experience.eventDate || today;
+        // MINT SITE 6 of 10 (migration 302, ledger `2026-09-15-d22-dates-confirmed`, punchlist
+        // D-22). The window is the EVENT's own date when the traveler gave one, and today when
+        // they did not — so the claim rides `experience.eventDate` and nothing else. §13: a
+        // today-fallback window renders as a placeholder rather than as the day of the event.
         const trip = await storage.createTrip({
           userId,
           title: experience.title || (expType ? `${expType.name} Trip` : "My Trip"),
@@ -1856,7 +1860,7 @@ router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
           endDate: startDate,
           eventType: expType?.slug || "vacation",
           status: "draft",
-        });
+        }, { datesChosenByTraveler: Boolean(experience.eventDate) });
         tripId = trip.id;
         const updated = await storage.updateUserExperience(experience.id, { tripId });
         return res.status(201).json(updated || { ...experience, tripId });
@@ -1891,9 +1895,13 @@ router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
           ? await getExperienceTypeById(experience.experienceTypeId)
           : null;
         const today = new Date().toISOString().split("T")[0];
-        const startDate = updates.eventDate || experience.eventDate || today;
+        const statedEventDate = updates.eventDate || experience.eventDate;
+        const startDate = statedEventDate || today;
         const destination = updates.location || experience.location || "TBD";
         const title = updates.title || experience.title || (expType ? `${expType.name} Trip` : "My Trip");
+        // MINT SITE 7 of 10 (migration 302, punchlist D-22). Same rule as the sibling mint on the
+        // POST above, read off the same fact: the event's stated date is the traveler's answer,
+        // the today-fallback is this handler satisfying a NOT NULL column (§13).
         const trip = await storage.createTrip({
           userId,
           title,
@@ -1902,7 +1910,7 @@ router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
           endDate: startDate,
           eventType: expType?.slug || "vacation",
           status: "draft",
-        });
+        }, { datesChosenByTraveler: Boolean(statedEventDate) });
         updates.tripId = trip.id;
       } catch (tripErr) {
         console.error("Failed to auto-create trip on experience update:", tripErr);
@@ -4885,6 +4893,12 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           status: "draft",
           eventType: eventType || experienceType || "vacation",
           specialRequests: normalizedSpecialRequests || null,
+          // MINT SITE 8b (migration 302, ledger `2026-09-15-d22-dates-confirmed`, punchlist
+          // D-22). This route REFUSES a request with no dates (`400 "Start and end dates are
+          // required"` above), so `dates.start`/`dates.end` are always the traveler's own answer
+          // — nothing here defaults them, and there is no branch in which they could be a
+          // platform guess. The claim is therefore unconditional on this rail.
+          datesChosenByTraveler: true,
           // L3: stamp the fine occasion when this trip is born from a Moment CTA. Already validated
           // above (isMomentKeyAcceptable → 400 on a present-but-invalid key); an absent key stamps
           // NULL. Never raw req.body — the value is the validated momentKey only.
@@ -5296,6 +5310,11 @@ router.post("/api/ai/itineraries/:id/save-as-trip", isAuthenticated, async (req,
           status: "draft",
           eventType: body.eventType || "vacation",
           specialRequests: null,
+          // MINT SITE 8c (migration 302, punchlist D-22). The window is the STORED generation's
+          // own `start_date`/`end_date`, which reached that row from the traveler's generate
+          // request — and a row missing either is refused 422 a few lines above rather than
+          // defaulted (§13, already this route's posture). So these are the traveler's dates.
+          datesChosenByTraveler: true,
         },
         generatedPlan: {
           destination: row.destination,

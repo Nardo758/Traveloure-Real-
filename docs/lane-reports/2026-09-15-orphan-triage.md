@@ -506,9 +506,9 @@ row.
 
 | # | lane | closes | shape | size |
 |---|---|---|---|---|
-| **T-1** | **The four single-purpose directories.** `server/utils/__tests__` (2), `server/seeds/__tests__` (1), `server/services/travelpayouts/__tests__` (1), `server/services/trend-engine/__tests__` (1). **Each directory contains ONLY these files**, so one glob closes each exactly. | **5** | one `npm ci` job, `npx tsx --test <dir>/*.test.ts*`, no database | **XS** — one workflow block |
-| **T-2** | **`server/services/__tests__` — all 21 green** (12 pure, 9 DB). Directory holds 28 test files, so the glob also picks up 7 already-wired ones; re-running a wired suite is the 2026-09-14 precedent and costs a minute. | **21** | ONE **DB-backed** whole-directory job (Postgres service + `ci-db-setup`), because the directory mixes pure and DB suites and a database costs less than a split | **S** |
-| **T-3** | **`server/routes/__tests__` (11) + `server/migrations/__tests__` (3)** — 13 green, 1 red (`booking-idor-guard`, `Expected 403 but got 503`, a fixture). Repair that one first; a whole-directory job cannot carry a red. | **14** | one DB-backed job per directory (or one job, two steps) | **S** |
+| ~~**T-1**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t1-t3-green-directories`) | **The four single-purpose directories.** `server/utils/__tests__` (2), `server/seeds/__tests__` (1), `server/services/travelpayouts/__tests__` (1), `server/services/trend-engine/__tests__` (1). **Each directory contains ONLY these files**, so one glob closes each exactly. | **5** | one `npm ci` job, `npx tsx --test <dir>/*.test.ts*`, no database | **XS** — one workflow block |
+| ~~**T-2**~~ ✅ **LANDED 2026-09-15 — 20 of 21** (ledger `2026-09-15-orphans-t1-t3-green-directories`) | **`server/services/__tests__` — all 21 green** (12 pure, 9 DB). Directory holds 28 test files, so the glob also picks up 7 already-wired ones; re-running a wired suite is the 2026-09-14 precedent and costs a minute. | **21** | ONE **DB-backed** whole-directory job (Postgres service + `ci-db-setup`), because the directory mixes pure and DB suites and a database costs less than a split | **S** |
+| ~~**T-3**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t1-t3-green-directories`) | **`server/routes/__tests__` (11) + `server/migrations/__tests__` (3)** — 13 green, 1 red (`booking-idor-guard`, `Expected 403 but got 503`, a fixture). Repair that one first; a whole-directory job cannot carry a red. | **14** | one DB-backed job per directory (or one job, two steps) | **S** |
 | **T-4** | **`mutation-auth/` (6).** Two are already green. Two need `MUTATION_AUTH_AUDIT_OK=1` **and** a working fixture login. One (`admin-mutation-auth`) then runs 143 real probes and reports the three 401/403 rails in §5 #2. One is **DEAD** (`non-admin-payments-…` asserts `POST /api/expert/templates` is mounted; that consumer lane was retired by ledger `2026-09-03-expert-templates-consumer-sunset`). | **6** | one DB + app job with the audit flag, plus one deletion and one decision | **S/M** — the decision is the cost, not the wiring |
 | **T-5** | **R-12 / R-13** — §6. One read-back in each fixture, plus the punchlist's own recommendation to split the pure half out first. | **2** | one DB + app job | **S** |
 | **T-6** | **The two suites LD 41 (b) overtook** (`generated-itinerary-atomicity.db`, `regenerate-booking-guard.db`) — seed an empty slip, or drive the paid rail. The ruling is settled; only the fixtures are not. | **2** | repair + wire into an existing DB job | **S** |
@@ -516,6 +516,24 @@ row.
 | **T-8** | **The remaining `server/__tests__` reds** — 26 fixture rows and 6 assertion rows (§5). Mostly three repeated causes: a fixture login against `ci-*`/`kyoto-*@traveloure.test` credentials the suite assumes, a fixture row inserted before its owner exists (the §6 race, several more instances), and a listing/service fixture a fresh database does not carry. | **32** | 3-5 lanes grouped **by cause, not by file** — one shared fixture helper is worth more than thirty local patches (§18 rule 1) | **L** — the real work |
 | **T-9** | **`server/__tests__` as a class.** Once T-5/T-6/T-7/T-8 are green, ONE DB + app whole-directory job closes all **157** by glob and makes the directory orphan-proof by construction, the way `unit-suite-shared` did. Do **not** do this before the reds are green: a whole-directory job cannot carry one. | **157** (of which 124 are already green today) | one job | **S once T-8 lands; impossible before** |
 | **T-10** | **The 30 Playwright specs.** Out of this lane's scope by the brief and already classified per-spec by the 2026-09-14 lane, which RAN all 41. Its finding stands: *nothing they assert is gone; what has rotted is their EXPECTATIONS, and rewriting an expectation is a product decision.* | **30** | a product decision per spec, then wiring | **L, and gated on decisions rather than effort** |
+
+**STRUCK 2026-09-15 — T-1, T-2 and T-3 have landed** (ledger
+`2026-09-15-orphans-t1-t3-green-directories`, PR on `task-orphans-t1-t3-green-directories`).
+39 of the 40 suites they name are wired; the inventory moved **279/512 → 318/512 reachable**
+and the baseline **233 → 194**. Two corrections this report owes its readers, both found by
+running what it proposed:
+
+1. **`server/services/__tests__/content-matching.test.ts` is an HTTP suite, not a DB one.** It
+   fetches `http://localhost:5000/api/content-match` on six of its nine tests; §3's bucket row
+   credits this directory with 0 HTTP-GREEN, so it was counted in the 9 DB-GREEN. It is the ONE
+   suite of T-2's 21 left orphaned, and it stays on the baseline until a job boots the app.
+2. **A directory is not one runner, so "one glob closes it" is not always available.** Five
+   files under these roots import from `vitest` — `server/services/__tests__/anchor-candidates`
+   and `anchor-scoring`, and all three non-`chain-integrity` files in
+   `server/migrations/__tests__` — and `tsx --test` dies inside `@vitest/runner` before a single
+   assertion runs, while `vitest` cannot run a `node:test` file either. §2 recorded the 12
+   vitest files as a HARNESS fact; it is also a WIRING fact, and T-9's whole-directory shape for
+   `server/__tests__` must be planned around it.
 
 **Three cross-cutting notes for whoever picks these up.**
 

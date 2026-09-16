@@ -665,6 +665,16 @@ router.post(
           marketSlug: resolveMarketSlug(city),
           startDate: fmt(start),
           endDate: fmt(end),
+          // AN AUTHORING BUILD NEVER CONFIRMS DATES (migration 302, ledger
+          // `2026-09-15-d22-dates-confirmed`, punchlist D-22). `dates_confirmed_at` stays NULL,
+          // and here the answer is structural rather than a judgement call: an authoring build is
+          // a TEMPLATE IN THE MAKING, not scheduled travel — the comment above already says the
+          // window is synthetic and exists only because `start_date`/`end_date` are NOT NULL — and
+          // there is no traveler principal on this row at all (`userId` is NULL by design, which
+          // is also why the pre-trip event pen is not drained). Nobody is present to choose a date,
+          // so no date can be claimed as chosen (§13). The buyer's clone leaves it NULL too, and
+          // the stamp is earned only when a real owner answers through the re-date rail.
+          datesConfirmedAt: null,
           status: "draft",
           numberOfTravelers: 2,
           adults: 2,

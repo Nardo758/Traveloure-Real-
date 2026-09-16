@@ -44,6 +44,7 @@
  * reads a query string or a body.
  */
 import { PROVISIONAL_BOOKING_STATUSES } from "@shared/booking-visibility";
+import { planDatesAreConfirmed } from "@shared/plan-dates";
 import {
   HANDOVER_WINDOW_MS,
   calendarDayOf,
@@ -79,6 +80,20 @@ export interface UpcomingRow {
   dateKind: "day" | "instant";
   /** The plan's IANA zone — present ONLY when the plan carries a usable one (LD 30). */
   tz?: string;
+  /**
+   * `false` when the date this row is built from is a PLACEHOLDER — the plan's
+   * `trips.dates_confirmed_at` is NULL, so nobody chose the window the row counts from (migration
+   * 302, ledger `2026-09-15-d22-dates-confirmed`, punchlist D-22). Carried ONLY on the rows whose
+   * date comes off `trips.start_date` (`trip_start`, `handover`), and only when it is false: a
+   * confirmed plan says nothing extra, and a row dated by a booking, a balance or an event is
+   * dated by ITS OWN column and this question does not apply to it.
+   *
+   * §13 — the row is still EMITTED. Locked Decision 45 (8) omits an UNDATED row, and this one has
+   * a date; what it lacks is the claim that anybody picked it. Dropping the plan off Home would
+   * hide a real plan, and showing it unmarked would present the platform's guess as the
+   * traveler's. The honest answer is the third one: show it, and say what the date is.
+   */
+  datesConfirmed?: false;
   kind: UpcomingKind;
   sentence: string;
   /** The plan the row belongs to; null only for a booking that is on no plan. */
@@ -97,6 +112,9 @@ export interface UpcomingTrip {
   destination: string;
   startDate: string | Date | null;
   timezone?: string | null;
+  /** `trips.dates_confirmed_at` as stored — NULL/absent = nobody chose this plan's window
+   *  (migration 302). Read through `planDatesAreConfirmed`, never re-answered here (§18 rule 1). */
+  datesConfirmedAt?: string | Date | null;
   finalizedAt?: string | Date | null;
   /** Latest `trip_finals.version`, or null when no final exists (the D8 rule the Trip Card applies). */
   finalVersion?: number | null;
@@ -249,8 +267,15 @@ export function buildUpcomingRows(input: UpcomingInput): UpcomingRow[] {
     const planName = planNameOf(trip);
     const city = cityOf(trip.destination);
     const hasFinal = trip.finalVersion != null;
+    // Migration 302 / punchlist D-22: both rows below are dated from `trips.start_date`, which is
+    // NOT NULL and is therefore filled in for a ready-made clone and an authoring build whether or
+    // not anyone chose it. The key is added ONLY when the answer is "nobody did" (see the field).
+    const placeholderDates = planDatesAreConfirmed(trip.datesConfirmedAt)
+      ? {}
+      : { datesConfirmed: false as const };
 
     dayRow(String(trip.startDate instanceof Date ? trip.startDate.toISOString() : trip.startDate ?? ""), trip.timezone, {
+      ...placeholderDates,
       kind: "trip_start",
       sentence: `${city} begins.${itemCountsClause(countsByTrip.get(trip.id))}`,
       tripId: trip.id,
@@ -265,6 +290,7 @@ export function buildUpcomingRows(input: UpcomingInput): UpcomingRow[] {
       const opens = handoverInstant(trip.startDate, trip.timezone);
       if (opens) {
         const handoverRow = {
+          ...placeholderDates,
           kind: "handover" as const,
           sentence: `The Trip Card takes over for ${city}: the ${HANDOVER_HOURS}-hour handover.`,
           tripId: trip.id,
@@ -400,6 +426,10 @@ export async function loadUpcomingForUser(
       destination: trips.destination,
       startDate: trips.startDate,
       timezone: trips.timezone,
+      // Migration 302 (punchlist D-22): the loader reads the COLUMN; the builder asks the one
+      // predicate what it means. Home must not present a ready-made clone's placeholder window as
+      // a date the traveler is counting down to (§13).
+      datesConfirmedAt: trips.datesConfirmedAt,
       finalizedAt: trips.finalizedAt,
     })
     .from(trips)

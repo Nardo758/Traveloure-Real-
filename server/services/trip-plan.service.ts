@@ -43,6 +43,7 @@ import { providerServices, serviceBookings, tripExpertAdvisors, tripTransactions
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { contentOriginFor } from "@shared/content-origin";
 import { plancardPartyCount } from "@shared/plan-vocabulary";
+import { planDatesAreConfirmed } from "@shared/plan-dates";
 import {
   TRIP_PLAN_VERSION,
   isChauffeuredMode,
@@ -1164,6 +1165,21 @@ export async function assembleTripPlan(
         // reader must then say NOTHING about the zone — never UTC, never the server's zone, never
         // the nearest guess, because a wrong zone is worse than an honest silence.
         ...((trip as any).timezone ? { timezone: String((trip as any).timezone) } : {}),
+        // Migration 302 (ledger `2026-09-15-d22-dates-confirmed`, punchlist D-22) — DID ANYBODY
+        // CHOOSE `startDate`/`endDate` above? `trips.start_date` is NOT NULL, so this DTO has
+        // always carried a window, and a ready-made clone's `new Date()` placeholder, an authoring
+        // build's synthetic anchor and a cart mint's today-fallback all rode it looking exactly
+        // like a window the traveler picked. This is the one fact that tells them apart.
+        //
+        // §13 — ASSIGNED, NOT SPREAD, and deliberately the other way round from `timezone` above.
+        // An absent zone means "say nothing about the zone", so omitting the key is the honest
+        // shape there. This one is a BOOLEAN CLAIM whose FALSE value is the load-bearing half: a
+        // reader must be able to tell "these dates are a placeholder" from "this payload predates
+        // the field", and an omitted key collapses those two into one. It is BOOLEAN, never the
+        // timestamp: when the dates were certified is nobody's business on a read surface, and
+        // publishing it would invite a second reader to re-answer the question (§18 rule 1).
+        // `planDatesAreConfirmed` is that one answer.
+        datesConfirmed: planDatesAreConfirmed((trip as any).datesConfirmedAt),
       },
       changeLog,
       metrics: metricsMap,

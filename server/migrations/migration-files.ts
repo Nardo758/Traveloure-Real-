@@ -1647,4 +1647,16 @@ export const MIGRATION_FILES = [
   // a stamped 0 would claim a pass examined zero ready-made purchases, a fact nobody has (§13).
   // No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no manifest entry.
   "301_reconciliation_runs_ready_made_tallies.sql",
+  // Ledger `2026-09-15-d22-dates-confirmed` (punchlist D-22 = yes). `trips.dates_confirmed_at` —
+  // the fact that separates a window the TRAVELER chose from one the platform filled in because
+  // `start_date`/`end_date` are NOT NULL (the ready-made clone's `new Date()` placeholder, the two
+  // expert authoring builds' synthetic window, the cart mints' today-fallback). Additive,
+  // NULLABLE, NO DEFAULT and NO CHECK (the publish-trap posture), no index, declared in
+  // `shared/schema.ts` in the same commit (deploy-push durability rule), and **NO BACKFILL**:
+  // NULL = NOT CONFIRMED, which every reader renders as a placeholder window — never as "no
+  // dates" (the columns are NOT NULL) and never as a confirmed one (§13). Never client-settable
+  // (§19 — `insertTripSchema` omits it); written only by `storage.createTrip` (opt-in, when the
+  // caller states the dates came from the traveler) and `storage.updateTrip` (the R-4 re-date
+  // rail). No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no manifest entry.
+  "302_trips_dates_confirmed_at.sql",
 ] as const;
