@@ -295,3 +295,29 @@ export const ARTIFACT_RECORD_ONLY_STATUSES: readonly string[] = ["confirmed", "d
  * entry, and the narrowness is the point: this is the money-riskiest write on the rail.
  */
 export const DISPUTE_REJECT_FROM_STATUSES: readonly string[] = ["disputed"];
+
+/*
+ * ── D-34 (punchlist D-32..D-35, ruled A; ledger `2026-09-16-d32-d35-bundle-components`) ─────────
+ * A BUNDLE COMPLETES PARTIALLY. `confirmed → partially_completed` — the parent flip a bundle takes
+ * when every component has an answer, at least one was delivered and at least one was NOT
+ * (`deriveBundleOutcome` in `shared/bundle-component-states.ts` is the ONE derivation). It is the
+ * money event for the delivered share: `storage.updateServiceBookingStatus` mints ONCE over the
+ * REDUCED figures inside the same transaction (D-35). One entry, and the narrowness is the point —
+ * a bundle already `completed`, `refunded` or `disputed` is never re-decided by a component write.
+ *
+ * WHAT DELIBERATELY DID NOT CHANGE, each stated because D-34's brief text names it:
+ *   - `COMPLETION_ALLOWED_FROM_STATUSES` (`booking-completion.service.ts`) is NOT widened. The brief
+ *     added `partially_completed` "so a late-delivered component can still complete the parent", but
+ *     the state is REACHED ONLY when no component is `pending` — a component is `failed` by an
+ *     atomic `WHERE status = 'pending'` claim and never comes back — so there is no late component
+ *     left to complete, and widening the timer's candidate predicate would hand the nightly job a
+ *     state it can never complete (the D-24 invariant, one state over).
+ *   - `DISPUTABLE_FROM_STATUSES` does NOT gain it. Not ruled, and not safe to infer:
+ *     `DISPUTE_REJECT_FROM_STATUSES` restores a dispute to `completed`, which would misstate a
+ *     partial parent, and the dispute route's time bound anchors on `completed_at`, which a partial
+ *     parent never stamps. A per-component dispute inherits D-6/D-7 (brief §2 rule 7) and is its
+ *     own lane.
+ *   - `TERMINAL_STATUSES` (`stripeReconciliation.ts`) does NOT gain it — a partially completed
+ *     bundle still owes a component refund, and §17 must keep seeing it as paid.
+ */
+export const PARTIAL_COMPLETION_FROM_STATUSES: readonly string[] = ["confirmed"];

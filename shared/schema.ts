@@ -10874,6 +10874,72 @@ export const bookingRevisionRequests = pgTable("booking_revision_requests", {
 export type BookingRevisionRequest = typeof bookingRevisionRequests.$inferSelect;
 
 /**
+ * D-32 (migration 306, ledger `2026-09-16-d32-d35-bundle-components`; punchlist D-32 = option A).
+ * ONE ROW PER COMPONENT OF A PURCHASED BUNDLE, on the `booking_revision_requests` / `service_route_points`
+ * child-row pattern: FK -> `service_bookings(id)` ON DELETE CASCADE, UNIQUE (booking_id,
+ * component_service_id), an index on the parent. Table, UNIQUE and index are all declared HERE per the
+ * deploy-push durability rule (an object this file does not declare is dropped at publish and never
+ * recreated, because the migration is already stamped).
+ *
+ * WHY A TABLE AND NOT THE EXISTING JSONB. Per-component COMPLETION already lived on
+ * `booking_details.componentCompletions` (a `{componentId: ISO}` map). It cannot carry FAILED, and —
+ * the load-bearing half — a jsonb key cannot be the target of an atomic conditional the way a row
+ * can, so every §15 claim the partial-completion state machine needs would be a read-modify-write
+ * on the whole document. A row is claimed with `UPDATE … WHERE status = 'pending'`; the statement is
+ * the guard (§15/§18b).
+ *
+ * BORN AT CHECKOUT, by the checkout claim's composer (`storage.createServiceBooking`, from the
+ * purchase-time `bundleComponents` snapshot, inside the birth transaction) and by nothing else — the
+ * §19d "server composer keeps a named exemption" posture: the client-facing birth rail strips the
+ * snapshot key (`shared/booking-details-admission.ts`) so no body can plant components or prices.
+ * `snapshot_price_cents` is D-33's price — SERVER-DERIVED from the catalog at checkout (§14), never
+ * from a body, and never re-read from the listing later (a seller repricing must not move a refund).
+ *
+ * `status` is app-enforced with NO DB CHECK (`shared/bundle-component-states.ts`,
+ * `BUNDLE_COMPONENT_STATUS`), the publish-trap posture. `delivered_at`, `accepted_at`, `cancelled_at`,
+ * `refunded_at`, `refund_amount_cents` and `stripe_refund_id` are the D-32 ruling's columns for the
+ * per-component acceptance (D-6/D-7, inherited) and the component REFUND (brief lane 4); they have
+ * NO WRITER in this lane and every reader OMITS them when NULL (§13).
+ *
+ * NO BACKFILL. A booking born before this table has no rows; its `componentCompletions` jsonb stays
+ * the legacy source of record, read as such and NAMED as such (`componentStateSource:
+ * "legacy_jsonb"`), and it can never become `partially_completed` — that state needs a price.
+ *
+ * `component_service_id` deliberately carries NO FK to `provider_services`: the row is a SNAPSHOT of
+ * what was bought (the ready-made posture), and a component the seller later deletes must not take
+ * the traveler's record of it away.
+ */
+export const bookingComponentStates = pgTable("booking_component_states", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bookingId: varchar("booking_id").notNull().references(() => serviceBookings.id, { onDelete: "cascade" }),
+  componentServiceId: varchar("component_service_id").notNull(),
+  position: integer("position"), // the snapshot's order, 0-based; NULL = not recorded
+  serviceName: text("service_name"), // the component's name AS BOUGHT (the snapshot's), for §13-honest naming
+  status: varchar("status", { length: 20 }).notNull(), // app-enforced; the composer writes `pending`
+  snapshotPriceCents: integer("snapshot_price_cents"), // D-33; NULL = not captured, never 0
+  deliveredAt: timestamp("delivered_at"),
+  acceptedAt: timestamp("accepted_at"),
+  completedAt: timestamp("completed_at"),
+  failedAt: timestamp("failed_at"),
+  failureReason: text("failure_reason"),
+  cancelledAt: timestamp("cancelled_at"),
+  refundedAt: timestamp("refunded_at"),
+  refundAmountCents: integer("refund_amount_cents"),
+  stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("booking_component_states_booking_component_unique").on(table.bookingId, table.componentServiceId),
+  index("booking_component_states_booking_idx").on(table.bookingId),
+]);
+export type BookingComponentState = typeof bookingComponentStates.$inferSelect;
+// There is deliberately NO `createInsertSchema(bookingComponentStates)` — under a denylist schema every
+// column is client-settable by default (§19), and this table has NO client writer at all: the composer
+// and the two owner-rail transitions write it server-side. The owner rails' bodies are explicit
+// `.strict()` picks in `server/routes.ts` that admit a component ID and a reason and never a status,
+// a price or a timestamp.
+
+/**
  * D-28 (ledger `2026-09-15-d28-d31-service-quotes`; migration 305): A CUSTOM QUOTE IS A CHILD ROW
  * WITH AN EXPIRY. One row per OFFER between a traveler and a listing, on the `service_route_points`
  * / `booking_revision_requests` pattern — FK -> `provider_services` ON DELETE CASCADE, UNIQUE

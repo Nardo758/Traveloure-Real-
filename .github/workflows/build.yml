@@ -1653,7 +1653,7 @@ jobs:
         run: npx tsx --test --test-force-exit client/src/lib/__tests__/plan-dates.test.ts
 
   acceptance-rails:
-    name: acceptance-rails (D-24..D-27 + D-40 + D-36..D-39; ledgers 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt, 2026-09-15-d36-d39-completion-declared)
+    name: acceptance-rails (D-24..D-27 + D-40 + D-36..D-39 + D-32..D-35; ledgers 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt, 2026-09-15-d36-d39-completion-declared, 2026-09-16-d32-d35-bundle-components)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -1721,6 +1721,21 @@ jobs:
       # imports `@shared/` (the #812 lesson).
       - name: The one declared-window derivation (P1-P6)
         run: npx tsx --test --test-force-exit shared/__tests__/declared-completion-window.test.ts
+      # D-32..D-35 BUNDLES (ledger 2026-09-16-d32-d35-bundle-components; migration 306). The checkout
+      # claim's composer births one `booking_component_states` row per component WITH the
+      # server-derived snapshot price (C1); the client-facing birth rail births none (C1b); a component
+      # flip is ONE row under a concurrent double call (C2); `partially_completed` is reached exactly
+      # when every component has an answer, at least one delivered and at least one failed (C3/C3b),
+      # and NEVER when nothing delivered (C3c); the flip mints ONCE over the REDUCED pro-rata figures
+      # and a second run mints nothing (C4); an unpriced component refuses the flip and rolls it back
+      # (C4b); a legacy jsonb bundle is still read with its source NAMED and can never become partial
+      # (C5); the lists that learned the status, and the ones that deliberately did not (C6).
+      - name: The bundle component rails (C1-C6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/bundle-component-states.db.test.ts
+      # The PURE layer beside it: the ONE parent derivation and the pro-rata reduction. No DB — wired in
+      # this `npm ci` job because it imports `@shared/` (the #812 lesson).
+      - name: The one bundle derivation (B-P1-B-P6)
+        run: npx tsx --test --test-force-exit shared/__tests__/bundle-component-states.test.ts
 
   plan-proposals:
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)

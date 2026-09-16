@@ -1701,4 +1701,14 @@ export const MIGRATION_FILES = [
   // columns, NO BACKFILL, and DECLARED in `shared/schema.ts` in the same commit (deploy-push
   // durability rule). Migration 304 is claimed by the parallel D-36..D-39 lane.
   "305_service_quotes.sql",
+  // Ledger `2026-09-16-d32-d35-bundle-components` (punchlist D-32..D-35, all option A; the D-9 ruling's
+  // columns). `booking_component_states` — ONE ROW PER COMPONENT of a purchased bundle, FK ->
+  // service_bookings ON DELETE CASCADE, UNIQUE (booking_id, component_service_id), per-component
+  // `status` app-enforced with NO CHECK, D-33's `snapshot_price_cents` server-derived from the catalog
+  // at checkout. Born by the checkout claim's composer inside the birth transaction; NO BACKFILL (the
+  // `componentCompletions` jsonb stays the legacy source, read and NAMED as such); DECLARED in
+  // `shared/schema.ts` in the same commit (deploy-push durability rule). The new `service_bookings.
+  // status` value `partially_completed` (D-34) needs no migration — `varchar(30)`, no CHECK, the
+  // LD 44(e) posture. No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no entry.
+  "306_booking_component_states.sql",
 ] as const;
