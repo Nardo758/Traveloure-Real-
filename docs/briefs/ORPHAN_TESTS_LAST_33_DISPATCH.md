@@ -1,6 +1,6 @@
 # Dispatch — closing the last 33 orphaned test suites (issue "#1771 — Make every committed test suite run in CI")
 
-**as-of `ba9f5e3` (`origin/main`, 2026-09-16).** Volatile claims below (counts, which job boots what, which spec fails on what) are as of that SHA — re-verify at Phase 0.
+**as-of `21669a3` (`origin/main`, 2026-09-16; re-run at the PR's merged head `5470c98`, which differs from it by this file only).** Volatile claims below (counts, which job boots what, which spec fails on what) are as of that SHA — re-verify at Phase 0.
 **Status:** dispatch for the Replit build agent. One lane per branch, Phase 0 read-only with a **HARD STOP** before any write. No direct-to-main. Read `docs/OPERATING_PROCEDURE.md` §3–§4 first; this document does not restate it.
 
 ---
@@ -11,7 +11,7 @@ The issue says 88 orphans. That number is from 2026-09-13 and was computed by a 
 
 ```
 $ node scripts/check-test-files-wired.cjs
-test-files-wired: 489/522 reachable; 33 orphan(s)
+test-files-wired: 491/524 reachable; 33 orphan(s)
 test-orphan-ratchet: OK — baseline: 33 recorded orphan(s) (debt, not exempt)
 ```
 
@@ -35,7 +35,7 @@ Two rulings bind this lane and are not negotiable:
 7. **No new CI tier.** New jobs mirror an existing shape (`unwired-spec-gate.yml` for specs; `suite-server-tests.yml` / `suite-mutation-auth.yml` for app-booting server suites; the `ci-db-setup` composite action for DB — `ci-db-setup-lint` forbids inline migration steps). Nothing is added to `.github/branch-protection.json` or CI_GATES tables unless an existing per-suite job already is.
 8. **Do not touch production source** to make a test pass. A real defect a suite surfaces is FILED (lane report + punchlist), not fixed here. The one exception is a test FIXTURE (the `booking-idor-guard` precedent).
 9. **`e2e/` stays out of `TEST_ROOTS`** (ruled, `2026-09-15-orphan-ratchet` clause 1). Do not widen the roots, and do not bend any `playwright*.config.ts` `testDir` to reach `tier4/` or `crossbrowser/`.
-10. **Never run `playwright install`.** Chromium is pre-installed at `/opt/pw-browsers`.
+10. **Never run `playwright install` on the LOCAL bench** — Chromium is pre-installed there at `/opt/pw-browsers`. That is a local rule only: a GitHub runner has no pre-installed browser, and 21 workflows on `main` run `npx playwright install`, including the gate Rule 6 says to extend. A NEW CI spec job therefore mirrors the existing gate's browser steps verbatim — `unwired-spec-gate.yml`, job `unwired-specs (DOM gate)`: `Cache Playwright browsers` (`actions/cache@v4`, `id: playwright-cache`, path `~/.cache/ms-playwright`, key `playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}`), then `Install Playwright (chromium)` (`npx playwright install --with-deps chromium`, on a cache miss) and `Install Playwright system deps (cache hit)` (`npx playwright install-deps chromium`, on a hit). Chromium only — a job does not install a browser the gate does not, and no job builds a WebKit toolchain on the runner (§2 C).
 11. **Guards before push:** `node scripts/check-test-files-wired.cjs --self-test` then the scan (must print `test-orphan-ratchet: OK`); `node scripts/check-decision-guards.cjs`; `npx tsc --noEmit` ≤ `TSC_BASELINE`; `npm run build`; `grep -c replit.local package-lock.json` = 0.
 12. **One ledger row** in `docs/DECISIONS.md`, keyed `2026-MM-DD-<kebab-slug>`, plus a lane report under `docs/lane-reports/`. CLAUDE.md is NOT edited (no ruling is executed or amended by this lane). Commit trailers and PR footer exactly as `OPERATING_PROCEDURE.md` §3 states; no model identifier in any repo artifact.
 
@@ -78,9 +78,9 @@ Disposition: **coverage map first, then delete-or-extract.** For each `test(...)
 
 ### C. Five specs outside `playwright/tests` (5)
 
-`playwright/crossbrowser/smoke.spec.ts` (WebKit-only, own config, needs `scripts/webkit-ldpath.txt` + glib-networking from `/nix/store` — neither exists on `ubuntu-latest`) and `playwright/tier4/{a11y,booking,deep-ui-loop,keyboard}.spec.ts` (a local-only audit harness: `assertNotProduction()` accepts loopback only, runs three browsers from its own config, writes evidence JSON rather than asserting a gate).
+`playwright/crossbrowser/smoke.spec.ts` (WebKit-only, own config, needs `scripts/webkit-ldpath.txt` + glib-networking from `/nix/store` — neither exists on `ubuntu-latest`) and `playwright/tier4/a11y.spec.ts`, `playwright/tier4/booking.spec.ts`, `playwright/tier4/deep-ui-loop.spec.ts`, `playwright/tier4/keyboard.spec.ts` (a local-only audit harness: `assertNotProduction()` accepts loopback only, runs three browsers from its own config, writes evidence JSON rather than asserting a gate).
 
-Disposition: **decision required (§4 Q2); the agent decides nothing here.** The honest options are: (i) run the tier4 chromium project against the CI app on loopback in its own job (its loopback rule permits that; whether "evidence JSON" is a CI test is the question); (ii) delete them as a local tool that is not a CI test; (iii) leave them orphaned and named. Renaming them to dodge the `*.spec.ts` pattern is forbidden — that is an allowlist with extra steps. WebKit smoke cannot run on `ubuntu-latest` without `playwright install`, which is refused; it is (ii) or (iii).
+Disposition: **decision required (§4 Q2); the agent decides nothing here.** The honest options are: (i) run the tier4 chromium project against the CI app on loopback in its own job (its loopback rule permits that; whether "evidence JSON" is a CI test is the question); (ii) delete them as a local tool that is not a CI test; (iii) leave them orphaned and named. Renaming them to dodge the `*.spec.ts` pattern is forbidden — that is an allowlist with extra steps. The WebKit smoke's blocker is the one stated above and only that: its launcher `scripts/webkit-smoke.sh` refuses to start without `scripts/webkit-ldpath.txt` (not committed) and resolves glib-networking from a `/nix/store/*-glib-networking-*/lib/gio/modules` glob, and neither exists on `ubuntu-latest`. Installing the browser is NOT the blocker — CI installs browsers as a matter of course (Rule 10) — so do not cite `playwright install` as the reason. Until that launcher is rewritten without the Nix-store dependency (out of this lane's scope), it is (ii) or (iii).
 
 ---
 
@@ -102,7 +102,7 @@ Post the table on the PR (or the lane report on the branch) and **STOP on every 
 2. **Fate of `playwright/tier4/*` and `crossbrowser/smoke`:** run in CI (tier4 chromium only), delete as local tooling, or keep as named orphans.
 3. **Are `/discover-experiences`, `/itinerary/:id`, `/my-itinerary/:id`, `/credits-billing` meant to be retired?** Two specs assert they redirect; all four are live pages.
 4. **Should the TripStrip chip be reachable on `/cart` now that `/cart` renders inside `BrowseShell`?** (`tripstrip-count-accuracy` C/D.)
-5. **Branch protection (human step, not code):** the ratchet job `test-file-reachability (ratchet - new orphans fail)` cannot be made a required context by `enforce-branch-protection.yml` (needs admin rights; no PAT configured). Until someone applies it by hand in repo settings, a new orphan turns the job red without blocking the merge button.
+5. **Branch protection (human step, not code — DONE):** the ratchet job's context `test-file-reachability (ratchet - new orphans fail)` is already declared in `.github/branch-protection.json`; the only outstanding piece was the API application, which `enforce-branch-protection.yml` cannot perform without the admin-scoped `BRANCH_PROTECTION_PAT`. The decision-maker has since confirmed it applied by hand, so a new orphan now blocks the merge button. Nothing for the agent to do or re-file here.
 
 ---
 
@@ -113,9 +113,9 @@ Prefer **three PRs** so a decision on one bucket does not hold the others: (1) b
 - removes exactly the baseline lines it wired or deleted (`scripts/test-orphan-baseline.txt` may only shrink; a line for a still-orphaned file cannot be removed — the checker fails it as NEW ORPHAN);
 - carries `spec-green:` lines for every newly wired Playwright spec;
 - carries the local run output (`tests N · pass N · fail 0 · skipped 0`) for every wired suite in the lane report;
-- appends its own ledger row and lane report; states the inventory before/after (`X/522 reachable; Y orphans`).
+- appends its own ledger row and lane report; states the inventory before/after (`X/524 reachable; Y orphans`).
 
-Expected end state after all three: `test-files-wired: 522/522 reachable; 0 orphan(s)` or a baseline holding ONLY the files a §4 answer chose to keep orphaned, each with its reason recorded in the ledger row.
+Expected end state after all three: `test-files-wired: 524/524 reachable; 0 orphan(s)` or a baseline holding ONLY the files a §4 answer chose to keep orphaned, each with its reason recorded in the ledger row.
 
 ---
 
@@ -125,6 +125,6 @@ Expected end state after all three: `test-files-wired: 522/522 reachable; 0 orph
 - Do not wire a suite into a job that cannot execute it (V-30 shape) — a DB-only job for an HTTP suite, a production-bundle job for a memory-driver suite.
 - Do not rewrite an expectation to match the code without a ruling or a §3 decision row.
 - Do not widen `TEST_ROOTS`, bend a Playwright `testDir`, or rename a spec out of the scan.
-- Do not run `playwright install`, and do not build a WebKit toolchain on the runner.
+- Do not run `playwright install` on the local bench (Rule 10 — in CI the mirrored gate steps install chromium), and do not build a WebKit toolchain on the runner.
 - Do not touch `server/` or `client/` production code; file defects.
 - Do not add jobs to `.github/branch-protection.json` or the CI_GATES tables on your own initiative.
