@@ -11,11 +11,21 @@
  *   - The real bookings router is mounted on a minimal Express app.
  *   - A pre-middleware injects req.user and req.isAuthenticated so the
  *     Passport isAuthenticated() guard passes without a real session.
- *     The subsequent authStorage.getUser() call fails (fake DATABASE_URL)
- *     and is caught by the middleware's fail-open handler, so next() is
- *     called and the real handler runs.
- *   - db.select is patched on the shared db instance so the SELECT query
- *     returns a controlled fake booking row.
+ *   - db.select is patched on the shared db instance so both the bookings
+ *     SELECT and the two `users` SELECTs the auth layer runs return
+ *     controlled fake rows. THE AUTH LAYER IS FAIL-CLOSED: a lookup error in
+ *     isAuthenticated's account-status check answers 503 and never reaches
+ *     the handler, so the mock has to ANSWER those reads rather than let them
+ *     throw. (This header used to claim a fail-open handler swallowed them;
+ *     that posture is gone, and the stale claim is what left this fixture red
+ *     with `Expected 403 but got 503` — ledger 2026-09-15-orphans-t1-t3-green-directories.)
+ *   - The two auth reads (`authStorage.getUser`, `storage.getUser` behind
+ *     `getDbRole`) destructure the query directly — `const [u] = await
+ *     db.select().from(users).where(...)`, with no `.limit()` — so the mock
+ *     chain is awaitable at EVERY link, not only at `.limit()`.
+ *   - The handler reads the acting role from the DATABASE, never from the
+ *     session snapshot (CLAUDE.md §2), so the fake `users` row carries the
+ *     role the test logged in as.
  *   - console.warn is spied on to assert [IDOR ATTEMPT] content.
  *   - The server listens on a random port; tests use Node's built-in fetch.
  *
@@ -27,6 +37,7 @@ import { describe, it, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import express from "express";
+import { getTableName } from "drizzle-orm";
 import type { AddressInfo } from "node:net";
 import fs from "node:fs";
 import path from "node:path";
@@ -66,14 +77,37 @@ const fakeBooking = {
   totalAmount: "120.00",
 };
 
+// ── The session under test, as the DATABASE sees it ──────────────────────────
+// Set by buildApp(). isAuthenticated's account-status check and the handler's
+// own getDbRole() both read the `users` table, and both are answered from here
+// — the session's own `claims.role` is deliberately NOT trusted by the handler.
+let currentDbUser: { id: string; role: string } | null = null;
+
 // ── Drizzle mock chain factory ────────────────────────────────────────────────
-// db.select().from(...).where(...).limit(1) must resolve to an array.
-function makeMockSelect(rows: object[]): () => any {
+// Two query SHAPES reach this stub and both must resolve:
+//   - the handler:    db.select().from(serviceBookings).where(...).limit(1)
+//   - the auth layer: const [u] = await db.select().from(users).where(...)
+// so the chain is thenable at every link, not only at `.limit()`. It is also
+// TABLE-AWARE: answering a `users` read with a booking row would hand the auth
+// layer a row with no role, and the admin tier would silently fall to `user`.
+function makeMockSelect(bookingRows: object[]): () => any {
   return () => {
+    let rows: object[] = bookingRows;
     const chain: any = {
-      from:  () => chain,
+      from: (table: any) => {
+        rows =
+          getTableName(table) === "users"
+            ? currentDbUser
+              ? [{ ...currentDbUser, isDeleted: false, isSuspended: false }]
+              : []
+            : bookingRows;
+        return chain;
+      },
       where: () => chain,
       limit: () => Promise.resolve(rows),
+      // `await chain` — what the two auth reads do.
+      then: (onFulfilled: any, onRejected: any) =>
+        Promise.resolve(rows).then(onFulfilled, onRejected),
     };
     return chain;
   };
@@ -85,9 +119,12 @@ function buildApp(userId: string, role: string): express.Express {
   const app = express();
   app.use(express.json());
 
+  // The row the auth layer and the handler will both find for this session.
+  currentDbUser = { id: userId, role };
+
   // Inject a fake Passport session so isAuthenticated passes without a real
-  // session store. authStorage.getUser() will throw (fake DB URL) and be
-  // caught by the fail-open handler inside isAuthenticated, which calls next().
+  // session store. Its account-status check then reads `users` through the
+  // patched db.select above and finds the row set on the line before.
   app.use((req, _res, next) => {
     (req as any).user = { claims: { sub: userId, role } };
     (req as any).isAuthenticated = () => true;

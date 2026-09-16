@@ -53,6 +53,17 @@ This document captures architectural decisions to maintain consistency across co
     surfaces (assigned-trips, trip GET, plancard) keep granting `pending`. `itinerary_items.origin`
     (`'ai'|'traveler'|'expert'`, app-enforced, no CHECK — publish-trap avoidance, migration 181) is stamped
     server-side at create; both ratified Aug 7 2026. Regenerate preserves `origin='traveler'` and `suggestedBy='expert'`.
+    **A READ GATE THAT NAMES A COLUMN NOTHING WRITES IS NOT A GRANT (ledger
+    `2026-09-15-v32-v33-leads-door-item-read-gate`; decision-maker sentence applied 2026-09-15).**
+    `trips.expert_id` is declared and has NO writer anywhere under `server/`; the trip's assigned expert
+    lives in `trip_expert_advisors`, whose ONE author is `upsertTripAdvisorRow`. `GET /api/trips/:id`
+    granted its expert arm on that dead column, so a legitimately assigned advisor was refused 403
+    **and logged as an `[IDOR ATTEMPT]`** — a §13 falsehood in the log as well as a refused read. The
+    arm now asks the CANONICAL §12 READ predicate `isTripAdvisor` (imported, never re-derived — §18
+    rule 1), `pending` passes as this entry already rules for the trip GET, and the generate-itinerary
+    stopgap's copy of the same dead arm is deleted (§18c). The column is KEPT and annotated in
+    `shared/schema.ts` as written-by-nothing: do not build a new grant, fallback or display on it
+    without first giving it a writer and ratifying that writer.
 
 20. **Market-launch assets are DB-backed; extracted places are child rows (decision-maker ratified Aug 9, 2026).**
     Two additive tables (migrations 185/186, both declared in `shared/schema.ts` — publish-trap rule):
@@ -283,6 +294,24 @@ This document captures architectural decisions to maintain consistency across co
     list** (§13 forbids a second hardcoded one). A destination outside the 8 returns NULL. It is
     deliberately NOT `timezoneForMarket()`, whose "UTC for an unknown market" answer is right for
     the demand rollup's grain and wrong here — for a plan, UTC would be a claim.
+    **A PLAN ALSO SAYS WHETHER ITS DATES WERE CHOSEN (amended Sep 15, 2026 — ledger
+    `2026-09-15-d22-dates-confirmed`; migration 302).** `trips.start_date`/`end_date` are NOT NULL,
+    so 42 D12's "no mint may invent a date" cannot be enforced by the schema alone: the ready-made
+    clone, the two expert authoring builds and several cart mints fill a window in because the
+    columns demand one. `trips.dates_confirmed_at` is the fact that tells those apart — additive
+    nullable, NO DEFAULT, NO CHECK (the publish-trap posture), declared in `shared/schema.ts`, NO
+    BACKFILL. **NULL = NOT CONFIRMED, and never "no dates"** (the plan HAS a window; nobody chose
+    it): every reader labels it a PLACEHOLDER, the `.ics` keeps this ruling's FLOATING output rather
+    than pinning an instant to a day nobody picked, and 45 (6)'s countdown is withheld — a pinned
+    instant needs a real DAY as much as a real ZONE. **SERVER-DERIVED, never client-settable (§19,
+    the same posture as `timezone` and `market_slug`):** `insertTripSchema` omits it and no pick
+    re-admits it; `storage.createTrip` takes the MINT SITE's own `datesChosenByTraveler` — **opt-in,
+    so a mint that says nothing makes no claim** — and `storage.updateTrip` stamps `now()` on any
+    date change, which is the ONE re-date rail (the owner-gated `PATCH /api/trips/:id`, whose first
+    client caller is the slip header's owner-only "Set your dates", 42 D16). The reader-side
+    derivation is ONE module, `shared/plan-dates.ts` (§18 rule 1). **Availability revalidation on a
+    re-date is NOT part of this and is not built** — it has no read half yet, and saying so is the
+    honest half of shipping without one.
     **(b) The pending-events pen is DRAINED at mint.** `2026-09-03-switch-readers` shipped the
     "What's happening" chips and stated its own gap: with no trip row yet, ticked chips are HELD
     in `trip_contexts` as `pendingEventTitles` and nothing ever promoted them, so a traveler who
@@ -1018,6 +1047,14 @@ This document captures architectural decisions to maintain consistency across co
     not the first — the UNIQUE `(trip_id, local_expert_id)` index has always permitted several, the
     schema has always allowed it, and a reader that silently returns one of many is a plan quietly
     hiding a person who can write to it.
+    **THE `POST /api/leads/route` DOOR IS RETIRED, NOT RESTORED (ledger
+    `2026-09-15-v32-v33-leads-door-item-read-gate`; decision-maker sentence applied 2026-09-15).** It
+    had been a comment over no handler since the June 2026 route defragmentation. A "score experts
+    and auto-assign" door would be a second author of the advisor row, which this clause forbids and
+    `scripts/check-advisor-row-author.cjs` refuses; `POST /api/expert-requests` (Locked Decision 32)
+    already runs the same `lead-routing.service.ts` and calls the one author. The scoring service
+    stays live — what was retired is the door, not the logic — and `server/routes/payments.routes.ts`
+    carries the note saying so. Do not re-add the route.
 
     **D8 — `/trip/:id` IS NOT A PLANNING SURFACE.** The finalized Trip Card is the read-out of a
     plan that is DONE. A pre-final plan that lands there gets a second, divergent editing surface
@@ -1081,7 +1118,9 @@ This document captures architectural decisions to maintain consistency across co
     auto-trip and the saved-trip conversion) bypass that path and therefore **stamp it
     explicitly** — the same treatment ruling 30 already gave them for the zone. A plan with no
     market slug is invisible to every market-scoped reader while looking perfectly normal on the
-    slip.
+    slip. **Because the date columns are NOT NULL, this clause is enforced by a FACT, not by the
+    schema: `trips.dates_confirmed_at` (Locked Decision 30, amended Sep 15, 2026) records whether
+    the window was chosen, and a mint that filled one in to satisfy the columns leaves it NULL.**
 
     **D13 — A DOOR PASSES WHAT IT HOLDS, AND CI CHECKS THE NAMED ONES.** Ruling 33 ruled that doors
     differ in exactly two things — what arrives pre-filled and which step opens first — and
@@ -1896,6 +1935,16 @@ excludes `e2e/` and still exits 0 — both are stated limits awaiting a ruling, 
 predicate that can be satisfied by documentation ABOUT the thing it measures is not measuring the
 thing** — and an advisory guard is exactly where such a defect survives longest, because nothing
 ever goes red.
+
+**A TEST DIRECTORY IS NOT NECESSARILY ONE RUNNER, so "wire the directory" is available only where it
+is (ledger `2026-09-15-orphans-t1-t3-green-directories`; decision-maker sentence applied 2026-09-15).**
+`tsx --test` cannot load a file that imports from `vitest` (it dies in the runner before any
+assertion), and `vitest` cannot run a `node:test` file; Node 22 has no file-level exclusion flag, and
+`scripts/check-test-files-wired.cjs` models only `*`, `**` and `?`, so a bracket class or an extglob
+would run without being SEEN and the files would read as still orphaned. A mixed directory is
+therefore wired as **two steps split by NAME**, with the limit stated in the workflow — a file added
+there is orphaned until somebody names it, and the ratchet is what says so. A single-runner directory
+keeps the whole-directory glob and stays closed by construction.
 
 ### §19 — Privileged-field mass-assignment is a STANDING CLASS; the fix shape is an ALLOWLIST (ruling 46)
 
