@@ -16,7 +16,7 @@
  * "Plan my trip" calls the SAME handler the old hero used — setPlanningOpen(true) via the
  * onPlanTrip prop → EnhancedPlanningModal (preserve-exactly, LANDING_SPEC.md).
  */
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Sparkles } from "lucide-react";
@@ -28,6 +28,18 @@ import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+const HERO_GEM_FALLBACK = "/images/landing/hero-fushimi-inari.jpg";
+const HERO_SERVICE_FALLBACK = "/images/landing/hero-kyoto-temple.jpg";
+const HERO_MARKET_FALLBACKS: Record<string, string> = {
+  bogotá: "/images/landing/hero-bogota.jpg",
+  bogota: "/images/landing/hero-bogota.jpg",
+  cartagena: "/images/moments/cartagena-girls-trip.jpg",
+  edinburgh: "/images/moments/edinburgh-golf.jpg",
+  goa: "/images/moments/goa-honeymoon.jpg",
+  jaipur: "/images/moments/jaipur-family.jpg",
+  mumbai: "/images/moments/mumbai-birthday.jpg",
+  porto: "/images/moments/porto-anniversary.jpg",
+};
 
 // Source of truth: docs/design/LANDING_SPEC.md §Typed-search titles (ruled: static
 // curated, market-spread, no UGC). Edit the spec first, then mirror here.
@@ -63,6 +75,61 @@ function centsToDollarsLabel(cents: number | null): string | null {
   return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
 }
 
+export function resolveHeroTilePhoto(
+  remoteUrl: string | undefined,
+  remoteFailed: boolean,
+  fallbackUrl: string | undefined,
+): { src: string | null; usesFallback: boolean } {
+  const usesFallback = !remoteUrl || remoteFailed;
+  return { src: (usesFallback ? fallbackUrl : remoteUrl) ?? null, usesFallback };
+}
+
+function HeroTilePhoto({
+  remoteUrl,
+  fallbackUrl,
+  referenceTestId,
+}: {
+  remoteUrl?: string;
+  fallbackUrl?: string;
+  referenceTestId: string;
+}) {
+  const [remoteFailed, setRemoteFailed] = useState(false);
+  const [fallbackFailed, setFallbackFailed] = useState(false);
+
+  useEffect(() => {
+    setRemoteFailed(false);
+    setFallbackFailed(false);
+  }, [remoteUrl, fallbackUrl]);
+
+  const { src, usesFallback } = resolveHeroTilePhoto(remoteUrl, remoteFailed, fallbackUrl);
+  if (fallbackFailed || !src) return null;
+
+  return (
+    <>
+      <img
+        key={src}
+        src={src}
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-0 h-full w-full object-cover"
+        loading="eager"
+        onError={() => {
+          if (usesFallback) setFallbackFailed(true);
+          else setRemoteFailed(true);
+        }}
+      />
+      <div
+        className="absolute inset-0"
+        style={{ background: "linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6))" }}
+        aria-hidden="true"
+      />
+      {(usesFallback || (remoteUrl && isReferencePhoto({ url: remoteUrl }))) && (
+        <ReferencePhotoChip className="left-2.5 top-2.5" testId={referenceTestId} />
+      )}
+    </>
+  );
+}
+
 export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
   const [, navigate] = useLocation();
   const { data: hero } = useQuery<LandingHeroData>({ queryKey: ["/api/landing/hero"] });
@@ -92,6 +159,9 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
   const servicePrice = centsToDollarsLabel(service?.priceCents ?? null);
   const anchorFirstName = anchor?.name?.split(" ")[0] ?? null;
   const marketNames = OPERATING_MARKETS.slice(0, 4);
+  const marketFallback = hero?.city
+    ? HERO_MARKET_FALLBACKS[hero.city.trim().toLowerCase()]
+    : undefined;
 
   const tickerParts = hero?.city
     ? [
@@ -281,25 +351,11 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                 }}
                 data-testid="hero-tile-gem"
               >
-                {gem.imageUrl && (
-                  <img
-                    src={gem.imageUrl}
-                    alt=""
-                    aria-hidden="true"
-                    className="absolute inset-0 h-full w-full object-cover"
-                    loading="eager"
-                    onError={(event) => {
-                      event.currentTarget.style.display = "none";
-                    }}
-                  />
-                )}
-                {gem.imageUrl && (
-                  <div
-                    className="absolute inset-0"
-                    style={{ background: "linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6))" }}
-                    aria-hidden="true"
-                  />
-                )}
+                <HeroTilePhoto
+                  remoteUrl={gem.imageUrl}
+                  fallbackUrl={hero?.city?.toLowerCase() === "kyoto" ? HERO_GEM_FALLBACK : marketFallback}
+                  referenceTestId="hero-gem-reference-photo"
+                />
                 {gem.score !== null && (
                   <span
                     className="absolute z-10 right-2.5 top-2.5 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
@@ -307,12 +363,6 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                   >
                     {gem.score}
                   </span>
-                )}
-                {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers): the hero gem tile is a
-                    TEASER surface — a stock/places image is labeled until an attributed real
-                    photo replaces it (top-left; score badge holds the top-right). */}
-                {gem.imageUrl && isReferencePhoto({ url: gem.imageUrl }) && (
-                  <ReferencePhotoChip className="left-2.5 top-2.5" testId="hero-gem-reference-photo" />
                 )}
                 <span
                   className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
@@ -335,25 +385,11 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                 }}
                 data-testid="hero-tile-service"
               >
-                {service.imageUrl && (
-                  <img
-                    src={service.imageUrl}
-                    alt=""
-                    aria-hidden="true"
-                    className="absolute inset-0 h-full w-full object-cover"
-                    loading="eager"
-                    onError={(event) => {
-                      event.currentTarget.style.display = "none";
-                    }}
-                  />
-                )}
-                {service.imageUrl && (
-                  <div
-                    className="absolute inset-0"
-                    style={{ background: "linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6))" }}
-                    aria-hidden="true"
-                  />
-                )}
+                <HeroTilePhoto
+                  remoteUrl={service.imageUrl}
+                  fallbackUrl={hero?.city?.toLowerCase() === "kyoto" ? HERO_SERVICE_FALLBACK : marketFallback}
+                  referenceTestId="hero-service-reference-photo"
+                />
                 {servicePrice && (
                   <span
                     className="absolute z-10 right-2.5 top-2.5 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
