@@ -40,6 +40,7 @@ import {
   settleBundlePartialCompletion,
 } from "../services/booking-completion.service";
 import { readBundleComponentRows } from "../services/bundle-component-states.service";
+import Stripe from "stripe";
 import {
   DISPUTABLE_FROM_STATUSES,
   PARTIAL_COMPLETION_FROM_STATUSES,
@@ -215,10 +216,26 @@ before(async () => {
       VALUES (${`bcs-${RUN}-bc-${i}`}, ${ids.bundle}, ${c.id}, ${i})
     `);
   }
+  // D-51 (ledger `2026-09-16-bundle-partial-settlement`): reaching `partially_completed` now also runs
+  // the MONEY LEG (one Stripe refund through the shared issuer). This suite proves the FLIP and the
+  // MINT; the settlement has its own proofs (bundle-partial-settlement.db.test.ts). Stub the shared
+  // prototype so no test here ever dials Stripe.
+  stripeRefundsProto.create = async (params: any) => ({
+    id: `re_bcs_${RUN}_${crypto.randomUUID().slice(0, 6)}`,
+    status: "succeeded",
+    amount: params?.amount,
+    metadata: params?.metadata,
+  });
 });
 
+// Every `new Stripe()` shares this prototype (the traveler-fee-refund suite's recipe).
+const stripeRefundsProto = Object.getPrototypeOf(new Stripe("sk_test_dummy").refunds);
+const originalStripeRefundsCreate = stripeRefundsProto.create;
+
 after(async () => {
+  stripeRefundsProto.create = originalStripeRefundsCreate;
   for (const id of createdBookingIds) {
+    await db.execute(sql`DELETE FROM refunds WHERE booking_id = ${id}`).catch(() => {});
     await db.execute(sql`DELETE FROM provider_earnings WHERE source_id = ${id}`).catch(() => {});
     await db.execute(sql`DELETE FROM expert_earnings WHERE reference_id = ${id}`).catch(() => {});
     await db.execute(sql`DELETE FROM platform_revenue WHERE source_id = ${id}`).catch(() => {});
@@ -471,8 +488,11 @@ test("C4 (D-35): the partial flip mints ONCE over the REDUCED figures (pro-rata 
 
 test("C4b (§13): a bundle with an UNPRICED component can NOT be partially completed — the flip is refused, the parent stays confirmed, nothing mints", async () => {
   const bk = await bornBundleBooking();
-  // A pre-D-33 shaped entry for C: no price captured.
-  await db.execute(sql`UPDATE booking_component_states SET snapshot_price_cents = NULL WHERE booking_id = ${bk} AND component_service_id = ${ids.compC}`);
+  // A pre-D-33 shaped entry for C: no price captured — and therefore (D-51, migration 307) no
+  // ALLOCATION either, since the allocation is derived from the snapshot prices at birth. Both columns
+  // are nulled: a row whose allocation survived would be settled on the CONTRACT fact by design
+  // (SP4 pins that), which is not the case this proof is about.
+  await db.execute(sql`UPDATE booking_component_states SET snapshot_price_cents = NULL, allocation_cents = NULL WHERE booking_id = ${bk} AND component_service_id = ${ids.compC}`);
   await recordBundleComponentCompletion({ bookingId: bk, componentServiceId: ids.compA, actor });
   await recordBundleComponentCompletion({ bookingId: bk, componentServiceId: ids.compB, actor });
   const fail = await recordBundleComponentFailure({ bookingId: bk, componentServiceId: ids.compC, actor });

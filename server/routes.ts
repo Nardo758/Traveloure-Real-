@@ -7411,6 +7411,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           recorded: true,
           completed: outcome.completed,
           partiallyCompleted: outcome.partiallyCompleted === true,
+          // D-51 (ledger `2026-09-16-bundle-partial-settlement`): the money leg's NAMED result, present
+          // only when a partial settlement was attempted on this call (§13 — never a zero-filled stub).
+          ...(outcome.settlement ? { settlement: outcome.settlement } : {}),
           alreadyRecorded: outcome.alreadyRecorded === true,
           componentStateSource: outcome.componentStateSource,
           rule: outcome.rule,
@@ -7532,6 +7535,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         recorded: true,
         alreadyRecorded: outcome.alreadyRecorded === true,
         partiallyCompleted: outcome.partiallyCompleted,
+        // D-51: the money leg's NAMED result, present only when a settlement was attempted (§13).
+        ...(outcome.settlement ? { settlement: outcome.settlement } : {}),
         ...(outcome.parentOutcome ? { parentOutcome: outcome.parentOutcome } : {}),
         componentStateSource: outcome.componentStateSource,
         rule: outcome.rule,

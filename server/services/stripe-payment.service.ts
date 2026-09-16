@@ -38,6 +38,14 @@ export const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 
+/**
+ * D-51 (ledger `2026-09-16-bundle-partial-settlement`): the `metadata.source` a partial-settlement
+ * refund carries, so the `charge.refunded` webhook can tell it from a whole-row refund
+ * (`service_booking`) and promote the right record. Stated ONCE; both the issuer and the webhook
+ * read this constant.
+ */
+export const BUNDLE_SETTLEMENT_REFUND_SOURCE = 'bundle_partial_settlement';
+
 // ── Refund-reason mapping (L14 money-path P0) ──────────────────────────────────────────────
 //
 // THE BUG THIS CLOSES: `refundServiceBooking` used to forward its caller's reason straight to
@@ -944,6 +952,25 @@ class StripePaymentService {
 
     // TODO: Update booking status
     // TODO: Return inventory
+
+    // ── D-51 (ledger `2026-09-16-bundle-partial-settlement`): THE WEBHOOK IS THE SECOND PROMOTER ──
+    // A refund this charge carries whose metadata names a bundle partial settlement promotes that
+    // settlement through the SAME atomic conditional the settlement itself uses
+    // (`UPDATE … WHERE settled_at IS NULL` — §15c's one-promotion-two-callers). A redelivery matches
+    // zero rows. This rescues the process-died-between-Stripe-and-promote window; it never issues a
+    // refund and never touches the booking's status. Dynamic import: the settlement service imports
+    // this module statically. Best-effort — a promoter failure must not fail the webhook.
+    const refundsOnCharge = ((charge as any).refunds?.data ?? []) as Stripe.Refund[];
+    for (const r of refundsOnCharge) {
+      const md = (r && typeof r === 'object' ? r.metadata : null) as Record<string, string> | null;
+      if (!r?.id || md?.source !== BUNDLE_SETTLEMENT_REFUND_SOURCE || typeof md?.bookingId !== 'string') continue;
+      try {
+        const { promoteBundlePartialSettlement } = await import('./bundle-partial-settlement.service');
+        await promoteBundlePartialSettlement({ bookingId: md.bookingId, stripeRefundId: r.id, now: new Date() });
+      } catch (err) {
+        logger.error({ err, bookingId: md.bookingId, refundId: r.id }, '[WEBHOOK] bundle partial settlement promote failed');
+      }
+    }
   }
 
   // NOTE: the legacy `createRefund(bookingId, amount, reason)` was DELETED here (L5 money
@@ -1077,15 +1104,15 @@ class StripePaymentService {
 
     let refund: Stripe.Refund;
     try {
-      refund = await stripe.refunds.create(
-        {
-          payment_intent: paymentIntentId,
-          amount: amountCents,
-          reason: stripeReason,
-          metadata: { bookingId, source: 'service_booking' },
-        },
-        { idempotencyKey },
-      );
+      // D-51 (ledger `2026-09-16-bundle-partial-settlement`): the ONE Stripe refund call site for a
+      // service booking, shared with the partial settlement below — one implementation, two callers.
+      refund = await this.createStripeRefundForBooking({
+        paymentIntentId,
+        amountCents,
+        stripeReason,
+        idempotencyKey,
+        metadata: { bookingId, source: 'service_booking' },
+      });
     } catch (err: any) {
       // Stripe failed — revert the optimistic status claim so a later retry can proceed cleanly.
       await db.execute(sql`UPDATE service_bookings SET status = ${priorStatus}, updated_at = NOW() WHERE id = ${bookingId}`);
@@ -1093,37 +1120,15 @@ class StripePaymentService {
       throw new Error(`Refund failed: ${err.message}`);
     }
 
-    await db.execute(sql`
-      INSERT INTO refunds (
-        booking_id, stripe_refund_id, stripe_payment_intent_id,
-        amount, currency, status, reason, created_at
-      ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${totalRefund}, 'usd', ${refund.status}, ${internalReason}, NOW())
-    `);
-
-    // ── Traveler service fee reversal (ruling 2026-09-02-traveler-fee-refundability) ────────────
-    // Record the refunded fee share as a `reversal` fee_ledger row linked to the booking's original
-    // +traveler_service_fee row. Best-effort: the money already moved, so a recording failure is
-    // logged, never undoes the refund. Idempotent per (booking, amount). Skipped when no fee was
-    // billed (waived / snapshot-less bookings) — feeRefund is 0 there.
-    if (feeRefund > 0) {
-      try {
-        const { recordTravelerServiceFeeReversal } = await import('./fee-ledger.service');
-        const res = await recordTravelerServiceFeeReversal({
-          bookingId,
-          refundAmount: feeRefund,
-          actor: 'refund',
-          stripeRefundRef: refund.id,
-          reason: internalReason,
-        });
-        if (!res.reversed && res.reason === 'original_row_missing') {
-          console.error(
-            `[refund] traveler-fee reversal skipped for booking ${bookingId}: original ledger row not found (fee refunded; ledger gap logged)`,
-          );
-        }
-      } catch (revErr) {
-        console.error(`[refund] traveler-fee ledger reversal failed for booking ${bookingId} (fee already refunded):`, revErr);
-      }
-    }
+    await this.recordIssuedRefund({
+      bookingId,
+      paymentIntentId,
+      refund,
+      amount: totalRefund,
+      internalReason,
+      feeRefund,
+      feeReversalActor: 'refund',
+    });
 
     // COMPLETION/REFUND RACE SWEEP (task 1091 review): callers reverse the ledger BEFORE this
     // atomic claim (ledger-first order). A completion mint can commit in between — the caller's
@@ -1183,6 +1188,121 @@ class StripePaymentService {
     }
 
     return { refundId: refund.id, amount: totalRefund, bookingRefund: amount, feeRefund, status: refund.status };
+  }
+
+  /**
+   * THE ONE `stripe.refunds.create` CALL SITE for a service booking (D-51, ledger
+   * `2026-09-16-bundle-partial-settlement`; §18 rule 1). Two callers drive it: `refundServiceBooking`
+   * (the whole-row refund, whose claim is `status = 'refunded'`) and `refundBundlePartialSettlement`
+   * (the partial settlement, whose claim is the `bundle_partial_settlements` row). It takes NO claim
+   * and flips NO status — each caller owns its own §15b claim and decides what a Stripe failure means
+   * for it — and it throws the RAW Stripe error so the caller can apply its posture (the whole-row
+   * rail reverts its status claim; the settlement leaves its claim reclaimable). The amount and the
+   * idempotency key arrive SERVER-DERIVED from the caller's own rows (§14/§15); nothing here reads a
+   * request.
+   */
+  private async createStripeRefundForBooking(input: {
+    paymentIntentId: string;
+    amountCents: number;
+    stripeReason: StripeRefundReason;
+    idempotencyKey: string;
+    metadata: Record<string, string>;
+  }): Promise<Stripe.Refund> {
+    return stripe.refunds.create(
+      {
+        payment_intent: input.paymentIntentId,
+        amount: input.amountCents,
+        reason: input.stripeReason,
+        metadata: input.metadata,
+      },
+      { idempotencyKey: input.idempotencyKey },
+    );
+  }
+
+  /**
+   * THE ONE RECORDER of an issued refund (the other half of the split above): the `refunds` audit
+   * row (migration 156 — the money record that outlives the booking) and the traveler-service-fee
+   * `reversal` ledger row (ruling 2026-09-02-traveler-fee-refundability). Best-effort on the ledger
+   * half exactly as before: the money already moved, so a recording failure is logged, never undoes
+   * the refund. Idempotent per (booking, amount). Skipped when no fee was billed — `feeRefund` is 0.
+   */
+  private async recordIssuedRefund(input: {
+    bookingId: string;
+    paymentIntentId: string;
+    refund: Stripe.Refund;
+    /** DOLLARS, 2-decimal — the `refunds.amount` scale (same as `service_bookings.total_amount`). */
+    amount: number;
+    internalReason: string;
+    /** DOLLARS of traveler service fee inside `amount` — 0 when none was billed or refunded. */
+    feeRefund: number;
+    feeReversalActor: string;
+  }): Promise<void> {
+    const { bookingId, paymentIntentId, refund, amount, internalReason, feeRefund } = input;
+    await db.execute(sql`
+      INSERT INTO refunds (
+        booking_id, stripe_refund_id, stripe_payment_intent_id,
+        amount, currency, status, reason, created_at
+      ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${internalReason}, NOW())
+    `);
+
+    if (feeRefund > 0) {
+      try {
+        const { recordTravelerServiceFeeReversal } = await import('./fee-ledger.service');
+        const res = await recordTravelerServiceFeeReversal({
+          bookingId,
+          refundAmount: feeRefund,
+          actor: input.feeReversalActor,
+          stripeRefundRef: refund.id,
+          reason: internalReason,
+        });
+        if (!res.reversed && res.reason === 'original_row_missing') {
+          console.error(
+            `[refund] traveler-fee reversal skipped for booking ${bookingId}: original ledger row not found (fee refunded; ledger gap logged)`,
+          );
+        }
+      } catch (revErr) {
+        console.error(`[refund] traveler-fee ledger reversal failed for booking ${bookingId} (fee already refunded):`, revErr);
+      }
+    }
+  }
+
+  /**
+   * D-51 (ledger `2026-09-16-bundle-partial-settlement`) — THE PARTIAL SETTLEMENT'S REFUND. One more
+   * caller of the shared call site above, never a second Stripe call site. The amount is the
+   * `bundle_partial_settlements` row's PINNED `traveler_refund_cents` — the caller
+   * (`bundle-partial-settlement.service.ts`) took that claim BEFORE calling here and re-reads the
+   * same cents on every retry, which is what lets the amount-scoped key `bundle-settle-<bookingId>`
+   * be unambiguous by construction: one booking settles ONCE, at one amount, and a Stripe retry with
+   * that key returns the SAME refund. NO status flip, NO earnings or platform-revenue sweep, NO slot
+   * release: the booking stays `partially_completed` and its delivered components stand. Throws the
+   * raw Stripe error — the caller's claim stays claimed-but-unpromoted for the TTL sweep (§15b), never
+   * a compensating rollback.
+   */
+  async refundBundlePartialSettlement(input: {
+    bookingId: string;
+    paymentIntentId: string;
+    amountCents: number;
+    /** DOLLARS of traveler service fee inside `amountCents` — the proportional share, 0 when none. */
+    travelerServiceFeeRefund: number;
+    internalReason: string;
+  }): Promise<{ id: string; status: string | null }> {
+    const refund = await this.createStripeRefundForBooking({
+      paymentIntentId: input.paymentIntentId,
+      amountCents: input.amountCents,
+      stripeReason: toStripeRefundReason(input.internalReason),
+      idempotencyKey: `bundle-settle-${input.bookingId}`,
+      metadata: { bookingId: input.bookingId, source: BUNDLE_SETTLEMENT_REFUND_SOURCE },
+    });
+    await this.recordIssuedRefund({
+      bookingId: input.bookingId,
+      paymentIntentId: input.paymentIntentId,
+      refund,
+      amount: Math.round(input.amountCents) / 100,
+      internalReason: input.internalReason,
+      feeRefund: input.travelerServiceFeeRefund,
+      feeReversalActor: 'bundle_partial_settlement',
+    });
+    return { id: refund.id, status: refund.status ?? null };
   }
 
   /**
