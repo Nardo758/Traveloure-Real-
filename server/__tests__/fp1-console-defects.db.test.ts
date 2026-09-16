@@ -26,14 +26,18 @@
  * posture). DISPOSABLE DB ONLY — every row created here is cleaned up in after().
  * Serialize: npx tsx --test --test-concurrency=1 server/__tests__/fp1-console-defects.db.test.ts
  *
- * T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`) — ORDERING CONTRACT. B4-b reads
- * `GET /api/discover/location/Kyoto?country=Japan`, which is served from an IN-PROCESS, 5-MINUTE
- * cache keyed by city+country (`server/services/location-view.service.ts`), and it asserts that the
- * payload contains listings this test has just created. Any earlier read of that key — by
- * `server/__tests__/city-case-match.db.test.ts`, the only other suite in the tree that touches the
- * endpoint, or by a previous run of THIS file within five minutes — serves a payload minted before
- * those rows existed, and B4-b fails. The whole-directory job in `build.yml` runs this file BEFORE
- * city-case-match, in a step of its own, against a freshly started server. Do not reorder them.
+ * T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`) — B4-b READS A CITY IT OWNS, AND THAT
+ * IS LOAD-BEARING. `GET /api/discover/location/:city` is served from an IN-PROCESS, FIVE-MINUTE
+ * cache keyed `v5|<canonical city>:<country>` (`server/services/location-view.service.ts`), and
+ * B4-b creates three listings and then asserts the payload CONTAINS them — so ANY earlier read of
+ * the same key, by another suite or by a previous run of this file, serves a payload minted before
+ * those rows existed and the proof fails against perfectly correct code. Measured: against a real
+ * Kyoto the test failed with the payload holding the 27 SEEDED Kyoto listings and none of its own,
+ * while the row it had just created carried `city = 'Kyoto'` exactly as the derivation intends.
+ * B4-b therefore seeds its OWN `city_neighborhoods` row under a RUN-UNIQUE city and reads that
+ * city, so its cache key belongs to this run alone. Nothing about the proof weakens: the subject is
+ * that a STRUCTURED city wins over prose, which does not need the real Kyoto — and the other tests
+ * in this file still use the real seeded Kyoto slug.
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -81,6 +85,11 @@ async function readOnce(res: Response): Promise<{ status: number; body: any; tex
 
 let provider = { id: "", email: "", cookie: "" };
 let kyotoSlug = "";      // a real city_neighborhoods slug whose city is Kyoto
+// B4-b's own market: a RUN-UNIQUE city + neighborhood, seeded in before() and removed in after().
+// See the header note — the location view's 5-minute cache is keyed by city, so a shared city makes
+// this proof depend on who read it last.
+const B4B_CITY = `FP1City-${RUN}`;
+const B4B_SLUG = `fp1-nb-${RUN}`;
 let customCategoryId = "";
 let customOfferingTypeId = "";
 
@@ -160,6 +169,12 @@ before(async () => {
   kyotoSlug = ((n.rows as any[])[0]?.slug as string) ?? "";
   assert.ok(kyotoSlug, "the bench must carry at least one seeded Kyoto neighborhood");
 
+  await db.execute(sql`
+    INSERT INTO city_neighborhoods (id, city, country, name, slug, centroid_lat, centroid_lng, radius_km)
+    VALUES (${`fp1-nb-${RUN}-id`}, ${B4B_CITY}, 'Japan', ${`FP1 Neighborhood ${RUN}`}, ${B4B_SLUG},
+            '35.0100000', '135.7600000', '1.50')
+  `);
+
   const c = await db.execute(sql`SELECT id FROM service_categories WHERE category_key = 'custom_other' LIMIT 1`);
   customCategoryId = ((c.rows as any[])[0]?.id as string) ?? "";
   const o = await db.execute(sql`SELECT id FROM service_offering_types WHERE offering_type_key = 'custom_other_offering' LIMIT 1`);
@@ -177,6 +192,7 @@ after(async () => {
       await db.execute(sql`DELETE FROM provider_services WHERE parent_service_id = ${id}`).catch(() => {});
       await db.execute(sql`DELETE FROM provider_services WHERE id = ${id}`).catch(() => {});
     }
+    await db.execute(sql`DELETE FROM city_neighborhoods WHERE id = ${`fp1-nb-${RUN}-id`}`).catch(() => {});
     for (const email of createdEmails) {
       await db.execute(sql`DELETE FROM provider_services WHERE user_id = (SELECT id FROM users WHERE email = ${email})`).catch(() => {});
       await db.execute(sql`DELETE FROM service_provider_forms WHERE user_id = (SELECT id FROM users WHERE email = ${email})`).catch(() => {});
@@ -397,13 +413,13 @@ test("N-B4: a client-sent `city` is ignored — the column is server-derived or 
     "a body-supplied city must never reach the column (it would put a listing on any market page it liked)");
 });
 
-test("B4-b: the Kyoto market read returns the derived listing, and NOT the ones that don't belong", async () => {
+test("B4-b: the market read returns the derived listing, and NOT the ones that don't belong", async () => {
   // Three fixtures, created BEFORE the single read below (the location view caches per city for 5m).
   const belongs = await createListing({
     deliveryMethod: "in_person",
     meetingPoint: "Nishiki Market west entrance",
-    neighborhood: kyotoSlug,
-    location: "Arashiyama, Sagano", // no "Kyoto" anywhere in the prose — the old read missed this
+    neighborhood: B4B_SLUG,
+    location: "Arashiyama, Sagano", // no city name anywhere in the prose — the old read missed this
     price: "95.00",
   });
   assert.equal(belongs.status, 201, belongs.text);
@@ -419,20 +435,20 @@ test("B4-b: the Kyoto market read returns the derived listing, and NOT the ones 
   assert.equal(elsewhere.status, 201, elsewhere.text);
   await db.execute(sql`
     UPDATE provider_services
-       SET approval_status = 'approved', status = 'active', city = 'Osaka', location = 'Day trips from Kyoto'
+       SET approval_status = 'approved', status = 'active', city = 'Osaka', location = ${`Day trips from ${B4B_CITY}`}
      WHERE id = ${elsewhere.body.id}
   `);
 
-  const view = await readOnce(await api(`/api/discover/location/Kyoto?country=Japan`, undefined));
+  const view = await readOnce(await api(`/api/discover/location/${B4B_CITY}?country=Japan`, undefined));
   assert.equal(view.status, 200, `location view failed (${view.status}): ${view.text}`);
   const ids = new Set(((view.body?.services?.data ?? []) as any[]).map((s) => s.id));
 
   assert.ok(ids.has(belongs.body.id),
-    "a listing whose STRUCTURED city is Kyoto reaches the Kyoto payload even with no 'Kyoto' in its prose");
+    "a listing whose STRUCTURED city matches reaches that city's payload even with no city name in its prose");
   assert.ok(!ids.has(noCity.body.id),
     "§13: a listing with no city and no matching prose is honestly ABSENT — never guessed into a market");
   assert.ok(!ids.has(elsewhere.body.id),
-    "a listing whose structured city is Osaka is NOT dragged onto Kyoto's page by the word 'Kyoto' in its text");
+    "a listing whose structured city is Osaka is NOT dragged onto this city's page by its name appearing in the text");
 
   // B4b: the accommodation shape is on the wire, which is what lets the Stay spine route it.
   const shaped = ((view.body?.services?.data ?? []) as any[]).find((s) => s.id === belongs.body.id);

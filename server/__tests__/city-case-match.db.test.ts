@@ -11,17 +11,16 @@
  * normalizes the incoming name to canonical casing in getLocationView, and a
  * server route 301s a mis-cased page URL to the canonical casing.
  *
- * T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`) — ORDERING CONTRACT, STATED SO IT IS
- * NOT BROKEN BY ACCIDENT. `GET /api/discover/location/:city` is served from an IN-PROCESS,
- * 5-MINUTE cache keyed `v5|<canonical city>:<country>` (`server/services/location-view.service.ts`),
- * with every casing of one city sharing ONE entry. This suite and
- * `server/__tests__/fp1-console-defects.db.test.ts` are the only two suites in the tree that read
- * that endpoint, and they read the SAME key (`Kyoto:Japan`). Whichever runs first fills the entry
- * and the other is served it. That is harmless in this direction and fatal in the other: fp1's
- * B4-b creates three listings and then asserts the payload contains them, so a payload cached by
- * THIS suite beforehand makes it fail (reproduced deterministically). The whole-directory job in
- * `build.yml` therefore runs fp1-console-defects BEFORE city-case-match, in a step of its own,
- * carrying the same note. Do not reorder them without reading that comment.
+ * T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`) — WHY THIS SUITE IS SAFE TO RUN BESIDE
+ * OTHERS AND ITS NEIGHBOUR WAS NOT. `GET /api/discover/location/:city` is served from an
+ * IN-PROCESS, 5-MINUTE cache keyed `v5|<canonical city>:<country>`
+ * (`server/services/location-view.service.ts`), with every casing of one city sharing ONE entry.
+ * This suite ASSERTS THAT TWO CASINGS AGREE, so a shared cache entry is exactly the behaviour it
+ * describes and a warm cache cannot make it lie. `fp1-console-defects.db.test.ts` asserts the
+ * OPPOSITE SHAPE — that the payload contains rows it has just created — which a warm entry breaks
+ * outright, and that is why B4-b now seeds and reads a RUN-UNIQUE city of its own instead of
+ * sharing Kyoto. Neither file constrains the other's position any more; do not reintroduce a
+ * dependency on one.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";

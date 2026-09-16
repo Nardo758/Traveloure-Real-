@@ -153,18 +153,25 @@ themselves.
    `reconciliation-run-tallies.db` assert zero drift exceptions and a clean run row — a claim no
    suite sharing a database with 230 others can honestly make. Excluded; their own jobs are the
    right shape.
-3. **Two suites share a 5-minute in-process cache, the order matters, and the pair must run
-   FIRST.** `GET /api/discover/location/:city` is served from `locationViewCache`, keyed
-   `v5|<canonical city>:<country>`, with every casing of one city sharing ONE entry.
-   `city-case-match.db` and `fp1-console-defects.db` are the only two suites that read that URL, and
-   they read the same key. fp1's B4-b creates three listings and then asserts the payload contains
-   them, so a payload cached beforehand makes it fail — **reproduced deterministically**, in both
-   orders. **A second measurement corrected the first fix:** running the ordered pair AFTER the four
-   alphabetical steps still failed B4-b, because the URL grep only finds suites that fetch the
-   endpoint directly and the same view is resolved behind other surfaces (the landing feed's own
-   comment says it *"can never disagree with /discover/location/:city"*). So the pair runs **FIRST**,
-   immediately after the server is ready, against a **cold** cache — and **both files carry the
-   contract in their headers** so a later reorder is a deliberate act.
+3. **A five-minute in-process cache made one proof depend on who read the city last — and the fix
+   is in the SUITE, not in the job's step order.** `GET /api/discover/location/:city` is served from
+   `locationViewCache`, keyed `v5|<canonical city>:<country>`, with every casing of one city sharing
+   ONE entry. `fp1-console-defects`'s B4-b creates three listings and then asserts the payload
+   CONTAINS them, so any earlier read of the same key serves a payload minted before those rows
+   existed. **Three measurements, and the first two fixes were wrong:** running the pair
+   `fp1 → city-case-match` in its own step still failed once the four alphabetical steps ran first;
+   moving that step to run FIRST, against a freshly started server on a database built from empty,
+   **also failed** — and a direct probe then showed why: the listing carried `city = 'Kyoto'`
+   exactly as the derivation intends, while the payload came back holding the **27 seeded Kyoto
+   listings** and none of the test's own. A URL grep only finds the suites that fetch the endpoint
+   directly; the same view is resolved behind other surfaces (the landing feed's own comment says it
+   *"can never disagree with /discover/location/:city"*). So **B4-b now seeds its OWN
+   `city_neighborhoods` row under a RUN-UNIQUE city and reads that city**, and its cache key belongs
+   to that run alone. Nothing about the proof weakens — its subject is that a STRUCTURED city beats
+   prose, which does not need the real Kyoto — and **no step of the job is order-dependent**.
+   `city-case-match` keeps Kyoto and is unaffected: it asserts that two CASINGS agree, which is
+   precisely what a shared cache entry guarantees, so a warm cache cannot make it lie. Both files
+   say all of this in their headers.
 
 ---
 
