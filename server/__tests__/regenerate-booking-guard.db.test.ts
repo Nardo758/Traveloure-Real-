@@ -8,12 +8,24 @@
  *                                        used by the Grok generate rail + Plus occasion drafts.
  * Both now AND in the shared guard `itineraryItemRebuildDeletable()`.
  *
+ * G1 WAS OVERTAKEN BY A RULING AND IS RESTATED, NOT WEAKENED (ledger
+ * `2026-09-15-orphans-t4-t7-red-suites`). It used to re-apply the snapshot to a trip that already
+ * held a purchased row and prove the row survived the REBUILD DELETE. CLAUDE.md Locked Decision
+ * 41 (b) / ledger `2026-09-05-draft-only-on-empty` has since ruled that the free draft runs ONLY
+ * on an EMPTY slip, so `saveGeneratedItinerarySnapshot` now REFUSES a non-empty slip inside its own
+ * transaction, and that re-apply is unreachable by construction. Asserting the old shape would be
+ * asserting a path the product no longer has; asserting `rejects` alone would be green-but-vacuous.
+ * So G1 proves what D-1 actually wanted, in the form the ruling now takes:
+ *
  * Proven:
- *   G1  the REAL snapshot re-apply on an existing trip spares `purchased` and `ready_for_checkout`
- *       rows while replacing `in_planning` ones (the negative case: a purchased AI stop survives).
+ *   G1a the snapshot rail REFUSES a slip holding money-bearing rows, and the refusal leaves EVERY
+ *       row byte-identical — no item deleted, none inserted, no plan and no comparison row written.
+ *       The refusal is identified as LD 41 (b)'s own error, never just "it threw".
+ *   G1b the same rail DOES write on an EMPTY slip, so G1a is a refusal and not a broken rail.
  *   G2  the Regenerate delete SHAPE (origin clause + guard) spares purchased, spares an in_planning
  *       row carrying a booking_id (drifted-status protection), spares traveler-origin, and deletes
- *       only a plain in_planning AI row.
+ *       only a plain in_planning AI row. UNCHANGED — it drives the delete predicate directly and
+ *       never touches the snapshot rail, so no ruling overtook it.
  *
  * DISPOSABLE DB ONLY. Serialize: npx tsx --test --test-concurrency=1 server/__tests__/regenerate-booking-guard.db.test.ts
  */
@@ -25,6 +37,7 @@ import { db } from "../db";
 import { trips, users, itineraryItems, serviceBookings, itineraryComparisons, aiGeneratedItineraries } from "@shared/schema";
 import { saveGeneratedItinerarySnapshot } from "../services/content-query.service";
 import { itineraryItemRebuildDeletable } from "../services/itinerary-rebuild-guard";
+import { isAiDraftSlipHasItemsError } from "../services/ai-draft-eligibility";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 
@@ -45,7 +58,8 @@ async function assertDisposableDb(): Promise<void> {
 }
 
 let userId: string;
-let tripA: string; // for G1 (real snapshot re-apply)
+let tripA: string; // for G1a (snapshot refusal on a money-bearing slip)
+let tripC: string; // for G1b (snapshot write on an EMPTY slip)
 let tripB: string; // for G2 (regenerate delete shape)
 let bookingId: string;
 
@@ -84,22 +98,23 @@ before(async () => {
   userId = u.id;
   tripA = await seedTrip();
   tripB = await seedTrip();
+  tripC = await seedTrip();
   const [b] = await db.insert(serviceBookings).values({ travelerId: userId, tripId: tripB, totalAmount: "42.00", status: "confirmed" } as any).returning();
   bookingId = b.id;
 });
 
 after(async () => {
-  for (const t of [tripA, tripB]) {
+  for (const t of [tripA, tripB, tripC]) {
     await db.delete(aiGeneratedItineraries).where(eq(aiGeneratedItineraries.tripId, t)).catch(() => {});
     await db.delete(itineraryComparisons).where(eq(itineraryComparisons.tripId, t)).catch(() => {});
     await db.delete(itineraryItems).where(eq(itineraryItems.tripId, t)).catch(() => {});
   }
   await db.delete(serviceBookings).where(eq(serviceBookings.id, bookingId)).catch(() => {});
-  await db.execute(sql`DELETE FROM trips WHERE id = ANY(${[tripA, tripB]})`).catch(() => {});
+  await db.execute(sql`DELETE FROM trips WHERE id = ANY(${[tripA, tripB, tripC]})`).catch(() => {});
   await db.delete(users).where(eq(users.id, userId)).catch(() => {});
 });
 
-test("G1 snapshot re-apply spares purchased + ready_for_checkout, replaces in_planning", async () => {
+test("G1a snapshot rail REFUSES a money-bearing slip and changes nothing (LD 41 (b))", async () => {
   const PURCHASED = `Purchased AI stop ${RUN}`;
   const CHECKOUT = `Checkout AI stop ${RUN}`;
   const PLANNING = `Planning AI stop ${RUN}`;
@@ -108,20 +123,48 @@ test("G1 snapshot re-apply spares purchased + ready_for_checkout, replaces in_pl
   await addItem(tripA, { title: PLANNING, origin: "ai", routingStatus: "in_planning" });
 
   const NEW = `NEW rebuilt stop ${RUN}`;
+  // The refusal is IDENTIFIED, not merely awaited: `assert.rejects` with no predicate would pass
+  // for any error at all, which is how a suite goes green while proving nothing.
+  let refusal: unknown;
+  await assert.rejects(
+    saveGeneratedItinerarySnapshot({
+      userId,
+      tripId: tripA,
+      trip: { title: `Guard trip ${RUN}`, destination: "Kyoto, Japan", startDate: "2026-10-01", endDate: "2026-10-04", numberOfTravelers: 2, status: "draft", eventType: "", specialRequests: null },
+      generatedPlan: { destination: "Kyoto, Japan", startDate: "2026-10-01", endDate: "2026-10-04" },
+      canonicalItems: [{ title: NEW, description: "", type: "activity", dayNumber: 1, time: "09:00", durationMinutes: 60, location: "Kyoto", estimatedCost: "0" } as any],
+      comparison: { destination: "Kyoto, Japan" },
+    }),
+    (err: unknown) => { refusal = err; return isAiDraftSlipHasItemsError(err); },
+  );
+  assert.ok(isAiDraftSlipHasItemsError(refusal), "the refusal must be LD 41 (b)'s own error");
+
+  const titles = await titlesOn(tripA);
+  assert.ok(titles.has(PURCHASED), "purchased AI stop must survive a refused snapshot");
+  assert.ok(titles.has(CHECKOUT), "ready_for_checkout AI stop must survive a refused snapshot");
+  assert.ok(titles.has(PLANNING), "an in_planning stop is not deleted either — the rail refuses BEFORE its delete");
+  assert.ok(!titles.has(NEW), "a refused snapshot inserts nothing");
+  assert.equal(titles.size, 3, `the slip must be unchanged, received ${JSON.stringify([...titles])}`);
+
+  // An aborted transaction leaves no plan and no comparison behind.
+  const plans = await db.select({ id: aiGeneratedItineraries.id }).from(aiGeneratedItineraries).where(eq(aiGeneratedItineraries.tripId, tripA));
+  const comparisons = await db.select({ id: itineraryComparisons.id }).from(itineraryComparisons).where(eq(itineraryComparisons.tripId, tripA));
+  assert.equal(plans.length, 0, "a refused snapshot writes no ai_generated_itineraries row");
+  assert.equal(comparisons.length, 0, "a refused snapshot writes no itinerary_comparisons row");
+});
+
+test("G1b the same rail DOES write on an EMPTY slip — G1a is a refusal, not a broken rail", async () => {
+  const NEW = `Fresh draft stop ${RUN}`;
+  assert.equal((await titlesOn(tripC)).size, 0, "this fixture trip must start empty");
   await saveGeneratedItinerarySnapshot({
     userId,
-    tripId: tripA,
+    tripId: tripC,
     trip: { title: `Guard trip ${RUN}`, destination: "Kyoto, Japan", startDate: "2026-10-01", endDate: "2026-10-04", numberOfTravelers: 2, status: "draft", eventType: "", specialRequests: null },
     generatedPlan: { destination: "Kyoto, Japan", startDate: "2026-10-01", endDate: "2026-10-04" },
     canonicalItems: [{ title: NEW, description: "", type: "activity", dayNumber: 1, time: "09:00", durationMinutes: 60, location: "Kyoto", estimatedCost: "0" } as any],
     comparison: { destination: "Kyoto, Japan" },
   });
-
-  const titles = await titlesOn(tripA);
-  assert.ok(titles.has(PURCHASED), "purchased AI stop must survive the snapshot re-apply");
-  assert.ok(titles.has(CHECKOUT), "ready_for_checkout AI stop must survive the snapshot re-apply");
-  assert.ok(!titles.has(PLANNING), "in_planning AI stop is replaced");
-  assert.ok(titles.has(NEW), "the freshly-generated stop is inserted");
+  assert.ok((await titlesOn(tripC)).has(NEW), "the freshly-generated stop is inserted on an empty slip");
 });
 
 test("G2 regenerate delete shape spares purchased/booked/traveler, deletes only plain in_planning AI", async () => {
