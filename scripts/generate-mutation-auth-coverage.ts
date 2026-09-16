@@ -4,6 +4,7 @@
  * generated mounted-route manifest and the deliberately narrow live suites.
  */
 import fs from "node:fs";
+import { endpointKey } from "./mutation-auth/endpoint-key.ts";
 import path from "node:path";
 import crypto from "node:crypto";
 
@@ -18,7 +19,8 @@ const root = process.cwd();
 const check = process.argv.includes("--check");
 const evidencePath = process.env.MUTATION_AUTH_EVIDENCE_PATH ?? path.join(root, "generated/security/mutation-auth-evidence.json");
 const outputDir = process.env.MUTATION_AUTH_COVERAGE_OUTPUT_DIR ?? path.join(root, "generated/security");
-const keyOf = (endpoint: Pick<Endpoint, "method" | "effectivePath">) => `${endpoint.method} ${endpoint.effectivePath}`;
+// ONE spelling of the endpoint key (scripts/mutation-auth/endpoint-key.ts, §18 rule 1).
+const keyOf = endpointKey;
 
 // These endpoints are intentionally *not* promoted from a session test to an
 // authorization proof. They are the 30 session-self endpoints explicitly

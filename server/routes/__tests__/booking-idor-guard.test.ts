@@ -37,6 +37,11 @@
  *     that one COUNT and to THROW on anything else rather than reach the real
  *     connection string — a 500 here used to be that TypeError on the missing
  *     `leftJoin`, not an authorization decision.
+ *   - THE FAKE `db` IS THE SHARED FIXTURE `server/__tests__/fixtures/fake-db-chain.ts`
+ *     (ledger 2026-09-16-ci-manifest-pin-role-auth-mock): this suite and
+ *     `server/__tests__/db-role-authorization.test.ts` mount the SAME handler,
+ *     and a second hand-rolled chain over there was exactly one `leftJoin`
+ *     behind — green here, `expected 500 to be 200` there (§18 rule 1).
  *   - console.warn is spied on to assert [IDOR ATTEMPT] content.
  *   - The server listens on a random port; tests use Node's built-in fetch.
  *
@@ -48,8 +53,6 @@ import { describe, it, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import express from "express";
-import { getTableName } from "drizzle-orm";
-import { PgDialect } from "drizzle-orm/pg-core";
 import type { AddressInfo } from "node:net";
 import fs from "node:fs";
 import path from "node:path";
@@ -71,16 +74,16 @@ const { db } = await import("../../db.js");
 
 // ── db.execute: the ONE raw read the owner branch can make ───────────────────
 // `describeAcceptance` → `countRevisionRequests` issues a raw
-// `SELECT COUNT(*) … FROM booking_revision_requests`. Answer exactly that (no
-// revision rows) and FAIL LOUDLY on any other raw query, so a new read added
-// to the handler surfaces as a named error here instead of a connection
-// attempt against the dummy DATABASE_URL above.
-const dialect = new PgDialect();
-(db as any).execute = async (query: unknown) => {
-  const text = typeof query === "string" ? query : dialect.sqlToQuery(query as any).sql;
-  if (/\bbooking_revision_requests\b/.test(text)) return { rows: [{ n: 0 }], rowCount: 1 };
-  throw new Error(`booking-idor-guard mock: unexpected db.execute — ${text}`);
-};
+// `SELECT COUNT(*) … FROM booking_revision_requests`. The shared fixture answers
+// exactly that (no revision rows) and FAILS LOUDLY on any other raw query, so a
+// new read added to the handler surfaces as a named error here instead of a
+// connection attempt against the dummy DATABASE_URL above.
+const {
+  bookingRouteRows,
+  makeRevisionCountOnlyExecute,
+  makeTableAwareSelect,
+} = await import("../../__tests__/fixtures/fake-db-chain.js");
+(db as any).execute = makeRevisionCountOnlyExecute("booking-idor-guard");
 
 // ── Import the real bookings router ──────────────────────────────────────────
 const bookingsRouterModule = await import("../bookings.js");
@@ -109,50 +112,15 @@ const fakeBooking = {
 let currentDbUser: { id: string; role: string } | null = null;
 
 // ── Drizzle mock chain factory ────────────────────────────────────────────────
-// Three query SHAPES reach this stub and all must resolve:
-//   - the handler:    db.select().from(serviceBookings).where(...).limit(1)
-//   - the auth layer: const [u] = await db.select().from(users).where(...)
-//   - describeAcceptance's loadContext:
-//                     const [row] = await db.select({...}).from(serviceBookings)
-//                        .leftJoin(providerServices, ...).where(...)
-// so the chain is thenable at every link, not only at `.limit()`, and carries
-// the join links. It is TABLE-AWARE: answering a `users` read with a booking
-// row would hand the auth layer a row with no role, and the admin tier would
-// silently fall to `user`. `service_bookings` answers the booking rows;
-// `provider_services` answers NO row (the fake booking's listing is unknown,
-// so `acceptanceModeFor` resolves null and the read-out is omitted — §13);
-// any other table answers nothing rather than a booking row in disguise.
-function rowsForTable(table: any, bookingRows: object[]): object[] {
-  switch (getTableName(table)) {
-    case "users":
-      return currentDbUser ? [{ ...currentDbUser, isDeleted: false, isSuspended: false }] : [];
-    case "service_bookings":
-      return bookingRows;
-    case "provider_services":
-      return [];
-    default:
-      return [];
-  }
-}
+// The chain itself lives in the shared fixture (see the header): thenable at
+// every link, join-aware, TABLE-AWARE. This suite only says which rows each
+// table answers — the session user for `users` (read lazily, so buildApp() may
+// swap it per test) and the caller's booking rows for `service_bookings`;
+// `provider_services` and every other table answer nothing.
 function makeMockSelect(bookingRows: object[]): () => any {
-  return () => {
-    let rows: object[] = bookingRows;
-    const chain: any = {
-      from: (table: any) => {
-        rows = rowsForTable(table, bookingRows);
-        return chain;
-      },
-      // A LEFT JOIN adds columns, never rows: the driving table's rows stand.
-      leftJoin: () => chain,
-      innerJoin: () => chain,
-      where: () => chain,
-      limit: () => Promise.resolve(rows),
-      // `await chain` — what the two auth reads do.
-      then: (onFulfilled: any, onRejected: any) =>
-        Promise.resolve(rows).then(onFulfilled, onRejected),
-    };
-    return chain;
-  };
+  return makeTableAwareSelect(
+    bookingRouteRows({ user: () => currentDbUser, bookings: () => bookingRows }),
+  );
 }
 
 // ── Express app factory ───────────────────────────────────────────────────────
