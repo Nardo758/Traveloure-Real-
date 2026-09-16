@@ -144,7 +144,7 @@ import {
   PURCHASE_CLAIMABLE_FROM_STATUSES,
   type HumanPurchaseBookingAgentStatus,
 } from "@shared/booking-agent-vocabulary";
-import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp, getTableColumns } from "drizzle-orm";
 import type {
   NeighborhoodRow as MarketNeighborhoodRow,
   CoverageTargetRow as MarketCoverageTargetRow,
@@ -6530,30 +6530,54 @@ export class DatabaseStorage implements IStorage {
     return summary;
   }
 
+  // ONE ATOMIC UPSERT — §15's own shape (ledger `2026-09-16-ci-main-red-repairs`, punchlist V-34).
+  // This used to be SELECT-then-(UPDATE|INSERT): two writers landing on a date with no row yet both
+  // read "absent", both INSERTed, and the loser died on `daily_revenue_summary_date_unique`. That is
+  // the check-then-insert §15 names as the TOCTOU bug, not a guard. It bit in CI, where the three
+  // revenue-dedup vitest suites run in parallel workers and each one's first genuine
+  // `insertPlatformRevenueOnce` rolls TODAY's row up through here. The cart-confirm rollup in
+  // `confirmCartBookingRevenue` (above) already used the INSERT … ON CONFLICT (date) DO UPDATE shape;
+  // the two rollups are now one shape. The UNIQUE constraint the old code tripped over is the one
+  // the upsert targets — no schema change. `COALESCE(total_*, 0)` because the columns are nullable
+  // (default "0") and a NULL running sum would swallow every later increment; an increment the
+  // caller omits inserts as 0 and therefore ADDS 0 — it never NULLs the sum (§13: an unstated
+  // increment is zero, not unknown). Any OTHER column the caller passes keeps the pre-existing
+  // overwrite semantics via `excluded.<col>`; `date`/`id`/`transactionCount`/timestamps are never
+  // caller-settable here.
   async updateDailyRevenueSummary(date: string, updates: Partial<InsertDailyRevenueSummary>): Promise<DailyRevenueSummary> {
-    const existing = await this.getDailyRevenueSummary(date);
-    
-    if (existing) {
-      const [updated] = await db.update(dailyRevenueSummary)
-        .set({
-          ...updates,
-          totalGross: String(parseFloat(existing.totalGross || '0') + parseFloat(updates.totalGross || '0')),
-          totalPlatformFee: String(parseFloat(existing.totalPlatformFee || '0') + parseFloat(updates.totalPlatformFee || '0')),
-          totalNet: String(parseFloat(existing.totalNet || '0') + parseFloat(updates.totalNet || '0')),
-          transactionCount: (existing.transactionCount || 0) + 1,
-          updatedAt: new Date(),
-        })
-        .where(eq(dailyRevenueSummary.date, date))
-        .returning();
-      return updated;
-    } else {
-      const [created] = await db.insert(dailyRevenueSummary).values({
-        date,
-        ...updates,
-        transactionCount: 1,
-      }).returning();
-      return created;
+    const { totalGross, totalPlatformFee, totalNet, ...rest } = updates;
+    const increment = (v: string | null | undefined) => String(parseFloat(v || '0') || 0);
+    const columns = getTableColumns(dailyRevenueSummary) as Record<string, { name: string } | undefined>;
+    const NEVER_CALLER_SET = new Set(['date', 'id', 'transactionCount', 'createdAt', 'updatedAt']);
+    const passthroughSet: Record<string, unknown> = {};
+    for (const key of Object.keys(rest)) {
+      if (NEVER_CALLER_SET.has(key)) continue;
+      const col = columns[key];
+      if (!col) continue;
+      passthroughSet[key] = sql.raw(`excluded.${col.name}`);
     }
+    const [row] = await db.insert(dailyRevenueSummary)
+      .values({
+        date,
+        ...rest,
+        totalGross: increment(totalGross),
+        totalPlatformFee: increment(totalPlatformFee),
+        totalNet: increment(totalNet),
+        transactionCount: 1,
+      })
+      .onConflictDoUpdate({
+        target: dailyRevenueSummary.date,
+        set: {
+          ...passthroughSet,
+          totalGross: sql`COALESCE(${dailyRevenueSummary.totalGross}, 0) + excluded.total_gross`,
+          totalPlatformFee: sql`COALESCE(${dailyRevenueSummary.totalPlatformFee}, 0) + excluded.total_platform_fee`,
+          totalNet: sql`COALESCE(${dailyRevenueSummary.totalNet}, 0) + excluded.total_net`,
+          transactionCount: sql`COALESCE(${dailyRevenueSummary.transactionCount}, 0) + 1`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
   }
 
   // === Content Tracking System ===

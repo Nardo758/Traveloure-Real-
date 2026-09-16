@@ -11,13 +11,13 @@ test("coverage report has exact strict totals and a disposition for every unique
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const coverage = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-coverage.json"), "utf8"));
   const manifestKeys = new Set(manifest.mutations.map((item: any) => `${item.method} ${item.effectivePath}`));
-  assert.equal(manifestKeys.size, 546);
+  assert.equal(manifestKeys.size, 575);
   assert.equal(coverage.endpoints.length, manifestKeys.size);
   assert.equal(new Set(coverage.endpoints.map((item: any) => item.key)).size, coverage.endpoints.length);
   assert.deepEqual(new Set(coverage.endpoints.map((item: any) => item.key)), manifestKeys);
   assert.ok(coverage.endpoints.every((item: any) => typeof item.tested === "boolean" && item.reason));
   assert.equal(coverage.totals.tested, coverage.endpoints.filter((item: any) => item.tested).length);
-  assert.equal(coverage.totals.remaining, 546 - coverage.totals.tested);
+  assert.equal(coverage.totals.remaining, 575 - coverage.totals.tested);
   assert.equal(coverage.endpoints.filter((item: any) => item.reason.startsWith("Explicitly excluded")).length, 30);
 });
 

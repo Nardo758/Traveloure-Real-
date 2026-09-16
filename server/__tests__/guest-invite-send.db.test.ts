@@ -125,7 +125,13 @@ before(async () => {
 after(async () => {
   if (createdInviteIds.length > 0) {
     // invite_send_log cascades from event_invites.
-    await db.execute(sql`DELETE FROM event_invites WHERE id = ANY(${createdInviteIds})`);
+    // T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): `ANY(${array})` interpolated as a
+    // PARENTHESISED PARAMETER LIST — `ANY(($1, $2, …))` — which is not valid SQL, so this after()
+    // hook threw and failed the file even though all six proofs had passed. `sql.join` builds the
+    // `IN (…)` list explicitly. No assertion changed.
+    await db.execute(
+      sql`DELETE FROM event_invites WHERE id IN (${sql.join(createdInviteIds.map((id) => sql`${id}`), sql`, `)})`,
+    );
   }
   await db.execute(sql`DELETE FROM user_experiences WHERE id IN (${ids.experience}, ${ids.otherExperience})`);
   await db.execute(sql`DELETE FROM experience_types WHERE id = ${ids.experienceType}`);

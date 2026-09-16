@@ -82,23 +82,49 @@ function liveAuditRefusalReason(config: AuditSafetyConfig): string | undefined {
   return undefined;
 }
 
-// These are copied from the production assembly at routes.ts:698-742, rather
-// than inferred from endpoint names.  /api/provider/services is deliberately
-// an earner (expert/provider/admin) backstop, not a provider-only one.
-const ROLE_BACKSTOP_PREFIXES = [
-  "/api/expert/neighborhoods",
-  "/api/expert/profile-notes",
-  "/api/expert/profile",
-  "/api/expert/photo",
-  "/api/expert/selected-services",
-  "/api/expert/specializations",
-  "/api/expert/service-listings",
-  "/api/expert/templates",
-  "/api/expert/services",
-  "/api/expert/knowledge-nuggets",
-  "/api/provider/request-verification-review",
-  "/api/provider/services",
+/*
+ * The role backstop's prefix set is READ OUT OF THE PRODUCTION ASSEMBLY, never
+ * restated here.  It used to be a hand copy of routes.ts's three arrays, and it
+ * DRIFTED: production grew `/api/expert/neighborhood-claims` (ruling 27) while
+ * the copy still carried `/api/expert/templates`, whose lane was retired by
+ * ledger `2026-09-03-expert-templates-consumer-sunset`.  A second statement of
+ * one decision is the derivation-drift class CLAUDE.md §18 rule 1 names, and a
+ * drifted copy here silently DROPS routes from the audit — the worst failure a
+ * security audit can have, because it reads green.
+ *
+ * STATED NEGATIVE SPACE: this reads the three array literals by NAME out of the
+ * source text.  It proves the prefixes are the ones production assembles; it
+ * does NOT prove the middleware still consults all three, and it cannot see a
+ * prefix added under a fourth name.  If any array is renamed or removed the
+ * parse throws, so the failure is loud rather than a silently shrunk audit.
+ */
+const ROLE_BACKSTOP_PREFIX_ARRAYS = [
+  "EARNER_SELF_SERVICE_PREFIXES",
+  "EXPERT_SELF_SERVICE_PREFIXES",
+  "PROVIDER_SELF_SERVICE_PREFIXES",
 ] as const;
+
+function readRoleBackstopPrefixes(): string[] {
+  const source = fs.readFileSync(path.join(process.cwd(), "server/routes.ts"), "utf8");
+  const prefixes: string[] = [];
+  for (const name of ROLE_BACKSTOP_PREFIX_ARRAYS) {
+    const declaration = new RegExp(`const\\s+${name}\\s*(?::[^=]+)?=\\s*\\[([^\\]]*)\\]`);
+    const match = source.match(declaration);
+    if (!match) {
+      throw new Error(
+        `server/routes.ts no longer declares ${name}; the role backstop audit cannot read its prefixes`,
+      );
+    }
+    const entries = Array.from(match[1].matchAll(/["'`]([^"'`]+)["'`]/g)).map((m) => m[1]);
+    if (entries.length === 0) {
+      throw new Error(`server/routes.ts declares ${name} with no prefixes`);
+    }
+    prefixes.push(...entries);
+  }
+  return prefixes;
+}
+
+const ROLE_BACKSTOP_PREFIXES: readonly string[] = readRoleBackstopPrefixes();
 const hasRoleBackstop = (pathname: string) =>
   ROLE_BACKSTOP_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 

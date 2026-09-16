@@ -387,10 +387,38 @@ describe("slip rail — four cards, and every rail kept a home", () => {
     for (const rel of CALLERS) {
       assert.ok(readRoot(rel).includes("generateIcsContent"), `${rel} references the generator`);
     }
-    // The generator itself is untouched by this lane: its floating-time branch is the §13 answer
-    // for a plan with no zone, and this route relies on it rather than substituting one.
+    // The route relies on the generator's own FLOATING-TIME branch — the §13 answer for a plan
+    // whose instant cannot be vouched for — rather than substituting a zone of its own.
+    //
+    // PIN REPAIRED, NOT DELETED (2026-09-15, ledger `2026-09-15-d22-dates-confirmed`). This
+    // asserted one LITERAL LINE of the generator, `const timeZone = comparison.timezone || null;`.
+    // D-22 widened that same ONE decision with the second half of the same fact: a pinned instant
+    // needs a real DAY (`trips.dates_confirmed_at`) as much as a real ZONE (LD 30), so an
+    // explicitly unconfirmed plan now collapses into the SAME floating branch a zoneless one
+    // takes. The line moved; the invariant did not. What is asserted here is the invariant:
+    //   · there is still exactly ONE `timeZone` decision, built from `comparison.timezone`;
+    //   · it can still resolve to `null`, which is what reaches the floating branch;
+    //   · the generator still substitutes NOTHING when it does — no UTC, no server zone, no
+    //     nearest market (LD 30 forbids all three by name);
+    //   · and the unconfirmed-dates case is routed through that same one decision rather than a
+    //     second branch beside it (§18 rule 1).
     const ics = readRoot("server/utils/ics-calendar.ts");
-    assert.ok(ics.includes("const timeZone = comparison.timezone || null;"));
+    const timeZoneDecisions = [...ics.matchAll(/const timeZone\s*=/g)];
+    assert.equal(timeZoneDecisions.length, 1, "the generator must keep ONE zone decision (§18 rule 1)");
+    assert.match(
+      ics,
+      /const timeZone\s*=[^;]*comparison\.timezone[^;]*\|\|\s*null/,
+      "the one decision reads the plan's own zone and can answer null — the floating branch",
+    );
+    assert.match(
+      ics,
+      /const timeZone\s*=[^;]*comparison\.datesConfirmed === false \?\s*null/,
+      "an unconfirmed window withdraws the zone from that SAME decision (D-22), never a second branch",
+    );
+    assert.ok(
+      !/comparison\.timezone\s*\|\|\s*["'`]/.test(ics),
+      "and nothing substitutes a zone literal when it is absent (LD 30: never UTC, never the server's)",
+    );
   });
 
   it("S6 TripExportButton is still gone and nothing imports it", () => {

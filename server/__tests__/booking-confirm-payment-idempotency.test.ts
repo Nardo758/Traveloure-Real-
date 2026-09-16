@@ -36,7 +36,7 @@ piProto.retrieve = async (id: string) => ({ id, status: "succeeded" });
 
 const { db, pool } = await import("../db");
 const { sql, eq } = await import("drizzle-orm");
-const { users, bookings, providerEarnings, platformRevenue, providerAvailability } = await import("../../shared/schema");
+const { users, bookings, providerEarnings, platformRevenue } = await import("../../shared/schema");
 const { bookingService } = await import("../services/booking.service");
 
 after(async () => {
@@ -59,10 +59,16 @@ async function createPendingBooking(travelerId: string, providerId: string): Pro
   return id;
 }
 
+// T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): this used to delete a
+// `provider_availability` row too. That table was RETIRED — migration 242 drops it and
+// `shared/schema.ts` deliberately no longer declares it (publish-trap rule), so the
+// `providerAvailability` import resolved to `undefined` and reading `.providerId` off it threw
+// SYNCHRONOUSLY inside `finally`, replacing both tests' real outcome with
+// "Cannot read properties of undefined (reading 'providerId')". The suite's assertions were
+// never reached. Nothing else changed: no assertion moved.
 async function cleanup(bookingId: string, travelerId: string, providerId: string) {
   await db.delete(providerEarnings).where(eq(providerEarnings.sourceId, bookingId)).catch(() => {});
   await db.delete(platformRevenue).where(eq(platformRevenue.sourceId, bookingId)).catch(() => {});
-  await db.delete(providerAvailability).where(eq(providerAvailability.providerId, providerId)).catch(() => {});
   await db.delete(bookings).where(eq(bookings.id, bookingId)).catch(() => {});
   await db.delete(users).where(eq(users.id, travelerId)).catch(() => {});
   await db.delete(users).where(eq(users.id, providerId)).catch(() => {});

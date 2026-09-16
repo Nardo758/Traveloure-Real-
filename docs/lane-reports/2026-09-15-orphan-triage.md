@@ -506,16 +506,34 @@ row.
 
 | # | lane | closes | shape | size |
 |---|---|---|---|---|
-| **T-1** | **The four single-purpose directories.** `server/utils/__tests__` (2), `server/seeds/__tests__` (1), `server/services/travelpayouts/__tests__` (1), `server/services/trend-engine/__tests__` (1). **Each directory contains ONLY these files**, so one glob closes each exactly. | **5** | one `npm ci` job, `npx tsx --test <dir>/*.test.ts*`, no database | **XS** — one workflow block |
-| **T-2** | **`server/services/__tests__` — all 21 green** (12 pure, 9 DB). Directory holds 28 test files, so the glob also picks up 7 already-wired ones; re-running a wired suite is the 2026-09-14 precedent and costs a minute. | **21** | ONE **DB-backed** whole-directory job (Postgres service + `ci-db-setup`), because the directory mixes pure and DB suites and a database costs less than a split | **S** |
-| **T-3** | **`server/routes/__tests__` (11) + `server/migrations/__tests__` (3)** — 13 green, 1 red (`booking-idor-guard`, `Expected 403 but got 503`, a fixture). Repair that one first; a whole-directory job cannot carry a red. | **14** | one DB-backed job per directory (or one job, two steps) | **S** |
-| **T-4** | **`mutation-auth/` (6).** Two are already green. Two need `MUTATION_AUTH_AUDIT_OK=1` **and** a working fixture login. One (`admin-mutation-auth`) then runs 143 real probes and reports the three 401/403 rails in §5 #2. One is **DEAD** (`non-admin-payments-…` asserts `POST /api/expert/templates` is mounted; that consumer lane was retired by ledger `2026-09-03-expert-templates-consumer-sunset`). | **6** | one DB + app job with the audit flag, plus one deletion and one decision | **S/M** — the decision is the cost, not the wiring |
-| **T-5** | **R-12 / R-13** — §6. One read-back in each fixture, plus the punchlist's own recommendation to split the pure half out first. | **2** | one DB + app job | **S** |
-| **T-6** | **The two suites LD 41 (b) overtook** (`generated-itinerary-atomicity.db`, `regenerate-booking-guard.db`) — seed an empty slip, or drive the paid rail. The ruling is settled; only the fixtures are not. | **2** | repair + wire into an existing DB job | **S** |
-| **T-7** | **`text-sanitization.test.ts` — DELETE or rewrite.** It imports `EXPERT_LISTING_TEXT_FIELDS` from `server/utils/text-sanitizer`, which no longer exports it, and **this test is the only reference left in the tree**. A suite that cannot load is not a guard. | **1** | one decision, one file | **XS** |
-| **T-8** | **The remaining `server/__tests__` reds** — 26 fixture rows and 6 assertion rows (§5). Mostly three repeated causes: a fixture login against `ci-*`/`kyoto-*@traveloure.test` credentials the suite assumes, a fixture row inserted before its owner exists (the §6 race, several more instances), and a listing/service fixture a fresh database does not carry. | **32** | 3-5 lanes grouped **by cause, not by file** — one shared fixture helper is worth more than thirty local patches (§18 rule 1) | **L** — the real work |
-| **T-9** | **`server/__tests__` as a class.** Once T-5/T-6/T-7/T-8 are green, ONE DB + app whole-directory job closes all **157** by glob and makes the directory orphan-proof by construction, the way `unit-suite-shared` did. Do **not** do this before the reds are green: a whole-directory job cannot carry one. | **157** (of which 124 are already green today) | one job | **S once T-8 lands; impossible before** |
+| ~~**T-1**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t1-t3-green-directories`) | **The four single-purpose directories.** `server/utils/__tests__` (2), `server/seeds/__tests__` (1), `server/services/travelpayouts/__tests__` (1), `server/services/trend-engine/__tests__` (1). **Each directory contains ONLY these files**, so one glob closes each exactly. | **5** | one `npm ci` job, `npx tsx --test <dir>/*.test.ts*`, no database | **XS** — one workflow block |
+| ~~**T-2**~~ ✅ **LANDED 2026-09-15 — 20 of 21** (ledger `2026-09-15-orphans-t1-t3-green-directories`) | **`server/services/__tests__` — all 21 green** (12 pure, 9 DB). Directory holds 28 test files, so the glob also picks up 7 already-wired ones; re-running a wired suite is the 2026-09-14 precedent and costs a minute. | **21** | ONE **DB-backed** whole-directory job (Postgres service + `ci-db-setup`), because the directory mixes pure and DB suites and a database costs less than a split | **S** |
+| ~~**T-3**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t1-t3-green-directories`) | **`server/routes/__tests__` (11) + `server/migrations/__tests__` (3)** — 13 green, 1 red (`booking-idor-guard`, `Expected 403 but got 503`, a fixture). Repair that one first; a whole-directory job cannot carry a red. | **14** | one DB-backed job per directory (or one job, two steps) | **S** |
+| ~~**T-4**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t4-t7-red-suites`) | **`mutation-auth/` (6) — all six wired and green, 154 tests, 0 skipped.** Two are already green. Two need `MUTATION_AUTH_AUDIT_OK=1` **and** a working fixture login. One (`admin-mutation-auth`) then runs 143 real probes and reports the three 401/403 rails in §5 #2. One is **DEAD** (`non-admin-payments-…` asserts `POST /api/expert/templates` is mounted; that consumer lane was retired by ledger `2026-09-03-expert-templates-consumer-sunset`). | **6** | one DB + app job with the audit flag, plus one deletion and one decision | **S/M** — the decision is the cost, not the wiring |
+| ~~**T-5**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t4-t7-red-suites`) | **R-12 / R-13** — §6. One read-back in each fixture, plus the punchlist's own recommendation to split the pure half out first. | **2** | one DB + app job | **S** |
+| ~~**T-6**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t4-t7-red-suites`) | **The two suites LD 41 (b) overtook** (`generated-itinerary-atomicity.db`, `regenerate-booking-guard.db`) — seed an empty slip, or drive the paid rail. The ruling is settled; only the fixtures are not. | **2** | repair + wire into an existing DB job | **S** |
+| ~~**T-7**~~ ✅ **LANDED 2026-09-15 — DELETED** (ledger `2026-09-15-orphans-t4-t7-red-suites`) | **`text-sanitization.test.ts` — DELETE or rewrite.** It imports `EXPERT_LISTING_TEXT_FIELDS` from `server/utils/text-sanitizer`, which no longer exports it, and **this test is the only reference left in the tree**. A suite that cannot load is not a guard. | **1** | one decision, one file | **XS** |
+| ~~**T-8**~~ ✅ **LANDED 2026-09-15** (ledger `2026-09-15-orphans-t8-t9-server-tests-class`) | **The remaining `server/__tests__` reds** — 26 fixture rows and 6 assertion rows (§5). Mostly three repeated causes: a fixture login against `ci-*`/`kyoto-*@traveloure.test` credentials the suite assumes, a fixture row inserted before its owner exists (the §6 race, several more instances), and a listing/service fixture a fresh database does not carry. | **32** | 3-5 lanes grouped **by cause, not by file** — one shared fixture helper is worth more than thirty local patches (§18 rule 1) | **L** — the real work |
+| ~~**T-9**~~ ⚠️ **LANDED 2026-09-15, NOT COMPLETE — 2 of 238 stay orphaned** (same ledger row) | **`server/__tests__` as a class.** Once T-5/T-6/T-7/T-8 are green, ONE DB + app whole-directory job closes all **157** by glob and makes the directory orphan-proof by construction, the way `unit-suite-shared` did. Do **not** do this before the reds are green: a whole-directory job cannot carry one. | **157** (of which 124 are already green today) | one job | **S once T-8 lands; impossible before** |
 | **T-10** | **The 30 Playwright specs.** Out of this lane's scope by the brief and already classified per-spec by the 2026-09-14 lane, which RAN all 41. Its finding stands: *nothing they assert is gone; what has rotted is their EXPECTATIONS, and rewriting an expectation is a product decision.* | **30** | a product decision per spec, then wiring | **L, and gated on decisions rather than effort** |
+
+**STRUCK 2026-09-15 — T-1, T-2 and T-3 have landed** (ledger
+`2026-09-15-orphans-t1-t3-green-directories`, PR on `task-orphans-t1-t3-green-directories`).
+39 of the 40 suites they name are wired; the inventory moved **279/512 → 318/512 reachable**
+and the baseline **233 → 194**. Two corrections this report owes its readers, both found by
+running what it proposed:
+
+1. **`server/services/__tests__/content-matching.test.ts` is an HTTP suite, not a DB one.** It
+   fetches `http://localhost:5000/api/content-match` on six of its nine tests; §3's bucket row
+   credits this directory with 0 HTTP-GREEN, so it was counted in the 9 DB-GREEN. It is the ONE
+   suite of T-2's 21 left orphaned, and it stays on the baseline until a job boots the app.
+2. **A directory is not one runner, so "one glob closes it" is not always available.** Five
+   files under these roots import from `vitest` — `server/services/__tests__/anchor-candidates`
+   and `anchor-scoring`, and all three non-`chain-integrity` files in
+   `server/migrations/__tests__` — and `tsx --test` dies inside `@vitest/runner` before a single
+   assertion runs, while `vitest` cannot run a `node:test` file either. §2 recorded the 12
+   vitest files as a HARNESS fact; it is also a WIRING fact, and T-9's whole-directory shape for
+   `server/__tests__` must be planned around it.
 
 **Three cross-cutting notes for whoever picks these up.**
 
@@ -581,3 +599,76 @@ row.
 | `grep -c replit.local package-lock.json` | **0** |
 | `node scripts/check-test-files-wired.cjs` | `277/510 reachable; 233 orphan(s)` — unchanged by this lane (docs only) |
 | files changed | `docs/lane-reports/2026-09-15-orphan-triage.md`, `docs/DECISIONS.md`, `docs/PUNCHLIST.md` |
+
+**STRUCK 2026-09-15 — T-4, T-5, T-6 and T-7 have landed** (ledger
+`2026-09-15-orphans-t4-t7-red-suites`). Ten suites wired, one deleted; the inventory moved
+**318/512 → 328/511 reachable** and the baseline **194 → 183**. Five corrections this report owes
+its readers, all found by running what it proposed:
+
+3. **§5 #2's three 401/403 rails do not reproduce at this head, and no code was changed.** Both
+   guards already implement the ruling the decision-maker gave — `adminApiGuard`
+   (`server/routes.ts`, the §2 blanket mount) and `isEA` (`server/middleware/ea-rbac.ts`) each 401
+   only on `!req.isAuthenticated()` and 403 off a DB role lookup. All three rails were probed
+   directly as an authenticated ordinary user and answered 403; the suite is 143/143 on three
+   consecutive runs plus a fourth on a database built from empty; an 8-round tight
+   register→login→probe loop produced 0 of 48 401s. The three sit at inventory indices 9, 10 and 17
+   of 143, which is consistent with this report's own fixture's session not being live yet for its
+   first probes — but that is a shape and not a mechanism, and §13 says so rather than inventing
+   one.
+4. **§5's "two suites are DEAD" is one, not two.** `text-sanitization.test.ts` is dead and is
+   deleted. `mutation-auth/non-admin-payments-…` names no retired rail anywhere in its source: it
+   drives every probe off `generated/security/mutation-auth-manifest.json`, **a GENERATED inventory
+   that nothing in CI checked and that had drifted** — carrying the four retired
+   `/api/expert/templates*` rails and missing 43 live ones. Regenerating it made the suite green
+   (220 real probes) and the freshness check is now a CI step. A derived file going stale is not
+   the same fact as a suite being dead, and the difference decides whether real coverage is
+   deleted.
+5. **A hand-copied production list inside a security audit had silently shrunk that audit.**
+   `expert-provider-mutation-auth.test.ts` restated `server/routes.ts`'s three
+   `*_SELF_SERVICE_PREFIXES` arrays; the copy still carried `/api/expert/templates` and had never
+   gained `/api/expert/neighborhood-claims`, so three live high-risk rails were outside the probe
+   set while the suite reported green. It now reads the arrays out of the source by name and throws
+   if one is renamed. The probe set went from a stale subset to 41 rails, all 403. This is the
+   §18 rule 1 class, and it is worth naming here because the same shape will be waiting in T-8.
+6. **Two of the RED-FIXTURE suites were also about to pass for the wrong reason.**
+   `generated-itinerary-atomicity` and `regenerate-booking-guard` both hold `assert.rejects` proofs
+   with no predicate, so once their slips were emptied those proofs would have been satisfied by
+   LD 41 (b)'s own refusal rather than by the failure they were written to prove. Emptying the slip
+   was only half the repair; identifying every rejection was the other half. Any later lane that
+   "fixes" a suite by removing whatever was making it throw should assume this trap is present.
+7. **A per-test fixture trip beats a shared one now that slip emptiness is a precondition.** Under
+   LD 41 (b) a suite whose tests share one trip is a suite whose tests depend on each other's
+   leftovers: a commit in test 3 silently disqualifies test 4. T-8 will meet this repeatedly.
+
+**STRUCK 2026-09-15 — T-8 and T-9 have landed** (ledger `2026-09-15-orphans-t8-t9-server-tests-class`).
+Inventory **328/511 → 479/512 reachable**, baseline **183 → 33**; `server/__tests__` goes from 152
+recorded orphans to **2**. Five corrections this report owes its readers, all found by running what
+it proposed:
+
+1. **SIXTEEN of this report's 29 `server/__tests__` RED rows needed NO REPAIR.** They were RED in
+   this lane's harness and GREEN on one with a migrated database, the four `ci-*` accounts and the
+   BUILT app — among them `booking-completion-machinery`, `booking-eligibility-gates`,
+   `bundle-component-linking`, `fp3-property-room-edit`, `fp5-console-agreement`,
+   `s8-property-builder`, `service-attestations`, `service-display-options`, both
+   `service-logistics-*`, `share-link-price-redaction`, `tier2-security-audit` and
+   `expert-application-xss-sanitize` (§5 #7). The RED-FIXTURE bucket therefore over-counted real
+   work by roughly half. **Re-run before repairing.**
+2. **§5 #5 and #6 are NOT the same unresolved fixture question.** `travel-surcharge` was a stale
+   composition — ledger `2026-09-08-cart-fee-line` removed `platformFeeTotal` from the TRAVELER's
+   total — and `provider-money-hardening` was a hand-copied band-resolution rule that RULING 49 and
+   ruling 71 Step 1 had both overtaken. Neither needed a fee fixture this harness lacked; both
+   needed the test to stop restating production.
+3. **§5 #1's V-29 reproduction is half right, and the half that survives is a FIXTURE bug.** The
+   cross-trip PATCH now answers 400 as the suite expects (V-29 closed). What still failed was the
+   plancard READ, which is the gap `2026-09-15-v29-one-trip-write-resolver` states in its own
+   closing note it does not reach — and the suite reached it only because its fixture minted a trip
+   with a raw insert, skipping the `trip_collaborators` owner row every production mint writes.
+4. **A whole-directory job is unavailable here for THREE reasons, not one.** Beyond the vitest split
+   this report already recorded: `e2e-purge-fk-naming.db.test.ts`'s SUBJECT is a purge of every
+   `@traveloure.test` account — including the `ci-*` accounts three suites in the same directory log
+   in as — and two reconciliation suites assert a CLEAN platform. All three are already wired
+   elsewhere and are excluded by name.
+5. **Two suites share a five-minute in-process cache and the order decides the outcome.**
+   `fp1-console-defects` and `city-case-match` are the only suites that read
+   `GET /api/discover/location/:city` and they read the same key; reproduced deterministically in
+   both directions. `city-case-match`'s "flakiness" in §8 is that cache, not a racing row set.

@@ -1,0 +1,130 @@
+name: Suite Mutation Auth
+
+# T-4 of the orphan plan (ledger `2026-09-15-orphans-t4-t7-red-suites`; docs/lane-reports/
+# 2026-09-15-orphan-triage.md §7): the six `server/__tests__/mutation-auth` suites — live
+# authorization probes against the BOOTED app as an unauthenticated caller and as an authenticated
+# ordinary user — plus the generated mutation-auth manifest's currency check. NAMED FILE LIST, NOT A
+# DIRECTORY GLOB: `server/__tests__` is not all-green, so a whole-directory selector would import a
+# red into a green job; a suite added there tomorrow is orphaned until somebody names it, and
+# `scripts/check-test-files-wired.cjs` is what says so.
+#
+# WHY ITS OWN WORKFLOW AND NOT A build.yml JOB (ledger `2026-09-16-ci-main-red-repairs`). This job
+# boots the PRODUCTION BUNDLE against a throwaway Postgres, and that boot needs ALLOW_TEST_ACCOUNTS=1
+# for server/index.ts's P0 purge fail-safe. `scripts/check-env-allowlist.cjs` (c) is FAIL-CLOSED and
+# FILE-SCOPED: the token may not appear in ANY form in a workflow FILE that also targets a real
+# deployment, and build.yml counts as one (its `artifact-deploy-guard` job key matches the guard's
+# production/deploy job-name signal). Ledger `2026-09-15-orphans-t4-t7-red-suites` added this job to
+# build.yml and turned main red on that guard. The guard is NOT narrowed — a deploy-targeting file may
+# never carry the flag — so the job moves to its own file, which is exactly where every other
+# server-booting gate (fee-preview-gate, publish-gate-and-fundamentals, payout-parity, the route gates,
+# cart-priceless-listing) already lives. Job KEY and `name:` are unchanged so the check-run name a
+# reviewer sees is unchanged, and `scripts/check-test-files-wired.cjs` scans every workflow file, so
+# the six suites this job runs stay wired.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: suite-mutation-auth-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  suite-mutation-auth:
+    name: suite-mutation-auth (server/__tests__/mutation-auth — live authorization probes, DB + app)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      BASE_URL: http://127.0.0.1:5000
+      # MUTATION_AUTH_AUDIT_OK is the opt-in these audits require. WITHOUT IT
+      # `admin-mutation-auth` executes 1 test and SKIPS 124, which is the
+      # green-but-vacuous shape triage note 3 forbids wiring: a job that runs a
+      # suite it cannot execute satisfies the inventory and protects nothing.
+      MUTATION_AUTH_AUDIT_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # Deliberately 'false': every suite in this directory creates and
+          # deletes its OWN disposable ordinary-user fixture over
+          # POST /api/auth/register, so no ci-* account is read here and a seed
+          # step nothing uses would be a step nobody could later remove safely.
+          seed-ci-users: 'false'
+      - name: Build production bundle
+        run: npm run build
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          EMAIL_FROM: noreply@ci.traveloure.test
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://127.0.0.1:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then echo "Server ready"; exit 0; fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"; exit 1
+      # T-4. Six suites. The two static ones need no server; the four live ones
+      # probe the running app as an UNAUTHENTICATED caller and as an
+      # AUTHENTICATED ORDINARY USER, and assert the exact refusal status.
+      - name: server/__tests__/mutation-auth (all six suites)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/mutation-auth/admin-mutation-auth.test.ts server/__tests__/mutation-auth/expert-provider-mutation-auth.test.ts server/__tests__/mutation-auth/mutation-auth.http.test.ts server/__tests__/mutation-auth/mutation-auth.inventory.test.ts server/__tests__/mutation-auth/non-admin-payments-user-data-mutation-auth.http.test.ts server/__tests__/mutation-auth/payment-mutation-auth.manifest.test.ts
+      # The generated manifest three of those suites read is a DERIVED
+      # inventory, and it had drifted far enough to probe four retired
+      # /api/expert/templates routes (ledger
+      # `2026-09-03-expert-templates-consumer-sunset`) and to miss 43 live
+      # ones. Nothing in CI checked it, which is why it rotted.
+      # THE CHECK IS RED ONLY WHEN A RAIL CHANGES, never when a file shifts (ledger
+      # `2026-09-16-ci-main-red-repairs`): the predicate is method + normalized path
+      # + mount source + guard set, and LINE NUMBERS ARE OUT OF IT. It first reported
+      # 513 line-only diffs and zero rail changes — a guard red on every merge. The
+      # §18d fixtures run immediately before the guard (a line-only shift passes; a
+      # new, removed or re-guarded rail fails).
+      - name: Manifest drift predicate self-test
+        run: npx tsx scripts/generate-mutation-auth-manifest.ts --self-test
+      - name: Generated mutation-auth manifest is current (rail set, not bytes)
+        run: npm run check:mutation-auth
+
