@@ -15,7 +15,9 @@
  *
  * Transport: the REAL handlers (the `/api/bookings` router and the real `requireDbAdmin`
  * middleware) mounted on a bare express app; `../storage` and `../db` are mocked so the
- * suite needs no database.
+ * suite needs no database. The fake `db` is the SHARED table-aware chain in
+ * `server/__tests__/fixtures/fake-db-chain.ts` — the same one `booking-idor-guard.test.ts`
+ * uses against the same handler (ledger 2026-09-16-ci-manifest-pin-role-auth-mock).
  *
  *   R1 — session claim says admin, DB says traveler ⇒ NO admin tier on GET /api/bookings/:id
  *        (no stripePaymentIntentId in the body) and the row is sanitized as a non-admin.
@@ -45,15 +47,25 @@ vi.mock("../storage", () => ({
   },
 }));
 
-vi.mock("../db", () => {
-  // Minimal chainable stand-in for `db.select().from(t).where(c).limit(n)`.
-  const chain: any = {
-    select: () => chain,
-    from: () => chain,
-    where: () => chain,
-    limit: async () => (bookingRow ? [bookingRow] : []),
+vi.mock("../db", async () => {
+  // The ONE table-aware fake drizzle `db` these route-level suites share
+  // (server/__tests__/fixtures/fake-db-chain.ts, §18 rule 1). The owner branch of
+  // GET /api/bookings/:id runs `describeAcceptance` — a `service_bookings` ⟕
+  // `provider_services` select awaited with no `.limit()`, plus a raw COUNT — and the
+  // minimal `select/from/where/limit` chain this suite used to carry answered neither, so
+  // the owner's own read was a 500 (`leftJoin is not a function`), not a decision.
+  const { bookingRouteRows, makeRevisionCountOnlyExecute, makeTableAwareSelect } = await import(
+    "./fixtures/fake-db-chain"
+  );
+  return {
+    db: {
+      select: makeTableAwareSelect(
+        bookingRouteRows({ user: () => null, bookings: () => (bookingRow ? [bookingRow] : []) }),
+      ),
+      execute: makeRevisionCountOnlyExecute("db-role-authorization"),
+    },
+    pool: { query: async () => ({ rows: [] }) },
   };
-  return { db: chain, pool: { query: async () => ({ rows: [] }) } };
 });
 
 // Auth middleware: the session is planted by the test app itself.

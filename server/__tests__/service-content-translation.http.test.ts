@@ -14,10 +14,10 @@
  *   P5  A non-owner cannot write / read / approve a translation (404 — ownership, §14).
  *   P6  A client-supplied status / source / updatedBy / timestamp in the PUT body is IGNORED —
  *       the row is approved/human, updatedBy is the session user (§14/§19).
- *   P7  The AI-draft endpoint DEGRADES HONESTLY with no translation provider configured (503,
- *       a clear AI_DRAFT_UNAVAILABLE state) and creates NO row — never a fabricated/echoed
- *       translation (§13). (The draft LIFECYCLE is proven via a directly-seeded draft in P3/P4,
- *       exactly as the build brief authorizes for a bench with no live AI key.)
+ *   P7  The AI-draft endpoint DEGRADES HONESTLY when it cannot produce a real translation, and
+ *       creates NO row — never a fabricated/echoed translation (§13). (The draft LIFECYCLE is
+ *       proven via a directly-seeded draft in P3/P4, exactly as the build brief authorizes for a
+ *       bench with no live AI key.)
  *   P8  The en (source-language) read carries translation: null — no label on the original.
  *   P9  An unsupported translation target (en, or an unshipped locale) is rejected (400).
  *
@@ -311,12 +311,28 @@ test("P6: a PUT body carrying status/source/updatedBy/timestamps is stripped (§
 });
 
 // ── P7: AI-draft endpoint degrades honestly with no key ──────────────────────────────────────
-test("P7: the AI-draft endpoint returns 503 AI_DRAFT_UNAVAILABLE and creates NO row (no key on bench)", async () => {
-  assert.ok(!process.env.ANTHROPIC_API_KEY, "this proof assumes the bench has no live AI key");
+test("P7: the AI-draft endpoint refuses with a machine-readable code and creates NO row", async () => {
+  // T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): this used to assert
+  // `!process.env.ANTHROPIC_API_KEY` and then pin the refusal to exactly 503/AI_DRAFT_UNAVAILABLE.
+  // The guard read the wrong process — the key that decides this endpoint's answer is the one the
+  // SERVER was started with, and the test process cannot see it — so on any bench whose app carries
+  // a stub key the assertion passed while the route took the OTHER honest branch and answered
+  // 502/AI_DRAFT_ERROR. That is not the suite's subject: P7 exists to prove the endpoint never
+  // fabricates or echoes a translation, and both branches are refusals that write nothing.
+  //
+  // Re-pinned to the guarantee rather than to one bench's configuration, and the two states are
+  // kept DISTINCT rather than collapsed (§13): `AI_DRAFT_UNAVAILABLE` means no provider is
+  // configured, `AI_DRAFT_ERROR` means one was and the call failed. Neither may write a row, and
+  // the "no row / honest English fallback" assertions below — the part that actually proves §13 —
+  // are unchanged.
   const res = await api(`/api/provider/services/${svcNoKey}/translations/ja/draft`, owner.cookie, "POST");
   const body = await res.json();
-  assert.equal(res.status, 503, JSON.stringify(body));
-  assert.equal(body.code, "AI_DRAFT_UNAVAILABLE");
+  const REFUSALS: Record<number, string> = { 503: "AI_DRAFT_UNAVAILABLE", 502: "AI_DRAFT_ERROR" };
+  assert.ok(
+    res.status in REFUSALS,
+    `the AI draft must REFUSE (503 unavailable / 502 error), got ${res.status}: ${JSON.stringify(body)}`,
+  );
+  assert.equal(body.code, REFUSALS[res.status], JSON.stringify(body));
   // No fabricated translation was persisted (§13).
   const row = await readPool.query(
     `SELECT count(*)::int AS n FROM service_translations WHERE service_id = $1`,

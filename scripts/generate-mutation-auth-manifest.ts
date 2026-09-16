@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { extractMountedMutations } from "./mutation-auth/extractor.ts";
+import { groupByEndpoint } from "./mutation-auth/endpoint-key.ts";
 import { diffRails, hasDrift, type RailLike } from "./mutation-auth/manifest-drift.ts";
 
 if (process.argv.includes("--self-test")) {
@@ -58,11 +59,9 @@ const root = process.cwd();
 const check = process.argv.includes("--check");
 const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
 const historicalComparisonCount = 546;
-const grouped = new Map<string, typeof result.mutations>();
-for (const mutation of result.mutations) {
-  const key = `${mutation.method} ${mutation.effectivePath}`;
-  grouped.set(key, [...(grouped.get(key) || []), mutation]);
-}
+// ONE grouping (scripts/mutation-auth/endpoint-key.ts): the audits derive their unique-endpoint
+// count from the same module, so the number written here is never re-copied by hand (§18 rule 1).
+const grouped = groupByEndpoint(result.mutations);
 const distinctMethodPaths = grouped.size;
 const duplicateRegistrations = [...grouped.entries()]
   .filter(([, registrations]) => registrations.length > 1)
