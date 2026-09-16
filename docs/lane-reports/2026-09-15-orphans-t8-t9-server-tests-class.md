@@ -17,8 +17,8 @@ ruling, a new test fixture helper, or workflow YAML.
 
 ## 1 · Headline
 
-One new job, **`suite-server-tests`** in `build.yml` (DB + the built app on `:5000`), runs **232 of
-the directory's 238 suites**. Six do not run in it, each for a reason stated in the job itself and
+One new job, **`suite-server-tests`** in `build.yml` (DB + the built app on `:5000`), runs **233 of
+the directory's 239 suites**. Six do not run in it, each for a reason stated in the job itself and
 in §5 below; **two of those six stay ORPHANED**, so **T-9 is landed but not complete**, exactly as
 the brief requires it to be reported.
 
@@ -182,6 +182,7 @@ themselves.
 | new job | `suite-server-tests` in `.github/workflows/build.yml` — Postgres service, `ci-db-setup` with `seed-ci-users: 'true'`, `npm run build`, `node dist/index.cjs` on `:5000`, `TIER2_DEV_AUDIT_OK=1`, then four alphabetical node:test steps (223 files), the ordered location-view pair (2), and one vitest step (7). |
 | new fixture | `server/__tests__/fixtures/catalog-listing.ts` — one approved/active/priced listing the caller owns, with its own cleanup and its stated negative space. |
 | repaired suites | 13 (listed in §2). |
+| merged from main | `server/__tests__/dates-confirmed.db.test.ts` (ledger `2026-09-15-d22-dates-confirmed`) arrived while this branch was open and is named in the job too, so the directory claim stays true. |
 | baseline | 150 lines removed; `server/__tests__` goes from 152 rows to 2. |
 
 **Why the files are NAMED and not globbed.** Six of them must not run in this job, and
