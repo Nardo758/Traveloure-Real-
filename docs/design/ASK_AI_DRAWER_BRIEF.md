@@ -325,7 +325,8 @@ generate path MUST write `ai_cost_tracking`"*, applied to the rail that will car
 volume on the platform. **The table IS declared in `shared/schema.ts:8543`**, so LD 44 (f)'s stated
 prerequisite is satisfied and is not a blocker.
 
-The three parameters are **D-47**. The recommendation there: `sourceType: "ai_task"` (the field's
+The three parameters are **D-47**, and **D-47 is RULED = A as of 2026-09-16** (ledger `2026-09-16-l16-rulings-d45-d50`) — so what
+follows is the RULING, not a recommendation: `sourceType: "ai_task"` (the field's
 type is open and the table has no CHECK), `userId` = **the ASKER from the session**, and
 `requestId` = **the proposal id** — the link back to the plan with no new column on a table CLAUDE.md
 already names as a deploy-push casualty. **A failed ask that still burned tokens writes the row
@@ -343,7 +344,14 @@ is the expensive half** — the row is cheap and discardable, the tokens are not
 index or marker today that would make a create idempotent, and the only user-keyed limiter,
 `checkMessageRateLimit`, **requires a `recipientId`** an AI ask does not have; passing a fabricated
 one would be an invented identity on an identity key, the class §14 refuses one table over. Both
-halves are **D-46**, because they are the same mechanism.
+halves are **D-46**, because they are the same mechanism. **RULED 2026-09-16 = A, amended in four
+places** (ledger `2026-09-16-l16-rulings-d45-d50`; the full text is §7.1): **two named limits in the ONE existing module** —
+`senderId + tripId` **and** a sender-alone DAILY ceiling — and **the SERVER mints the proposal id
+before the model call**, so the in-flight marker and the 409 both name it. Two consequences are
+INTENDED: a **409 can name a proposal that has no row yet**, and a **failed ask that burned tokens
+still writes an attributable `ai_cost_tracking` row with NO `plan_proposals` row** — the paragraph
+below, unchanged, plus §4.3's cost row. The per-instance store limit is **ACCEPTED for L16** (the
+exposure is tokens, not money) and filed with its trigger stated verbatim.
 
 **What must hold whatever is ruled:** a retry may not double-charge (it cannot — asking is free), a
 retry may not orphan a row (the create writes one row in one statement), a rejected duplicate is
@@ -366,7 +374,10 @@ SLIP … post-final it renders on the Trip Card"*), which makes that component t
 precedent and deliberately **not** the data one: expert suggestions are `trip_suggestions` rows,
 proposals are not, and the two panels never share a renderer.
 
-**The post-final mount is BLOCKED on D-49.** `applyPlanProposal` does not call
+~~**The post-final mount is BLOCKED on D-49.**~~ **UNBLOCKED 2026-09-16** (ledger `2026-09-16-l16-rulings-d45-d50`): **D-49 is
+RULED = A and its `reFinalizeIfCurrentlyFinal` call ships in LANE 1**, not with the mount, because
+the five rails are API-reachable on a finalized trip today. What is left for lane 4 is the MOUNT
+itself. The reason the block existed is preserved: `applyPlanProposal` does not call
 `reFinalizeIfCurrentlyFinal`, so applying on a finalized plan would rewrite items under a frozen
 Trip Card that never advances. Until it is ruled the drawer mounts **pre-final only** — an omitted
 control is honest; a control that silently rewrites a frozen snapshot is not (§13).
@@ -390,10 +401,13 @@ would replace. Widening that read is a decision, not a tidy-up, and this lane do
 admit a WRITE-status advisor on all five actions; LD 42 **D16** says the slip's edit controls are
 the OWNER's; and the pay rail builds the PaymentIntent from `getOrCreateCustomer(<session user>)`,
 so **an advisor who pays pays with their own card** — LD 44 **D19**'s prohibition on an earner
-funding a traveler's purchase, arrived at from the other direction. **D-48** rules it. This brief's
-recommendation: ask and read for both, **PAY and APPLY controls for the OWNER only**, with the
-server narrowing `…/pay` in the same lane and `…/apply` left at the write tier so a Trip-Pass-covered
-apply by an accepted advisor still works. **A render rule is never what keeps a write out** (D16's
+funding a traveler's purchase, arrived at from the other direction. **D-48 RULED IT on 2026-09-16** (ledger `2026-09-16-l16-rulings-d45-d50`), and **the ruling is NOT this
+brief's recommendation**: ask, read and discard for both, and **PAY *and* APPLY are OWNER-ONLY AT
+THE ROUTE** — narrowing BOTH is §7.2's lane 2. This brief had recommended leaving `…/apply` at the
+write tier so a Trip-Pass-covered apply by an accepted advisor still works; that case was ruled
+marginal against three reasons stated in full in §7.1 (the consent back door around owner acceptance
+of `trip_suggestions`; a render rule never keeping a write out; and the owner still being able to do
+it). **A render rule is never what keeps a write out** (D16's
 own wording, the §14 posture) — the route's gate is — so the drawer's visibility rules are additive
 to the server's and the server is not relaxed to match them.
 
@@ -475,86 +489,146 @@ Each is a §13 rule, not a preference.
 **ANSWERED and BUILT**; their text is preserved below the new list so the record of what was asked
 survives. **Six new rows, D-45..D-50, replace them**, and four of the six block the create rail.
 
-### 7.1 · Needs a ruling before any code (punch-list §1 rows D-45..D-50)
+### 7.1 · ~~Needs a ruling before any code~~ — **ALL SIX ARE RULED. LOCKED, 2026-09-16.**
 
-- **D-45 — is the drawer a THREAD, or a stateless ask over the proposal log?**
-  `plan_proposals.conversation_id` exists (migration 299, nullable, ON DELETE SET NULL) and
-  `conversations.trip_id` exists (L15, migration 290), so a thread is possible. But the conversation
-  rail is structurally human↔human — `buildConversationId` concatenates two `users.id` (LD 40) —
-  which is the same open question **LD 44** records for the booking copilot.
-  *Recommend:* **stateless for L16.** The `question` column plus the proposal log **is** the thread;
-  `conversation_id` stays NULL and the drawer says so (§13). Binding to `conversations` is a later
-  lane needing the answer LD 44's seventh open question needs. **Whichever wins, the AI's words are
-  attributed to the AI** — the line D4 drew for `expert_note`. *(This supersedes §5's earlier
-  architectural recommendation only in ORDER, not in substance: the drawer still gets its own task
-  endpoint and never `POST /api/conversations/:id/messages`.)*
+> **REWRITTEN 2026-09-16 (ledger `2026-09-16-l16-rulings-d45-d50`).** The six rows this section
+> filed as questions — **D-45..D-50** — were answered by the decision-maker on 2026-09-16. They are
+> quoted below as **LOCKED RULINGS**; the word *recommend* is gone from this section because nothing
+> here is a recommendation any more. **Two of the six were ruled AGAINST this brief's own
+> recommendation** and those amendments are marked. A lane builds to the ruling, never to the
+> recommendation the punchlist row preserves beside it, and **no lane relitigates one of these**.
 
-- **D-46 — what throttles a free ask, and is CREATE idempotent?** Asking is free by ruling (D-21 = A)
-  and the expensive half is the model call. `checkMessageRateLimit`
-  (`server/infrastructure/message-rate-limiter.ts:128`) is the only user-keyed limiter and it
-  **requires a `recipientId`**; a fabricated one would be an invented identity on an identity key.
-  *Recommend:* **one more NAMED limit in that SAME fixed-window module** — `checkAiAskRateLimit`,
-  keyed on `senderId + tripId`, sharing the existing store, cleanup and loopback bypass — **never a
-  second limiter implementation** (§18 rule 1) and **never a fake recipient**. For idempotency, an
-  **in-flight marker keyed on (tripId, session user)** that refuses a second ask while one runs and
-  answers 409 naming the in-flight proposal — no schema, no column, no UNIQUE index. **Stated limit:
-  the store is in-memory per process**, so a multi-instance deployment throttles per instance; that
-  is the limit the messaging limiter already states for itself, and closing it is a shared-store
-  lane.
+- **D-45 — RULED = A: STATELESS.** `plan_proposals.conversation_id` **stays NULL** for every L16 ask
+  and **the drawer copy says so** (§13). The `question` column plus the proposal log **is** the
+  thread. Binding to `conversations` is a later lane needing the answer LD 44's seventh open
+  question needs (the rail is structurally human↔human — `buildConversationId` concatenates two
+  `users.id`, LD 40). **The AI's words are attributed to the AI** — the line LD 42 D4 drew for
+  `expert_note` and D23 for the origin chip. The drawer keeps its **own** task endpoint and is never
+  `POST /api/conversations/:id/messages` (§4.1's clause, unchanged).
+  **OPTIONAL AND NON-BLOCKING, added by the ruling:** the create rail **MAY** pass the asker's own
+  prior `question` values **on THIS trip — same trip, same session user, nothing else** — as model
+  context. A lane that takes it records it in §4; a lane that does not files it in the follow-ups
+  register. **Lane 1 did not take it** (it is an input to the model call, and that lane stopped
+  before the model call), and it is filed in `docs/PUNCHLIST.md` §4.
 
-- **D-47 — what model tier does a PAID task run on, and what three values does its
-  `ai_cost_tracking` row carry?** `resolveAiDraftModel` (`server/services/ai-draft-model.ts:41`) is
-  the FREE draft's cost knob and its own header forbids the optimizer reading it. The
-  `sourceType`/`userId` half is the question **LD 44** left open for the copilot, asked here first.
-  *Recommend:* a sibling `ai-task-model.ts` with its own env knob (`AI_TASK_MODEL`) defaulting to
-  the optimizer's Sonnet-class tier — the traveler pays for this one, so the free lane's knob must
-  not reach it (LD 41 (c)). Cost row: `sourceType: "ai_task"`, `userId` = **the ASKER from the
-  session** (spend attributed to whoever caused it, never to the plan's owner, which would
-  misattribute an advisor's asks), `requestId` = **the proposal id**.
+- **D-46 — RULED = A, AMENDED IN FOUR PLACES.**
+  **(i) The SERVER mints the proposal id (`randomUUID`) BEFORE the model call** and hands it to
+  `createPlanProposal` **explicitly**. The in-flight marker holds **that** id and the **409 returns
+  it**. Two consequences are INTENDED and are not defects to tidy away: a **409 can name a proposal
+  that has no row yet**, and **a failed ask that burned tokens still writes an attributable
+  `ai_cost_tracking` row** (D-47's `requestId`) with **no `plan_proposals` row behind it**. Both
+  follow from §13 and from §4.4's own rule that a model call which fails leaves NO row: an untracked
+  spend is what `ai_cost_tracking` exists to prevent, and a half-written proposal row would sit in
+  the log as something the AI said.
+  **(ii) TWO NAMED LIMITS in the SAME existing fixed-window module** — `senderId + tripId` **AND a
+  sender-alone DAILY ceiling**. The second is not belt-and-braces: **trips are free to create**, so a
+  per-trip limit alone fans out to as many buckets as the asker cares to mint. **Never a second
+  limiter implementation** (§18 rule 1) and **never a fabricated recipient** — an invented identity
+  on an identity key is the class §14 refuses one table over.
+  **(iii) THE MULTI-INSTANCE LIMIT IS ACCEPTED, NOT CLOSED.** `.replit` declares
+  `deploymentTarget = "autoscale"`, so the per-process in-memory store means both limits **multiply
+  by instance count** and a **cross-instance double-submit makes two model calls**. Accepted for
+  L16: **the exposure is TOKENS, not money** — asking is free by D-21 and no charge point is
+  reachable from the create rail. The shared-store lane is filed with its trigger stated **verbatim**:
+  *"when observed instance count > 1 or ask volume makes token spend material."*
+  **(iv) NO SCHEMA.** No column, no UNIQUE index, no migration.
 
-- **D-48 — may a §12 WRITE advisor ASK, PAY and APPLY, and whose card is charged?** See §5.2. The
-  rails admit them; D16 says the slip's edit controls are the owner's; the PaymentIntent is built
-  from the **session** user's customer. And the only coverage read
-  (`GET /api/trips/:tripId/trip-pass`, `server/routes/trip-pass.routes.ts:47`) is **owner-only**, so
-  an advisor-viewed drawer cannot honestly say whether the plan is covered.
-  *Recommend:* ask and read for both; **PAY for the OWNER only** (narrow the route in the same
-  lane — LD 44 **D19** from the other direction); **APPLY left at the write tier**, since a covered
-  apply moves no money. For coverage, **extend the EXISTING `GET …/proposals` response with a
-  server-resolved `aiTask: { coveredByTripPass, priceCents }`** using the same `coversAction` call
-  and the same band resolver behind the gate that route already runs — **no second entitlement rail
-  and no second fee read** (§18 rule 1).
+- **D-47 — RULED = A.** A **new `server/config/ai-task-model.ts`**, sibling of the free draft's knob,
+  with its own env knob **`AI_TASK_MODEL`**, defaulting to **the OPTIMIZER's tier**.
+  **`resolveAiDraftModel` is NEVER read by this rail** — its own header forbids it, and the traveler
+  pays for this one (LD 41 (c)). The cost row goes through the **EXISTING** `trackAnthropicResponse`
+  (§18 rule 1 — one implementation, one more caller) carrying **`sourceType: "ai_task"`**,
+  **`userId` = the session ASKER** (spend attributed to whoever caused it, never to the plan's owner,
+  which would misattribute an advisor's asks) and **`requestId` = the pre-minted proposal id**.
+  **A failed ask that burned tokens writes the row too.** The tier is a **COST record and never a
+  product claim**: no surface may read `model_tier`, which binds in both directions — no badge, and
+  equally no degraded-quality disclaimer.
 
-- **D-49 — does applying on a FINALIZED plan advance the Trip Card's version?** `applyPlanProposal`
-  writes items and does **not** call `reFinalizeIfCurrentlyFinal`
-  (`server/services/trip-finalize.service.ts:119`), which the expert-suggestion accept path DOES —
-  precisely so an accepted change is not invisible behind a frozen snapshot (its four callers
-  verified). LD 45 (3) puts the drawer post-final, so this is reachable the day it mounts there.
-  *Recommend:* **yes — one more caller of the existing helper**, best-effort and AFTER the apply
-  commits (§15b). **Until ruled, no post-final mount** (§5.1).
+- **D-48 — RULED, AND THE RULING AMENDS THIS BRIEF: PAY *and* APPLY are OWNER-ONLY AT THE ROUTE.**
+  This section previously recommended narrowing `…/pay` and **leaving `…/apply` at the §12 WRITE
+  tier**, on the ground that a Trip-Pass-covered apply moves no money. **That recommendation is
+  overruled.** Three reasons, on the record:
+  1. **A consent back door.** An accepted advisor's own `trip_suggestions` require the **owner's**
+     acceptance. Letting the same advisor ask the AI and then apply the result routes around that
+     consent — and the applied row lands stamped `origin:'ai'`, so the plan cannot even show whose
+     choice it was.
+  2. **A render rule never keeps a write out.** That is LD 42 **D16**'s own wording and the §14
+     posture: **the route IS the policy**. Hiding apply in the drawer while admitting it at the route
+     is exactly the gap that rule names.
+  3. **The preserved case is marginal** — an advisor applying a covered proposal — **and the owner
+     can still do it.**
+  **ASK, READ and DISCARD stay at the §12 WRITE tier** and the drawer's visibility table (§5.2) is
+  read against that. **Coverage read:** extend the **EXISTING** `GET /api/trips/:tripId/proposals`
+  with a **server-resolved** `aiTask: { coveredByTripPass, priceCents }` behind the gate that route
+  already runs — **no second entitlement rail, no second fee read** (§18 rule 1), **no literal** (§8).
+  **Re-widening apply is revisited ONLY when the `authorizeTripLogistics` / `canMutateTrip`
+  reconciliation lane rules** — not by a drawer lane, and not by a lane that finds the narrowing
+  inconvenient. **The route narrowing itself is §7.2's lane 2**, not lane 1.
 
-- **D-50 — what does the create rail send the model, and may a proposal name a live catalog
-  listing?** `PlanProposalAddition.providerServiceId` exists and the apply writes it onto the item.
-  LD 41 (c) says the FREE draft has no live catalog pricing; it says nothing about a PAID task, and
-  `loadOptimizerCatalog` (`server/services/optimizer-baseline.service.ts:262`) is the existing
-  reader.
-  *Recommend:* **yes for a paid task, through `loadOptimizerCatalog` and no second catalog read**
-  (§18 rule 1). The plan is sent as the trip row's own fields, the ordered items **with the
-  protected set marked as CONSTRAINTS**, the plan's events and stops, **and nothing else** — no
-  other traveler's data, no other plan, no `users` row beyond the session's own (§14's read clause).
-  `estimatedCost` is filled **only** from a catalog row's real price or a source that stated one.
-  *Sub-question in the same row:* a staleness window for a catalog price carried into a proposal
-  applied days later — **config, never a literal**, the same answer LD 44's brief leaves open.
+- **D-49 — RULED = A, AMENDED ON TIMING: IT SHIPS IN LANE 1, NOT LANE 4.** `applyPlanProposal`
+  calls **`reFinalizeIfCurrentlyFinal` AFTER the apply commits** (§15b — an ancillary effect may not
+  break the operation that authorizes it), matching the four existing callers' shape. It ships with
+  the **create rail** rather than with the post-final mount because **the five rails are
+  API-reachable on a finalized trip today** and the create rail is what makes that live; a
+  finalized-trip refusal would be a second policy to remember and a second place to forget it.
+  **FAILURE IS LOUD:** a refinalize that fails **after a committed — and possibly charged — apply**
+  logs at **ERROR** with the **proposal id and the trip id** and is reconcilable. **No swallowed
+  catch.** (§5.1's "post-final mount is BLOCKED on D-49" is therefore discharged: the blocker is the
+  call, the call ships in lane 1, and the MOUNT is still lane 4's own work.)
+
+- **D-50 — RULED = A, TIGHTENED FIVE WAYS.** Catalog access is through **`loadOptimizerCatalog`
+  ONLY** (§18 rule 1 — no second catalog read) and for the **PAID task only**. The plan is sent as
+  the trip row's own fields, the ordered items **with the protected set marked as CONSTRAINTS** (the
+  ONE existing predicate — `itineraryItemIsExpertWork` + `itineraryItemIsMoneyCommitted`, never a
+  second test), the plan's events and stops, **and nothing else** — no other traveler's data, no
+  other plan, no `users` row beyond the session's own (§14's read clause). The five bindings:
+  **(a)** the server **OVERWRITES** any model-emitted price with the catalog row's own price —
+  **no number the model produced is ever persisted**;
+  **(b)** `providerServiceId` is **validated at CREATE** (exists, active, in the trip's market) — an
+  invalid one **DROPS that addition from the change set**, it does not fail the ask — and is
+  **RE-VALIDATED at apply**;
+  **(c)** the staleness window is **CONFIG, never a literal** (§8), and its expiry behaviour is
+  **defined**: an expired proposal's apply is **REFUSED with the reason** and the drawer offers a
+  **re-ask** — **never a silent reprice**;
+  **(d)** listing text from the catalog is **UNTRUSTED model input**; the `.strict()` change-set
+  schema plus the id validation **is** the containment;
+  **(e)** commission bands and anything from `fee_bands` are **NEVER in the model input**.
+  `estimatedCost` is still filled **only** from a catalog row's real price or a source that stated
+  one, and is otherwise **omitted, never `$0`** (§13).
 
 ### 7.2 · Lanes, in order
 
+**REWRITTEN 2026-09-16 by ledger `2026-09-16-l16-rulings-d45-d50`** (this section's earlier
+five-lane list is superseded, not deleted in substance — every lane survives, two changed shape).
+All six blocking rulings are LOCKED (§7.1), so no lane below waits on a decision. What changed:
+**D-49's re-finalize call moved OUT of lane 4 and INTO lane 1**, and **the D-48 route narrowing is
+lane 2's build item, not lane 1's**.
+
 1. **The CREATE rail** — `POST /api/trips/:tripId/proposals` plus the plan reader and the proposal
-   writer (§4). Server-only, unreachable from any UI until lane 3. **Needs D-45, D-46, D-47, D-50.**
-2. **The coverage/price read** — the `aiTask` block on the existing proposals GET (**D-48**). One
-   route touched, no new one.
-3. **The drawer, pre-final on the slip** (§5). Reuses the four landed rails and the pricing bundle.
-   **Needs D-48** for the visibility table.
-4. **The drawer post-final on the Trip Card.** **Blocked on D-49.**
-5. **The conversation binding**, only if **D-45** rules a thread.
+   writer (§4), on the SAME shared write-tier gate the four landed proposal routes run. Carries, by
+   the 2026-09-16 rulings: the two named limits and the pre-minted id + in-flight 409 (D-46), the
+   `AI_TASK_MODEL` knob and the `trackAnthropicResponse` call (D-47), the change-set sanitiser with
+   the server-side price overwrite and the create-time `providerServiceId` validation (D-50 a/b),
+   the staleness-window config and the apply-time refusal (D-50 c), the apply-time
+   `providerServiceId` re-validation (D-50 b), the `aiTask` coverage/price block on the existing GET
+   (D-48's read half) — **and `applyPlanProposal`'s `reFinalizeIfCurrentlyFinal` call with LOUD
+   failure (D-49, moved here from lane 4)**. **DRAFT PR — the decision-maker reads it before merge**
+   (money-adjacent). **STOPPED, by instruction, before the prompt builder and the model call**:
+   their exact design is written out in
+   `docs/lane-reports/2026-09-16-l16-lane1-create-rail.md` for the decision-maker to read first.
+   Nothing in lane 1 is reachable from any UI.
+2. **The D-48 NARROWING and the coverage line** — narrow `POST …/proposals/:id/pay` **and**
+   `POST …/proposals/:id/apply` to the **OWNER** at the route (D-48's amendment), and render the
+   `aiTask` block lane 1 added. No new route. **DRAFT PR — the decision-maker reads it before merge**
+   (money-adjacent).
+3. **The drawer, pre-final on the slip** (§5). Reuses the four landed rails, lane 1's create rail and
+   the pricing bundle. Its visibility table is §5.2 read against D-48 **as RULED**: ask / read /
+   discard for a §12 WRITE advisor, **pay and apply for the OWNER only**.
+4. **The drawer post-final on the Trip Card.** **No longer blocked** — D-49's call ships in lane 1,
+   so what is left here is the MOUNT itself.
+5. ~~**The conversation binding**, only if **D-45** rules a thread.~~ **D-45 ruled STATELESS, so this
+   lane does not exist for L16.** Reopening it needs a new ruling and the answer LD 44's seventh
+   open question needs.
 
 **Guards a builder runs and must not weaken:** `check-money-endpoints` (+ `--self-test`) — the
 create rail reads no amount, price, userId or rate from a body and must stay that way;
@@ -562,7 +636,8 @@ create rail reads no amount, price, userId or rate from a body and must stay tha
 (+ `--self-test`) — the create rail must not acquire a `saveGeneratedItinerarySnapshot` or a rebuild
 delete, which would make it a second free-draft rail; `check-decision-guards`; and the landed
 `plan-proposals` / `plan-proposal-charge` / `proposal-apply-authorization` suites, green and
-untouched. **No migration** unless D-46 is ruled toward a durable idempotency key.
+untouched. **No migration on any lane** — every one of D-45..D-50 was ruled without schema, so the
+"unless D-46 is ruled toward a durable idempotency key" caveat this line used to carry is spent.
 
 ### 7.3 · The three rows this section filed, and their answers (preserved)
 
@@ -589,8 +664,11 @@ undo (D18 refuses one; this brief does not reopen it). Any new AI write path: th
 the traveler applies. Whether `optimization_fees` and `fee_bands` should be one fee home — a real
 question, older than this lane, and not L16's to answer.
 
-**EXTENDED 2026-09-15 (later).** Also not decided here, and not to be taken as decided: the six rows
-in §7.1 (they are questions, and the recommendations beside them are recommendations); **any change
+**EXTENDED 2026-09-15 (later).** Also not decided here, and not to be taken as decided: ~~the six rows
+in §7.1 (they are questions, and the recommendations beside them are recommendations)~~ **— CORRECTED
+2026-09-16 (ledger `2026-09-16-l16-rulings-d45-d50`): the six rows in §7.1 are ANSWERED and are LOCKED RULINGS; §7.1
+carries them verbatim and a lane builds to the ruling, never to the recommendation the punchlist row
+preserves beside it —**; **any change
 to the landed charge point** — the price, the §15b claim, the idempotency key, the §19a single
 writer, the ledger call and the covered-apply posture are all untouched by every lane above; **the
 stated liveness limit on a stuck claim** (nothing releases one, so a claimed row whose PaymentIntent
@@ -606,6 +684,8 @@ A traveler asks a question on their own plan; the answer arrives as a proposal n
 replace and what it protects; discarding costs nothing and **leaves the row in the log as a record
 of what was offered and refused** (corrected 2026-09-15 — D-19 ruled the row STAYS); applying charges exactly
 once under a double-click, or not at all under a Trip Pass with the provenance line recorded, and
-lands the item stamped `origin:'ai'` through a path a `pending` advisor cannot reach. Expert items
+lands the item stamped `origin:'ai'` through a path a `pending` advisor cannot reach — and, since
+D-48 (2026-09-16), through a path **only the plan's OWNER** can take, so no advisor routes around the
+owner's consent (§7.1). Expert items
 and booked rows are still there afterwards, and nothing on screen claims an undo that no code path
 can perform.
