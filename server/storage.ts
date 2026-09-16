@@ -3216,7 +3216,10 @@ export class DatabaseStorage implements IStorage {
         })
         .returning();
       if (bundleSnapshot && bundleSnapshot.length > 0) {
-        await bornBundleComponentRows(tx, row.id, bundleSnapshot);
+        // D-51 (ledger `2026-09-16-bundle-partial-settlement`): the allocation is derived from the
+        // ROW's own pre-fee price as it was just written — never from the listing or the request.
+        const totalCents = Math.round(parseFloat(String(row.totalAmount ?? "")) * 100);
+        await bornBundleComponentRows(tx, row.id, bundleSnapshot, Number.isInteger(totalCents) ? totalCents : null);
       }
       return row;
     });
@@ -3569,6 +3572,10 @@ export class DatabaseStorage implements IStorage {
           componentServiceId: r.componentServiceId,
           status: r.status,
           snapshotPriceCents: r.snapshotPriceCents ?? null,
+          // D-51 (ledger `2026-09-16-bundle-partial-settlement`): the ALLOCATION is read first — when
+          // every row carries one and they sum to the price, the kept gross is Σ delivered allocations
+          // exactly; a pre-307 row falls back to the D-35 snapshot pro-rata. The basis is NAMED below.
+          allocationCents: r.allocationCents ?? null,
         })),
       });
       if (!reduced.ok) {
@@ -3580,7 +3587,7 @@ export class DatabaseStorage implements IStorage {
       grossAmount = parseFloat(reduced.grossAmount);
       platformFee = parseFloat(reduced.platformFee);
       providerEarningsAmount = parseFloat(reduced.providerEarnings);
-      mintBasis = ` (partially completed — ${reduced.undeliveredComponentIds.length} undelivered component(s) deducted)`;
+      mintBasis = ` (partially completed — ${reduced.undeliveredComponentIds.length} undelivered component(s) deducted; basis ${reduced.basis})`;
     }
     // Earnings become available after the configurable hold period (config, `holdWindowDays`).
     //

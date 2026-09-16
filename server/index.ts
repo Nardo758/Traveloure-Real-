@@ -769,6 +769,21 @@ if (process.env.NODE_ENV === "production") {
       setInterval(() => void run(), 24 * 60 * 60 * 1000);
     }, jitteredStartupDelay(60 * 60 * 1000));
 
+    // D-51 (ledger `2026-09-16-bundle-partial-settlement`): the nightly partial-settlement sweep —
+    // §15b's TTL reclaim for a `partially_completed` bundle whose money leg the process died on
+    // (no settlement row, or a claim never promoted). It re-drives the ONE settlement implementation;
+    // it decides nothing of its own. Daily, beside the reconciliation job. Defense-in-depth only where
+    // Autoscale holds no in-process timer, as every other job here.
+    setTimeout(() => {
+      const run = () =>
+        runBackgroundJob("bundle-partial-settlement-sweep", async () => {
+          const { sweepUnsettledBundlePartials } = await import("./services/bundle-partial-settlement.service");
+          return sweepUnsettledBundlePartials();
+        }).catch((err) => logger.error({ err }, "[bundle-settlement] scheduled sweep failed"));
+      void run();
+      setInterval(() => void run(), 24 * 60 * 60 * 1000);
+    }, jitteredStartupDelay(90 * 60 * 1000));
+
     // S7 (DECISIONS.md ledger 102): daily availability-materialization horizon-extension sweep,
     // registered exactly like the reconciliation job above — a delayed first pass, then every 24h.
     setTimeout(() => {

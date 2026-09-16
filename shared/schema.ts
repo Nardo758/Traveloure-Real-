@@ -10917,6 +10917,11 @@ export const bookingComponentStates = pgTable("booking_component_states", {
   serviceName: text("service_name"), // the component's name AS BOUGHT (the snapshot's), for §13-honest naming
   status: varchar("status", { length: 20 }).notNull(), // app-enforced; the composer writes `pending`
   snapshotPriceCents: integer("snapshot_price_cents"), // D-33; NULL = not captured, never 0
+  // D-51 (ledger `2026-09-16-bundle-partial-settlement`; migration 307): the CONTRACT fact beside the
+  // catalog fact — this component's pro-rata share of `service_bookings.total_amount`, largest-remainder
+  // rounded so the bundle's allocations sum EXACTLY to the pre-fee price. Written once at birth; NULL =
+  // not captured (pre-307 rows, unpriced snapshots) and blocks partial settlement (§13).
+  allocationCents: integer("allocation_cents"),
   deliveredAt: timestamp("delivered_at"),
   acceptedAt: timestamp("accepted_at"),
   completedAt: timestamp("completed_at"),
@@ -10938,6 +10943,46 @@ export type BookingComponentState = typeof bookingComponentStates.$inferSelect;
 // and the two owner-rail transitions write it server-side. The owner rails' bodies are explicit
 // `.strict()` picks in `server/routes.ts` that admit a component ID and a reason and never a status,
 // a price or a timestamp.
+
+/**
+ * D-51 (ledger `2026-09-16-bundle-partial-settlement`; migration 307): A PARTIALLY FULFILLED BUNDLE
+ * SETTLES ONCE BY ITS PURCHASE-TIME COMPONENT ALLOCATION. One row per booking — UNIQUE (booking_id) IS
+ * the §15 claim (`INSERT … ON CONFLICT DO NOTHING`), `settled_at IS NULL` is the claimed-but-unpromoted
+ * state the nightly TTL sweep reclaims (§15b), and the promote is `UPDATE … WHERE settled_at IS NULL`,
+ * driven by the settlement itself and by the `charge.refunded` webhook (one promotion, two callers).
+ * The four amounts are pinned at claim — BEFORE Stripe is called — and never rewritten, which is what
+ * makes the amount-scoped idempotency key `bundle-settle-<bookingId>` unambiguous by construction.
+ * `component_outcomes` is the immutable per-component outcome set the ruling names. The parent booking
+ * STAYS `partially_completed`; the whole-row `refunded` state is never used for a partial.
+ *
+ * DECLARED HERE (table + UNIQUE) because the deploy push is authoritative over objects this file does
+ * not carry. NO DB CHECK and NO DEFAULT on any decision-bearing column (publish-trap posture). FK ON
+ * DELETE CASCADE on the `booking_component_states` pattern; the money audit that outlives the booking
+ * is the `refunds` row (ON DELETE SET NULL), which the shared refund issuer writes for this refund too.
+ * There is deliberately NO `createInsertSchema(bundlePartialSettlements)` — no client writer exists;
+ * the settlement service is the ONE author and every amount it writes is server-derived (§14/§19).
+ */
+export const bundlePartialSettlements = pgTable("bundle_partial_settlements", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bookingId: varchar("booking_id").notNull().references(() => serviceBookings.id, { onDelete: "cascade" }),
+  /** Σ allocation_cents of the DELIVERED components — what the sale settled at. */
+  settledAmountCents: integer("settled_amount_cents").notNull(),
+  /** The Stripe refund total: undelivered allocation + the same share of every traveler-paid fee. */
+  travelerRefundCents: integer("traveler_refund_cents").notNull(),
+  /** The D-35 reduced `provider_earnings` the mint recorded, in cents. */
+  sellerEarningCents: integer("seller_earning_cents").notNull(),
+  /** The D-35 reduced `platform_fee` the mint recorded, in cents. */
+  platformRevenueCents: integer("platform_revenue_cents").notNull(),
+  componentOutcomes: jsonb("component_outcomes").notNull(),
+  stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
+  claimedAt: timestamp("claimed_at").notNull(),
+  settledAt: timestamp("settled_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("bundle_partial_settlements_booking_unique").on(table.bookingId),
+]);
+export type BundlePartialSettlement = typeof bundlePartialSettlements.$inferSelect;
 
 /**
  * D-28 (ledger `2026-09-15-d28-d31-service-quotes`; migration 305): A CUSTOM QUOTE IS A CHILD ROW
