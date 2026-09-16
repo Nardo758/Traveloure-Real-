@@ -539,6 +539,20 @@ export default function ServiceDetailPage() {
   // server-side from the listing/slot rows (§14).
   const planRoute = targetTripId ? planningRouteForTrip(targetTripId, tripCtx.endDate) : "/cart";
 
+  // D-30 (ledger `2026-09-15-d28-d31-service-quotes`): the request store. ONE POST, body `{}` —
+  // the traveler prices nothing and names nothing but the listing in the path (§14/§19). The
+  // server hands back the open quote when one already exists (`created: false`), so a second
+  // press is not a second request.
+  const requestQuoteMutation = useMutation<{ created: boolean }>({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/services/${id}/quote-requests`, {});
+      return (await res.json()) as { created: boolean };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/quotes"] });
+    },
+  });
+
   const addToCartMutation = useMutation({
     mutationFn: async (_vars: AddVars) => {
       if (targetTripId) {
@@ -1771,23 +1785,44 @@ export default function ServiceDetailPage() {
                   )}
 
                   {buy.request && (
-                    // Row 11's landing is `booking_request`, NOT `checkout` and NOT a plan — so
-                    // this control deliberately writes nothing. There is no platform request rail
-                    // on `main` (the quote lane is unbuilt), and inventing one is out of this
-                    // lane's scope; the honest live rail is the LD 40 conversation the page
-                    // already opens with `{ serviceId }`, and the sentence below says exactly
-                    // that so the verb is not a promise about a record nobody creates (§13).
+                    // Row 11's landing is `booking_request` — and as of ledger
+                    // `2026-09-15-d28-d31-service-quotes` (punchlist D-30) that store EXISTS: a
+                    // `service_quotes` row in `requested` state, created by
+                    // `POST /api/services/:id/quote-requests`, which mints NO booking, NO cart line
+                    // and NO charge. The provider answers it with an amount and an expiry; only the
+                    // traveler's later ACCEPT mints a booking, priced off the quote (§14). The words
+                    // still live in the LD 40 conversation the page opens with `{ serviceId }`,
+                    // beside the record — so a signed-in traveler's press does BOTH, and the
+                    // sentence below says exactly what is created and what is not (§13). A
+                    // signed-out press goes through `askExpert`'s own sign-in gate and creates
+                    // nothing until they are back.
                     <Button
                       className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
-                      onClick={() =>
+                      onClick={() => {
+                        if (user) {
+                          requestQuoteMutation.mutate(undefined, {
+                            onSuccess: (r) =>
+                              toast({
+                                title: r.created ? "Quote requested" : "Quote request already open",
+                                description:
+                                  "The provider will answer with a price and how long it stands. Nothing is booked or charged until you accept.",
+                              }),
+                            onError: (err: unknown) =>
+                              toast({
+                                title: "Quote request not recorded",
+                                description: err instanceof Error ? err.message : "The request could not be saved.",
+                                variant: "destructive",
+                              }),
+                          });
+                        }
                         askExpert({
                           serviceId: service.id,
                           subject: service.serviceName,
                           returnTo: `/services/${service.id}`,
                           fallbackName: providerVerification?.displayName ?? null,
-                        })
-                      }
-                      disabled={isAway}
+                        });
+                      }}
+                      disabled={isAway || requestQuoteMutation.isPending}
                       title={awayTitle}
                       data-testid="button-request-to-book"
                     >
@@ -1834,8 +1869,9 @@ export default function ServiceDetailPage() {
                       className="text-[11px] leading-[1.5] text-[color:var(--earn-muted)]"
                       data-testid="text-buy-request-note"
                     >
-                      A request opens a message with the provider about dates and price. Nothing is
-                      booked and nothing is charged here.
+                      A request creates a quote request on this listing — the provider answers with
+                      a price and how long it stands — and opens a message with them about dates.
+                      Nothing is booked and nothing is charged until you accept a quote.
                     </p>
                   )}
 

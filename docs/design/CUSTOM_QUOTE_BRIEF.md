@@ -4,6 +4,15 @@
 option A); the columns are **not**. No migration is written by this lane. Ledger row:
 `2026-09-15-d8-quotes-with-expiry`. Facts verified against `4d1c0c4`.
 
+> **BUILD STATUS (2026-09-16, ledger `2026-09-15-d28-d31-service-quotes`, migration 305):** D-28 – D-31
+> were ruled A on 2026-09-15 and §6's lanes 1–4 have LANDED — the `service_quotes` table, the issue /
+> withdraw rails, the atomic accept that mints through the EXISTING birth-rail writer with the quoted
+> amount as the total, the `expert-booking-requests` $0 refusal (V-22) and the `chargeMode` reorder
+> (D-31). Rails: `server/services/service-quotes.service.ts`, `server/routes/service-quotes.routes.ts`.
+> **Not yet landed and named:** the CHARGE — the quote-born booking is born unpaid (`pending`); feeding
+> the quoted amount into `POST /api/checkout`'s line-price derivation is its own lane — and **lane 5**,
+> every surface. The facts in §1 describe `4d1c0c4` and are kept as the record of the starting point.
+
 **The ruling.** A custom quote becomes a **real object**. The provider issues a **quoted amount
 with an explicit expiry**; the traveler **accepts inside the window**; acceptance mints the
 `service_bookings` row with **the quoted amount as the SERVER-derived total** (§14) through an

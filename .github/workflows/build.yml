@@ -1287,6 +1287,49 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/offering-archetype-fixtures.db.test.ts
 
 
+  service-quotes:
+    name: service-quotes (punchlist D-28..D-31; ledger 2026-09-15-d28-d31-service-quotes)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # A custom quote is a `service_quotes` row with an expiry (migration 305). Q1 proves a
+      # REQUEST mints no booking; Q2 that validity is config and an over-ceiling choice is refused
+      # with the number stated; Q4 that the accept claim's own WHERE clause refuses an expired
+      # quote; Q5 that an expired quote is re-quoted as a NEW row; Q6 that a double accept mints
+      # exactly ONE booking priced off the quote (§14/§15); Q7 that the listing's deposit config
+      # applies unchanged and the snapshot says deposit_balance (D-31); Q8 the V-22 $0-hole pin.
+      - name: Service quotes — request, issue, expiry, re-quote, accept, deposit, V-22
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/service-quotes.db.test.ts
+
   booking-birth-provenance:
     name: booking-birth-provenance (rulings 41/46; ledger 2026-09-12-booking-birth-holes)
     runs-on: ubuntu-latest

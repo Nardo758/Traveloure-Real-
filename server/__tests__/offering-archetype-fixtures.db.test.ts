@@ -473,10 +473,12 @@ test("N1 · P5 is NOT sellable through generic checkout — the spine charges a 
   `);
   assert.equal((committed.rows[0] as any).n, 0, "and no row exists — a refusal is not a $0 purchase");
 
-  // WHAT IS STILL BROKEN, AND IS NOT THIS LANE'S TO FIX: the quote rail the contract describes
-  // (`chargeMode: after_quote`, `commitmentMode: quote_approve`) does not exist, so a P5 listing is
-  // publishable and unsellable. That is an honest refusal rather than a silent $0 sale — and it is
-  // still a hole in the product, recorded here rather than papered over.
+  // THE QUOTE RAIL NOW EXISTS (ledger `2026-09-15-d28-d31-service-quotes`, migration 305): a P5
+  // listing is REQUESTED (`POST /api/services/:id/quote-requests` → a `service_quotes` row, no
+  // booking), QUOTED by its owner with an amount and an expiry, and a booking is born ONLY at the
+  // traveler's accept, priced off the quote row (§14). This assertion is unchanged and still
+  // load-bearing: GENERIC checkout keeps refusing P5 — the quote rail is the ONE door, and a
+  // second price path beside it is what this negative exists to refuse.
 });
 
 test("N2 · the catch-all category MISCLASSIFIES an expert's physical action as a provider's P1", () => {
