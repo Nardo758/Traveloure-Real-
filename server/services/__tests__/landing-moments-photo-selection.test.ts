@@ -19,6 +19,11 @@ describe("landing Moment photo selection", () => {
     }
   });
 
+  it("keeps the wedding and honeymoon photo assignments intentionally swapped", () => {
+    assert.equal(selectMomentPhotos("wedding", []).photos[0]?.url, "/images/moments/goa-honeymoon.jpg");
+    assert.equal(selectMomentPhotos("honeymoon", []).photos[0]?.url, "/images/moments/kyoto-wedding.jpg");
+  });
+
   it("keeps expert attribution for an unpinned Moment when a city photo exists", () => {
     const selected = selectMomentPhotos("anniversary", [expertPhoto], { handle: "local-expert", reviews: 4 });
     assert.deepEqual(selected.photos, [expertPhoto]);

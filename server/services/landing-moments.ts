@@ -243,13 +243,13 @@ const REPRESENTATIVE_PHOTOS: Record<
   Pick<MomentPhoto, "url" | "place" | "source" | "handle" | "credit" | "license" | "sourceUrl">
 > = {
   wedding: {
-    url: "/images/moments/kyoto-wedding.jpg",
-    place: "Kyoto after dark",
+    url: "/images/moments/goa-honeymoon.jpg",
+    place: "Goa at sunset",
     source: "representative",
     handle: null,
-    credit: "Julien",
+    credit: "Lucksborn Sangma",
     license: "Pexels license",
-    sourceUrl: "https://www.pexels.com/photo/couple-strolling-in-kyoto-s-nighttime-alley-34576557/",
+    sourceUrl: "https://www.pexels.com/photo/silhouettes-of-bride-and-groom-hugging-at-sunset-5026140/",
   },
   proposal: {
     url: "/images/moments/kyoto-proposal.jpg",
@@ -288,13 +288,13 @@ const REPRESENTATIVE_PHOTOS: Record<
     sourceUrl: "https://www.pexels.com/photo/woman-sitting-and-man-lying-down-on-wall-by-river-19196622/",
   },
   honeymoon: {
-    url: "/images/moments/goa-honeymoon.jpg",
-    place: "Goa at sunset",
+    url: "/images/moments/kyoto-wedding.jpg",
+    place: "Kyoto after dark",
     source: "representative",
     handle: null,
-    credit: "Lucksborn Sangma",
+    credit: "Julien",
     license: "Pexels license",
-    sourceUrl: "https://www.pexels.com/photo/silhouettes-of-bride-and-groom-hugging-at-sunset-5026140/",
+    sourceUrl: "https://www.pexels.com/photo/couple-strolling-in-kyoto-s-nighttime-alley-34576557/",
   },
   milestone_birthday: {
     url: "/images/moments/mumbai-birthday.jpg",
