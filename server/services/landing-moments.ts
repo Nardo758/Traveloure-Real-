@@ -9,7 +9,8 @@
  * PHOTO GATE — a TRUST surface (ruling 2026-09-01-photo-tiers): attributed expert photos remain
  * subject to the strict non-stock gate. Until one qualifies, the moment uses a bundled Creative
  * Commons representative photo with visible license credit and no expert attribution. A real
- * photo automatically replaces that fallback without loosening the gate.
+ * photo replaces that fallback only when it is associated with the specific Moment; the current
+ * city-level query is intentionally bypassed for the approved pinned Moments below.
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
@@ -34,6 +35,11 @@ export interface MomentConfig {
    */
   experienceSlug: string | null;
   city: string; // market
+  /**
+   * The approved image for this curated Moment is more specific than the city-level expert
+   * photo query. Keep it pinned until expert media can be associated with a moment key.
+   */
+  representativeOnly?: boolean;
 }
 
 /** Ratified copy (MOMENTS_COPY.md). momentKey === key. */
@@ -62,6 +68,7 @@ export const MOMENTS: MomentConfig[] = [
     // The seeded `experience_types` row (server/seed-experience-types.ts) — a real catalog slug.
     experienceSlug: "wedding",
     city: "Kyoto",
+    representativeOnly: true,
   },
   {
     key: "proposal",
@@ -76,6 +83,7 @@ export const MOMENTS: MomentConfig[] = [
     experienceType: "event",
     experienceSlug: "proposal",
     city: "Kyoto",
+    representativeOnly: true,
   },
   {
     key: "golf",
@@ -94,6 +102,7 @@ export const MOMENTS: MomentConfig[] = [
     // step that collects them is only visible when the bound occasion says it has a schedule.
     experienceSlug: "golf-trip",
     city: "Edinburgh",
+    representativeOnly: true,
   },
   {
     key: "girls_trip",
@@ -108,6 +117,7 @@ export const MOMENTS: MomentConfig[] = [
     experienceType: "travel",
     experienceSlug: "girls-trip",
     city: "Cartagena",
+    representativeOnly: true,
   },
   {
     key: "anniversary",
@@ -306,6 +316,28 @@ const REPRESENTATIVE_PHOTOS: Record<
   },
 };
 
+export function selectMomentPhotos(
+  momentKey: string,
+  attributedPhotos: MomentPhoto[],
+  attributedBuilder: { handle: string; reviews: number } | null = null,
+): { photos: MomentPhoto[]; builder: { handle: string; reviews: number } | null } {
+  const moment = MOMENTS.find((candidate) => candidate.key === momentKey);
+  const representative = REPRESENTATIVE_PHOTOS[momentKey];
+
+  if (moment?.representativeOnly && representative) {
+    return { photos: [representative], builder: null };
+  }
+
+  if (attributedPhotos.length > 0) {
+    return { photos: attributedPhotos, builder: attributedBuilder };
+  }
+
+  return {
+    photos: representative ? [representative] : [],
+    builder: null,
+  };
+}
+
 /**
  * Attributed real photos for a market: an expert-curated gem whose image is NOT stock, with the
  * curating expert's handle. The gate excludes stock hosts (unsplash/pexels/google), so seeded
@@ -357,9 +389,11 @@ async function attributedPhotosForCity(
 export async function resolveLandingMoments(): Promise<LiveMoment[]> {
   const live: LiveMoment[] = [];
   for (const m of MOMENTS) {
-    const { photos, builder } = await attributedPhotosForCity(m.city);
-    const representative = REPRESENTATIVE_PHOTOS[m.key];
-    const resolvedPhotos = photos.length > 0 ? photos : representative ? [representative] : [];
+    const attributed = m.representativeOnly
+      ? { photos: [], builder: null }
+      : await attributedPhotosForCity(m.city);
+    const selected = selectMomentPhotos(m.key, attributed.photos, attributed.builder);
+    const resolvedPhotos = selected.photos;
     if (resolvedPhotos.length === 0) continue;
     live.push({
       key: m.key,
@@ -370,7 +404,7 @@ export async function resolveLandingMoments(): Promise<LiveMoment[]> {
       experienceType: m.experienceType,
       experienceSlug: m.experienceSlug,
       photos: resolvedPhotos,
-      builder: photos.length > 0 ? builder : null,
+      builder: selected.builder,
     });
   }
   return live;
