@@ -2951,8 +2951,15 @@ jobs:
       # chain-integrity.test.ts, which is a node:test file already run by the
       # migration-chain-integrity job. Named, not globbed, for the reason in the
       # block comment above.
+      # These three run in PARALLEL vitest workers and each one's first genuine
+      # insertPlatformRevenueOnce rolled TODAY's daily_revenue_summary row up
+      # through a check-then-insert — the §15 race that turned this job red
+      # (`daily_revenue_summary_date_unique`). The writer is now one atomic
+      # upsert and the fourth file is its deterministic concurrent proof, run
+      # in the same parallel shape (ledger `2026-09-16-ci-main-red-repairs`,
+      # punchlist V-34).
       - name: server/migrations/__tests__ (vitest suites)
-        run: npx vitest run --root . server/migrations/__tests__/1577-cart-booking-revenue-dedup.test.ts server/migrations/__tests__/244-platform-revenue-payment-intent-dedup.test.ts server/migrations/__tests__/ready-made-purchase-revenue-dedup.test.ts
+        run: npx vitest run --root . server/migrations/__tests__/1577-cart-booking-revenue-dedup.test.ts server/migrations/__tests__/244-platform-revenue-payment-intent-dedup.test.ts server/migrations/__tests__/ready-made-purchase-revenue-dedup.test.ts server/migrations/__tests__/daily-revenue-summary-upsert.test.ts
 
   # ---------------------------------------------------------------------------
   # ---------------------------------------------------------------------------
