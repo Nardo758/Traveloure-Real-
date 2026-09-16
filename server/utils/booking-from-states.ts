@@ -108,13 +108,73 @@ export const OWNER_BOOKING_TRANSITIONS: Record<string, readonly string[]> = {
  * time bound simply does not apply (its own comment already says so), and the STATE bound is this
  * list.
  */
+/*
+ * ── D-38 ADDS THE DECLARED STATE (ledger `2026-09-15-d36-d39-completion-declared`) ──────────────
+ * `completion_declared` descends from `confirmed`: the seller has DECLARED the work done and the
+ * traveler's window is OPEN — which is precisely the moment a dispute is FOR. Nothing has minted
+ * (D-37 puts the mint at the window's close), so `setBookingEarningsDispute` will flag ZERO rows
+ * here, and zero must never be read as "cleared": the block is the status itself, because a
+ * `disputed` booking never reaches `completed` and so nothing mints. Brief §11 rule 1: the dispute
+ * "claims `['completion_declared','confirmed','completed']`" — plus the acceptance pair above.
+ *
+ * It is the SAME `disputed` row as a post-completion dispute — same status, same
+ * `booking_metadata.disputeReason`, same `GET /api/admin/disputes` queue. No `admin_review`
+ * status, no disputes table. The queue tells the two apart by DERIVATION
+ * (`disputeStageFor` in `shared/declared-completion-window.ts`), never by a second status.
+ */
 export const DISPUTABLE_FROM_STATUSES: readonly string[] = [
   "confirmed",
   "deposit_paid",
   "completed",
   "awaiting_acceptance",
   "revision_requested",
+  "completion_declared",
 ];
+
+/*
+ * ── D-7 DECLARED COMPLETION (punchlist D-36/D-37, ruled A; ledger
+ * `2026-09-15-d36-d39-completion-declared`) ──────────────────────────────────────────────────────
+ * THE DECLARED STATE'S THREE FROM-STATE LISTS. Brief Part II §11 rule 1: "The declaration claims
+ * `['confirmed']`; the window's close claims `['completion_declared']`". They live here for this
+ * module's own reason — a second rail re-deciding "which statuses may become X" beside the first is
+ * the derivation-drift class §18 rule 1 names.
+ *
+ * NEGATIVE SPACE (§18d): FROM-state lists and nothing else. WHO may declare is the owner rail's own
+ * `providerId` gate (§14); WHICH rules may be declared is `OWNER_DECLARED_COMPLETION_RULES` plus the
+ * `service_date_timer` arm (`shared/service-fundamentals.ts`, `timerOpensDeclaredWindow`); WHEN the
+ * window closes is `declaredCompletionDeadline` (`shared/declared-completion-window.ts`).
+ */
+
+/**
+ * DECLARE. `confirmed → completion_declared`. One entry, and the narrowness is the point: a
+ * declaration is the seller's statement about a paid, accepted booking. It must never consume
+ * `awaiting_acceptance` (the traveler's state, D-6), `deposit_paid` (a balance is still owed —
+ * completing a half-paid booking is a different question nobody has ruled), a `payment_pending`
+ * provisional claim (§15b) or any terminal state. It MINTS NOTHING — this transition is not the
+ * money event, which is the whole of what D-7 changed.
+ */
+export const COMPLETION_DECLARABLE_FROM_STATUSES: readonly string[] = ["confirmed"];
+
+/**
+ * THE WINDOW CLOSES. `completion_declared → completed` — the flip that MINTS (D-37), made by the
+ * nightly job's `window_elapsed` arm through the ONE completion implementation (`completeBooking`).
+ * One entry: a `disputed` row is deliberately NOT here, so a traveler's dispute inside the window
+ * stops the timer BY CONSTRUCTION — the guarded UPDATE matches zero rows — and so does every other
+ * state. `COMPLETION_ALLOWED_FROM_STATUSES` (`['confirmed']`) is UNCHANGED: it is also the
+ * pass-1 candidate predicate, and widening it would hand the timer bookings it may not complete
+ * (the D-24 invariant, one state over).
+ */
+export const DECLARED_WINDOW_CLOSE_FROM_STATUSES: readonly string[] = ["completion_declared"];
+
+/**
+ * THE TRAVELER CONFIRMS. `POST /api/bookings/:id/confirm-completion` is the traveler saying "this
+ * happened" — the strongest evidence on the platform, and the rail that SHORT-CIRCUITS the window
+ * (brief §8: "it must keep short-circuiting the window"). It may consume `confirmed` exactly as
+ * before, and now also `completion_declared`: a seller's declaration must not lock the payer OUT
+ * of confirming their own booking. Never `awaiting_acceptance` (that is the accept rail's word) and
+ * never a terminal or provisional state.
+ */
+export const TRAVELER_CONFIRMABLE_FROM_STATUSES: readonly string[] = ["confirmed", "completion_declared"];
 
 /*
  * ── D-6 (punchlist D-24/D-25/D-26, option A; ledger `2026-09-15-d24-d26-acceptance-columns`) ─────

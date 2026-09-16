@@ -3158,6 +3158,10 @@ export class DatabaseStorage implements IStorage {
       acceptedAt: _clientSuppliedAcceptedAt,
       deliveredAt: _clientSuppliedDeliveredAt,
       deliverableFile: _clientSuppliedDeliverableFile,
+      // D-7 (ledger `2026-09-15-d36-d39-completion-declared`) joins the strip: a row born already
+      // carrying a declaration instant would be swept into the window's close and minted for work
+      // nobody declared. Its one writer is the guarded `completion_declared` flip.
+      completionDeclaredAt: _clientSuppliedCompletionDeclaredAt,
       ...safeBooking
     } = booking as InsertServiceBooking & {
       stripePaymentIntentId?: unknown;
@@ -3167,6 +3171,7 @@ export class DatabaseStorage implements IStorage {
       acceptedAt?: unknown;
       deliveredAt?: unknown;
       deliverableFile?: unknown;
+      completionDeclaredAt?: unknown;
     };
     if (_clientSuppliedPi !== undefined && _clientSuppliedPi !== null) {
       // Ops-visible, never silent: reaching here means a caller tried to birth an authorized-looking
@@ -3232,6 +3237,7 @@ export class DatabaseStorage implements IStorage {
       acceptedAt: _acceptedAt,
       deliveredAt: _deliveredAt,
       deliverableFile: _deliverableFile,
+      completionDeclaredAt: _completionDeclaredAt, // D-7 — same strip as createServiceBooking
       ...safeBooking
     } = booking as InsertServiceBooking & {
       stripePaymentIntentId?: unknown;
@@ -3241,6 +3247,7 @@ export class DatabaseStorage implements IStorage {
       acceptedAt?: unknown;
       deliveredAt?: unknown;
       deliverableFile?: unknown;
+      completionDeclaredAt?: unknown;
     };
     if (_pi !== undefined && _pi !== null) {
       console.error(
@@ -3371,6 +3378,14 @@ export class DatabaseStorage implements IStorage {
     // fresh window to re-dispute in and pushed the earner's money further out. COALESCE in the SET
     // expression rather than a read-then-decide, so the single UPDATE stays the whole decision.
     if (status === "completed") updates.completedAt = sql`COALESCE(${serviceBookings.completedAt}, NOW())`;
+    // D-36 (ledger `2026-09-15-d36-d39-completion-declared`): the declaration instant is stamped in
+    // the SAME guarded UPDATE that moves the row to `completion_declared` — one statement, so a row
+    // can never be declared without its instant (the window's close refuses such a row with
+    // `no_declaration_timestamp`, §13). COALESCE for the same reason `completed_at` has it: the
+    // first instant is the one the traveler was told, and nothing re-stamps it.
+    if (status === "completion_declared") {
+      updates.completionDeclaredAt = sql`COALESCE(${serviceBookings.completionDeclaredAt}, NOW())`;
+    }
     if (status === "cancelled" || status === "refunded") {
       updates.cancelledAt = new Date();
       if (reason) updates.cancellationReason = reason;
@@ -3506,8 +3521,18 @@ export class DatabaseStorage implements IStorage {
     const grossAmount = parseFloat(booking.totalAmount || '0');
     const platformFee = parseFloat(booking.platformFee || '0');
     const providerEarningsAmount = parseFloat(booking.providerEarnings || '0');
-    // Earnings become available after the configurable hold period (default 7 days)
-    const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
+    // Earnings become available after the configurable hold period (config, `holdWindowDays`).
+    //
+    // D-37 (ledger `2026-09-15-d36-d39-completion-declared`): ANCHORED TO THE DECLARATION when the
+    // seller declared (`completion_declared_at` set) — so the traveler's dispute window and the
+    // earning's hold are ONE span served ONCE, and the seller's payout lands where today's
+    // declare-and-mint landed, to within a scheduler pass. Anchoring to `now` here would serve the
+    // window twice (declared + held) and quietly double every seller's wait — the money-timing
+    // change D-37 named and rejected. A booking with NO declaration (a traveler's own confirm, an
+    // artifact acceptance, a property checkout, an admin dispute-reject on an undeclared row) keeps
+    // today's `now` anchor verbatim — `availableAtFor`'s existing `from` parameter, nothing new.
+    const declaredAnchor = booking.completionDeclaredAt ? new Date(booking.completionDeclaredAt) : undefined;
+    const availableAt = availableAtFor('service_booking', declaredAnchor); // escrow P2: per-surface clearance window (config)
     // RACE-PROOF + ATOMIC (task 1091 review): the DB is the guard, not a SELECT. Each ledger
     // effect is an INSERT ... ON CONFLICT DO NOTHING against migration 203's partial unique
     // indexes, so under concurrent callers (traveler confirm vs scheduler vs reconciliation)

@@ -1,0 +1,51 @@
+-- Migration 304: THE SELLER DECLARES; THE TRAVELER HAS A WINDOW; "COMPLETED" IS SAID AT ITS CLOSE.
+-- Decision-maker ruling 2026-09-15 — punchlist D-36 / D-37 / D-38 / D-39, all option A; ledger
+-- `2026-09-15-d36-d39-completion-declared`. Content of record:
+-- `docs/design/EXPERT_ACCEPTANCE_BRIEF.md` Part II §8-§15 (state machine §11, window §12,
+-- columns §13, honesty §14).
+--
+-- ONE column, ADDITIVE and NULLABLE, with NO DEFAULT and NO DB CHECK (the
+-- migration-181/195/273/275/276/277/279/280/281/282/284/287/295/297/301/302/303 posture — a CHECK
+-- or a DEFAULT here is exactly the publish-time drizzle-push failure CLAUDE.md's Coordination
+-- Prevention rules warn about), and NO BACKFILL. It is ALSO declared in `shared/schema.ts` in this
+-- same commit per the deploy-push durability rule.
+--
+-- No CHECK is added or changed, so `scripts/preflight-prod-constraints.cjs` needs no new
+-- `CONSTRAINT_MANIFEST` entry and the publish-time push has nothing to fail on.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- D-36 — `service_bookings.completion_declared_at`, AND THE DEADLINE IS DERIVED
+-- ─────────────────────────────────────────────────────────────────────────────
+-- D-7 rules that for physical-action and coordination work the SELLER DECLARES completion and
+-- the traveler has a stated dispute window before earnings release. `completed_at` records the
+-- MONEY event, which under D-7 happens at the window's CLOSE — so nothing on the row recorded the
+-- declaration that opened it. This column is that declaration.
+--
+-- The dispute DEADLINE is deliberately NOT a column — the same answer D-24 gave one migration
+-- back, for the same reason: a stored end date is a second authority that disagrees with the
+-- config the moment the config moves. It is DERIVED from this instant plus
+-- `declaredCompletionWindowDays()` — a DELEGATION to `holdWindowDays('service_booking')`, the
+-- number that is already the held earning's `availableAt` and the dispute rail's cutoff. There
+-- is no new constant.
+--
+-- The new `service_bookings.status` value `completion_declared` needs NO migration: the column is
+-- `varchar(30)` with no CHECK (the LD 44(e) posture), so it is a code change. Same for the
+-- `coordination_states.status` value the coordination rail takes (D-39) — and
+-- `coordination_states.fee_payment_status`, which HAS a CHECK, deliberately grows NO value.
+--
+-- D-37 — the MINT sits at the window's close, with the held earning's `available_at` ANCHORED TO
+-- THIS INSTANT (`availableAtFor`'s existing `from` parameter), so the window is served once and
+-- today's payout timing holds to within a scheduler pass. A NULL anchor keeps today's `now`.
+--
+-- D-38 — a pre-completion dispute is the SAME `disputed` row as today's: no `admin_review` status,
+-- no disputes table. The queue tells the two apart by DERIVATION — this column set with
+-- `completed_at` NULL — never by a second status.
+--
+-- §13: NULL = NEVER DECLARED. Every reader OMITS the field rather than rendering "not declared" on
+-- a booking whose rule is a timer or an acceptance. NO BACKFILL: a booking completed under the
+-- immediate flip WAS completed, and rewriting it would invent a fact.
+
+ALTER TABLE service_bookings ADD COLUMN IF NOT EXISTS completion_declared_at TIMESTAMP;
+
+COMMENT ON COLUMN service_bookings.completion_declared_at IS
+  'When the SELLER declared the work done (D-7 / punchlist D-36, ledger 2026-09-15-d36-d39-completion-declared). Stamped once by the guarded confirmed -> completion_declared flip and by nothing else. NULL = never declared, and every reader OMITS the field. The dispute deadline is DERIVED from this + declaredCompletionWindowDays() (= holdWindowDays(service_booking)), never stored; the window-close mint anchors available_at here (D-37). Never client-settable.';

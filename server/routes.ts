@@ -7313,10 +7313,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   //   (2) `session_end` is EVIDENCE-GATED against the booked slot's own end time — a provider
   //       cannot declare a session complete before it has happened, and a booking with no slot or
   //       no slot end time is refused rather than guessed (§13);
-  //   (3) completion is not payout. The flip mints a HELD earning whose clearance window IS the
-  //       traveler's dispute window (`holdWindowDays('service_booking')` — the same constant
-  //       `POST /api/bookings/:id/dispute` enforces), so a wrongly-declared completion is
-  //       disputable and reversible for the whole window before any money moves.
+  //   (3) completion is not payout — AND, SINCE D-7 (ledger `2026-09-15-d36-d39-completion-declared`),
+  //       A DECLARATION IS NOT A COMPLETION. This rail no longer flips to `completed` at all: it
+  //       DECLARES (`confirmed → completion_declared`, `declareBookingCompletion`), which MINTS
+  //       NOTHING, and the traveler's dispute window (`declaredCompletionWindowDays()` =
+  //       `holdWindowDays('service_booking')`, the same number `POST /api/bookings/:id/dispute`
+  //       enforces) then runs BEFORE the booking reads "completed" anywhere. The nightly job says
+  //       "completed" and mints — with the earning anchored to this declaration (D-37) — only once
+  //       the window closes undisputed. So the self-credit objection is answered one step earlier
+  //       than before: a wrongly-declared booking never even reads as done.
+  //       Bundles are the one exception and are UNCHANGED here: a component record still completes
+  //       the booking when it is the last one (whether a bundle declares is D-32..D-35's question).
   //
   // BODY IS AN EXPLICIT ALLOWLIST (§19): the ONLY field read is `componentServiceId`, and only
   // for a bundle. The acting user comes from the session, the booking from the path, and every
@@ -7332,7 +7339,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       const {
-        completeBooking,
+        declareBookingCompletion,
         ownerActorFor,
         recordBundleComponentCompletion,
         resolveCompletionEligibility,
@@ -7402,26 +7409,39 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
 
-      const outcome = await completeBooking({
+      // D-7: DECLARE, do not complete. Same eligibility, same evidence, same no-date arm; the only
+      // thing that changed is the word the row carries afterwards and WHEN the money event happens.
+      const outcome = await declareBookingCompletion({
         bookingId: req.params.id,
         actor,
         reason: noDateFallback ? "d8_owner:service_date_timer_no_date" : `d8_owner:${eligibility.rule}`,
         ...(noDateFallback ? { allowOwnerDeclaredFallback: true } : {}),
       });
-      if (!outcome.completed) {
+      if (!outcome.declared) {
         return res.status(409).json({
           message:
             outcome.reason === "session_not_ended"
               ? "This session has not ended yet."
               : outcome.reason === "no_booked_slot" || outcome.reason === "slot_has_no_end_time"
                 ? "This booking has no booked slot with an end time, so its session end cannot be confirmed."
-                : "This booking cannot be completed right now.",
+                : "This booking cannot be marked done right now.",
           rule: outcome.rule,
           reason: outcome.reason,
           evidence: outcome.evidence,
         });
       }
-      return res.json({ completed: true, rule: outcome.rule, evidence: outcome.evidence });
+      // `completed: false` is stated, not omitted: a client that read `completed` off this response
+      // before D-7 must now read the truth — declared, window open, not yet completed (§13). The
+      // window's end comes from the server's own derivation, never restated on the client.
+      return res.json({
+        declared: true,
+        completed: false,
+        rule: outcome.rule,
+        evidence: outcome.evidence,
+        declaredAt: outcome.declaredAt,
+        ...(outcome.disputeBy ? { disputeBy: outcome.disputeBy } : {}),
+        windowDays: outcome.windowDays,
+      });
     } catch (err) {
       console.error("Owner booking completion error:", err);
       res.status(500).json({ message: "Failed to complete booking" });
@@ -10059,25 +10079,45 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // pass their own check and the guard is what makes exactly one of them land.
       const fromStatus = state.status ?? "intake";
 
-      // Coordinators can only advance status forward — never regress or cancel.
-      if (isCoordinator && !isTraveler) {
-        const FORWARD_ORDER = [
-          "intake", "expert_matching", "vendor_discovery", "itinerary_generation",
-          "optimization", "booking_coordination", "confirmed", "in_progress", "completed",
-        ];
-        const currentIdx = FORWARD_ORDER.indexOf(fromStatus);
-        const nextIdx = FORWARD_ORDER.indexOf(status);
-        if (nextIdx === -1 || nextIdx <= currentIdx) {
-          return res.status(403).json({ message: "Coordinators can only advance status forward" });
+      // BOTH ARMS' RULES LIVE IN ONE MODULE — `server/utils/coordination-from-states.ts` (D-39,
+      // ledger `2026-09-15-d36-d39-completion-declared`; §18 rule 1). The ordering list that used to
+      // be declared inline here moved there so the nightly job's window close can read the SAME one.
+      const {
+        coordinatorMayAdvance,
+        travelerMaySet,
+      } = await import("./utils/coordination-from-states");
+
+      if (isTraveler) {
+        // THE TRAVELER ARM NOW HAS ITS RULE — brief §15 F3, owned by D-39 and answered here. The
+        // traveler's ONE move on this rail is to OBJECT inside the declared window
+        // (`completion_declared → disputed`); every other target is refused with the reason. The
+        // §19 shape: an allow-list of targets, each naming the statuses it may consume.
+        if (typeof status !== "string" || !travelerMaySet(fromStatus, status)) {
+          return res.status(403).json({
+            message:
+              "As the traveler you can only dispute an engagement your coordinator has declared complete.",
+            reason: "traveler_transition_not_allowed",
+            currentStatus: fromStatus,
+          });
+        }
+      } else {
+        // Coordinators can only advance status forward — never regress or cancel — and, since D-39,
+        // never to `completed`: the coordinator DECLARES, and the WINDOW closes the engagement.
+        const verdict = coordinatorMayAdvance(fromStatus, String(status));
+        if (!verdict.ok) {
+          return res.status(403).json({
+            message:
+              verdict.reason === "window_closes_engagement"
+                ? "Declare the engagement complete instead — it completes on its own once the traveler's window closes."
+                : "Coordinators can only advance status forward",
+            reason: verdict.reason,
+            currentStatus: fromStatus,
+          });
         }
       }
 
-      // THE TRAVELER ARM HAS NO ORDERING RULE, AND THIS LANE DELIBERATELY ADDS NONE. V-25(a) —
-      // a traveler may still set any string in any direction — is OWNED BY D-36..D-39 (punchlist
-      // D-39; `docs/design/EXPERT_ACCEPTANCE_BRIEF.md` F3), because under that ruling the
-      // COORDINATOR declares and the traveler arm needs a rule before a declared state means
-      // anything. What this lane gives that arm is the ATOMICITY it also lacked: whatever status it
-      // is one day allowed to set, it will set it against the row it actually read.
+      // V-25(b): BOTH arms pass the status they read through this ONE call site, so both are guarded
+      // by construction — whatever an arm is allowed to set, it sets against the row it actually read.
       const updated = await storage.updateCoordinationStatus(req.params.id, status, historyEntry, [fromStatus]);
       if (!updated) {
         // Lost race (or the row moved between the read and the write). Nothing was written and
@@ -10557,6 +10597,32 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({
           error: "not_paid",
           message: `Coordination fee is in '${state.feePaymentStatus}' status — only 'paid' fees can be refunded.`,
+        });
+      }
+
+      // D-39 (ledger `2026-09-15-d36-d39-completion-declared`): THE DECLARED WINDOW GATES THIS
+      // REFUND — AND NOTHING ELSE, BECAUSE THERE IS NOTHING ELSE. The coordination fee is
+      // platform_revenue captured up front; NO COORDINATOR EARNING IS EVER MINTED, so the traveler's
+      // window on this rail cannot gate a release and a surface must never say one happened (§13).
+      // What it honestly gates is this: once the coordinator declared and the window passed
+      // UNDISPUTED, the fee window for a refund has CLOSED. An engagement never declared (legacy,
+      // or still in progress) has NO window and is refundable exactly as before; a disputed one is
+      // refundable regardless of the clock — the refund IS the admin's answer to the question.
+      // ONE derivation of the declaration instant (`coordinationDeclaredAt`, from `state_history`)
+      // and ONE gate (`coordinationRefundWindowGate`), shared with the nightly close.
+      const { coordinationDeclaredAt } = await import("@shared/declared-completion-window");
+      const { coordinationRefundWindowGate } = await import("./utils/coordination-from-states");
+      const { declaredCompletionWindowDays } = await import("./config/completion-windows.config");
+      const refundWindow = coordinationRefundWindowGate({
+        status: state.status,
+        declaredAt: coordinationDeclaredAt(state.stateHistory),
+        windowDays: declaredCompletionWindowDays(),
+        now: new Date(),
+      });
+      if (refundWindow === "closed") {
+        return res.status(409).json({
+          error: "refund_window_closed",
+          message: "The traveler's dispute window on this engagement closed undisputed, so the coordination fee is no longer refundable here.",
         });
       }
 

@@ -674,6 +674,9 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
         sb.booking_metadata->>'disputeReason' AS dispute_reason,
         -- D-27: the SYSTEM reason, a DIFFERENT fact from the line above (see this route doc).
         sb.booking_metadata->>'systemDisputeReason' AS system_dispute_reason,
+        -- D-38: the two instants the queue DERIVES the dispute's stage from (see below).
+        sb.completion_declared_at,
+        sb.completed_at,
         sb.stripe_payment_intent_id,
         sb.total_amount,
         sb.traveler_id AS user_id,
@@ -688,9 +691,24 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
       ORDER BY sb.updated_at DESC NULLS LAST
       LIMIT 200
     `);
+    // D-38 (ledger `2026-09-15-d36-d39-completion-declared`): a dispute raised inside the seller's
+    // declared window is the SAME `disputed` row as a post-completion one — same status, same
+    // reason field, this same queue — and the queue tells them apart by DERIVATION
+    // (`disputeStageFor`: `completed_at` set ⇒ post_completion; else `completion_declared_at` set ⇒
+    // declared_window; else pre_completion), never by a second status the predicate above could not
+    // see. The distinction is load-bearing for the admin: in `declared_window` NOTHING has minted,
+    // so `setBookingEarningsDispute` held zero rows and a reject re-completes AND mints.
+    const { disputeStageFor } = await import("@shared/declared-completion-window");
+    const disputes = (result.rows as Array<Record<string, unknown>>).map((row) => ({
+      ...row,
+      dispute_stage: disputeStageFor({
+        completionDeclaredAt: row.completion_declared_at as string | null,
+        completedAt: row.completed_at as string | null,
+      }),
+    }));
     res.json({
-      disputes: result.rows,
-      count: result.rows.length,
+      disputes,
+      count: disputes.length,
       note: "Do NOT refund or claw back expert payouts without manual Stripe dashboard confirmation.",
     });
   } catch (err: any) {

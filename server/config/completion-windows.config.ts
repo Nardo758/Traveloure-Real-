@@ -75,3 +75,29 @@ export const ACCEPTANCE_WINDOW_DAYS_DEFAULT = 7;
 export function acceptanceWindowDays(): number {
   return envDays("BOOKING_ACCEPTANCE_WINDOW_DAYS", ACCEPTANCE_WINDOW_DAYS_DEFAULT);
 }
+
+/**
+ * D-7's DECLARED-COMPLETION WINDOW — how long a traveler has to dispute after the seller declares
+ * the work done, before the booking completes and the held earning mints (punchlist D-36/D-37;
+ * ledger `2026-09-15-d36-d39-completion-declared`; brief Part II §12).
+ *
+ * **THIS IS NOT A NEW CONSTANT.** It is `holdWindowDays('service_booking')` — the number that is
+ * ALREADY the held earning's `availableAt` and ALREADY the `POST /api/bookings/:id/dispute` cutoff —
+ * reached through one more named accessor so the intent is readable where the rule is read. The
+ * file header's "do not add a parallel constant" rule binds here exactly as it binds
+ * `serviceDateCompletionDays()` above: this function DELEGATES, it does not define, and it is
+ * env-overridable through the existing `EARNINGS_HOLD_DAYS` family and nothing else.
+ *
+ * WHY THE SAME NUMBER. D-37 puts the mint at the window's CLOSE with `availableAt` anchored to the
+ * DECLARATION instant, so the declared window and the earnings hold are the SAME span measured from
+ * the same instant — one window, served once. A separate declared-window constant could only ever
+ * drift away from the hold it is supposed to coincide with, and the day it did the traveler would be
+ * told one deadline while the money obeyed another.
+ *
+ * IT ONLY SAYS HOW LONG. WHEN it closes for a given booking is `declaredCompletionDeadline()` in
+ * `shared/declared-completion-window.ts` (derived, never stored — D-36); what happens at the close
+ * is `completeBooking`'s `window_elapsed` arm.
+ */
+export function declaredCompletionWindowDays(): number {
+  return holdWindowDays("service_booking");
+}

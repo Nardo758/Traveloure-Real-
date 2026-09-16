@@ -390,16 +390,17 @@ function placeMapsUrl(googlePlaceId: string | null | undefined): string | null {
 }
 
 /**
- * Expert attribution for `meta.deliveredBy`. Prefers the accepted advisory assignment (the expert
- * who is actually working the trip), falling back to `trips.expertId`. Returns null when no real
- * user row backs either — never a name placeholder (§13).
+ * Expert attribution for `meta.deliveredBy`: the accepted advisory assignment (the expert who is
+ * actually working the trip). Returns null when no real user row backs it — never a name
+ * placeholder (§13).
+ *
+ * The `trips.expertId` FALLBACK IS GONE (ledger `2026-09-15-d36-d39-completion-declared`, §18c
+ * housekeeping). Punchlist V-33 established that NO code path under `server/` writes that column,
+ * so a fallback onto it could never resolve — it was dead code wearing the shape of a second
+ * attribution source. `trip_expert_advisors` (one author, `upsertTripAdvisorRow`) is the only
+ * place a trip's expert lives; the column itself stays declared in `shared/schema.ts`, unread.
  */
-async function resolveDeliveredBy(
-  tripId: string,
-  tripExpertId: string | null | undefined,
-): Promise<TripPlanExpertAttribution | null> {
-  let expertId: string | null = null;
-
+async function resolveDeliveredBy(tripId: string): Promise<TripPlanExpertAttribution | null> {
   const advisorRows = await db
     .select({ localExpertId: tripExpertAdvisors.localExpertId })
     .from(tripExpertAdvisors)
@@ -407,8 +408,7 @@ async function resolveDeliveredBy(
     .orderBy(desc(tripExpertAdvisors.assignedAt))
     .limit(1);
 
-  if (advisorRows.length > 0) expertId = advisorRows[0].localExpertId;
-  if (!expertId && tripExpertId) expertId = tripExpertId;
+  const expertId = advisorRows.length > 0 ? advisorRows[0].localExpertId : null;
   if (!expertId) return null;
 
   const expert = await storage.getUser(expertId);
@@ -570,7 +570,7 @@ export async function assembleTripPlan(
   if (!trip) throw new TripPlanNotFoundError(tripId);
 
   const startDate = trip.startDate ? new Date(trip.startDate) : new Date();
-  const deliveredBy = await resolveDeliveredBy(tripId, trip.expertId);
+  const deliveredBy = await resolveDeliveredBy(tripId);
   const planApproval = await resolvePlanApproval(tripId);
 
   const baseMeta = (dayCount: number): TripPlanMeta => ({

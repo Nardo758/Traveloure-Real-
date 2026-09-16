@@ -1653,7 +1653,7 @@ jobs:
         run: npx tsx --test --test-force-exit client/src/lib/__tests__/plan-dates.test.ts
 
   acceptance-rails:
-    name: acceptance-rails (D-24..D-27 + D-40; ledgers 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt)
+    name: acceptance-rails (D-24..D-27 + D-40 + D-36..D-39; ledgers 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt, 2026-09-15-d36-d39-completion-declared)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -1708,6 +1708,19 @@ jobs:
       # `npm ci` because it imports `@shared/` (the #812 lesson, docs/OPERATING_PROCEDURE.md §3).
       - name: The one acceptance derivation (A1-A5)
         run: npx tsx --test --test-force-exit shared/__tests__/acceptance-window.test.ts
+      # D-7 DECLARED COMPLETION (D-36..D-39; ledger 2026-09-15-d36-d39-completion-declared). The seller
+      # DECLARES (`confirmed → completion_declared`, mints nothing); the nightly job says "completed" and
+      # mints at the window's close with the held earning anchored to the declaration (D-37); a dispute
+      # inside the window is the SAME `disputed` row (D-38) and stops the timer by construction; the
+      # coordination rail's window gates the admin REFUND only, and no coordinator earning is ever
+      # minted (D-39). W1-W10b drive the real service functions and the real job against this database.
+      - name: The declare / window-close / dispute / coordination rails (W1-W10b)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/declared-completion.db.test.ts
+      # The PURE layer beside it: the derived deadline, the ONE dispute anchor, the queue's derived
+      # stage and the coordination declaration instant. No DB — wired in this `npm ci` job because it
+      # imports `@shared/` (the #812 lesson).
+      - name: The one declared-window derivation (P1-P6)
+        run: npx tsx --test --test-force-exit shared/__tests__/declared-completion-window.test.ts
 
   plan-proposals:
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)

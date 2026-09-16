@@ -1679,6 +1679,19 @@ export const MIGRATION_FILES = [
   // LD 44(e) posture. No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no
   // manifest entry.
   "303_booking_acceptance_and_revisions.sql",
+  // THE SELLER DECLARES; THE TRAVELER HAS A WINDOW; "COMPLETED" IS SAID AT ITS CLOSE (D-36..D-39,
+  // ledger `2026-09-15-d36-d39-completion-declared`). ONE column,
+  // `service_bookings.completion_declared_at` — the declaration that opens the traveler's dispute
+  // window, where `completed_at` stays the money event at the window's CLOSE. Additive, NULLABLE,
+  // NO DEFAULT and NO CHECK (the publish-trap posture), declared in `shared/schema.ts` in the same
+  // commit (deploy-push durability rule), NO BACKFILL (NULL = never declared, OMITTED by every
+  // reader, §13). The deadline is DERIVED (declared_at + `declaredCompletionWindowDays()`, a
+  // delegation to `holdWindowDays('service_booking')`) and never stored. The two new status values
+  // (`completion_declared` on `service_bookings` and on `coordination_states`) need no migration —
+  // both columns are `varchar(30)` with no CHECK, the LD 44(e) posture; `fee_payment_status`, which
+  // HAS a CHECK, grows no value. No CHECK added or changed, so `preflight-prod-constraints.cjs`
+  // needs no manifest entry.
+  "304_booking_completion_declared.sql",
   // Ledger `2026-09-15-d28-d31-service-quotes` (punchlist D-28..D-31, all option A; the D-8 ruling's
   // columns). `service_quotes` — one row per OFFER between a traveler and a listing, FK ->
   // provider_services ON DELETE CASCADE, UNIQUE (service_id, traveler_id, "position"), amount in

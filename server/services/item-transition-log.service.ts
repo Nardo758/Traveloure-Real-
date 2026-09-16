@@ -126,7 +126,14 @@ export type TransitionEventType =
   // passed with no answer — the booking joins the EXISTING admin dispute queue with its own system
   // reason. Distinct from the prompt above and from any traveler-raised dispute: nobody claimed
   // anything went wrong, nobody answered at all. 26 chars.
-  | "booking_acceptance_elapsed";
+  | "booking_acceptance_elapsed"
+  // D-7 (ledger `2026-09-15-d36-d39-completion-declared`): the SELLER'S DECLARATION.
+  // `confirmed → completion_declared` — the seller (or the service-date timer) saying the work is
+  // done and the traveler's dispute window opening. from/to carry the BOOKING statuses. A separate
+  // event from `booking_completed` because it completes nothing and mints nothing; the completion
+  // that follows at the window's close writes `booking_completed` from `completion_declared`, so
+  // the diary shows the declaration and the money event as the two facts they are. 27 chars.
+  | "booking_completion_declared";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */
