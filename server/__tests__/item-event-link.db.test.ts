@@ -59,7 +59,6 @@ import {
   experienceTypes,
   itineraryItems,
   itineraryItemEventLinkSchema,
-  trips,
   userExperiences,
   users,
 } from "@shared/schema";
