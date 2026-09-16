@@ -2966,5 +2966,28 @@ jobs:
       # chain-integrity.test.ts, which is a node:test file already run by the
       # migration-chain-integrity job. Named, not globbed, for the reason in the
       # block comment above.
+      # These three run in PARALLEL vitest workers and each one's first genuine
+      # insertPlatformRevenueOnce rolled TODAY's daily_revenue_summary row up
+      # through a check-then-insert — the §15 race that turned this job red
+      # (`daily_revenue_summary_date_unique`). The writer is now one atomic
+      # upsert and the fourth file is its deterministic concurrent proof, run
+      # in the same parallel shape (ledger `2026-09-16-ci-main-red-repairs`,
+      # punchlist V-34).
       - name: server/migrations/__tests__ (vitest suites)
-        run: npx vitest run --root . server/migrations/__tests__/1577-cart-booking-revenue-dedup.test.ts server/migrations/__tests__/244-platform-revenue-payment-intent-dedup.test.ts server/migrations/__tests__/ready-made-purchase-revenue-dedup.test.ts
+        run: npx vitest run --root . server/migrations/__tests__/1577-cart-booking-revenue-dedup.test.ts server/migrations/__tests__/244-platform-revenue-payment-intent-dedup.test.ts server/migrations/__tests__/ready-made-purchase-revenue-dedup.test.ts server/migrations/__tests__/daily-revenue-summary-upsert.test.ts
+
+  # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # 2026-09-15-orphans-t4-t7-red-suites — T-4/T-5/T-6 of the orphan plan
+  # (docs/lane-reports/2026-09-15-orphan-triage.md §7) first landed HERE as
+  # `suite-mutation-auth` and `suite-ai-draft-and-availability`. Both boot the
+  # BUILT production bundle against a throwaway Postgres, which needs
+  # ALLOW_TEST_ACCOUNTS=1 — and `scripts/check-env-allowlist.cjs` (c) forbids
+  # that token in ANY form in a workflow FILE that also carries a deploy signal,
+  # which build.yml does (`artifact-deploy-guard`). Ledger
+  # `2026-09-16-ci-main-red-repairs` moved them, key and name unchanged, to
+  # `.github/workflows/suite-mutation-auth.yml` and
+  # `.github/workflows/suite-ai-draft-and-availability.yml`, beside every other
+  # server-booting gate. DO NOT ADD A SERVER-BOOTING JOB TO THIS FILE: a job that
+  # needs the flag gets its own workflow file (see the header comment in either).
+  # ---------------------------------------------------------------------------

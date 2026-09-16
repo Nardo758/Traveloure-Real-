@@ -104,8 +104,8 @@ test("generated manifest has a complete, deduplicated non-admin payment and user
   const allKeys = new Set(manifest.mutations.map(endpointKey));
   assert.equal(
     manifest.uniqueMethodNormalizedPathCount,
-    546,
-    "this audit is pinned to the checked-in 546-endpoint generated manifest",
+    575,
+    "this audit is pinned to the checked-in 575-endpoint generated manifest",
   );
   assert.equal(
     allKeys.size,
