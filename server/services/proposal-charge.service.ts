@@ -60,7 +60,7 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import { db } from "../db";
-import { itineraryItems, planProposals, type PlanProposal } from "@shared/schema";
+import { itineraryItems, planProposals, trips, type PlanProposal } from "@shared/schema";
 import {
   PLAN_PROPOSAL_STATUS_APPLIED,
   PLAN_PROPOSAL_STATUS_PROPOSED,
@@ -68,6 +68,10 @@ import {
   type PlanProposalChangeSet,
   type PlanProposalChargeBasis,
 } from "@shared/plan-proposals";
+import { changeSetProviderServiceIds } from "@shared/plan-proposal-changeset";
+import { isProposalCatalogPriceStale } from "../config/proposal-staleness.config";
+import { loadOptimizerCatalog } from "./optimizer-baseline.service";
+import { reFinalizeIfCurrentlyFinal } from "./trip-finalize.service";
 import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
 import { itineraryItemIsMoneyCommitted } from "@shared/itinerary-item-money";
 import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
@@ -243,12 +247,99 @@ export async function retrieveProposalPaymentIntent(
 /** A named refusal, so the route can answer with the REASON and never skip a row silently (§13). */
 export class ProposalApplyRefused extends Error {
   constructor(
-    readonly code: "protected_item" | "not_applicable",
+    readonly code:
+      | "protected_item"
+      | "not_applicable"
+      // D-50 (c): the proposal's catalog prices are past their window. REFUSED with the reason and
+      // the drawer offers a re-ask — never a silent reprice (ledger `2026-09-16-l16-rulings-d45-d50`).
+      | "stale_catalog_price"
+      // D-50 (b): a listing the proposal names is no longer bookable on this plan. Refused with the
+      // reason for the same §13 reason as above — applying it would write a row naming a listing
+      // the traveler cannot book, and re-pricing or silently dropping it changes what they read.
+      | "listing_unavailable",
     message: string,
     readonly itemIds: string[] = [],
   ) {
     super(message);
     this.name = "ProposalApplyRefused";
+  }
+}
+
+/**
+ * D-50 (b)/(c) — THE TWO THINGS THAT CAN HAVE CHANGED SINCE THE TRAVELER READ A PROPOSAL.
+ *
+ * (decision-maker ruling 2026-09-16, punchlist **D-50** = A, tightened; ledger
+ *  `2026-09-16-l16-rulings-d45-d50`. CLAUDE.md §13, §18 rule 1.)
+ *
+ * A proposal may name a live catalog listing (D-50) and carries that listing's price **as the
+ * catalog stated it at ASK time** — the create rail's sanitiser overwrites every model-emitted price
+ * with the catalog row's own and persists no number the model produced. By the time the traveler
+ * applies, two things can have changed:
+ *
+ *   **(c) THE WINDOW HAS PASSED.** REFUSED with the reason; the drawer offers a re-ask. The three
+ *   available answers were: reprice silently at apply (a number the traveler never read), apply the
+ *   stale one (a price nobody is offering), or refuse. The ruling took the third — the only one
+ *   that does not put a figure on screen that no source states (§13).
+ *
+ *   **(b) A LISTING IS GONE, PAUSED OR UNAPPROVED.** Validated at CREATE, RE-VALIDATED here, and
+ *   refused for the same reason: applying would write an item naming a listing the traveler cannot
+ *   book, and silently dropping it would change what they read after they read it. (At CREATE the
+ *   answer is different and deliberately so — there the addition is simply DROPPED, because nobody
+ *   has read it yet.)
+ *
+ * **IT BITES ONLY ON A CHANGE SET THAT NAMES A LISTING.** A proposal with no catalog reference
+ * carries no price that can go stale, and expiring it would refuse an apply for a reason that is
+ * not true of that proposal (§13). `changeSetProviderServiceIds` is the ONE expression of that
+ * question, shared with the create rail's sanitiser (§18 rule 1).
+ *
+ * **ONE IMPLEMENTATION, TWO CALLERS.** `applyPlanProposal` calls it inside its transaction, and the
+ * PAY route calls it BEFORE the claim and before any Stripe call — so a traveler is never charged
+ * for a proposal the apply would then refuse. A second copy of this decision is the derivation-drift
+ * class §18 rule 1 names, and here it would be a money bug: two rails disagreeing about whether an
+ * apply is still possible, with a charge taken between them.
+ *
+ * The catalog read is `loadOptimizerCatalog` — the ONE catalog reader D-50 names — scoped to this
+ * plan's destination exactly as it was at create. No second query, no second filter.
+ *
+ * `reader` takes a drizzle transaction handle when one is open, so the trip read joins the caller's
+ * transaction rather than opening a connection beside it.
+ */
+export async function assertProposalCatalogStillValid(params: {
+  proposal: Pick<PlanProposal, "proposal" | "createdAt">;
+  tripId: string;
+  reader?: { select: typeof db.select };
+}): Promise<void> {
+  const changeSet = (params.proposal.proposal ?? {}) as PlanProposalChangeSet;
+  const namedServiceIds = changeSetProviderServiceIds(changeSet);
+  if (namedServiceIds.length === 0) return;
+
+  // (c) FIRST: an expired proposal is refused for its OWN reason, not for whichever listing happens
+  // also to have gone away in the meantime (§13 — the reason given is the reason that applies).
+  if (isProposalCatalogPriceStale({ createdAt: params.proposal.createdAt })) {
+    throw new ProposalApplyRefused(
+      "stale_catalog_price",
+      "This proposal quotes prices from when it was written, and they are old enough that we will " +
+        "not apply them without checking. Nothing was changed — ask again for a fresh answer.",
+    );
+  }
+
+  // (b) The re-validation, through the ONE catalog reader.
+  const reader = params.reader ?? db;
+  const [tripRow] = await reader
+    .select({ destination: trips.destination })
+    .from(trips)
+    .where(eq(trips.id, params.tripId))
+    .limit(1);
+  const catalog = await loadOptimizerCatalog(tripRow?.destination ?? null);
+  const live = new Set(catalog.map((c) => c.id));
+  const missing = namedServiceIds.filter((id) => !live.has(id));
+  if (missing.length > 0) {
+    throw new ProposalApplyRefused(
+      "listing_unavailable",
+      "A listing this proposal names is no longer available on this plan. Nothing was changed — " +
+        "ask again for a fresh answer.",
+      missing,
+    );
   }
 }
 
@@ -286,6 +377,33 @@ export interface AppliedProposalResult {
  * An absent price stays NULL and is never `0`; an absent day falls back to the plan's first day and
  * SAYS SO here rather than pretending the proposal placed it; an absent location stays NULL.
  *
+ * ── D-50 (b)/(c): WHAT THE APPLY RE-CHECKS, AND WHY IT REFUSES RATHER THAN REPAIRS ───────────
+ * (decision-maker ruling 2026-09-16; ledger `2026-09-16-l16-rulings-d45-d50`.)
+ * A proposal may name a live catalog listing and carries that listing's price AS THE CATALOG STATED
+ * IT AT ASK TIME. Two things can have changed by the time the traveler applies:
+ *   · **the window has passed** — D-50 (c): REFUSED with the reason, and the drawer offers a
+ *     re-ask. **Never a silent reprice** (a number the traveler never read) and never the stale one
+ *     (a price nobody is offering). The window bites ONLY on a change set that actually names a
+ *     listing: a proposal carrying no catalog reference has no price that can go stale, and
+ *     expiring it would refuse an apply for a reason that is not true of it (§13).
+ *   · **a listing is gone, paused or unapproved** — D-50 (b): validated at CREATE, RE-VALIDATED
+ *     here. Refused with the reason, for the same §13 reason as above: applying would write a row
+ *     naming a listing the traveler cannot book, and silently dropping it would change what they
+ *     read after they read it.
+ * Both are checked BEFORE anything is written and BEFORE the flip, inside the same transaction, so
+ * a refusal leaves the plan exactly as it was. The catalog read is `loadOptimizerCatalog` — the ONE
+ * catalog reader (§18 rule 1, D-50); this file adds no second query and no second filter.
+ *
+ * ── D-49: THE TRIP CARD IS RE-FINALIZED AFTER THE APPLY COMMITS ──────────────────────────────
+ * (decision-maker ruling 2026-09-16 = A, amended on timing — it ships with the CREATE rail rather
+ * than with the drawer's post-final mount, because the five proposal rails are API-reachable on a
+ * finalized trip TODAY.) `reFinalizeIfCurrentlyFinal` is called AFTER the transaction returns —
+ * never inside it — so a re-finalize failure can never roll back a committed, possibly CHARGED
+ * apply (§15b: an ancillary effect may not break the operation that authorizes it). It is
+ * best-effort in the shape the four existing callers use, with ONE difference the ruling requires:
+ * **the failure is LOUD** — logged at ERROR with the proposal id and the trip id, so a card that
+ * did not advance after a paid apply is reconcilable rather than silent. No swallowed catch.
+ *
  * ── THE FLIP IS THE GUARD (§15/§18b) ─────────────────────────────────────────────────────────
  * `UPDATE … WHERE id = ? AND trip_id = ? AND status = 'proposed'` is the LAST statement in the
  * transaction. Two concurrent applies: the second blocks on the row lock, re-evaluates the WHERE
@@ -299,8 +417,14 @@ export async function applyPlanProposal(params: {
   basis: PlanProposalChargeBasis;
   chargedAmountCents: number | null;
   paymentIntentId: string | null;
+  /**
+   * The SESSION user applying (§14 — the route's own `getUserId(req)`, never a body). Used only as
+   * the actor on the D-49 re-finalize below; it authorizes nothing here, because authorization has
+   * already happened at the route and in `resolveProposalApplyAuthorization`.
+   */
+  actorId: string;
 }): Promise<AppliedProposalResult> {
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [row] = await tx
       .select()
       .from(planProposals)
@@ -311,6 +435,16 @@ export async function applyPlanProposal(params: {
     }
 
     const changeSet = (row.proposal ?? {}) as PlanProposalChangeSet;
+
+    // D-50 (b)/(c) — ONE implementation, two callers (the other is the PAY route, so a traveler is
+    // never charged for a proposal this would then refuse). Throws `ProposalApplyRefused`; inside
+    // this transaction that rolls the whole apply back, so a refusal leaves the plan untouched.
+    await assertProposalCatalogStillValid({
+      proposal: row,
+      tripId: params.tripId,
+      reader: tx,
+    });
+
     const replaceIds = Array.from(
       new Set((changeSet.replaces ?? []).map((r) => r?.itemId).filter((v): v is string => !!v)),
     );
@@ -421,6 +555,27 @@ export async function applyPlanProposal(params: {
 
     return { proposal: applied, createdItemIds, replacedItemIds };
   });
+
+  // ── D-49 — AFTER the apply has COMMITTED, never inside the transaction ────────────────────────
+  // On a trip that is CURRENTLY finalized, capture the applied change as a new final version so the
+  // snapshot-rendered Trip Card shows it immediately; on any other trip the helper answers null and
+  // does nothing (a reopened plan's edits are captured when the traveler re-finalizes).
+  //
+  // Best-effort by contract — the apply has already committed and may already have been charged, so
+  // a re-finalize failure must never turn a successful, paid apply into a 500. **But it is LOUD**
+  // (the ruling's own amendment to the four existing callers' shape): the proposal id and the trip
+  // id are on the line, so a Trip Card that did not advance after a paid apply is reconcilable
+  // rather than a silence nobody can trace back to an apply.
+  try {
+    await reFinalizeIfCurrentlyFinal(params.tripId, params.actorId);
+  } catch (err: any) {
+    console.error(
+      "[proposal-apply] auto re-finalize FAILED after a committed apply (non-fatal, reconcilable):",
+      { proposalId: params.proposalId, tripId: params.tripId, message: err?.message },
+    );
+  }
+
+  return result;
 }
 
 /**

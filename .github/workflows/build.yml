@@ -1627,6 +1627,21 @@ jobs:
       # SILENT: a covered traveler answered "payment required" throws nothing and logs nothing.
       - name: the apply authorization predicate, exercised directly (A1-A9)
         run: npx tsx --test --test-force-exit server/__tests__/proposal-apply-authorization.test.ts
+      # L16 LANE 1 — THE CREATE RAIL, AS FAR AS IT WAS BUILT (punchlist D-45..D-50, ledger
+      # `2026-09-16-l16-rulings-d45-d50`). The lane was STOPPED before the prompt builder and the
+      # model call by instruction, so these two suites prove the SCAFFOLDING and an honest refusal,
+      # never a working ask — each file's own header states that limit (§18d). The PURE suite
+      # covers D-50's sanitiser (no model-produced number is persisted; an unknown listing drops
+      # one addition; a protected `replaces` never reaches the row; an unknown key is REFUSED),
+      # D-47's model knob, D-50 (c)'s staleness window, D-46 (i)'s in-flight marker and §19's ask
+      # body — all with no database. The DB suite mounts the real trips router against this job's
+      # Postgres for the §12 WRITE gate on ASK, the honest 503, D-48's OWNER-ONLY narrowing of PAY
+      # and APPLY (an accepted advisor may ask/read/discard and is refused by both), D-48's aiTask
+      # read block, and D-49's post-commit re-finalize call.
+      - name: the AI-ask create rail — sanitiser, knobs, marker and body (S1-S11)
+        run: npx tsx --test --test-force-exit server/__tests__/ai-ask-create-rail.test.ts
+      - name: the AI-ask create rail's routes and D-48's narrowing (A1-A7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/ai-ask-create-rail.db.test.ts
 
   from-state-guards:
     name: from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)
