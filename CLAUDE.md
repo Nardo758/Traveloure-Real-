@@ -53,6 +53,17 @@ This document captures architectural decisions to maintain consistency across co
     surfaces (assigned-trips, trip GET, plancard) keep granting `pending`. `itinerary_items.origin`
     (`'ai'|'traveler'|'expert'`, app-enforced, no CHECK — publish-trap avoidance, migration 181) is stamped
     server-side at create; both ratified Aug 7 2026. Regenerate preserves `origin='traveler'` and `suggestedBy='expert'`.
+    **A READ GATE THAT NAMES A COLUMN NOTHING WRITES IS NOT A GRANT (ledger
+    `2026-09-15-v32-v33-leads-door-item-read-gate`; decision-maker sentence applied 2026-09-15).**
+    `trips.expert_id` is declared and has NO writer anywhere under `server/`; the trip's assigned expert
+    lives in `trip_expert_advisors`, whose ONE author is `upsertTripAdvisorRow`. `GET /api/trips/:id`
+    granted its expert arm on that dead column, so a legitimately assigned advisor was refused 403
+    **and logged as an `[IDOR ATTEMPT]`** — a §13 falsehood in the log as well as a refused read. The
+    arm now asks the CANONICAL §12 READ predicate `isTripAdvisor` (imported, never re-derived — §18
+    rule 1), `pending` passes as this entry already rules for the trip GET, and the generate-itinerary
+    stopgap's copy of the same dead arm is deleted (§18c). The column is KEPT and annotated in
+    `shared/schema.ts` as written-by-nothing: do not build a new grant, fallback or display on it
+    without first giving it a writer and ratifying that writer.
 
 20. **Market-launch assets are DB-backed; extracted places are child rows (decision-maker ratified Aug 9, 2026).**
     Two additive tables (migrations 185/186, both declared in `shared/schema.ts` — publish-trap rule):
@@ -1036,6 +1047,14 @@ This document captures architectural decisions to maintain consistency across co
     not the first — the UNIQUE `(trip_id, local_expert_id)` index has always permitted several, the
     schema has always allowed it, and a reader that silently returns one of many is a plan quietly
     hiding a person who can write to it.
+    **THE `POST /api/leads/route` DOOR IS RETIRED, NOT RESTORED (ledger
+    `2026-09-15-v32-v33-leads-door-item-read-gate`; decision-maker sentence applied 2026-09-15).** It
+    had been a comment over no handler since the June 2026 route defragmentation. A "score experts
+    and auto-assign" door would be a second author of the advisor row, which this clause forbids and
+    `scripts/check-advisor-row-author.cjs` refuses; `POST /api/expert-requests` (Locked Decision 32)
+    already runs the same `lead-routing.service.ts` and calls the one author. The scoring service
+    stays live — what was retired is the door, not the logic — and `server/routes/payments.routes.ts`
+    carries the note saying so. Do not re-add the route.
 
     **D8 — `/trip/:id` IS NOT A PLANNING SURFACE.** The finalized Trip Card is the read-out of a
     plan that is DONE. A pre-final plan that lands there gets a second, divergent editing surface
@@ -1916,6 +1935,16 @@ excludes `e2e/` and still exits 0 — both are stated limits awaiting a ruling, 
 predicate that can be satisfied by documentation ABOUT the thing it measures is not measuring the
 thing** — and an advisory guard is exactly where such a defect survives longest, because nothing
 ever goes red.
+
+**A TEST DIRECTORY IS NOT NECESSARILY ONE RUNNER, so "wire the directory" is available only where it
+is (ledger `2026-09-15-orphans-t1-t3-green-directories`; decision-maker sentence applied 2026-09-15).**
+`tsx --test` cannot load a file that imports from `vitest` (it dies in the runner before any
+assertion), and `vitest` cannot run a `node:test` file; Node 22 has no file-level exclusion flag, and
+`scripts/check-test-files-wired.cjs` models only `*`, `**` and `?`, so a bracket class or an extglob
+would run without being SEEN and the files would read as still orphaned. A mixed directory is
+therefore wired as **two steps split by NAME**, with the limit stated in the workflow — a file added
+there is orphaned until somebody names it, and the ratchet is what says so. A single-runner directory
+keeps the whole-directory glob and stays closed by construction.
 
 ### §19 — Privileged-field mass-assignment is a STANDING CLASS; the fix shape is an ALLOWLIST (ruling 46)
 

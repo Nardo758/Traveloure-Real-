@@ -15,6 +15,7 @@ import type { TraveloureMode } from "@/lib/navigate";
 // to "may a zone-dependent claim be made about this plan" and `calendarDayOf` the ONE reading of
 // "what day is it there". Neither is restated here (§18 rule 1).
 import { calendarDayOf, isUsableTimeZone, zonedWallClockToInstant } from "@shared/plan-timing";
+import { planInstantIsClaimable } from "@shared/plan-dates";
 
 export type TemporalState = "past" | "upcoming" | "future";
 
@@ -264,8 +265,20 @@ export function formatCountdown(
   dateStr: string,
   now: Date,
   timezone: string | null | undefined,
+  datesConfirmed: boolean = true,
 ): string | null {
-  if (!isUsableTimeZone(timezone)) return null;
+  // TWO HALVES OF ONE FACT, ANSWERED IN ONE PLACE (`planInstantIsClaimable`, `shared/plan-dates.ts`,
+  // §18 rule 1). A countdown is a claim about an INSTANT, and an instant needs a real ZONE (Locked
+  // Decision 30) AND a real DAY (migration 302, ledger `2026-09-15-d22-dates-confirmed`). `dateStr`
+  // is derived from `trips.start_date`, which is NOT NULL and is therefore filled in for a
+  // ready-made clone and an authoring build whether or not anyone chose it — so with a zone alone,
+  // "In 2h 15m" would count down, to the minute, to a day the fulfilment job picked.
+  //
+  // The parameter DEFAULTS TO TRUE, and that is a compatibility default rather than a claim: this
+  // function's existing callers were written before the fact existed, and flipping every one of
+  // them to "no countdown" on a silent default would remove the chip from confirmed plans too. The
+  // caller that renders the chip passes the plan's own answer.
+  if (!planInstantIsClaimable(isUsableTimeZone(timezone), datesConfirmed)) return null;
   const start = parseActivityTime(activity.time, dateStr, timezone);
   if (!start) return null;
   const diffMs = start.getTime() - now.getTime();

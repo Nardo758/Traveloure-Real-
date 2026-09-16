@@ -1557,6 +1557,58 @@ jobs:
       - name: The ready-made authoring price contract (A1-A5)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/authored-item-price-contract.db.test.ts
 
+  dates-confirmed:
+    name: dates-confirmed (D-22 + R-4; ledger 2026-09-15-d22-dates-confirmed)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # D-22 (ruled yes, 2026-09-15) + R-4. `trips.start_date`/`end_date` are NOT NULL, so every
+      # plan HAS a window — and until migration 302 nothing said whether a traveler chose it. The
+      # ready-made clone's `new Date()` + `duration_days - 1`, the two expert authoring builds'
+      # synthetic anchor and the cart mints' today-fallback all rendered exactly like a window the
+      # traveler picked, on the slip, the Trip Card, the `.ics` and Home. K3 and K7 FAIL on main
+      # (no column ⇒ no way to tell them apart, and the exporter pins a confident instant to a
+      # date nobody chose). K4/K6 drive the MOUNTABLE trips-router twin of the re-date rail — the
+      # live copy is the monolith's and its wiring is stated as negative space in the suite header.
+      - name: A plan says whether its dates were chosen (K1-K7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/dates-confirmed.db.test.ts
+      # The pure layer beside it: the ONE placeholder-dates derivation every surface reads (the
+      # slip header, the Trip Card countdown, the `.ics`, Home). No DB, no server — but it is wired
+      # here rather than in a guard-only job because it imports `@shared/`, which pulls in the
+      # installed dependency tree (the #812 lesson recorded in docs/OPERATING_PROCEDURE.md §3).
+      - name: The one placeholder-dates derivation (P1-P7)
+        run: npx tsx --test --test-force-exit client/src/lib/__tests__/plan-dates.test.ts
+
   plan-proposals:
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)
     runs-on: ubuntu-latest
@@ -2776,3 +2828,143 @@ jobs:
         run: npx tsx --test client/src/components/__tests__/*.test.ts*
       - name: client/src/components/plancard/__tests__ (all)
         run: npx tsx --test client/src/components/plancard/__tests__/*.test.ts*
+
+  # ---------------------------------------------------------------------------
+  # 2026-09-15-orphans-t1-t3-green-directories — T-1/T-2/T-3 of the orphan plan
+  # (docs/lane-reports/2026-09-15-orphan-triage.md §7). Forty suites whose
+  # assertions no workflow command could reach are run here.
+  #
+  # STATED NEGATIVE SPACE, and it is the half that will bite first: A DIRECTORY
+  # IN THIS REPO IS NOT ONE RUNNER. Five files under these roots import from
+  # `vitest` and `tsx --test` CANNOT LOAD THEM (it dies in @vitest/runner before
+  # a single assertion runs), while `vitest` in turn cannot run a `node:test`
+  # file. So each mixed directory is covered by TWO steps, one per runner, and
+  # the split is by NAME, not by glob — a new file added to such a directory is
+  # orphaned until somebody names it, and `scripts/check-test-files-wired.cjs`
+  # is what says so. Where a directory has ONE runner (T-1, and
+  # server/routes/__tests__) the selector IS a whole-directory glob and the
+  # directory is closed by construction.
+  #
+  # ONE SUITE IN THESE DIRECTORIES IS DELIBERATELY LEFT ORPHANED:
+  # `server/services/__tests__/content-matching.test.ts` fetches
+  # http://localhost:5000 and needs the built app, which none of these jobs
+  # boots. Wiring it here would put a red in a green job; it stays on
+  # `scripts/test-orphan-baseline.txt` and is owed an app-backed lane.
+  # ---------------------------------------------------------------------------
+  unit-suite-server-units:
+    name: unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine __tests__ — whole directories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # T-1: four single-purpose directories, each holding ONLY these files, so
+      # one glob closes each exactly. No database and no app — these are pure.
+      - name: server/utils/__tests__ (all)
+        run: npx tsx --test server/utils/__tests__/*.test.ts*
+      - name: server/seeds/__tests__ (all)
+        run: npx tsx --test server/seeds/__tests__/*.test.ts*
+      - name: server/services/travelpayouts/__tests__ (all)
+        run: npx tsx --test server/services/travelpayouts/__tests__/*.test.ts*
+      - name: server/services/trend-engine/__tests__ (all)
+        run: npx tsx --test server/services/trend-engine/__tests__/*.test.ts*
+
+  suite-server-services:
+    name: suite-server-services (server/services/__tests__ — DB-backed)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # T-2. The directory mixes pure and DB suites, so one database is cheaper
+      # than a split; seven of these files were already reachable through their
+      # own per-file jobs and are re-run here, which is the 2026-09-14 precedent
+      # (a per-file job is a ledger-named record of why that pin exists and stays
+      # exactly where it is).
+      - name: server/services/__tests__ (node:test suites)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/services/__tests__/activity-schedule.test.ts server/services/__tests__/background-job-runner.test.ts server/services/__tests__/booking-verification.db.test.ts server/services/__tests__/booking-verification.test.ts server/services/__tests__/cancellation-policy.test.ts server/services/__tests__/commission-phase1.test.ts server/services/__tests__/experience-cart-band.db.test.ts server/services/__tests__/expert-split-band.db.test.ts server/services/__tests__/expertise-scoring.test.ts server/services/__tests__/gem-teaser.test.ts server/services/__tests__/golf-presets.test.ts server/services/__tests__/landing-hero.test.ts server/services/__tests__/location-view-neighbourhood-match.test.ts server/services/__tests__/occasion-schedule.test.ts server/services/__tests__/provider-health.test.ts server/services/__tests__/ready-made-clone-routing.test.ts server/services/__tests__/startup-delay.test.ts server/services/__tests__/trailhead-crosswalk.test.ts server/services/__tests__/trailhead-derived-targets.test.ts server/services/__tests__/transport-leg-calculator.test.ts server/services/__tests__/traveler-profile.service.test.ts server/services/__tests__/upcoming.test.ts server/services/__tests__/upsell-engine.test.ts server/services/__tests__/upsell-query-any-array.test.ts server/services/__tests__/wedding-presets.test.ts
+      # The two vitest suites in the same directory. `anchor-*` is their whole
+      # set, so this selector IS a glob and cannot silently drop one.
+      - name: server/services/__tests__ (vitest suites)
+        run: npx vitest run --root . server/services/__tests__/anchor-*.test.ts
+
+  suite-server-routes-migrations:
+    name: suite-server-routes-migrations (server/routes/__tests__ + server/migrations/__tests__ — DB-backed)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # T-3a. Every file in this directory is a node:test suite, so the selector
+      # is the whole-directory glob and a file added tomorrow is reachable by
+      # construction. `booking-idor-guard` was the directory's one red and is
+      # repaired in this lane — its FIXTURE was, not its assertions: the auth
+      # layer's account-status check is FAIL-CLOSED (503) and the mock did not
+      # answer the `users` reads it makes.
+      - name: server/routes/__tests__ (all)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/routes/__tests__/*.test.ts
+      # T-3b. server/migrations/__tests__ holds three vitest suites beside
+      # chain-integrity.test.ts, which is a node:test file already run by the
+      # migration-chain-integrity job. Named, not globbed, for the reason in the
+      # block comment above.
+      - name: server/migrations/__tests__ (vitest suites)
+        run: npx vitest run --root . server/migrations/__tests__/1577-cart-booking-revenue-dedup.test.ts server/migrations/__tests__/244-platform-revenue-payment-intent-dedup.test.ts server/migrations/__tests__/ready-made-purchase-revenue-dedup.test.ts

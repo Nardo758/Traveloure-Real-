@@ -248,6 +248,38 @@ export const trips = pgTable("trips", {
   // rather than a checklist because no accessibility standard is claimed on anyone's behalf (the
   // posture Locked Decision 24 states for `provider_services.access_notes`).
   accessibilityNote: text("accessibility_note"),
+  // ── DID ANYBODY CHOOSE THESE DATES? (migration 302, ledger `2026-09-15-d22-dates-confirmed`,
+  // punchlist D-22 = yes.) Additive nullable timestamp, NO DEFAULT and NO DB CHECK (the
+  // publish-trap posture — migrations 181/195/273/275/276/277/279/280/281/282/284/287/295/297/301),
+  // declared HERE per the deploy-push durability rule, and NO BACKFILL.
+  //
+  // WHY THE COLUMN EXISTS. `startDate`/`endDate` are NOT NULL, so every plan HAS a window — and
+  // until now nothing said whether a traveler answered with it. The ready-made clone
+  // (`ready-made-purchase.service.ts`) mints `new Date()` + `durationDays - 1` as a PLACEHOLDER and
+  // says so only in a code comment; the expert authoring builds anchor the same synthetic window;
+  // two cart mints fall back to today when the cart line carries no date. Every one of those
+  // renders identically to a window the traveler picked — on the slip header, on My plans, on the
+  // Trip Card, in the `.ics`, in the Home time axis. That is the §13 lie D-22 closes: the platform's
+  // own guess presented as the traveler's answer.
+  //
+  // **NULL = NOT CONFIRMED, and it is a finished answer.** A reader renders the window as a
+  // PLACEHOLDER and labels it so; the `.ics` makes no pinned DTSTART claim off it (it keeps the
+  // floating output Locked Decision 30 rules for an unknown zone, for the same reason one
+  // derivative over — here the DAY is the guess rather than the zone); and a COUNTDOWN is withheld
+  // entirely (Locked Decision 45 (6): no instant at all). NULL is NEVER rendered as "no dates" —
+  // the plan does have a window, nobody chose it.
+  //
+  // SERVER-DERIVED, NEVER CLIENT-SETTABLE (§19, the §14/§18 posture applied to a claim about the
+  // traveler's own answer). `insertTripSchema` omits it below and no pick re-admits it; under an
+  // `.omit()` DENYLIST a freshly-added column is client-settable BY DEFAULT, and a client that
+  // could stamp this could certify its own guesses. It is written in exactly two places, both in
+  // `server/storage.ts`: `createTrip`, when the caller states that the dates came from the
+  // traveler, and `updateTrip`, which stamps `now()` whenever a start or end date is part of the
+  // update — the re-date rail (punchlist R-4, the owner-gated `PATCH /api/trips/:id`).
+  //
+  // The reader-side derivation lives ONCE in `shared/plan-dates.ts` (§18 rule 1) — the predicate
+  // and every label. Do not re-answer "are these dates real?" on a surface.
+  datesConfirmedAt: timestamp("dates_confirmed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -2510,6 +2542,13 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   budgetApproverName: true,
   budgetApproverEmail: true,
   accessibilityNote: true,
+  // Ledger `2026-09-15-d22-dates-confirmed` (punchlist D-22). `dates_confirmed_at` is a CLAIM
+  // ABOUT THE TRAVELER'S OWN ANSWER — "these dates were chosen, not guessed by us" — and §19 says
+  // a privileged column is client-settable BY DEFAULT under an `.omit()` denylist like this one.
+  // A client that could stamp it could certify the platform's own placeholder window as the
+  // traveler's, which is exactly the §13 lie the column exists to close. No pick anywhere
+  // re-admits it; `storage.createTrip` and `storage.updateTrip` are its only writers.
+  datesConfirmedAt: true,
 }).extend({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),
