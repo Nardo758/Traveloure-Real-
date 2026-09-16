@@ -7322,8 +7322,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   //       "completed" and mints — with the earning anchored to this declaration (D-37) — only once
   //       the window closes undisputed. So the self-credit objection is answered one step earlier
   //       than before: a wrongly-declared booking never even reads as done.
-  //       Bundles are the one exception and are UNCHANGED here: a component record still completes
-  //       the booking when it is the last one (whether a bundle declares is D-32..D-35's question).
+  //       Bundles are the one exception: a component record still completes the booking when it
+  //       is the last one and every component was delivered, and — since D-32..D-35 (ledger
+  //       `2026-09-16-d32-d35-bundle-components`) — moves it to `partially_completed` when the rest
+  //       had FAILED (see the component-failed rail below). Whether a bundle DECLARES (D-7's
+  //       window) is still unruled; a bundle mints at its last component's answer.
   //
   // BODY IS AN EXPLICIT ALLOWLIST (§19): the ONLY field read is `componentServiceId`, and only
   // for a bundle. The acting user comes from the session, the booking from the path, and every
@@ -7398,11 +7401,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             evidence: outcome.evidence,
           });
         }
-        // Partial is a SUCCESSFUL record and an explicitly UNCOMPLETED booking — no partial
-        // payout exists, and none is implied here (ruling 63: partial routes to the refund lane).
+        // A component still pending is a SUCCESSFUL record and an explicitly UNCOMPLETED booking.
+        // D-34 (ledger `2026-09-16-d32-d35-bundle-components`): when this delivery was the last
+        // answer outstanding and another component had FAILED, the parent moved to
+        // `partially_completed` and minted ONCE over the reduced figures (D-35) — `partiallyCompleted`
+        // says so, `completed` stays false (that word still means EVERY component), and
+        // `componentStateSource` names which record answered (§13: rows, or the legacy jsonb).
         return res.json({
           recorded: true,
           completed: outcome.completed,
+          partiallyCompleted: outcome.partiallyCompleted === true,
+          alreadyRecorded: outcome.alreadyRecorded === true,
+          componentStateSource: outcome.componentStateSource,
           rule: outcome.rule,
           reason: outcome.reason,
           evidence: outcome.evidence,
@@ -7449,6 +7459,92 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   };
   app.post("/api/provider/bookings/:id/complete", isAuthenticated, handleOwnerBookingComplete);
   app.post("/api/expert/bookings/:id/complete", isAuthenticated, handleOwnerBookingComplete);
+
+  // ── D-32/D-34 OWNER-DECLARED COMPONENT FAILURE (ledger `2026-09-16-d32-d35-bundle-components`) ──
+  //
+  // The seller's statement that ONE bundle component will NOT be delivered. It is the other half of
+  // the component-completion rail above: same ownership gate (the booking's service belongs to the
+  // session user, undifferentiated 404 otherwise), same server-side rule resolution (only a
+  // `bundle_components` booking may take it), same posture on the body.
+  //
+  // BODY IS A `.strict()` PICK (§19): `componentServiceId` and an optional free-text `reason`, and
+  // NOTHING else — a body cannot name a status (the transition is this rail's, `pending → failed`),
+  // a price (the snapshot's, server-derived at checkout), a timestamp or an amount. An unknown key is
+  // REFUSED, not stripped. The acting user comes from the session (§14).
+  //
+  // WHAT IT MAY CAUSE, all server-decided: if the remaining components were already delivered the
+  // parent moves to `partially_completed` and mints ONCE over the reduced figures (D-35); if none
+  // were, nothing flips — the EXISTING whole-row refund rail owns that case and the response says
+  // `parentOutcome: "all_undelivered"`; if some are still pending, the failure is recorded and the
+  // parent waits. A LEGACY bundle (no `booking_component_states` rows) is refused with
+  // `bundle_component_states_unavailable` — the jsonb never held FAILED (§13).
+  const componentFailureBody = z
+    .object({
+      componentServiceId: z.string().trim().min(1).max(255),
+      reason: z.string().trim().max(500).optional(),
+    })
+    .strict();
+  const handleOwnerBookingComponentFailed = async (req: any, res: any) => {
+    try {
+      const userId = getUserId(req)!;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.providerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      const parsed = componentFailureBody.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: "Name the bundle component that will not be delivered (componentServiceId), and optionally why (reason).",
+          issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+        });
+      }
+      const { recordBundleComponentFailure, resolveCompletionEligibility } = await import(
+        "./services/booking-completion.service"
+      );
+      const eligibility = await resolveCompletionEligibility(req.params.id);
+      if (eligibility.rule !== "bundle_components") {
+        return res.status(409).json({
+          message: "Only a bundle's components can be marked as not delivered.",
+          rule: eligibility.rule,
+          reason: eligibility.reason ?? "rule_not_owner_declared",
+        });
+      }
+      const outcome = await recordBundleComponentFailure({
+        bookingId: req.params.id,
+        componentServiceId: parsed.data.componentServiceId,
+        actor: "provider_bundle_components",
+        reason: parsed.data.reason ?? null,
+      });
+      if (!outcome.recorded) {
+        const status = outcome.reason === "bundle_component_states_unavailable" ? 409 : 400;
+        return res.status(status).json({
+          message: outcome.unknownComponent
+            ? "That service is not one of this bundle's components."
+            : outcome.reason === "bundle_component_states_unavailable"
+              ? "This bundle was bought before per-component records existed, so a component cannot be marked as not delivered here — use the refund lane."
+              : "This bundle component could not be marked as not delivered.",
+          rule: outcome.rule,
+          reason: outcome.reason,
+          evidence: outcome.evidence,
+        });
+      }
+      return res.json({
+        recorded: true,
+        alreadyRecorded: outcome.alreadyRecorded === true,
+        partiallyCompleted: outcome.partiallyCompleted,
+        ...(outcome.parentOutcome ? { parentOutcome: outcome.parentOutcome } : {}),
+        componentStateSource: outcome.componentStateSource,
+        rule: outcome.rule,
+        reason: outcome.reason,
+        evidence: outcome.evidence,
+      });
+    } catch (err) {
+      console.error("Owner bundle component failure error:", err);
+      res.status(500).json({ message: "Failed to record the component failure" });
+    }
+  };
+  app.post("/api/provider/bookings/:id/component-failed", isAuthenticated, handleOwnerBookingComponentFailed);
+  app.post("/api/expert/bookings/:id/component-failed", isAuthenticated, handleOwnerBookingComponentFailed);
 
   // Update visa application status on a service booking (expert/provider action)
   app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {

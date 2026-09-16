@@ -72,7 +72,6 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
-  bundleComponents,
   deliverableDownloads,
   providerServices,
   serviceBookings,
@@ -100,7 +99,19 @@ import {
   ACCEPTANCE_FROM_STATUSES,
   COMPLETION_DECLARABLE_FROM_STATUSES,
   DECLARED_WINDOW_CLOSE_FROM_STATUSES,
+  PARTIAL_COMPLETION_FROM_STATUSES,
 } from "../utils/booking-from-states";
+import {
+  PARTIALLY_COMPLETED_STATUS,
+  deriveBundleOutcome,
+  reducedBundleFigures,
+} from "@shared/bundle-component-states";
+import {
+  claimComponentCompleted,
+  claimComponentFailed,
+  readBundleComponentStates,
+  type ComponentStateSource,
+} from "./bundle-component-states.service";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
 import { storage } from "../storage";
 
@@ -205,6 +216,28 @@ export type IneligibleReason =
   | "bundle_components_unknown"
   | "bundle_components_incomplete"
   /**
+   * D-34 (ledger `2026-09-16-d32-d35-bundle-components`): every component has an answer, at least
+   * one delivered and at least one NOT — the bundle is PARTIALLY complete, which `completeBooking`
+   * must never turn into `completed` (that word still means EVERY component). The flip this state
+   * takes is `settleBundlePartialCompletion`'s, and it carries the undelivered ids as evidence.
+   */
+  | "bundle_partially_completed"
+  /** D-34: every component answered and NONE delivered — the EXISTING whole-row refund lane's case;
+   *  nothing here flips it, and the reason says so rather than reporting "incomplete" (§13). */
+  | "bundle_components_undelivered"
+  /**
+   * D-32: the write asked for needs a `booking_component_states` ROW and this booking has none —
+   * a LEGACY bundle, read from `booking_details` and unable to hold FAILED. Stated, never filed into
+   * a jsonb key no atomic conditional could later claim; such a bundle keeps the all-or-nothing rule
+   * and the existing refund lane.
+   */
+  | "bundle_component_states_unavailable"
+  /**
+   * D-33/§13: the partial flip's REDUCED figures cannot be derived because a component carries no
+   * snapshotted price. The parent stays `confirmed` for a human — never a guessed share.
+   */
+  | "component_prices_unknown"
+  /**
    * D-6/D-40: the traveler accepted, but this listing's acceptance does NOT complete the booking.
    * Either it takes no acceptance at all, or it is a `hybrid` with a DECLARED artifact, whose
    * acceptance is `records_only` — it records `accepted_at` and revision rows and gates NOTHING
@@ -256,6 +289,10 @@ interface BookingRow {
   completionDeclaredAt: Date | null;
   slotId: string | null;
   bookingDetails: Record<string, any> | null;
+  /** D-35: the three figures the partial settlement's reduced mint is derived FROM (read, never written here). */
+  totalAmount: string | null;
+  platformFee: string | null;
+  providerEarnings: string | null;
 }
 
 interface ServiceRow {
@@ -280,6 +317,9 @@ async function loadBooking(bookingId: string): Promise<BookingRow | null> {
       completionDeclaredAt: serviceBookings.completionDeclaredAt,
       slotId: serviceBookings.slotId,
       bookingDetails: serviceBookings.bookingDetails,
+      totalAmount: serviceBookings.totalAmount,
+      platformFee: serviceBookings.platformFee,
+      providerEarnings: serviceBookings.providerEarnings,
     })
     .from(serviceBookings)
     .where(eq(serviceBookings.id, bookingId));
@@ -646,39 +686,50 @@ export async function resolveCompletionEligibility(
     case "provider_declared":
       return { bookingId, rule, eligible: true, evidence: { declared: true } };
 
-    // ── bundle: "ALL components complete; partial routes to the EXISTING refund lane, never a
-    // partial payout." The component list is the snapshot locked into bookingDetails at purchase
-    // (payments.routes.ts §17); per-component completions are recorded on the same jsonb by
-    // `recordBundleComponentCompletion` below — no new table, no new column. ──────────────────
+    // ── bundle (D-32..D-35, ledger `2026-09-16-d32-d35-bundle-components`): the component states are
+    // read ROWS FIRST (`booking_component_states`, migration 306) and the legacy `componentCompletions`
+    // jsonb SECOND, and the evidence NAMES which source answered (`componentStateSource`, §13). The
+    // parent's outcome is the ONE derivation `deriveBundleOutcome` (§18 rule 1 — brief §2 rule 1: the
+    // parent state is DERIVED, never stored twice), and `completed` still means EVERY component
+    // (brief §2 rule 2). A partially complete bundle is a NEW answer beside the old ones — never a
+    // looser version of them — and it is refused HERE so `completeBooking` can never mint the full
+    // figures for it; `settleBundlePartialCompletion` owns that flip and its reduced mint. ────────
     case "bundle_components": {
-      const snapshot = Array.isArray(details.bundleComponents) ? details.bundleComponents : null;
-      const componentIds = snapshot
-        ? snapshot.map((c: any) => String(c?.id ?? "")).filter(Boolean)
-        : await db
-            .select({ id: bundleComponents.componentServiceId })
-            .from(bundleComponents)
-            .where(eq(bundleComponents.bundleServiceId, service.id))
-            .orderBy(asc(bundleComponents.position))
-            .then((rows) => rows.map((r) => r.id));
-      if (componentIds.length === 0) {
+      const states = await readBundleComponentStates({
+        bookingId: booking.id,
+        bookingDetails: details,
+        bundleServiceId: service.id,
+      });
+      if (states.components.length === 0) {
         // §13: a bundle whose contents we cannot enumerate is never "all complete" by default.
-        return no(bookingId, rule, "bundle_components_unknown");
+        return no(bookingId, rule, "bundle_components_unknown", { componentStateSource: states.source });
       }
-      const done = (details.componentCompletions ?? {}) as Record<string, unknown>;
-      const missing = componentIds.filter((id: string) => !done[id]);
+      const outcome = deriveBundleOutcome(states.components);
       const evidence = {
-        componentIds,
-        completedComponentIds: componentIds.filter((id: string) => !!done[id]),
-        missingComponentIds: missing,
+        componentStateSource: states.source,
+        componentIds: states.components.map((c) => c.componentServiceId),
+        completedComponentIds: outcome.completedComponentIds,
+        missingComponentIds: outcome.pendingComponentIds,
+        // NAMED, not counted (brief §4): the undelivered components carry the name they were bought under.
+        undeliveredComponents: states.components
+          .filter((c) => outcome.undeliveredComponentIds.includes(c.componentServiceId))
+          .map((c) => ({ id: c.componentServiceId, serviceName: c.serviceName, status: c.status })),
+        outcome: outcome.outcome,
       };
-      if (missing.length > 0) {
-        // PARTIAL COMPLETION NEVER PAYS OUT. There is no partial release path here by design —
-        // a bundle the provider only half-delivered goes to the EXISTING refund lane
-        // (admin refund / owner-cancel-with-refund), which this module deliberately does not
-        // duplicate.
-        return no(bookingId, rule, "bundle_components_incomplete", evidence);
+      switch (outcome.outcome) {
+        case "completed":
+          return { bookingId, rule, eligible: true, evidence };
+        case "incomplete":
+          // At least one component is still pending: the parent stays `confirmed`, exactly as before.
+          return no(bookingId, rule, "bundle_components_incomplete", evidence);
+        case "partially_completed":
+          return no(bookingId, rule, "bundle_partially_completed", evidence);
+        case "all_undelivered":
+          // Nothing was delivered: the EXISTING whole-row refund rail's case, untouched by this lane.
+          return no(bookingId, rule, "bundle_components_undelivered", evidence);
+        case "no_components":
+          return no(bookingId, rule, "bundle_components_unknown", evidence);
       }
-      return { bookingId, rule, eligible: true, evidence };
     }
   }
 }
@@ -983,17 +1034,35 @@ export async function findDeclaredWindowCandidates(now: Date = new Date(), limit
 }
 
 /**
- * Record ONE bundle component as delivered, then complete the booking if that was the last one.
- * State lives on the existing `bookingDetails` jsonb — no new table, no new column (build charter
- * §5: prefer existing state). The write is a jsonb merge keyed by component id, so a repeat
- * declaration is idempotent (same key, same-or-later timestamp, still one component).
+ * Record ONE bundle component as delivered, then complete — or PARTIALLY complete — the booking if
+ * that was the last answer outstanding.
+ *
+ * D-32 (ledger `2026-09-16-d32-d35-bundle-components`): a booking born with `booking_component_states`
+ * rows is written THERE — `pending → completed` as an atomic conditional (`claimComponentCompleted`:
+ * the component must still be pending AND the parent still `confirmed`, one statement, so a double
+ * call is ONE flip and the second caller is told `alreadyRecorded`). A LEGACY booking (no rows) keeps
+ * the jsonb merge it always had — the old map is still read, never rewritten into rows (no backfill).
+ *
+ * After the write, the ONE derivation decides the parent: all complete ⇒ the SAME shared
+ * `completeBooking`; some delivered and the rest failed ⇒ `settleBundlePartialCompletion` (D-34/D-35);
+ * anything still pending ⇒ a successful record and an explicitly uncompleted booking.
  */
 export async function recordBundleComponentCompletion(input: {
   bookingId: string;
   componentServiceId: string;
   actor: CompletionActor;
   now?: Date;
-}): Promise<CompleteBookingResult & { recorded: boolean; unknownComponent?: boolean }> {
+}): Promise<
+  CompleteBookingResult & {
+    recorded: boolean;
+    unknownComponent?: boolean;
+    /** D-32: this call found the component already out of `pending` — a retry, not a second delivery. */
+    alreadyRecorded?: boolean;
+    /** D-34: the parent moved to `partially_completed` (and minted the reduced figures) on this call. */
+    partiallyCompleted?: boolean;
+    componentStateSource?: ComponentStateSource;
+  }
+> {
   const now = input.now ?? new Date();
   const pre = await resolveCompletionEligibility(input.bookingId, now);
   if (pre.rule !== "bundle_components") {
@@ -1023,25 +1092,345 @@ export async function recordBundleComponentCompletion(input: {
       evidence: pre.evidence,
     };
   }
+  const source = (pre.evidence as any).componentStateSource as ComponentStateSource;
 
+  let alreadyRecorded = false;
+  if (source === "rows") {
+    const claim = await claimComponentCompleted({
+      bookingId: input.bookingId,
+      componentServiceId: input.componentServiceId,
+      parentFromStatuses: COMPLETION_ALLOWED_FROM_STATUSES,
+      now,
+    });
+    if (!claim.claimed) {
+      if (claim.currentStatus !== "completed") {
+        // The component is `failed` (or the parent left `confirmed`): a delivery cannot be recorded
+        // over a failure, and the caller is told which state refused it rather than a bare false.
+        return {
+          recorded: false,
+          completed: false,
+          bookingId: input.bookingId,
+          rule: pre.rule,
+          reason: pre.reason ?? "bundle_components_incomplete",
+          evidence: { ...pre.evidence, componentServiceId: input.componentServiceId, componentStatus: claim.currentStatus },
+          componentStateSource: source,
+        };
+      }
+      alreadyRecorded = true; // idempotent: same component, already delivered, ONE row flip ever
+    }
+  } else {
+    // LEGACY (no rows): the jsonb merge, byte-for-byte the pre-306 write. A repeat declaration is
+    // idempotent (same key, same-or-later timestamp, still one component).
+    await db
+      .update(serviceBookings)
+      .set({
+        bookingDetails: sql`
+          jsonb_set(
+            COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb),
+            '{componentCompletions}',
+            COALESCE(${serviceBookings.bookingDetails} -> 'componentCompletions', '{}'::jsonb)
+              || ${JSON.stringify({ [input.componentServiceId]: now.toISOString() })}::jsonb,
+            true
+          )`,
+        updatedAt: now,
+      })
+      .where(and(eq(serviceBookings.id, input.bookingId), inArray(serviceBookings.status, COMPLETION_ALLOWED_FROM_STATUSES)));
+  }
+
+  // All components in? Then — and only then — the SAME shared completion event fires. Some in and the
+  // rest failed? Then the partial settlement (D-34/D-35). `completeBooking` re-derives, so a partial
+  // bundle is refused there (`bundle_partially_completed`) and handed to the settle path here.
+  const result = await completeBooking({ bookingId: input.bookingId, actor: input.actor, now });
+  if (!result.completed && result.reason === "bundle_partially_completed") {
+    const settled = await settleBundlePartialCompletion({ bookingId: input.bookingId, actor: input.actor, now });
+    return {
+      ...result,
+      reason: settled.settled ? undefined : settled.reason,
+      evidence: settled.evidence,
+      recorded: true,
+      alreadyRecorded,
+      partiallyCompleted: settled.settled,
+      componentStateSource: source,
+    };
+  }
+  // `partiallyCompleted: false` is STATED, not omitted: a caller that reads it must get the truth on
+  // every branch, not only on the one that flipped (§13 — the same reason the declare rail states
+  // `completed: false`).
+  return { ...result, recorded: true, alreadyRecorded, partiallyCompleted: false, componentStateSource: source };
+}
+
+export interface BundleComponentFailureResult {
+  recorded: boolean;
+  bookingId: string;
+  rule: CompletionRule | null;
+  reason?: IneligibleReason | "lost_race";
+  evidence: Record<string, unknown>;
+  unknownComponent?: boolean;
+  /** This call found the component already out of `pending` — a retry, not a second failure. */
+  alreadyRecorded?: boolean;
+  /** The parent moved to `partially_completed` (and minted the reduced figures) on this call. */
+  partiallyCompleted: boolean;
+  /**
+   * `all_undelivered`: every component has now failed. Nothing flips — the EXISTING whole-row refund
+   * rail owns that case (brief §2) — and the caller is told so rather than left to infer it.
+   */
+  parentOutcome?: string;
+  componentStateSource?: ComponentStateSource;
+}
+
+/**
+ * D-32/D-34 — record ONE bundle component as FAILED: the seller's statement that this component
+ * will NOT be delivered. `pending → failed` as an atomic conditional (`claimComponentFailed` — the
+ * component must still be pending AND the parent still `confirmed`; a double call is ONE flip). Then
+ * the ONE derivation decides the parent: the rest delivered ⇒ `settleBundlePartialCompletion`;
+ * nothing delivered ⇒ `all_undelivered`, nothing flips; some still pending ⇒ recorded, waiting.
+ *
+ * A LEGACY bundle (no rows) is REFUSED with `bundle_component_states_unavailable`: the jsonb never
+ * held FAILED and cannot be claimed atomically, so such a bundle keeps the all-or-nothing rule and
+ * the existing refund lane (§13 — stated, never approximated).
+ *
+ * `reason` is the seller's words, already bounded by the route's `.strict()` allowlist; NULL = none
+ * given. No amount, rate or status arrives from the caller (§14/§19): the status written is this
+ * function's, the money is the mint's, both server-side.
+ */
+export async function recordBundleComponentFailure(input: {
+  bookingId: string;
+  componentServiceId: string;
+  actor: CompletionActor;
+  reason?: string | null;
+  now?: Date;
+}): Promise<BundleComponentFailureResult> {
+  const now = input.now ?? new Date();
+  const pre = await resolveCompletionEligibility(input.bookingId, now);
+  if (pre.rule !== "bundle_components") {
+    return {
+      recorded: false,
+      partiallyCompleted: false,
+      bookingId: input.bookingId,
+      rule: pre.rule,
+      reason: pre.reason ?? "rule_not_owner_declared",
+      evidence: pre.evidence,
+    };
+  }
+  const source = (pre.evidence as any).componentStateSource as ComponentStateSource | undefined;
+  if (source !== "rows") {
+    return {
+      recorded: false,
+      partiallyCompleted: false,
+      bookingId: input.bookingId,
+      rule: pre.rule,
+      reason: "bundle_component_states_unavailable",
+      evidence: pre.evidence,
+      componentStateSource: source,
+    };
+  }
+  const known = Array.isArray((pre.evidence as any).componentIds)
+    ? ((pre.evidence as any).componentIds as string[])
+    : [];
+  if (!known.includes(input.componentServiceId)) {
+    return {
+      recorded: false,
+      unknownComponent: true,
+      partiallyCompleted: false,
+      bookingId: input.bookingId,
+      rule: pre.rule,
+      reason: "bundle_components_incomplete",
+      evidence: pre.evidence,
+      componentStateSource: source,
+    };
+  }
+
+  const claim = await claimComponentFailed({
+    bookingId: input.bookingId,
+    componentServiceId: input.componentServiceId,
+    parentFromStatuses: COMPLETION_ALLOWED_FROM_STATUSES,
+    reason: typeof input.reason === "string" && input.reason.trim().length > 0 ? input.reason.trim() : null,
+    now,
+  });
+  let alreadyRecorded = false;
+  if (!claim.claimed) {
+    if (claim.currentStatus !== "failed") {
+      // Already delivered (or the parent left `confirmed`): a failure cannot be declared over a
+      // delivery. The caller learns which state refused it.
+      return {
+        recorded: false,
+        partiallyCompleted: false,
+        bookingId: input.bookingId,
+        rule: pre.rule,
+        reason: pre.reason ?? "bundle_components_incomplete",
+        evidence: { ...pre.evidence, componentServiceId: input.componentServiceId, componentStatus: claim.currentStatus },
+        componentStateSource: source,
+      };
+    }
+    alreadyRecorded = true;
+  }
+
+  // Re-derive AFTER the write — the resolver is the one authority on what the components now say.
+  const post = await resolveCompletionEligibility(input.bookingId, now);
+  const outcome = (post.evidence as any).outcome as string | undefined;
+  if (post.reason === "bundle_partially_completed") {
+    const settled = await settleBundlePartialCompletion({ bookingId: input.bookingId, actor: input.actor, now });
+    return {
+      recorded: true,
+      alreadyRecorded,
+      partiallyCompleted: settled.settled,
+      bookingId: input.bookingId,
+      rule: pre.rule,
+      reason: settled.settled ? undefined : settled.reason,
+      evidence: settled.evidence,
+      parentOutcome: outcome,
+      componentStateSource: source,
+    };
+  }
+  return {
+    recorded: true,
+    alreadyRecorded,
+    partiallyCompleted: false,
+    bookingId: input.bookingId,
+    rule: pre.rule,
+    reason: post.reason,
+    evidence: post.evidence,
+    parentOutcome: outcome,
+    componentStateSource: source,
+  };
+}
+
+export interface SettleBundlePartialResult {
+  settled: boolean;
+  bookingId: string;
+  reason?: IneligibleReason | "lost_race";
+  evidence: Record<string, unknown>;
+}
+
+/**
+ * D-34/D-35 — THE PARTIAL SETTLEMENT: `confirmed → partially_completed`, the ONE flip a bundle takes
+ * when every component has an answer, at least one was delivered and at least one was not. It is the
+ * money event for the delivered share: `storage.updateServiceBookingStatus` mints ONCE, inside the
+ * flip's transaction, over the REDUCED figures the mint derives from the component rows
+ * (`reducedBundleFigures` — the row's own three figures scaled by the delivered share of the
+ * snapshotted prices; never a second mint, never a per-component mint, never a rate literal).
+ *
+ * 1. Re-derive server-side (the caller's opinion is never trusted): the outcome must be
+ *    `partially_completed` and the reduced figures must be DERIVABLE — a component with no
+ *    snapshotted price refuses the flip with `component_prices_unknown` and leaves the parent
+ *    `confirmed` for a human (§13). The mint re-checks and throws inside the transaction, so the
+ *    flip can never land without its reduced mint.
+ * 2. Flip with `PARTIAL_COMPLETION_FROM_STATUSES` (§15/§18b — the transition is the guard; a
+ *    concurrent settle is ONE flip, the loser sees `lost_race`).
+ * 3. Provenance AFTER the flip: `bookingDetails.completion` with `partial: true`, the undelivered
+ *    components NAMED (brief §4 — never a count), the reduced figures, and a
+ *    `booking_partially_completed` diary row. `completed_at` is NOT stamped: the row is not completed.
+ *
+ * The component REFUND — the undelivered components' pro-rata share of what the traveler was charged
+ * — is NOT issued here. The existing `refundServiceBooking` rail flips the WHOLE row to `refunded`,
+ * which would be a lie about the delivered components (brief §1), so it cannot express this refund;
+ * that rail is the brief's lane 4 and is recorded, not built, in this lane's report. The amount it
+ * will owe is already on the row (`completion.reduced.deductedAmount`) and in the child rows' prices.
+ */
+export async function settleBundlePartialCompletion(input: {
+  bookingId: string;
+  actor: CompletionActor;
+  now?: Date;
+}): Promise<SettleBundlePartialResult> {
+  const now = input.now ?? new Date();
+  const eligibility = await resolveCompletionEligibility(input.bookingId, now);
+  if (eligibility.reason !== "bundle_partially_completed") {
+    return {
+      settled: false,
+      bookingId: input.bookingId,
+      reason: eligibility.reason ?? "bundle_components_incomplete",
+      evidence: eligibility.evidence,
+    };
+  }
+  const booking = await loadBooking(input.bookingId);
+  if (!booking) return { settled: false, bookingId: input.bookingId, reason: "booking_not_found", evidence: {} };
+  const states = await readBundleComponentStates({
+    bookingId: input.bookingId,
+    bookingDetails: booking.bookingDetails as Record<string, unknown> | null,
+    bundleServiceId: booking.serviceId ?? null,
+  });
+  if (states.source !== "rows") {
+    return {
+      settled: false,
+      bookingId: input.bookingId,
+      reason: "bundle_component_states_unavailable",
+      evidence: eligibility.evidence,
+    };
+  }
+  const reduced = reducedBundleFigures({
+    totalAmount: booking.totalAmount,
+    platformFee: booking.platformFee,
+    providerEarnings: booking.providerEarnings,
+    components: states.components,
+  });
+  if (!reduced.ok) {
+    return {
+      settled: false,
+      bookingId: input.bookingId,
+      reason: "component_prices_unknown",
+      evidence: { ...eligibility.evidence, reducedFiguresRefused: reduced.reason },
+    };
+  }
+
+  const updated = await storage.updateServiceBookingStatus(
+    input.bookingId,
+    PARTIALLY_COMPLETED_STATUS,
+    `d34_partial:${input.actor}`,
+    PARTIAL_COMPLETION_FROM_STATUSES,
+  );
+  if (!updated) {
+    return { settled: false, bookingId: input.bookingId, reason: "lost_race", evidence: eligibility.evidence };
+  }
+
+  const evidence = {
+    ...eligibility.evidence,
+    reduced: {
+      keptFraction: reduced.keptFraction,
+      grossAmount: reduced.grossAmount,
+      platformFee: reduced.platformFee,
+      providerEarnings: reduced.providerEarnings,
+      deductedAmount: reduced.deductedAmount,
+      undeliveredSnapshotCents: reduced.undeliveredSnapshotCents,
+      totalSnapshotCents: reduced.totalSnapshotCents,
+    },
+  };
   await db
     .update(serviceBookings)
     .set({
-      bookingDetails: sql`
-        jsonb_set(
-          COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb),
-          '{componentCompletions}',
-          COALESCE(${serviceBookings.bookingDetails} -> 'componentCompletions', '{}'::jsonb)
-            || ${JSON.stringify({ [input.componentServiceId]: now.toISOString() })}::jsonb,
-          true
-        )`,
+      bookingDetails: sql`COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) || ${JSON.stringify({
+        completion: {
+          rule: "bundle_components",
+          actor: input.actor,
+          at: now.toISOString(),
+          partial: true,
+          outcome: PARTIALLY_COMPLETED_STATUS,
+          failedComponentIds: reduced.undeliveredComponentIds,
+          evidence,
+        },
+      })}::jsonb`,
       updatedAt: now,
     })
-    .where(and(eq(serviceBookings.id, input.bookingId), inArray(serviceBookings.status, COMPLETION_ALLOWED_FROM_STATUSES)));
+    .where(eq(serviceBookings.id, input.bookingId));
 
-  // All components in? Then — and only then — the SAME shared completion event fires.
-  const result = await completeBooking({ bookingId: input.bookingId, actor: input.actor, now });
-  return { ...result, recorded: true };
+  if (updated.tripId) {
+    try {
+      await logItemTransition(db, {
+        tripId: updated.tripId,
+        itemId:
+          typeof (updated.bookingDetails as any)?.itineraryItemId === "string"
+            ? ((updated.bookingDetails as any).itineraryItemId as string)
+            : null,
+        eventType: "booking_partially_completed",
+        fromStatus: "confirmed",
+        toStatus: PARTIALLY_COMPLETED_STATUS,
+        actorType: DIARY_ACTOR[input.actor],
+      });
+    } catch (err) {
+      console.error("[booking-completion] diary row failed after a successful partial settlement:", err);
+    }
+  }
+
+  return { settled: true, bookingId: input.bookingId, evidence };
 }
 
 /**

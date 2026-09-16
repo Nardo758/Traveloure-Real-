@@ -133,7 +133,13 @@ export type TransitionEventType =
   // event from `booking_completed` because it completes nothing and mints nothing; the completion
   // that follows at the window's close writes `booking_completed` from `completion_declared`, so
   // the diary shows the declaration and the money event as the two facts they are. 27 chars.
-  | "booking_completion_declared";
+  | "booking_completion_declared"
+  // D-34 (ledger `2026-09-16-d32-d35-bundle-components`): a BUNDLE completing PARTIALLY.
+  // `confirmed → partially_completed` — every component answered, at least one delivered, at least
+  // one not; the parent mints ONCE over the reduced figures (D-35). A separate event from
+  // `booking_completed` because that word still means EVERY component (brief §2 rule 2), and a
+  // diary that used one word for both would hide which bundles paid out in part. 27 chars.
+  | "booking_partially_completed";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */

@@ -140,13 +140,16 @@ const INVARIANTS = [
     severity: "MONEY-INTEGRITY",
     rule:
       "CLAUDE.md §MONEY_MAP §2 service_bookings status machine — a booking that has advanced past " +
-      "payment_pending (confirmed/completed/disputed) is only ever moved there by the Stripe webhook " +
-      "or a verified PI, both of which stamp stripe_payment_intent_id first; a paid-equivalent booking " +
-      "with no PI id means the status advanced without a verifiable charge behind it.",
+      "payment_pending (confirmed/completed/partially_completed/disputed) is only ever moved there by " +
+      "the Stripe webhook or a verified PI, both of which stamp stripe_payment_intent_id first; a " +
+      "paid-equivalent booking with no PI id means the status advanced without a verifiable charge " +
+      "behind it. D-34 (ledger 2026-09-16-d32-d35-bundle-components): partially_completed joins the " +
+      "set — a partially completed bundle is a paid row, and a paid state this SQL does not name is " +
+      "one no money-integrity check can see.",
     sql: `
       SELECT id, status, total_amount, stripe_payment_intent_id
       FROM service_bookings
-      WHERE status IN ('confirmed', 'completed', 'disputed')
+      WHERE status IN ('confirmed', 'completed', 'partially_completed', 'disputed')
         AND (stripe_payment_intent_id IS NULL OR btrim(stripe_payment_intent_id) = '')
       ORDER BY id;
     `,

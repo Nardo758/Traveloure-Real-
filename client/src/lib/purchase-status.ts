@@ -42,6 +42,13 @@ export function readPurchaseStatus(status: string | null | undefined): PurchaseS
       return { kind: "booked", label: "Booked · your expert says this is done" };
     case "completed":
       return { kind: "booked", label: "Booked · completed" };
+    // D-34 (ledger `2026-09-16-d32-d35-bundle-components`): a bundle with at least one component
+    // delivered and at least one NOT. Never folded into "completed" (that word still means EVERY
+    // component) and never into "refunded" (a lie about the delivered ones). WHICH component failed
+    // is on the row (`bookingDetails.completion.failedComponentIds`), not in this label — the label
+    // is one spelling for one state.
+    case "partially_completed":
+      return { kind: "booked", label: "Booked · partially completed" };
     default:
       return { kind: "other", label: raw.replace(/_/g, " ") };
   }

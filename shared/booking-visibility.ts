@@ -151,7 +151,15 @@ export const OPEN_BOOKING_STATUSES = [
  * `failed` (a §15b claim whose Stripe attempt never succeeded — never a real booking), so a
  * listing whose only rows are those remains genuinely deletable.
  */
-export const TRANSACTED_BOOKING_STATUSES = ["completed", "refunded"] as const;
+//
+// D-34 (ledger `2026-09-16-d32-d35-bundle-components`): `partially_completed` JOINS this set. A
+// partially completed bundle has MINTED (held earnings over the delivered components' share) and
+// carries the record a component refund and the traveler's receipt point at — deleting the listing
+// would cascade that money history away. It is deliberately NOT added to `EARNING_BOOKING_STATUSES`
+// here: the console's earnings surfaces sum the row's FULL `total_amount`, and a partially completed
+// row's minted figures are REDUCED (D-35), so summing the full column would overstate the earner's
+// money; those surfaces read the earning ROWS for that state, which carry the reduced amounts.
+export const TRANSACTED_BOOKING_STATUSES = ["completed", "refunded", "partially_completed"] as const;
 
 export type BookingStatusLike = string | null | undefined;
 

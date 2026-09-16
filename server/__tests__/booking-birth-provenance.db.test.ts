@@ -696,6 +696,10 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
       "completion",
       "itineraryItemId",
       "noItemReason",
+      // D-32/D-33 (ledger `2026-09-16-d32-d35-bundle-components`): the bundle snapshot (with its
+      // server-derived component prices) and the legacy per-component completion map.
+      "bundleComponents",
+      "componentCompletions",
     ],
     "the server-authored key family — see shared/booking-details-admission.ts for each one's reader",
   );
