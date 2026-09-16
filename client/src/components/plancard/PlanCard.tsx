@@ -952,6 +952,13 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   // plancard DTO (SPREAD only when captured). `null` here means NEVER CAPTURED, and every reader
   // below (header zone line, Up-next countdown, row states) then stays silent about the zone.
   const planTimezone: string | null = plancardData?.trip?.timezone ?? null;
+  // Migration 302 / ledger `2026-09-15-d22-dates-confirmed` (punchlist D-22): did anybody CHOOSE
+  // this plan's window? Read off the DTO's own boolean, which is the server having run the ONE
+  // predicate once (§18 rule 1). `false` withholds the Up-next countdown below, exactly as a NULL
+  // zone does — an instant needs a real day as much as a real zone. Defaulting to `true` for a
+  // payload that predates the field keeps existing cards unchanged rather than silently stripping
+  // the chip from every confirmed plan mid-deploy.
+  const planDatesConfirmed: boolean = (plancardData?.trip as any)?.datesConfirmed ?? true;
   // The ONE advisor-name reading (`slipAdvisorName`, §18 rule 1) off the owner-gated advisor row
   // this component already fetches; null ⇒ no advisor line on the header (§13).
   const advisorName = slipAdvisorName(advisor);
@@ -1170,7 +1177,15 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               {/* CLAUDE.md §18 item 2 — "Up Next" hero, mobile-only (component self-hides
                   at sm+ and also renders nothing when the selected day isn't
                   live/upcoming — §13). */}
-              {!embedded && <UpNextHero tripId={trip.id} day={day} legs={dayLegs} timezone={planTimezone} />}
+              {!embedded && (
+                <UpNextHero
+                  tripId={trip.id}
+                  day={day}
+                  legs={dayLegs}
+                  timezone={planTimezone}
+                  datesConfirmed={planDatesConfirmed}
+                />
+              )}
 
               <SectionTabs
                 tripId={trip.id}

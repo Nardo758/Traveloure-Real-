@@ -178,6 +178,7 @@ import { renderTripPdf } from "../services/trip-pdf.render";
 // the wall-clock/zone decision for `GET /api/my-itinerary/:id/calendar`; the trip-keyed route
 // below is a second CALLER of it, never a second exporter.
 import { generateIcsContent } from "../utils/ics-calendar";
+import { planDatesAreConfirmed } from "@shared/plan-dates";
 import { resolveTripTimezone } from "../services/trip-timezone";
 // Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): see routes.ts's import of
 // the same module for the full rationale. Advisor-only gate — never owner, never author.
@@ -518,7 +519,14 @@ router.post(api.trips.create.path, async (req, res) => {
       }
       
       const userId = getUserId(req)!;
-      const trip = await storage.createTrip({ ...sanitizedInput, userId });
+      // MINT SITE 2 of 10 (migration 302, ledger `2026-09-15-d22-dates-confirmed`, punchlist
+      // D-22). This is the SHADOWED twin of the live `POST /api/trips` in the `server/routes.ts`
+      // monolith (see the port-forward warning above — the monolith registers first). It carries
+      // the same claim for the same reason: `insertTripSchema` requires the dates and the client's
+      // one mint door refuses rather than defaulting them. Kept in step with the live copy
+      // deliberately — a resurrected twin that silently stopped stamping would re-open the exact
+      // §13 gap this column closes.
+      const trip = await storage.createTrip({ ...sanitizedInput, userId }, { datesChosenByTraveler: true });
 
       // If guest, ensure they have a shareToken for access
       if (!userId && !trip.shareToken) {
@@ -1411,6 +1419,13 @@ router.get("/api/trips/:tripId/calendar", isAuthenticated, async (req, res) => {
           title: trip.title ?? null,
           destination: trip.destination ?? null,
           timezone: planTimezone,
+          // Migration 302 (ledger `2026-09-15-d22-dates-confirmed`, punchlist D-22). `start_date`
+          // is NOT NULL, so this export ALWAYS had a day to count from — including for a
+          // ready-made clone whose window is the fulfilment job's `new Date()`. Handing the fact
+          // over lets the ONE zone decision inside the generator fall back to floating rather than
+          // stamping a confident `…Z` instant onto a date nobody picked (§13). ONE predicate,
+          // `planDatesAreConfirmed` (`shared/plan-dates.ts`), shared with every other reader.
+          datesConfirmed: planDatesAreConfirmed((trip as any).datesConfirmedAt),
         },
         items.map((item: any) => ({
           id: item.id,
