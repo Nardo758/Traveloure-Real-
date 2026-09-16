@@ -126,8 +126,9 @@ export const DISPUTABLE_FROM_STATUSES: readonly string[] = [
  * lists and nothing else. They say nothing about WHO may ask (the accept and revision rails gate on
  * `traveler_id` from the session, the delivery rail on `provider_id` — §14), nothing about WHETHER
  * the listing takes acceptance at all (`acceptanceModeFor` in `shared/acceptance-window.ts` answers
- * that, and D-40's `records_only` hybrid arm moves NO status), and nothing about the escalation to
- * admin review, which is D-27's lane and has no list here because this lane writes none of it.
+ * that, and D-40's `records_only` hybrid arm moves NO status). D-27's two scheduler transitions DO have
+ * lists here now — `ACCEPTANCE_PROMPT_FROM_STATUSES` and `ACCEPTANCE_ESCALATION_FROM_STATUSES`,
+ * below — added by ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`.
  */
 
 /**
@@ -157,17 +158,61 @@ export const ARTIFACT_DELIVERY_FROM_STATUSES: readonly string[] = [
 ];
 
 /**
- * RE-OPEN THE ACCEPTANCE WINDOW. The delivery rail's ONE status flip:
- * `revision_requested` -> `awaiting_acceptance`.
+ * RE-OPEN (OR OPEN) THE ACCEPTANCE WINDOW. The delivery rail's ONE status flip, to
+ * `awaiting_acceptance`.
  *
- * `confirmed` is DELIBERATELY ABSENT, and it is the sequencing decision this lane is most likely to
- * be read wrong on. Moving `confirmed` -> `awaiting_acceptance` on first delivery is D-27's lane
- * (the `artifact_timer` amendment: the job's artifact arm targets `awaiting_acceptance`). Doing it
- * here would take every artifact booking OFF the only completion path that exists today — the
- * timer's candidate query keys on `confirmed` — and strand it in a state nothing can leave until
- * D-27 ships. So first delivery stamps the delivery facts and leaves the status alone.
+ * `confirmed` JOINED THIS LIST WITH D-27 (ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`),
+ * and the reason it was absent is worth keeping written down because it is the sequencing this lane
+ * closes. Until D-27, `confirmed` was the ONLY state the artifact completion path could read: the
+ * nightly timer's candidate query keys on it, and `artifact_timer` was in
+ * `TIMER_DRIVEN_COMPLETION_RULES`. Moving a booking off `confirmed` on first delivery would have
+ * stranded it in a state nothing could leave. D-27 retires that timer as a completion rule, so
+ * `confirmed` is no longer a completion state for an artifact — it is the state BEFORE the traveler
+ * has been asked — and a provider's first per-booking delivery is exactly the moment to ask.
+ *
+ * THE SAME TRANSITION HAS TWO CALLERS AND ONE MEANING. The provider's deliver rail makes it from an
+ * explicit per-booking delivery; the scheduler's acceptance-prompt arm makes it from the derived
+ * listing clock for a booking whose provider delivered through the listing. Both consume this list,
+ * both are atomic conditionals, and neither invents a `delivered_at` the other would disagree with
+ * (D-26: the listing clock is never written back).
  */
-export const ARTIFACT_REDELIVERY_REOPEN_FROM_STATUSES: readonly string[] = ["revision_requested"];
+export const ARTIFACT_REDELIVERY_REOPEN_FROM_STATUSES: readonly string[] = [
+  "confirmed",
+  "revision_requested",
+];
+
+/*
+ * ── D-27 (punchlist D-27, ruled A; ledger `2026-09-15-d27-artifact-timer-acceptance-prompt`) ─────
+ * THE SCHEDULER'S TWO ARTIFACT TRANSITIONS. `artifact_timer` retires as a COMPLETION rule and
+ * becomes an ACCEPTANCE-PROMPT rule, so the nightly job stops flipping artifacts to `completed` and
+ * instead (a) ASKS and (b) ESCALATES. Both lists live here for this module's own reason: a second
+ * rail re-deciding "which statuses may become X" is the derivation-drift class §18 rule 1 names.
+ */
+
+/**
+ * (a) ASK. `confirmed -> awaiting_acceptance`, once a delivery instant EXISTS. One entry, and the
+ * narrowness is the point: a booking that has already been asked is not asked again (the transition
+ * itself is the guard, §15 — a second pass matches zero rows), and no terminal or provisional state
+ * is ever prompted.
+ */
+export const ACCEPTANCE_PROMPT_FROM_STATUSES: readonly string[] = ["confirmed"];
+
+/**
+ * (b) ESCALATE. `awaiting_acceptance -> disputed`, once the derived acceptance deadline has passed.
+ *
+ * THE TARGET IS THE EXISTING ADMIN DISPUTE QUEUE (`GET /api/admin/disputes`, `WHERE status =
+ * 'disputed'`) — never a second queue and never a new `admin_review` status. A second queue would
+ * be a second place a human has to look for work that has the same shape: money in escrow, nothing
+ * minted, and a decision only a person can make.
+ *
+ * `revision_requested` is DELIBERATELY ABSENT. A booking waiting on the SELLER is not a booking
+ * nobody answered — the traveler answered, and asked for a change. Escalating it would file the
+ * seller's silence under the traveler's, and the two are different facts with different remedies.
+ * Whether an ignored revision request escalates on its own clock is NOT ruled and is not invented
+ * here; the traveler's own dispute rail already covers it (`DISPUTABLE_FROM_STATUSES` includes
+ * `revision_requested`).
+ */
+export const ACCEPTANCE_ESCALATION_FROM_STATUSES: readonly string[] = ["awaiting_acceptance"];
 
 /**
  * THE D-40 HYBRID ARM'S WRITE STATES. A `records_only` acceptance moves NO status — the booking

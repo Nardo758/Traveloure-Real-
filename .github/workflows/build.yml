@@ -1610,7 +1610,7 @@ jobs:
         run: npx tsx --test --test-force-exit client/src/lib/__tests__/plan-dates.test.ts
 
   acceptance-rails:
-    name: acceptance-rails (D-24..D-26 + D-40; ledger 2026-09-15-d24-d26-acceptance-columns)
+    name: acceptance-rails (D-24..D-27 + D-40; ledgers 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -1648,9 +1648,17 @@ jobs:
       # ONE completion, ONE accepted_at and ONE earning set — a check-then-update lets both through.
       # R3 proves the allowance counts down from the LISTING's own revisions_included and that a
       # refusal STATES the number without becoming a dispute. R7 is D-40's load-bearing half: a
-      # hybrid's declared artifact is accepted and completion/the mint do not move. R9 pins the
-      # sequenced gap — `artifact_timer` is D-27's lane and is untouched here.
-      - name: The accept / revision / deliver rails (R1-R10)
+      # hybrid's declared artifact is accepted and completion/the mint do not move.
+      #
+      # D-27 (ledger 2026-09-15-d27-artifact-timer-acceptance-prompt) RE-PINNED R9 and added
+      # R11-R19. R9 used to pin the sequenced gap ("artifact_timer is untouched"); it now pins the
+      # retirement itself, so a re-added artifact_timer fails here rather than silently restoring
+      # the silent timeout D-6 forbids. R13 is the negative that fails on the pre-D-27 head: the
+      # whole nightly job may never complete an artifact, however old. R12 pins D-26's rule that a
+      # DERIVED listing-clock instant is never written back to delivered_at, and R18 pins that the
+      # payment gate lives on the ASK (which opens the rail that mints) and deliberately not on the
+      # escalation.
+      - name: The accept / revision / deliver / escalation rails (R1-R19)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/acceptance-rails.db.test.ts
       # The PURE layer beside it: the ONE derivation of the mode, the derived deadline, the allowance
       # arithmetic and the per-booking file fallback. No DB and no server — wired in a job that runs

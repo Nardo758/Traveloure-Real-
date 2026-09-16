@@ -647,6 +647,19 @@ router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) 
  * legacy `bookings` table, so escrow disputes never appeared here and admins had no way to see the
  * queue they were meant to resolve. The dispute reason is surfaced from booking_metadata (where the
  * dispute endpoint persists it, since service_bookings has no dispute_reason column).
+ *
+ * D-27: this queue is ALSO where an unanswered artifact acceptance window lands
+ * (`awaiting_acceptance -> disputed`, `booking_metadata.systemDisputeReason =
+ * 'acceptance_window_elapsed'`). It is the EXISTING queue by ruling — never a second one and never
+ * a new `admin_review` status — and the two reasons are surfaced as SEPARATE fields so
+ * "window elapsed, no one answered" renders distinctly from a traveler-raised dispute (brief §6).
+ *
+ * WHY TWO FIELDS AND NOT ONE. `dispute_reason` holds a TRAVELER'S OWN WORDS. The escalation's
+ * reason is nobody's words — it is the platform recording that a window closed unanswered — so
+ * writing it into the same field would attribute a claim to a traveler who never made one (§13).
+ * A surface reading only `dispute_reason` would render an escalation as a dispute with no reason
+ * at all; reading only the system field would lose the traveler's. They are told apart by which
+ * one is set. Reader-side exposure only: this lane ships no UI.
  */
 router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
@@ -659,6 +672,8 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
         sb.id,
         sb.status,
         sb.booking_metadata->>'disputeReason' AS dispute_reason,
+        -- D-27: the SYSTEM reason, a DIFFERENT fact from the line above (see this route doc).
+        sb.booking_metadata->>'systemDisputeReason' AS system_dispute_reason,
         sb.stripe_payment_intent_id,
         sb.total_amount,
         sb.traveler_id AS user_id,
