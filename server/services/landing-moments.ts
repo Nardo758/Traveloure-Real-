@@ -252,13 +252,13 @@ const REPRESENTATIVE_PHOTOS: Record<
     sourceUrl: "https://www.pexels.com/photo/silhouettes-of-bride-and-groom-hugging-at-sunset-5026140/",
   },
   proposal: {
-    url: "/images/moments/kyoto-proposal.jpg",
-    place: "Pontocho Alley, Kyoto",
+    url: "/images/moments/proposal-after-dark.jpg",
+    place: "A proposal after dark",
     source: "representative",
     handle: null,
-    credit: "Sergiy Galyonkin",
-    license: "CC BY-SA 2.0",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Friday_evening_in_Pontocho_Alley,_Kyoto_(52270424607).jpg",
+    credit: "Elist Nguyen",
+    license: "Unsplash License",
+    sourceUrl: "https://unsplash.com/photos/man-proposes-to-woman-at-night-by-city-lights-IvXYgLLo08A?utm_source=traveloure&utm_medium=referral",
   },
   golf: {
     url: "/images/moments/edinburgh-golf.jpg",

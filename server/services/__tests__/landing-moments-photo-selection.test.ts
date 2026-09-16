@@ -24,6 +24,13 @@ describe("landing Moment photo selection", () => {
     assert.equal(selectMomentPhotos("honeymoon", []).photos[0]?.url, "/images/moments/kyoto-wedding.jpg");
   });
 
+  it("uses the proposal-specific night image for the Proposal Moment", () => {
+    const selected = selectMomentPhotos("proposal", []);
+    assert.equal(selected.photos[0]?.url, "/images/moments/proposal-after-dark.jpg");
+    assert.equal(selected.photos[0]?.place, "A proposal after dark");
+    assert.equal(selected.photos[0]?.credit, "Elist Nguyen");
+  });
+
   it("keeps expert attribution for an unpinned Moment when a city photo exists", () => {
     const selected = selectMomentPhotos("anniversary", [expertPhoto], { handle: "local-expert", reviews: 4 });
     assert.deepEqual(selected.photos, [expertPhoto]);

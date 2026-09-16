@@ -88,10 +88,12 @@ function HeroTilePhoto({
   remoteUrl,
   fallbackUrl,
   referenceTestId,
+  overlay,
 }: {
   remoteUrl?: string;
   fallbackUrl?: string;
   referenceTestId: string;
+  overlay?: string;
 }) {
   const [remoteFailed, setRemoteFailed] = useState(false);
   const [fallbackFailed, setFallbackFailed] = useState(false);
@@ -120,7 +122,7 @@ function HeroTilePhoto({
       />
       <div
         className="absolute inset-0"
-        style={{ background: "linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6))" }}
+        style={{ background: overlay ?? "linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6))" }}
         aria-hidden="true"
       />
       {(usesFallback || (remoteUrl && isReferencePhoto({ url: remoteUrl }))) && (
@@ -162,6 +164,10 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
   const marketFallback = hero?.city
     ? HERO_MARKET_FALLBACKS[hero.city.trim().toLowerCase()]
     : undefined;
+  const anchorFallback =
+    hero?.city?.trim().toLowerCase() === "kyoto"
+      ? HERO_SERVICE_FALLBACK
+      : marketFallback ?? HERO_GEM_FALLBACK;
 
   const tickerParts = hero?.city
     ? [
@@ -293,25 +299,12 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                 }}
                 data-testid="hero-tile-anchor"
               >
-                {anchor.imageUrl && (
-                  <img
-                    src={anchor.imageUrl}
-                    alt=""
-                    aria-hidden="true"
-                    className="absolute inset-0 h-full w-full object-cover"
-                    loading="eager"
-                    onError={(event) => {
-                      event.currentTarget.style.display = "none";
-                    }}
-                  />
-                )}
-                {anchor.imageUrl && (
-                  <div
-                    className="absolute inset-0"
-                    style={{ background: "linear-gradient(180deg,rgba(30,58,95,.12) 0%,rgba(13,33,55,.92) 100%)" }}
-                    aria-hidden="true"
-                  />
-                )}
+                <HeroTilePhoto
+                  remoteUrl={anchor.imageUrl}
+                  fallbackUrl={anchorFallback}
+                  referenceTestId="hero-anchor-reference-photo"
+                  overlay="linear-gradient(180deg,rgba(30,58,95,.12) 0%,rgba(13,33,55,.92) 100%)"
+                />
                 <span
                   className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
                   style={{ fontFamily: EARN_MONO }}
