@@ -333,6 +333,15 @@ async function buildDraftSlip(input: {
       status: "draft",
       eventType: template.eventType,
       specialRequests: template.specialRequests,
+      // MINT SITE 8a (migration 302, ledger `2026-09-15-d22-dates-confirmed`, punchlist D-22).
+      // NO CLAIM IS MADE, and the reason is the END date. The START is the member's own
+      // registered occasion date (`occasions`, Locked Decision 26) — genuinely their answer — but
+      // the END is this scheduler's "resident occasions are single-day" assumption directly above,
+      // which is the platform's shape decision and not something the member stated. A confirmation
+      // stamp is ONE fact about the PAIR, so half an answer cannot earn it: the member said when
+      // the occasion IS, never how long the plan around it runs. Omitting the option leaves
+      // `dates_confirmed_at` NULL and the draft's window renders as the placeholder it half is
+      // (§13) — which also reads correctly for a plan the member never asked to be dated at all.
     },
     generatedPlan: {
       destination: input.homeCity,

@@ -201,13 +201,34 @@ export interface BookingStatusNotification {
   dedupeKey: string;
 }
 
+/**
+ * WHAT A MINT SITE KNOWS THAT THE TRIP ROW DOES NOT (migration 302, ledger
+ * `2026-09-15-d22-dates-confirmed`, punchlist D-22).
+ *
+ * `trips.start_date`/`end_date` are NOT NULL, so every caller of `createTrip` supplies a window —
+ * but only the caller knows whether the TRAVELER chose it or whether it was filled in to satisfy
+ * the column (a clone's placeholder, an authoring build's synthetic anchor, a cart line with no
+ * date of its own). `datesChosenByTraveler` is that one fact, stated at the mint site.
+ *
+ * IT IS OPT-IN, AND THE DEFAULT IS THE SAFE FAILURE MODE (§13). Omitting it makes **no claim** —
+ * `dates_confirmed_at` stays NULL and every reader renders the window as a placeholder. A mint
+ * added tomorrow by someone who never read this ruling therefore under-claims rather than
+ * certifying a guess as the traveler's answer; the reverse default would make forgetting a lie.
+ *
+ * It is deliberately NOT part of `InsertTrip`: the column is `.omit()`ed from `insertTripSchema`
+ * (§19), so no request body can reach it, and a server caller states it here instead.
+ */
+export interface TripMintOptions {
+  datesChosenByTraveler?: boolean;
+}
+
 export interface IStorage {
   // Trips
   getTrips(userId?: string, status?: string): Promise<TripListItem[]>;
 
   getTrip(id: string): Promise<Trip | undefined>;
 
-  createTrip(trip: InsertTrip & { userId: string }): Promise<Trip>;
+  createTrip(trip: InsertTrip & { userId: string }, options?: TripMintOptions): Promise<Trip>;
 
   updateTrip(id: string, trip: Partial<InsertTrip>): Promise<Trip | undefined>;
 
@@ -1491,7 +1512,7 @@ export class DatabaseStorage implements IStorage {
     return trip;
   }
 
-  async createTrip(trip: InsertTrip & { userId: string }): Promise<Trip> {
+  async createTrip(trip: InsertTrip & { userId: string }, options?: TripMintOptions): Promise<Trip> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
     // 2A.3 / R8: market_slug is SERVER-DERIVED from the destination at write time (never taken
     // from the client — insertTripSchema omits it). NULL when the destination resolves to none of
@@ -1504,9 +1525,17 @@ export class DatabaseStorage implements IStorage {
     // markets resolves to NULL, which stays NULL: "not captured" is the honest answer and every
     // reader (the .ics export above all) keeps its zone-free behaviour rather than guessing (§13).
     const timezone = resolveTripTimezone(trip.destination);
+    // Migration 302 / ledger `2026-09-15-d22-dates-confirmed` (punchlist D-22). The mint site says
+    // whether the traveler CHOSE this window; saying nothing makes no claim (see TripMintOptions).
+    // Layer 2 of the §19 strip as well: `datesConfirmedAt` is `.omit()`ed from `insertTripSchema`,
+    // and it is deleted off the incoming values here so an internal `as any` caller cannot slip
+    // one past the type system either — the same two-layer placement §18 uses for a rate.
+    const { datesConfirmedAt: _clientSuppliedDatesConfirmedAt, ...mintValues } = trip as InsertTrip &
+      { userId: string; datesConfirmedAt?: unknown };
+    const datesConfirmedAt = options?.datesChosenByTraveler ? new Date() : null;
     const [newTrip] = await db
       .insert(trips)
-      .values({ ...trip, marketSlug, timezone, trackingNumber })
+      .values({ ...mintValues, marketSlug, timezone, datesConfirmedAt, trackingNumber })
       .returning();
 
     // Write the owner's trip_collaborators row in the same operation that creates the
@@ -1554,16 +1583,42 @@ export class DatabaseStorage implements IStorage {
     // Ledger `2026-09-04-plan-mint`: the timezone rides the same derivation as market_slug — a
     // destination edit re-derives both, and a destination outside the operating markets clears the
     // zone back to NULL rather than leaving the previous city's zone attached to a new place.
-    const derived: Partial<InsertTrip> & { marketSlug?: string | null; timezone?: string | null } =
+    const derived: Partial<InsertTrip> & {
+      marketSlug?: string | null;
+      timezone?: string | null;
+      datesConfirmedAt?: Date;
+    } =
       updates.destination !== undefined
         ? {
             marketSlug: resolveMarketSlug(updates.destination),
             timezone: resolveTripTimezone(updates.destination),
           }
         : {};
+    /**
+     * THE RE-DATE STAMP (punchlist **R-4**, migration 302, ledger
+     * `2026-09-15-d22-dates-confirmed`). An update that carries a start or an end date IS the
+     * moment a traveler picks real dates — the moment R-4 recorded as missing from the platform
+     * entirely. Stamping here rather than at the route is the same placement as `market_slug` and
+     * `timezone` directly above: ONE writer, so every caller of `updateTrip` is covered and a
+     * second re-date rail cannot forget it (§18 rule 1).
+     *
+     * SERVER-SIDE, NEVER CLIENT-CLAIMED (§19). `insertTripSchema` `.omit()`s `datesConfirmedAt`,
+     * so `Partial<InsertTrip>` cannot carry it — and it is deleted off the incoming object below
+     * anyway, because an `as any` caller is not stopped by a type. A client may change its dates;
+     * it may never certify them.
+     *
+     * §13 — the stamp is NEVER cleared here. Clearing it would say "these dates went back to being
+     * a placeholder", which nothing true could have happened to make so: once a traveler has
+     * answered, a later answer is still an answer.
+     */
+    const { datesConfirmedAt: _clientSuppliedDatesConfirmedAt, ...safeUpdates } = updates as
+      Partial<InsertTrip> & { datesConfirmedAt?: unknown };
+    if (safeUpdates.startDate !== undefined || safeUpdates.endDate !== undefined) {
+      derived.datesConfirmedAt = new Date();
+    }
     const [updatedTrip] = await db
       .update(trips)
-      .set({ ...updates, ...derived, updatedAt: new Date() })
+      .set({ ...safeUpdates, ...derived, updatedAt: new Date() })
       .where(eq(trips.id, id))
       .returning();
     return updatedTrip;
