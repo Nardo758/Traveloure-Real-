@@ -5,7 +5,7 @@
 **Spec** `docs/lane-reports/2026-09-15-orphan-triage.md` §4/§5/§7 rows T-8 and T-9;
 `docs/lane-reports/2026-09-15-orphans-t4-t7-red-suites.md`.
 
-**Inventory: 328/511 reachable → 479/512 reachable. Baseline 183 → 33.**
+**Inventory: 328/511 reachable → 481/514 reachable. Baseline 183 → 33.**
 **`server/__tests__` goes from 152 recorded orphans to 2**, and both remaining ones carry a
 stated reason rather than a shrug.
 
@@ -215,12 +215,12 @@ named CI flag.
 ## 6 · Validation
 
 Every figure below was measured on this branch. The DB is a local Postgres cluster on port 55490,
-built from **empty** (301/301 migrations), `create-sessions-table`, `seed-ci-test-users`, then
+built from **empty** (302/302 migrations), `create-sessions-table`, `seed-ci-test-users`, then
 `npm run build` + `node dist/index.cjs` — the job's own sequence.
 
 | check | result |
 |---|---|
-| `node scripts/check-test-files-wired.cjs` | `479/512 reachable; 33 orphan(s)`, `test-orphan-ratchet: OK` |
+| `node scripts/check-test-files-wired.cjs` | `481/514 reachable; 33 orphan(s)`, `test-orphan-ratchet: OK` |
 | `node scripts/check-test-files-wired.cjs --self-test` | `12/12 fixtures` |
 | the job's own `run:` lines, from an EMPTY database | see §7 |
 | `npx tsc --noEmit -p tsconfig.json \| grep -c "error TS"` | **129** (baseline) |
