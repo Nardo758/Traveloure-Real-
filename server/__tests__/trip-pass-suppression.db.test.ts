@@ -119,7 +119,13 @@ test("SP2: trip-pass fee waiver reuses the rails shape with basis trip_pass", as
   }
   assert.equal(w.waived, true);
   assert.equal(w.basis, "trip_pass");
-  assert.equal(w.billedOnDirectPathToday, false);
+  // T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): this pin used to read `false`. It
+  // was OVERTAKEN by a ratified ruling — `2026-09-02-traveler-fee-applies-everywhere` — which made
+  // the traveler fee billable on the DIRECT path, so `resolveTripPassFeeWaiver` now returns
+  // `billedOnDirectPathToday: true` and the waiver is a REAL reduction (a `fee_waiver` ledger leg)
+  // rather than a counterfactual. Re-pinned to the ruling's own guarantee; the proof is not
+  // weakened — an exact value is still asserted, it is the value the ruling states.
+  assert.equal(w.billedOnDirectPathToday, true);
   assert.ok(typeof w.wouldHaveBeenAmount === "number" && w.wouldHaveBeenAmount > 0,
     "counterfactual must be the real un-waived amount");
 });

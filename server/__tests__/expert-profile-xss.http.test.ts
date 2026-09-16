@@ -20,6 +20,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "crypto";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { TRIP_ADVISOR_WRITE_ACCESS_STATUSES } from "../utils/trip-advisor";
 
 const BASE = process.env.XSS_TEST_BASE_URL || "http://127.0.0.1:5000";
 
@@ -83,13 +84,21 @@ beforeAll(async () => {
   await db.execute(sql`UPDATE users SET role = 'local_expert' WHERE id = ${userId}`);
 
   // Seed a trip + advisory assignment so the expert-notes route authorizes us.
+  // T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): this row used to carry the status
+  // `'active'`, which has never been a WRITE-access advisor status. CLAUDE.md Locked Decision 12
+  // ("a PENDING advisor may not write", ratified Aug 7 2026) made the write allow-list exactly
+  // `accepted`/`assigned` — `TRIP_ADVISOR_WRITE_ACCESS_STATUSES` — so PATCH
+  // /api/trips/:tripId/expert-notes answered 403 "Not assigned to this trip" and the four
+  // expert-notes sanitization proofs never reached the sanitizer they exist to test. The status is
+  // READ from the production allow-list rather than re-spelled here, so a later change to that list
+  // moves this fixture with it (§18 rule 1) instead of silently un-authorizing it again.
   await db.execute(sql`
     INSERT INTO trips (id, user_id, title, start_date, end_date, destination, status)
     VALUES (${TRIP_ID}, ${userId}, 'XSS regression trip', '2026-09-01', '2026-09-05', 'Testville', 'planning')
   `);
   await db.execute(sql`
     INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status)
-    VALUES (${crypto.randomUUID()}, ${TRIP_ID}, ${userId}, 'active')
+    VALUES (${crypto.randomUUID()}, ${TRIP_ID}, ${userId}, ${TRIP_ADVISOR_WRITE_ACCESS_STATUSES[0]})
   `);
 
   // Seed a provider service + review owned by the test user so the review-reply

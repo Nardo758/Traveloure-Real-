@@ -107,12 +107,22 @@ test("canonical API serves provider services with empty expert-only lanes", asyn
   const body = JSON.parse(responseText) as {
     earner: { role: string };
     services: unknown[];
-    templates: unknown[];
     readyMade: unknown[];
   };
   assert.equal(body.earner.role, "service_provider");
   assert.equal(body.services.length, 1);
-  assert.deepEqual(body.templates, []);
+  // T-8 (ledger `2026-09-15-orphans-t8-t9-server-tests-class`): this used to deep-equal
+  // `body.templates` against `[]`. The `expert_templates` CONSUMER lane was RETIRED by ledger
+  // `2026-09-03-expert-templates-consumer-sunset` — "response key included" — so the storefront
+  // payload carries no `templates` key at all. §13 decides which of the two is correct: an EMPTY
+  // ARRAY would claim "this earner has zero itinerary templates", a statement about a product that
+  // no longer exists; an ABSENT key is the honest answer. Re-pinned to absence, and the proof is
+  // STRONGER than the one it replaces — it now fails if the retired key is ever re-introduced.
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(body, "templates"),
+    false,
+    "the retired expert_templates lane must leave NO response key (2026-09-03-expert-templates-consumer-sunset)",
+  );
   assert.deepEqual(body.readyMade, []);
 });
 
