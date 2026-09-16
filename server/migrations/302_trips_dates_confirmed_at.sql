@@ -1,0 +1,63 @@
+-- Migration 302: A PLAN SAYS WHETHER ITS DATES WERE CHOSEN.
+-- Decision-maker ruling 2026-09-15, punchlist **D-22** = yes; ledger
+-- `2026-09-15-d22-dates-confirmed`. Additive, NULLABLE, NO DEFAULT, NO CHECK, no backfill, no
+-- index (the migration-181/195/273/275/276/277/279/280/281/282/284/287/295/297/301 posture — a
+-- CHECK or a DEFAULT here is exactly the publish-time drizzle-push failure CLAUDE.md's
+-- Coordination Prevention rules warn about). The column is ALSO declared in `shared/schema.ts` in
+-- this same commit: per the deploy-push durability rule, a DB object the code depends on that
+-- `schema.ts` does not declare is dropped by Replit's publish-time push and NEVER recreated,
+-- because the migration is already stamped.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHY: EVERY PLAN HAS A WINDOW; NOTHING SAID WHO PICKED IT
+-- ─────────────────────────────────────────────────────────────────────────────
+-- `trips.start_date` and `trips.end_date` are NOT NULL, so a plan cannot exist without dates. That
+-- is right — Locked Decision 42 D12 forbids a mint inventing a destination or a date, and the slip
+-- precondition (`checkSlipPrecondition`) ASKS the traveler rather than defaulting. But three mint
+-- paths are structurally unable to ask, and they fill the columns anyway:
+--
+--   * the READY-MADE CLONE (`ready-made-purchase.service.ts`) writes `new Date()` +
+--     `duration_days - 1`, a placeholder window whose only documentation is a code comment;
+--   * the two EXPERT AUTHORING builds (`ready-made.routes.ts`, `expert-workspace.routes.ts`)
+--     anchor the same synthetic window on a template that is not scheduled travel at all;
+--   * several cart / experience mints fall back to today when their own source carries no date.
+--
+-- On disk and on every surface those are indistinguishable from a window the traveler chose. The
+-- slip header, the My-plans row, the Trip Card, the `.ics` export and the Home time axis all read
+-- `start_date` and present it as the plan's answer. Punchlist R-4 could not be built for exactly
+-- this reason: revalidating availability "once the buyer picks real dates" has no input while no
+-- fact records that a pick happened (ledger `2026-09-14-clone-date-revalidation`). This column is
+-- that fact.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- §13 — NULL = NOT CONFIRMED, AND IT IS NOT "NO DATES"
+-- ─────────────────────────────────────────────────────────────────────────────
+-- NO BACKFILL, deliberately, and the absence is read in ONE direction only. Every row already on
+-- this table was written before anyone was asked, so stamping them would manufacture a traveler's
+-- answer out of a fulfilment job's guess — precisely the claim this column exists to stop. A NULL
+-- row therefore renders its window as a PLACEHOLDER and says so; it is never rendered as "this
+-- plan has no dates", which is false (the columns are NOT NULL), and never as a confirmed one.
+--
+-- Downstream, NULL withholds two claims rather than substituting anything:
+--   * the `.ics` export keeps the RFC 5545 FLOATING output Locked Decision 30 rules for a plan
+--     with no zone — the same reasoning one derivative over, since a pinned instant needs a real
+--     DAY as much as it needs a real zone;
+--   * a COUNTDOWN is not rendered at all (Locked Decision 45 (6) — no instant, no countdown).
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHO WRITES IT
+-- ─────────────────────────────────────────────────────────────────────────────
+-- SERVER-SIDE ONLY (§19). `insertTripSchema` `.omit()`s the column and no pick-based schema
+-- re-admits it, so no request body can stamp it. Two writers, both in `server/storage.ts`:
+-- `createTrip` stamps when its caller states that the dates came from the traveler (opt-in — a
+-- mint that says nothing makes NO claim, which is the safe failure mode), and `updateTrip` stamps
+-- `now()` whenever a start or end date is part of the update, which is the re-date rail R-4 asks
+-- for (`PATCH /api/trips/:id`).
+--
+-- No CHECK is added or changed, so `scripts/preflight-prod-constraints.cjs` needs no new
+-- `CONSTRAINT_MANIFEST` entry and the publish-time push has nothing to fail on.
+
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS dates_confirmed_at TIMESTAMP;
+
+COMMENT ON COLUMN trips.dates_confirmed_at IS
+  'When the traveler confirmed this plan''s start/end dates. NULL = never confirmed: the window is a placeholder (a clone''s or an authoring build''s synthetic dates, or a mint fallback) and every reader labels it as one, withholds the countdown and makes no pinned .ics DTSTART claim. Never client-settable; written only by storage.createTrip (opt-in) and storage.updateTrip (on a date change). Migration 302, ledger 2026-09-15-d22-dates-confirmed.';

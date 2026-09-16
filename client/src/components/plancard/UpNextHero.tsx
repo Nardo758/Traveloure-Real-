@@ -28,6 +28,15 @@ interface UpNextHeroProps {
    * countdown. NULL/absent is "never captured", never the device's zone dressed as the plan's.
    */
   timezone?: string | null;
+  /**
+   * The plancard DTO's `trip.datesConfirmed` (migration 302, ledger
+   * `2026-09-15-d22-dates-confirmed`, punchlist D-22) — whether anybody CHOSE the day this hero
+   * counts against. `false` withholds the countdown chip for the same reason an absent zone does:
+   * `trips.start_date` is NOT NULL, so a ready-made clone's placeholder window reaches this
+   * component looking exactly like a chosen one, and "In 2h 15m" against it is a confident claim
+   * about a date the fulfilment job picked (§13). The time line still renders.
+   */
+  datesConfirmed?: boolean;
 }
 
 function BookRideButton({ leg, activityName }: { leg: PlanCardLegData; activityName: string }) {
@@ -78,7 +87,7 @@ function BookRideButton({ leg, activityName }: { leg: PlanCardLegData; activityN
   );
 }
 
-export function UpNextHero({ tripId, day, legs, timezone = null }: UpNextHeroProps) {
+export function UpNextHero({ tripId, day, legs, timezone = null, datesConfirmed = true }: UpNextHeroProps) {
   const now = useLiveNow();
   const [visited] = useVisitedActivities(tripId, day);
   const { isLiveDay, upNextActivity, upNextLeg } = getUpNextInfo(day, legs, now, visited, timezone);
@@ -87,8 +96,9 @@ export function UpNextHero({ tripId, day, legs, timezone = null }: UpNextHeroPro
   // upcoming activity renders anything here.
   if (!isLiveDay || !upNextActivity || !day) return null;
 
-  // NULL zone ⇒ null: the time line below still renders, the countdown chip does not (LD 30).
-  const countdown = formatCountdown(upNextActivity, day.date, now, timezone);
+  // NULL zone, or a window nobody chose ⇒ null: the time line below still renders, the countdown
+  // chip does not (LD 30; migration 302 / D-22). ONE conjunction, inside `formatCountdown`.
+  const countdown = formatCountdown(upNextActivity, day.date, now, timezone, datesConfirmed);
   const action = resolvePrimaryAction(upNextActivity, upNextLeg);
 
   return (

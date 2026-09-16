@@ -13,6 +13,15 @@
  *     the kind of derived duplicate that drifts. Every guest, in every zone, then sees the SAME
  *     moment, rendered in their own local time — which is what a calendar is for.
  *
+ *   • DATES NOT CONFIRMED → floating as well, for the same reason one derivative over (migration
+ *     302, ledger `2026-09-15-d22-dates-confirmed`, punchlist D-22). A pinned instant needs a real
+ *     DAY as much as it needs a real zone, and `trips.start_date` is NOT NULL, so a ready-made
+ *     clone's `new Date()` placeholder, an authoring build's synthetic anchor and a cart mint's
+ *     today-fallback all arrive here looking exactly like a window the traveler picked. Counting
+ *     day 1 from one of those and stamping it `…Z` would put a confident instant on a date nobody
+ *     chose — a calendar entry is the worst possible place for that, because it then rings. §13:
+ *     the export still goes out, with the honest floating times it always had.
+ *
  *   • `timezone` ABSENT → keep the pre-existing FLOATING output, byte-for-byte, and say why here.
  *     RFC 5545 floating time renders in each reader's own zone, which IS the long-standing bug
  *     when a zone is known — but with no zone on the plan there is nothing to pin to. UTC would
@@ -40,6 +49,16 @@ type IcsComparison = {
    * know) is treated exactly like absent.
    */
   timezone?: string | null;
+  /**
+   * `trips.dates_confirmed_at` (migration 302, ledger `2026-09-15-d22-dates-confirmed`) — WHETHER
+   * ANYBODY CHOSE THE DAY this export counts from. `false` collapses every event into the FLOATING
+   * branch exactly as an absent zone does; see the third bullet in the header above.
+   *
+   * `undefined` is NOT "no": it means the caller has not been widened to supply the fact, and the
+   * exporter then keeps its previous behaviour byte-for-byte rather than silently down-grading
+   * every existing export. Both server callers DO supply it.
+   */
+  datesConfirmed?: boolean;
 };
 
 type IcsItem = {
@@ -146,7 +165,11 @@ export function generateIcsContent(
   generatedAt = new Date(),
 ): string {
   const tripStartDate = isoDate(comparison.startDate);
-  const timeZone = comparison.timezone || null;
+  // A zone is only usable for PINNING when the day it is applied to is one somebody chose. An
+  // explicit `datesConfirmed: false` therefore withdraws the zone from the decision below — the
+  // ONE place that decision is made — rather than adding a second branch beside it (§18 rule 1).
+  // `undefined` leaves the previous behaviour untouched (see the field's own note).
+  const timeZone = comparison.datesConfirmed === false ? null : comparison.timezone || null;
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
