@@ -377,7 +377,7 @@ export const planProposals = pgTable("plan_proposals", {
   question: text("question"),
   /** The proposed change set — shape documented by `PlanProposalChangeSet` in shared/plan-proposals.ts. */
   proposal: jsonb("proposal"),
-  /** proposed | applied | discarded — app-enforced, no CHECK, no default. See PLAN_PROPOSAL_STATUSES. */
+  /** proposed | applied | discarded | refunded — app-enforced, no CHECK, no default. See PLAN_PROPOSAL_STATUSES. */
   status: varchar("status", { length: 20 }).notNull(),
   modelTier: varchar("model_tier", { length: 40 }),
   createdAt: timestamp("created_at").defaultNow(),
@@ -407,16 +407,20 @@ export const planProposals = pgTable("plan_proposals", {
    */
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
   /**
-   * What was actually charged, SERVER-DERIVED at apply from the band (§14/§8). NULL = nothing was
-   * charged — deliberately not `0`, which would read as "we charged them nothing", a claim, where
-   * NULL reads as "no charge was made" (§13; `fee_ledger`'s `amount <> 0` CHECK is the same rule).
+   * What was actually charged, SERVER-DERIVED from what Stripe reports the PaymentIntent took
+   * (§14/§8) — written at APPLY, and (OPTION B, ledger `2026-09-16-l16-lane1-review-fixes`) at the
+   * REFUND claim of a paid proposal the apply refused, so the refund amount is the row's own
+   * recorded charge on every retry. NULL = nothing was charged — deliberately not `0`, which would
+   * read as "we charged them nothing", a claim, where NULL reads as "no charge was made" (§13;
+   * `fee_ledger`'s `amount <> 0` CHECK is the same rule).
    */
   chargedAmountCents: integer("charged_amount_cents"),
   /**
    * `trip_pass` | `paid` — app-enforced by `PLAN_PROPOSAL_CHARGE_BASES` (`shared/plan-proposals.ts`,
    * stated once — §18 rule 1), **NO DB CHECK** (publish-trap posture) and **NO DEFAULT** (a basis is
-   * a claim about what happened, never a filler). NULL = never applied. A basis is never written
-   * into the payment-identity column and a payment identity is never written here (§19a).
+   * a claim about what happened, never a filler). NULL = never applied and never refunded (a
+   * `refunded` row carries `paid` — the basis of the charge that was returned). A basis is never
+   * written into the payment-identity column and a payment identity is never written here (§19a).
    */
   chargeBasis: varchar("charge_basis", { length: 20 }),
 }, (table) => [
