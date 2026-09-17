@@ -1756,13 +1756,29 @@ jobs:
       # 0 and settles with NO Stripe call and a NULL refund id (S14); mixed failed + cancelled settles
       # once with the right sum (S15); no purchase-time policy snapshot ⇒ the cancel is refused and
       # nothing moves (S16); a policy edit or a reschedule after purchase moves nothing (S17).
-      - name: The bundle partial settlement (S1-S17)
+      # LD 50 REMAINDER (ledger 2026-09-17-ld50-remainder-and-artifact-refund): `refunded` finally has its
+      # ONE writer — the promote stamps every component it refunded in the same statement as the refund
+      # columns, exactly once, and a retry is answered from the settled row instead of re-derived (S18/S19);
+      # and a component outcome releases NO capacity, says so, and names what the BOOKING reserved, because
+      # nothing reserves capacity per component anywhere on main (S20).
+      - name: The bundle partial settlement (S1-S20)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/bundle-partial-settlement.db.test.ts
       # The PURE layer beside it: the allocation arithmetic, the basis the mint reads, the ONE settlement
       # derivation, and (SP9) the cancelled component's pinned-percent arithmetic in both the mint and the
       # settlement. No DB — wired in this `npm ci` job because it imports `@shared/` (the #812 lesson).
       - name: The one settlement derivation (SP1-SP9)
         run: npx tsx --test --test-force-exit shared/__tests__/bundle-partial-settlement.test.ts
+      # OC-B1's LAST GAP + LD 46/D-27's MONEY OUTCOME (ledger 2026-09-17-ld50-remainder-and-artifact-refund).
+      # B1-B4: the WHOLE-ROW cancel quote now reads the tier PINNED on `offering_contract_snapshot`, so a
+      # post-purchase policy edit moves nothing; a snapshot with a NULL policy is a different fact from no
+      # snapshot; a pre-291 row falls back to the live listing EXPLICITLY and says so; and one structural
+      # parse serves both the whole-row and the component rails. C1-C6: a REJECTION alone moves no money
+      # (the D-27 escalation makes no Stripe call), the admin outcome is ONE full refund under
+      # `artifact-reject-refund-<id>` with the booking and its components moved to `refunded` in the
+      # claiming transaction, two concurrent resolutions produce ONE refund, a retry produces none, the
+      # from-state and custody refuse by name, and no mint can ever fire for the refunded row.
+      - name: The whole-row cancel snapshot + the rejected-artifact refund (B1-B4, C1-C6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/whole-row-cancel-and-artifact-refund.db.test.ts
 
   plan-proposals:
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)

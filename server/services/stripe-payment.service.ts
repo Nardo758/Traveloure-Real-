@@ -51,6 +51,15 @@ export const BUNDLE_SETTLEMENT_REFUND_SOURCE = 'bundle_partial_settlement';
  */
 export const AI_TASK_PROPOSAL_REFUND_SOURCE = 'ai_task_proposal';
 
+/**
+ * LD 46 / D-27's money outcome (ledger `2026-09-17-ld50-remainder-and-artifact-refund`): the
+ * `metadata.source` an artifact-rejection refund carries, so the `charge.refunded` webhook can tell it
+ * from a whole-row refund (`service_booking`) and from a partial settlement. Stated ONCE. The webhook
+ * promotes NOTHING for this source — the refund's own rail flipped the booking before the Stripe call,
+ * so there is no claimed-but-unpromoted record for a redelivery to rescue.
+ */
+export const ARTIFACT_REJECTION_REFUND_SOURCE = 'artifact_rejection_refund';
+
 // ── Refund-reason mapping (L14 money-path P0) ──────────────────────────────────────────────
 //
 // THE BUG THIS CLOSES: `refundServiceBooking` used to forward its caller's reason straight to
@@ -1348,6 +1357,49 @@ class StripePaymentService {
       internalReason: input.internalReason,
       feeRefund: input.travelerServiceFeeRefund,
       feeReversalActor: 'bundle_partial_settlement',
+    });
+    return { id: refund.id, status: refund.status ?? null };
+  }
+
+  /**
+   * LD 46 / D-27's money outcome — THE REFUND ON A REJECTED ARTIFACT (ledger
+   * `2026-09-17-ld50-remainder-and-artifact-refund`). A THIRD caller of the shared
+   * `createStripeRefundForBooking` above, never a fourth Stripe call site.
+   *
+   * It is deliberately NOT `refundServiceBooking`: that rail's claim is `status <> 'refunded'` (any
+   * state may refund) and its key is `refund-sb-<id>`. This outcome may only consume the DISPUTED state
+   * the D-27 escalation or the traveler's own dispute created, so its caller
+   * (`artifact-rejection-refund.service.ts`) owns a narrower §15b claim and hands the cents in. The key
+   * is `artifact-reject-refund-<bookingId>`: one booking is resolved this way ONCE, at one amount, so a
+   * cross-process retry returns the SAME refund rather than issuing a second one.
+   *
+   * NO CLAIM AND NO STATUS FLIP HAPPEN HERE — the caller took both before calling (§15b: claim first,
+   * then the external call) — and the raw Stripe error is thrown so the caller can apply its own
+   * posture. The amount arrives SERVER-DERIVED from the booking row (§14); nothing here reads a request.
+   */
+  async refundRejectedArtifact(input: {
+    bookingId: string;
+    paymentIntentId: string;
+    amountCents: number;
+    /** DOLLARS of traveler service fee inside `amountCents` — refunded in full with the charge, 0 when none. */
+    travelerServiceFeeRefund: number;
+    internalReason: string;
+  }): Promise<{ id: string; status: string | null }> {
+    const refund = await this.createStripeRefundForBooking({
+      paymentIntentId: input.paymentIntentId,
+      amountCents: input.amountCents,
+      stripeReason: toStripeRefundReason(input.internalReason),
+      idempotencyKey: `artifact-reject-refund-${input.bookingId}`,
+      metadata: { bookingId: input.bookingId, source: ARTIFACT_REJECTION_REFUND_SOURCE },
+    });
+    await this.recordIssuedRefund({
+      bookingId: input.bookingId,
+      paymentIntentId: input.paymentIntentId,
+      refund,
+      amount: Math.round(input.amountCents) / 100,
+      internalReason: input.internalReason,
+      feeRefund: input.travelerServiceFeeRefund,
+      feeReversalActor: 'artifact_rejection_refund',
     });
     return { id: refund.id, status: refund.status ?? null };
   }

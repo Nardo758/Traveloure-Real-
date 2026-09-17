@@ -132,6 +132,7 @@ import {
   type BundlePartialSettlementResult,
 } from "./bundle-partial-settlement.service";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
+import { deriveClaimedSlotIds, deriveClaimedSlotUnits } from "./checkout-claim.service";
 import { storage } from "../storage";
 
 /**
@@ -1070,6 +1071,63 @@ export async function findDeclaredWindowCandidates(now: Date = new Date(), limit
 }
 
 /**
+ * ── LD 50 REMAINDER, THE CAPACITY HALF — WHAT A FAILED OR CANCELLED COMPONENT RELEASES, AND WHY THE
+ * HONEST ANSWER IS "NOTHING, AND HERE IS WHAT IS RESERVED INSTEAD" (§13; ledger
+ * `2026-09-17-ld50-remainder-and-artifact-refund`) ──────────────────────────────────────────────────
+ *
+ * The question the lane was asked: when a component is declared `failed` or is cancelled by the
+ * traveler, does it give its reserved slot capacity back? The answer, verified against every writer on
+ * `main`, is that **no capacity is reserved PER COMPONENT anywhere in this codebase**:
+ *
+ *   · the checkout claims capacity PER CART LINE (`storage.bookSlot(item.slotId, units)`), and a bundle
+ *     is ONE cart line — so a bundle booking holds ONE slot claim (or, for a stay, one per night),
+ *     recorded on the booking as `slot_id` / `booking_details.claimedSlotIds` + `claimedSlotUnits`;
+ *   · the purchase-time component snapshot (`booking_details.bundleComponents`) carries `id`,
+ *     `serviceName` and `priceCents` and NO slot;
+ *   · `booking_component_states` (migrations 306/307/309) has no slot column.
+ *
+ * So there is nothing per-component to release, and releasing the BOOKING's own claim on a component
+ * outcome would be wrong twice over: the bundle still occupies its window, and the D-51 ruling says in
+ * terms that a partial settlement "must not use the terminal whole-row `refunded` state **or release
+ * all reserved capacity**". The booking-level claim is released by the ONE existing rail that owns it —
+ * the first transition into `cancelled`/`refunded` inside `storage.updateServiceBookingStatus`, and
+ * `refundServiceBooking`'s post-refund release — through `deriveClaimedSlotIds` / `deriveClaimedSlotUnits`,
+ * which this function READS and never restates (§18 rule 1).
+ *
+ * WHAT THIS FUNCTION IS FOR, THEN: making that absence a STATED FACT on every component outcome rather
+ * than silence. The evidence key `componentCapacity` says released: 0, names the reason, and names what
+ * the booking DOES hold — so an operator reading a failed component can see that no capacity was
+ * stranded and no capacity was wrongly handed back.
+ *
+ * IF A LATER LANE EVER RESERVES CAPACITY PER COMPONENT it needs a per-component slot record — a column
+ * on `booking_component_states` (or a `slotId` on the snapshot entry), which is a schema/composer
+ * decision nobody has ratified. It is NOT invented here: a reader for a fact no writer produces is the
+ * speculative shape §18c refuses. The release would then go through the EXISTING
+ * `storage.releaseSlot(id, units)` (V-26) inside the component's own atomic flip, whose
+ * `status = 'pending'` predicate already makes the winner unique and the release exactly-once.
+ */
+export interface ComponentCapacityStatement {
+  /** Slots this component outcome gave back. Always 0 today, and the reason says why (§13). */
+  released: 0;
+  reason: "no_component_capacity_reserved";
+  /** What the BOOKING reserved, read through the ONE deciders — untouched by a component outcome. */
+  bookingReservedSlotIds: string[];
+  bookingReservedUnitsPerSlot: number;
+}
+
+export function describeComponentCapacity(input: {
+  bookingDetails: Record<string, unknown> | null | undefined;
+  bookingSlotId: string | null | undefined;
+}): ComponentCapacityStatement {
+  return {
+    released: 0,
+    reason: "no_component_capacity_reserved",
+    bookingReservedSlotIds: deriveClaimedSlotIds(input.bookingDetails, input.bookingSlotId ?? null),
+    bookingReservedUnitsPerSlot: deriveClaimedSlotUnits(input.bookingDetails),
+  };
+}
+
+/**
  * Record ONE bundle component as delivered, then complete — or PARTIALLY complete — the booking if
  * that was the last answer outstanding.
  *
@@ -1309,6 +1367,14 @@ export async function recordBundleComponentFailure(input: {
     alreadyRecorded = true;
   }
 
+  // LD 50 remainder (§13): a component outcome releases NO capacity, and that is SAID rather than
+  // silent — see `describeComponentCapacity` for why nothing per-component is reserved on `main`.
+  const failedBooking = await loadBooking(input.bookingId);
+  const componentCapacity = describeComponentCapacity({
+    bookingDetails: (failedBooking?.bookingDetails ?? null) as Record<string, unknown> | null,
+    bookingSlotId: failedBooking?.slotId ?? null,
+  });
+
   // Re-derive AFTER the write — the resolver is the one authority on what the components now say.
   const post = await resolveCompletionEligibility(input.bookingId, now);
   const outcome = (post.evidence as any).outcome as string | undefined;
@@ -1323,7 +1389,7 @@ export async function recordBundleComponentFailure(input: {
       bookingId: input.bookingId,
       rule: pre.rule,
       reason: settled.settled ? undefined : settled.reason,
-      evidence: settled.evidence,
+      evidence: { ...settled.evidence, componentCapacity },
       parentOutcome: outcome,
       componentStateSource: source,
     };
@@ -1335,7 +1401,7 @@ export async function recordBundleComponentFailure(input: {
     bookingId: input.bookingId,
     rule: pre.rule,
     reason: post.reason,
-    evidence: post.evidence,
+    evidence: { ...post.evidence, componentCapacity },
     parentOutcome: outcome,
     componentStateSource: source,
   };
@@ -1537,6 +1603,12 @@ export async function recordBundleComponentCancellation(input: {
   }
 
   async function afterWrite(alreadyRecorded: boolean, t: BundleComponentCancellationTerms): Promise<BundleComponentCancellationResult> {
+    // LD 50 remainder (§13): a cancelled component releases NO capacity either, and the statement says
+    // what the BOOKING holds instead — the same fact the failure rail states, from the same helper.
+    const componentCapacity = describeComponentCapacity({
+      bookingDetails: (booking?.bookingDetails ?? null) as Record<string, unknown> | null,
+      bookingSlotId: booking?.slotId ?? null,
+    });
     // Re-derive AFTER the write — the resolver is the one authority on what the components now say.
     const post = await resolveCompletionEligibility(bookingId, now);
     const outcome = (post.evidence as any).outcome as string | undefined;
@@ -1552,7 +1624,7 @@ export async function recordBundleComponentCancellation(input: {
         settlement: settled.settlement,
         parentOutcome: outcome,
         reason: settled.settled ? undefined : settled.reason,
-        evidence: settled.evidence,
+        evidence: { ...settled.evidence, componentCapacity },
       };
     }
     return {
@@ -1565,7 +1637,7 @@ export async function recordBundleComponentCancellation(input: {
       settlement: null,
       parentOutcome: outcome,
       reason: post.reason,
-      evidence: post.evidence,
+      evidence: { ...post.evidence, componentCapacity },
     };
   }
 }

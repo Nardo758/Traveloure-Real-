@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "a7807450f6739c7e63081f5b4f6e34d7e354c712ad721acd0cf3b3008969224e",
+  "manifestSha256": "d5ece9fa909897d4027361f6786c62aff4ef19ad5fbb1e05dd51d6a5ab1baebf",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -10,8 +10,8 @@
   },
   "totals": {
     "tested": 0,
-    "total": 587,
-    "remaining": 587,
+    "total": 588,
+    "remaining": 588,
     "categories": {
       "payments": {
         "tested": 0,
@@ -19,7 +19,7 @@
       },
       "admin": {
         "tested": 0,
-        "total": 147
+        "total": 148
       },
       "user-data": {
         "tested": 0,
@@ -60,7 +60,7 @@
       "path": "/api/admin/categories/:id",
       "effectivePath": "/api/admin/categories/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 3306,
+      "line": 3421,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -82,7 +82,7 @@
       "path": "/api/admin/content-placement-rules/:id",
       "effectivePath": "/api/admin/content-placement-rules/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 7809,
+      "line": 7924,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -104,7 +104,7 @@
       "path": "/api/admin/event-packages/:id",
       "effectivePath": "/api/admin/event-packages/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 8074,
+      "line": 8189,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -126,7 +126,7 @@
       "path": "/api/admin/expert-offering-types/:key",
       "effectivePath": "/api/admin/expert-offering-types/:key",
       "source": "server/routes/admin.routes.ts",
-      "line": 7278,
+      "line": 7393,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -148,7 +148,7 @@
       "path": "/api/admin/neighborhoods/:id/coverage-targets/:categoryKey",
       "effectivePath": "/api/admin/neighborhoods/:id/coverage-targets/:categoryKey",
       "source": "server/routes/admin.routes.ts",
-      "line": 8246,
+      "line": 8361,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -192,7 +192,7 @@
       "path": "/api/admin/service-offering-types/:key",
       "effectivePath": "/api/admin/service-offering-types/:key",
       "source": "server/routes/admin.routes.ts",
-      "line": 7226,
+      "line": 7341,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -214,7 +214,7 @@
       "path": "/api/admin/service-templates/:id",
       "effectivePath": "/api/admin/service-templates/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 3013,
+      "line": 3128,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -236,7 +236,7 @@
       "path": "/api/admin/services/:id",
       "effectivePath": "/api/admin/services/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 4207,
+      "line": 4322,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -280,7 +280,7 @@
       "path": "/api/admin/subcategories/:id",
       "effectivePath": "/api/admin/subcategories/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 3362,
+      "line": 3477,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -302,7 +302,7 @@
       "path": "/api/admin/users/:id",
       "effectivePath": "/api/admin/users/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 5451,
+      "line": 5566,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1342,7 +1342,7 @@
       "path": "/api/admin/affiliate/reconciliation/:earningId",
       "effectivePath": "/api/admin/affiliate/reconciliation/:earningId",
       "source": "server/routes/admin.routes.ts",
-      "line": 3781,
+      "line": 3896,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1364,7 +1364,7 @@
       "path": "/api/admin/bookings/auto-cancel/config",
       "effectivePath": "/api/admin/bookings/auto-cancel/config",
       "source": "server/routes/admin.routes.ts",
-      "line": 1713,
+      "line": 1828,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1386,7 +1386,7 @@
       "path": "/api/admin/categories/:id",
       "effectivePath": "/api/admin/categories/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 3193,
+      "line": 3308,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1408,7 +1408,7 @@
       "path": "/api/admin/contact-submissions/:id",
       "effectivePath": "/api/admin/contact-submissions/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 2400,
+      "line": 2515,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1430,7 +1430,7 @@
       "path": "/api/admin/content-placement-rules/:id",
       "effectivePath": "/api/admin/content-placement-rules/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 7797,
+      "line": 7912,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1452,7 +1452,7 @@
       "path": "/api/admin/event-packages/:id",
       "effectivePath": "/api/admin/event-packages/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 8047,
+      "line": 8162,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1496,7 +1496,7 @@
       "path": "/api/admin/expert-applications/:id/rejection-reason",
       "effectivePath": "/api/admin/expert-applications/:id/rejection-reason",
       "source": "server/routes/admin.routes.ts",
-      "line": 2614,
+      "line": 2729,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1518,7 +1518,7 @@
       "path": "/api/admin/expert-applications/:id/status",
       "effectivePath": "/api/admin/expert-applications/:id/status",
       "source": "server/routes/admin.routes.ts",
-      "line": 2489,
+      "line": 2604,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1540,7 +1540,7 @@
       "path": "/api/admin/expert-offering-types/:key",
       "effectivePath": "/api/admin/expert-offering-types/:key",
       "source": "server/routes/admin.routes.ts",
-      "line": 7256,
+      "line": 7371,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1562,7 +1562,7 @@
       "path": "/api/admin/expert-templates/:id/roles",
       "effectivePath": "/api/admin/expert-templates/:id/roles",
       "source": "server/routes/admin.routes.ts",
-      "line": 3068,
+      "line": 3183,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1584,7 +1584,7 @@
       "path": "/api/admin/fee-bands/:bandKey",
       "effectivePath": "/api/admin/fee-bands/:bandKey",
       "source": "server/routes/admin.routes.ts",
-      "line": 7007,
+      "line": 7122,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1606,7 +1606,7 @@
       "path": "/api/admin/invoices/:invoiceNumber/status",
       "effectivePath": "/api/admin/invoices/:invoiceNumber/status",
       "source": "server/routes/admin.routes.ts",
-      "line": 4340,
+      "line": 4455,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1628,7 +1628,7 @@
       "path": "/api/admin/lead-routing-logs/:id/override",
       "effectivePath": "/api/admin/lead-routing-logs/:id/override",
       "source": "server/routes/admin.routes.ts",
-      "line": 7405,
+      "line": 7520,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1650,7 +1650,7 @@
       "path": "/api/admin/message-reports/:id",
       "effectivePath": "/api/admin/message-reports/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 6802,
+      "line": 6917,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1672,7 +1672,7 @@
       "path": "/api/admin/neighborhoods/:id/adjacency",
       "effectivePath": "/api/admin/neighborhoods/:id/adjacency",
       "source": "server/routes/admin.routes.ts",
-      "line": 8375,
+      "line": 8490,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1738,7 +1738,7 @@
       "path": "/api/admin/payouts/:id",
       "effectivePath": "/api/admin/payouts/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 5160,
+      "line": 5275,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1760,7 +1760,7 @@
       "path": "/api/admin/platform-settings/:settingKey",
       "effectivePath": "/api/admin/platform-settings/:settingKey",
       "source": "server/routes/admin.routes.ts",
-      "line": 7309,
+      "line": 7424,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1782,7 +1782,7 @@
       "path": "/api/admin/provider-applications/:id/rejection-reason",
       "effectivePath": "/api/admin/provider-applications/:id/rejection-reason",
       "source": "server/routes/admin.routes.ts",
-      "line": 2909,
+      "line": 3024,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1804,7 +1804,7 @@
       "path": "/api/admin/provider-applications/:id/status",
       "effectivePath": "/api/admin/provider-applications/:id/status",
       "source": "server/routes/admin.routes.ts",
-      "line": 2811,
+      "line": 2926,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1848,7 +1848,7 @@
       "path": "/api/admin/reviews/:id/status",
       "effectivePath": "/api/admin/reviews/:id/status",
       "source": "server/routes/admin.routes.ts",
-      "line": 6867,
+      "line": 6982,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1870,7 +1870,7 @@
       "path": "/api/admin/service-offering-types/:key",
       "effectivePath": "/api/admin/service-offering-types/:key",
       "source": "server/routes/admin.routes.ts",
-      "line": 7203,
+      "line": 7318,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1914,7 +1914,7 @@
       "path": "/api/admin/service-templates/:id",
       "effectivePath": "/api/admin/service-templates/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 2991,
+      "line": 3106,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1936,7 +1936,7 @@
       "path": "/api/admin/services/:id/affinity-tags",
       "effectivePath": "/api/admin/services/:id/affinity-tags",
       "source": "server/routes/admin.routes.ts",
-      "line": 4181,
+      "line": 4296,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1958,7 +1958,7 @@
       "path": "/api/admin/services/:id/featured",
       "effectivePath": "/api/admin/services/:id/featured",
       "source": "server/routes/admin.routes.ts",
-      "line": 4165,
+      "line": 4280,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1980,7 +1980,7 @@
       "path": "/api/admin/services/:id/status",
       "effectivePath": "/api/admin/services/:id/status",
       "source": "server/routes/admin.routes.ts",
-      "line": 4146,
+      "line": 4261,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -2002,7 +2002,7 @@
       "path": "/api/admin/subcategories/:id",
       "effectivePath": "/api/admin/subcategories/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 3340,
+      "line": 3455,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -2024,7 +2024,7 @@
       "path": "/api/admin/users/:id/commission-override",
       "effectivePath": "/api/admin/users/:id/commission-override",
       "source": "server/routes/admin.routes.ts",
-      "line": 2691,
+      "line": 2806,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -2046,7 +2046,7 @@
       "path": "/api/admin/users/:id/suspend",
       "effectivePath": "/api/admin/users/:id/suspend",
       "source": "server/routes/admin.routes.ts",
-      "line": 8498,
+      "line": 8613,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -2068,7 +2068,7 @@
       "path": "/api/admin/users/:id/unsuspend",
       "effectivePath": "/api/admin/users/:id/unsuspend",
       "source": "server/routes/admin.routes.ts",
-      "line": 8641,
+      "line": 8756,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -2090,7 +2090,7 @@
       "path": "/api/admin/users/:id/verification",
       "effectivePath": "/api/admin/users/:id/verification",
       "source": "server/routes/admin.routes.ts",
-      "line": 2644,
+      "line": 2759,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3690,7 +3690,7 @@
       "path": "/api/admin/affiliate/partners/:id/approve",
       "effectivePath": "/api/admin/affiliate/partners/:id/approve",
       "source": "server/routes/admin.routes.ts",
-      "line": 8685,
+      "line": 8800,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3712,7 +3712,7 @@
       "path": "/api/admin/affiliate/partners/:id/reject",
       "effectivePath": "/api/admin/affiliate/partners/:id/reject",
       "source": "server/routes/admin.routes.ts",
-      "line": 8696,
+      "line": 8811,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3756,7 +3756,7 @@
       "path": "/api/admin/bookings/auto-cancel/run",
       "effectivePath": "/api/admin/bookings/auto-cancel/run",
       "source": "server/routes/admin.routes.ts",
-      "line": 1735,
+      "line": 1850,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3778,7 +3778,7 @@
       "path": "/api/admin/catalog/ingest",
       "effectivePath": "/api/admin/catalog/ingest",
       "source": "server/routes/admin.routes.ts",
-      "line": 2164,
+      "line": 2279,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3800,7 +3800,7 @@
       "path": "/api/admin/categories",
       "effectivePath": "/api/admin/categories",
       "source": "server/routes/admin.routes.ts",
-      "line": 3141,
+      "line": 3256,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3822,7 +3822,7 @@
       "path": "/api/admin/categories/:categoryId/subcategories",
       "effectivePath": "/api/admin/categories/:categoryId/subcategories",
       "source": "server/routes/admin.routes.ts",
-      "line": 3317,
+      "line": 3432,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3844,7 +3844,7 @@
       "path": "/api/admin/content-placement-rules",
       "effectivePath": "/api/admin/content-placement-rules",
       "source": "server/routes/admin.routes.ts",
-      "line": 7786,
+      "line": 7901,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3866,7 +3866,7 @@
       "path": "/api/admin/content-placement-rules/auto-index",
       "effectivePath": "/api/admin/content-placement-rules/auto-index",
       "source": "server/routes/admin.routes.ts",
-      "line": 7822,
+      "line": 7937,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3888,7 +3888,7 @@
       "path": "/api/admin/content/:trackingNumber/moderate",
       "effectivePath": "/api/admin/content/:trackingNumber/moderate",
       "source": "server/routes/admin.routes.ts",
-      "line": 3959,
+      "line": 4074,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3910,7 +3910,7 @@
       "path": "/api/admin/content/flags/:flagId/resolve",
       "effectivePath": "/api/admin/content/flags/:flagId/resolve",
       "source": "server/routes/admin.routes.ts",
-      "line": 4012,
+      "line": 4127,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3932,7 +3932,7 @@
       "path": "/api/admin/content/register",
       "effectivePath": "/api/admin/content/register",
       "source": "server/routes/admin.routes.ts",
-      "line": 3904,
+      "line": 4019,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4064,7 +4064,7 @@
       "path": "/api/admin/destination-events/:id/approve",
       "effectivePath": "/api/admin/destination-events/:id/approve",
       "source": "server/routes/admin.routes.ts",
-      "line": 3664,
+      "line": 3779,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4086,7 +4086,7 @@
       "path": "/api/admin/destination-events/:id/reject",
       "effectivePath": "/api/admin/destination-events/:id/reject",
       "source": "server/routes/admin.routes.ts",
-      "line": 3690,
+      "line": 3805,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4108,7 +4108,7 @@
       "path": "/api/admin/digest/send-now",
       "effectivePath": "/api/admin/digest/send-now",
       "source": "server/routes/admin.routes.ts",
-      "line": 8470,
+      "line": 8585,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4121,6 +4121,28 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/digest/send-now",
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/admin/disputes/:bookingId/refund-rejected-artifact",
+      "path": "/api/admin/disputes/:bookingId/refund-rejected-artifact",
+      "effectivePath": "/api/admin/disputes/:bookingId/refund-rejected-artifact",
+      "source": "server/routes/admin.routes.ts",
+      "line": 1549,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/admin/disputes/:bookingId/refund-rejected-artifact",
       "tested": false,
       "reason": "Not run: evidence manifest SHA-256 is stale."
     },
@@ -4174,7 +4196,7 @@
       "path": "/api/admin/dmo/analyze-gaps",
       "effectivePath": "/api/admin/dmo/analyze-gaps",
       "source": "server/routes/admin.routes.ts",
-      "line": 1808,
+      "line": 1923,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4196,7 +4218,7 @@
       "path": "/api/admin/dmo/ingest-gaps",
       "effectivePath": "/api/admin/dmo/ingest-gaps",
       "source": "server/routes/admin.routes.ts",
-      "line": 1824,
+      "line": 1939,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4218,7 +4240,7 @@
       "path": "/api/admin/dmo/ingest-kyoto",
       "effectivePath": "/api/admin/dmo/ingest-kyoto",
       "source": "server/routes/admin.routes.ts",
-      "line": 1767,
+      "line": 1882,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4240,7 +4262,7 @@
       "path": "/api/admin/dmo/ingest-youtube",
       "effectivePath": "/api/admin/dmo/ingest-youtube",
       "source": "server/routes/admin.routes.ts",
-      "line": 1858,
+      "line": 1973,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4262,7 +4284,7 @@
       "path": "/api/admin/dmo/intake/:id/approve",
       "effectivePath": "/api/admin/dmo/intake/:id/approve",
       "source": "server/routes/admin.routes.ts",
-      "line": 2101,
+      "line": 2216,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4284,7 +4306,7 @@
       "path": "/api/admin/dmo/intake/:id/reject",
       "effectivePath": "/api/admin/dmo/intake/:id/reject",
       "source": "server/routes/admin.routes.ts",
-      "line": 2191,
+      "line": 2306,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4306,7 +4328,7 @@
       "path": "/api/admin/dmo/publish-batch",
       "effectivePath": "/api/admin/dmo/publish-batch",
       "source": "server/routes/admin.routes.ts",
-      "line": 2275,
+      "line": 2390,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4328,7 +4350,7 @@
       "path": "/api/admin/dmo/publish/:id",
       "effectivePath": "/api/admin/dmo/publish/:id",
       "source": "server/routes/admin.routes.ts",
-      "line": 2230,
+      "line": 2345,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4350,7 +4372,7 @@
       "path": "/api/admin/dmo/resolve",
       "effectivePath": "/api/admin/dmo/resolve",
       "source": "server/routes/admin.routes.ts",
-      "line": 2329,
+      "line": 2444,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4372,7 +4394,7 @@
       "path": "/api/admin/dmo/sync-registry",
       "effectivePath": "/api/admin/dmo/sync-registry",
       "source": "server/routes/admin.routes.ts",
-      "line": 2146,
+      "line": 2261,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4394,7 +4416,7 @@
       "path": "/api/admin/email-outbox/:id/retry",
       "effectivePath": "/api/admin/email-outbox/:id/retry",
       "source": "server/routes/admin.routes.ts",
-      "line": 8762,
+      "line": 8877,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4416,7 +4438,7 @@
       "path": "/api/admin/event-packages",
       "effectivePath": "/api/admin/event-packages",
       "source": "server/routes/admin.routes.ts",
-      "line": 8025,
+      "line": 8140,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4438,7 +4460,7 @@
       "path": "/api/admin/expert-offering-types",
       "effectivePath": "/api/admin/expert-offering-types",
       "source": "server/routes/admin.routes.ts",
-      "line": 7246,
+      "line": 7361,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4460,7 +4482,7 @@
       "path": "/api/admin/gem-candidates/:id/approve",
       "effectivePath": "/api/admin/gem-candidates/:id/approve",
       "source": "server/routes/admin.routes.ts",
-      "line": 7690,
+      "line": 7805,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4482,7 +4504,7 @@
       "path": "/api/admin/gem-candidates/:id/reject",
       "effectivePath": "/api/admin/gem-candidates/:id/reject",
       "source": "server/routes/admin.routes.ts",
-      "line": 7733,
+      "line": 7848,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4526,7 +4548,7 @@
       "path": "/api/admin/invoices",
       "effectivePath": "/api/admin/invoices",
       "source": "server/routes/admin.routes.ts",
-      "line": 4276,
+      "line": 4391,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4548,7 +4570,7 @@
       "path": "/api/admin/leads/:expertRequestId/assign",
       "effectivePath": "/api/admin/leads/:expertRequestId/assign",
       "source": "server/routes/admin.routes.ts",
-      "line": 7485,
+      "line": 7600,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4570,7 +4592,7 @@
       "path": "/api/admin/leads/:expertRequestId/confirm",
       "effectivePath": "/api/admin/leads/:expertRequestId/confirm",
       "source": "server/routes/admin.routes.ts",
-      "line": 7588,
+      "line": 7703,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4724,7 +4746,7 @@
       "path": "/api/admin/neighborhoods/:id/coverage-targets",
       "effectivePath": "/api/admin/neighborhoods/:id/coverage-targets",
       "source": "server/routes/admin.routes.ts",
-      "line": 8197,
+      "line": 8312,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4746,7 +4768,7 @@
       "path": "/api/admin/neighborhoods/backfill",
       "effectivePath": "/api/admin/neighborhoods/backfill",
       "source": "server/routes/admin.routes.ts",
-      "line": 8158,
+      "line": 8273,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4768,7 +4790,7 @@
       "path": "/api/admin/optimization-fees",
       "effectivePath": "/api/admin/optimization-fees",
       "source": "server/routes/admin.routes.ts",
-      "line": 7962,
+      "line": 8077,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4790,7 +4812,7 @@
       "path": "/api/admin/payouts",
       "effectivePath": "/api/admin/payouts",
       "source": "server/routes/admin.routes.ts",
-      "line": 5094,
+      "line": 5209,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4812,7 +4834,7 @@
       "path": "/api/admin/provider-services/:id/approve",
       "effectivePath": "/api/admin/provider-services/:id/approve",
       "source": "server/routes/admin.routes.ts",
-      "line": 3482,
+      "line": 3597,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4834,7 +4856,7 @@
       "path": "/api/admin/provider-services/:id/reject",
       "effectivePath": "/api/admin/provider-services/:id/reject",
       "source": "server/routes/admin.routes.ts",
-      "line": 3571,
+      "line": 3686,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4856,7 +4878,7 @@
       "path": "/api/admin/providers/:userId/remind-stripe",
       "effectivePath": "/api/admin/providers/:userId/remind-stripe",
       "source": "server/routes/admin.routes.ts",
-      "line": 2792,
+      "line": 2907,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4878,7 +4900,7 @@
       "path": "/api/admin/qa/run-nightly",
       "effectivePath": "/api/admin/qa/run-nightly",
       "source": "server/routes/admin.routes.ts",
-      "line": 8599,
+      "line": 8714,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4988,7 +5010,7 @@
       "path": "/api/admin/reviews/:id/clear-response",
       "effectivePath": "/api/admin/reviews/:id/clear-response",
       "source": "server/routes/admin.routes.ts",
-      "line": 6888,
+      "line": 7003,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -5010,7 +5032,7 @@
       "path": "/api/admin/routing-queue/:requestId/confirm",
       "effectivePath": "/api/admin/routing-queue/:requestId/confirm",
       "source": "server/routes/admin.routes.ts",
-      "line": 7598,
+      "line": 7713,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -5032,7 +5054,7 @@
       "path": "/api/admin/routing-queue/:requestId/reassign",
       "effectivePath": "/api/admin/routing-queue/:requestId/reassign",
       "source": "server/routes/admin.routes.ts",
-      "line": 7608,
+      "line": 7723,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -5054,7 +5076,7 @@
       "path": "/api/admin/seed-categories",
       "effectivePath": "/api/admin/seed-categories",
       "source": "server/routes/admin.routes.ts",
-      "line": 3373,
+      "line": 3488,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -5076,7 +5098,7 @@
       "path": "/api/admin/service-offering-types",
       "effectivePath": "/api/admin/service-offering-types",
       "source": "server/routes/admin.routes.ts",
-      "line": 7193,
+      "line": 7308,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -5098,7 +5120,7 @@
       "path": "/api/admin/service-templates",
       "effectivePath": "/api/admin/service-templates",
       "source": "server/routes/admin.routes.ts",
-      "line": 2946,
+      "line": 3061,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -5120,7 +5142,7 @@
       "path": "/api/admin/system/test-email",
       "effectivePath": "/api/admin/system/test-email",
       "source": "server/routes/admin.routes.ts",
-      "line": 6117,
+      "line": 6232,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -5142,7 +5164,7 @@
       "path": "/api/admin/trigger-digest",
       "effectivePath": "/api/admin/trigger-digest",
       "source": "server/routes/admin.routes.ts",
-      "line": 8458,
+      "line": 8573,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -11748,7 +11770,7 @@
       "path": "/api/admin/neighborhoods/:id/lead",
       "effectivePath": "/api/admin/neighborhoods/:id/lead",
       "source": "server/routes/admin.routes.ts",
-      "line": 8271,
+      "line": 8386,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -11770,7 +11792,7 @@
       "path": "/api/admin/testimonials/featured",
       "effectivePath": "/api/admin/testimonials/featured",
       "source": "server/routes/admin.routes.ts",
-      "line": 6939,
+      "line": 7054,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
