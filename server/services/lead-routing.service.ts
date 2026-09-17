@@ -8,6 +8,7 @@ import { db } from '../db';
 import { sql, eq } from 'drizzle-orm';
 import { withQueryTimer } from '../utils/queryTimer';
 import { adminNotifications, expertRequests } from '../../shared/schema';
+import { aiCostActorMatchesSql } from './ai-cost-tracker';
 
 const FALLBACK_MESSAGE =
   "We are finding the best expert for your destination. You will be notified when one is assigned.";
@@ -238,6 +239,12 @@ class LeadRoutingService {
     let costSummaryLine = '';
     if (ctx.userId) {
       try {
+        // Migration 310 (ledger `2026-09-17-ai-cost-actor-id`): attribution goes through the ONE
+        // expression (§18 rule 1), which COALESCEs `actor_id` over `user_id::text`. Two things this
+        // fixes at once: a pre-310 row is still found by its uuid `user_id` (§13 — the fallback is
+        // explicit, nothing was backfilled), and comparing against a NON-uuid session id no longer
+        // raises `22P02` and vanish into the non-fatal catch below, which is exactly what happened
+        // for the accounts whose cost rows were also being dropped at write time.
         const costRows = await db.execute<{
           source_type: string;
           requests: string;
@@ -247,7 +254,7 @@ class LeadRoutingService {
                  COUNT(*)::text        AS requests,
                  SUM(cost)::text       AS total_cost
           FROM   ai_cost_tracking
-          WHERE  user_id    = ${ctx.userId}
+          WHERE  ${aiCostActorMatchesSql(ctx.userId)}
             AND  created_at > NOW() - INTERVAL '5 minutes'
           GROUP  BY source_type
           ORDER  BY SUM(cost) DESC

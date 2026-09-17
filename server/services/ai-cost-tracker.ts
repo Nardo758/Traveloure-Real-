@@ -5,7 +5,51 @@
  */
 
 import { db } from "../db";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
+import { logger } from "../infrastructure/logger";
+
+/**
+ * `ai_cost_tracking.user_id` is a **uuid** column (migration `025b_ai_cost_tracking.sql`) while
+ * `users.id` is a **varchar** (`DEFAULT gen_random_uuid()`, so a normally-minted account happens to
+ * fit and an OIDC/Replit subject or any legacy row does not). Handing Postgres a non-uuid string for
+ * that column raises `22P02` and, because this module swallows its own insert errors by design, the
+ * WHOLE cost row used to vanish with no log anyone reads.
+ *
+ * Migration 310 (ledger `2026-09-17-ai-cost-actor-id`) adds `actor_id varchar(255)`, which holds the
+ * attribution whatever shape the id has. This predicate decides the ONE remaining question: may the
+ * legacy uuid column also carry it? `user_id` is left EXACTLY as it is — the alternative,
+ * `ALTER COLUMN user_id TYPE varchar`, is a §20 publish-time DECLINE prompt.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The driver's SQLSTATE, read through drizzle's wrapper. `db.execute` rejects with a
+ * `DrizzleQueryError` that carries the pg error as its `cause`, so reading `err.code` alone would
+ * log `null` for every failure and the log line would be honest about nothing (§13). Stated once
+ * here and asserted by the proofs, so the two cannot disagree about where the code lives.
+ */
+function pgCodeOf(err: any): string | null {
+  return err?.code ?? err?.cause?.code ?? null;
+}
+
+/** Exported for the proofs: the uuid gate on `user_id`, stated once. */
+export function fitsUuidColumn(id: string | null | undefined): boolean {
+  return typeof id === "string" && UUID_RE.test(id);
+}
+
+/**
+ * THE ONE ATTRIBUTION EXPRESSION (§18 rule 1). Every reader that asks "whose spend is this row?"
+ * calls this and never re-types the COALESCE, because a second copy is how one surface starts
+ * attributing a pre-310 row and another stops seeing it.
+ *
+ * §13 — the fallback is EXPLICIT and said out loud: a row written BEFORE migration 310 carries no
+ * `actor_id` at all, and its `user_id` (a uuid, cast to text so a non-uuid probe can never raise
+ * `22P02` here either) is the only attribution it ever had. Nothing was backfilled, so the absence
+ * stays an absence; a row with NEITHER is honestly unattributed and matches no actor.
+ */
+export function aiCostActorMatchesSql(actorId: string): SQL {
+  return sql`COALESCE(actor_id, user_id::text) = ${actorId}`;
+}
 
 // Anthropic pricing per token (Claude Sonnet 4, as of 2026-06)
 const ANTHROPIC_PRICING = {
@@ -21,6 +65,10 @@ export interface AICostTrackingParams {
   sourceType: "ai_concierge" | "ai_optimization" | "ai_chat" | "ai_traveler" | "ai_content" | "ai_expert" | string;
   modelUsed?: string | null;
   requestId?: string | null;
+  /**
+   * The ACTING user id, in whatever shape `users.id` carries. Written to `actor_id` always, and to
+   * the legacy uuid `user_id` only when it parses as a uuid (see `fitsUuidColumn`).
+   */
   userId?: string | null;
   costUsd: number;
   tokensIn?: number | null;
@@ -32,15 +80,22 @@ export interface AICostTrackingParams {
  * Called after successful Anthropic API calls to record actual usage.
  */
 export async function trackAICost(params: AICostTrackingParams): Promise<void> {
+  // THE ONE WRITER of this table (pinned by `server/__tests__/ai-cost-attribution.db.test.ts` W5:
+  // no `INSERT INTO ai_cost_tracking` exists anywhere else under `server/`). `actor_id` takes the
+  // acting id as given; `user_id` takes it only when the uuid column can hold it, and otherwise
+  // stays NULL rather than taking the row down with it.
+  const actorId = params.userId ?? null;
+  const uuidUserId = fitsUuidColumn(actorId) ? actorId : null;
   try {
     await db.execute(sql`
       INSERT INTO ai_cost_tracking (
-        source_type, model_used, request_id, user_id, cost, tokens_in, tokens_out, created_at, updated_at
+        source_type, model_used, request_id, actor_id, user_id, cost, tokens_in, tokens_out, created_at, updated_at
       ) VALUES (
         ${params.sourceType},
         ${params.modelUsed ?? null},
         ${params.requestId ?? null},
-        ${params.userId ?? null},
+        ${actorId},
+        ${uuidUserId},
         ${params.costUsd},
         ${params.tokensIn ?? null},
         ${params.tokensOut ?? null},
@@ -48,9 +103,22 @@ export async function trackAICost(params: AICostTrackingParams): Promise<void> {
         NOW()
       )
     `);
-  } catch (err) {
-    console.error("[ai-cost-tracker] failed to log cost:", err);
-    // Do not throw — logging failures should not block the request
+  } catch (err: any) {
+    // §13 — A LOST COST ROW IS NOW SAID OUT LOUD. It still never throws into the caller (a cost log
+    // must not break the request it is logging), but the silence is over: the sourceType, the
+    // requestId and the driver's own SQLSTATE are named, so a gap in `ai_cost_tracking` is
+    // reconcilable rather than invisible. The id itself is NOT logged (it is a user identity).
+    logger.warn(
+      {
+        sourceType: params.sourceType,
+        requestId: params.requestId ?? null,
+        pgCode: pgCodeOf(err),
+        hasActor: actorId !== null,
+        actorFitsUuidColumn: uuidUserId !== null,
+        err: err?.message ?? String(err),
+      },
+      "[ai-cost-tracker] ai_cost_tracking insert failed — this spend is NOT recorded",
+    );
   }
 }
 
@@ -75,7 +143,7 @@ export function trackAnthropicResponse(
     costUsd: cost,
     tokensIn: response.usage.input_tokens,
     tokensOut: response.usage.output_tokens,
-  }).catch(err => console.error("[ai-cost-tracker] async failure:", err));
+  }).catch(err => logger.warn({ sourceType: opts.sourceType, requestId: opts.requestId ?? null, err: err?.message ?? String(err) }, "[ai-cost-tracker] async failure"));
 }
 
 /**
