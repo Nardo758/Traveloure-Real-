@@ -1625,7 +1625,7 @@ This document captures architectural decisions to maintain consistency across co
     number (§13). **Review-first and no undo is drawn** (D18). The model call and the post-final
     Trip Card mount are the two things still unbuilt, and the drawer says the first one out loud.
     **(3) THE CREATE RAIL'S MODEL CALL — THE PROMPT SCOPE, AND WHAT IS NEVER IN IT (ledger
-    `2026-09-16-l16-lane1b-model-call`; lands with PR #974).** `POST /api/trips/:tripId/proposals`
+    `2026-09-16-l16-lane1b-model-call`; landed via PR #974).** `POST /api/trips/:tripId/proposals`
     reads the plan LIVE and makes ONE model call whose whole input is the named `AiTaskPromptScope`
     (`server/services/ai-task-prompt.ts`, pure) — the trip's own fields, the ordered items with the
     protected set MARKED AS CONSTRAINTS through the one existing predicate pair, the plan's events
@@ -1682,7 +1682,7 @@ This document captures architectural decisions to maintain consistency across co
     put on a clock (§13)**, and rows completed under the old timer are never rewritten. Left for later
     lanes, named: brief §7 lane 4 (every surface), and the refund on a rejected artifact, still UNRULED.
     **THE REFUND ON A REJECTED ARTIFACT IS THE ADMIN'S DISPUTE OUTCOME — the line above is now ruled
-    (ledger `2026-09-17-ld50-remainder-and-artifact-refund`; lands with PR #973).** A traveler's
+    (ledger `2026-09-17-ld50-remainder-and-artifact-refund`; landed via PR #973).** A traveler's
     rejection of an artifact **moves no money**: it ASKs and then ESCALATEs into the existing admin
     dispute queue through the ONE dispute writer, exactly as D-27 already had it. The refund is the
     **ADMIN's resolution outcome** — a full refund of what that booking's traveler was charged,
