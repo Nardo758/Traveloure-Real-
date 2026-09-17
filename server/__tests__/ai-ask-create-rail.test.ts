@@ -433,13 +433,21 @@ test("S11: the create rail invents no second limiter, catalog reader, fee litera
     "no fabricated recipient may be constructed anywhere in the limiter module",
   );
 
-  // D-50: the catalog is read through `loadOptimizerCatalog` and nothing else on this rail.
+  // D-50, as amended by review finding 1 (ledger `2026-09-16-l16-lane1-review-fixes`): the apply
+  // re-validates a NAMED listing BY ID under `optimizerCatalogLivenessWhere` — the ONE predicate the
+  // catalog reader itself pages over, exported from that reader's module — and never through a
+  // second spelling of "active AND approved AND in this destination". The old pin (`loadOptimizerCatalog(`
+  // in the charge service) was the `.limit(100)`-page membership check the finding retired.
   const charge = codeOnly(src("server/services/proposal-charge.service.ts"));
-  assert.match(charge, /loadOptimizerCatalog\(/, "the apply re-validates through the ONE catalog reader");
+  assert.match(charge, /optimizerCatalogLivenessWhere\(/, "the apply re-validates under the ONE liveness predicate");
+  assert.ok(!/loadOptimizerCatalog\(/.test(charge), "and no longer by membership in a page of the reader's result");
   assert.ok(
-    !/from\(providerServices\)/.test(charge),
-    "no second catalog query may be written beside it (§18 rule 1)",
+    !/eq\(providerServices\.status,/.test(charge) && !/eq\(providerServices\.approvalStatus,/.test(charge),
+    "no second spelling of the liveness predicate may be written beside it (§18 rule 1)",
   );
+  const baseline = codeOnly(src("server/services/optimizer-baseline.service.ts"));
+  assert.match(baseline, /export function optimizerCatalogLivenessWhere\(/, "the predicate lives in the reader's own module");
+  assert.match(baseline, /\.where\(optimizerCatalogLivenessWhere\(destination\)\)/, "and the reader itself pages over it");
 
   // §8: no fee literal on any file this lane authored — the AI task's price is the band's.
   for (const rel of [

@@ -29,10 +29,23 @@
  * `discarded` — the traveler read it and said no. Discarding costs nothing and the row STAYS, so
  *               the plan's proposal log remains a true record of what was offered.
  *
+ * `refunded`  — (decision-maker ruling 2026-09-16, OPTION B — refund the fee on expiry; ledger
+ *               `2026-09-16-l16-lane1-review-fixes`.) The traveler PAID, and before the apply
+ *               landed the proposal went stale or a listing it names went away. It is NOT applied
+ *               at a changed price and NOT left terminally unappliable with money taken: the fee is
+ *               refunded, and this is the terminal state that records it. The flip to it IS the
+ *               §15b claim on the refund — taken atomically BEFORE the Stripe call — so the row is
+ *               never `proposed` again and can never be applied or discarded afterwards. It is
+ *               deliberately ONE state for both refusal reasons (stale price, unavailable
+ *               listing): what happened to the MONEY is the same, and the `refunds` audit row
+ *               carries the reason.
+ *
  * There is no `expired`, no `superseded` and no `failed`. Two ways to say one thing is how a
- * reader ends up guessing which was meant (§13, the ruling-31 posture on empty states).
+ * reader ends up guessing which was meant (§13, the ruling-31 posture on empty states). A paid
+ * proposal that expires is `refunded`, never `expired`: the state names what the platform DID,
+ * not what time did.
  */
-export const PLAN_PROPOSAL_STATUSES = ["proposed", "applied", "discarded"] as const;
+export const PLAN_PROPOSAL_STATUSES = ["proposed", "applied", "discarded", "refunded"] as const;
 export type PlanProposalStatus = (typeof PLAN_PROPOSAL_STATUSES)[number];
 
 /** The state a proposal is BORN in. Stated here so no writer has to restate the literal. */
@@ -45,6 +58,11 @@ export const PLAN_PROPOSAL_STATUS_DISCARDED: PlanProposalStatus = "discarded";
  * literal either.
  */
 export const PLAN_PROPOSAL_STATUS_APPLIED: PlanProposalStatus = "applied";
+/**
+ * The state `refundRefusedProposalCharge`'s atomic conditional writes (OPTION B, ledger
+ * `2026-09-16-l16-lane1-review-fixes`). One literal, one home.
+ */
+export const PLAN_PROPOSAL_STATUS_REFUNDED: PlanProposalStatus = "refunded";
 
 /** Fails closed: a NULL, a non-string or any unrecognised value is not a status. */
 export function isPlanProposalStatus(value: unknown): value is PlanProposalStatus {
@@ -176,4 +194,30 @@ export function isPlanProposalChargeBasis(value: unknown): value is PlanProposal
  */
 export function planProposalApplyIdempotencyKey(proposalId: string): string {
   return `ai-apply-${proposalId}`;
+}
+
+/**
+ * THE ONE PLACE THE REFUND'S STRIPE IDEMPOTENCY KEY IS SPELLED (§15; OPTION B, ledger
+ * `2026-09-16-l16-lane1-review-fixes`).
+ *
+ * A paid proposal refused at apply (stale price, unavailable listing) is refunded ONCE. The key is
+ * derived from the proposal id and nothing else, for the same reason the apply key is: the unit is
+ * the proposal, the row belongs to one plan and the plan to one owner, and the amount is the ONE
+ * charge Stripe reports for that proposal's PaymentIntent — so there is no amount component to
+ * disambiguate (the booking refund keys carry one because a booking can be refunded at several
+ * policy-scaled amounts; a proposal cannot). Two concurrent applies both refused, a retry after a
+ * failed Stripe call and a reloaded drawer all rebuild this key and Stripe returns the SAME refund.
+ */
+export function planProposalRefundIdempotencyKey(proposalId: string): string {
+  return `ai-task-refund-${proposalId}`;
+}
+
+/**
+ * The `refunds.reason` text a proposal refund records, spelled once so the writer and the reader
+ * that recognises it agree (§18 rule 1). Carries the refusal that triggered it — the ONE place the
+ * refusal reason survives, since `refunded` is a single terminal status for both (§13).
+ */
+export const PLAN_PROPOSAL_REFUND_REASON = "ai_task_proposal_refused";
+export function planProposalRefundReason(refusal: string, proposalId: string): string {
+  return `${PLAN_PROPOSAL_REFUND_REASON}:${refusal}:${proposalId}`;
 }

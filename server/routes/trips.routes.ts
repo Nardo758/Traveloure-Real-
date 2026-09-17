@@ -44,8 +44,11 @@ import {
   retrieveProposalPaymentIntent,
   stampProposalPaymentIntent,
   verifyProposalPayment,
+  isRefundableProposalRefusal,
+  refundRefusedProposalCharge,
+  type ProposalRefundOutcome,
 } from "../services/proposal-charge.service";
-import { PLAN_PROPOSAL_STATUS_PROPOSED } from "@shared/plan-proposals";
+import { PLAN_PROPOSAL_STATUS_PROPOSED, PLAN_PROPOSAL_STATUS_REFUNDED } from "@shared/plan-proposals";
 import { coversAction } from "../services/trip-entitlement.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 // Ledger `2026-09-05-slip-own-your-plan` (review R14): the ONE row-level answer to "is this row
@@ -3592,6 +3595,7 @@ router.post("/api/trips/:tripId/proposals", isAuthenticated, async (req, res) =>
     // The limits come AFTER the gate (an unauthorized caller is refused before they can consume a
     // bucket) and BEFORE the model call (the expensive half — a limit checked after it protects
     // nothing). `req.ip` scopes the CI bypass to a loopback peer only, exactly as messaging does.
+    // lane 2: move the limit hit to the model-call site — today the terminal 503 below consumes a bucket.
     const limit = checkAiAskRateLimit({ senderId: userId, tripId, peerIp: req.ip });
     if (!limit.allowed) {
       if (limit.retryAfterSec) res.setHeader("Retry-After", String(limit.retryAfterSec));
@@ -3733,7 +3737,7 @@ router.post("/api/trips/:tripId/proposals/:id/pay", isAuthenticated, async (req,
     // and discard routes already take (Locked Decision 40's `POST /api/conversations/start` rule).
     if (!proposal) return res.status(404).json({ message: "Proposal not found" });
     if (proposal.status !== PLAN_PROPOSAL_STATUS_PROPOSED) {
-      return res.status(409).json({ message: "This proposal has already been applied or discarded." });
+      return res.status(409).json({ message: "This proposal is no longer open — it has been applied, discarded or refunded." });
     }
 
     // D-50 (b)/(c) — REFUSE BEFORE CHARGING. ONE implementation, two callers
@@ -3843,8 +3847,30 @@ router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (re
 
     const proposal = await getPlanProposal(id, tripId);
     if (!proposal) return res.status(404).json({ message: "Proposal not found" });
+    if (proposal.status === PLAN_PROPOSAL_STATUS_REFUNDED) {
+      // OPTION B, the RETRY: a paid proposal the apply already refused and refunded. The same
+      // proposal-derived idempotency key means this re-drives NO second refund — it reports the one
+      // issued, or completes a claim whose Stripe call failed (§15b). §13: the row's own recorded
+      // charge and PaymentIntent, never a request value; a row that somehow carries neither says
+      // only that it was refunded.
+      const refund: ProposalRefundOutcome | undefined =
+        proposal.stripePaymentIntentId && proposal.chargedAmountCents != null
+          ? await refundRefusedProposalCharge({
+              proposalId: id,
+              tripId,
+              paymentIntentId: proposal.stripePaymentIntentId,
+              amountCents: proposal.chargedAmountCents,
+              refusal: null,
+            })
+          : undefined;
+      return res.status(409).json({
+        message: "This proposal could not be applied as read, and its fee has been refunded. Ask again for a fresh answer.",
+        reason: "refunded",
+        ...(refund ? { refund } : {}),
+      });
+    }
     if (proposal.status !== PLAN_PROPOSAL_STATUS_PROPOSED) {
-      return res.status(409).json({ message: "This proposal has already been applied or discarded." });
+      return res.status(409).json({ message: "This proposal is no longer open — it has been applied, discarded or refunded." });
     }
 
     const auth = await resolveProposalApplyAuthorization(
@@ -3896,7 +3922,31 @@ router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (re
       if (err instanceof ProposalApplyRefused) {
         // D3 / D18: the reason is said out loud, and NOTHING was written — the whole apply is one
         // transaction, so a refusal leaves the plan exactly as it was.
-        return res.status(409).json({ message: err.message, reason: err.code, itemIds: err.itemIds });
+        //
+        // OPTION B (decision-maker ruling 2026-09-16, ledger `2026-09-16-l16-lane1-review-fixes`):
+        // a PAID proposal refused for a stale price or an unavailable listing is REFUNDED — never
+        // applied at a changed price, never left paid-and-unappliable. The refund is the ONE
+        // implementation in the charge service: it claims the row atomically FIRST (§15b), then
+        // drives the ONE shared Stripe refund site under a proposal-derived key. §14: the amount is
+        // what Stripe reported the intent took (`auth.amountCents`), never a body value. A
+        // Trip-Pass-covered apply moved no money and gets no `refund` block — an absent block is
+        // "nothing was charged", which is the truth, not a refund of nothing (§13).
+        const refund: ProposalRefundOutcome | undefined =
+          auth.basis === "paid" && isRefundableProposalRefusal(err.code)
+            ? await refundRefusedProposalCharge({
+                proposalId: id,
+                tripId,
+                paymentIntentId: auth.paymentIntentId,
+                amountCents: auth.amountCents,
+                refusal: err.code,
+              })
+            : undefined;
+        return res.status(409).json({
+          message: err.message,
+          reason: err.code,
+          itemIds: err.itemIds,
+          ...(refund ? { refund } : {}),
+        });
       }
       throw err;
     }

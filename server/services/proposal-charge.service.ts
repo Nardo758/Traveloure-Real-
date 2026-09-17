@@ -60,18 +60,30 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import { db } from "../db";
-import { itineraryItems, planProposals, trips, type PlanProposal } from "@shared/schema";
 import {
+  itineraryItems,
+  planProposals,
+  providerServices,
+  refunds,
+  trips,
+  type PlanProposal,
+} from "@shared/schema";
+import {
+  PLAN_PROPOSAL_CHARGE_BASIS_PAID,
   PLAN_PROPOSAL_STATUS_APPLIED,
   PLAN_PROPOSAL_STATUS_PROPOSED,
+  PLAN_PROPOSAL_STATUS_REFUNDED,
   planProposalApplyIdempotencyKey,
+  planProposalRefundIdempotencyKey,
+  planProposalRefundReason,
   type PlanProposalChangeSet,
   type PlanProposalChargeBasis,
 } from "@shared/plan-proposals";
 import { changeSetProviderServiceIds } from "@shared/plan-proposal-changeset";
 import { isProposalCatalogPriceStale } from "../config/proposal-staleness.config";
-import { loadOptimizerCatalog } from "./optimizer-baseline.service";
+import { optimizerCatalogLivenessWhere } from "./optimizer-baseline.service";
 import { reFinalizeIfCurrentlyFinal } from "./trip-finalize.service";
+import { stripePaymentService } from "./stripe-payment.service";
 import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
 import { itineraryItemIsMoneyCommitted } from "@shared/itinerary-item-money";
 import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
@@ -298,11 +310,19 @@ export class ProposalApplyRefused extends Error {
  * class §18 rule 1 names, and here it would be a money bug: two rails disagreeing about whether an
  * apply is still possible, with a charge taken between them.
  *
- * The catalog read is `loadOptimizerCatalog` — the ONE catalog reader D-50 names — scoped to this
- * plan's destination exactly as it was at create. No second query, no second filter.
+ * **THE RE-VALIDATION IS BY ID, UNDER THE ONE LIVENESS PREDICATE** (review finding 1, ledger
+ * `2026-09-16-l16-lane1-review-fixes`). The first cut checked set-membership in
+ * `loadOptimizerCatalog(...)`'s result — a `.limit(100)` page with no `ORDER BY` — so on a destination
+ * with more than 100 live listings a live one could fall off the page and be refused as
+ * `listing_unavailable`, a false claim (§13) on a paid rail. Now each NAMED id is looked up directly:
+ * `inArray(id, named)` ANDed with `optimizerCatalogLivenessWhere(destination)`, the SAME
+ * active/approved/destination predicate the catalog reader pages over, exported from that reader's
+ * own module so the two can never drift (§18 rule 1). No page, no limit: a listing is live or it is
+ * not. The optimizer's own reader is untouched.
  *
- * `reader` takes a drizzle transaction handle when one is open, so the trip read joins the caller's
- * transaction rather than opening a connection beside it.
+ * `reader` takes a drizzle transaction handle when one is open, and BOTH reads here — the trip's
+ * destination and the listings' liveness — go through it, so inside `applyPlanProposal` they join
+ * the caller's transaction rather than opening a connection beside it (review finding 5).
  */
 export async function assertProposalCatalogStillValid(params: {
   proposal: Pick<PlanProposal, "proposal" | "createdAt">;
@@ -323,15 +343,23 @@ export async function assertProposalCatalogStillValid(params: {
     );
   }
 
-  // (b) The re-validation, through the ONE catalog reader.
+  // (b) The re-validation, BY ID, under the ONE liveness predicate. Both reads on `reader`.
   const reader = params.reader ?? db;
   const [tripRow] = await reader
     .select({ destination: trips.destination })
     .from(trips)
     .where(eq(trips.id, params.tripId))
     .limit(1);
-  const catalog = await loadOptimizerCatalog(tripRow?.destination ?? null);
-  const live = new Set(catalog.map((c) => c.id));
+  const liveRows = await reader
+    .select({ id: providerServices.id })
+    .from(providerServices)
+    .where(
+      and(
+        optimizerCatalogLivenessWhere(tripRow?.destination ?? null),
+        inArray(providerServices.id, namedServiceIds),
+      ),
+    );
+  const live = new Set(liveRows.map((c) => c.id));
   const missing = namedServiceIds.filter((id) => !live.has(id));
   if (missing.length > 0) {
     throw new ProposalApplyRefused(
@@ -391,8 +419,9 @@ export interface AppliedProposalResult {
  *     naming a listing the traveler cannot book, and silently dropping it would change what they
  *     read after they read it.
  * Both are checked BEFORE anything is written and BEFORE the flip, inside the same transaction, so
- * a refusal leaves the plan exactly as it was. The catalog read is `loadOptimizerCatalog` — the ONE
- * catalog reader (§18 rule 1, D-50); this file adds no second query and no second filter.
+ * a refusal leaves the plan exactly as it was. The liveness test is `optimizerCatalogLivenessWhere`
+ * — the ONE predicate the catalog reader itself pages over (§18 rule 1, D-50), applied here BY ID
+ * (review finding 1); this file adds no second filter.
  *
  * ── D-49: THE TRIP CARD IS RE-FINALIZED AFTER THE APPLY COMMITS ──────────────────────────────
  * (decision-maker ruling 2026-09-16 = A, amended on timing — it ships with the CREATE rail rather
@@ -423,7 +452,14 @@ export async function applyPlanProposal(params: {
    * already happened at the route and in `resolveProposalApplyAuthorization`.
    */
   actorId: string;
-}): Promise<AppliedProposalResult> {
+}, deps: {
+  /**
+   * The D-49 post-commit re-finalize. Injected ONLY so a test can drive a FAILING one and prove the
+   * apply still resolves and the failure is logged with both ids (review finding 4 — a behavioural
+   * proof in place of a string-index pin). Production callers pass nothing and get the real helper.
+   */
+  reFinalize?: typeof reFinalizeIfCurrentlyFinal;
+} = {}): Promise<AppliedProposalResult> {
   const result = await db.transaction(async (tx) => {
     const [row] = await tx
       .select()
@@ -567,7 +603,7 @@ export async function applyPlanProposal(params: {
   // id are on the line, so a Trip Card that did not advance after a paid apply is reconcilable
   // rather than a silence nobody can trace back to an apply.
   try {
-    await reFinalizeIfCurrentlyFinal(params.tripId, params.actorId);
+    await (deps.reFinalize ?? reFinalizeIfCurrentlyFinal)(params.tripId, params.actorId);
   } catch (err: any) {
     console.error(
       "[proposal-apply] auto re-finalize FAILED after a committed apply (non-fatal, reconcilable):",
@@ -576,6 +612,166 @@ export async function applyPlanProposal(params: {
   }
 
   return result;
+}
+
+/**
+ * The two refusals that REFUND a paid proposal (OPTION B — decision-maker ruling 2026-09-16, ledger
+ * `2026-09-16-l16-lane1-review-fixes`). Stated once; the route asks this, never a re-typed pair of
+ * string compares (§18 rule 1). `protected_item` is deliberately NOT here: it is not ruled, and a
+ * refusal that is not on this list leaves a paid proposal exactly as the first cut did.
+ */
+export const PROPOSAL_REFUNDABLE_REFUSALS = ["stale_catalog_price", "listing_unavailable"] as const;
+export type ProposalRefundableRefusal = (typeof PROPOSAL_REFUNDABLE_REFUSALS)[number];
+export function isRefundableProposalRefusal(code: string): code is ProposalRefundableRefusal {
+  return (PROPOSAL_REFUNDABLE_REFUSALS as readonly string[]).includes(code);
+}
+
+/**
+ * What happened to the money, said out loud on the 409 (§13).
+ *
+ *   `issued`         — Stripe holds a refund for this proposal's PaymentIntent; `refundId` names it
+ *                      and `amountCents` is the row's recorded charge.
+ *   `pending`        — the refund is CLAIMED (the row is `refunded`) but the Stripe call has not
+ *                      completed: it threw, or a concurrent caller holds the same idempotency key
+ *                      in flight. The claim stands; the traveler's retry re-drives the same key.
+ *   `not_refundable` — the row is not a paid-and-open proposal (applied, discarded, or a different
+ *                      PaymentIntent is recorded). Nothing was moved and nothing is owed here.
+ */
+export type ProposalRefundOutcome =
+  | { issued: true; refundId: string; amountCents: number }
+  | { issued: false; state: "pending" | "not_refundable" };
+
+/**
+ * OPTION B — REFUND THE FEE ON EXPIRY. (decision-maker ruling 2026-09-16; ledger
+ * `2026-09-16-l16-lane1-review-fixes`. §13, §14, §15, §15b, §18 rule 1.)
+ *
+ * A proposal can be PAID (the pay rail claimed it, Stripe took the fee, the PaymentIntent is stamped)
+ * and THEN go stale or lose a listing before the traveler applies. The first cut refused the apply
+ * and left the money taken — a terminally unappliable proposal the traveler had paid for. The ruling
+ * is that such a proposal is NOT applied at a changed price and NOT left stuck: the fee is refunded.
+ *
+ * ── §15b: CLAIM → STRIPE → RECORD, and the claim is the status flip ──────────────────────────
+ * ONE atomic conditional — `UPDATE plan_proposals SET status='refunded', charge_basis='paid',
+ * charged_amount_cents=<what Stripe took> WHERE id=? AND trip_id=? AND status='proposed' AND
+ * stripe_payment_intent_id=<this PI>` — is taken BEFORE the Stripe call. The statement is the guard:
+ * two concurrent applies both refused produce exactly one claim. The `plan_proposals` row has no
+ * `refunded_at`, and NO MIGRATION is added in this lane; the EXISTING columns carry the whole fact —
+ * `status` says it was refunded, `charged_amount_cents` says how much (§14: the amount is Stripe's
+ * own report of the charge, recorded on the row so every retry refunds the SAME figure and none of
+ * it is read from a request), `charge_basis` says the charge was a real payment — and the `refunds`
+ * audit row (migration 156; `booking_id` NULL, `stripe_payment_intent_id` = this PI, `reason` =
+ * `planProposalRefundReason(...)`) carries the Stripe refund id and the refusal that caused it.
+ *
+ * ── THE LOSER AND THE RETRY ARE THE SAME PATH ────────────────────────────────────────────────
+ * A caller that does NOT win the claim reads the row: if it is `refunded` on THIS PaymentIntent, it
+ * looks for the audit row and, finding one, reports that refund. Finding none — the winner is still
+ * in flight, or its Stripe call threw — it re-drives Stripe with the SAME idempotency key
+ * (`planProposalRefundIdempotencyKey`): Stripe returns the same refund for a completed key, or an
+ * in-use error for a concurrent one, and either way at most ONE refund exists. So a failed Stripe
+ * call is never rolled back (§15b — rollback code runs in exactly the conditions that broke the
+ * operation): the claim stays, the failure is logged LOUDLY, the outcome says `pending`, and the
+ * traveler's next apply — which finds the row `refunded` — completes it.
+ *
+ * ── WHAT IS NOT WRITTEN, and why ─────────────────────────────────────────────────────────────
+ * No `platform_revenue` reversal: `ledgerProposalCharge` runs only AFTER a successful apply, and a
+ * refused apply never reached it, so there is no revenue row for this proposal to reverse — writing
+ * a negative against nothing would fabricate a charge that was never recognised (§13), and a `0`
+ * row is refused by the ledger's own CHECK. No `ai_cost_tracking` row: the charge lane writes none
+ * at apply. The Stripe refund and the `refunds` audit row ARE the money record, matching how a
+ * booking refund is recorded.
+ */
+export async function refundRefusedProposalCharge(params: {
+  proposalId: string;
+  tripId: string;
+  /** The PaymentIntent the apply was authorized on — the row's own, or the one just stamped. */
+  paymentIntentId: string;
+  /** What Stripe reported the intent took (`auth.amountCents`), or the row's recorded charge on a retry. */
+  amountCents: number;
+  /** Which refusal triggered it; on a retry of an already-`refunded` row this is `null` (not re-derived). */
+  refusal: ProposalRefundableRefusal | null;
+}): Promise<ProposalRefundOutcome> {
+  const { proposalId, tripId, paymentIntentId } = params;
+
+  // §15b THE CLAIM — one statement, taken before any network call.
+  const [claimed] = await db
+    .update(planProposals)
+    .set({
+      status: PLAN_PROPOSAL_STATUS_REFUNDED,
+      chargeBasis: PLAN_PROPOSAL_CHARGE_BASIS_PAID,
+      chargedAmountCents: params.amountCents,
+    })
+    .where(
+      and(
+        eq(planProposals.id, proposalId),
+        eq(planProposals.tripId, tripId),
+        eq(planProposals.status, PLAN_PROPOSAL_STATUS_PROPOSED),
+        eq(planProposals.stripePaymentIntentId, paymentIntentId),
+      ),
+    )
+    .returning({ id: planProposals.id, chargedAmountCents: planProposals.chargedAmountCents });
+
+  let recordedAmountCents = claimed?.chargedAmountCents ?? null;
+  if (!claimed) {
+    // Lost the claim, or arrived on a retry. Only a row ALREADY refunded on THIS PaymentIntent is
+    // ours to finish; anything else (applied, discarded, another intent) is not refundable here.
+    const [row] = await db
+      .select({
+        status: planProposals.status,
+        stripePaymentIntentId: planProposals.stripePaymentIntentId,
+        chargedAmountCents: planProposals.chargedAmountCents,
+      })
+      .from(planProposals)
+      .where(and(eq(planProposals.id, proposalId), eq(planProposals.tripId, tripId)))
+      .limit(1);
+    if (
+      !row ||
+      row.status !== PLAN_PROPOSAL_STATUS_REFUNDED ||
+      row.stripePaymentIntentId !== paymentIntentId
+    ) {
+      return { issued: false, state: "not_refundable" };
+    }
+    recordedAmountCents = row.chargedAmountCents;
+  }
+
+  // §14: the amount is the row's recorded charge — Stripe's own report, written at the claim — and
+  // never a request value. `params.amountCents` is the same figure on the winner's path and the
+  // fallback only if a row somehow carries none.
+  const amountCents = recordedAmountCents ?? params.amountCents;
+
+  // Already issued and recorded? Report it; no Stripe call.
+  const [existing] = await db
+    .select({ stripeRefundId: refunds.stripeRefundId })
+    .from(refunds)
+    .where(and(eq(refunds.stripePaymentIntentId, paymentIntentId), isNull(refunds.bookingId)))
+    .limit(1);
+  if (existing?.stripeRefundId) {
+    return { issued: true, refundId: existing.stripeRefundId, amountCents };
+  }
+
+  // Not yet recorded: drive Stripe under the proposal-derived key. Same key ⇒ same refund.
+  try {
+    const refund = await stripePaymentService.refundAiTaskProposalFee({
+      proposalId,
+      tripId,
+      paymentIntentId,
+      amountCents,
+      idempotencyKey: planProposalRefundIdempotencyKey(proposalId),
+      auditReason: planProposalRefundReason(params.refusal ?? "retry", proposalId),
+    });
+    console.info(
+      `[proposal-refund] fee refunded for a refused paid apply (refusal:${params.refusal ?? "retry"})`,
+      { proposalId, tripId, paymentIntentId, refundId: refund.id },
+    );
+    return { issued: true, refundId: refund.id, amountCents };
+  } catch (err: any) {
+    // LOUD, and the claim STANDS. The row is `refunded`, Stripe may or may not hold the refund, and
+    // the next apply on this proposal re-drives the same key to find out (§15b).
+    console.error(
+      "[proposal-refund] Stripe refund FAILED after the claim — claim kept, retry re-drives the same key:",
+      { proposalId, tripId, paymentIntentId, message: err?.message },
+    );
+    return { issued: false, state: "pending" };
+  }
 }
 
 /**
