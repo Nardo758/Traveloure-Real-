@@ -122,14 +122,13 @@ export const OWNER_BOOKING_TRANSITIONS: Record<string, readonly string[]> = {
  * status, no disputes table. The queue tells the two apart by DERIVATION
  * (`disputeStageFor` in `shared/declared-completion-window.ts`), never by a second status.
  */
-export const DISPUTABLE_FROM_STATUSES: readonly string[] = [
-  "confirmed",
-  "deposit_paid",
-  "completed",
-  "awaiting_acceptance",
-  "revision_requested",
-  "completion_declared",
-];
+// MOVED to `shared/declared-completion-window.ts` and RE-EXPORTED here (ledger
+// `2026-09-17-surfaces-acceptance-completion`): the slip, My Bookings and the Trip Card must decide
+// whether to draw a dispute control from the SAME list the rail guards on, and a client cannot
+// import a server module. Every server caller of this name is unchanged; there is still exactly one
+// definition. The comment block above is the list's own record and stays with the name.
+import { DISPUTABLE_FROM_STATUSES } from "@shared/declared-completion-window";
+export { DISPUTABLE_FROM_STATUSES };
 
 /*
  * ── D-7 DECLARED COMPLETION (punchlist D-36/D-37, ruled A; ledger
@@ -197,10 +196,10 @@ export const TRAVELER_CONFIRMABLE_FROM_STATUSES: readonly string[] = ["confirmed
  * be able to consume `confirmed` (which is the timer's state, not the traveler's) or any terminal
  * state.
  */
-export const ACCEPTANCE_FROM_STATUSES: readonly string[] = ["awaiting_acceptance"];
-
-/** REQUEST A REVISION. The same single state, for the same reason. */
-export const REVISION_REQUESTABLE_FROM_STATUSES: readonly string[] = ["awaiting_acceptance"];
+// MOVED to `shared/acceptance-window.ts` and RE-EXPORTED — see the note on
+// `DISPUTABLE_FROM_STATUSES` above. The traveler's ACCEPT and REQUEST REVISION buttons read these.
+import { ACCEPTANCE_FROM_STATUSES, REVISION_REQUESTABLE_FROM_STATUSES } from "@shared/acceptance-window";
+export { ACCEPTANCE_FROM_STATUSES, REVISION_REQUESTABLE_FROM_STATUSES };
 
 /**
  * DELIVER (or RE-DELIVER) THE ARTIFACT — the statuses in which a provider may set the per-booking
@@ -280,7 +279,10 @@ export const ACCEPTANCE_ESCALATION_FROM_STATUSES: readonly string[] = ["awaiting
  * stamped and a revision row written on such a booking: the paid-equivalent states, for the same
  * reason the delivery list uses them.
  */
-export const ARTIFACT_RECORD_ONLY_STATUSES: readonly string[] = ["confirmed", "deposit_paid"];
+// MOVED to `shared/acceptance-window.ts` and RE-EXPORTED — same reason: D-40's hybrid arm draws the
+// same two buttons, and its from-state list must not be copied onto a client.
+import { ARTIFACT_RECORD_ONLY_STATUSES } from "@shared/acceptance-window";
+export { ARTIFACT_RECORD_ONLY_STATUSES };
 
 /**
  * ── V-24 (punchlist §2; ledger `2026-09-15-v23-v25-from-state-guards`) ────────────────────────────

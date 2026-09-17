@@ -19,7 +19,7 @@ import { holdWindowDays } from '../config/earnings-hold.config';
 import { DISPUTABLE_FROM_STATUSES, TRAVELER_CONFIRMABLE_FROM_STATUSES } from '../utils/booking-from-states';
 // D-7 (ledger `2026-09-15-d36-d39-completion-declared`): the ONE derivation of the declared window
 // — the dispute anchor, the derived deadline — read here, never restated.
-import { declaredCompletionDeadline, disputeWindowAnchor } from '@shared/declared-completion-window';
+import { describeCompletionDeclaration, disputeWindowAnchor } from '@shared/declared-completion-window';
 import { declaredCompletionWindowDays } from '../config/completion-windows.config';
 import {
   acceptDeliverable,
@@ -91,12 +91,12 @@ router.get('/:id', isAuthenticated, async (req, res) => {
       // window costs them, from the server's own derivation (brief §14: "read from the server's
       // own answer — never restated on the client"). §13: OMITTED entirely on every other row —
       // never `declared: false`, never "not declared" on a timer or an artifact booking.
-      const windowDays = declaredCompletionWindowDays();
-      const disputeBy = declaredCompletionDeadline(booking.completionDeclaredAt, windowDays);
-      const completionDeclaration =
-        booking.completionDeclaredAt && !booking.completedAt && disputeBy
-          ? { declaredAt: new Date(booking.completionDeclaredAt).toISOString(), disputeBy, windowDays }
-          : null;
+      //
+      // Ledger `2026-09-17-surfaces-acceptance-completion`: the three-field composition moved into
+      // `describeCompletionDeclaration`, the ONE derivation, because the traveler list and both
+      // seller lists now render the same read-out. A second copy of the `declared && !completed`
+      // test is the derivation-drift class §18 rule 1 names.
+      const completionDeclaration = describeCompletionDeclaration(booking, declaredCompletionWindowDays());
       return res.json({
         ...booking,
         ...(acceptance ? { acceptance } : {}),

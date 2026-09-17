@@ -238,6 +238,48 @@ export default function AdminReconciliation() {
     },
   });
 
+  // LD 46's MONEY OUTCOME (ledger `2026-09-17-ld50-remainder-and-artifact-refund`, surfaced by
+  // `2026-09-17-surfaces-acceptance-completion`): a traveler's REJECTION of an artifact moves no
+  // money — it escalates into THIS queue — and the refund is the ADMIN's resolution. One more
+  // outcome button on the rows that are already here; no new queue, no new status, no new page.
+  //
+  // §13, and it is the whole reason this is a mutation with a branchy toast: "refund issued <id>"
+  // is said ONLY with the id the server hands back. A retry that finds the booking already refunded
+  // reports `alreadyRefunded` and carries NO id, because this call issued none — so the toast must
+  // not invent one, and it says so in those words. The rail's named refusals
+  // (`no_payment_intent` / `nothing_charged` / `wrong_status`) are repeated verbatim.
+  const artifactRefundMutation = useMutation({
+    mutationFn: (bookingId: string) =>
+      apiRequest("POST", `/api/admin/disputes/${bookingId}/refund-rejected-artifact`),
+    onSuccess: async (res) => {
+      const data = await res.json().catch(() => ({} as any));
+      await queryClient.invalidateQueries({ queryKey: ["/api/admin/disputes"] });
+      refetchDisputes();
+      if (data?.alreadyRefunded) {
+        toast({
+          title: "Already resolved",
+          description: "This booking was refunded before. Nothing moved and no second refund was issued.",
+        });
+        return;
+      }
+      toast({
+        title: "Rejected artifact resolved for the traveler",
+        description: data?.stripeRefundId
+          ? `Refund issued ${data.stripeRefundId}. Earnings and platform revenue reversed; no seller payout was minted.`
+          : "Earnings and platform revenue reversed; no seller payout was minted.",
+        variant: data?.skippedPaidOut > 0 ? "destructive" : "default",
+      });
+    },
+    onError: async (err: any) => {
+      toast({
+        title: "Could not refund",
+        description: err?.message ?? "Check server logs for details.",
+        variant: "destructive",
+      });
+      refetchDisputes();
+    },
+  });
+
   // Ready-Made concierge disputes (ledger 2026-08-22-concierge-p3): the buyer-concern queue.
   // Renders FACTS, not a verdict (§13): revision requested-at, the expert's workspace status,
   // suggestion count, and the earning's recoverability — the admin judges.
@@ -624,6 +666,30 @@ export default function AdminReconciliation() {
                                   data-testid={`button-uphold-dispute-${d.id}`}
                                 >
                                   Uphold &amp; refund
+                                </Button>
+                                {/* LD 46's artifact outcome. Shown ONLY on a `disputed` row — the
+                                    from-state the rail's §15b claim consumes — beside the two
+                                    general outcomes, never instead of them: a D-27 escalation and a
+                                    traveler's own complaint arrive in this queue as the same row,
+                                    and which resolution fits is the admin's judgement, not a
+                                    derivation. */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs border-red-400 text-red-700 hover:bg-red-100"
+                                  disabled={rejectMutation.isPending || upholdMutation.isPending || artifactRefundMutation.isPending}
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        "Refund this rejected artifact? This resolves the dispute FOR THE TRAVELER: it reverses any earnings and platform revenue and issues a FULL refund of what they were charged. No seller payout is minted. This moves money and cannot be auto-undone.",
+                                      )
+                                    ) {
+                                      artifactRefundMutation.mutate(d.id);
+                                    }
+                                  }}
+                                  data-testid={`button-refund-rejected-artifact-${d.id}`}
+                                >
+                                  Refund rejected artifact
                                 </Button>
                               </>
                             )}

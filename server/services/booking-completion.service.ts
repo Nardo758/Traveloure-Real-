@@ -141,7 +141,12 @@ import { storage } from "../storage";
  * machine (§15b/§18b), and `cancelled`/`refunded`/`disputed`/`expired`/`completed` are terminal
  * or under another rail's authority.
  */
-export const COMPLETION_ALLOWED_FROM_STATUSES: readonly string[] = ["confirmed"];
+// MOVED to `shared/declared-completion-window.ts` and RE-EXPORTED (ledger
+// `2026-09-17-surfaces-acceptance-completion`): the seller console draws "mark as done" from this
+// list, and a client cannot import this module. Every existing caller is unchanged. Read that
+// file's NEGATIVE SPACE note before using it on a surface — status is not the whole eligibility.
+import { COMPLETION_ALLOWED_FROM_STATUSES } from "@shared/declared-completion-window";
+export { COMPLETION_ALLOWED_FROM_STATUSES };
 
 /** Who drove this completion. Recorded on the booking row; mapped to a diary actorType below. */
 export type CompletionActor =

@@ -145,6 +145,46 @@ export async function countRevisionRequests(bookingId: string): Promise<number> 
   return Number((r.rows[0] as { n: number } | undefined)?.n ?? 0);
 }
 
+/**
+ * THE REVISION ROWS THEMSELVES, in the order the traveler asked (D-25's `position`).
+ *
+ * Ledger `2026-09-17-surfaces-acceptance-completion`. The surfaces lane needs the traveler's own
+ * WORDS back — a list that renders "3 revisions requested" and cannot say what was asked is a
+ * count, not a record — so the read-out carries the rows. They are the TRAVELER's own sentences
+ * returning to the traveler and the seller of that booking; nothing here is a new fact and no
+ * count is stored (D-25 — the count stays DERIVED, and `describeAcceptance` derives it from the
+ * length of this very list so the two can never disagree).
+ *
+ * §13: `note` is nullable by design — `POST /api/bookings/:id/request-revision` admits a revision
+ * with no words at all — and a null one is passed through as null for the reader to OMIT, never
+ * rendered as an empty quotation the traveler never wrote.
+ */
+export interface RevisionRequestRow {
+  position: number;
+  note: string | null;
+  requestedAt: string;
+  resolvedAt: string | null;
+}
+
+export async function listRevisionRequests(bookingId: string): Promise<RevisionRequestRow[]> {
+  const rows = await db
+    .select({
+      position: bookingRevisionRequests.position,
+      note: bookingRevisionRequests.note,
+      requestedAt: bookingRevisionRequests.requestedAt,
+      resolvedAt: bookingRevisionRequests.resolvedAt,
+    })
+    .from(bookingRevisionRequests)
+    .where(eq(bookingRevisionRequests.bookingId, bookingId))
+    .orderBy(bookingRevisionRequests.position);
+  return rows.map((r) => ({
+    position: r.position,
+    note: (r.note ?? null) as string | null,
+    requestedAt: new Date(r.requestedAt as any).toISOString(),
+    resolvedAt: r.resolvedAt ? new Date(r.resolvedAt as any).toISOString() : null,
+  }));
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // READ EXPOSURE — what a traveler's booking read carries, and what it deliberately omits
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -175,6 +215,12 @@ export interface AcceptanceReadout {
   revisionsIncluded?: number;
   revisionsUsed?: number;
   revisionsRemaining?: number;
+  /**
+   * The revision rows themselves, oldest first. ABSENT when the booking carries none — §13's rule
+   * again: an empty array and "never asked" would be two ways to say nothing, and a reader would
+   * have to guess which was meant. Present only when there is at least one row.
+   */
+  revisions?: RevisionRequestRow[];
 }
 
 /**
@@ -187,7 +233,10 @@ export interface AcceptanceReadout {
 export async function describeAcceptance(bookingId: string): Promise<AcceptanceReadout | null> {
   const ctx = await loadContext(bookingId);
   if (!ctx || ctx.mode === null) return null;
-  const allowance = resolveRevisionAllowance(ctx.revisionsIncluded, await countRevisionRequests(bookingId));
+  // ONE read of the child rows: the list IS the count (D-25 — the count is DERIVED and never
+  // stored, and deriving it from anything but these rows would be a second authority).
+  const revisions = await listRevisionRequests(bookingId);
+  const allowance = resolveRevisionAllowance(ctx.revisionsIncluded, revisions.length);
   const deadline = acceptanceDeadline(ctx.deliveredAt, acceptanceWindowDays());
   return {
     mode: ctx.mode,
@@ -202,6 +251,7 @@ export async function describeAcceptance(bookingId: string): Promise<AcceptanceR
           revisionsRemaining: allowance.remaining as number,
         }
       : {}),
+    ...(revisions.length > 0 ? { revisions } : {}),
   };
 }
 

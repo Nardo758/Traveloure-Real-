@@ -58,6 +58,10 @@ import {
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+// LD 47 (ledger `2026-09-17-surfaces-acceptance-completion`): the seller's declared-completion
+// control and read-out. `/api/provider/bookings` carries the SERVER's own `completionDeclaration`,
+// so the traveler's review window is never counted out on this page.
+import { SellerCompletionPanel } from "@/components/bookings/SellerCompletionPanel";
 
 // ─── Shared shapes ──────────────────────────────────────────────────────────
 //
@@ -460,6 +464,9 @@ function StatsRow({
   );
 }
 
+// LD 47 (ledger `2026-09-17-surfaces-acceptance-completion`): the seller's own declared-completion
+// control and read-out. `/api/provider/bookings` now carries the SERVER's `completionDeclaration`
+// on each row, so the window's close is never counted out on this page.
 function BookingCard({
   booking,
   onOpenVisaDialog,
@@ -584,6 +591,14 @@ function BookingCard({
                 </Button>
               </div>
             )}
+            {/* LD 47: declare complete where the from-state allows, then the window's own read-out.
+                §13 — draws NOTHING for a row in any other state, never "not declared". */}
+            <SellerCompletionPanel
+              booking={booking as any}
+              audience="seller"
+              role="provider"
+              invalidateKeys={[["/api/provider/bookings"]]}
+            />
             <div className="flex gap-2">
               {isVisa && (
                 <Button

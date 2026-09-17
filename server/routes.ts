@@ -5,6 +5,13 @@ import { getUserId, getDbRole } from "./utils/auth";
 // ONE ownership predicate for a custom venue (ledger `2026-09-05-custom-venues-owner-scope`).
 import { isCustomVenueOwner } from "./utils/custom-venue-owner";
 import { OWNER_BOOKING_TRANSITIONS } from "./utils/booking-from-states";
+// Ledger `2026-09-17-surfaces-acceptance-completion` — READ EXPOSURE ONLY. The three booking LISTS
+// below carry the SAME two server derivations the single-booking GET already carries
+// (`describeAcceptance`, `describeCompletionDeclaration`), so no surface has to restate an
+// acceptance window or a dispute deadline on the client (§18 rule 1). No rail, no write, no column.
+import { describeCompletionDeclaration } from "@shared/declared-completion-window";
+import { declaredCompletionWindowDays } from "./config/completion-windows.config";
+import { describeAcceptance } from "./services/booking-acceptance.service";
 import {
   normalizeGeneratedActivityDurationMinutes,
   normalizeGeneratedDayNumber,
@@ -6182,8 +6189,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
       const traveler = await storage.getUser(booking.travelerId);
       const sanitizedTraveler = traveler ? sanitizeUserForRole(traveler, userRole, false) : null;
+      const sellerDeclaration = describeCompletionDeclaration(booking, declaredCompletionWindowDays());
       return {
         ...sanitizeBookingForExpert(booking, userRole, userId),
+        // LD 47 read exposure (ledger `2026-09-17-surfaces-acceptance-completion`): the SELLER's
+        // console must say "you declared this on <date>; the traveler's window closes <date>", and
+        // that date is the SERVER's derivation — a console that added N days itself would be a
+        // second authority the day `declaredCompletionWindowDays()` moves. §13: OMITTED on every
+        // row that was never declared or has already completed, never `declared: false`.
+        ...(sellerDeclaration ? { completionDeclaration: sellerDeclaration } : {}),
         traveler: sanitizedTraveler ? {
           ...sanitizedTraveler,
           displayName: getDisplayName(traveler.firstName, traveler.lastName)
@@ -6209,8 +6223,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const service = await storage.getProviderServiceById(booking.serviceId);
       const traveler = await storage.getUser(booking.travelerId);
       const sanitizedTraveler = traveler ? sanitizeUserForRole(traveler, userRole, false) : null;
+      const sellerDeclaration = describeCompletionDeclaration(booking, declaredCompletionWindowDays());
       return {
         ...sanitizeBookingForExpert(booking, userRole, userId),
+        // LD 47 read exposure — same derivation, same reason as /api/expert/bookings above.
+        ...(sellerDeclaration ? { completionDeclaration: sellerDeclaration } : {}),
         service,
         traveler: sanitizedTraveler ? {
           ...sanitizedTraveler,
@@ -6264,12 +6281,27 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // plan. A booking whose trip belongs to someone else groups as unlinked rather than
       // publishing that plan's destination and dates.
       const ownTrip = tripRow && (tripRow as any).userId === userId ? tripRow : null;
+      // Ledger `2026-09-17-surfaces-acceptance-completion` (LD 46 / LD 47 surfaces): My Bookings is
+      // where the traveler accepts, asks for a revision and reads a declared window, so the row
+      // must carry the SERVER's own answers — the acceptance mode, the delivery instant, the
+      // DERIVED acceptance deadline, the live revision allowance and rows, and the declared
+      // window's dispute-by date. Every one of them comes from the SAME derivation the
+      // single-booking GET uses; nothing is recomputed here and no client restates a window length.
+      //
+      // §13: `describeAcceptance` answers `null` for a booking whose listing takes no acceptance at
+      // all, and `describeCompletionDeclaration` answers `null` for one never declared or already
+      // completed. Both keys are then OMITTED ENTIRELY — never `accepted: false`, never
+      // `declared: false`, never a zero.
+      const acceptance = await describeAcceptance(booking.id);
+      const completionDeclaration = describeCompletionDeclaration(booking, declaredCompletionWindowDays());
       return {
         ...booking,
         hasReview: reviews.length > 0,
         service: toBookingService(serviceRow),
         provider: toBookingProvider(providerRow),
         trip: toBookingTrip(ownTrip),
+        ...(acceptance ? { acceptance } : {}),
+        ...(completionDeclaration ? { completionDeclaration } : {}),
       };
     }));
 
