@@ -204,8 +204,19 @@ describe("E7 — ONE class, no third expression (D3, §18 rule 1)", () => {
     // the test for "is this expert work?" is THIS predicate, called once — never a parallel one
     // written beside it.
     "proposal-charge.service.ts",
+    // The AI-proposal CREATE rail (L16 lane 1b, ledger `2026-09-16-l16-lane1b-model-call`): it
+    // resolves the protected set ONCE, with this predicate, and hands the marked rows to the
+    // prompt builder — which is why the builder asks no such question of its own. A proposal that
+    // never names protected work is D3's §13 half; the apply's refusal above stays the backstop.
+    "proposal-create.service.ts",
+    // NAMES IT IN PROSE AND CALLS IT NEVER. `ai-task-prompt.ts` is the pure funnel that decides
+    // what a model may see; its header says the protected mark arrives as an ARGUMENT from the
+    // caller precisely BECAUSE D3 forbids a third expression. This pin is a substring match, so a
+    // file that documents the rule is indistinguishable from one that breaks it — which is why the
+    // entry is here with the distinction written down rather than the comment being thinned out.
+    "ai-task-prompt.ts",
   ];
-  it("the row-level predicate is imported only by the guard, the baseline service and the apply", () => {
+  it("the row-level predicate is named only by the guard, the baseline service, the apply and the create rail", () => {
     const importers = serverFiles(SERVER).filter((f) =>
       readFileSync(f, "utf8").includes("itineraryItemIsExpertWork"),
     );
