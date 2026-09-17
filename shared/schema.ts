@@ -10932,6 +10932,20 @@ export const bookingComponentStates = pgTable("booking_component_states", {
   failedAt: timestamp("failed_at"),
   failureReason: text("failure_reason"),
   cancelledAt: timestamp("cancelled_at"),
+  // Locked Decision 50, second half (ledger `2026-09-16-bundle-component-traveler-cancel`; migration
+  // 309): the refund percent the SNAPSHOTTED cancellation policy
+  // (`service_bookings.offering_contract_snapshot.policy.cancellationPolicyType`, the BUNDLE listing's
+  // tier at purchase) yielded against the booking's scheduled start at the instant the traveler
+  // cancelled this component. Pinned in the SAME atomic UPDATE as the `pending → cancelled` flip, so a
+  // cancelled row can never lack it; the reduced mint and the settlement READ it and never re-resolve,
+  // so a later reschedule, policy edit or clock moves nothing. The refunded cents are DERIVED from it
+  // and `allocation_cents` (`cancelledComponentRefundCents`) — a percent cannot disagree with the
+  // allocation it applies to. NULL = never traveler-cancelled under this rail; a `cancelled` row with
+  // NULL here is REFUSED by the settlement (`cancel_terms_missing`, §13), never settled under a guess.
+  cancelRefundPercent: integer("cancel_refund_percent"),
+  // The traveler's own words, verbatim from the `.strict()` body. NULL = none given (§13). The
+  // seller's `failure_reason` is a different person's statement; the two are never merged.
+  cancelReason: text("cancel_reason"),
   refundedAt: timestamp("refunded_at"),
   refundAmountCents: integer("refund_amount_cents"),
   stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
@@ -10943,10 +10957,10 @@ export const bookingComponentStates = pgTable("booking_component_states", {
 ]);
 export type BookingComponentState = typeof bookingComponentStates.$inferSelect;
 // There is deliberately NO `createInsertSchema(bookingComponentStates)` — under a denylist schema every
-// column is client-settable by default (§19), and this table has NO client writer at all: the composer
-// and the two owner-rail transitions write it server-side. The owner rails' bodies are explicit
-// `.strict()` picks in `server/routes.ts` that admit a component ID and a reason and never a status,
-// a price or a timestamp.
+// column is client-settable by default (§19), and this table has NO client writer at all: the composer,
+// the two owner-rail transitions and the traveler's component-cancel transition write it server-side.
+// The rails' bodies are explicit `.strict()` picks in `server/routes.ts` that admit a component ID
+// (or take it from the path) and a reason, and never a status, a price, a percent or a timestamp.
 
 /**
  * D-51 (ledger `2026-09-16-bundle-partial-settlement`; migration 307): A PARTIALLY FULFILLED BUNDLE
