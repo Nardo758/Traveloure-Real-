@@ -2295,6 +2295,21 @@ Schema changes reach production ONLY via `runMigrations` on boot, from committed
 
 (ops-hardening, 2026-08-29)
 
+**THE ONE EXPECTED PROMPT, AND ITS TEST (amended Sep 17, 2026 — decision-maker, after the `72b92cfcf`
+publish).** Replit runs its schema push BEFORE the new instance boots, so a publish that carries a
+freshly merged column-adding migration will ALWAYS offer that column as `ALTER TABLE … ADD COLUMN`
+SQL — production has not yet run the migration that adds it. That prompt is EXPECTED, not a
+disagreement, and it may be approved **only when every offered statement matches, byte for byte in
+effect, a migration that is registered in `server/migrations/migration-files.ts`, declared in
+`shared/schema.ts`, and not yet stamped on production** — and that migration writes the column with
+`ADD COLUMN IF NOT EXISTS`, so the boot that follows finds it present, does nothing, and stamps the
+row (that is exactly what happened with migration 309 on Sep 17). Declining it is also safe: boot
+adds the same column a minute later. **Everything else keeps §20's default — DECLINE and STOP:** any
+`DROP`, any `ALTER COLUMN … TYPE`, any NOT NULL or DEFAULT change, any CHECK, any index, any
+statement for an object no registered migration names, and the "copy development database to
+production" option under any wording. A dispatch that tells an operator "the push has nothing to
+add" is TRUE only when production has already booted the newest migration; say which case applies.
+
 ### Branch and publish rule
 
 **Never commit on `main`.** Before any write in any task:
