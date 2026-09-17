@@ -82,12 +82,12 @@ const REPRESENTATIVE_PAYLOAD = {
       ...LIVE_PAYLOAD.moments[0],
       photos: [{
         url: "/images/moments/kyoto-wedding.jpg",
-        place: "Ninna-ji temple, Kyoto",
+        place: "Kyoto after dark",
         source: "representative",
         handle: null,
-        credit: "Carles Tomás Martí",
-        license: "CC BY 2.0",
-        sourceUrl: "https://commons.wikimedia.org/wiki/File:Kyoto.jpg",
+        credit: "Julien",
+        license: "Pexels license",
+        sourceUrl: "https://www.pexels.com/photo/couple-strolling-in-kyoto-s-nighttime-alley-34576557/",
       }],
       builder: null,
     },
@@ -168,11 +168,11 @@ describe("Moments — the 'Planning your own?' callout", () => {
 
     assert.ok(html.includes("Representative photo"));
     assert.ok(html.includes("Photo: "));
-    assert.ok(html.includes("Carles Tomás Martí"));
-    assert.ok(html.includes("(CC BY 2.0)"));
-    assert.ok(html.includes('href="https://commons.wikimedia.org/wiki/File:Kyoto.jpg"'));
+    assert.ok(html.includes("Julien"));
+    assert.ok(html.includes("(Pexels license)"));
+    assert.ok(html.includes('href="https://www.pexels.com/photo/couple-strolling-in-kyoto-s-nighttime-alley-34576557/"'));
     assert.ok(!html.includes("built by @"), "representative imagery never receives a builder byline");
-    assert.ok(!html.includes("Ninna-ji temple, Kyoto · @"), "representative caption never receives an expert handle");
+    assert.ok(!html.includes("Kyoto after dark · @"), "representative caption never receives an expert handle");
   });
 
   it("C6 keeps real expert attribution and omits the representative label", () => {

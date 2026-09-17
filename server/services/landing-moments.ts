@@ -9,7 +9,8 @@
  * PHOTO GATE — a TRUST surface (ruling 2026-09-01-photo-tiers): attributed expert photos remain
  * subject to the strict non-stock gate. Until one qualifies, the moment uses a bundled Creative
  * Commons representative photo with visible license credit and no expert attribution. A real
- * photo automatically replaces that fallback without loosening the gate.
+ * photo replaces that fallback only when it is associated with the specific Moment; the current
+ * city-level query is intentionally bypassed for the approved pinned Moments below.
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
@@ -34,6 +35,11 @@ export interface MomentConfig {
    */
   experienceSlug: string | null;
   city: string; // market
+  /**
+   * The approved image for this curated Moment is more specific than the city-level expert
+   * photo query. Keep it pinned until expert media can be associated with a moment key.
+   */
+  representativeOnly?: boolean;
 }
 
 /** Ratified copy (MOMENTS_COPY.md). momentKey === key. */
@@ -62,6 +68,7 @@ export const MOMENTS: MomentConfig[] = [
     // The seeded `experience_types` row (server/seed-experience-types.ts) — a real catalog slug.
     experienceSlug: "wedding",
     city: "Kyoto",
+    representativeOnly: true,
   },
   {
     key: "proposal",
@@ -76,6 +83,7 @@ export const MOMENTS: MomentConfig[] = [
     experienceType: "event",
     experienceSlug: "proposal",
     city: "Kyoto",
+    representativeOnly: true,
   },
   {
     key: "golf",
@@ -94,6 +102,7 @@ export const MOMENTS: MomentConfig[] = [
     // step that collects them is only visible when the bound occasion says it has a schedule.
     experienceSlug: "golf-trip",
     city: "Edinburgh",
+    representativeOnly: true,
   },
   {
     key: "girls_trip",
@@ -108,6 +117,7 @@ export const MOMENTS: MomentConfig[] = [
     experienceType: "travel",
     experienceSlug: "girls-trip",
     city: "Cartagena",
+    representativeOnly: true,
   },
   {
     key: "anniversary",
@@ -233,78 +243,100 @@ const REPRESENTATIVE_PHOTOS: Record<
   Pick<MomentPhoto, "url" | "place" | "source" | "handle" | "credit" | "license" | "sourceUrl">
 > = {
   wedding: {
-    url: "/images/moments/kyoto-wedding.jpg",
-    place: "Ninna-ji temple, Kyoto",
+    url: "/images/moments/goa-honeymoon.jpg",
+    place: "Goa at sunset",
     source: "representative",
     handle: null,
-    credit: "Carles Tomás Martí",
-    license: "CC BY 2.0",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Kusho_My%C5%8Djin_shrine,_Ninna-ji_temple,_Kyoto_-_Oct_25,_2009.jpg",
+    credit: "Lucksborn Sangma",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/silhouettes-of-bride-and-groom-hugging-at-sunset-5026140/",
   },
   proposal: {
-    url: "/images/moments/kyoto-proposal.jpg",
-    place: "Pontocho Alley, Kyoto",
+    url: "/images/moments/proposal-after-dark.jpg",
+    place: "A proposal after dark",
     source: "representative",
     handle: null,
-    credit: "Sergiy Galyonkin",
-    license: "CC BY-SA 2.0",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Friday_evening_in_Pontocho_Alley,_Kyoto_(52270424607).jpg",
+    credit: "Elist Nguyen",
+    license: "Unsplash License",
+    sourceUrl: "https://unsplash.com/photos/man-proposes-to-woman-at-night-by-city-lights-IvXYgLLo08A?utm_source=traveloure&utm_medium=referral",
   },
   golf: {
     url: "/images/moments/edinburgh-golf.jpg",
-    place: "Balcomie Links, Scotland",
+    place: "The final tee time",
     source: "representative",
     handle: null,
-    credit: "Mat Fascione",
-    license: "CC BY-SA 2.0",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Balcomie_Links_Golf_Course_at_Fife_Ness_-_geograph.org.uk_-_7375989.jpg",
+    credit: "cottonbro studio",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/a-man-holding-a-golf-club-6256838/",
   },
   girls_trip: {
     url: "/images/moments/cartagena-girls-trip.jpg",
-    place: "Cartagena at night",
+    place: "A night out together",
     source: "representative",
     handle: null,
-    credit: "Joe Ross",
-    license: "CC BY-SA 2.0",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Night_Scenes,_Cartagena,_Colombia_(24431322999).jpg",
+    credit: "Yaroslav Shuraev",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/young-women-in-street-style-fashion-standing-for-a-group-photo-7645790/",
   },
   anniversary: {
     url: "/images/moments/porto-anniversary.jpg",
-    place: "Porto at sunset",
+    place: "The Douro riverfront, Porto",
     source: "representative",
     handle: null,
-    credit: "Jorge Franganillo",
-    license: "CC BY 2.0",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Sunset_in_Porto_(48520058582).jpg",
+    credit: "Yuri Félix",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/woman-sitting-and-man-lying-down-on-wall-by-river-19196622/",
   },
   honeymoon: {
-    url: "/images/moments/goa-honeymoon.jpg",
-    place: "Morjim Beach, Goa",
+    url: "/images/moments/kyoto-wedding.jpg",
+    place: "Kyoto after dark",
     source: "representative",
     handle: null,
-    credit: "Rodrick Rajive Lal",
-    license: "CC BY-SA 4.0",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Sunset_at_Morjim_Beach,_Goa.jpg",
+    credit: "Julien",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/couple-strolling-in-kyoto-s-nighttime-alley-34576557/",
   },
   milestone_birthday: {
     url: "/images/moments/mumbai-birthday.jpg",
-    place: "Marine Drive, Mumbai",
+    place: "A rooftop celebration after dark",
     source: "representative",
     handle: null,
-    credit: "Av9",
-    license: "CC BY-SA 4.0",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Mumbai_Skyline_Marine_Drive_Night.jpg",
+    credit: "Nguyen Hung",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/night-party-celebration-with-friends-on-rooftop-30592863/",
   },
   family_occasion: {
     url: "/images/moments/jaipur-family.jpg",
-    place: "Hawa Mahal courtyard, Jaipur",
+    place: "A family celebration at dusk",
     source: "representative",
     handle: null,
-    credit: "Aktron",
-    license: "CC BY-SA 4.0",
-    sourceUrl: "https://commons.wikimedia.org/wiki/File:Jaipur,_Hawa_Mahala,_n%C3%A1dvo%C5%99%C3%AD.jpg",
+    credit: "Yan Krukau",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/people-standing-on-the-balcony-while-holding-lighted-sparkler-8818591/",
   },
 };
+
+export function selectMomentPhotos(
+  momentKey: string,
+  attributedPhotos: MomentPhoto[],
+  attributedBuilder: { handle: string; reviews: number } | null = null,
+): { photos: MomentPhoto[]; builder: { handle: string; reviews: number } | null } {
+  const moment = MOMENTS.find((candidate) => candidate.key === momentKey);
+  const representative = REPRESENTATIVE_PHOTOS[momentKey];
+
+  if (moment?.representativeOnly && representative) {
+    return { photos: [representative], builder: null };
+  }
+
+  if (attributedPhotos.length > 0) {
+    return { photos: attributedPhotos, builder: attributedBuilder };
+  }
+
+  return {
+    photos: representative ? [representative] : [],
+    builder: null,
+  };
+}
 
 /**
  * Attributed real photos for a market: an expert-curated gem whose image is NOT stock, with the
@@ -357,9 +389,11 @@ async function attributedPhotosForCity(
 export async function resolveLandingMoments(): Promise<LiveMoment[]> {
   const live: LiveMoment[] = [];
   for (const m of MOMENTS) {
-    const { photos, builder } = await attributedPhotosForCity(m.city);
-    const representative = REPRESENTATIVE_PHOTOS[m.key];
-    const resolvedPhotos = photos.length > 0 ? photos : representative ? [representative] : [];
+    const attributed = m.representativeOnly
+      ? { photos: [], builder: null }
+      : await attributedPhotosForCity(m.city);
+    const selected = selectMomentPhotos(m.key, attributed.photos, attributed.builder);
+    const resolvedPhotos = selected.photos;
     if (resolvedPhotos.length === 0) continue;
     live.push({
       key: m.key,
@@ -370,7 +404,7 @@ export async function resolveLandingMoments(): Promise<LiveMoment[]> {
       experienceType: m.experienceType,
       experienceSlug: m.experienceSlug,
       photos: resolvedPhotos,
-      builder: photos.length > 0 ? builder : null,
+      builder: selected.builder,
     });
   }
   return live;

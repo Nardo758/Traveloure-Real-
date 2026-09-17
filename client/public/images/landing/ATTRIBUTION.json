@@ -1,0 +1,29 @@
+[
+  {
+    "file": "hero-bogota.jpg",
+    "title": "People in a Bogotá park at sunset",
+    "creator": "Daniel Sarmiento",
+    "creatorUrl": "https://www.pexels.com/@daniel-sarmiento-314143596",
+    "license": "Pexels license",
+    "licenseUrl": "https://www.pexels.com/license/",
+    "source": "https://www.pexels.com/photo/a-person-riding-a-skateboard-down-a-hill-27392908/"
+  },
+  {
+    "file": "hero-fushimi-inari.jpg",
+    "title": "Fushimi Inari torii gates, Kyoto",
+    "creator": "G N",
+    "creatorUrl": "https://www.pexels.com/@g-n-403098",
+    "license": "Pexels license",
+    "licenseUrl": "https://www.pexels.com/license/",
+    "source": "https://www.pexels.com/photo/vibrant-torii-gates-pathway-in-fushimi-inari-kyoto-29537651/"
+  },
+  {
+    "file": "hero-kyoto-temple.jpg",
+    "title": "Yasaka Pagoda at dusk, Kyoto",
+    "creator": "Alec Doualetas",
+    "creatorUrl": "https://www.pexels.com/@alecdoua",
+    "license": "Pexels license",
+    "licenseUrl": "https://www.pexels.com/license/",
+    "source": "https://www.pexels.com/photo/kyoto-yasaka-pagoda-at-dusk-in-historic-district-36900988/"
+  }
+]
