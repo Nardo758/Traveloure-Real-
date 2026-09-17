@@ -24,6 +24,9 @@ import { ExpertLayout } from "@/components/expert/expert-layout";
 import { MyOfferingsTable } from "@/components/backoffice/my-offerings-table";
 import { PostingOpportunitiesCard, StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
 import { PageHeader, EmptyState, StatusBadge, type StatusBadgeEntry } from "@/components/backoffice/primitives";
+// ledger `2026-09-17-surfaces-quotes-settlement`: LD 49's owner rails, on the module that owns
+// "what I sell". Same component as the provider Catalog — one surface, not two.
+import { SellerQuotesPanel } from "@/components/quotes/SellerQuotesPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -532,6 +535,18 @@ export default function ExpertCatalog() {
         </section>
 
         <AvailabilitySection />
+
+        {/* ── CUSTOM QUOTES (LD 49; ledger `2026-09-17-surfaces-quotes-settlement`) ─────────
+            The SAME panel the provider Catalog mounts: the owner quote rails are gated at the
+            ROW (the quote's listing must belong to the session), so an expert's listing is
+            quoted by that expert and a provider's by that provider — one surface, no second
+            copy of the issue/withdraw decision (§18 rule 1). */}
+        <section data-testid="section-catalog-quotes">
+          <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
+            Custom quotes
+          </h2>
+          <SellerQuotesPanel />
+        </section>
 
         {/* C2: Share & Promote's opportunity-scoped creation half (review share cards +
             open-slot promos) — real rows only (§13). */}
