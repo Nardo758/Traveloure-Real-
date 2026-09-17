@@ -6,7 +6,9 @@
  * Live hero — honest by construction (§13): the bento tiles render the nullable legs of
  * GET /api/landing/hero (server-composed from the top city's real feed rows). A null leg
  * renders NO tile — the grid collapses to what exists; nothing is fabricated. The mock's
- * Tile gradients remain the fallback art direction when a source row has no image.
+ * Gem/service tiles retain market-aware fallbacks. The local-expert tile uses one neutral guide
+ * photo until the expert supplies a usable profile photo, so Moment imagery is never presented as
+ * an expert portrait.
  *
  * Typed search: STATIC CURATED titles (decision-maker ruled — no UGC; source of truth is
  * LANDING_SPEC.md §Typed-search titles). Rotates via the shared useRotation hook (8s,
@@ -30,6 +32,7 @@ const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 const HERO_GEM_FALLBACK = "/images/landing/hero-fushimi-inari.jpg";
 const HERO_SERVICE_FALLBACK = "/images/landing/hero-kyoto-temple.jpg";
+export const HERO_EXPERT_FALLBACK = "/images/landing/hero-generic-expert.jpg";
 const HERO_MARKET_FALLBACKS: Record<string, string> = {
   bogotá: "/images/landing/hero-bogota.jpg",
   bogota: "/images/landing/hero-bogota.jpg",
@@ -164,10 +167,6 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
   const marketFallback = hero?.city
     ? HERO_MARKET_FALLBACKS[hero.city.trim().toLowerCase()]
     : undefined;
-  const anchorFallback =
-    hero?.city?.trim().toLowerCase() === "kyoto"
-      ? HERO_SERVICE_FALLBACK
-      : marketFallback ?? HERO_GEM_FALLBACK;
 
   const tickerParts = hero?.city
     ? [
@@ -301,7 +300,7 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
               >
                 <HeroTilePhoto
                   remoteUrl={anchor.imageUrl}
-                  fallbackUrl={anchorFallback}
+                  fallbackUrl={HERO_EXPERT_FALLBACK}
                   referenceTestId="hero-anchor-reference-photo"
                   overlay="linear-gradient(180deg,rgba(30,58,95,.12) 0%,rgba(13,33,55,.92) 100%)"
                 />
