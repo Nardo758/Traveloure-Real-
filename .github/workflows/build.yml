@@ -489,6 +489,20 @@ jobs:
       # the click off-Replit); the shared logout must POST /api/auth/logout.
       - name: EX-1 logout endpoint pin
         run: npx tsx --test client/src/lib/__tests__/logout-endpoint-pin.test.ts
+      # ledger `2026-09-17-surfaces-quotes-settlement`: the SURFACES for LD 49 (quotes) and LD 48/50
+      # (bundle components + partial settlement). Both rulings shipped rails with no screen, so
+      # nothing but these suites can say the copy is wrong. Q/A/V/B/D/R/C pin that the quote card
+      # words the SERVER's lifecycle, amount and expiry and authors no day count; S/P/L/T/N/E/G/C
+      # pin the two §13 distinctions the settlement turns on — "prepared, awaiting" is not
+      # "refunded", and a claimed settlement is not a settled one — plus that NO capacity sentence
+      # exists anywhere (nothing per-component is reserved, LD 50). R/M pin the one refusal parse
+      # both surfaces read the server's named refusals through.
+      - name: Quote surface copy pin
+        run: npx tsx --test client/src/lib/__tests__/quote-copy.test.ts
+      - name: Bundle component + settlement copy pin
+        run: npx tsx --test client/src/lib/__tests__/bundle-component-state-copy.test.ts
+      - name: API refusal parse pin
+        run: npx tsx --test client/src/lib/__tests__/api-refusal.test.ts
       # EX-2: insertProviderServiceSchema rejects negative/non-numeric prices on the create AND
       # .partial() (PATCH) shapes; zero stays parseable (draft state — publish gate is route-level).
       - name: EX-2 service price-floor pin

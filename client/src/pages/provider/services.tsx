@@ -131,6 +131,9 @@ import {
   derivePreviewPrice,
   derivePreviewRating,
 } from "@/lib/catalog-preview-presentation";
+// ledger `2026-09-17-surfaces-quotes-settlement`: LD 49's owner rails (issue / withdraw) had no
+// affordance anywhere. The panel reads `GET /api/provider/quotes` and calls those two rails only.
+import { SellerQuotesPanel } from "@/components/quotes/SellerQuotesPanel";
 
 interface Service {
   id: string;
@@ -1946,6 +1949,24 @@ export default function ProviderServices() {
             share-kit dialog and the Promote (posting-opportunities) block all live on
             /provider/distribute — this page's own outward-facing pointer is now exactly the
             per-row "Promote this →" button above, nothing more. */}
+
+        {/* ── CUSTOM QUOTES (LD 49; ledger `2026-09-17-surfaces-quotes-settlement`) ─────────
+            A quote is per-listing curation — "what I sell", for one traveler — so it lives on
+            Catalog by the C9 precedent LD 22 (b) states, not on the Workstation. List view only:
+            the map mode is the traveler preview of a listing's geography and a quote queue is not
+            part of it. The panel draws its own empty state, so nothing is gated on a count this
+            page would have to fetch a second time. */}
+        {viewMode === "list" && (
+          <section className="space-y-2" data-testid="section-catalog-quotes">
+            <h3 className="text-[15px] font-bold tracking-[-0.01em] text-[#1A1A18]">Custom quotes</h3>
+            <p className="text-[12.5px] text-[#7A7A72] max-w-[70ch]">
+              Travelers who asked you for a price on a listing that is quoted rather than bought at
+              checkout. A request creates no booking and charges nothing; only the traveler's
+              acceptance of a price you issue creates one.
+            </p>
+            <SellerQuotesPanel />
+          </section>
+        )}
 
         {/* ── FP-2 / Package A item 6 — DELETE ASKS FIRST ─────────────────────────────────── */}
         <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

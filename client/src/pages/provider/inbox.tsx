@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
+import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
 // Ledger 90 (FP-5, X1/I1): the ONE booking-visibility predicate, shared with Today, Customers,
 // the Money page and the server aggregations. See shared/booking-visibility.ts for why.
 import {
@@ -628,6 +629,13 @@ function BookingCard({
             </div>
           </div>
         </div>
+
+        {/* LD 48/50 (ledger `2026-09-17-surfaces-quotes-settlement`): a purchased BUNDLE's parts
+            and what settled, with the seller's "will not be delivered" calling the EXISTING
+            `/api/provider/bookings/:id/component-failed` rail. Drawn from the server's own read —
+            a booking with no component rows renders nothing, so this page makes no client-side
+            guess about which bookings are bundles. */}
+        <BundleComponentsPanel bookingId={booking.id} audience="seller" sellerRail="provider" />
       </CardContent>
     </Card>
   );
