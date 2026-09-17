@@ -391,9 +391,15 @@ test("C3 (D-34): two delivered + one FAILED ⇒ `partially_completed`, the faile
   );
   assert.equal(completion?.evidence?.componentStateSource, "rows");
   const rowC = (await componentRows(bk)).find((r) => r.componentServiceId === ids.compC)!;
-  assert.equal(rowC.status, "failed");
+  // LD 50 remainder (ledger `2026-09-17-ld50-remainder-and-artifact-refund`): the D-51 settlement that
+  // follows this flip now stamps `refunded` on the component whose allocation it refunded — that status
+  // finally has a writer. The seller's answer is NOT lost: `failed_at` and `failure_reason` are still the
+  // record of WHO said it would not be delivered and why, and the completion evidence above still names
+  // the component with `status: "failed"` as the derivation saw it at the flip.
+  assert.equal(rowC.status, "refunded");
   assert.ok(rowC.failedAt);
   assert.equal(rowC.failureReason, "venue closed");
+  assert.equal(rowC.refundAmountCents, 2000);
 
   // The state is TERMINAL for this lane's writers: a further component write is refused by the parent guard.
   const late = await recordBundleComponentFailure({ bookingId: bk, componentServiceId: ids.compA, actor });

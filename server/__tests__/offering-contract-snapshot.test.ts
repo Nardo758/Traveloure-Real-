@@ -243,6 +243,13 @@ test("K1 · the Stripe idempotency-key templates are exactly what they were — 
     [
       "${params.idempotencyKey}-recover",
       "${stripeRequestOptions.idempotencyKey}-recover",
+      // Ledger `2026-09-17-ld50-remainder-and-artifact-refund` (LD 46 / D-27's money outcome): the admin
+      // dispute-resolution refund on a REJECTED ARTIFACT. One booking is resolved that way ONCE, at one
+      // amount — the full traveler charge — so the key needs no amount scope, and a cross-process retry
+      // returns the SAME refund. Proven behaviourally by
+      // `whole-row-cancel-and-artifact-refund.db.test.ts` C2 (the ONE Stripe call carries it), C3 (two
+      // concurrent resolutions, one call) and C4 (a retry, zero new calls).
+      "artifact-reject-refund-${input.bookingId}",
       // Ledger `2026-09-16-bundle-partial-settlement` (LD 50): the partial settlement's amount-scoped
       // refund key, proven behaviourally by `bundle-partial-settlement.db.test.ts` S2 (the ONE Stripe
       // call carries it) and S5 (a retry after a Stripe failure carries the SAME key). Ratcheted in
