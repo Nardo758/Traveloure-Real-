@@ -615,12 +615,29 @@ export async function applyPlanProposal(params: {
 }
 
 /**
- * The two refusals that REFUND a paid proposal (OPTION B — decision-maker ruling 2026-09-16, ledger
- * `2026-09-16-l16-lane1-review-fixes`). Stated once; the route asks this, never a re-typed pair of
- * string compares (§18 rule 1). `protected_item` is deliberately NOT here: it is not ruled, and a
- * refusal that is not on this list leaves a paid proposal exactly as the first cut did.
+ * EVERY APPLY REFUSAL OF A PAID PROPOSAL REFUNDS IT (OPTION B, WIDENED — decision-maker ruling
+ * 2026-09-17, ledger `2026-09-16-l16-lane1-review-fixes`). Stated once; the route asks this, never
+ * a re-typed set of string compares (§18 rule 1).
+ *
+ * `protected_item` was off this list in the first cut because it was not yet ruled. The consequence
+ * was a paid proposal that was terminally STUCK: the apply refused it for good (D3 protects the
+ * item permanently, so no retry can ever succeed), and `discardPlanProposal` refuses a row carrying
+ * a PaymentIntent — so the traveler could neither apply it nor discard it, and the fee stayed taken
+ * for a change the platform itself had decided must never be made. The ruling closes that:
+ * `protected_item` is a THIRD caller of the SAME refund path — no second Stripe site, the same
+ * proposal-derived idempotency key, the same §15b claim, the same 409 shape carrying the `refund`
+ * block beside `reason:"protected_item"`.
+ *
+ * `not_applicable` is still NOT here, and that is not an oversight: it is the apply's own atomic
+ * conditional reporting that the row was no longer `proposed` when it got there — so the row is
+ * already applied, discarded or refunded, and whatever was owed on it was settled by the path that
+ * moved it. Refunding on that code would be a second opinion about a terminal row.
  */
-export const PROPOSAL_REFUNDABLE_REFUSALS = ["stale_catalog_price", "listing_unavailable"] as const;
+export const PROPOSAL_REFUNDABLE_REFUSALS = [
+  "stale_catalog_price",
+  "listing_unavailable",
+  "protected_item",
+] as const;
 export type ProposalRefundableRefusal = (typeof PROPOSAL_REFUNDABLE_REFUSALS)[number];
 export function isRefundableProposalRefusal(code: string): code is ProposalRefundableRefusal {
   return (PROPOSAL_REFUNDABLE_REFUSALS as readonly string[]).includes(code);
@@ -642,13 +659,15 @@ export type ProposalRefundOutcome =
   | { issued: false; state: "pending" | "not_refundable" };
 
 /**
- * OPTION B — REFUND THE FEE ON EXPIRY. (decision-maker ruling 2026-09-16; ledger
- * `2026-09-16-l16-lane1-review-fixes`. §13, §14, §15, §15b, §18 rule 1.)
+ * OPTION B — REFUND THE FEE ON A REFUSED APPLY. (decision-maker rulings 2026-09-16 and 2026-09-17;
+ * ledger `2026-09-16-l16-lane1-review-fixes`. §13, §14, §15, §15b, §18 rule 1.)
  *
  * A proposal can be PAID (the pay rail claimed it, Stripe took the fee, the PaymentIntent is stamped)
- * and THEN go stale or lose a listing before the traveler applies. The first cut refused the apply
- * and left the money taken — a terminally unappliable proposal the traveler had paid for. The ruling
- * is that such a proposal is NOT applied at a changed price and NOT left stuck: the fee is refunded.
+ * and then be refused at apply — it went stale, it lost a listing, or it names protected work
+ * (LD 42 D3). The first cut refused the apply and left the money taken: a terminally unappliable
+ * proposal the traveler had paid for. The ruling is that such a proposal is NOT applied at a changed
+ * price, NOT applied over protected work, and NOT left stuck: the fee is refunded. Which refusals
+ * qualify is `PROPOSAL_REFUNDABLE_REFUSALS` above, asked once.
  *
  * ── §15b: CLAIM → STRIPE → RECORD, and the claim is the status flip ──────────────────────────
  * ONE atomic conditional — `UPDATE plan_proposals SET status='refunded', charge_basis='paid',

@@ -480,3 +480,51 @@ plan-proposals P1–P7, plan-proposal-charge C1–C7, proposal-apply-authorizati
 ai-ask-create-rail S1–S11 and A1–A7, plan-proposal-refund R1–R7 (twice), bundle-partial-settlement
 S1–S10, refund-retry-convergence, traveler-fee-refund; `grep -c replit.local package-lock.json` = 0.
 
+
+---
+
+## 6 · Rulings 2026-09-17 (folded in before merge)
+
+Two follow-up rulings from the decision-maker, landed on this branch. **No schema change, no
+migration**; one commit each. §6.2 lands in the next commit.
+
+### 6.1 · Ruling (a) — OPTION B is widened to EVERY apply refusal of a PAID proposal
+
+`PROPOSAL_REFUNDABLE_REFUSALS` carried `stale_catalog_price` and `listing_unavailable` only, and the
+file said so out loud: `protected_item` was "deliberately NOT here: it is not ruled". The shape that
+left behind is the one worth naming — a PAID proposal refused `protected_item` was **stuck for
+good**. LD 42 D3 protects the named row permanently, so no retry of the apply can ever succeed; and
+`discardPlanProposal` refuses a row carrying a `stripe_payment_intent_id`, so the traveler could not
+discard it either. The fee stayed taken for a change the platform itself had decided must never be
+made.
+
+`protected_item` is now a **third caller of the same refund path** — no second Stripe site, the same
+`ai-task-refund-<proposalId>` idempotency key, the same §15b claim-before-the-call, the same 409
+shape carrying the `refund` block beside `reason:"protected_item"` and the `itemIds` that named the
+protected rows. The route was not touched beyond its comment: it already asks
+`isRefundableProposalRefusal(err.code)` rather than re-typing a string compare (§18 rule 1), which is
+exactly why widening the ruling was a one-list edit.
+
+`not_applicable` stays off the list, and the code now says why rather than leaving it unexplained: it
+is the apply's own atomic conditional reporting that the row was no longer `proposed` when it got
+there, so the row is already applied, discarded or refunded and whatever was owed on it was settled
+by the path that moved it. Refunding on that code would be a second opinion about a terminal row.
+
+**R8** (new) proves it end to end: a paid proposal whose `replaces` names an `origin='expert'` row ⇒
+409 `protected_item` naming that row; exactly one `refunds.create`, under the proposal-derived key,
+for the PaymentIntent's own amount; the row terminal as `refunded` carrying the recorded charge and
+basis `paid` with `applied_at` still NULL and the payment identity unrewritten (§19a); one
+booking-less `refunds` audit row naming the refusal; the plan byte-identical (the protected row
+survives, the addition was never created); and a retry answering `reason:"refunded"` with the SAME
+refund id and **zero** new Stripe calls.
+
+### 6.3 · Validation (2026-09-17)
+
+tsc 129 == baseline; `npm run build`; `check-decision-guards`; `check-money-endpoints --self-test`
++ run (exit 0); `phase2-fee-gate.sh` (PASS); `check-test-files-wired --self-test` + run
+(`test-orphan-ratchet: OK`); `check-duplicate-migration-prefixes`; `check:mutation-auth` (595
+registrations, rail set unchanged); migrations applied from EMPTY on a fresh local Postgres 16
+database (308/308); `plan-proposal-refund.db.test.ts` **R1–R8 green**,
+`ai-ask-create-rail.db.test.ts` A1–A7 green, `plan-proposal-charge.db.test.ts` C1–C7 green against
+it; `grep -c replit.local package-lock.json` = 0. No schema touched, so no
+`check-undeclared-tables` run was required.

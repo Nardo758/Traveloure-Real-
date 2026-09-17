@@ -3,7 +3,8 @@
  * REFUNDED EXACTLY ONCE.
  *
  * (review fixes on the L16 lane-1 create rail; decision-maker ruling 2026-09-16 OPTION B — refund
- *  the fee on expiry; ledger `2026-09-16-l16-lane1-review-fixes`. CLAUDE.md Locked Decision 45 (3),
+ *  the fee on a refused apply — WIDENED 2026-09-17 to every refusal of a PAID proposal; ledger
+ *  `2026-09-16-l16-lane1-review-fixes`. CLAUDE.md Locked Decision 45 (3),
  *  Locked Decision 41 (a), §8, §13, §14, §15, §15b, §18 rule 1.)
  *
  *   R1  A STALE proposal is refused by PAY before the claim: 409 `stale_catalog_price`,
@@ -25,6 +26,11 @@
  *       status flip, one statement).
  *   R7  A FAILED Stripe call leaves the CLAIM (row `refunded`), answers `pending`, and the retry
  *       re-drives the SAME key, succeeds, and records once. Never a compensating rollback.
+ *   R8  PAID + PROTECTED WORK (LD 42 D3) ⇒ APPLY 409 `protected_item` WITH `refund.issued = true`
+ *       (ruling 2026-09-17, OPTION B widened to EVERY apply refusal of a paid proposal). Before it,
+ *       such a row was STUCK: unappliable for good, and undiscardable because discard refuses a row
+ *       carrying a PaymentIntent. ONE Stripe call on the SAME shared path under the SAME key, the
+ *       audit row names `protected_item`, the plan is untouched, and the retry adds no Stripe call.
  *
  * ── HOW STRIPE IS HANDLED, STATED (§18d) ─────────────────────────────────────────────────────
  * `paymentIntents.retrieve` and `refunds.create` are stubbed on the shared Stripe prototype (the
@@ -569,4 +575,77 @@ test("R7: a failed Stripe refund leaves the CLAIM standing and answers pending; 
   assert.equal(audit.length, 1, "recorded once");
   assert.equal(audit[0].stripe_refund_id, second.body.refund.refundId);
   assert.equal(audit[0].reason, planProposalRefundReason("retry", paid.row.id), "the audit row says it landed on a retry");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// R8 — OPTION B WIDENED: a PAID proposal refused `protected_item` is REFUNDED (the stuck case)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test("R8: a PAID proposal that names PROTECTED work is refused AND refunded; the retry adds no Stripe call", async () => {
+  // A protected row, by LD 42 D3's own class: `origin='expert'`. Not stale, names no listing — so
+  // the catalog re-validation passes and the refusal under test is the D3 one, not D-50's.
+  const protectedId = crypto.randomUUID();
+  await db.execute(sql`
+    INSERT INTO itinerary_items (id, trip_id, title, day_number, sort_order, origin)
+    VALUES (${protectedId}, ${ids.paid}, ${`Expert pick ${RUN}`}, 1, 9, 'expert')
+  `);
+  const paid = await stagePaid(ids.paid, {
+    additions: [{ title: `r8 addition ${RUN}` }],
+    replaces: [{ itemId: protectedId, reason: "the AI would swap this out" }],
+  });
+  const before = await itemsOn(ids.paid);
+
+  const res = await asUser(ids.owner, async (base) => {
+    const r = await applyAs(base, ids.paid, paid.row.id);
+    return { status: r.status, body: (await r.json()) as any };
+  });
+  assert.equal(res.status, 409, JSON.stringify(res.body));
+  assert.equal(res.body.reason, "protected_item", "the refusal keeps its own reason");
+  assert.deepEqual(res.body.itemIds, [protectedId], "and names the protected row");
+  assert.equal(res.body.refund?.issued, true, "§13: the 409 says what happened to the money");
+  assert.match(res.body.refund.refundId, /^re_/);
+  assert.equal(res.body.refund.amountCents, paid.amount, "the amount is Stripe's own report (§14)");
+
+  // ONE Stripe call, on the SAME shared refund path and the SAME proposal-derived key — never a
+  // second refund site for a third refusal (§18 rule 1).
+  assert.equal(refundCalls.length, 1, "exactly one refunds.create");
+  assert.equal(refundCalls[0].options?.idempotencyKey, planProposalRefundIdempotencyKey(paid.row.id));
+  assert.equal(refundCalls[0].params.payment_intent, paid.pi);
+  assert.equal(refundCalls[0].params.amount, paid.amount);
+
+  const row = await proposalRow(paid.row.id);
+  assert.equal(row.status, PLAN_PROPOSAL_STATUS_REFUNDED, "terminal, and no longer stuck");
+  assert.equal(row.charged_amount_cents, paid.amount);
+  assert.equal(row.charge_basis, "paid");
+  assert.equal(row.applied_at, null, "never applied");
+  assert.equal(row.stripe_payment_intent_id, paid.pi, "§19a: the payment identity is never rewritten");
+
+  const audit = await refundRowsFor(paid.pi);
+  assert.equal(audit.length, 1, "ONE refunds audit row");
+  assert.equal(audit[0].booking_id, null);
+  assert.equal(audit[0].stripe_refund_id, res.body.refund.refundId);
+  assert.equal(
+    audit[0].reason,
+    planProposalRefundReason("protected_item", paid.row.id),
+    "naming the refusal that caused it",
+  );
+
+  // NOTHING was written to the plan: the protected row is still there, unchanged, and the
+  // proposal's addition was never created (the whole apply is one transaction).
+  const after = await itemsOn(ids.paid);
+  assert.deepEqual(after.map((i) => i.id).sort(), before.map((i) => i.id).sort(), "plan untouched");
+  assert.ok(after.some((i) => i.id === protectedId), "the protected row survives");
+  assert.ok(!after.some((i) => i.title === `r8 addition ${RUN}`), "and nothing was added");
+
+  // THE RETRY: the row's own terminal state answers, the audit row is found, Stripe is not called.
+  const retry = await asUser(ids.owner, async (base) => {
+    const r = await applyAs(base, ids.paid, paid.row.id);
+    return { status: r.status, body: (await r.json()) as any };
+  });
+  assert.equal(retry.status, 409);
+  assert.equal(retry.body.reason, "refunded", "§13: the row's own state is the answer on a retry");
+  assert.equal(retry.body.refund?.issued, true);
+  assert.equal(retry.body.refund.refundId, res.body.refund.refundId, "the SAME refund");
+  assert.equal(refundCalls.length, 1, "no second Stripe call — the audit row answered");
+  assert.equal((await refundRowsFor(paid.pi)).length, 1, "still one audit row");
 });

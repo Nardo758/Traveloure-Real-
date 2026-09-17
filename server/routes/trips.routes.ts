@@ -3923,9 +3923,13 @@ router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (re
         // D3 / D18: the reason is said out loud, and NOTHING was written — the whole apply is one
         // transaction, so a refusal leaves the plan exactly as it was.
         //
-        // OPTION B (decision-maker ruling 2026-09-16, ledger `2026-09-16-l16-lane1-review-fixes`):
-        // a PAID proposal refused for a stale price or an unavailable listing is REFUNDED — never
-        // applied at a changed price, never left paid-and-unappliable. The refund is the ONE
+        // OPTION B, WIDENED (decision-maker rulings 2026-09-16 and 2026-09-17, ledger
+        // `2026-09-16-l16-lane1-review-fixes`): a PAID proposal refused at apply — stale price,
+        // unavailable listing, or protected work (D3) — is REFUNDED. Never applied at a changed
+        // price, never applied over an expert's work, never left paid-and-unappliable (a
+        // `protected_item` row could not even be discarded, since discard refuses a row carrying a
+        // PaymentIntent). WHICH refusals qualify is asked ONCE, of the charge service's own list —
+        // never re-typed here as a string compare (§18 rule 1). The refund is the ONE
         // implementation in the charge service: it claims the row atomically FIRST (§15b), then
         // drives the ONE shared Stripe refund site under a proposal-derived key. §14: the amount is
         // what Stripe reported the intent took (`auth.amountCents`), never a body value. A

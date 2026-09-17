@@ -36,9 +36,9 @@
  *               refunded, and this is the terminal state that records it. The flip to it IS the
  *               §15b claim on the refund — taken atomically BEFORE the Stripe call — so the row is
  *               never `proposed` again and can never be applied or discarded afterwards. It is
- *               deliberately ONE state for both refusal reasons (stale price, unavailable
- *               listing): what happened to the MONEY is the same, and the `refunds` audit row
- *               carries the reason.
+ *               deliberately ONE state for every refusal reason — stale price, unavailable listing
+ *               and, since the 2026-09-17 widening, protected work (LD 42 D3): what happened to the
+ *               MONEY is the same, and the `refunds` audit row carries the reason.
  *
  * There is no `expired`, no `superseded` and no `failed`. Two ways to say one thing is how a
  * reader ends up guessing which was meant (§13, the ruling-31 posture on empty states). A paid
@@ -200,7 +200,8 @@ export function planProposalApplyIdempotencyKey(proposalId: string): string {
  * THE ONE PLACE THE REFUND'S STRIPE IDEMPOTENCY KEY IS SPELLED (§15; OPTION B, ledger
  * `2026-09-16-l16-lane1-review-fixes`).
  *
- * A paid proposal refused at apply (stale price, unavailable listing) is refunded ONCE. The key is
+ * A paid proposal refused at apply (stale price, unavailable listing, protected work) is refunded
+ * ONCE. The key is
  * derived from the proposal id and nothing else, for the same reason the apply key is: the unit is
  * the proposal, the row belongs to one plan and the plan to one owner, and the amount is the ONE
  * charge Stripe reports for that proposal's PaymentIntent — so there is no amount component to
@@ -218,6 +219,7 @@ export function planProposalRefundIdempotencyKey(proposalId: string): string {
  * refusal reason survives, since `refunded` is a single terminal status for both (§13).
  */
 export const PLAN_PROPOSAL_REFUND_REASON = "ai_task_proposal_refused";
+
 export function planProposalRefundReason(refusal: string, proposalId: string): string {
   return `${PLAN_PROPOSAL_REFUND_REASON}:${refusal}:${proposalId}`;
 }
