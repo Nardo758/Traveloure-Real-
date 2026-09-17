@@ -1642,6 +1642,20 @@ This document captures architectural decisions to maintain consistency across co
     an account whose id is not uuid-shaped loses its WHOLE cost row silently — the fix is an `ALTER
     COLUMN TYPE` plus the `shared/schema.ts` declaration the deploy-push rule already requires of
     that table.
+    **(3) IS COMPLETE: THE DRAWER NOW MOUNTS POST-FINAL TOO, AND IT IS A MOUNT AND NOT A SECOND DRAWER
+    (lane 4, ledger `2026-09-17-l16-lane4-postfinal`; landed via PR #977).** The SAME `AskAiDrawer`
+    renders on the Trip Card's rail in the **Suggestion card's slot** — that card draws nothing unless a
+    suggestion is actually pending, so the ratified rail still reads four (LD 45 (6)). **Nothing
+    branches on the page:** copy, visibility, the `aiTask` money line, the 503/409/429 readings, D-50
+    (c)'s staleness-as-refusal and owner-only pay/apply are identical on both mounts, and the `surface`
+    prop picks a test id and nothing else. **The ONE addition is D-49's review-first sentence, in the
+    same copy module** (§18 rule 1): a plan that is CURRENTLY final is told, before the charge, that
+    applying makes a **NEW Trip Card version** and the version is **NAMED** (`v{n+1}`, the one being
+    read kept); a REVISING plan is told its card keeps the version it has, because
+    `reFinalizeIfCurrentlyFinal` writes none; and a surface that does not state the plan's final
+    standing — the slip — says **NOTHING** (§13). **No undo is drawn** (LD 42 D18), and LD 41 (b)'s
+    empty-plan branch is kept although it cannot fire post-final. **L16 is complete**; lane 5 was ruled
+    out by D-45.
 
 46. **AN ARTIFACT IS ACCEPTED, NOT TIMED OUT; A REVISION IS A ROW; AND A HYBRID MAY DECLARE ONE ARTIFACT
     WITHOUT MOVING ITS MONEY (decision-maker ratified Sep 15, 2026 — punchlist D-24/D-25/D-26/D-40, all
@@ -1696,6 +1710,16 @@ This document captures architectural decisions to maintain consistency across co
     queue, no new status, no new table, no migration. **§13:** `refunded: true` is said only with a
     refund id in hand, a retry reports `alreadyRefunded` and claims NO id, and
     `no_payment_intent` / `nothing_charged` / `wrong_status` are refused by name.
+    **THE SURFACES EXIST (PR #979, ledger `2026-09-17-surfaces-acceptance-completion`).** The traveler
+    accepts, asks for a revision, reads the delivery date, the DERIVED acceptance window, their own
+    revision requests and the timer's ask/escalate states on **My Bookings**; the seller declares
+    completion and reads the traveler's window on **both earner consoles**; the admin's artifact refund
+    is an outcome button on the **existing** dispute queue, shown only for `disputed` rows. **No surface
+    computes a window, a deadline or an allowance** — every figure is the server's own derivation, and
+    the five from-state lists the controls read were moved into `@shared` and re-exported by their old
+    homes so a surface and its rail read ONE array. **What is NOT drawn:** the slip's D9 bookings
+    section and the Trip Card's Purchases drawer carry the two new STATUS LABELS only, because the
+    plancard payload holds no acceptance or declaration fields and widening it is unratified.
 
 47. **THE SELLER DECLARES; THE TRAVELER HAS A WINDOW; "COMPLETED" IS SAID AT ITS CLOSE (decision-maker
     ratified Sep 15, 2026 — ledger `2026-09-15-d36-d39-completion-declared`; migration 304).** For the
@@ -1749,6 +1773,11 @@ This document captures architectural decisions to maintain consistency across co
     carries no amount) and stamps `booking_id`; a quote-approve listing with deposits enabled resolves
     `deposit_balance` (D-31). The quote-born booking is born UNPAID; the charge through `/api/checkout` is its
     own lane.
+    **THE SURFACES LANDED (PR #978, ledger `2026-09-17-surfaces-quotes-settlement`):** the traveler's
+    Quotes tab on `/my-bookings` and the seller's issue/withdraw queue on BOTH Catalogs. The client
+    derives NO lifecycle and NO window — `expired` arrives resolved and no day count or ceiling exists
+    client-side, so D-29's refusal is worded back from the server's own numbers. The CHARGE is still its
+    own lane and the surface says so out loud rather than drawing a Pay button that leads nowhere (§13).
 
 50. **A PARTIALLY FULFILLED BUNDLE SETTLES ONCE BY ITS PURCHASE-TIME COMPONENT ALLOCATION (decision-maker
     ruling, Sep 16, 2026 — ledger `2026-09-16-bundle-partial-settlement`; build lane dispatched the same
@@ -1812,6 +1841,14 @@ This document captures architectural decisions to maintain consistency across co
     invented: it needs a per-component slot record (a column on `booking_component_states`, or a
     `slotId` on the snapshot entry the checkout composer writes), which is an unratified
     schema/composer decision** (a reader for a fact no writer produces is the shape §18c refuses).
+    **THE SURFACES LANDED (PR #978, ledger `2026-09-17-surfaces-quotes-settlement`):** ONE
+    `BundleComponentsPanel` with an audience on the traveler's and both sellers' booking surfaces,
+    reading the ONE new `GET /api/bookings/:id/components` (allowlist projection, audience derived from
+    the row, one 404 for absent and not-yours alike). There is NO preview before a component cancel —
+    none exists server-side — so no number is shown before the act and the pinned percent renders after
+    it. "Prepared, awaiting settlement" is NEVER rendered as "refunded", a claimed settlement is never
+    rendered as settled, and NO capacity sentence is rendered anywhere, because nothing reserves
+    capacity per component.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
