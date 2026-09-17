@@ -202,3 +202,45 @@ mtime_ms = 1789610489544
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/8bb9cbc5-1b91-45d6-b9ab-918fbf714651/67da949f-059d-431c-be79-d88a2b1149ff"
 storage_version_token = "1789610580820083"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "VjYvT4p5M7wuoL1RXlkV1"
+uri = "file://attached_assets/image_search/expert-speaking-37573881.jpg"
+type = "image"
+title = "B2 — Guide actively presenting to a group"
+description = "Recommended. The guide is centered and visibly addressing travelers. Photo by Mico Medel on Pexels."
+logical_id = "dd4f3a60-1c38-44ba-8b82-b01df5fa73c9"
+content_hash = "sha256:fae9f3640898a35e5a166b1c845391c489b80628279c5fb69a99778918167e8c"
+size = 265710
+mtime_ms = 1789611132496
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/dd4f3a60-1c38-44ba-8b82-b01df5fa73c9/916d9a86-a995-47c8-81e7-8bbdbbf4dd21"
+storage_version_token = "1789611157032205"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "ecji8NkqdE7L-CGK-dqAK"
+uri = "file://attached_assets/image_search/expert-speaking-28757576.jpg"
+type = "image"
+title = "B3 — Outdoor guide pointing out a location"
+description = "A strong action pose with the group visible in the foreground. Photo by Thomas balabaud on Pexels."
+logical_id = "45f0440b-d86b-4b90-b332-5d960d91c159"
+content_hash = "sha256:da0b706dbc3fb6d773702e7fdf23ebd7b4adcd23169940c9b018653abbdd6432"
+size = 82368
+mtime_ms = 1789611132416
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/45f0440b-d86b-4b90-b332-5d960d91c159/f9b1612e-d4d7-4552-9122-6a989b4d0b9e"
+storage_version_token = "1789611157785184"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "WQcoBE0mbg_X_53vhdtKI"
+uri = "file://attached_assets/image_search/expert-speaking-16068123.jpg"
+type = "image"
+title = "B4 — Experience host briefing guests"
+description = "A host leading a group inside a stone cellar. Photo by Amar Preciado on Pexels."
+logical_id = "ee79a119-1069-47bf-82df-af8011088c32"
+content_hash = "sha256:de06016e0dd1a56521c9efa2b85f32c33bb4ce4e2deff363bf6376fc7fca8a55"
+size = 217447
+mtime_ms = 1789611132264
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/ee79a119-1069-47bf-82df-af8011088c32/5ef75d61-03a1-47a6-850f-1a40e40892b8"
+storage_version_token = "1789611158525047"
+content_type = "image/jpeg"
