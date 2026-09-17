@@ -66,15 +66,37 @@ import {
  * point (punchlist D-20/D-21).
  */
 export async function createPlanProposal(
-  input: Omit<PlanProposalCreate, "status"> & { status?: PlanProposalCreate["status"] },
+  input: Omit<PlanProposalCreate, "status"> & {
+    status?: PlanProposalCreate["status"];
+    /**
+     * THE SERVER-MINTED ID (decision-maker ruling 2026-09-16, punchlist **D-46** = A amended (i);
+     * ledger `2026-09-16-l16-rulings-d45-d50`).
+     *
+     * The create rail mints `randomUUID()` **BEFORE the model call** so that the in-flight marker
+     * can hold it, a 409 can NAME it, and the `ai_cost_tracking` row written for the call carries
+     * it as `requestId` (D-47) — which is what makes a FAILED ask that burned tokens attributable
+     * with no `plan_proposals` row behind it. Two consequences are intended, not defects: a 409 can
+     * name a proposal that has no row yet, and a cost row can outlive an ask that never produced
+     * one. Absent ⇒ the column's own `crypto.randomUUID()` default fires, exactly as before.
+     *
+     * **IT IS DELIBERATELY NOT A KEY ON `planProposalCreateSchema`.** That pick is the §19
+     * allowlist, and `server/__tests__/plan-proposals.db.test.ts` P5 pins that no route parses it
+     * off a request body. Widening the pick would make `id` client-settable the day somebody does
+     * parse it; a function parameter only server code can reach is not a mass-assignment surface.
+     * §14 holds either way: the caller is the route, and the value is `randomUUID()`, never a body.
+     */
+    id?: string;
+  },
 ): Promise<PlanProposal> {
+  const { id, ...admissible } = input;
   const parsed = planProposalCreateSchema.parse({
-    ...input,
+    ...admissible,
     status: input.status ?? PLAN_PROPOSAL_STATUS_PROPOSED,
   });
   const [row] = await db
     .insert(planProposals)
     .values({
+      ...(id ? { id } : {}),
       tripId: parsed.tripId,
       conversationId: parsed.conversationId ?? null,
       question: parsed.question ?? null,

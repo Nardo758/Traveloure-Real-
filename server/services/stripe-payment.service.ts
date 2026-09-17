@@ -45,6 +45,11 @@ export const stripe = new Stripe(getStripeSecretKey() || '', {
  * read this constant.
  */
 export const BUNDLE_SETTLEMENT_REFUND_SOURCE = 'bundle_partial_settlement';
+/**
+ * The `source` a proposal-fee refund carries in its Stripe metadata (OPTION B — refund the fee on
+ * expiry; ledger `2026-09-16-l16-lane1-review-fixes`). Same job as the bundle constant above.
+ */
+export const AI_TASK_PROPOSAL_REFUND_SOURCE = 'ai_task_proposal';
 
 // ── Refund-reason mapping (L14 money-path P0) ──────────────────────────────────────────────
 //
@@ -79,6 +84,11 @@ const INTERNAL_REFUND_REASON_MAP: Readonly<Record<string, StripeRefundReason>> =
   // Admin upheld a traveler dispute (admin.routes.ts /api/admin/disputes/:bookingId/uphold).
   // The traveler asked for their money back and an admin agreed — customer-requested.
   dispute_upheld: 'requested_by_customer',
+  // A PAID AI-proposal apply refused because the proposal went stale or a listing it names went
+  // away (OPTION B, ledger `2026-09-16-l16-lane1-review-fixes`). The traveler paid for an apply the
+  // platform could not deliver as read — money returned for an undelivered product, which is the
+  // customer-facing class, never `duplicate` or `fraudulent`.
+  ai_task_proposal_refused: 'requested_by_customer',
   // Traveller/admin-initiated cancellation refunds (POST /api/bookings/refund).
   cancelled: 'requested_by_customer',
   canceled: 'requested_by_customer',
@@ -1192,9 +1202,11 @@ class StripePaymentService {
 
   /**
    * THE ONE `stripe.refunds.create` CALL SITE for a service booking (D-51, ledger
-   * `2026-09-16-bundle-partial-settlement`; §18 rule 1). Two callers drive it: `refundServiceBooking`
-   * (the whole-row refund, whose claim is `status = 'refunded'`) and `refundBundlePartialSettlement`
-   * (the partial settlement, whose claim is the `bundle_partial_settlements` row). It takes NO claim
+   * `2026-09-16-bundle-partial-settlement`; §18 rule 1). Three callers drive it: `refundServiceBooking`
+   * (the whole-row refund, whose claim is `status = 'refunded'`), `refundBundlePartialSettlement`
+   * (the partial settlement, whose claim is the `bundle_partial_settlements` row) and
+   * `refundAiTaskProposalFee` (the AI-proposal fee, whose claim is the `plan_proposals` status flip
+   * to `refunded` — OPTION B, ledger `2026-09-16-l16-lane1-review-fixes`). It takes NO claim
    * and flips NO status — each caller owns its own §15b claim and decides what a Stripe failure means
    * for it — and it throws the RAW Stripe error so the caller can apply its posture (the whole-row
    * rail reverts its status claim; the settlement leaves its claim reclaimable). The amount and the
@@ -1227,7 +1239,12 @@ class StripePaymentService {
    * the refund. Idempotent per (booking, amount). Skipped when no fee was billed — `feeRefund` is 0.
    */
   private async recordIssuedRefund(input: {
-    bookingId: string;
+    /**
+     * NULL for a refund that reverses no booking — the AI-proposal fee (OPTION B). The column is
+     * nullable by design (ON DELETE SET NULL: the audit row outlives its booking), so "no booking"
+     * is a state it already holds; `stripe_payment_intent_id` + `reason` identify the refund.
+     */
+    bookingId: string | null;
     paymentIntentId: string;
     refund: Stripe.Refund;
     /** DOLLARS, 2-decimal — the `refunds.amount` scale (same as `service_bookings.total_amount`). */
@@ -1236,16 +1253,46 @@ class StripePaymentService {
     /** DOLLARS of traveler service fee inside `amount` — 0 when none was billed or refunded. */
     feeRefund: number;
     feeReversalActor: string;
+    /**
+     * Record at most ONE audit row per Stripe refund id. Used by callers whose CLAIM lives on
+     * another table and whose retry legitimately re-drives the same idempotency key (a second
+     * `refunds.create` with the same key returns the SAME refund, and a second audit row for it
+     * would double-count a single money movement). `false` (the default) keeps the two existing
+     * callers' unconditional insert byte-for-byte.
+     */
+    onceByStripeRefundId?: boolean;
   }): Promise<void> {
     const { bookingId, paymentIntentId, refund, amount, internalReason, feeRefund } = input;
-    await db.execute(sql`
-      INSERT INTO refunds (
-        booking_id, stripe_refund_id, stripe_payment_intent_id,
-        amount, currency, status, reason, created_at
-      ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${internalReason}, NOW())
-    `);
+    if (input.onceByStripeRefundId) {
+      // ONE statement — the NOT EXISTS is evaluated inside the same INSERT, never a SELECT followed
+      // by a decision (§15). A concurrent pair may still both pass on a table with no UNIQUE over
+      // `stripe_refund_id`; that duplicates an AUDIT row, never a Stripe call, and is the stated
+      // limit of a guard that adds no index (publish-trap posture).
+      await db.execute(sql`
+        INSERT INTO refunds (
+          booking_id, stripe_refund_id, stripe_payment_intent_id,
+          amount, currency, status, reason, created_at
+        )
+        SELECT ${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${internalReason}, NOW()
+        WHERE NOT EXISTS (SELECT 1 FROM refunds WHERE stripe_refund_id = ${refund.id})
+      `);
+    } else {
+      await db.execute(sql`
+        INSERT INTO refunds (
+          booking_id, stripe_refund_id, stripe_payment_intent_id,
+          amount, currency, status, reason, created_at
+        ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${internalReason}, NOW())
+      `);
+    }
 
-    if (feeRefund > 0) {
+    if (feeRefund > 0 && bookingId === null) {
+      // A traveler service fee is billed on a BOOKING; a booking-less refund (the AI-proposal fee)
+      // carries none and its caller passes 0. Reaching here is a caller contract error — said out
+      // loud, never silently skipped (§13).
+      console.error(
+        `[refund] traveler-fee reversal requested for a booking-less refund ${refund.id}; no ledger row can carry it`,
+      );
+    } else if (feeRefund > 0 && bookingId !== null) {
       try {
         const { recordTravelerServiceFeeReversal } = await import('./fee-ledger.service');
         const res = await recordTravelerServiceFeeReversal({
@@ -1301,6 +1348,56 @@ class StripePaymentService {
       internalReason: input.internalReason,
       feeRefund: input.travelerServiceFeeRefund,
       feeReversalActor: 'bundle_partial_settlement',
+    });
+    return { id: refund.id, status: refund.status ?? null };
+  }
+
+  /**
+   * OPTION B — REFUND THE AI-PROPOSAL FEE ON EXPIRY (decision-maker ruling 2026-09-16; ledger
+   * `2026-09-16-l16-lane1-review-fixes`). The THIRD caller of the shared call site above, never a
+   * second `stripe.refunds.create` site (§18 rule 1).
+   *
+   * The CLAIM is not here: `refundRefusedProposalCharge` (`proposal-charge.service.ts`) flips the
+   * `plan_proposals` row to `refunded` with an atomic conditional BEFORE calling this, exactly as
+   * the bundle settlement owns its claim on its own table. The AMOUNT arrives server-derived — it is
+   * what Stripe reported the proposal's PaymentIntent actually took, recorded on the row at the claim
+   * (§14) — and the KEY is `planProposalRefundIdempotencyKey`, derived from the proposal id alone,
+   * so a retry and a concurrent loser both get the SAME refund back from Stripe. The audit row is
+   * written ONCE per Stripe refund id for the same reason. NO booking is touched (there is none), NO
+   * earning is swept (an AI-task fee is 100% platform revenue and was never ledgered — the charge is
+   * ledgered at APPLY, and a refused apply never reached that write), NO slot is released. Throws the
+   * raw Stripe error: the caller's claim stays claimed-but-unrefunded and its retry re-drives the
+   * same key (§15b — never a compensating rollback).
+   */
+  async refundAiTaskProposalFee(input: {
+    proposalId: string;
+    tripId: string;
+    paymentIntentId: string;
+    amountCents: number;
+    idempotencyKey: string;
+    /** The `refunds.reason` text — `planProposalRefundReason(...)`, carrying the refusal. */
+    auditReason: string;
+  }): Promise<{ id: string; status: string | null }> {
+    const refund = await this.createStripeRefundForBooking({
+      paymentIntentId: input.paymentIntentId,
+      amountCents: input.amountCents,
+      stripeReason: toStripeRefundReason('ai_task_proposal_refused'),
+      idempotencyKey: input.idempotencyKey,
+      metadata: {
+        proposalId: input.proposalId,
+        tripId: input.tripId,
+        source: AI_TASK_PROPOSAL_REFUND_SOURCE,
+      },
+    });
+    await this.recordIssuedRefund({
+      bookingId: null,
+      paymentIntentId: input.paymentIntentId,
+      refund,
+      amount: Math.round(input.amountCents) / 100,
+      internalReason: input.auditReason,
+      feeRefund: 0,
+      feeReversalActor: AI_TASK_PROPOSAL_REFUND_SOURCE,
+      onceByStripeRefundId: true,
     });
     return { id: refund.id, status: refund.status ?? null };
   }
