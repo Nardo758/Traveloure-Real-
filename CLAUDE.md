@@ -1592,6 +1592,56 @@ This document captures architectural decisions to maintain consistency across co
     LD 41 (f) now records; additions are born `origin:'ai'` (server-stamped), and a `replaces` naming
     protected expert work is REFUSED with the item ids, never skipped (D3). The Ask-AI drawer UI and
     the CREATE rail are the lane that follows; nothing produces a proposal outside tests yet.
+    **(3) AMENDMENT — OPTION B, REFUND THE FEE ON EXPIRY (decision-maker ruling Sep 16, 2026 —
+    ledger `2026-09-16-l16-lane1-review-fixes`).** A PAID proposal refused at apply for a stale
+    price or an unavailable listing is NEVER applied at a changed price and NEVER left
+    paid-and-unappliable: the fee is REFUNDED through the ONE shared Stripe refund call site under
+    `ai-task-refund-<proposalId>`, the §15b claim being the atomic status flip to `refunded` taken
+    BEFORE the Stripe call; a failed Stripe call keeps the claim and the retry re-drives the same
+    key. The apply's liveness re-check is BY ID under `optimizerCatalogLivenessWhere`, the ONE
+    predicate the optimizer's catalog reader pages over — never by membership in a page of its
+    result.
+    **(3) SECOND AMENDMENT — EVERY APPLY REFUSAL OF A PAID PROPOSAL REFUNDS IT, AND THE AUDIT ROW
+    NAMES THE REFUSAL (decision-maker ratified Sep 17, 2026 — ledger
+    `2026-09-16-l16-lane1-review-fixes`).** A paid proposal refused at apply is refunded whatever
+    the refusal — stale price, unavailable listing, or protected work (LD 42 D3) — through the ONE
+    shared refund path under `ai-task-refund-<proposalId>`; `protected_item` was previously left
+    charged, unappliable AND undiscardable. `not_applicable` is excluded by ruling: it reports a row
+    that was already terminal. The `refunds` audit `reason` records the REFUSAL that caused the
+    refund, never the mechanics of the call; on the ONE path where the original refusal is genuinely
+    unrecorded — a retry completing a refund whose Stripe call threw — it records
+    `unknown_prior_refusal` and never a reason re-derived from the proposal's state now, which could
+    attribute the refund to a refusal that had not yet happened (§13).
+    **(3) HAS LANDED AS FAR AS THE MODEL CALL (lanes 2 and 3, ledger
+    `2026-09-16-l16-lanes2-3-drawer`).** The Ask-AI drawer is a rail card of its own on the slip —
+    never a third branch of `slipBuildAiAction` — and every sentence it says has ONE home
+    (`client/src/lib/ask-ai-drawer.ts`; §18 rule 1). **Its visibility MIRRORS the routes and never
+    widens them:** ask / read / discard for the owner or a §12 WRITE advisor, and **pay and apply
+    for the OWNER only** (LD 42 D-48 as amended) — with the advisor arm proven by the proposal log's
+    own `requireWriteAccess` read SUCCEEDING, because `tripRole === "expert"` grants `pending` and
+    the client may not restate §12's status list. **The money line is the server's `aiTask
+    { coveredByTripPass, priceCents }` block on the existing `GET …/proposals` and nothing else** —
+    no second fee read, no literal, and all three ways of having no answer render NO claim and NO
+    number (§13). **Review-first and no undo is drawn** (D18). The model call and the post-final
+    Trip Card mount are the two things still unbuilt, and the drawer says the first one out loud.
+    **(3) THE CREATE RAIL'S MODEL CALL — THE PROMPT SCOPE, AND WHAT IS NEVER IN IT (ledger
+    `2026-09-16-l16-lane1b-model-call`; lands with PR #974).** `POST /api/trips/:tripId/proposals`
+    reads the plan LIVE and makes ONE model call whose whole input is the named `AiTaskPromptScope`
+    (`server/services/ai-task-prompt.ts`, pure) — the trip's own fields, the ordered items with the
+    protected set MARKED AS CONSTRAINTS through the one existing predicate pair, the plan's events
+    and stops, and, **for the paid task only** (an empty plan defers to the free draft, LD 41
+    (b)/(c)), the catalog from `loadOptimizerCatalog`. **`trips.expert_notes`, guest PII, any other
+    plan's or traveler's data, any `users` row and anything from `fee_bands` are never in it**, and
+    neither is a protected row's `expert_note` TEXT — the model is told the row is untouchable,
+    never what the expert wrote on it (LD 42 D4). No number the model produces is ever persisted,
+    and a failed ask writes NO proposal row while still writing an attributable `ai_cost_tracking`
+    row **iff the SDK surfaced usage** — where it did not, the honest record is no row and a log
+    line saying why (§13). An EMPTY change set is neither a model error nor a parse failure, so the
+    row IS written and **no summary is invented**. **Recorded as a filed migration ruling, not fixed
+    in that lane:** `ai_cost_tracking.user_id` is a `uuid` column while `users.id` is `varchar`, so
+    an account whose id is not uuid-shaped loses its WHOLE cost row silently — the fix is an `ALTER
+    COLUMN TYPE` plus the `shared/schema.ts` declaration the deploy-push rule already requires of
+    that table.
 
 46. **AN ARTIFACT IS ACCEPTED, NOT TIMED OUT; A REVISION IS A ROW; AND A HYBRID MAY DECLARE ONE ARTIFACT
     WITHOUT MOVING ITS MONEY (decision-maker ratified Sep 15, 2026 — punchlist D-24/D-25/D-26/D-40, all
@@ -1631,6 +1681,21 @@ This document captures architectural decisions to maintain consistency across co
     button that mints. **NULL = no instant ⇒ the booking is skipped with `no_delivery_timestamp` and never
     put on a clock (§13)**, and rows completed under the old timer are never rewritten. Left for later
     lanes, named: brief §7 lane 4 (every surface), and the refund on a rejected artifact, still UNRULED.
+    **THE REFUND ON A REJECTED ARTIFACT IS THE ADMIN'S DISPUTE OUTCOME — the line above is now ruled
+    (ledger `2026-09-17-ld50-remainder-and-artifact-refund`; lands with PR #973).** A traveler's
+    rejection of an artifact **moves no money**: it ASKs and then ESCALATEs into the existing admin
+    dispute queue through the ONE dispute writer, exactly as D-27 already had it. The refund is the
+    **ADMIN's resolution outcome** — a full refund of what that booking's traveler was charged,
+    through the ONE shared Stripe refund call site under `artifact-reject-refund-<bookingId>`, with
+    the §15b claim taken from the `disputed` from-state BEFORE the call and the booking and every
+    not-yet-refunded `booking_component_states` row moved to `refunded` in that same statement.
+    **No seller payout is ever minted**, in two layers: the ledger reversals run first, and no
+    from-state list reaching the completion mint contains `refunded`. The amount is server-derived
+    from the row (§14); the body is a `.strict()` pick of an optional admin note that reaches the
+    audit log and nothing else (§19); a Stripe failure reverts the claim to `disputed`. No new
+    queue, no new status, no new table, no migration. **§13:** `refunded: true` is said only with a
+    refund id in hand, a retry reports `alreadyRefunded` and claims NO id, and
+    `no_payment_intent` / `nothing_charged` / `wrong_status` are refused by name.
 
 47. **THE SELLER DECLARES; THE TRAVELER HAS A WINDOW; "COMPLETED" IS SAID AT ITS CLOSE (decision-maker
     ratified Sep 15, 2026 — ledger `2026-09-15-d36-d39-completion-declared`; migration 304).** For the
@@ -1712,6 +1777,41 @@ This document captures architectural decisions to maintain consistency across co
     process and must not produce a Traveloure Stripe refund. **Settlement happens only when the undelivered
     components are conclusively cancelled, failed or otherwise closed — never inside the component-completion
     recorder, and no partial completion is reinterpreted as immediately final.**
+    **`booking_component_states.status = 'refunded'` MEANS THIS COMPONENT'S MONEY IS SETTLED, AND
+    THE SETTLEMENT IS ITS WRITER (ledger `2026-09-17-ld50-remainder-and-artifact-refund`; lands with
+    PR #973).** The value was DECLARED so readers read it correctly and **written by nothing**, so a
+    component whose allocation had actually gone back to the traveler read `failed` or `cancelled`
+    forever. Its writers are exactly the two paths on which the money settles: the partial-settlement
+    promote, stamping it in the SAME UPDATE as `refunded_at` / `refund_amount_cents` /
+    `stripe_refund_id` under the same `settled_at IS NULL` guard that makes the promote exactly-once,
+    with the from-state INSIDE the statement (§18b); and the admin's artifact-rejection refund
+    (Locked Decision 46). A component refunded **0** is never stamped — nothing was refunded (§13) —
+    and who ended the component and why is not lost, since `failed_at`/`failure_reason`,
+    `cancelled_at`/`cancel_reason` and the pinned `cancel_refund_percent` stay on the row and the
+    immutable `component_outcomes` names both outcomes verbatim. Because the settlement derivation
+    REFUSES a `refunded` component by name, **a promoted settlement is answered from its own settled
+    row and never re-derived** — this ruling's own immutability clause, not a shortcut.
+    **A WHOLE-ROW CANCEL QUOTES THE SNAPSHOT, NEVER THE LIVE LISTING (same ledger row).** A
+    cancellation quote reads the tier PINNED on `service_bookings.offering_contract_snapshot`, so a
+    seller who tightens their policy never tightens it retroactively for an outstanding booking; the
+    whole-row and the per-component rails read it through **ONE parse** (§18 rule 1), and the quote
+    NAMES which record answered. **§13: a pre-291 row with no snapshot falls back to the live listing
+    EXPLICITLY, named on the response and logged** — never silently, because refusing it would strand
+    every legacy traveler behind a record-keeping gap they had no part in; a snapshot whose policy is
+    NULL is the DIFFERENT fact "the listing declared none" and takes the ONE normalizer's stance. The
+    component rail keeps REFUSING instead, correctly — it serves only post-307 bundles, snapshotted
+    by construction.
+    **NOTHING RESERVES CAPACITY PER COMPONENT, AND THE CODE STATES THAT RATHER THAN RELEASING
+    SOMETHING ELSE (same ledger row).** The checkout claims per CART LINE and a bundle is ONE line;
+    the purchase-time component snapshot carries no slot and `booking_component_states` has no slot
+    column — so a failed or cancelled component has nothing to give back, and releasing the BOOKING's
+    own claim would be wrong twice over (the bundle still occupies its window, and this ruling forbids
+    releasing all reserved capacity). Both component writers therefore STATE it —
+    `componentCapacity: { released: 0, reason: "no_component_capacity_reserved", … }`, read through
+    the ONE pair of claimed-slot deciders (§18 rule 1) — and **a per-component release is NOT
+    invented: it needs a per-component slot record (a column on `booking_component_states`, or a
+    `slotId` on the snapshot entry the checkout composer writes), which is an unratified
+    schema/composer decision** (a reader for a fact no writer produces is the shape §18c refuses).
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
@@ -2065,6 +2165,28 @@ would run without being SEEN and the files would read as still orphaned. A mixed
 therefore wired as **two steps split by NAME**, with the limit stated in the workflow — a file added
 there is orphaned until somebody names it, and the ratchet is what says so. A single-runner directory
 keeps the whole-directory glob and stays closed by construction.
+**A TEST FILE UNDER A DIRECTORY A CI JOB SELECTS BY NAME IS ORPHANED UNTIL IT IS NAMED THERE; IT
+LEAVES THE ORPHAN LIST BY BEING RUN OR BY BEING GONE — NEVER BY A BASELINE ROW OR AN ALLOWLIST
+(ledger `2026-09-17-orphan-971-wired`).** The paragraph above states the wiring shape; this states
+its consequence for a file that arrives afterwards. A suite added to such a directory by a lane that
+did not name it read as unwired while being right, and the code it covered was right too — the
+ratchet is a branch-protection context, so every open PR inherited the red. The repair is the
+one-line job change the job's own comment predicts: the file joins the runner list it belongs to.
+`scripts/test-orphan-baseline.txt` is untouched and the ratchet may only shrink, so a new orphan is
+never absorbed by growing the baseline, and the guard's predicate is not touched to make a file
+disappear from it.
+**A HIGH-RISK ROLE-CONSOLE MUTATION RAIL OUTSIDE THE PREFIX BACKSTOP IS PROBED, NEVER EXCLUDED
+(ledger `2026-09-16-ci-red-repairs-3`).** `expert-provider-mutation-auth.test.ts` derives its probe
+set from an assembled prefix backstop and requires every other high-risk role-console route to be
+NAMED. Four rails landed that are `isAuthenticated` plus an ownership check INSIDE the handler, so
+no prefix backstop could see them; they were given a real resource fixture and **PROBED** through
+the suite's second probe set, `RESOURCE_PROBES`, and were **not** added to `EXCLUSIONS` — an
+exclusion is an allowlist on a mutation rail, and the §14/§19 posture refuses to grow one where a
+fixture is buildable. Each rail is probed anonymous ⇒ **401**, the resource's own non-owner ⇒ **404**
+(LD 40's one sentence for "no such thing" and "not yours", with the row proven unchanged), owner ⇒
+past the ownership gate. The structural gate now refuses a rail in two sets, a `RESOURCE_PROBES` key
+that is not high-risk, a prefix-probed rail carrying a fixture, and a `RESOURCE_PROBES` key with no
+probe. **The exclusion list only shrinks.**
 
 ### §19 — Privileged-field mass-assignment is a STANDING CLASS; the fix shape is an ALLOWLIST (ruling 46)
 
