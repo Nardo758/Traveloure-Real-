@@ -27,7 +27,10 @@ import { slipShareUrl } from "@/lib/slip-rail";
  * `PlanCard` (hero = the SAME `PlanCardHeader` + `MetricStrip` the summary card draws; view bar
  * Plan | Map with "X of Y located"; the day list; the collapsed drawers — Note from your expert ·
  * Budget · Purchases · Change history) in the main column, and `TripCardRail` (Booking agent ·
- * Your expert · Suggestion from your expert · Back to planning) in a 320px right column.
+ * Your expert · Ask AI about this plan · Suggestion from your expert · Back to planning) in a
+ * 320px right column — Ask AI in the Suggestion card's slot (L16 lane 4, ledger
+ * `2026-09-17-l16-lane4-postfinal`), which draws nothing unless a suggestion is actually pending,
+ * so the rail still reads four cards in the ordinary case.
  *
  * WHAT THE TWO DELETED TABS CARRIED, AND WHERE IT WENT:
  *   · Bookings tab — a permanent empty state ("No Bookings Yet"). Purchases now live in the
@@ -102,6 +105,14 @@ export default function TripDetails() {
   // activities to lose. First generation (no itinerary yet) skips the dialog entirely.
   const hasExistingItineraryItems = !!plancardData?.days?.some(
     (day) => (day.activities?.length ?? 0) > 0,
+  );
+  // L16 lane 4 (ledger `2026-09-17-l16-lane4-postfinal`): the rail's Ask-AI card feeds this to
+  // `slipBuildAiAction`, LD 41 (b)'s ONE home — the empty-plan deferral cannot occur on a plan
+  // that has been made final, but the branch is kept rather than short-circuited here, because a
+  // second answer to "is this plan empty?" typed on this page is the drift §18 rule 1 names.
+  const plancardItemCount = (plancardData?.days ?? []).reduce(
+    (total, day) => total + (day.activities?.length ?? 0),
+    0,
   );
   const { toast } = useToast();
   const { open: openPlanning } = usePlanning();
@@ -458,8 +469,12 @@ export default function TripDetails() {
                 startDate: calendarDateToIso(trip.startDate) || null,
                 endDate: calendarDateToIso(trip.endDate) || null,
                 finalizedAt: plancardData?.trip?.finalizedAt ?? null,
+                // L16 lane 4 — read by the rail's Ask-AI card alone, to name the version an apply
+                // would create (D-49). Absent ⇒ the card says nothing about versions (§13).
+                finalVersion: plancardData?.trip?.finalVersion ?? null,
               }}
               isOwner={isOwner}
+              itemCount={plancardItemCount}
             />
           </aside>
         </div>

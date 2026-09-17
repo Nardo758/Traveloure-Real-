@@ -18,7 +18,15 @@
  *     Message addressed by the PLAN (LD 40 D22) and a storefront link only when a handle exists.
  *     NOTE (reported, not fixed here): LD 42 D7 says the advisor READER returns ALL advisors; on
  *     `main` this route still returns one, so this card shows the one it returns.
- *   3 SUGGESTION FROM YOUR EXPERT — the EXISTING `ExpertSuggestionsPanel` (C2's decline-with-
+ *   3 ASK AI ABOUT THIS PLAN — the SAME `AskAiDrawer` the slip's rail mounts, POST-FINAL here
+ *     (L16 lane 4, ledger `2026-09-17-l16-lane4-postfinal`; brief §5.1). It takes the Suggestion
+ *     card's SLOT rather than a fifth position: `ExpertSuggestionsPanel` draws nothing unless the
+ *     expert has actually posted a suggestion, so the rail still reads FOUR cards in the ordinary
+ *     case and five only when a suggestion is genuinely pending. Nothing about the control changes
+ *     with the surface — same copy, same owner-only pay/apply, same server-answered price,
+ *     staleness and refusals — except ONE sentence D-49 requires: an apply on a plan that is
+ *     CURRENTLY final makes a NEW Trip Card version, which the card says before the charge.
+ *   3b SUGGESTION FROM YOUR EXPERT — the EXISTING `ExpertSuggestionsPanel` (C2's decline-with-
  *     reason), mounted here and nowhere else on this page (`PlanCard suggestionsHome="rail"`).
  *   4 NEED TO CHANGE THE PLAN? — "Back to planning", the SAME `useReopenMutation` the slip's Finish
  *     card calls, SUPPRESSED inside the 48-hour window and once underway by the SAME predicate the
@@ -26,7 +34,9 @@
  *     `shared/plan-timing.ts`). With no zone the predicate compares on the date alone, as stated there.
  *
  * NOT here, deliberately: the push-consent card (the brief draws it absent; no stub), and any
- * booking-agent DRAWER (L16/L17). Every card is owner-only: each rail it reads is owner-gated.
+ * booking-agent DRAWER (L17). Every card is owner-only: each rail it reads is owner-gated — which
+ * is why the Ask-AI card is mounted with `isExpertViewer={false}`, a fact about this page rather
+ * than a narrowing of the drawer's own rule.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
@@ -40,9 +50,11 @@ import { earnerProfilePath } from "@/lib/earner-address";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import {
   slipAdvisorStandingLine,
+  slipBuildAiAction,
   slipExpertRailState,
   type SlipRailAdvisor,
 } from "@/lib/slip-rail";
+import { AskAiDrawer } from "./AskAiDrawer";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { useReopenMutation } from "./use-reopen-mutation";
 
@@ -53,11 +65,21 @@ export interface TripCardRailTrip {
   startDate?: string | null;
   endDate?: string | null;
   finalizedAt?: string | null;
+  /**
+   * `plancard.trip.finalVersion` — the version this Trip Card is showing. Read by the Ask-AI card
+   * ONLY, to say what an apply would do to it (D-49); absent/null ⇒ that sentence is omitted (§13).
+   */
+  finalVersion?: number | null;
 }
 
 interface TripCardRailProps {
   trip: TripCardRailTrip;
   isOwner: boolean;
+  /**
+   * How many activities this plan holds, from the plancard the page already read. It feeds
+   * `slipBuildAiAction` — LD 41 (b)'s ONE home — and is never re-derived into a second rule.
+   */
+  itemCount: number;
 }
 
 /** One rail card: a mono uppercase eyebrow over its body — the slip rail's own grammar. */
@@ -263,7 +285,7 @@ function BackToPlanningCard({ trip }: { trip: TripCardRailTrip }) {
 
 // ── The rail ─────────────────────────────────────────────────────────────────────────────────
 
-export function TripCardRail({ trip, isOwner }: TripCardRailProps) {
+export function TripCardRail({ trip, isOwner, itemCount }: TripCardRailProps) {
   // ONE advisor read for the rail — the same owner-gated route the card header already reads
   // (React Query dedups the two into one request). 404s for a non-owner, hence `enabled`.
   const { data: advisorData } = useQuery<{ advisor: SlipRailAdvisor | null }>({
@@ -277,6 +299,25 @@ export function TripCardRail({ trip, isOwner }: TripCardRailProps) {
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 items-start" data-testid="trip-card-rail">
       <BookingAgentCard tripId={trip.id} />
       <YourExpertCard trip={trip} advisor={advisor} />
+      {/* 3 · ASK AI — the SAME drawer the slip mounts (L16 lane 4, ledger
+          `2026-09-17-l16-lane4-postfinal`), in the Suggestion card's slot, with the suggestion
+          panel — which draws nothing unless the expert has actually posted one — directly beneath
+          it. The rail therefore still reads FOUR cards in the ordinary case. Owner-only by the
+          rail's own gate above, so `isExpertViewer` is false here by construction: an advisor
+          never reaches this page's rail at all.
+          `planFinal` is what makes this mount post-final — it is the PLAN's state, not the page's,
+          and D-49's sentence is derived from it in the drawer's one copy module. */}
+      <AskAiDrawer
+        tripId={trip.id}
+        isOwner={isOwner}
+        isExpertViewer={false}
+        aiAction={slipBuildAiAction(itemCount)}
+        surface="trip-card"
+        planFinal={{
+          isFinalized: !!trip.finalizedAt,
+          finalVersion: typeof trip.finalVersion === "number" ? trip.finalVersion : null,
+        }}
+      />
       {/* Renders nothing when there are no suggestions (§13 — the panel's own rule). */}
       <div data-testid="trip-card-rail-suggestions">
         <ExpertSuggestionsPanel tripId={trip.id} />
