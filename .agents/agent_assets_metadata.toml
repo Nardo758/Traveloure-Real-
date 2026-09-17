@@ -6,12 +6,14 @@ id = "UkjsVSZUblyAUTFRQn5Ao"
 uri = "file://Traveloure-Platform-Overview.md"
 type = "text"
 title = "Traveloure — Platform Overview Document"
+logical_id = "7cc4dcaa-bb76-42b5-b401-ac0f414196ed"
 
 [[outputs]]
 id = "6FLOc_pIkgpvirqf9ObwE"
 uri = "file://Traveloure-Technical-Architecture.md"
 type = "text"
 title = "Traveloure — Full Technical Architecture Document"
+logical_id = "a590ce4c-dc25-4d71-aeeb-2c4483f5ad21"
 
 [[outputs]]
 id = "JdlxcFuxe9C22BJu8E0jP"
@@ -19,6 +21,8 @@ uri = "file://preview/provider-console-preview.html"
 type = "text"
 title = "Provider Console — Sidebar + Catalog preview"
 description = "Visual verification of the three UI changes: user identity card moved to sidebar header, active nav color changed to teal #35605A, Distribute badge added, and health bar repositioned to top of listing right column."
+logical_id = "caee5fab-419d-4c10-85b1-c0dd55cf91d7"
+content_type = "text/html"
 
 [[outputs]]
 id = "1oG_vxhEKbK7-ioYbqNGS"
@@ -26,6 +30,7 @@ uri = "file://docs/audits/optimized-slip-review-visual/light-desktop.png"
 type = "image"
 title = "Optimized Slip Review — light desktop"
 description = "Authenticated review page at 1440×1000."
+logical_id = "9ca99337-2076-4b3a-ace0-4009cc2d3ef3"
 
 [[outputs]]
 id = "9PPjb36Vvmj4ADM3AGwXC"
@@ -33,6 +38,7 @@ uri = "file://docs/audits/optimized-slip-review-visual/dark-desktop.png"
 type = "image"
 title = "Optimized Slip Review — dark desktop"
 description = "Authenticated review page with dark-color preference at 1440×1000."
+logical_id = "1c447c2f-2c40-4b5f-8490-3de525e67df8"
 
 [[outputs]]
 id = "OZnI7yqJDa8XfBnBA5Bwi"
@@ -40,6 +46,7 @@ uri = "file://docs/audits/optimized-slip-review-visual/light-mobile.png"
 type = "image"
 title = "Optimized Slip Review — light mobile"
 description = "Authenticated review page at 390×844."
+logical_id = "67f9b25b-889c-4921-88d0-bfa23f05d288"
 
 [[outputs]]
 id = "WyN2EK2_HABNnwHHLbHxD"
@@ -47,6 +54,7 @@ uri = "file://screenshots/dispatch-destinations.jpg"
 type = "image"
 title = "Marketplace — Destinations"
 description = "Verified /destinations masthead and CityGrid surface."
+logical_id = "19b2add9-4604-4d2c-88cb-db01c9a6131e"
 
 [[outputs]]
 id = "cp3x8iksz2eFqDCRNkHqm"
@@ -54,6 +62,7 @@ uri = "file://screenshots/dispatch-ready-made.jpg"
 type = "image"
 title = "Marketplace — Ready-Made Trips"
 description = "Verified /ready-made masthead and Ready-Made shelf."
+logical_id = "0758595c-b0c3-4d6d-9fd8-1b32cd67dc77"
 
 [[outputs]]
 id = "rZUmqd9KBAPcnec5MvCT4"
@@ -61,6 +70,7 @@ uri = "file://screenshots/dispatch-events.jpg"
 type = "image"
 title = "Marketplace — Events"
 description = "Verified /events masthead and GlobalCalendar surface."
+logical_id = "0c856616-9c56-422f-a057-d1f6af5da860"
 
 [[outputs]]
 id = "5aD_MIiBIP2lEiLFevkvA"
@@ -68,6 +78,7 @@ uri = "file://screenshots/dispatch-services.jpg"
 type = "image"
 title = "Marketplace — Services"
 description = "Verified /services masthead, search field, filters, and service cards."
+logical_id = "c0fe3371-6645-4d6b-a346-dba5c2875b8d"
 
 [[outputs]]
 id = "pH0uYM0GCbhP-zoIcY3DM"
@@ -75,6 +86,8 @@ uri = "file://exports/traveloure-marketplace-detail-mockups.html"
 type = "text"
 title = "Traveloure Marketplace Detail Mockups"
 description = "Self-contained HTML export of the six selected marketplace detail mockups, arranged as a continuity-versus-baseline comparison sheet."
+logical_id = "01585d6f-a5f5-46fc-89ea-c002dbc6f5da"
+content_type = "text/html"
 
 [[outputs]]
 id = "0629Mu1YTCtROYtFtvVPt"
@@ -82,6 +95,7 @@ uri = "file://reports/rohit-daily-report-2026-08-23.md"
 type = "text"
 title = "Rohit Daily Work Report — August 23, 2026"
 description = "Repository-based report covering work completed, defects fixed, and tests or verification recorded for yesterday."
+logical_id = "942b8adf-d01a-4815-9ce9-b67fad01e0de"
 
 [[outputs]]
 id = "s-HTb_vcNErIa0R6ZpB95"
@@ -89,6 +103,7 @@ uri = "file://screenshots/bento-mumbai-top-feed.png"
 type = "image"
 title = "Signed-in Mumbai top feed"
 description = "Live development capture of the Mumbai destination feed after the Bento regression fixes."
+logical_id = "23150a20-6978-4744-b9a6-443793a6389b"
 
 [[outputs]]
 id = "bCGOAmEPxD5Hermy5rk00"
@@ -96,6 +111,7 @@ uri = "file://screenshots/bento-colaba.png"
 type = "image"
 title = "Signed-in Colaba Bento section"
 description = "Live development capture of the Colaba section with content-sized rows and contained compact actions."
+logical_id = "f141eabe-d289-41c1-84a2-b13970d837e8"
 
 [[outputs]]
 id = "YNzLVvAnq4V-gMA8Cu39T"
@@ -103,6 +119,7 @@ uri = "file://attached_assets/Rohit_Work_Test_Findings_Fixes_Report.md"
 type = "text"
 title = "Rohit — Work, Testing, Findings, and Fixes Report"
 description = "Detailed Traveloure report covering Rohit’s structural audit, tests, production findings, merged fixes, backfill analysis, and final deployment verification."
+logical_id = "138d68fc-7688-406f-96aa-cb4f54cb8eec"
 
 [[outputs]]
 id = "6Gf6uUUTMdLmbXlDYgBy7"
@@ -110,6 +127,7 @@ uri = "file://screenshots/dispatch-a-kyoto-feed.jpg"
 type = "image"
 title = "Dispatch A — Kyoto feed"
 description = "Development Kyoto marketplace capture after the persona supply pass."
+logical_id = "a3532e3d-fc20-467f-8a23-9517bc059b10"
 
 [[outputs]]
 id = "ElkM1EfgYaUC4zoKfklnM"
@@ -117,6 +135,7 @@ uri = "file://screenshots/dispatch-a-gion-storefront.jpg"
 type = "image"
 title = "Dispatch A — Gion expert storefront"
 description = "Development public storefront showing two approved expert offerings."
+logical_id = "4f5a0921-cbcc-4fe5-b7a1-1fde793fa05a"
 
 [[outputs]]
 id = "2TCH_kXH8jZNHg_-KZBzi"
@@ -124,6 +143,7 @@ uri = "file://playwright-report/persona-screenshots/journey-traveler-plus-occasi
 type = "image"
 title = "Dispatch A — Plus occasion"
 description = "Authenticated Plus persona occasion state before the delivery job ran."
+logical_id = "f5300d09-d244-4196-9398-3693368804bc"
 
 [[outputs]]
 id = "FsB9iMNTKjSNP7LGnxTTr"
@@ -131,6 +151,7 @@ uri = "file://playwright-report/persona-screenshots/journey-guest-cart-prompt.pn
 type = "image"
 title = "Dispatch A — Guest sign-in boundary"
 description = "Guest cart sign-in prompt captured during the exploratory journey."
+logical_id = "14704719-9378-4ba1-82ad-69611c1fb6dd"
 
 [[outputs]]
 id = "S0HuwaF2A3_DVAUIxHUB7"
@@ -138,3 +159,46 @@ uri = "file://playwright-report/trip-card-control-audit/REPORT.md"
 type = "text"
 title = "Trip Card Control Audit — Dev Preview"
 description = "Final control inventory for the reported dev-preview screenshot, classified against the PlanCard manifest, with California fixture and slip relocation findings."
+logical_id = "b865220a-4c15-4280-9efb-4d67a121cd75"
+
+[[outputs]]
+id = "PMEtS5x9quI9pAjRZmHz5"
+uri = "file://attached_assets/image_search/expert-pexels-17802093.jpg"
+type = "image"
+title = "Option A — Neighborhood guide leading a group"
+description = "Recommended. A local guide actively explains the neighborhood to travelers. Photo by Ranjeet Chauhan on Pexels."
+logical_id = "eb3bc659-dd84-4aed-b8c3-e923557eaa47"
+content_hash = "sha256:fcf145f8a68c8bfeec1b31e5a6000e786148a1d65803b45263aec273264532b8"
+size = 232405
+mtime_ms = 1789610555860
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/eb3bc659-dd84-4aed-b8c3-e923557eaa47/fa4760ad-deba-422e-b874-58a5eaa4b5bc"
+storage_version_token = "1789610579341318"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "GwBsWSuebBK7QFuyct1ZF"
+uri = "file://attached_assets/image_search/expert-pexels-29180030.jpg"
+type = "image"
+title = "Option B — Guide speaking to travelers"
+description = "A clearly identifiable guide actively presenting to a group on a city tour. Photo by Viridiana Rivera on Pexels."
+logical_id = "9771eb27-175f-4b0b-8287-41581dd7c178"
+content_hash = "sha256:74ffba808f560c641eaa1f2d48f05269624ff246ba6cb773a561dd71b5b3a2c9"
+size = 110747
+mtime_ms = 1789610555256
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/9771eb27-175f-4b0b-8287-41581dd7c178/b03a35c2-5772-40b1-b36f-9254251c0572"
+storage_version_token = "1789610580092373"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "YA3HeIX-vhNbZXDoLuvmn"
+uri = "file://attached_assets/image_search/expert-action-JB4aR34u248.jpg"
+type = "image"
+title = "Option C — Expert guiding travelers with a map"
+description = "Hands-on route guidance with several travelers participating. Photo by Sebastian Herrmann on Unsplash."
+logical_id = "8bb9cbc5-1b91-45d6-b9ab-918fbf714651"
+content_hash = "sha256:fa567b7b9426fec8021bb1327677af55c67ddcbc7ce76d98d03ee5599451e5e4"
+size = 108500
+mtime_ms = 1789610489544
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/8bb9cbc5-1b91-45d6-b9ab-918fbf714651/67da949f-059d-431c-be79-d88a2b1149ff"
+storage_version_token = "1789610580820083"
+content_type = "image/jpeg"
