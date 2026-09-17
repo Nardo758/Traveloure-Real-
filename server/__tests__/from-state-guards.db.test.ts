@@ -527,8 +527,29 @@ test("F7: no `service_bookings` from-state list is declared outside `server/util
       `${f} must IMPORT the from-state lists, never re-declare one (§18 rule 1)`,
     );
   }
+  // ONE home means ONE declaration. Since ledger `2026-09-17-surfaces-acceptance-completion` (PR #979)
+  // a list a client surface also reads is DECLARED in `@shared` and RE-EXPORTED by the server home, so
+  // a surface and its rail read the same array (CLAUDE.md LD 46). That is still one author: the guard
+  // counts declarations across the server home and the shared homes and demands exactly one, and,
+  // when the declaration lives in `@shared`, demands the server home re-export it under the same name
+  // — a second `export const` anywhere, or a shared declaration the server home does not re-export,
+  // is the drift §18 rule 1 names.
   const home = src("server/utils/booking-from-states.ts");
+  const sharedHomes = ["shared/declared-completion-window.ts", "shared/acceptance-window.ts"];
   for (const name of ["OWNER_BOOKING_TRANSITIONS", "DISPUTABLE_FROM_STATUSES", "DISPUTE_REJECT_FROM_STATUSES"]) {
-    assert.ok(new RegExp(`export const ${name}`).test(home), `${name} is declared in the one home`);
+    const declaredIn = new RegExp(`^export const ${name}\\b`, "m");
+    const declaredHere = declaredIn.test(home);
+    const declaredShared = sharedHomes.filter((f) => declaredIn.test(src(f)));
+    assert.equal(
+      (declaredHere ? 1 : 0) + declaredShared.length,
+      1,
+      `${name} is declared in exactly ONE home (server home: ${declaredHere}; shared: ${declaredShared.join(", ") || "none"})`,
+    );
+    if (!declaredHere) {
+      assert.ok(
+        new RegExp(`^export \\{[^}]*\\b${name}\\b[^}]*\\};?$`, "m").test(home),
+        `${name} is declared in ${declaredShared[0]} and must be RE-EXPORTED by the server home under the same name`,
+      );
+    }
   }
 });
