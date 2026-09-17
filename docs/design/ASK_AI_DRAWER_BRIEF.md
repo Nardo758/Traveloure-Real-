@@ -613,10 +613,19 @@ lane 2's build item, not lane 1's**.
    `providerServiceId` re-validation (D-50 b), the `aiTask` coverage/price block on the existing GET
    (D-48's read half) — **and `applyPlanProposal`'s `reFinalizeIfCurrentlyFinal` call with LOUD
    failure (D-49, moved here from lane 4)**. **DRAFT PR — the decision-maker reads it before merge**
-   (money-adjacent). **STOPPED, by instruction, before the prompt builder and the model call**:
+   (money-adjacent). ~~**STOPPED, by instruction, before the prompt builder and the model call**:
    their exact design is written out in
-   `docs/lane-reports/2026-09-16-l16-lane1-create-rail.md` for the decision-maker to read first.
-   Nothing in lane 1 is reachable from any UI.
+   `docs/lane-reports/2026-09-16-l16-lane1-create-rail.md` for the decision-maker to read first.~~
+   **STRUCK 2026-09-17 — LANE 1b LANDED THE MODEL CALL** (ledger `2026-09-16-l16-lane1b-model-call`,
+   lane report `docs/lane-reports/2026-09-16-l16-lane1b-model-call.md`), built to that §4 design
+   after the decision-maker read it: the prompt builder and its exclusion list (D-50), the one model
+   call on the `AI_TASK_MODEL` knob, the D-47 cost row with the pre-minted `requestId`, and §4.4's
+   failure table. Lane 1's honest `503 model_call_not_built` is gone and its A3 proof was RE-PINNED
+   to the built behaviour. **Nothing in lane 1 or 1b is reachable from any UI** — the drawer is
+   lane 3. **What 1b left:** D-45's optional prior-questions context stays FILED, not taken; and the
+   `ai_cost_tracking.user_id` **uuid** column cannot hold a non-uuid `users.id`, so D-47's
+   attribution is silently lost for such an account (pre-existing, all callers, needs a migration —
+   filed in `docs/PUNCHLIST.md`).
 2. ~~**The D-48 NARROWING and the coverage line**~~ **— LANDED 2026-09-17** (ledger
    `2026-09-16-l16-lanes2-3-drawer`). **The route narrowing itself had already shipped inside
    LANE 1** (item 12 of `docs/lane-reports/2026-09-16-l16-lane1-create-rail.md`: `…/pay` and
