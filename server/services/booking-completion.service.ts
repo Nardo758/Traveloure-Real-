@@ -97,6 +97,7 @@ import {
 } from "@shared/declared-completion-window";
 import {
   ACCEPTANCE_FROM_STATUSES,
+  ALL_UNDELIVERED_CANCEL_FROM_STATUSES,
   COMPLETION_DECLARABLE_FROM_STATUSES,
   DECLARED_WINDOW_CLOSE_FROM_STATUSES,
   PARTIAL_COMPLETION_FROM_STATUSES,
@@ -106,9 +107,11 @@ import {
   PARTIALLY_COMPLETED_STATUS,
   allocationsAreComplete,
   cancelledComponentRefundCents,
+  deriveAllUndeliveredCause,
   deriveBundleOutcome,
   isValidCancelRefundPercent,
   reducedBundleFigures,
+  type AllUndeliveredCause,
 } from "@shared/bundle-component-states";
 import {
   claimComponentCancelled,
@@ -1278,10 +1281,15 @@ export interface BundleComponentFailureResult {
   /** D-51: the money leg's NAMED result when a partial settlement was attempted on this call. */
   settlement?: BundlePartialSettlementResult | null;
   /**
-   * `all_undelivered`: every component has now failed. Nothing flips — the EXISTING whole-row refund
-   * rail owns that case (brief §2) — and the caller is told so rather than left to infer it.
+   * `all_undelivered`: every component is now terminal-undelivered. Since the 2026-09-17 ruling the
+   * PARENT is cancelled for it (see `allUndelivered` below) rather than left `confirmed`.
    */
   parentOutcome?: string;
+  /**
+   * Ledger `2026-09-17-all-undelivered-parent`: the parent-cancel leg's NAMED result, present only
+   * when it was attempted on this call (§13 — never a zero-filled stub).
+   */
+  allUndelivered?: SettleBundleAllUndeliveredResult | null;
   componentStateSource?: ComponentStateSource;
 }
 
@@ -1383,6 +1391,26 @@ export async function recordBundleComponentFailure(input: {
   // Re-derive AFTER the write — the resolver is the one authority on what the components now say.
   const post = await resolveCompletionEligibility(input.bookingId, now);
   const outcome = (post.evidence as any).outcome as string | undefined;
+  if (post.reason === "bundle_components_undelivered") {
+    // Ledger `2026-09-17-all-undelivered-parent`: this failure was the LAST answer outstanding and
+    // nothing was delivered, so the PARENT is cancelled, its claimed slot units come back once, and
+    // the EXISTING D-51 money leg refunds every allocation at its own pinned answer. ONE
+    // implementation, two callers (the other is the traveler's component-cancel rail) — §18 rule 1.
+    const ended = await settleBundleAllUndelivered({ bookingId: input.bookingId, actor: input.actor, now });
+    return {
+      recorded: true,
+      alreadyRecorded,
+      partiallyCompleted: false,
+      settlement: ended.settlement,
+      allUndelivered: ended,
+      bookingId: input.bookingId,
+      rule: pre.rule,
+      reason: ended.cancelled ? undefined : ended.reason,
+      evidence: { ...ended.evidence, componentCapacity },
+      parentOutcome: outcome,
+      componentStateSource: source,
+    };
+  }
   if (post.reason === "bundle_partially_completed") {
     // D-51: the ONE settlement entry (flip + reduced mint, then claim → Stripe → promote).
     const settled = await settleBundlePartially({ bookingId: input.bookingId, actor: input.actor, now });
@@ -1441,6 +1469,11 @@ export type BundleComponentCancellationResult =
       partiallyCompleted: boolean;
       /** D-51's money leg, present only when a settlement was attempted on this call (§13). */
       settlement: BundlePartialSettlementResult | null;
+      /**
+       * Ledger `2026-09-17-all-undelivered-parent`: the parent-cancel leg's NAMED result, present only
+       * when THIS cancel was the last answer outstanding and nothing had been delivered (§13).
+       */
+      allUndelivered?: SettleBundleAllUndeliveredResult | null;
       parentOutcome?: string;
       reason?: IneligibleReason | "lost_race";
       evidence: Record<string, unknown>;
@@ -1617,6 +1650,26 @@ export async function recordBundleComponentCancellation(input: {
     // Re-derive AFTER the write — the resolver is the one authority on what the components now say.
     const post = await resolveCompletionEligibility(bookingId, now);
     const outcome = (post.evidence as any).outcome as string | undefined;
+    if (post.reason === "bundle_components_undelivered") {
+      // Ledger `2026-09-17-all-undelivered-parent`: the SAME one writer the seller's failure rail
+      // calls — never a second copy of this decision (§18 rule 1). The traveler's own cancel of the
+      // last outstanding component ends the bundle, and every component is refunded at its own pinned
+      // answer by the EXISTING money leg.
+      const ended = await settleBundleAllUndelivered({ bookingId, actor: "traveler_bundle_component_cancel", now });
+      return {
+        recorded: true,
+        alreadyRecorded,
+        bookingId,
+        componentServiceId,
+        terms: t,
+        partiallyCompleted: false,
+        settlement: ended.settlement,
+        allUndelivered: ended,
+        parentOutcome: outcome,
+        reason: ended.cancelled ? undefined : ended.reason,
+        evidence: { ...ended.evidence, componentCapacity },
+      };
+    }
     if (post.reason === "bundle_partially_completed") {
       const settled = await settleBundlePartially({ bookingId, actor: "traveler_bundle_component_cancel", now });
       return {
@@ -1645,6 +1698,229 @@ export async function recordBundleComponentCancellation(input: {
       evidence: { ...post.evidence, componentCapacity },
     };
   }
+}
+
+
+/** The `booking_details.allUndelivered` record the parent flip writes — the provenance of the cancel. */
+export interface AllUndeliveredRecord {
+  /** ISO instant of the flip. */
+  at: string;
+  cause: AllUndeliveredCause;
+  /** Every component of the bundle, NAMED — never a count (the D-34 provenance posture). */
+  componentIds: string[];
+}
+
+export interface SettleBundleAllUndeliveredResult {
+  bookingId: string;
+  /** The parent reads `cancelled` for this reason — on THIS call or an earlier one. */
+  cancelled: boolean;
+  /** The `confirmed → cancelled` flip (and with it the ONE slot release) landed on THIS call. */
+  flipped: boolean;
+  /** This call found the parent already all-undelivered-cancelled: a retry, nothing moved. */
+  alreadyCancelled: boolean;
+  /** NULL when the flip never happened — never a guessed cause (§13). */
+  cause: AllUndeliveredCause | null;
+  /** D-51's money leg, present only when a settlement was attempted on this call (§13). */
+  settlement: BundlePartialSettlementResult | null;
+  reason?: IneligibleReason | "lost_race";
+  evidence: Record<string, unknown>;
+}
+
+/**
+ * ══ THE ALL-UNDELIVERED PARENT — decision-maker ruling 2026-09-17 (ledger
+ * `2026-09-17-all-undelivered-parent`). THE ONE WRITER, TWO CALLERS. ═══════════════════════════════
+ *
+ * Until this ruling, a bundle whose EVERY component ended undelivered stayed `confirmed`: the two
+ * component recorders derived `all_undelivered`, said so on the response (`parentOutcome`) and
+ * stopped, because the settlement rail owned only the PARTIAL case and the whole-row refund rail was
+ * said to own this one — while nothing actually drove it. So the parent sat in a live state holding
+ * the provider's slot capacity, and the traveler's money sat unrefunded, until a human acted.
+ *
+ * WHAT HAPPENS NOW, in this order, and every step is idempotent:
+ *
+ *  1. RE-DERIVE server-side. The caller's opinion is never trusted: `resolveCompletionEligibility`
+ *     must say `bundle_components_undelivered` (the ONE derivation `deriveBundleOutcome`, §18 rule 1).
+ *     A bundle with ONE deliverable component left, or with no component rows at all, is REFUSED by
+ *     name and nothing moves — §13, and it is the load-bearing half: a `no_components` bundle can
+ *     never trigger this, because "we cannot enumerate it" is not "nothing was delivered".
+ *  2. FLIP `confirmed → cancelled` through `storage.updateServiceBookingStatus` with
+ *     `ALL_UNDELIVERED_CANCEL_FROM_STATUSES`. That ONE call is the whole atomic step: §15/§18b's
+ *     conditional UPDATE is the guard, and the booking's claimed slot units come back inside the SAME
+ *     transaction through the ONE release the writer already owns (`deriveClaimedSlotIds` /
+ *     `deriveClaimedSlotUnits` — read, never restated, §18 rule 1). Two concurrent last-flips produce
+ *     ONE release; a retry produces none. NO SECOND RELEASE PATH IS ADDED, and this lane writes no
+ *     Stripe call of its own.
+ *  3. RECORD the provenance AFTER the flip (§15b — irreversible state follows the operation that
+ *     authorizes it): `booking_details.allUndelivered = { at, cause, componentIds }`, MERGED into the
+ *     jsonb with `||` and never assigned, so nothing already on the row is destroyed. NO NEW COLUMN
+ *     and NO NEW STATUS VALUE — `cancelled` already exists, and a new one would be the publish-trap
+ *     the Coordination Prevention rules warn about.
+ *  4. SETTLE through the EXISTING D-51 money leg (`issueBundlePartialSettlement`), which refunds each
+ *     component at its OWN pinned answer — a `failed` one at its full allocation (seller
+ *     nonperformance is never excused by a cancellation policy, the LD 50 ruling's own words), a
+ *     `cancelled` one at the percent its SNAPSHOTTED policy pinned — plus the same proportional share
+ *     of every traveler-paid fee, as ONE Stripe refund under the claim → refund → promote spine. A
+ *     SECOND refund path here is the derivation-drift class §18 rule 1 names, and it is how a traveler
+ *     gets refunded twice for the same bundle.
+ *
+ * §13 — WHAT THIS DELIBERATELY DOES NOT DO, each because it would be a claim nobody ratified:
+ *   · IT MINTS NOTHING. A `cancelled` parent mints no earning, exactly as every other cancel does. A
+ *     traveler-cancelled component's RETAINED remainder (a late strict cancel) is therefore recorded
+ *     on the immutable settlement row's `sellerEarningCents` and is NOT minted as an earning by this
+ *     lane — minting on a cancelled parent is a new money event and needs its own ruling. Recorded,
+ *     not invented.
+ *   · IT NEVER GUESSES A CAUSE. `deriveAllUndeliveredCause` is the ONE derivation and returns NULL for
+ *     anything that is not all-undelivered; a NULL is never written as a default.
+ *   · IT NEVER RELEASES PER-COMPONENT CAPACITY, because nothing reserves any (see
+ *     `describeComponentCapacity`). What is released is the BOOKING's own claim, by the rail that
+ *     already owned it.
+ */
+export async function settleBundleAllUndelivered(input: {
+  bookingId: string;
+  actor: CompletionActor;
+  now?: Date;
+}): Promise<SettleBundleAllUndeliveredResult> {
+  const now = input.now ?? new Date();
+  const bookingId = input.bookingId;
+  const booking = await loadBooking(bookingId);
+  if (!booking) {
+    return { bookingId, cancelled: false, flipped: false, alreadyCancelled: false, cause: null, settlement: null, reason: "booking_not_found", evidence: {} };
+  }
+
+  // 1. RE-DERIVE, from the component ROWS, through the ONE derivation (§18 rule 1). The caller's
+  //    opinion is never trusted. A NULL cause means this is NOT an all-undelivered bundle — something
+  //    is still deliverable, something WAS delivered, or the components cannot be enumerated at all —
+  //    and the resolver is then asked for the NAMED reason rather than one being invented here.
+  const states = await readBundleComponentStates({
+    bookingId,
+    bookingDetails: booking.bookingDetails as Record<string, unknown> | null,
+    bundleServiceId: booking.serviceId ?? null,
+  });
+  const cause = deriveAllUndeliveredCause(states.components);
+  if (!cause) {
+    const refusal = await resolveCompletionEligibility(bookingId, now);
+    return {
+      bookingId,
+      cancelled: false,
+      flipped: false,
+      alreadyCancelled: false,
+      cause: null,
+      settlement: null,
+      reason: refusal.reason ?? "bundle_components_incomplete",
+      evidence: refusal.evidence,
+    };
+  }
+  const componentIds = states.components.map((c) => c.componentServiceId);
+  const evidence: Record<string, unknown> = {
+    componentStateSource: states.source,
+    componentIds,
+    allUndeliveredCause: cause,
+    parentStatus: booking.status ?? null,
+  };
+
+  // 2. THE FLIP — and, inside the same transaction, the ONE slot release. Attempted only from a state
+  //    a LIVE bundle can be in; an already-decided row falls through to the recovery arm below.
+  const existing = readAllUndeliveredRecord(booking.bookingDetails as Record<string, unknown> | null);
+  const flipCandidate = ALL_UNDELIVERED_CANCEL_FROM_STATUSES.includes(booking.status ?? "");
+  const updated = flipCandidate
+    ? await storage.updateServiceBookingStatus(bookingId, "cancelled", `all_undelivered:${cause}`, ALL_UNDELIVERED_CANCEL_FROM_STATUSES)
+    : undefined;
+
+  if (!updated) {
+    // Zero rows (or never attempted): the parent is not in a state this rail may consume. A row that
+    // is ALREADY `cancelled` with every component terminal-undelivered is THIS rail's own outcome —
+    // either a retry, or a process that died between the flip and what follows it — so the marker is
+    // completed if it is missing and the (idempotent) money leg is driven, rather than leaving a
+    // refund owed and invisible. Anything else is somebody else's row and is returned untouched.
+    const after = updated === undefined && flipCandidate ? await loadBooking(bookingId) : booking;
+    const already = readAllUndeliveredRecord(after?.bookingDetails as Record<string, unknown> | null) ?? existing;
+    if (after?.status !== "cancelled") {
+      return {
+        bookingId,
+        cancelled: false,
+        flipped: false,
+        alreadyCancelled: false,
+        cause: null,
+        settlement: null,
+        reason: flipCandidate ? "lost_race" : "wrong_status",
+        evidence: { ...evidence, parentStatus: after?.status ?? null },
+      };
+    }
+    // The PINNED record wins where one exists: the cause a retry reports is the one recorded at the
+    // flip, never a re-derivation (a component's status can move on under a settlement, §13).
+    const recordedCause = already?.cause ?? cause;
+    if (!already) await writeAllUndeliveredRecord(bookingId, { at: now.toISOString(), cause: recordedCause, componentIds }, now);
+    const settlementOnRetry = await issueBundlePartialSettlement({ bookingId, now, actor: input.actor });
+    return {
+      bookingId,
+      cancelled: true,
+      flipped: false,
+      alreadyCancelled: true,
+      cause: recordedCause,
+      settlement: settlementOnRetry,
+      evidence: { ...evidence, alreadyAllUndelivered: true, markerCompleted: !already },
+    };
+  }
+
+  // 3. PROVENANCE, after the flip. MERGED (`||`), never assigned.
+  await writeAllUndeliveredRecord(bookingId, { at: now.toISOString(), cause, componentIds }, now);
+
+  if (updated.tripId) {
+    try {
+      await logItemTransition(db, {
+        tripId: updated.tripId,
+        itemId:
+          typeof (updated.bookingDetails as any)?.itineraryItemId === "string"
+            ? ((updated.bookingDetails as any).itineraryItemId as string)
+            : null,
+        eventType: "booking_all_undelivered",
+        fromStatus: "confirmed",
+        toStatus: "cancelled",
+        actorType: DIARY_ACTOR[input.actor],
+      });
+    } catch (err) {
+      // The flip and its release already happened; a diary failure must not un-cancel them. Loud.
+      console.error("[booking-completion] diary row failed after an all-undelivered parent cancel:", err);
+    }
+  }
+
+  // 4. THE EXISTING MONEY LEG. No Stripe call is made here.
+  const settlement = await issueBundlePartialSettlement({ bookingId, now, actor: input.actor });
+  return { bookingId, cancelled: true, flipped: true, alreadyCancelled: false, cause, settlement, evidence };
+}
+
+/** The ONE write of the marker — a jsonb MERGE, never an assignment, so nothing on the row is lost. */
+async function writeAllUndeliveredRecord(bookingId: string, record: AllUndeliveredRecord, now: Date): Promise<void> {
+  await db
+    .update(serviceBookings)
+    .set({
+      bookingDetails: sql`COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) || ${JSON.stringify({
+        allUndelivered: record,
+      })}::jsonb`,
+      updatedAt: now,
+    })
+    .where(eq(serviceBookings.id, bookingId));
+}
+
+/**
+ * The ONE reader of `booking_details.allUndelivered` — the marker that says a `cancelled` parent was
+ * cancelled BY THIS RAIL (and so is the one the D-51 money leg may settle). Absent/malformed = NOT
+ * this rail's cancel, which is what keeps an ordinary whole-row cancellation out of the settlement
+ * (§13: an absent marker is never read as a default one).
+ */
+export function readAllUndeliveredRecord(
+  bookingDetails: Record<string, unknown> | null | undefined,
+): AllUndeliveredRecord | null {
+  const raw = (bookingDetails ?? {})["allUndelivered"];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const cause = r.cause;
+  if (cause !== "seller_failed" && cause !== "traveler_cancelled" && cause !== "mixed") return null;
+  return {
+    at: typeof r.at === "string" ? r.at : "",
+    cause,
+    componentIds: Array.isArray(r.componentIds) ? (r.componentIds as unknown[]).filter((x): x is string => typeof x === "string") : [],
+  };
 }
 
 export interface SettleBundlePartialResult {

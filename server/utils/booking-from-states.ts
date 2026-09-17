@@ -340,3 +340,25 @@ export const ARTIFACT_REJECTION_REFUND_FROM_STATUSES: readonly string[] = ["disp
  *     bundle still owes a component refund, and §17 must keep seeing it as paid.
  */
 export const PARTIAL_COMPLETION_FROM_STATUSES: readonly string[] = ["confirmed"];
+
+/*
+ * ── THE ALL-UNDELIVERED PARENT (decision-maker ruling 2026-09-17; ledger
+ * `2026-09-17-all-undelivered-parent`) ───────────────────────────────────────────────────────────
+ * WHEN THE LAST DELIVERABLE COMPONENT OF A BUNDLE BECOMES TERMINAL-UNDELIVERED AND NONE REMAIN
+ * DELIVERABLE, THE PARENT IS CANCELLED. `confirmed → cancelled`, taken by the ONE component writer
+ * inside `storage.updateServiceBookingStatus` — so the flip, the booking's slot release and the
+ * bookings-count decrement are the SAME transaction, and the transition itself is the guard (§15/§18b):
+ * a retry, a concurrent last-flip and a re-drive all match zero rows and release nothing twice.
+ *
+ * ONE ENTRY, and the narrowness is the point — the same single entry `PARTIAL_COMPLETION_FROM_STATUSES`
+ * carries, for the same reason. `confirmed` is the only state a LIVE bundle can be in when a component
+ * write reaches this rail: `pending` is an unauthorized checkout claim the claim machine owns (§15b,
+ * §18b), and `completed` / `partially_completed` / `refunded` / `disputed` / `cancelled` are all
+ * decided rows a component write must never re-decide. A bundle already cancelled here matches nothing,
+ * which is exactly what makes the release exactly-once.
+ *
+ * DELIBERATELY NOT `BOOKING_CANCELLABLE_FROM_STATUSES` (`["pending", "confirmed"]`, the traveler's
+ * whole-row cancel): that list admits `pending`, and this rail must never terminalise a provisional
+ * claim.
+ */
+export const ALL_UNDELIVERED_CANCEL_FROM_STATUSES: readonly string[] = ["confirmed"];

@@ -139,7 +139,12 @@ export type TransitionEventType =
   // one not; the parent mints ONCE over the reduced figures (D-35). A separate event from
   // `booking_completed` because that word still means EVERY component (brief §2 rule 2), and a
   // diary that used one word for both would hide which bundles paid out in part. 27 chars.
-  | "booking_partially_completed";
+  | "booking_partially_completed"
+  // Ledger `2026-09-17-all-undelivered-parent`: the LAST deliverable component of a bundle became
+  // terminal-undelivered and none remained, so the PARENT was cancelled (`confirmed → cancelled`) and
+  // its claimed slot units released. Written in the SAME call as that atomic flip. 24 chars
+  // (varchar(30), migration 171).
+  | "booking_all_undelivered";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */

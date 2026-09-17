@@ -205,6 +205,49 @@ export function deriveBundleOutcome(components: readonly BundleComponentView[]):
   return { outcome: PARTIALLY_COMPLETED_STATUS, ...base };
 }
 
+/**
+ * WHO ENDED AN ALL-UNDELIVERED BUNDLE — the ONE derivation of the `cause` the parent's flip records
+ * (decision-maker ruling 2026-09-17; ledger `2026-09-17-all-undelivered-parent`).
+ *
+ * When the LAST deliverable component of a bundle becomes terminal-undelivered and none remain
+ * deliverable, the parent `service_bookings` row is cancelled and the row records WHY. The three
+ * answers are DIFFERENT FACTS and are never collapsed (§13): `seller_failed` — every undelivered
+ * component is the seller's nonperformance; `traveler_cancelled` — every one is the traveler's own
+ * voluntary cancel; `mixed` — both happened, and neither party's answer may stand for the other's.
+ *
+ * `refunded` counts on the side it was refunded FROM: the settlement's promote stamps it over a
+ * `failed` or a `cancelled` row and the WHY stays on that row (`failed_at`/`failure_reason`,
+ * `cancelled_at`/`cancel_reason`), so a component whose money has settled cannot be told apart here
+ * — and rather than guess a side for it, a `refunded` component makes the cause `mixed` only when it
+ * sits beside the other kind, and otherwise leaves the cause to the kinds that ARE nameable. In
+ * practice a settlement runs only AFTER this cause is recorded, so the pure case is the live one.
+ *
+ * NULL = this is NOT an all-undelivered bundle (something is still pending, or something was
+ * delivered). The caller never reads a cause off a bundle the parent derivation did not name
+ * `all_undelivered`, and no reader turns a NULL into a default (§13).
+ */
+export type AllUndeliveredCause = "seller_failed" | "traveler_cancelled" | "mixed";
+
+export function deriveAllUndeliveredCause(
+  components: readonly BundleComponentView[],
+): AllUndeliveredCause | null {
+  const outcome = deriveBundleOutcome(components);
+  if (outcome.outcome !== "all_undelivered") return null;
+  let sellerFailed = 0;
+  let travelerCancelled = 0;
+  for (const c of components) {
+    if (c.status === BUNDLE_COMPONENT_STATUS.failed) sellerFailed += 1;
+    else if (c.status === BUNDLE_COMPONENT_STATUS.cancelled) travelerCancelled += 1;
+  }
+  if (sellerFailed > 0 && travelerCancelled > 0) return "mixed";
+  if (sellerFailed > 0) return "seller_failed";
+  if (travelerCancelled > 0) return "traveler_cancelled";
+  // Every undelivered component reads `refunded`: the money settled and the two kinds are no longer
+  // distinguishable from the status alone. `mixed` is the honest answer — it claims neither party's
+  // nonperformance nor the traveler's own choice (§13).
+  return "mixed";
+}
+
 /** Two-decimal money as the row stores it — a string, never a float that drifts. */
 const money2 = (n: number): string => (Math.round(n * 100) / 100).toFixed(2);
 
