@@ -1,7 +1,9 @@
 /**
- * AskAiDrawer — "Ask AI about this plan", PRE-FINAL on the slip.
+ * AskAiDrawer — "Ask AI about this plan". ONE control, TWO mounts: the slip's rail card and the
+ * Trip Card's rail card.
  *
- * (L16 lanes 2 and 3; ledger `2026-09-16-l16-lanes2-3-drawer`. Brief of record:
+ * (L16 lanes 2, 3 and 4; ledgers `2026-09-16-l16-lanes2-3-drawer` and
+ *  `2026-09-17-l16-lane4-postfinal`. Brief of record:
  *  `docs/design/ASK_AI_DRAWER_BRIEF.md` §5. LOCKED rulings **D-45..D-50**, ledger
  *  `2026-09-16-l16-rulings-d45-d50`. CLAUDE.md Locked Decision 45 (3), Locked Decision 41 (b)/(c),
  *  Locked Decision 42 **D16** / **D18** / **D23**, §8, §13, §14, §18 rule 1.)
@@ -23,8 +25,18 @@
  *    no degraded-quality disclaimer — the prohibition binds both directions.
  *  · **Not an undo.** Locked Decision 42 D18: there is no reverse and none is drawn. An applied
  *    proposal renders as a RECORD of what it created.
- *  · **Not the post-final mount.** That is lane 4's own work (brief §7.2). Pre-final only here.
+ *  · **Not two components.** Lane 4 mounted this SAME drawer on the Trip Card (brief §5.1) rather
+ *    than writing a post-final twin. The layout precedent is `ExpertSuggestionsPanel`, which lives
+ *    on both surfaces; the difference here is smaller still, because the drawer's copy, its
+ *    visibility answer, its money line, its refusal readings and its staleness behaviour are
+ *    IDENTICAL on both — every one of them reads the same server answers. What post-final adds is
+ *    ONE sentence, D-49's, and it comes from the same module as the rest.
+ *  · **Not surface-branching logic.** `surface` picks a test id and nothing else. What changes
+ *    after Make final is a fact about the PLAN (`planFinal`), not about the page — so the plan's
+ *    own state is what `askAiApplyConsequence` reads, and a `surface === "trip-card"` test around
+ *    a rule would be a second way of asking a question the DTO already answers.
  *
+
  * ── THE MONEY, AND WHERE THE NUMBER COMES FROM ───────────────────────────────────────────────
  * From the SERVER's `aiTask: { coveredByTripPass, priceCents }` block on
  * `GET /api/trips/:tripId/proposals` — D-48's read half, the SAME `concierge:ai_task` band the
@@ -44,6 +56,7 @@ import StripeCheckout from "@/components/booking/StripeCheckout";
 import {
   ASK_AI_COPY,
   appliedRecordLine,
+  askAiApplyConsequence,
   askAiDeferralToDraft,
   askAiPriceLine,
   askAiRailVisibility,
@@ -53,8 +66,10 @@ import {
   readEstimatedCost,
   readProposalActionRefusal,
   type AskAiAskRefusal,
+  type AskAiPlanFinalState,
   type AskAiProposalRow,
   type AskAiProposalsResponse,
+  type AskAiSurface,
 } from "@/lib/ask-ai-drawer";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -77,13 +92,35 @@ export interface AskAiDrawerProps {
    * that function is LD 41 (b)'s one home and this surface adds no second copy of the rule.
    */
   aiAction: "draft" | "optimize";
+  /**
+   * WHICH RAIL THIS CARD IS SITTING IN. Layout only — it picks the test id, and no rule reads it.
+   * Defaults to the slip, which is where the drawer was born (lane 3).
+   */
+  surface?: AskAiSurface;
+  /**
+   * THE PLAN'S FINAL STANDING, off the plancard DTO (`trip.finalizedAt` / `trip.finalVersion`).
+   *
+   * OPTIONAL, and its absence is an answer: a surface that does not state it gets NO consequence
+   * sentence at all (§13) rather than a guessed one. The slip does not pass it — D-49's
+   * re-finalize is keyed on the plan being currently final, not on which page the apply came
+   * from, so a later lane that wants the sentence on the slip passes the same prop rather than
+   * writing a second rule. That limit is stated in the lane report, not hidden here.
+   */
+  planFinal?: AskAiPlanFinalState | null;
 }
 
 /**
  * THE RAIL CARD + THE DRAWER. One component, because the card IS the drawer's trigger and its
  * coverage line; splitting them would put the same visibility answer in two places.
  */
-export function AskAiDrawer({ tripId, isOwner, isExpertViewer, aiAction }: AskAiDrawerProps) {
+export function AskAiDrawer({
+  tripId,
+  isOwner,
+  isExpertViewer,
+  aiAction,
+  surface = "slip",
+  planFinal = null,
+}: AskAiDrawerProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -247,9 +284,15 @@ export function AskAiDrawer({ tripId, isOwner, isExpertViewer, aiAction }: AskAi
   const proposals = Array.isArray(logQuery.data?.proposals) ? logQuery.data!.proposals! : [];
   const priceLine = askAiPriceLine(logQuery.data?.aiTask);
   const deferral = askAiDeferralToDraft(aiAction);
+  // D-49, ONE derivation, rendered where the traveler decides: in the drawer body above the log,
+  // and again beside the apply control on every staged row that has one. `null` ⇒ nothing is said.
+  const applyConsequence = askAiApplyConsequence(planFinal);
 
   return (
-    <div data-testid="slip-rail-ask-ai" className="rounded-lg border bg-card p-3 space-y-2">
+    <div
+      data-testid={surface === "trip-card" ? "trip-card-rail-ask-ai" : "slip-rail-ask-ai"}
+      className="rounded-lg border bg-card p-3 space-y-2"
+    >
       <p
         className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
         style={{ fontFamily: EARN_MONO }}
@@ -261,7 +304,7 @@ export function AskAiDrawer({ tripId, isOwner, isExpertViewer, aiAction }: AskAi
         variant="outline"
         className="w-full justify-start gap-2"
         onClick={() => setOpen(true)}
-        data-testid="slip-action-ask-ai"
+        data-testid={surface === "trip-card" ? "trip-card-action-ask-ai" : "slip-action-ask-ai"}
       >
         <Sparkles className="w-3.5 h-3.5" />
         <span className="flex-1 text-left">{ASK_AI_COPY.title}</span>
@@ -345,6 +388,16 @@ export function AskAiDrawer({ tripId, isOwner, isExpertViewer, aiAction }: AskAi
                 {priceLine.label}
               </p>
 
+              {/* D-49 — REVIEW-FIRST includes what the apply does to the Trip Card. Said once
+                  here, standing for the whole plan, and again on each applicable row below; both
+                  render the SAME derivation, and neither renders anything when the surface does
+                  not state the plan's final standing (§13). */}
+              {applyConsequence && (
+                <p className="text-[11px] text-muted-foreground" data-testid="ask-ai-apply-consequence">
+                  {applyConsequence}
+                </p>
+              )}
+
               {/* D-48 — the apply controls are the OWNER's. An advisor is told why they are absent
                   rather than shown one the route will refuse. */}
               {visibility.applyAbsenceNote && (
@@ -366,6 +419,7 @@ export function AskAiDrawer({ tripId, isOwner, isExpertViewer, aiAction }: AskAi
                       row={row}
                       canApply={visibility.canApply}
                       canDiscard={visibility.canAsk}
+                      applyConsequence={applyConsequence}
                       note={actionNote?.proposalId === row.id ? actionNote : null}
                       onDiscard={() => discard.mutate(row.id)}
                       onApply={() => void startApply(row.id)}
@@ -419,6 +473,7 @@ function ProposalRow({
   row,
   canApply,
   canDiscard,
+  applyConsequence,
   note,
   onDiscard,
   onApply,
@@ -427,6 +482,8 @@ function ProposalRow({
   row: AskAiProposalRow;
   canApply: boolean;
   canDiscard: boolean;
+  /** D-49's sentence, already derived by the parent. `null` ⇒ nothing is claimed here either. */
+  applyConsequence: string | null;
   note: { text: string; reAsk: boolean } | null;
   onDiscard: () => void;
   onApply: () => void;
@@ -531,6 +588,15 @@ function ProposalRow({
       {note && (
         <p className="text-[11px] text-destructive" data-testid={`ask-ai-action-note-${row.id}`}>
           {note.text}
+        </p>
+      )}
+
+      {/* D-49 — beside the control that triggers it, so the consequence is read at the moment of
+          deciding and not only at the top of the drawer. Drawn only where an apply is actually
+          offered: on a row nobody can apply it would describe something that cannot happen. */}
+      {state.canApply && applyConsequence && (
+        <p className="text-[11px] text-muted-foreground" data-testid={`ask-ai-apply-consequence-${row.id}`}>
+          {applyConsequence}
         </p>
       )}
 
