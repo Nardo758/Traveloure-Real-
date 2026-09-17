@@ -617,15 +617,29 @@ lane 2's build item, not lane 1's**.
    their exact design is written out in
    `docs/lane-reports/2026-09-16-l16-lane1-create-rail.md` for the decision-maker to read first.
    Nothing in lane 1 is reachable from any UI.
-2. **The D-48 NARROWING and the coverage line** — narrow `POST …/proposals/:id/pay` **and**
-   `POST …/proposals/:id/apply` to the **OWNER** at the route (D-48's amendment), and render the
-   `aiTask` block lane 1 added. No new route. **DRAFT PR — the decision-maker reads it before merge**
-   (money-adjacent).
-3. **The drawer, pre-final on the slip** (§5). Reuses the four landed rails, lane 1's create rail and
-   the pricing bundle. Its visibility table is §5.2 read against D-48 **as RULED**: ask / read /
-   discard for a §12 WRITE advisor, **pay and apply for the OWNER only**.
+2. ~~**The D-48 NARROWING and the coverage line**~~ **— LANDED 2026-09-17** (ledger
+   `2026-09-16-l16-lanes2-3-drawer`). **The route narrowing itself had already shipped inside
+   LANE 1** (item 12 of `docs/lane-reports/2026-09-16-l16-lane1-create-rail.md`: `…/pay` and
+   `…/apply` swapped to the existing `authorizeTripOwnerTier`), so what this lane owed was the
+   CLIENT half: the `aiTask { coveredByTripPass, priceCents }` line rendered from the block lane 1
+   put on the existing GET. **§13 is the whole of it** — an omitted block, an absent
+   `coveredByTripPass` (which is NOT `false`) and an unresolvable or non-positive band all render
+   "we don't have a price to show yet" and **never a number, never `$0`, never "not covered"**.
+   No new route, no schema.
+3. ~~**The drawer, pre-final on the slip** (§5).~~ **LANDED 2026-09-17** (same ledger row). A rail
+   CARD of its own — **never a third branch of `slipBuildAiAction`**, whose answer is read as a
+   prop. Visibility is §5.2 read against D-48 **as RULED**, and the advisor arm waits for the
+   SERVER: `tripRole === "expert"` grants `pending` (correctly, for reading), so the only honest
+   proof of §12 WRITE status is the proposal log's own `requireWriteAccess` read SUCCEEDING — a
+   401/403, a still-loading read and a failed read all draw nothing. **CORRECTION TO §5.4's PRICE
+   CLAUSE:** the drawer takes its number from the **proposals GET's `aiTask` block**, not from
+   `GET /api/pricing`'s `aiTaskCents`. Both are the same `concierge:ai_task` band, and D-48 — the
+   later ruling — extended the proposals GET precisely so there is **no second fee read** (§18
+   rule 1); two reads of one band are two numbers free to disagree in flight. §8 is satisfied
+   either way: no literal exists in the client.
 4. **The drawer post-final on the Trip Card.** **No longer blocked** — D-49's call ships in lane 1,
-   so what is left here is the MOUNT itself.
+   so what is left here is the MOUNT itself. **Still open after lanes 2/3**, and deliberately so:
+   lane 3 mounted the drawer **pre-final only** and says so in `AskAiDrawer.tsx`'s own header.
 5. ~~**The conversation binding**, only if **D-45** rules a thread.~~ **D-45 ruled STATELESS, so this
    lane does not exist for L16.** Reopening it needs a new ruling and the answer LD 44's seventh
    open question needs.
