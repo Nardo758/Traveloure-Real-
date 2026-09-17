@@ -1,0 +1,65 @@
+-- Migration 310: AN AI COST ROW IS ATTRIBUTED BY `actor_id`, A STRING, BECAUSE `users.id` IS A STRING.
+-- Decision-maker ruling 2026-09-17; ledger `2026-09-17-ai-cost-actor-id`.
+-- CLAUDE.md LD 44 (f) (every copilot model call writes `ai_cost_tracking`, and declaring the table is
+-- the prerequisite of multiplying call volume through it), LD 45 (3) / PUNCHLIST D-47 (the cost row's
+-- three values: sourceType, the SESSION asker, the proposal id), §13, §18 rule 1, §20.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHAT WAS BROKEN, AND WHY IT WAS INVISIBLE
+-- ─────────────────────────────────────────────────────────────────────────────
+-- `025b_ai_cost_tracking.sql` declares `user_id UUID`. `users.id` in this codebase is a
+-- `varchar DEFAULT gen_random_uuid()` — so a normally-minted account happens to fit, and an account
+-- whose id is NOT uuid-shaped (an OIDC/Replit subject, any legacy row) does not: the INSERT raises
+-- `22P02 invalid_text_representation` and the WHOLE cost row is lost. `trackAICost` swallows its own
+-- error by design ("logging failures should not block the request"), so the loss was silent — no row,
+-- no log anyone reads, and an admin cost breakdown that totals less than the platform actually spent.
+-- The same mismatch broke the READ: `lead-routing.service.ts` compared `user_id = <session id>`, which
+-- raises the same `22P02` for exactly the accounts whose rows were missing anyway.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- WHY THIS IS AN ADDITIVE COLUMN AND NOT `ALTER COLUMN user_id TYPE varchar`
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The follow-up row this closes proposed the type change. It is REFUSED by §20: Replit's publish runs
+-- an automatic drizzle-kit push from `shared/schema.ts`, and a column whose declared type no longer
+-- matches the live column is exactly the deploy-diff prompt CLAUDE.md §20 rules is DECLINED BY DEFAULT
+-- — the push offers destructive SQL (and, on the same screen, "copy dev database over production").
+-- An ADD COLUMN has no such prompt: the push finds one missing column and offers exactly one
+-- `ADD COLUMN`. `user_id` is therefore left EXACTLY as it is, keeping its type, its index and every
+-- row already on disk, and `actor_id` carries the attribution that a uuid column cannot hold.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- THE SHAPE
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Additive, NULLABLE, NO DEFAULT and NO DB CHECK (the migration
+-- 181/195/273/275/276/277/279/280/281/282/284/287/295/297/301..309 posture — a CHECK here is exactly
+-- the publish-time drizzle-push failure the Coordination Prevention rules warn about), and NO BACKFILL.
+-- DECLARED in `shared/schema.ts` in this same commit per the deploy-push durability rule: an object
+-- that file does not declare is dropped at publish and NEVER recreated, because the migration is
+-- already stamped. `ai_cost_tracking` is the table CLAUDE.md names by name as that casualty.
+--
+-- §13 — NULL = THE ROW WAS WRITTEN BEFORE 310, NOT "NOBODY DID THIS". A pre-310 row is attributed by
+-- its own `user_id` and nothing is rewritten to pretend otherwise; every reader falls back EXPLICITLY
+-- through `COALESCE(actor_id, user_id::text)` and says so. A row with NEITHER is honestly unattributed
+-- and is never folded into someone's spend.
+--
+-- NO INDEX IS CREATED, DELIBERATELY. The one reader that filters by an actor
+-- (`server/services/lead-routing.service.ts`, the admin dead-end-lead cost breakdown) filters on the
+-- EXPRESSION `COALESCE(actor_id, user_id::text)`, not on `actor_id`, so a plain btree on `actor_id`
+-- could not serve it and would be dead weight the publish-time push has to keep agreeing about. An
+-- EXPRESSION index would serve it, and is refused here for a different reason: an index whose declared
+-- form and the pushed form disagree by one detail makes the push plan `DROP INDEX` + `CREATE INDEX` on
+-- every single publish (proven Jul 30 2026 on this very table's two indexes, where drizzle's bare
+-- `.desc()` emitted `DESC NULLS LAST` against the DDL's `DESC`). The reader is a non-fatal ops lookup
+-- over a 5-minute window; if it ever becomes hot, an index is its own lane with its own measurement.
+--
+-- No CHECK is added or changed, so `scripts/preflight-prod-constraints.cjs` needs no new
+-- `CONSTRAINT_MANIFEST` entry and the publish-time push has nothing to fail on.
+--
+-- BEFORE PUBLISHING: run `node scripts/preview-ai-cost-tracking-shape.cjs "<PROD_DATABASE_URL>"`.
+-- The deploy push must offer EXACTLY this one ADD COLUMN and nothing else. Any other statement means
+-- the `shared/schema.ts` declaration disagrees with production, and that is the §20 DECLINE case.
+
+ALTER TABLE ai_cost_tracking ADD COLUMN IF NOT EXISTS actor_id VARCHAR(255);
+
+COMMENT ON COLUMN ai_cost_tracking.actor_id IS
+  'Ledger 2026-09-17-ai-cost-actor-id: the acting user id as a STRING, always written when one is known. users.id is varchar in this codebase while user_id here is uuid, so a non-uuid-shaped account could not be recorded at all and the whole row was lost to 22P02. user_id is still written, but ONLY when the id parses as a uuid. NULL = the row predates migration 310 (readers fall back to user_id::text through COALESCE and say so) or no actor was known; it is never rewritten and never read as "nobody".';

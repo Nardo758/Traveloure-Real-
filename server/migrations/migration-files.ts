@@ -1733,4 +1733,14 @@ export const MIGRATION_FILES = [
   // NO BACKFILL; DECLARED in `shared/schema.ts` in the same commit (deploy-push durability rule).
   // No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no entry.
   "309_bundle_component_cancel_terms.sql",
+  // 310 — ledger `2026-09-17-ai-cost-actor-id` (decision-maker ruling 2026-09-17; CLAUDE.md LD 44 (f),
+  // §13, §20). ONE additive nullable `ai_cost_tracking.actor_id varchar(255)`: `users.id` is a varchar
+  // while `user_id` here is a uuid, so a non-uuid-shaped account's INSERT raised 22P02 and the whole
+  // cost row was lost silently. `actor_id` carries the attribution as a string; `user_id` keeps its
+  // type and is written only when the id parses as a uuid. NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL;
+  // DECLARED in `shared/schema.ts` in the same commit (deploy-push durability rule — this table is the
+  // one CLAUDE.md names by name as the publish casualty). The rejected alternative was
+  // `ALTER COLUMN user_id TYPE varchar`, which is a §20 DECLINE prompt at publish.
+  // No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no entry.
+  "310_ai_cost_tracking_actor_id.sql",
 ] as const;
