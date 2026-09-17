@@ -15,6 +15,7 @@
 import { and, asc, eq, isNull, or } from "drizzle-orm";
 import { db } from "../db";
 import { localKnowledgeNuggets, travelPulseHiddenGems, users } from "@shared/schema";
+import { MOMENT_KEYS } from "./landing-moments";
 
 /**
  * Expert-side: propose an owned nugget as a gem candidate. Only a row never
@@ -90,10 +91,15 @@ export async function approveGemCandidate(opts: {
   placeName?: string | null;
   placeType?: string | null;
   country?: string | null;
+  momentKey?: string | null;
 }): Promise<ApproveGemCandidateResult> {
   const gemScore = Number(opts.gemScore);
   if (!Number.isInteger(gemScore) || gemScore < 1 || gemScore > 100) {
     return { ok: false, status: 400, message: "gemScore must be an integer between 1 and 100" };
+  }
+  const momentKey = (opts.momentKey ?? "").trim() || null;
+  if (momentKey !== null && !MOMENT_KEYS.includes(momentKey)) {
+    return { ok: false, status: 400, message: "momentKey must be a known landing Moment key" };
   }
 
   const [nugget] = await db
@@ -138,6 +144,7 @@ export async function approveGemCandidate(opts: {
       gemScore,
       // PROVENANCE: the rail's — the nugget's author, from the row, never a body.
       curatedByExpertId: nugget.expertUserId,
+      momentKey,
       aiGenerated: false,
     })
     .returning();

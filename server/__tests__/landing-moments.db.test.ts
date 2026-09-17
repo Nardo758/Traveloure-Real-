@@ -25,9 +25,12 @@ const HANDLE = `mtest-${RUN}`;
 const expertWith = `u-with-${RUN}`;
 const expertNo = `u-no-${RUN}`;
 const expertPorto = `u-porto-${RUN}`;
+const expertKyoto = `u-kyoto-${RUN}`;
 const NONSTOCK_EDINBURGH = `https://cdn.traveloure.test/${RUN}-edinburgh.jpg`;
 const NONSTOCK_CARTAGENA = `https://cdn.traveloure.test/${RUN}-cartagena.jpg`;
 const NONSTOCK_PORTO = `https://cdn.traveloure.test/${RUN}-porto.jpg`;
+const NONSTOCK_WEDDING = `https://cdn.traveloure.test/${RUN}-kyoto-wedding.jpg`;
+const NONSTOCK_PROPOSAL = `https://cdn.traveloure.test/${RUN}-kyoto-proposal.jpg`;
 const STOCK = "https://images.unsplash.com/photo-x.jpg";
 
 const DISPOSABLE = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -40,10 +43,10 @@ async function assertDisposableDb(): Promise<void> {
   }
 }
 
-async function insertGem(city: string, url: string, curator: string): Promise<void> {
+async function insertGem(city: string, url: string, curator: string, momentKey: string | null = null): Promise<void> {
   await db.execute(sql`
-    INSERT INTO travel_pulse_hidden_gems (id, city, country, place_name, place_type, gem_score, image_url, ai_generated, curated_by_expert_id)
-    VALUES (gen_random_uuid(), ${city}, ${"Testland"}, ${`Test gem ${RUN}`}, ${"attraction"}, ${90}, ${url}, ${false}, ${curator})
+    INSERT INTO travel_pulse_hidden_gems (id, city, country, place_name, place_type, gem_score, image_url, ai_generated, curated_by_expert_id, moment_key)
+    VALUES (gen_random_uuid(), ${city}, ${"Testland"}, ${`Test gem ${RUN}`}, ${"attraction"}, ${90}, ${url}, ${false}, ${curator}, ${momentKey})
   `);
 }
 
@@ -63,19 +66,23 @@ before(async () => {
   await insertExpert(expertWith, `w-${RUN}@traveloure.test`, HANDLE, "Edinburgh");
   await insertExpert(expertNo, `n-${RUN}@traveloure.test`, null, "Cartagena");
   await insertExpert(expertPorto, `p-${RUN}@traveloure.test`, `porto-${RUN}`, "Porto");
+  await insertExpert(expertKyoto, `k-${RUN}@traveloure.test`, `kyoto-${RUN}`, "Kyoto");
   // Golf market (Edinburgh): curated NON-stock + handle → live.
-  await insertGem("Edinburgh", NONSTOCK_EDINBURGH, expertWith);
+  await insertGem("Edinburgh", NONSTOCK_EDINBURGH, expertWith, "golf");
   // Anniversary market (Porto): curated STOCK → excluded.
   await insertGem("Porto", STOCK, expertPorto);
   // Girls' trip market (Cartagena): curated NON-stock but curator has NO handle → excluded.
   await insertGem("Cartagena", NONSTOCK_CARTAGENA, expertNo);
   // Anniversary market (Porto): a non-stock photo curated by an Edinburgh expert → excluded.
   await insertGem("Porto", NONSTOCK_PORTO, expertWith);
+  // Same market, different Moments: each photo must remain attached to its exact occasion.
+  await insertGem("Kyoto", NONSTOCK_WEDDING, expertKyoto, "wedding");
+  await insertGem("Kyoto", NONSTOCK_PROPOSAL, expertKyoto, "proposal");
 });
 
 after(async () => {
   await db.execute(sql`DELETE FROM travel_pulse_hidden_gems WHERE place_name = ${`Test gem ${RUN}`}`).catch(() => {});
-  await db.execute(sql`DELETE FROM users WHERE id IN (${expertWith}, ${expertNo}, ${expertPorto})`).catch(() => {});
+  await db.execute(sql`DELETE FROM users WHERE id IN (${expertWith}, ${expertNo}, ${expertPorto}, ${expertKyoto})`).catch(() => {});
 });
 
 test("M1 curated non-stock gem + expert handle → the moment goes live with attribution", async () => {
@@ -121,7 +128,17 @@ test("M4 a non-stock photo curated by an expert from another market does not rep
   );
 });
 
-test("M5 production does not seed or resolve development-only Moment fixtures", async () => {
+test("M5 two Moments in the same city receive only their explicitly associated photos", async () => {
+  const live = await resolveLandingMoments();
+  const wedding = live.find((m) => m.key === "wedding");
+  const proposal = live.find((m) => m.key === "proposal");
+  assert.ok(wedding);
+  assert.ok(proposal);
+  assert.deepEqual(wedding!.photos.map((photo) => photo.url), [NONSTOCK_WEDDING]);
+  assert.deepEqual(proposal!.photos.map((photo) => photo.url), [NONSTOCK_PROPOSAL]);
+});
+
+test("M6 production does not seed or resolve development-only Moment fixtures", async () => {
   assert.equal(shouldSeedLandingMomentDemo({ NODE_ENV: "production" }), false);
 
   const previousNodeEnv = process.env.NODE_ENV;
