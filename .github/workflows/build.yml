@@ -1838,6 +1838,22 @@ jobs:
         run: npx tsx --test --test-force-exit server/__tests__/ai-ask-create-rail.test.ts
       - name: the AI-ask create rail's routes and D-48's narrowing (A1-A7)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/ai-ask-create-rail.db.test.ts
+      # D-50's RE-VALIDATION, PROVEN, AND OPTION B — REFUND THE FEE ON EXPIRY (decision-maker ruling
+      # 2026-09-16; ledger `2026-09-16-l16-lane1-review-fixes`). Same rail, same store, same Postgres.
+      # R1 proves PAY refuses a stale proposal BEFORE the §15b claim (no claim, no PaymentIntent);
+      # R2 that APPLY on a covered plan refuses it with items untouched and NO refund block (nothing
+      # was charged — §13); R3 that the re-validation is BY ID under the ONE liveness predicate (a
+      # live listing behind 101 live decoys is found; a paused one is refused by id) — the finding
+      # that retired the `.limit(100)` page-membership check; R4 that a PAID proposal refused at
+      # apply is refunded ONCE under `ai-task-refund-<proposalId>` for Stripe's own amount, the row
+      # flipping to `refunded` with the recorded charge and a booking-less `refunds` audit row; R5
+      # that a retry reports the SAME refund with no second Stripe call and the row is terminal; R6
+      # that two concurrent applies produce ONE refund (the claim is the status flip); R7 that a
+      # failed Stripe call keeps the claim, answers `pending`, and the retry re-drives the SAME key.
+      # Stripe is stubbed on the shared prototype (the bundle-settlement precedent); the refund stub
+      # emulates Stripe's idempotency because that is the property R6 asserts. No network.
+      - name: the AI-proposal re-validation and the Option B refund on expiry (R1-R7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/plan-proposal-refund.db.test.ts
 
   from-state-guards:
     name: from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)

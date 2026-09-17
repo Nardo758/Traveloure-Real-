@@ -23,9 +23,11 @@
  *   A6  D-48's READ half — `GET …/proposals` carries a server-resolved `aiTask` block, and §13:
  *       an unanswerable field is OMITTED rather than guessed, so neither "covered" nor "not
  *       covered" is claimed without an answer.
- *   A7  D-49 — the apply path carries the re-finalize call, AFTER the transaction and LOUD
- *       (a static pin over the service file: the call is outside `db.transaction` and the failure
- *       log names both ids).
+ *   A7  D-49 — `applyPlanProposal` is driven with a re-finalize that THROWS: the apply still
+ *       resolves, the row is `applied`, and the error line names both ids. A behavioural proof
+ *       through the injected seam (review finding 4, ledger `2026-09-16-l16-lane1-review-fixes`)
+ *       — it replaced a string-index pin over the service file, which proved the shape of the
+ *       source and nothing about what runs.
  *
  * STATED NEGATIVE SPACE (§18d), and it is the load-bearing half. **Nothing here proves the create
  * rail produces a proposal, because it does not yet** — the prompt builder and the model call were
@@ -54,6 +56,8 @@ import type { AddressInfo } from "node:net";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { createPlanProposal } from "../services/plan-proposals.service";
+import { applyPlanProposal } from "../services/proposal-charge.service";
+import { PLAN_PROPOSAL_STATUS_APPLIED } from "@shared/plan-proposals";
 import { __resetAiAskInFlight } from "../services/ai-ask-inflight";
 import { __resetMessageRateLimiter } from "../infrastructure/message-rate-limiter";
 import tripsRoutes from "../routes/trips.routes";
@@ -160,6 +164,7 @@ after(async () => {
   __resetAiAskInFlight();
   __resetMessageRateLimiter();
   await db.execute(sql`DELETE FROM plan_proposals WHERE trip_id = ${ids.trip}`).catch(() => {});
+  await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${ids.trip}`).catch(() => {});
   await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${ids.trip}`).catch(() => {});
   await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`).catch(() => {});
   await db
@@ -337,27 +342,58 @@ test("A6: GET …/proposals carries a server-resolved aiTask block, and omits wh
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
-// A7 — D-49: the re-finalize call is AFTER the transaction, and its failure is LOUD
+// A7 — D-49: the re-finalize runs AFTER the commit, and its failure is LOUD and non-fatal
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-test("A7: applyPlanProposal re-finalizes AFTER the commit, best-effort, naming both ids on failure", () => {
-  const service = src("server/services/proposal-charge.service.ts");
-  const fn = service.slice(service.indexOf("export async function applyPlanProposal"));
+test("A7: an apply whose re-finalize THROWS still resolves, lands `applied`, and logs both ids", async () => {
+  const staged = await createPlanProposal({
+    tripId: ids.trip,
+    question: `a7 ${RUN}`,
+    proposal: { additions: [{ title: `A7 addition ${RUN}` }] } as unknown,
+  });
 
-  const txStart = fn.indexOf("db.transaction(");
-  const callAt = fn.indexOf("reFinalizeIfCurrentlyFinal(");
-  assert.ok(txStart > -1 && callAt > -1, "both the transaction and the re-finalize call must be present");
+  // Capture the LOUD half. `console.error` is the channel the four existing best-effort callers
+  // use; the ruling's amendment is that THIS one names the proposal and the trip.
+  const captured: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => {
+    captured.push(args);
+  };
 
-  // AFTER the transaction's closing `});`, never inside it — a re-finalize failure must never roll
-  // back a committed, possibly CHARGED apply (§15b: an ancillary effect may not break the
-  // operation that authorizes it).
-  const txEnd = fn.indexOf("\n  });", txStart);
-  assert.ok(txEnd > -1, "the transaction's close must be findable");
-  assert.ok(callAt > txEnd, "D-49: the call sits OUTSIDE the transaction");
+  let result;
+  try {
+    result = await applyPlanProposal(
+      {
+        proposalId: staged.id,
+        tripId: ids.trip,
+        basis: "trip_pass",
+        chargedAmountCents: null,
+        paymentIntentId: null,
+        actorId: ids.owner,
+      },
+      // The seam: a re-finalize that fails. §15b — an ancillary effect may not break the operation
+      // that authorizes it, so this must NOT reject and must NOT roll the apply back.
+      { reFinalize: async () => { throw new Error(`refinalize failed (test) ${RUN}`); } },
+    );
+  } finally {
+    console.error = originalError;
+  }
 
-  // And LOUD — the ruling's one amendment to the four existing callers' shape.
-  const tail = fn.slice(txEnd);
-  assert.match(tail, /console\.error\(/, "a failure is logged, never swallowed");
-  assert.match(tail, /proposalId: params\.proposalId/, "the log names the proposal");
-  assert.match(tail, /tripId: params\.tripId/, "and the trip — so a card that did not advance is reconcilable");
+  // The apply RESOLVED, and the row is applied — the transaction had already committed.
+  assert.equal(result.proposal.status, PLAN_PROPOSAL_STATUS_APPLIED);
+  assert.equal(result.createdItemIds.length, 1, "the addition was written before the re-finalize ran");
+  const [row] = (
+    await db.execute(sql`SELECT status, applied_at FROM plan_proposals WHERE id = ${staged.id}`)
+  ).rows as any[];
+  assert.equal(row.status, PLAN_PROPOSAL_STATUS_APPLIED, "a re-finalize failure never rolls a committed apply back");
+  assert.ok(row.applied_at, "and the record of the apply stands");
+
+  // LOUD: one error line, carrying BOTH ids, so a Trip Card that did not advance after a paid
+  // apply is reconcilable rather than a silence.
+  const line = captured.find((args) => JSON.stringify(args).includes(staged.id));
+  assert.ok(line, "the failure is logged, never swallowed");
+  const text = JSON.stringify(line);
+  assert.ok(text.includes(staged.id), "the log names the proposal");
+  assert.ok(text.includes(ids.trip), "and the trip");
+  assert.ok(text.includes(`refinalize failed (test) ${RUN}`), "and carries the helper's own message");
 });
