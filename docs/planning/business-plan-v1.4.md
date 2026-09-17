@@ -55,6 +55,7 @@ Traveloure is a planning platform for trips and occasions in eight launch cities
 3. **Trending content with a source link** — the measured trend engine says why a place is trending and where that came from. §5.
 4. **The booking agent and its fee** — a traveler hands the plan's partner items to a booking agent by buying a Booking Concierge service; the platform earns the Booking Concierge fee on top and the commission on the service. §6.
 5. **Share → duplicate → book** — a shared plan or ready-made trip becomes the recipient's own plan in one action, drawn on a journey map. §7.
+6. **An events-and-artists stream** — a traveler follows an artist, a festival or a fixture to one of the eight cities; the date is the anchor, tickets come from ticketing partners, and Traveloure sells everything around the date. §4e.
 
 **Financial headline (§9).** On the ratified fee ladder and v1.3's own market sequence, the base case for Year 1 is roughly $216K of platform-rail GMV plus $71K of affiliate GMV, $55K of platform revenue, and an operating loss of about $95K before engineering. v1.3's $1.2M GMV target implied 5 to 27 bookings per provider per month from the launch month; the base case assumes 1.5. Reaching the old target is a demand problem, not a pricing problem, and this document does not claim it.
 
@@ -165,6 +166,8 @@ Traveloure has four demand channels. Two exist today, two are the new bets. None
 
 **Where it falls short.** The scraper checks no robots.txt (the flag exists but nothing reads it) and asks for no coordinates. The catalog has no meeting-point or opening-hours columns. Coordinates reach a plan item only through the AI grounding step, not when a traveler adds an item from Discover, which drops the catalog reference entirely. The optimizer sequences only Traveloure's own provider listings, so partner items are placed but never re-ordered.
 
+**The scrape-facts rule.** Scraping is not how partner inventory enters the catalog, but it is how *places* do. A DMO guide or an article says "visit this temple in Kyoto"; Traveloure publishes the temple as a place, and the resolution waterfall already in the code decides where it can be booked, in strict order: a Traveloure provider's own tour first, then the operator's verified channel, then a recognised marketplace such as GetYourGuide, Viator, Tiqets or Klook, then reference-only. Three rules bind it. **Facts travel, expression does not:** the place's name, location, hours and what it is are usable; the article's prose and photographs are not, so the description is Traveloure's own or DMO and open-licence text, and the source is linked. **A marketplace link is a program-level link** ("book on GetYourGuide", with the partner id, which their affiliate program permits) unless the partner gives us a catalog to match against, in which case it is a product link; a fabricated product link is never minted. **Scraped content never outranks a platform provider.** Today every affiliate program in that waterfall is switched off in configuration and the partner button is a tracked no-op; turning it on is the wiring named in §6.4, not a new design.
+
 **The plan.**
 
 | Build | What | Ratification |
@@ -177,6 +180,41 @@ Traveloure has four demand channels. Two exist today, two are the new bets. None
 | Sequenceable partner items | partner items join the optimizer's catalog beside provider listings, labelled by source | ruling — the optimizer reads provider listings only today |
 
 **Discoverability hygiene** (a small, separate item): the public sitemap lists only static pages, services, ready-made trips and storefronts; widening it to city pages and published content, and adding structured data to the public routes, is low-cost search work with no schema change.
+
+### Content coverage by experience stream — where each stream's content comes from
+
+The platform declares 27 active experience streams (`server/seeds/experience-template-tabs.seed.ts`). Every stream needs three kinds of content: **places** (what to see and eat), **vendors** (who to hire), and **dates** (what is on). The table says where each comes from today and what is missing. "First-party" means content Traveloure's own experts and providers author: expert field-knowledge claims, hidden gems and provider listings. It is the one source every stream shares and the only one no competitor has.
+
+| Stream family | Streams | Places | Vendors | Dates | Gap |
+|---|---|---|---|---|---|
+| **Trips** | travel, boys trip, girls trip, retreats, golf trip | DMO sources (Tier 1–3), first-party gems, Viator / Tiqets / WeGoTrip feeds — **Live** | provider listings; Viator, Tiqets, Fever activities — **Live** | festival calendar (11 rows) + Fever — **thin** | golf has no course or tee-time source; the honest route is recruiting courses and caddies as providers |
+| **Couples** | date night, romance, anniversary, honeymoon, proposal | first-party gems, SerpAPI restaurants and attractions, Google Places — **Live** | photographers, private chefs, proposal planners as providers — **recruitment** | Fever nightlife and dining experiences — **Live once credentialled** | no restaurant-reservation partner; dinner is a place, not a booking |
+| **Celebrations** | birthday, milestone birthday, family occasion, reunions, baby shower, graduation, engagement, housewarming, retirement, farewell, holiday, career party | as couples | venues, caterers, entertainment — **recruitment**; India has one venue directory row (VenueMonk), the other seven markets none | Fever — **Live once credentialled** | venue directories are the largest content gap on the platform |
+| **Weddings** | wedding, wedding anniversary, bachelor / bachelorette | as couples plus DMO heritage venues (National Trust, Kyoto temples) | planners, coordinators, florists, officiants as providers — **recruitment**; the `roles_needed` list per occasion exists | — | venue directories, as above |
+| **Corporate** | corporate events, corporate retreats | as trips | MICE venues (one registry row, Thailand) — **gap** | — | no MICE venue source in any of the eight markets |
+| **Events and artists** (new, §4e) | concerts, festivals, club nights, fixtures | first-party nightlife gems; Fever nightlife — **Live once credentialled** | promoters and venues as providers — **recruitment** | **Ticketmaster, Bandsintown, Skiddle, Fever** — **Planned** | Resident Advisor has no API; Songkick is closed |
+
+**So: yes, more sources are needed, and they fall into three classes.** First, **ticketing and event feeds** for the dates column, which is empty today outside Fever and 11 committed festival rows: Ticketmaster (free API, instant key, affiliate via Impact), Bandsintown (artist tour dates, affiliate via AWIN), Skiddle (free API, UK) and Fever's own catalog. Second, **venue directories** for weddings, celebrations and corporate, the streams the June 2026 reframe bet the platform on: today one market has one directory row. Third, **dining and reservations** for the couple streams, where no partner exists. What is *not* needed is more place content: DMO sources, the feeds and first-party gems already cover places in every market. The recruitment blueprint (§4d) is the content strategy for vendors; feeds are the content strategy for dates; scraping, under the rule above, is how a place found in a guide becomes a row.
+
+### 4e. The events-and-artists stream — Planned
+
+**The idea.** A traveler wants to follow a DJ, a band, a festival or a team to one of the eight cities. The artist's date is the anchor; the plan is the city around it.
+
+**Where it stands.** No music, nightlife or artist stream exists; nightlife is a tab inside a few occasions, and there is no artist-follow concept. The `/events` surface reads Fever, which covers all eight markets and has concert and nightlife categories, but returns placeholder data until Impact credentials are set. The event calendar holds 11 committed rows. PredictHQ is wired and disabled and may only ever be stored as aggregate counts. No Ticketmaster, Bandsintown, Resident Advisor, Skiddle or Dice code exists.
+
+**Sources, checked September 2026.** Ticketmaster's Discovery API is free with an instant key (5,000 calls a day, 230,000+ events) and has an artist endpoint returning tour dates worldwide; its affiliate program runs on Impact, which the platform already integrates, at a 1% base with no commission during presales or the first 24 hours of an onsale. Bandsintown offers artist tour dates (keys scoped to one artist unless a partnership widens them) and an affiliate program on AWIN paying half of Bandsintown's own cut. Skiddle offers a free API for commercial use with credit, UK-centric, so it covers Edinburgh. Resident Advisor, the DJ source, has no public API and the scrapers on the market work against its terms; Dice is partner-only; Songkick is closed to new applicants; Eventbrite retired public search.
+
+**The plan.**
+
+| Build | What | Ratification |
+|---|---|---|
+| The stream | an `events-artists` occasion row with the existing switches (one day, schedule on, guests optional) and the `entertainment` hire role | ruling — a new occasion row |
+| Dates ingestion | Ticketmaster attractions and events, Bandsintown artist events and Skiddle events for the eight markets into the event calendar, each row carrying its source and ticket link; Fever credentials set | none for the ingestion; partner sign-ups are operator steps |
+| Follow an artist | a traveler names an artist; when a date lands in a launch city, a draft plan is offered on the existing Plus occasion rail (Locked Decision 26) | brief — reuses the occasion scheduler |
+| Tickets | ticket links ride the booking-agent rail with attribution, like every other partner link (§6); no platform charge on the ticket | none |
+| The rest of the plan | the stay, the local expert, dinner, the after-party: the platform's own inventory and fees | none |
+
+**§13 holds:** an artist with no date in a launch city produces no plan and says so; a partner feed that is not credentialled renders nothing, never placeholder events.
 
 ### 4b. An agent surface — Planned (Wave 3)
 
@@ -445,6 +483,8 @@ Lanes are sequenced in the wave grammar the architecture rules use; each lane ap
 | 1 | "Make this my plan" on shared pages | §7.2 | none |
 | 1 | Neighbourhood rings on the journey map | §7.3 | none |
 | 1 | Sitemap widening and structured data | §4a | none |
+| 1 | Ticketmaster, Bandsintown and Skiddle ingestion into the event calendar; Fever credentials | §4e | none (operator sign-ups) |
+| 2 | The events-and-artists occasion row; follow-an-artist on the occasion rail | §4e | *ruling* (occasion row) + brief |
 | 2 | Logistics columns on the catalog row (meeting point, hours, last verified) | §4a | *ruling* (schema) |
 | 2 | Partner items in the optimizer catalog | §4a | *ruling* |
 | 2 | Platform-owned Booking Concierge listing | §6.4 | *ruling* |
@@ -486,7 +526,7 @@ Lanes are sequenced in the wave grammar the architecture rules use; each lane ap
 
 Repository: `docs/design/PRICING_AND_FEATURE_MAP.md`; `docs/briefs/MUSEMENT_INTEGRATION_BRIEF.md`; `docs/PUNCHLIST.md`; `docs/backoffice/REVENUE_MODEL.md`; `docs/planning/business-plan-delivery-map.md`; `docs/design/AI_BOOKING_AGENT_BRIEF.md`; `docs/MONEY_MAP.md`; `docs/MARKET_LAUNCH_CHECKLIST.md`; `TREND_ENGINE_PHASE0_FINDINGS.md`; `BUSINESS_MODEL_REFRAME_CORRECTION_BRIEF.md`; `research/traveloure_bp_reframed_analysis.md`; `CLAUDE.md` Locked Decisions 20, 22, 26, 27, 33, 39, 40, 41, 42, 43, 44, 45.
 
-External (September 2026): Tavily documentation and product notes (search, extract, crawl; no publisher program); xAI Grok Bot announcement and third-party breakdowns (August 2026 beta; browser and MCP); Viator Partner Resource Center — affiliate API levels of access, basic-access product content with logistics, and certification; GetYourGuide partner terms and API access requirements; Tiqets affiliate API token and API programme pages; Klook partner programme; Impact partner catalog documentation; Travelpayouts day-tours data and network terms; Bloomberg Law and the Technology & Marketing Law Blog on *Ryanair v. Booking.com*; Forbes and Payments Dive on Mastercard Agent Pay, Visa Intelligent Commerce, Stripe agentic commerce and AP2; PCI SAQ scoping guidance for travel businesses.
+External (September 2026): Tavily documentation and product notes (search, extract, crawl; no publisher program); xAI Grok Bot announcement and third-party breakdowns (August 2026 beta; browser and MCP); Viator Partner Resource Center — affiliate API levels of access, basic-access product content with logistics, and certification; GetYourGuide partner terms and API access requirements; Tiqets affiliate API token and API programme pages; Klook partner programme; Impact partner catalog documentation; Travelpayouts day-tours data and network terms; Ticketmaster Discovery API documentation and affiliate sign-up; Bandsintown API and affiliate program pages; Skiddle Events API; Resident Advisor, Dice, Songkick and Eventbrite API status pages; Bloomberg Law and the Technology & Marketing Law Blog on *Ryanair v. Booking.com*; Forbes and Payments Dive on Mastercard Agent Pay, Visa Intelligent Commerce, Stripe agentic commerce and AP2; PCI SAQ scoping guidance for travel businesses.
 
 ### Appendix C — v1.3 sections and their disposition
 
