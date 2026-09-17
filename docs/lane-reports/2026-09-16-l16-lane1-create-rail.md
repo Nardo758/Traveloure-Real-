@@ -407,3 +407,76 @@ Pass the asker's own prior `question` values on **this** trip — `SELECT questi
 WHERE trip_id = $1 AND question IS NOT NULL` scoped by the route's own already-authorized trip, most
 recent first, capped. It changes no ruling: the drawer stays stateless and `conversation_id` stays
 NULL. It is filed, not taken (see §2).
+
+## 5 · Review fixes (2026-09-16/17 — ledger `2026-09-16-l16-lane1-review-fixes`)
+
+An independent review of head `1c390b9` returned seven findings. Six are this section's; the
+seventh (CI/mergeability) is the coordinator's. **No schema change and no migration**: the
+`shared/schema.ts` diff is two column JSDoc blocks and the status doc line — no column, no index,
+no type.
+
+### 5.1 · Finding 1 (BLOCKING) — re-validation by id, one predicate
+
+`assertProposalCatalogStillValid` tested a named `providerServiceId` for membership in
+`loadOptimizerCatalog(...)`, which is `.limit(100)` with no `ORDER BY`. Past 100 live listings in a
+destination, a live listing could fall off the page and be refused `listing_unavailable` — a false
+§13 claim on a paid rail. Fix: `optimizerCatalogLivenessWhere(destination)` is exported from
+`optimizer-baseline.service.ts` (the reader's own module); `loadOptimizerCatalog` pages over it
+with identical semantics, and the validator selects `providerServices.id` under
+`and(predicate, inArray(id, named))` — no page, no limit. R3 proves it with 101 live decoys inserted
+BEFORE the named listing (heap order puts it past a page of 100) and a paused listing refused by id.
+S11 (`ai-ask-create-rail.test.ts`) now pins the predicate and refuses a second spelling of it.
+
+### 5.2 · Finding 2 (BLOCKING) — OPTION B: refund the fee on expiry (decision-maker ruling)
+
+- **Trigger:** apply refused `stale_catalog_price` or `listing_unavailable` while
+  `auth.basis === "paid"` (a Stripe-verified PaymentIntent bound to this proposal). Not
+  `protected_item` — not ruled, left as it was.
+- **Claim first (§15b):** `refundRefusedProposalCharge` flips the row with ONE atomic conditional —
+  `status='refunded'`, `charge_basis='paid'`, `charged_amount_cents=<Stripe's amount>` — `WHERE
+  status='proposed' AND stripe_payment_intent_id=<this PI>`. Existing columns carry the whole fact;
+  `refunded` is a fourth app-enforced status (no CHECK, no migration).
+- **Then Stripe:** `stripePaymentService.refundAiTaskProposalFee` — the THIRD caller of the one
+  `createStripeRefundForBooking` call site — under `planProposalRefundIdempotencyKey(proposalId)` =
+  `ai-task-refund-<proposalId>`.
+- **Then record:** one booking-less `refunds` row (`booking_id` NULL, `reason =
+  ai_task_proposal_refused:<refusal>:<proposalId>`), inserted once per Stripe refund id.
+- **Loser / retry = one path:** a row already `refunded` on this PI answers from the audit row, or
+  re-drives the same key. A failed Stripe call keeps the claim, logs at ERROR, answers
+  `refund: { issued:false, state:"pending" }`; the next apply completes it. No rollback.
+- **Response (§13):** `409 { reason, itemIds, refund: { issued:true, refundId, amountCents } }`;
+  a retry on a `refunded` row answers `reason:"refunded"` with the same block. A covered refusal
+  carries no `refund` block — nothing was charged.
+- **Not written, and why:** no `platform_revenue` reversal (the charge is ledgered only after a
+  SUCCESSFUL apply, so no row exists to reverse — R4 asserts zero rows); no `ai_cost_tracking` row
+  (the charge lane writes none at apply).
+- **Stated limits:** `refunds` has no UNIQUE on `stripe_refund_id`, so a true concurrent pair can
+  leave two audit rows for ONE refund (R6 asserts one refund id, not one row); a caller that reads
+  the row after the other's claim is answered `reason:"refunded"` rather than the refusal — true at
+  the moment it read.
+
+### 5.3 · Findings 3 and 4 — proofs
+
+`server/__tests__/plan-proposal-refund.db.test.ts` R1–R7, wired into the `plan-proposals` job.
+Stripe is stubbed on the shared prototype (the bundle-settlement precedent); the refund stub
+emulates Stripe's idempotency (same key ⇒ same refund) because that is the property R6 leans on.
+A7 in `ai-ask-create-rail.db.test.ts` now drives `applyPlanProposal` with a THROWING `reFinalize`
+through an injected `deps` seam and asserts the apply resolves, the row is `applied`, and the error
+line carries both ids — replacing a string-index pin over the source.
+
+### 5.4 · Findings 5 and 6
+
+5: both reads in the validator go through the injected `tx`, so the "joins the caller's
+transaction" comment is now true. 6: unchanged; marked `lane 2: move the limit hit to the
+model-call site` at the rate-limit read.
+
+### 5.5 · Validation
+
+tsc 129 == baseline; `npm run build`; `check-decision-guards`; `check-money-endpoints --self-test`
++ run (exit 0); `phase2-fee-gate.sh` (PASS); `check-test-files-wired --self-test` + ratchet OK;
+`check-duplicate-migration-prefixes`; `check:mutation-auth` (rail set unchanged; manifest
+regenerated); migrations applied from EMPTY on local Postgres (307/307); suites green against it:
+plan-proposals P1–P7, plan-proposal-charge C1–C7, proposal-apply-authorization A1–A9,
+ai-ask-create-rail S1–S11 and A1–A7, plan-proposal-refund R1–R7 (twice), bundle-partial-settlement
+S1–S10, refund-retry-convergence, traveler-fee-refund; `grep -c replit.local package-lock.json` = 0.
+
