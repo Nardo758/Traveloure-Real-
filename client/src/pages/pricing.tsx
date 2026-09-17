@@ -303,7 +303,7 @@ export default function PricingPage() {
       </section>
 
       {/* Plus band */}
-      <section className="bg-[var(--earn-ground)] border-y border-[color:var(--earn-border)]">
+      <section id="plus" className="bg-[var(--earn-ground)] border-y border-[color:var(--earn-border)]">
         <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
           <div>
             <div
@@ -380,13 +380,44 @@ export default function PricingPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
-              { icon: Cake, tag: "BIRTHDAY", copy: "A draft plan lands two weeks before, ready to tweak.", grad: "from-[#F3E2B8] to-[#D2A24C]" },
-              { icon: HeartHandshake, tag: "ANNIVERSARY", copy: "The place you loved, or somewhere just as good.", grad: "from-[#E5C6B6] to-[#B97C7C]" },
-              { icon: Moon, tag: "DATE NIGHT", copy: "Something for tonight, picked before you had to ask.", grad: "from-[#CFE3D3] to-[#6FA383]" },
+              {
+                icon: Cake,
+                tag: "BIRTHDAY",
+                copy: "A draft plan lands two weeks before, ready to tweak.",
+                image: "/images/plus/birthday.jpg",
+                alt: "Friends celebrating a birthday with a cake",
+                position: "center 44%",
+              },
+              {
+                icon: HeartHandshake,
+                tag: "ANNIVERSARY",
+                copy: "The place you loved, or somewhere just as good.",
+                image: "/images/plus/anniversary.jpg",
+                alt: "A couple sharing an anniversary dinner",
+                position: "center 42%",
+              },
+              {
+                icon: Moon,
+                tag: "DATE NIGHT",
+                copy: "Something for tonight, picked before you had to ask.",
+                image: "/images/plus/date-night.jpg",
+                alt: "A couple walking together through the city at night",
+                position: "center 48%",
+              },
             ].map((card, i) => (
               <div key={i} className="rounded-2xl border border-[color:var(--earn-border)] bg-[var(--earn-card)] overflow-hidden">
-                <div className={`h-[84px] bg-gradient-to-br ${card.grad} flex items-center justify-center text-white/90`}>
-                  <card.icon className="w-6 h-6" />
+                <div className="relative h-[104px] overflow-hidden">
+                  <img
+                    src={card.image}
+                    alt={card.alt}
+                    className="h-full w-full object-cover"
+                    style={{ objectPosition: card.position }}
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" aria-hidden="true" />
+                  <div className="absolute bottom-2.5 left-2.5 grid h-8 w-8 place-items-center rounded-full border border-white/40 bg-black/25 text-white backdrop-blur-sm">
+                    <card.icon className="w-4 h-4" aria-hidden="true" />
+                  </div>
                 </div>
                 <div className="p-3">
                   <div
