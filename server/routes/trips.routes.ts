@@ -18,7 +18,8 @@ import * as cartProjection from "../services/cart-projection.service";
 // The ONE server-side resolution of the item→EVENT link (migration 277) — shared with the live
 // POST rail in server/routes.ts so the two cannot drift (§18 rule 1).
 import { resolveItemEventLink } from "../services/item-event-link.service";
-import { createPlanProposal, discardPlanProposal, listPlanProposals } from "../services/plan-proposals.service";
+import { discardPlanProposal, listPlanProposals } from "../services/plan-proposals.service";
+import { createProposalFromAsk } from "../services/proposal-create.service";
 // L16 lane 1 — the CREATE rail (punchlist D-45..D-50, ledger `2026-09-16-l16-rulings-d45-d50`).
 // The two named limits live in the ONE existing fixed-window limiter module (§18 rule 1, D-46 ii);
 // the in-flight marker is a mutual exclusion over the model call, never a §15 claim (D-46 i).
@@ -3538,13 +3539,14 @@ router.get("/api/trips/:tripId/proposals", isAuthenticated, async (req, res) => 
 //
 // POST /api/trips/:tripId/proposals — the traveler asks a question about THEIR OWN plan.
 //
-// **THE MODEL CALL IS NOT BUILT, BY INSTRUCTION, AND THIS ROUTE SAYS SO.** L16 lane 1 was stopped
-// before the prompt builder and the model call so the decision-maker can read their design first
-// (`docs/lane-reports/2026-09-16-l16-lane1-create-rail.md` §4). Everything around the call is here
-// and is exercised: the gate, the §19 body allowlist, the two named limits, the server-minted id
-// and the in-flight marker. The terminal answer today is an honest **503 naming the reason** — an
-// omitted capability stated out loud, never a fabricated proposal and never a silent success (§13).
-// No client calls this route: the drawer is lane 3.
+// **THE MODEL CALL LANDED IN LANE 1b** (ledger `2026-09-16-l16-lane1b-model-call`), built to the
+// design lane 1 stopped in front of so the decision-maker could read it first
+// (`docs/lane-reports/2026-09-16-l16-lane1-create-rail.md` §4 — the input scope, the exclusion
+// list, the `.strict()` output schema, the D-47 cost row and every failure path). Lane 1's honest
+// `503 model_call_not_built` is GONE, replaced by the built behaviour; the A3 proof that pinned it
+// was re-pinned rather than deleted. Everything around the call is unchanged: the gate, the §19
+// body allowlist, the two named limits, the server-minted id and the in-flight marker.
+// No client calls this route yet: the drawer is lane 3.
 //
 // THE GATE is the SAME shared predicate the read and discard routes run —
 // `authorizeTripLogistics(..., { requireWriteAccess: true })`: owner ‖ §12 WRITE-status advisor
@@ -3595,7 +3597,9 @@ router.post("/api/trips/:tripId/proposals", isAuthenticated, async (req, res) =>
     // The limits come AFTER the gate (an unauthorized caller is refused before they can consume a
     // bucket) and BEFORE the model call (the expensive half — a limit checked after it protects
     // nothing). `req.ip` scopes the CI bypass to a loopback peer only, exactly as messaging does.
-    // lane 2: move the limit hit to the model-call site — today the terminal 503 below consumes a bucket.
+    // The bucket is consumed by an ask that goes on to make a REAL model call (lane 1b): the
+    // limit and the spend it protects are now the same event. (Lane 1's note that the terminal
+    // 503 consumed a bucket for nothing is discharged — there is no terminal 503 any more.)
     const limit = checkAiAskRateLimit({ senderId: userId, tripId, peerIp: req.ip });
     if (!limit.allowed) {
       if (limit.retryAfterSec) res.setHeader("Retry-After", String(limit.retryAfterSec));
@@ -3619,23 +3623,42 @@ router.post("/api/trips/:tripId/proposals", isAuthenticated, async (req, res) =>
     }
 
     try {
-      // ────────────────────────────────────────────────────────────────────────────────────────
-      // L16 lane 1: THE MODEL CALL IS NOT BUILT. Its exact design — input scope and exclusion
-      // list (D-50), the `.strict()` output schema, the `trackAnthropicResponse` shape (D-47), the
-      // model knob and every failure path — is written out in
-      // `docs/lane-reports/2026-09-16-l16-lane1-create-rail.md` §4 for the decision-maker to read
-      // BEFORE it is written. When it lands it goes exactly here, and it hands `proposalId` to
-      // `createPlanProposal` explicitly. Until then this rail states what it cannot do (§13)
-      // rather than returning an empty proposal, which would be an answer nobody gave.
-      //
-      // `createPlanProposal` is imported and is the ONE writer this route will use — never a
-      // direct insert (§18 rule 1, pinned by `plan-proposals.db.test.ts` P5).
-      void createPlanProposal;
-      void question;
-      return res.status(503).json({
-        message: "Asking the AI about a plan is not available yet.",
-        reason: "model_call_not_built",
+      // ── THE MODEL CALL (L16 lane 1b; ledger `2026-09-16-l16-lane1b-model-call`) ─────────────
+      // ONE implementation, in `server/services/proposal-create.service.ts`: it reads the plan
+      // LIVE (Locked Decision 32's rule applied to the machine reader — never a client-supplied
+      // snapshot), builds the D-50 input scope, makes the ONE model call on the `AI_TASK_MODEL`
+      // knob, admits the answer through the `.strict()` change-set parse and the sanitiser, and
+      // writes ONE `plan_proposals` row through `createPlanProposal` with the PRE-MINTED id.
+      // Never an `itinerary_items` row and never a `trip_suggestions` row — the plan changes only
+      // at APPLY, which is a different route and the charge point (Locked Decision 45 (3)).
+      const created = await createProposalFromAsk({
+        proposalId,
+        tripId,
+        // §14 — the asker is the SESSION, and the cost row is attributed to them (D-47). Never the
+        // plan's owner, which would misattribute an advisor's asks.
+        askerUserId: userId,
+        question,
       });
+
+      if (!created.ok) {
+        // §4.4's failure table: NO proposal row was written on any of these, a cost row was
+        // written iff the SDK surfaced usage, and the marker is released by the `finally` below.
+        // §13 — the traveler is told the ask failed and that nothing was charged, which is true:
+        // asking is free and the charge point is the apply.
+        const status = created.reason === "trip_not_found" ? 404 : 502;
+        return res.status(status).json({
+          message:
+            created.reason === "trip_not_found"
+              ? "Proposal not found"
+              : "We couldn't get an answer about this plan. Nothing was charged — try asking again.",
+          reason: created.reason,
+        });
+      }
+
+      // The row, so the drawer renders exactly what was staged. `empty` is a FACT about the
+      // answer, not a failure: the model parsed cleanly and proposed nothing, and the traveler
+      // asked for that answer too. No summary is invented to dress it up (§13).
+      return res.status(201).json({ proposal: created.proposal, empty: created.empty });
     } finally {
       // Always, on every path out of the block above, including a throw: a marker that outlives its
       // ask would wedge the plan until its TTL, and the TTL exists for a dead process, not for a

@@ -1756,13 +1756,29 @@ jobs:
       # 0 and settles with NO Stripe call and a NULL refund id (S14); mixed failed + cancelled settles
       # once with the right sum (S15); no purchase-time policy snapshot ⇒ the cancel is refused and
       # nothing moves (S16); a policy edit or a reschedule after purchase moves nothing (S17).
-      - name: The bundle partial settlement (S1-S17)
+      # LD 50 REMAINDER (ledger 2026-09-17-ld50-remainder-and-artifact-refund): `refunded` finally has its
+      # ONE writer — the promote stamps every component it refunded in the same statement as the refund
+      # columns, exactly once, and a retry is answered from the settled row instead of re-derived (S18/S19);
+      # and a component outcome releases NO capacity, says so, and names what the BOOKING reserved, because
+      # nothing reserves capacity per component anywhere on main (S20).
+      - name: The bundle partial settlement (S1-S20)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/bundle-partial-settlement.db.test.ts
       # The PURE layer beside it: the allocation arithmetic, the basis the mint reads, the ONE settlement
       # derivation, and (SP9) the cancelled component's pinned-percent arithmetic in both the mint and the
       # settlement. No DB — wired in this `npm ci` job because it imports `@shared/` (the #812 lesson).
       - name: The one settlement derivation (SP1-SP9)
         run: npx tsx --test --test-force-exit shared/__tests__/bundle-partial-settlement.test.ts
+      # OC-B1's LAST GAP + LD 46/D-27's MONEY OUTCOME (ledger 2026-09-17-ld50-remainder-and-artifact-refund).
+      # B1-B4: the WHOLE-ROW cancel quote now reads the tier PINNED on `offering_contract_snapshot`, so a
+      # post-purchase policy edit moves nothing; a snapshot with a NULL policy is a different fact from no
+      # snapshot; a pre-291 row falls back to the live listing EXPLICITLY and says so; and one structural
+      # parse serves both the whole-row and the component rails. C1-C6: a REJECTION alone moves no money
+      # (the D-27 escalation makes no Stripe call), the admin outcome is ONE full refund under
+      # `artifact-reject-refund-<id>` with the booking and its components moved to `refunded` in the
+      # claiming transaction, two concurrent resolutions produce ONE refund, a retry produces none, the
+      # from-state and custody refuse by name, and no mint can ever fire for the refunded row.
+      - name: The whole-row cancel snapshot + the rejected-artifact refund (B1-B4, C1-C6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/whole-row-cancel-and-artifact-refund.db.test.ts
 
   plan-proposals:
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)
@@ -1834,20 +1850,30 @@ jobs:
       # SILENT: a covered traveler answered "payment required" throws nothing and logs nothing.
       - name: the apply authorization predicate, exercised directly (A1-A9)
         run: npx tsx --test --test-force-exit server/__tests__/proposal-apply-authorization.test.ts
-      # L16 LANE 1 — THE CREATE RAIL, AS FAR AS IT WAS BUILT (punchlist D-45..D-50, ledger
-      # `2026-09-16-l16-rulings-d45-d50`). The lane was STOPPED before the prompt builder and the
-      # model call by instruction, so these two suites prove the SCAFFOLDING and an honest refusal,
-      # never a working ask — each file's own header states that limit (§18d). The PURE suite
-      # covers D-50's sanitiser (no model-produced number is persisted; an unknown listing drops
-      # one addition; a protected `replaces` never reaches the row; an unknown key is REFUSED),
-      # D-47's model knob, D-50 (c)'s staleness window, D-46 (i)'s in-flight marker and §19's ask
-      # body — all with no database. The DB suite mounts the real trips router against this job's
-      # Postgres for the §12 WRITE gate on ASK, the honest 503, D-48's OWNER-ONLY narrowing of PAY
-      # and APPLY (an accepted advisor may ask/read/discard and is refused by both), D-48's aiTask
-      # read block, and D-49's post-commit re-finalize call.
-      - name: the AI-ask create rail — sanitiser, knobs, marker and body (S1-S11)
+      # L16 LANE 1 + LANE 1b — THE CREATE RAIL, COMPLETE (punchlist D-45..D-50, ledgers
+      # `2026-09-16-l16-rulings-d45-d50` and `2026-09-16-l16-lane1b-model-call`). Lane 1 built
+      # everything that was not the model call and answered an honest 503; lane 1b built the call
+      # to the §4 design the decision-maker read first, and RE-PINNED A3 rather than deleting it.
+      # The PURE suite covers D-50's sanitiser (no model-produced number is persisted; an unknown
+      # listing drops one addition; a protected `replaces` never reaches the row; an unknown key is
+      # REFUSED), D-47's model knob, D-50 (c)'s staleness window, D-46 (i)'s in-flight marker,
+      # §19's ask body, and — S12/S13 — the PROMPT SCOPE's §13 omissions (an uncaptured party size,
+      # zone, occasion, event date or time is omitted; a half coordinate is not a location; a
+      # catalog absence is STATED, and "this plan is empty" and "this market lists nothing" are
+      # different sentences) plus the one predicate that tells an EMPTY answer from a refusal — all
+      # with no database. The DB suite mounts the real trips router against this job's Postgres for
+      # the §12 WRITE gate on ASK, D-48's OWNER-ONLY narrowing of PAY and APPLY (an accepted advisor
+      # may ask/read/discard and is refused by both), D-48's aiTask read block, D-49's post-commit
+      # re-finalize call, and — A8-A13 — the model call itself: D-47's three cost values on the
+      # pre-minted id, D-50's input scope in BOTH directions (protected rows arrive as CONSTRAINTS;
+      # `trips.expert_notes`, guest PII, another plan's rows, the asker's own `users` row and every
+      # fee-band word are absent from the prompt ACTUALLY SENT), the price overwrite and the dropped
+      # unknown listing, §4.4's failure table, the 409 that names the in-flight ask, and the
+      # paid-vs-free catalog inclusion. **NO REAL MODEL CALL IS EVER MADE** — the transport seam is
+      # stubbed for the whole file and its DEFAULT stub FAILS, so no case can pass by omission.
+      - name: the AI-ask create rail — sanitiser, knobs, marker, body and prompt scope (S1-S13)
         run: npx tsx --test --test-force-exit server/__tests__/ai-ask-create-rail.test.ts
-      - name: the AI-ask create rail's routes and D-48's narrowing (A1-A7)
+      - name: the AI-ask create rail's routes, D-48's narrowing and the MODEL CALL (A1-A13)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/ai-ask-create-rail.db.test.ts
       # D-50's RE-VALIDATION, PROVEN, AND OPTION B — REFUND THE FEE ON EXPIRY (decision-maker ruling
       # 2026-09-16; ledger `2026-09-16-l16-lane1-review-fixes`). Same rail, same store, same Postgres.

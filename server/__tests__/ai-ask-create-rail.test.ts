@@ -29,6 +29,14 @@
  *   S9   D-46 (i) — the in-flight marker refuses a second ask and NAMES the in-flight proposal id;
  *        releasing frees it; an expired marker is treated as absent.
  *   S10  §19 — the ask body admits `{ question }` and refuses everything else by name.
+ *   S12  LANE 1b — the input scope (D-50) and its §13 omissions, with no database: an
+ *        uncaptured party size, zone, occasion, event date and event time are all OMITTED;
+ *        a half coordinate is not a location (LD 34); a protected row carries the caller's
+ *        OWN two answers as a mark (LD 42 D3); a catalog absence is STATED and the two
+ *        absences (this plan defers to the free draft vs this market lists nothing) are
+ *        different sentences; a catalog row with no price carries none, never `$0`.
+ *   S13  LANE 1b — an EMPTY change set is an ANSWER, not a refusal, and is told apart from
+ *        one by the ONE predicate both the rail and this suite read.
  *   S11  §18 rule 1 / §8 — static: the create rail names no second limiter, no second catalog
  *        reader, no fee literal, and no reader of the free draft's knob.
  *
@@ -53,6 +61,11 @@ import {
   sanitizePlanProposalChangeSet,
 } from "@shared/plan-proposal-changeset";
 import { aiAskBodySchema } from "@shared/ai-ask-request";
+import {
+  buildAiTaskPromptScope,
+  planProposalChangeSetIsEmpty,
+  renderAiTaskPrompt,
+} from "../services/ai-task-prompt";
 import {
   AI_TASK_MODEL_DEFAULT,
   AI_TASK_MODEL_ENV_VAR,
@@ -456,6 +469,10 @@ test("S11: the create rail invents no second limiter, catalog reader, fee litera
     "server/config/ai-task-model.ts",
     "server/config/proposal-staleness.config.ts",
     "server/services/ai-ask-inflight.ts",
+    // Lane 1b (ledger `2026-09-16-l16-lane1b-model-call`).
+    "server/services/ai-task-prompt.ts",
+    "server/services/ai-task-model-client.ts",
+    "server/services/proposal-create.service.ts",
   ]) {
     assert.ok(
       !/(fee|price|cents|commission|rate|share|split)\s*[:=]\s*[0-9]/i.test(codeOnly(src(rel))),
@@ -465,4 +482,152 @@ test("S11: the create rail invents no second limiter, catalog reader, fee litera
 
   // D-47: the paid rail never reads the free draft's cost knob.
   assert.ok(!/resolveAiDraftModel/.test(handler), "LD 41 (c): the free lane's knob must not reach here");
+
+  // ── LANE 1b (ledger `2026-09-16-l16-lane1b-model-call`) ─────────────────────────────────────
+  const create = codeOnly(src("server/services/proposal-create.service.ts"));
+  // ONE catalog read (D-50, §18 rule 1): the rail calls the existing reader and writes no WHERE
+  // clause of its own over `provider_services`.
+  assert.match(create, /loadOptimizerCatalog\(/, "the ONE catalog read");
+  assert.ok(
+    !/eq\(providerServices\.status,/.test(create) && !/eq\(providerServices\.approvalStatus,/.test(create),
+    "and no second spelling of the liveness predicate (§18 rule 1)",
+  );
+  // LD 41 (c) in both directions, and LD 42 D3: the rail reads the PAID knob and never the free
+  // one, and it asks no "is this expert work?" question of its own — it CALLS the two predicates.
+  assert.ok(!/resolveAiDraftModel/.test(create), "the paid rail never reads the free draft's knob");
+  assert.match(create, /itineraryItemIsExpertWork\(/, "the ONE row-level expert-work predicate");
+  assert.match(create, /itineraryItemIsMoneyCommitted\(/, "and the ONE money predicate");
+  assert.ok(
+    !/origin\s*===\s*["'`]expert["'`]/.test(create) && !/expertNote/.test(create),
+    "LD 42 D3 forbids a THIRD expression of the class — the rail must not re-derive it",
+  );
+  // LD 41 (b): still not a second free-draft rail, and the empty-plan answer is the existing one.
+  assert.ok(
+    !/saveGeneratedItinerarySnapshot\(/.test(create) && !/itineraryItemRebuildDeletable\(/.test(create),
+    "the create service must never acquire a snapshot write or a rebuild delete",
+  );
+  assert.match(create, /decideAiDraftEligibility\(/, "the ONE 'is this plan empty?' answer (§18 rule 1)");
+  // The prompt module is PURE — it is what lets the whole input scope be proven with no database.
+  const promptModule = codeOnly(src("server/services/ai-task-prompt.ts"));
+  assert.ok(
+    !/from\s+["'`]\.\.\/db["'`]/.test(promptModule) && !/drizzle-orm/.test(promptModule),
+    "the prompt builder takes no database, so it can take no claim of its own",
+  );
+  // The transport seam cannot be used in production.
+  const client = codeOnly(src("server/services/ai-task-model-client.ts"));
+  assert.match(
+    client,
+    /NODE_ENV\s*===\s*["'`]production["'`]/,
+    "the test-only transport seam refuses to work in production",
+  );
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// S12 — LANE 1b: the input scope (D-50) and its §13 omissions, with no database at all
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test("S12: the prompt scope omits what was never captured and marks what is protected", () => {
+  const scope = buildAiTaskPromptScope({
+    question: "what about day 2?",
+    trip: {
+      destination: "Kyoto, Japan",
+      startDate: "2030-01-01",
+      endDate: "2030-01-05",
+      // §13: NOT CAPTURED. `adults`/`kids` were de-masked by migration 241 precisely so an
+      // unanswered party size is NULL, and `trips.timezone` is NULL when no launch market matched.
+      adults: null,
+      kids: null,
+      timezone: null,
+      eventType: "vacation",
+    },
+    occasionSlug: null,
+    items: [
+      { id: "i1", title: "Plain", isExpertWork: false, isMoneyCommitted: false },
+      { id: "i2", title: "Expert", isExpertWork: true, isMoneyCommitted: false },
+      { id: "i3", title: "Booked", isExpertWork: false, isMoneyCommitted: true },
+      { id: "i4", title: "Both", isExpertWork: true, isMoneyCommitted: true },
+    ],
+    events: [{ id: "e1", title: null, eventDate: null, startTime: null, location: null }],
+    stops: [
+      { position: 0, name: "Kyoto", lat: "35.0", lng: "135.7" },
+      { position: 1, name: "Unplaced", lat: null, lng: null },
+      // A HALF coordinate is not a location — LD 34 refuses one on the write side and so does this.
+      { position: 2, name: "Half", lat: "35.0", lng: null },
+    ],
+    catalog: null,
+    catalogOmittedReason: "empty_plan_defers_to_free_draft",
+  });
+
+  // §13 — an unanswered field is OMITTED, never zero-filled and never guessed.
+  assert.equal("adults" in scope.trip, false, "an uncaptured party size is absent, never 2");
+  assert.equal("kids" in scope.trip, false, "and never 0");
+  assert.equal("timezone" in scope.trip, false, "LD 30: a NULL zone is unknown, never UTC");
+  assert.equal("occasionSlug" in scope.trip, false, "an unresolvable occasion is omitted, never the nearest row");
+  assert.equal("title" in scope.events[0], false, "an unnamed event is unnamed");
+  assert.equal("eventDate" in scope.events[0], false, "LD 35: no date invented from the trip's start");
+  assert.equal("startTime" in scope.events[0], false, "and no midnight invented for a NULL time");
+
+  // LD 42 D3 — the caller's answers are written down, both reasons, and both together.
+  assert.equal("protectedReasons" in scope.items[0], false, "an ordinary row carries no mark");
+  assert.deepEqual(scope.items[1].protectedReasons, ["expert_work"]);
+  assert.deepEqual(scope.items[2].protectedReasons, ["booked"]);
+  assert.deepEqual(scope.items[3].protectedReasons, ["expert_work", "booked"]);
+
+  // LD 34 — located is a FACT about the row, and a half coordinate is not one.
+  assert.deepEqual(scope.stops.map((s) => s.located), [true, false, false]);
+
+  // The catalog's absence is stated, never silent.
+  assert.equal("catalog" in scope, false);
+  assert.equal(scope.catalogOmittedReason, "empty_plan_defers_to_free_draft");
+
+  // And the rendered prompt says the zone is unknown rather than leaving it to inference.
+  const rendered = renderAiTaskPrompt(scope);
+  assert.match(rendered.user, /records no timezone/);
+  assert.match(rendered.user, /CATALOG: not available for this question/);
+  assert.match(rendered.user, /what about day 2\?/, "the traveler's own words, verbatim");
+
+  // A live catalog with NO rows is a different absence, and it says so differently (§13): "this
+  // platform lists nothing bookable here" is not "the traveler's plan is empty".
+  const noListings = buildAiTaskPromptScope({
+    question: "q",
+    trip: { destination: "Kyoto, Japan", startDate: "2030-01-01", endDate: "2030-01-05" },
+    items: [{ id: "i1", title: "Plain", isExpertWork: false, isMoneyCommitted: false }],
+    events: [],
+    stops: [],
+    catalog: [],
+  });
+  assert.equal(noListings.catalogOmittedReason, "no_live_listings_in_this_market");
+  assert.match(renderAiTaskPrompt(noListings).user, /no bookable listings are live/);
+
+  // A price is carried ONLY where the catalog row states one — never `$0` (§13, D-50 a).
+  const priced = buildAiTaskPromptScope({
+    question: "q",
+    trip: { destination: "Kyoto, Japan", startDate: "2030-01-01", endDate: "2030-01-05" },
+    items: [{ id: "i1", title: "Plain", isExpertWork: false, isMoneyCommitted: false }],
+    events: [],
+    stops: [],
+    catalog: [
+      { id: "s1", serviceName: "Tour", price: "42.00" },
+      { id: "s2", serviceName: "Unpriced", price: null },
+    ],
+  });
+  assert.equal(priced.catalog?.[0].price, "42.00");
+  assert.equal("price" in (priced.catalog?.[1] ?? {}), false, "a row stating no price carries none");
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// S13 — LANE 1b: an EMPTY change set is an answer, and is distinguishable from a refusal
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test("S13: planProposalChangeSetIsEmpty is true only when NOTHING was proposed", () => {
+  assert.equal(planProposalChangeSetIsEmpty({}), true);
+  assert.equal(planProposalChangeSetIsEmpty({ additions: [] }), true, "an empty array is nothing");
+  assert.equal(planProposalChangeSetIsEmpty({ notes: ["something"] }), false, "a note is an answer");
+  assert.equal(
+    planProposalChangeSetIsEmpty({ protectedNote: "I left your expert's booking alone" }),
+    false,
+    "and so is saying what will not be touched (brief §4.2)",
+  );
+  assert.equal(planProposalChangeSetIsEmpty({ additions: [{ title: "x" }] }), false);
+  assert.equal(planProposalChangeSetIsEmpty({ replaces: [{ itemId: "i1" }] }), false);
 });

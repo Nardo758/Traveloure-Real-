@@ -36,6 +36,17 @@
  *       the component stays pending, nothing moves — the live listing's policy is never read
  *  S17  a policy edit on the listing AFTER purchase, and a reschedule AFTER the cancel, move nothing: the
  *       snapshot decides the tier and the pin decides the settlement
+ *
+ * LD 50 REMAINDER (ledger `2026-09-17-ld50-remainder-and-artifact-refund`):
+ *  S18  `refunded` finally has a WRITER — the promote stamps every component it refunded in the SAME
+ *       statement as the refund columns, a DELIVERED one is never stamped, who ended each component and
+ *       why survives the stamp, and a retry is answered from the SETTLED ROW rather than re-derived
+ *       (a re-derivation would now refuse `component_already_refunded`); the sweep skips a promoted row
+ *  S19  exactly-once: two further promotes match zero rows, never re-stamp and never re-point the refund
+ *       id; the stamp and the refund columns are ONE statement with the from-state inside it (§18b)
+ *  S20  CAPACITY: a failed or cancelled component releases NOTHING, says so, and names what the BOOKING
+ *       reserved instead — and the reason is structural (no per-component slot record exists anywhere),
+ *       pinned against the schema and the checkout composer
  */
 import { test, before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -359,11 +370,15 @@ test("S2 — the settlement end to end: ONE reduced mint, ONE Stripe refund at t
   assert.equal(r[0].stripe_refund_id, s[0].stripe_refund_id);
   assert.equal(r[0].reason, "bundle_partial_settlement");
 
-  // The failed component carries its refund; the delivered ones do not. Its STATUS stays `failed` — the
-  // outcome and the refund are two facts.
+  // The failed component carries its refund; the delivered ones do not. LD 50 remainder (ledger
+  // `2026-09-17-ld50-remainder-and-artifact-refund`): its STATUS is now `refunded` — stamped by the
+  // promote in the SAME statement as the refund columns — and `failed_at` / `failure_reason` are what
+  // keep WHO ended it and WHY on the row. Before this lane `refunded` had no writer at all.
   const rows = await readBundleComponentRows(db, id);
   const c = rows.find((x) => x.componentServiceId === ids.compC)!;
-  assert.equal(c.status, "failed");
+  assert.equal(c.status, "refunded");
+  assert.ok(c.failedAt, "the seller's answer survives the settlement");
+  assert.equal(c.failureReason, "venue closed");
   assert.ok(c.refundedAt);
   assert.equal(c.refundAmountCents, 2000);
   assert.equal(c.stripeRefundId, s[0].stripe_refund_id);
@@ -758,7 +773,11 @@ test("S12 — FLEXIBLE, cancelled before the deadline: 100% of the allocation + 
     [ids.compC, "cancelled", 2000, 0, 100],
   ]);
   const row = await componentRow(id, ids.compC);
-  assert.equal(row.status, "cancelled", "the outcome and the refund are two facts");
+  // LD 50 remainder: the status says the MONEY IS SETTLED; `cancelled_at` and the pinned percent say the
+  // traveler ended it and on what terms, so the two facts are still both on the row.
+  assert.equal(row.status, "refunded");
+  assert.ok(row.cancelledAt);
+  assert.equal(row.cancelRefundPercent, 100);
   assert.equal(row.refundAmountCents, 2000);
   assert.ok(row.refundedAt);
   assert.equal(row.stripeRefundId, s.stripe_refund_id);
@@ -803,9 +822,12 @@ test("S13 — MODERATE, cancelled inside the 48h–120h window: 50% back; the se
   const desc = await mintDescription(id);
   assert.match(desc, /basis allocation/);
   assert.match(desc, /1 traveler-cancelled component\(s\) retained 1000 cents under the snapshotted cancellation policy/);
-  // The component carries what was refunded — half — while its status says why.
+  // The component carries what was refunded — half. LD 50 remainder: its status is now `refunded` (the
+  // money is settled), and `cancelled_at` + the pinned 50% are what still say WHO ended it and on what
+  // terms. Before this lane `refunded` had no writer and a settled component read `cancelled` forever.
   const row = await componentRow(id, ids.compC);
-  assert.equal(row.status, "cancelled");
+  assert.equal(row.status, "refunded");
+  assert.ok(row.cancelledAt);
   assert.equal(row.cancelRefundPercent, 50);
   assert.equal(row.cancelReason, "can't make it");
   assert.equal(row.refundAmountCents, 1000);
@@ -956,4 +978,142 @@ test("S17 — HISTORICAL SNAPSHOT: a policy edit after purchase and a reschedule
   } finally {
     await db.execute(sql`UPDATE provider_services SET cancellation_policy_type = NULL WHERE id = ${ids.bundle}`);
   }
+});
+
+// ═══ LD 50 REMAINDER (ledger `2026-09-17-ld50-remainder-and-artifact-refund`) ═══════════════════
+
+test("S18 — `refunded` finally has a WRITER: the promote stamps every refunded component in the SAME statement, exactly once, and a retry does NOT re-derive over it", async () => {
+  stubSucceed();
+  const id = await bornBundleBooking({ policy: "moderate", details: { scheduledDate: startIn(72) } });
+  // One FAILED (full allocation) and one CANCELLED at 50% — the two shapes the promote stamps.
+  await recordBundleComponentFailure({ bookingId: id, componentServiceId: ids.compB, actor, reason: "guide ill" });
+  await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compA, actor });
+  const c = await recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compC, travelerUserId: ids.traveler });
+  assert.ok(c.recorded && c.partiallyCompleted, JSON.stringify(c));
+  assert.equal(calls.length, 1, "ONE Stripe refund");
+
+  const b = await componentRow(id, ids.compB);
+  const cc = await componentRow(id, ids.compC);
+  const a = await componentRow(id, ids.compA);
+  assert.equal(b.status, "refunded", "a failed component whose allocation came back is settled");
+  assert.equal(cc.status, "refunded", "so is a cancelled one refunded at the pinned 50%");
+  assert.equal(a.status, "completed", "a DELIVERED component is never stamped — nothing was refunded for it");
+  assert.equal(a.refundedAt, null);
+  // WHO ended each component, and why, survives the stamp — the two facts still both live on the row.
+  assert.equal(b.failureReason, "guide ill");
+  assert.ok(b.failedAt);
+  assert.equal(b.cancelRefundPercent, null);
+  assert.ok(cc.cancelledAt);
+  assert.equal(cc.cancelRefundPercent, 50);
+  assert.equal(b.refundAmountCents, 4000);
+  assert.equal(cc.refundAmountCents, 1000);
+
+  // A RETRY is answered from the SETTLED ROW, not from a re-derivation — which would now hit
+  // `component_already_refunded` and turn a plain retry into a refusal.
+  const again = await issueBundlePartialSettlement({ bookingId: id, actor: "retry" });
+  assert.equal(again.settled, true, JSON.stringify(again));
+  assert.equal((again as any).alreadySettled, true);
+  assert.equal((again as any).stripeRefundId, (await settlementRows(id))[0].stripe_refund_id);
+  assert.equal(calls.length, 1, "no second Stripe call");
+  assert.equal((await refundRows(id)).length, 1, "no second audit row");
+
+  // And the NIGHTLY SWEEP does not pick a promoted row back up.
+  const swept = await sweepUnsettledBundlePartials({ onlyBookingIds: [id] });
+  assert.equal(swept.scanned, 0, "a promoted settlement is not a sweep candidate");
+  assert.equal(calls.length, 1);
+});
+
+test("S19 — the stamp is exactly-once under a concurrent promote, and a second promote (the webhook's redelivery) changes nothing", async () => {
+  stubSucceed();
+  const id = await bornBundleBooking();
+  const last = await failCDeliverAB(id);
+  assert.equal(last.partiallyCompleted, true);
+  const settlement = (await settlementRows(id))[0];
+  const stampedAt = (await componentRow(id, ids.compC)).refundedAt;
+  assert.equal((await componentRow(id, ids.compC)).status, "refunded");
+
+  // Two more promotes, concurrently, with a DIFFERENT refund id: `settled_at IS NULL` matches nothing,
+  // so neither re-stamps and nothing about the component moves (§15c's one-promotion shape).
+  const [p1, p2] = await Promise.all([
+    promoteBundlePartialSettlement({ bookingId: id, stripeRefundId: "re_intruder_1" }),
+    promoteBundlePartialSettlement({ bookingId: id, stripeRefundId: "re_intruder_2" }),
+  ]);
+  assert.equal(p1.promoted, false);
+  assert.equal(p2.promoted, false);
+  const after = await componentRow(id, ids.compC);
+  assert.equal(after.status, "refunded");
+  assert.equal(after.stripeRefundId, settlement.stripe_refund_id, "never re-pointed at another refund");
+  assert.deepEqual(after.refundedAt, stampedAt, "the instant is the one the winning promote wrote");
+  assert.equal(after.refundAmountCents, 2000);
+  assert.equal((await refundRows(id)).length, 1);
+
+  // The stamp and the refund columns are ONE statement, and the from-state is IN it (§18b) — pinned
+  // comments-stripped, so a later "tidy-up" cannot split them into a second pass.
+  const svc = code("server/services/bundle-partial-settlement.service.ts");
+  const promote = svc.slice(svc.indexOf("export async function promoteBundlePartialSettlement"));
+  assert.match(promote, /\.set\(\{[^}]*status:\s*BUNDLE_COMPONENT_STATUS\.refunded/s);
+  assert.match(promote, /isNull\(bookingComponentStates\.refundedAt\)/);
+  assert.match(promote, /inArray\(\s*bookingComponentStates\.status/s);
+  assert.equal((promote.match(/\.update\(bookingComponentStates\)/g) ?? []).length, 1, "ONE component writer in the promote");
+});
+
+test("S20 — CAPACITY: a failed or cancelled component releases NOTHING and says so, and names what the BOOKING reserved instead", async () => {
+  stubSucceed();
+  // A slot-bound bundle: the checkout claims capacity PER CART LINE, and a bundle is ONE line.
+  const slotId = `bps-${RUN}-slot`;
+  await db.execute(sql`
+    INSERT INTO vendor_availability_slots (id, service_id, provider_id, date, start_time, end_time, capacity, booked_count, status)
+    VALUES (${slotId}, ${ids.bundle}, ${ids.provider}, CURRENT_DATE + 30, '09:00', '17:00', 4, 3, 'available')
+  `);
+  const id = await bornBundleBooking({ details: { claimedSlotIds: [slotId], claimedSlotUnits: 3 } });
+  await db.execute(sql`UPDATE service_bookings SET slot_id = ${slotId} WHERE id = ${id}`);
+
+  const f = await recordBundleComponentFailure({ bookingId: id, componentServiceId: ids.compC, actor, reason: "venue closed" });
+  assert.equal(f.recorded, true);
+  const cap = (f as any).evidence.componentCapacity;
+  assert.equal(cap.released, 0, "a component outcome releases no capacity");
+  assert.equal(cap.reason, "no_component_capacity_reserved");
+  assert.deepEqual(cap.bookingReservedSlotIds, [slotId], "what the BOOKING holds is NAMED, not silence (§13)");
+  assert.equal(cap.bookingReservedUnitsPerSlot, 3, "read through the ONE decider, never restated");
+
+  // The slot itself is untouched by the component outcome.
+  const readSlot = async () =>
+    (await db.execute(sql`SELECT booked_count, status FROM vendor_availability_slots WHERE id = ${slotId}`)).rows[0] as any;
+  assert.equal(Number((await readSlot()).booked_count), 3);
+
+  // A traveler's cancel states the same fact, and the settlement that follows releases nothing:
+  // D-51 rules that a partial settlement "must not ... release all reserved capacity".
+  const cancelId = await bornBundleBooking({ policy: "flexible", details: { scheduledDate: startIn(240), claimedSlotIds: [slotId], claimedSlotUnits: 3 } });
+  await db.execute(sql`UPDATE service_bookings SET slot_id = ${slotId} WHERE id = ${cancelId}`);
+  const cancelled = await recordBundleComponentCancellation({ bookingId: cancelId, componentServiceId: ids.compC, travelerUserId: ids.traveler });
+  assert.ok(cancelled.recorded);
+  assert.equal((cancelled as any).evidence.componentCapacity.released, 0);
+  assert.equal((cancelled as any).evidence.componentCapacity.bookingReservedUnitsPerSlot, 3);
+
+  await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compA, actor });
+  const last = await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compB, actor });
+  assert.equal(last.partiallyCompleted, true);
+  assert.equal(Number((await readSlot()).booked_count), 3, "the partial settlement released no capacity");
+  // The statement rides the two UNDELIVERED answers (failed above, cancelled below) — a DELIVERY has no
+  // capacity question to answer, so the completion rail carries none.
+
+  // AND THE REASON IT IS ZERO IS STRUCTURAL, not a gate: nothing reserves capacity per component.
+  // `booking_component_states` has no slot column, and the purchase-time snapshot carries no slot —
+  // pinned here so a later lane that adds one has to come back and read this rule (§13/§18c).
+  const schema = code("shared/schema.ts");
+  const table = schema.slice(
+    schema.indexOf('pgTable("booking_component_states"'),
+    schema.indexOf("export type BookingComponentState"),
+  );
+  assert.doesNotMatch(table, /slot/i, "no per-component slot record exists — so there is nothing to release");
+  const composer = code("server/routes/payments.routes.ts");
+  const setAt = composer.indexOf("bundleSnapshots.set(");
+  assert.ok(setAt > 0, "the checkout composer still builds the component snapshot");
+  assert.doesNotMatch(
+    composer.slice(setAt, setAt + 600),
+    /slotId/,
+    "the component snapshot carries id, name and price — never a slot",
+  );
+
+  await db.execute(sql`DELETE FROM vendor_availability_slots WHERE id = ${slotId}`).catch(() => {});
 });

@@ -37,9 +37,16 @@ export const PARTIALLY_COMPLETED_STATUS = "partially_completed";
  * `failed` are the seller's two answers (the owner rails); `cancelled` is the TRAVELER's answer
  * (ledger `2026-09-16-bundle-component-traveler-cancel` — `POST /api/bookings/:id/components/
  * :componentServiceId/cancel`, which pins `cancel_refund_percent` in the same flip); `refunded` is
- * DECLARED so the derivation reads it correctly but still has NO WRITER (a row reading it is handed
- * to a human, never refunded twice). A reader that meets an unknown value treats it as UNRESOLVED,
- * never as delivered.
+ * the SETTLEMENT's answer and has exactly TWO writers, both of which are the money settling (ledger
+ * `2026-09-17-ld50-remainder-and-artifact-refund`): the D-51 promote (`promoteBundlePartialSettlement`),
+ * which stamps it in the SAME statement as the refund columns under the `settled_at IS NULL` guard so
+ * it lands exactly once, and the admin's artifact-rejection refund, which stamps every component of a
+ * fully refunded booking inside its own §15b claim. It means THIS COMPONENT'S MONEY IS SETTLED — which
+ * is the fact `deriveBundlePartialSettlement` refuses on (`component_already_refunded`: handed to a
+ * human, never refunded twice). It does NOT erase who ended the component or why: `failed_at` /
+ * `failure_reason`, `cancelled_at` / `cancel_reason` and the pinned `cancel_refund_percent` stay on the
+ * row beside `refund_amount_cents`. A component refunded 0 is never stamped — nothing was refunded
+ * (§13). A reader that meets an unknown value treats it as UNRESOLVED, never as delivered.
  */
 export const BUNDLE_COMPONENT_STATUS = {
   pending: "pending",
