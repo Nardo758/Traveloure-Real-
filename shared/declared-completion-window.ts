@@ -158,3 +158,88 @@ export function coordinationDeclaredAt(stateHistory: unknown): Date | null {
   }
   return null;
 }
+
+/**
+ * THE DECLARED-WINDOW READ-OUT A SURFACE RENDERS — ONE composition, every caller (§18 rule 1).
+ *
+ * Ledger `2026-09-17-surfaces-acceptance-completion`. `GET /api/bookings/:id` composed these three
+ * fields inline; the traveler list, the seller lists and the surfaces this lane builds need the
+ * SAME three, and a second `declaredAt && !completedAt` test written beside the first is the
+ * derivation-drift class §18 rule 1 names — the day the predicate moves, one surface offers a
+ * dispute button for a booking the rail has already completed.
+ *
+ * §13, and it is the whole reason this returns `null` rather than a shape with false in it:
+ *   • never declared        ⇒ `null`, and the caller OMITS the key entirely. Never `declared:false`.
+ *   • declared AND completed ⇒ `null`. The window is over; "completed" is the word, and a closed
+ *                              window must not keep rendering a dispute-by date nobody may use.
+ *   • declared with an instant the server cannot date ⇒ `null` (the deadline derivation refuses it),
+ *                              because a window nobody can date does not start (D-36).
+ *
+ * `windowDays` is passed IN from `declaredCompletionWindowDays()` — this file states no number of
+ * its own, and no CLIENT may restate one either: the deadline on every surface is this answer.
+ */
+export interface CompletionDeclarationReadout {
+  declaredAt: string;
+  disputeBy: string;
+  windowDays: number;
+}
+
+export function describeCompletionDeclaration(
+  row: DisputeWindowShape,
+  windowDays: number,
+): CompletionDeclarationReadout | null {
+  if (toMs(row.completedAt) !== null) return null;
+  const declaredMs = toMs(row.completionDeclaredAt);
+  if (declaredMs === null) return null;
+  const disputeBy = declaredCompletionDeadline(new Date(declaredMs), windowDays);
+  if (disputeBy === null) return null;
+  return { declaredAt: new Date(declaredMs).toISOString(), disputeBy, windowDays };
+}
+
+/*
+ * ── THE TWO FROM-STATE LISTS THE SURFACES READ (ledger `2026-09-17-surfaces-acceptance-completion`) ──
+ * Moved here from `server/utils/booking-from-states.ts` and `server/services/booking-completion.service.ts`
+ * for the reason `shared/acceptance-window.ts` states at length: a client cannot import a server
+ * module, and a client-side COPY of a from-state list is the derivation-drift class §18 rule 1
+ * names. Both server homes RE-EXPORT these, so every existing caller is untouched and each list
+ * still has exactly one definition.
+ */
+
+/**
+ * WHICH BOOKINGS A TRAVELER MAY DISPUTE. `completion_declared` descends from `confirmed`: the seller
+ * has DECLARED the work done and the traveler's window is OPEN — which is precisely the moment a
+ * dispute is FOR. Nothing has minted (D-37 puts the mint at the window's close), so
+ * `setBookingEarningsDispute` flags ZERO rows there, and zero must never be read as "cleared": the
+ * block is the status itself, because a `disputed` booking never reaches `completed`.
+ *
+ * It is the SAME `disputed` row as a post-completion dispute — same status, same
+ * `booking_metadata.disputeReason`, same `GET /api/admin/disputes` queue. No `admin_review` status,
+ * no disputes table. The queue tells the two apart by DERIVATION (`disputeStageFor`, above), never
+ * by a second status.
+ *
+ * NEGATIVE SPACE: a from-state list bounds a dispute in STATE. The TIME bound is separate and is
+ * the route's own (`disputeWindowAnchor` + the hold window), so a surface that renders a dispute
+ * control from this list alone is offering it within its stated bounds and no further.
+ */
+export const DISPUTABLE_FROM_STATUSES: readonly string[] = [
+  "confirmed",
+  "deposit_paid",
+  "completed",
+  "awaiting_acceptance",
+  "revision_requested",
+  COMPLETION_DECLARED_STATUS,
+];
+
+/**
+ * WHICH BOOKINGS A COMPLETION MAY BE DECLARED FROM (D-7). One entry: a completion declaration
+ * descends from a paid, confirmed booking and from nothing else.
+ *
+ * NEGATIVE SPACE, and it is the load-bearing half for the seller's console: STATUS IS NOT THE WHOLE
+ * ELIGIBILITY. `resolveCompletionEligibility` also resolves the listing's RULE (an artifact takes
+ * the traveler's acceptance, not the seller's word; a place-anchored booking waits for its date) and
+ * reads server-side evidence a list cannot hold. A surface that offers the control on this list
+ * alone is offering it where the rail MAY accept it, and the rail's own named refusal is what
+ * answers otherwise — which is the honest arrangement, because the alternative is a second copy of
+ * the rule resolver living on a client.
+ */
+export const COMPLETION_ALLOWED_FROM_STATUSES: readonly string[] = ["confirmed"];

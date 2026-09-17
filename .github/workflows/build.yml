@@ -725,6 +725,22 @@ jobs:
       # overdue from the SERVER's answer rather than a browser clock.
       - name: Plan islands pin
         run: npx tsx --test client/src/lib/__tests__/plan-islands.test.ts
+      # 2026-09-17-surfaces-acceptance-completion: LD 46's acceptance rails and LD 47's declared
+      # completion both landed with no UI at all, so a traveler could not accept and a seller could
+      # not declare. L1-L10 pin the DERIVATIONS — audience (only the owner accepts, only the seller
+      # declares, a stranger renders nothing), every §13 absence (no acceptance affordance ⇒ no
+      # panel; no delivery instant ⇒ no clock and NO invented date; no stated allowance ⇒ no
+      # revision affordance and never "0 left"), and that both control sets read the RAILS' OWN
+      # from-state arrays, which is why this lane moved them into `@shared` instead of copying them.
+      # P1-P10 then pin that each state ROW actually reaches the DOM that way — the half that has
+      # gone wrong here before, since a rail with no surface and a surface showing the wrong state
+      # are indistinguishable from a green server suite. P5 is the load-bearing one: an ESCALATED
+      # row says it is with our team and never claims a refund (LD 46 — a refund is the admin's
+      # outcome, said only with an id in hand).
+      - name: Acceptance and declared-completion surfaces pin
+        run: |
+          npx tsx --test client/src/lib/__tests__/booking-lifecycle.test.ts
+          npx tsx --test client/src/components/__tests__/booking-lifecycle-panels.test.tsx
       # Same ledger: the participant CREATE rail was a DENYLIST (`.omit({ userId: true })`) and is
       # now the pick-based sibling of the PATCH allowlist, DERIVED from it so a field cannot move
       # lanes on one rail only (§19, §18 rule 1). G3/G3b assert over the real artifacts.

@@ -40,6 +40,20 @@ export function readPurchaseStatus(status: string | null | undefined): PurchaseS
       return { kind: "booked", label: "Booked" };
     case "completion_declared":
       return { kind: "booked", label: "Booked · your expert says this is done" };
+    // LD 46 (ledger `2026-09-15-d24-d26-acceptance-columns`, surfaces lane
+    // `2026-09-17-surfaces-acceptance-completion`). Both words are CLAIMS ABOUT WHOSE TURN IT IS,
+    // not about completion: nothing has minted in either, and neither may read as "completed".
+    //   `awaiting_acceptance`  the artifact was delivered and the traveler has not answered — the
+    //                          ball is with the BUYER. (D-27's timer ASKs by moving a row here; it
+    //                          may never complete one in the seller's favour.)
+    //   `revision_requested`   the traveler asked for a change and the ball is with the SELLER.
+    // The DATE either state is measured from, and the window it closes on, are NOT here: they are
+    // the server's own `acceptance` read-out, because a window length restated on a client is a
+    // second authority the day `acceptanceWindowDays()` moves (§18 rule 1).
+    case "awaiting_acceptance":
+      return { kind: "booked", label: "Booked · waiting for your acceptance" };
+    case "revision_requested":
+      return { kind: "booked", label: "Booked · revision requested" };
     case "completed":
       return { kind: "booked", label: "Booked · completed" };
     // D-34 (ledger `2026-09-16-d32-d35-bundle-components`): a bundle with at least one component

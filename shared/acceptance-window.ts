@@ -220,3 +220,41 @@ export function resolveDeliverable(
   if (listing) return { value: listing, source: "listing" };
   return null;
 }
+
+/*
+ * ── THE FROM-STATE LISTS THE SURFACES READ (ledger `2026-09-17-surfaces-acceptance-completion`) ──
+ *
+ * These three were declared in `server/utils/booking-from-states.ts`, which a client cannot import.
+ * The surfaces lane needs the SAME answer the rails guard on — "may this traveler accept right
+ * now?", "may they ask for a revision?" — and a client-side copy of either list is the
+ * derivation-drift class §18 rule 1 names: the day a status joins one of them, one surface starts
+ * offering a button the rail refuses, or hides one it would have honoured. So the lists MOVED here,
+ * unchanged, and `booking-from-states.ts` RE-EXPORTS them — every server caller is untouched and
+ * there is still exactly one definition of each. `BOOKING_CANCELLABLE_FROM_STATUSES`
+ * (`shared/booking-cancellation.ts`) is the precedent.
+ *
+ * NEGATIVE SPACE, unchanged from their original home and restated because it is what keeps a
+ * rendered button honest: these are FROM-STATE lists and nothing else. They say nothing about WHO
+ * may ask (the accept and revision rails gate on `traveler_id` from the session, §14) and nothing
+ * about whether the listing takes acceptance at all (`acceptanceModeFor`, above). A surface must
+ * ask all three questions; a status alone answers none of them.
+ */
+
+/**
+ * ACCEPT. Only a booking that is actually waiting for the traveler's answer. One entry, and the
+ * narrowness is the point: acceptance is what MINTS on the `gates_completion` arm, so it must never
+ * be able to consume `confirmed` (which is the timer's state, not the traveler's) or any terminal
+ * state.
+ */
+export const ACCEPTANCE_FROM_STATUSES: readonly string[] = [AWAITING_ACCEPTANCE_STATUS];
+
+/** REQUEST A REVISION. The same single state, for the same reason. */
+export const REVISION_REQUESTABLE_FROM_STATUSES: readonly string[] = [AWAITING_ACCEPTANCE_STATUS];
+
+/**
+ * THE D-40 HYBRID ARM'S WRITE STATES. A `records_only` acceptance moves NO status — the booking
+ * keeps `service_date_timer` and nothing mints — so this list bounds only when `accepted_at` may be
+ * stamped and a revision row written on such a booking: the paid-equivalent states, for the same
+ * reason the delivery list uses them.
+ */
+export const ARTIFACT_RECORD_ONLY_STATUSES: readonly string[] = ["confirmed", "deposit_paid"];

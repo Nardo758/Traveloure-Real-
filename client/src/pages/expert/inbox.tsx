@@ -61,6 +61,10 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { readBookingRequestClaim } from "@/lib/booking-agent-claim";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+// LD 47 (ledger `2026-09-17-surfaces-acceptance-completion`): the seller's declared-completion
+// control and read-out. `/api/expert/bookings` carries the SERVER's own `completionDeclaration`,
+// so the traveler's review window is never counted out on this page.
+import { SellerCompletionPanel } from "@/components/bookings/SellerCompletionPanel";
 
 // ─── Shared shapes ──────────────────────────────────────────────────────────
 
@@ -1207,6 +1211,17 @@ function HistorySection() {
                         {booking.notes && (
                           <p className="text-sm text-console-mid mt-2 italic">Note: {booking.notes}</p>
                         )}
+                        {/* LD 47: declare complete where the from-state allows, then the window's
+                            own read-out. §13 — draws NOTHING in any other state, never "not
+                            declared", and never the word "completed" before the window closes. */}
+                        <div className="mt-2">
+                          <SellerCompletionPanel
+                            booking={booking as any}
+                            audience="seller"
+                            role="expert"
+                            invalidateKeys={[["/api/expert/bookings"]]}
+                          />
+                        </div>
                         {(() => {
                           // Two-sided fee disclosure (fields ride the booking payload —
                           // sanitizeBookingForExpert keeps totalAmount/platformFee/providerEarnings).

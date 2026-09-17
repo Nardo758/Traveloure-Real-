@@ -50,6 +50,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isBookingCancellable } from "@shared/booking-cancellation"; // §18 rule 1 — the cancel route's OWN from-state list, never a second copy
+// Ledger `2026-09-17-surfaces-acceptance-completion` (LD 46 / LD 47). The acceptance and
+// declared-window read-out and its four controls. `/api/my-bookings` now carries the SERVER's own
+// `acceptance` / `completionDeclaration` answers on each row, so nothing on this page derives a
+// window, a deadline or a revision allowance.
+import { BookingAcceptancePanel } from "@/components/bookings/BookingAcceptancePanel";
 import { CancelBookingDialog } from "@/components/booking/CancelBookingDialog";
 // ledger `2026-09-17-surfaces-quotes-settlement`: the two surfaces LD 48/49/50 shipped their
 // rails without. The quotes panel reads `/api/me/quotes` and calls the existing accept/decline
@@ -1031,6 +1036,17 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 Your expert hasn't uploaded your deliverable yet — you'll be able to download it here once they do.
               </div>
             )}
+
+            {/* LD 46 / LD 47 (ledger `2026-09-17-surfaces-acceptance-completion`). Every row on this
+                list is the SESSION USER'S OWN booking (`/api/my-bookings` is travelerId-scoped), so
+                the audience is `owner` by construction — the panel takes it explicitly all the same,
+                because the same component renders on surfaces where it is not. §13: the panel draws
+                NOTHING for a booking whose listing takes no acceptance and was never declared. */}
+            <BookingAcceptancePanel
+              booking={booking as any}
+              audience="owner"
+              invalidateKeys={[["/api/my-bookings"], [`/api/service-bookings/${booking.id}/deliverable/meta`]]}
+            />
 
             {/* S9 (docs/DECISIONS.md ledger row 102): the session join link — server-revealed
                 only for a confirmed call/video booking (see the useQuery above). Never rendered
