@@ -111,6 +111,10 @@ import { usePlanning } from "@/contexts/PlanningContext";
 // builder of it, and with no `id` on this row its documented id fallback cannot fire — a
 // handle-less advisor resolves to `null`, which is exactly §13's answer here (no link at all).
 import { earnerProfilePath } from "@/lib/earner-address";
+// L16 lanes 2/3 (ledger `2026-09-16-l16-lanes2-3-drawer`) — the Ask-AI rail is a card of its OWN,
+// deliberately NOT a third branch of `slipBuildAiAction`, whose two-way answer (draft on an empty
+// plan, optimize otherwise — LD 41 (b)) is unchanged and is READ by the drawer, never restated.
+import { AskAiDrawer } from "./AskAiDrawer";
 // Ledger `2026-09-07-my-events-fold` — the ONE spelling of an engagement's title / status / fee
 // words, shared with `/my-events` (§18 rule 1). No amount and no charge decision rides with it.
 import {
@@ -1225,6 +1229,7 @@ export function SlipRail({
   trip,
   tripId,
   isOwner,
+  isExpertViewer,
   isPrimary,
   activities,
   planEvents,
@@ -1235,6 +1240,14 @@ export function SlipRail({
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
+  /**
+   * `plancard.tripRole === "expert"` — resolved ONCE by `SlipView` and passed down (§18 rule 1).
+   * An advisor of ANY §12 access status, `pending` INCLUDED: `getTripRole`'s advisor branch is
+   * `isTripAdvisor`, which grants `pending` correctly for READING. It is therefore never on its own
+   * a write permission, and the one surface that needs the distinction — the Ask-AI card — gets it
+   * from the SERVER's own gate rather than restating §12's status list here.
+   */
+  isExpertViewer: boolean;
   isPrimary: boolean;
   activities: PlanCardActivity[];
   planEvents: readonly PlanEvent[];
@@ -1288,6 +1301,15 @@ export function SlipRail({
         isOwner={isOwner}
         activities={activities}
         expertState={expertState}
+      />
+      {/* ASK AI — its OWN card, beneath Build (L16 lanes 2/3). It renders NOTHING for a viewer the
+          proposal-log route would refuse: the routes are the policy and this mirrors them, never
+          widens them (Locked Decision 42 D16's own wording, the §14 posture). */}
+      <AskAiDrawer
+        tripId={tripId}
+        isOwner={isOwner}
+        isExpertViewer={isExpertViewer}
+        aiAction={slipBuildAiAction(activities.length)}
       />
       <PlanCard
         tripId={tripId}
