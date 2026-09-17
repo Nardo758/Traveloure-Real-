@@ -1869,6 +1869,7 @@ export function SlipView({
               trip={data.trip}
               tripId={tripId}
               isOwner={isOwner}
+              isExpertViewer={isExpertViewer}
               isPrimary={isPrimary}
               activities={allActivities}
               planEvents={planEvents}

@@ -17,8 +17,25 @@
  *       delivery matches zero rows
  *   S7  historical snapshot: repricing every listing after purchase moves nothing
  *   S8  custody: a bundle with no PaymentIntent is refused (`custody_unknown`), no Stripe, no row
- *   S9  failed vs cancelled: a `cancelled` component refuses the settlement (`traveler_cancel_path_not_built`)
+ *   S9  failed vs cancelled: a `cancelled` row with NO pinned policy outcome refuses the settlement (`cancel_terms_missing`)
  *  S10  a pre-307 row (NULL allocations) still mints by snapshot pro-rata but cannot settle (`allocation_missing`)
+ *
+ * Locked Decision 50, SECOND HALF — the traveler-cancelled component (ledger
+ * `2026-09-16-bundle-component-traveler-cancel`; migration 309):
+ *  S11  the cancel is ONE flip under a concurrent double call, pins `cancel_refund_percent` and `cancelled_at`
+ *       in that flip, hands the loser the PINNED terms; a non-pending component, a non-traveler and an unknown
+ *       component are refused by name; the body is a `.strict()` pick reading no amount, percent or status
+ *  S12  flexible, cancelled before the deadline ⇒ 100% of the allocation + the same share of every fee
+ *  S13  moderate, cancelled inside the 48h–120h window ⇒ 50%; the seller keeps the rest, minted as delivered
+ *       value and NAMED in the mint's basis; ONE Stripe refund of the half + half the fee share
+ *  S14  strict, cancelled late ⇒ 0%: the settlement records the outcome set, makes NO Stripe call, promotes
+ *       with a NULL refund id, stamps no `refunded_at`; the seller minted the full figures
+ *  S15  mixed: one component FAILED (full allocation) + one CANCELLED at 50% ⇒ ONE settlement, ONE Stripe
+ *       call, the right sum; the outcome set names both outcomes distinctly
+ *  S16  no purchase-time policy snapshot on the row ⇒ the cancel is REFUSED (`policy_snapshot_missing`),
+ *       the component stays pending, nothing moves — the live listing's policy is never read
+ *  S17  a policy edit on the listing AFTER purchase, and a reschedule AFTER the cancel, move nothing: the
+ *       snapshot decides the tier and the pin decides the settlement
  */
 import { test, before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -31,6 +48,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import {
+  recordBundleComponentCancellation,
   recordBundleComponentCompletion,
   recordBundleComponentFailure,
   settleBundlePartialCompletion,
@@ -137,7 +155,12 @@ async function bornBundleBooking(opts: {
   totalAmount?: string;
   paymentIntent?: string | null;
   details?: Record<string, unknown>;
+  /** The BUNDLE listing's cancellation policy at birth — what OC-B1's snapshot records (S11–S17). */
+  policy?: string | null;
 } = {}): Promise<string> {
+  if (opts.policy !== undefined) {
+    await db.execute(sql`UPDATE provider_services SET cancellation_policy_type = ${opts.policy} WHERE id = ${ids.bundle}`);
+  }
   const booking = await storage.createServiceBooking({
     serviceId: ids.bundle,
     travelerId: ids.traveler,
@@ -584,19 +607,31 @@ test("S8 — CUSTODY: a bundle with no PaymentIntent is refused (`custody_unknow
   assert.equal(calls.length, 0);
 });
 
-test("S9 — FAILED vs CANCELLED: a `cancelled` component refuses the settlement (`traveler_cancel_path_not_built`); no Stripe call", async () => {
+test("S9 — FAILED vs CANCELLED: a `cancelled` row with NO pinned policy outcome refuses the flip AND the settlement (`cancel_terms_missing`); no Stripe call", async () => {
   stubSucceed();
   const id = await bornBundleBooking();
-  // No writer exists for `cancelled` on main (the D-32 report) — set it directly to prove the asymmetry.
+  // A `cancelled` row that NO writer of the rail produced: no `cancel_refund_percent`. Set it directly.
   await db.execute(sql`UPDATE booking_component_states SET status = 'cancelled', cancelled_at = NOW() WHERE booking_id = ${id} AND component_service_id = ${ids.compC}`);
   await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compA, actor });
   const last = await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compB, actor });
-  assert.equal(last.partiallyCompleted, true, "the parent derivation treats cancelled as undelivered (unchanged)");
-  assert.equal(last.settlement!.settled, false);
-  assert.equal((last.settlement as any).reason, "traveler_cancel_path_not_built");
-  assert.equal((last.settlement as any).detail, ids.compC);
+  // The parent derivation still reads cancelled as undelivered, but the D-35 mint cannot state the
+  // seller's kept share without the pin — so the FLIP is refused and the parent stays `confirmed` for
+  // a human (§13), rather than minting a guessed share.
+  assert.equal(last.partiallyCompleted, false);
+  assert.equal(last.reason, "component_prices_unknown");
+  assert.equal((last.evidence as any).reducedFiguresRefused, "cancel_terms_missing");
+  assert.equal((await readBooking(id)).status, "confirmed");
   assert.equal(calls.length, 0);
   assert.equal((await settlementRows(id)).length, 0);
+  // The money leg, driven directly on a row someone forced to `partially_completed`, refuses by the SAME name.
+  await db.execute(sql`UPDATE service_bookings SET status = ${PARTIALLY_COMPLETED_STATUS} WHERE id = ${id}`);
+  const direct = await issueBundlePartialSettlement({ bookingId: id });
+  assert.equal(direct.settled, false);
+  assert.equal((direct as any).reason, "cancel_terms_missing");
+  assert.equal((direct as any).detail, ids.compC);
+  const swept = await sweepUnsettledBundlePartials({ onlyBookingIds: [id] });
+  assert.equal(swept.refused.cancel_terms_missing, 1, "the sweep says so too, every night, and never guesses a tier");
+  assert.equal(calls.length, 0);
   // The failed path on the very same shape settles at the full allocation — S2 — so the asymmetry is
   // the presence of a policy question, not a different amount rule.
 });
@@ -617,4 +652,308 @@ test("S10 — a pre-307 row (NULL allocations) still mints by snapshot pro-rata 
   assert.equal((await settlementRows(id)).length, 0);
   const swept = await sweepUnsettledBundlePartials({ onlyBookingIds: [id] });
   assert.equal(swept.refused.allocation_missing, 1, "the sweep says so too, and never guesses a split");
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// Locked Decision 50, SECOND HALF — the traveler-cancelled component.
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+
+const HOUR = 3600_000;
+/** A scheduled start `hours` from now, as the checkout writes `booking_details.scheduledDate`. */
+const startIn = (hours: number) => new Date(Date.now() + hours * HOUR).toISOString();
+async function componentRow(bookingId: string, componentServiceId: string) {
+  return (await readBundleComponentRows(db, bookingId)).find((r) => r.componentServiceId === componentServiceId)!;
+}
+async function mintDescription(bookingId: string): Promise<string> {
+  const r = await db.execute(sql`SELECT description FROM platform_revenue WHERE source_id = ${bookingId}`);
+  return String((r.rows[0] as any)?.description ?? "");
+}
+
+test("S11 — the cancel is ONE flip under a concurrent double call, pins the policy outcome, and refuses a non-pending component, a non-traveler and an unknown component by name", async () => {
+  stubSucceed();
+  const id = await bornBundleBooking({ policy: "flexible", details: { scheduledDate: startIn(240) } });
+  const b = await readBooking(id);
+  assert.ok(b.booking_details?.scheduledDate, "the fixture carries the deadline");
+  const snap = await db.execute(sql`SELECT offering_contract_snapshot -> 'policy' ->> 'cancellationPolicyType' AS tier FROM service_bookings WHERE id = ${id}`);
+  assert.equal((snap.rows[0] as any).tier, "flexible", "OC-B1 snapshotted the BUNDLE listing's policy at birth");
+
+  // Two concurrent cancels of the same component: exactly ONE flip; the loser is handed the PINNED terms.
+  const [x, y] = await Promise.all([
+    recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compC, travelerUserId: ids.traveler, reason: "  change of plans  " }),
+    recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compC, travelerUserId: ids.traveler, reason: "double click" }),
+  ]);
+  assert.ok(x.recorded && y.recorded, JSON.stringify([x, y]));
+  const fresh = [x, y].filter((r) => r.recorded && !r.alreadyRecorded);
+  const replay = [x, y].filter((r) => r.recorded && r.alreadyRecorded);
+  assert.equal(fresh.length, 1, "one flip");
+  assert.equal(replay.length, 1, "one replay");
+  assert.deepEqual((replay[0] as any).terms, (fresh[0] as any).terms, "the replay states the PINNED terms, not a re-resolution");
+  const t = (fresh[0] as any).terms;
+  assert.equal(t.policyType, "flexible");
+  assert.equal(t.policyDefaulted, false);
+  assert.equal(t.refundPercent, 100);
+  assert.equal(t.allocationCents, 2000);
+  assert.equal(t.refundCents, 2000);
+  assert.equal(t.retainedCents, 0);
+  assert.ok(t.hoursUntilStart > 200 && t.hoursUntilStart <= 240);
+  assert.equal(x.recorded && (x as any).partiallyCompleted, false, "A and B are still pending — nothing settles yet");
+  assert.equal((x as any).settlement, null);
+  assert.equal(calls.length, 0);
+
+  // The row: status, instant, PIN and the traveler's words (trimmed) — written by the one UPDATE.
+  const row = await componentRow(id, ids.compC);
+  assert.equal(row.status, "cancelled");
+  assert.ok(row.cancelledAt);
+  assert.equal(row.cancelRefundPercent, 100);
+  assert.ok(["change of plans", "double click"].includes(row.cancelReason ?? ""), "whichever caller won, its reason is stored verbatim (trimmed)");
+  assert.equal(row.refundedAt, null, "nothing refunded until the bundle settles");
+
+  // Refusals, by name. A delivered component cannot be cancelled …
+  await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compA, actor });
+  const delivered = await recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compA, travelerUserId: ids.traveler });
+  assert.equal(delivered.recorded, false);
+  assert.equal((delivered as any).reason, "component_not_pending");
+  assert.equal((delivered as any).currentStatus, "completed");
+  // … the PROVIDER is not the traveler (the route turns this into an undifferentiated 404) …
+  const notMine = await recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compB, travelerUserId: ids.provider });
+  assert.equal(notMine.recorded, false);
+  assert.equal((notMine as any).reason, "not_traveler");
+  // … a service that is not one of the bundle's components …
+  const unknown = await recordBundleComponentCancellation({ bookingId: id, componentServiceId: "not-a-component", travelerUserId: ids.traveler });
+  assert.equal((unknown as any).reason, "unknown_component");
+  assert.equal((await componentRow(id, ids.compB)).status, "pending", "B is untouched by every refusal");
+
+  // The route's body is a `.strict()` pick and reads no amount, percent or status (comments-stripped pin).
+  const routes = code("server/routes.ts");
+  const start = routes.indexOf("/api/bookings/:id/components/:componentServiceId/cancel");
+  const handler = routes.slice(routes.lastIndexOf("const componentCancelBody", start), routes.indexOf("visa-status", start));
+  assert.match(handler, /reason:\s*z\.string\(\)/);
+  assert.match(handler, /\.strict\(\)/);
+  assert.doesNotMatch(handler, /req\.body\.(amount|price|percent|refund|status|userId|travelerId)/);
+  assert.match(handler, /travelerUserId:\s*userId/, "the principal is the SESSION user (§14)");
+});
+
+test("S12 — FLEXIBLE, cancelled before the deadline: 100% of the allocation + the same share of every fee; settles once", async () => {
+  stubSucceed();
+  const id = await bornBundleBooking({ policy: "flexible", details: { scheduledDate: startIn(240) } });
+  await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compA, actor });
+  await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compB, actor });
+  const c = await recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compC, travelerUserId: ids.traveler });
+  assert.ok(c.recorded);
+  assert.equal(c.partiallyCompleted, true, "the cancel was the last answer outstanding");
+  assert.equal(c.terms.refundPercent, 100);
+  assert.ok(c.settlement && c.settlement.settled);
+  assert.equal(c.settlement!.travelerRefundCents, 2300, "2000 allocation + 20% of 5.00 + 20% of 10.00 — the S2 amounts, by a different door");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].params.amount, 2300);
+  assert.equal(calls[0].options.idempotencyKey, `bundle-settle-${id}`);
+  const s = (await settlementRows(id))[0];
+  assert.ok(s.settled_at);
+  assert.equal(s.settled_amount_cents, 8000);
+  assert.equal(s.seller_earning_cents, 6000);
+  const outcomes = s.component_outcomes.components as any[];
+  assert.deepEqual(outcomes.map((o) => [o.componentServiceId, o.outcome, o.refundCents, o.retainedCents, o.refundPercent]), [
+    [ids.compA, "delivered", 0, 4000, null],
+    [ids.compB, "delivered", 0, 4000, null],
+    [ids.compC, "cancelled", 2000, 0, 100],
+  ]);
+  const row = await componentRow(id, ids.compC);
+  assert.equal(row.status, "cancelled", "the outcome and the refund are two facts");
+  assert.equal(row.refundAmountCents, 2000);
+  assert.ok(row.refundedAt);
+  assert.equal(row.stripeRefundId, s.stripe_refund_id);
+  const l = await ledger(id);
+  assert.equal(l.providerEarnings[0].amount, "60.00");
+  assert.equal(l.platformRevenue[0].platform_fee, "20.00");
+  assert.doesNotMatch(await mintDescription(id), /retained/, "nothing was retained under a 100% policy — the basis does not claim otherwise");
+  assert.equal((await readBooking(id)).status, PARTIALLY_COMPLETED_STATUS);
+  // A retry converges.
+  const again = await settleBundlePartially({ bookingId: id, actor: "traveler_bundle_component_cancel" });
+  assert.equal((again.settlement as any).alreadySettled, true);
+  assert.equal(calls.length, 1);
+});
+
+test("S13 — MODERATE, cancelled inside the 48h–120h window: 50% back; the seller keeps the rest, minted and NAMED", async () => {
+  stubSucceed();
+  const id = await bornBundleBooking({ policy: "moderate", details: { scheduledDate: startIn(72) } });
+  await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compA, actor });
+  await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compB, actor });
+  const c = await recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compC, travelerUserId: ids.traveler, reason: "can't make it" });
+  assert.ok(c.recorded);
+  assert.equal(c.terms.policyType, "moderate");
+  assert.equal(c.terms.refundPercent, 50);
+  assert.equal(c.terms.refundCents, 1000);
+  assert.equal(c.terms.retainedCents, 1000);
+  assert.equal(c.partiallyCompleted, true);
+  assert.equal(c.settlement!.settled, true);
+  // ONE Stripe refund: half the allocation + half of THIS component's share of the fees (10% of each).
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].params.amount, 1150, "1000 + 10% of 5.00 + 10% of 10.00");
+  const s = (await settlementRows(id))[0];
+  assert.equal(s.traveler_refund_cents, 1150);
+  assert.equal(s.settled_amount_cents, 9000, "delivered 8000 + retained 1000");
+  assert.equal(s.seller_earning_cents, 6750);
+  assert.equal(s.platform_revenue_cents, 2250);
+  assert.equal(s.component_outcomes.refundedFraction, 0.1);
+  // The D-35 mint kept the retained half as delivered value and NAMED it.
+  const l = await ledger(id);
+  assert.equal(l.platformRevenue[0].gross_amount, "90.00");
+  assert.equal(l.platformRevenue[0].platform_fee, "22.50", "the purchase-time commission × 0.9 — never re-resolved");
+  assert.equal(l.providerEarnings[0].amount, "67.50");
+  const desc = await mintDescription(id);
+  assert.match(desc, /basis allocation/);
+  assert.match(desc, /1 traveler-cancelled component\(s\) retained 1000 cents under the snapshotted cancellation policy/);
+  // The component carries what was refunded — half — while its status says why.
+  const row = await componentRow(id, ids.compC);
+  assert.equal(row.status, "cancelled");
+  assert.equal(row.cancelRefundPercent, 50);
+  assert.equal(row.cancelReason, "can't make it");
+  assert.equal(row.refundAmountCents, 1000);
+  assert.equal((await refundRows(id))[0].amount, "11.50");
+});
+
+test("S14 — STRICT, cancelled late: 0% back; the settlement records the outcome set with NO Stripe call and a NULL refund id; the seller minted the full figures", async () => {
+  stubSucceed();
+  const id = await bornBundleBooking({ policy: "strict", details: { scheduledDate: startIn(24) } });
+  await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compA, actor });
+  await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compB, actor });
+  const c = await recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compC, travelerUserId: ids.traveler });
+  assert.ok(c.recorded);
+  assert.equal(c.terms.policyType, "strict");
+  assert.equal(c.terms.refundPercent, 0);
+  assert.equal(c.terms.refundCents, 0);
+  assert.equal(c.terms.retainedCents, 2000);
+  assert.equal(c.partiallyCompleted, true, "the component is still NOT delivered — the parent is partial, not complete");
+  assert.ok(c.settlement && c.settlement.settled, JSON.stringify(c.settlement));
+  assert.equal(c.settlement!.travelerRefundCents, 0);
+  assert.equal(c.settlement!.stripeRefundId, null, "nothing was refunded, so no refund id is claimed");
+  assert.equal(calls.length, 0, "NO Stripe call");
+  const s = (await settlementRows(id))[0];
+  assert.ok(s.settled_at, "promoted at once — the outcome set is the record");
+  assert.equal(s.stripe_refund_id, null);
+  assert.equal(s.traveler_refund_cents, 0);
+  assert.equal(s.settled_amount_cents, 10000);
+  assert.equal((await refundRows(id)).length, 0, "no refund audit row for a refund that did not happen");
+  const row = await componentRow(id, ids.compC);
+  assert.equal(row.status, "cancelled");
+  assert.equal(row.cancelRefundPercent, 0);
+  assert.equal(row.refundedAt, null, "a 0 refund is NOT stamped as refunded (§13)");
+  assert.equal(row.refundAmountCents, null);
+  const l = await ledger(id);
+  assert.equal(l.platformRevenue[0].gross_amount, "100.00");
+  assert.equal(l.providerEarnings[0].amount, "75.00");
+  assert.match(await mintDescription(id), /retained 2000 cents/);
+  assert.equal((await readBooking(id)).status, PARTIALLY_COMPLETED_STATUS, "never `completed` — one component was not delivered");
+  // The sweep finds nothing to do; a retry converges; still no Stripe call.
+  assert.equal((await sweepUnsettledBundlePartials({ onlyBookingIds: [id] })).scanned, 0);
+  assert.equal(((await issueBundlePartialSettlement({ bookingId: id })) as any).alreadySettled, true);
+  assert.equal(calls.length, 0);
+});
+
+test("S15 — MIXED: one component FAILED (full allocation) + one CANCELLED at 50% ⇒ ONE settlement, ONE Stripe call, the right sum", async () => {
+  stubSucceed();
+  const id = await bornBundleBooking({ policy: "moderate", details: { scheduledDate: startIn(72) } });
+  const f = await recordBundleComponentFailure({ bookingId: id, componentServiceId: ids.compB, actor, reason: "venue closed" });
+  assert.equal(f.recorded, true);
+  const c = await recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compC, travelerUserId: ids.traveler });
+  assert.ok(c.recorded);
+  assert.equal(c.partiallyCompleted, false, "A is still pending");
+  assert.equal(calls.length, 0);
+  const last = await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compA, actor });
+  assert.equal(last.partiallyCompleted, true);
+  assert.equal(last.settlement!.settled, true);
+  // B's whole 4000 (nonperformance, no policy) + C's 1000 (50% under the policy) = 5000 ⇒ fees at 50%.
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].params.amount, 5000 + 250 + 500);
+  const s = (await settlementRows(id))[0];
+  assert.equal(s.settled_amount_cents, 5000, "A's 4000 + C's retained 1000");
+  assert.equal(s.seller_earning_cents, 3750);
+  assert.equal(s.component_outcomes.refundedFraction, 0.5);
+  const outcomes = s.component_outcomes.components as any[];
+  assert.deepEqual(outcomes.map((o) => [o.componentServiceId, o.outcome, o.refundCents, o.refundPercent]), [
+    [ids.compA, "delivered", 0, null],
+    [ids.compB, "failed", 4000, null],
+    [ids.compC, "cancelled", 1000, 50],
+  ]);
+  for (const [cid, cents] of [[ids.compB, 4000], [ids.compC, 1000]] as const) {
+    const row = await componentRow(id, cid);
+    assert.equal(row.refundAmountCents, cents);
+    assert.equal(row.stripeRefundId, s.stripe_refund_id);
+  }
+  const l = await ledger(id);
+  assert.equal(l.platformRevenue[0].gross_amount, "50.00");
+  assert.equal(l.providerEarnings[0].amount, "37.50");
+  assert.match(await mintDescription(id), /2 undelivered component\(s\) deducted; basis allocation; 1 traveler-cancelled component\(s\) retained 1000 cents/);
+  assert.equal((await refundRows(id)).length, 1);
+});
+
+test("S16 — no purchase-time policy snapshot ⇒ the cancel is REFUSED by name, the component stays pending, nothing moves; the live listing is never read", async () => {
+  stubSucceed();
+  const id = await bornBundleBooking({ policy: "flexible", details: { scheduledDate: startIn(240) } });
+  // A booking committed without OC-B1's snapshot (pre-291, or a composition that failed and stamped nothing).
+  await db.execute(sql`UPDATE service_bookings SET offering_contract_snapshot = NULL WHERE id = ${id}`);
+  const c = await recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compC, travelerUserId: ids.traveler });
+  assert.equal(c.recorded, false);
+  assert.equal((c as any).reason, "policy_snapshot_missing");
+  const row = await componentRow(id, ids.compC);
+  assert.equal(row.status, "pending");
+  assert.equal(row.cancelledAt, null);
+  assert.equal(row.cancelRefundPercent, null);
+  assert.equal((await readBooking(id)).status, "confirmed");
+  assert.equal(calls.length, 0);
+  // The listing's LIVE policy is flexible and would have said 100% — and it is deliberately not consulted.
+  assert.doesNotMatch(
+    code("server/services/booking-completion.service.ts").slice(
+      code("server/services/booking-completion.service.ts").indexOf("export async function recordBundleComponentCancellation"),
+      code("server/services/booking-completion.service.ts").indexOf("export interface SettleBundlePartialResult"),
+    ),
+    /cancellationPolicyType|providerServices|quoteCancellationForBooking/,
+    "the recorder reads the SNAPSHOT's terms only — never the live listing",
+  );
+  // A snapshot that recorded NO policy is a different fact: the listing declared none ⇒ the ONE
+  // normalizer's stance (flexible, defaulted), exactly as a whole-row cancel of the same booking.
+  const none = await bornBundleBooking({ policy: null, details: { scheduledDate: startIn(240) } });
+  const d = await recordBundleComponentCancellation({ bookingId: none, componentServiceId: ids.compC, travelerUserId: ids.traveler });
+  assert.ok(d.recorded, JSON.stringify(d));
+  assert.equal(d.terms.policyType, "flexible");
+  assert.equal(d.terms.policyDefaulted, true);
+  assert.equal(d.terms.refundPercent, 100);
+  // A pre-307 row (no allocation) cannot be traveler-cancelled per component: nothing to apply a percent to.
+  const legacy = await bornBundleBooking({ policy: "flexible", details: { scheduledDate: startIn(240) } });
+  await db.execute(sql`UPDATE booking_component_states SET allocation_cents = NULL WHERE booking_id = ${legacy}`);
+  const e = await recordBundleComponentCancellation({ bookingId: legacy, componentServiceId: ids.compC, travelerUserId: ids.traveler });
+  assert.equal(e.recorded, false);
+  assert.equal((e as any).reason, "allocation_missing");
+  assert.equal((await componentRow(legacy, ids.compC)).status, "pending");
+});
+
+test("S17 — HISTORICAL SNAPSHOT: a policy edit after purchase and a reschedule after the cancel move NOTHING", async () => {
+  stubSucceed();
+  const id = await bornBundleBooking({ policy: "flexible", details: { scheduledDate: startIn(240) } });
+  // The seller tightens the listing to non-refundable AFTER the sale …
+  await db.execute(sql`UPDATE provider_services SET cancellation_policy_type = 'non_refundable' WHERE id = ${ids.bundle}`);
+  try {
+    const c = await recordBundleComponentCancellation({ bookingId: id, componentServiceId: ids.compC, travelerUserId: ids.traveler });
+    assert.ok(c.recorded);
+    assert.equal(c.terms.policyType, "flexible", "… and the traveler is still under the policy they bought");
+    assert.equal(c.terms.refundPercent, 100);
+    // … then the booking is rescheduled to tomorrow AFTER the cancel (which would read 0% under flexible if re-resolved) …
+    await db.execute(sql`
+      UPDATE service_bookings
+         SET booking_details = booking_details || ${JSON.stringify({ scheduledDate: startIn(1) })}::jsonb
+       WHERE id = ${id}
+    `);
+    await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compA, actor });
+    const last = await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compB, actor });
+    assert.equal(last.settlement!.settled, true);
+    // … and the settlement reads the PIN, not the clock: the same 2300 the un-edited S12 refunded.
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].params.amount, 2300);
+    const s = (await settlementRows(id))[0];
+    assert.equal(s.settled_amount_cents, 8000);
+    assert.equal((s.component_outcomes.components as any[])[2].refundPercent, 100);
+    assert.equal((await componentRow(id, ids.compC)).cancelRefundPercent, 100, "the pin never moved");
+  } finally {
+    await db.execute(sql`UPDATE provider_services SET cancellation_policy_type = NULL WHERE id = ${ids.bundle}`);
+  }
 });

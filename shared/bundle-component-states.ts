@@ -34,10 +34,11 @@ export const PARTIALLY_COMPLETED_STATUS = "partially_completed";
 /**
  * Per-component `booking_component_states.status` values. App-enforced, NO DB CHECK (the publish-
  * trap posture). `pending` is the born state (the checkout composer writes it); `completed` and
- * `failed` are the two this lane's writers move a row to; `cancelled` and `refunded` are DECLARED
- * so the derivation below already reads them correctly, but NO WRITER exists for either in this
- * lane — a component refund is the brief's lane 4 and needs a rail the whole-row refund cannot
- * express (see the lane report). A reader that meets an unknown value treats it as UNRESOLVED,
+ * `failed` are the seller's two answers (the owner rails); `cancelled` is the TRAVELER's answer
+ * (ledger `2026-09-16-bundle-component-traveler-cancel` — `POST /api/bookings/:id/components/
+ * :componentServiceId/cancel`, which pins `cancel_refund_percent` in the same flip); `refunded` is
+ * DECLARED so the derivation reads it correctly but still has NO WRITER (a row reading it is handed
+ * to a human, never refunded twice). A reader that meets an unknown value treats it as UNRESOLVED,
  * never as delivered.
  */
 export const BUNDLE_COMPONENT_STATUS = {
@@ -69,6 +70,34 @@ export interface BundleComponentView {
    * CATALOG fact. NULL/absent = not captured (a pre-307 row, or an unpriced snapshot) — never 0.
    */
   allocationCents?: number | null;
+  /**
+   * Locked Decision 50, second half (ledger `2026-09-16-bundle-component-traveler-cancel`; migration
+   * 309): for a `cancelled` component, the refund percent the SNAPSHOTTED cancellation policy yielded at
+   * the instant the traveler cancelled — pinned by the cancel writer in the same atomic flip, read here
+   * and never re-resolved. NULL/absent on a `cancelled` row = the terms were never recorded (a row no
+   * writer of this rail produced), which every reader REFUSES by name (`cancel_terms_missing`, §13)
+   * rather than applying a guessed tier. Meaningless on any other status and ignored there.
+   */
+  cancelRefundPercent?: number | null;
+}
+
+/** A pinned cancel percent is valid exactly when it is an integer in [0, 100]. */
+export function isValidCancelRefundPercent(p: unknown): p is number {
+  return typeof p === "number" && Number.isInteger(p) && p >= 0 && p <= 100;
+}
+
+/**
+ * THE ONE ARITHMETIC of a traveler-cancelled component's refund (Locked Decision 50: "the component's
+ * allocated amount follows the snapshotted cancellation policy and deadline"). `allocationCents ×
+ * percent / 100`, rounded half-up to a whole cent — the same rounding `computeCancellationRefund`
+ * applies to a whole-row cancellation, so the two rails cannot disagree by a cent on the same tier.
+ * Deterministic: the same allocation and the same pinned percent always yield the same cents, which is
+ * what lets the mint and the settlement each compute it and be guaranteed to agree (§18 rule 1 — one
+ * function, two callers). The remainder (`allocationCents − refund`) is RETAINED by the seller and is
+ * minted as delivered value. Never called with an unpinned percent: callers refuse that case first.
+ */
+export function cancelledComponentRefundCents(allocationCents: number, percent: number): number {
+  return Math.round((allocationCents * percent) / 100);
 }
 
 /**
@@ -184,15 +213,24 @@ export type ReducedBundleFigures =
   | {
       ok: true;
       basis: ReducedBundleBasis;
-      /** Fraction of the snapshotted component value that WAS delivered, in [0,1]. */
+      /** Fraction of the price the seller KEEPS, in [0,1]: delivered value plus any retained cancelled remainder. */
       keptFraction: number;
       /** The mint's figures, as strings in the row's own 2-decimal shape. */
       grossAmount: string;
       platformFee: string;
       providerEarnings: string;
-      /** The share of what the traveler was charged that the undelivered components represent. */
+      /** The share of the price the traveler is owed back — Σ failed allocations + Σ cancelled refunds. */
       deductedAmount: string;
       undeliveredComponentIds: string[];
+      /**
+       * Locked Decision 50, second half: the cents of CANCELLED components' allocations the seller RETAINS
+       * under the snapshotted policy (allocation − refund, per component), minted as delivered value. 0
+       * when no component was cancelled, or every cancellation refunded in full. Only ever non-zero on the
+       * `allocation` basis — the snapshot fallback predates the cancel rail and has no allocation to apply
+       * a percent to.
+       */
+      cancelledRetainedCents: number;
+      cancelledComponentIds: string[];
       /** Snapshot (catalog) sums when every component carries one; NULL = not captured, never 0 (§13). */
       undeliveredSnapshotCents: number | null;
       totalSnapshotCents: number | null;
@@ -205,8 +243,12 @@ export type ReducedBundleFigures =
        * `zero_priced_bundle` — the snapshot sums to 0 cents, so no share can be derived.
        * `nothing_undelivered` — the caller asked for reduced figures on a bundle with no undelivered
        *   component; that is the FULL mint's case, not this one.
+       * `cancel_terms_missing` — a `cancelled` component carries no pinned `cancelRefundPercent`, so the
+       *   snapshotted policy's outcome is unknown; the seller's kept share cannot be stated (§13). Only on
+       *   the allocation basis — see `cancelledRetainedCents`.
        */
-      reason: "component_price_unknown" | "zero_priced_bundle" | "nothing_undelivered";
+      reason: "component_price_unknown" | "zero_priced_bundle" | "nothing_undelivered" | "cancel_terms_missing";
+      detail?: string;
     };
 
 /**
@@ -254,8 +296,30 @@ export function reducedBundleFigures(input: {
   // time `platform_fee` / `provider_earnings` (the ORIGINAL commission, never re-resolved). ───────────
   const totalCents = Math.round(total * 100);
   if (totalCents > 0 && allocationsAreComplete(input.components, totalCents)) {
-    const undeliveredAllocationCents = undelivered.reduce((s, c) => s + (c.allocationCents as number), 0);
-    const keptCents = totalCents - undeliveredAllocationCents;
+    // Locked Decision 50, second half (ledger `2026-09-16-bundle-component-traveler-cancel`): a FAILED
+    // (or `refunded`) component's whole allocation leaves the seller — nonperformance, no policy input.
+    // A CANCELLED component's allocation follows the policy PINNED on the row at the cancel instant:
+    // `refund = cancelledComponentRefundCents(allocation, percent)` goes back to the traveler and the
+    // REMAINDER is retained by the seller and minted as delivered value. A cancelled row with no pinned
+    // percent makes the kept share unknowable and is REFUSED by name, never split by a guessed tier.
+    let refundedAllocationCents = 0;
+    let cancelledRetainedCents = 0;
+    const cancelledComponentIds: string[] = [];
+    for (const c of undelivered) {
+      const alloc = c.allocationCents as number;
+      if (c.status === BUNDLE_COMPONENT_STATUS.cancelled) {
+        if (!isValidCancelRefundPercent(c.cancelRefundPercent)) {
+          return { ok: false, reason: "cancel_terms_missing", detail: c.componentServiceId };
+        }
+        const refund = cancelledComponentRefundCents(alloc, c.cancelRefundPercent);
+        refundedAllocationCents += refund;
+        cancelledRetainedCents += alloc - refund;
+        cancelledComponentIds.push(c.componentServiceId);
+      } else {
+        refundedAllocationCents += alloc;
+      }
+    }
+    const keptCents = totalCents - refundedAllocationCents;
     const keptFraction = Math.min(Math.max(keptCents / totalCents, 0), 1);
     return {
       ok: true,
@@ -264,14 +328,19 @@ export function reducedBundleFigures(input: {
       grossAmount: money2(keptCents / 100),
       platformFee: money2(fee * keptFraction),
       providerEarnings: money2(earnings * keptFraction),
-      deductedAmount: money2(undeliveredAllocationCents / 100),
+      deductedAmount: money2(refundedAllocationCents / 100),
       undeliveredComponentIds: undelivered.map((c) => c.componentServiceId),
+      cancelledRetainedCents,
+      cancelledComponentIds,
       undeliveredSnapshotCents,
       totalSnapshotCents,
     };
   }
 
-  // ── D-35 fallback: pro-rata over the SNAPSHOT prices, for rows born before migration 307. ──────────
+  // ── D-35 fallback: pro-rata over the SNAPSHOT prices, for rows born before migration 307. A `cancelled`
+  // row here is treated as fully undelivered, as D-35 always did: with no allocation there is nothing to
+  // apply a percent to, and the cancel writer refuses such a bundle (`allocation_missing`) — so this arm
+  // is reachable only by a row no writer of this rail produced, and it predates the rail. ──────────────
   if (!snapshotKnown) return { ok: false, reason: "component_price_unknown" };
   if ((totalSnapshotCents as number) <= 0) return { ok: false, reason: "zero_priced_bundle" };
   const keptFraction = Math.min(
@@ -287,6 +356,10 @@ export function reducedBundleFigures(input: {
     providerEarnings: money2(earnings * keptFraction),
     deductedAmount: money2(total * (1 - keptFraction)),
     undeliveredComponentIds: undelivered.map((c) => c.componentServiceId),
+    cancelledRetainedCents: 0, // no allocation ⇒ no policy can be applied; nothing is retained here
+    cancelledComponentIds: undelivered
+      .filter((c) => c.status === BUNDLE_COMPONENT_STATUS.cancelled)
+      .map((c) => c.componentServiceId),
     undeliveredSnapshotCents,
     totalSnapshotCents,
   };

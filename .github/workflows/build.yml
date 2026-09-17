@@ -1744,13 +1744,24 @@ jobs:
       # callers produce one Stripe call (S4); a Stripe failure leaves a reclaimable claim that the sweep
       # re-drives past the TTL and nobody re-drives inside it (S5); the charge.refunded webhook promotes
       # once and a redelivery matches zero rows (S6); repricing after purchase moves nothing (S7); no
-      # PaymentIntent ⇒ custody unknown ⇒ refused (S8); cancelled refuses, failed settles (S9); a pre-307
-      # row mints by snapshot pro-rata and cannot settle (S10). Stripe.refunds.create is stubbed.
-      - name: The bundle partial settlement (S1-S10)
+      # PaymentIntent ⇒ custody unknown ⇒ refused (S8); a `cancelled` row with NO pinned policy outcome
+      # refuses by name while failed settles (S9); a pre-307 row mints by snapshot pro-rata and cannot
+      # settle (S10). Stripe.refunds.create is stubbed.
+      # LD 50 SECOND HALF — THE TRAVELER-CANCELLED COMPONENT (ledger
+      # 2026-09-16-bundle-component-traveler-cancel; migration 309): the cancel is ONE flip under a
+      # concurrent double call, pins `cancel_refund_percent`, and refuses a non-pending component, a
+      # non-traveler and an unknown component by name (S11); a flexible cancel before the deadline
+      # refunds 100% of the allocation + fee share (S12); a moderate cancel inside the window refunds 50%
+      # and the seller keeps the rest, minted and NAMED in the basis (S13); a strict late cancel refunds
+      # 0 and settles with NO Stripe call and a NULL refund id (S14); mixed failed + cancelled settles
+      # once with the right sum (S15); no purchase-time policy snapshot ⇒ the cancel is refused and
+      # nothing moves (S16); a policy edit or a reschedule after purchase moves nothing (S17).
+      - name: The bundle partial settlement (S1-S17)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/bundle-partial-settlement.db.test.ts
       # The PURE layer beside it: the allocation arithmetic, the basis the mint reads, the ONE settlement
-      # derivation. No DB — wired in this `npm ci` job because it imports `@shared/` (the #812 lesson).
-      - name: The one settlement derivation (SP1-SP8)
+      # derivation, and (SP9) the cancelled component's pinned-percent arithmetic in both the mint and the
+      # settlement. No DB — wired in this `npm ci` job because it imports `@shared/` (the #812 lesson).
+      - name: The one settlement derivation (SP1-SP9)
         run: npx tsx --test --test-force-exit shared/__tests__/bundle-partial-settlement.test.ts
 
   plan-proposals:

@@ -129,7 +129,15 @@ export function describeOptimizationPreview(
 
 export const TRIP_PASS_COVERED_LABEL = "Included in your Trip Pass";
 
-function formatMoney(cents: number, currency: string): string {
+/**
+ * ONE MONEY FORMATTER FOR THE SLIP'S AI CONTROLS (§18 rule 1).
+ *
+ * Exported for the Ask-AI drawer (ledger `2026-09-16-l16-lanes2-3-drawer`), which states the
+ * `concierge:ai_task` band's server-resolved amount beside this rail's own run fee. A second
+ * `Intl.NumberFormat` call written beside it is how one surface starts rendering `$12` where the
+ * other renders `$12.00`. It formats a number the SERVER resolved and derives no amount itself.
+ */
+export function formatMoneyCents(cents: number, currency: string): string {
   const amount = cents / 100;
   try {
     return new Intl.NumberFormat(undefined, {
@@ -157,5 +165,5 @@ export function formatOptimizationFeeLabel(
   if (fee.aiDisabled) return null;
   if (fee.coveredByTripPass) return TRIP_PASS_COVERED_LABEL;
   if (!Number.isFinite(fee.feeCents) || fee.feeCents <= 0) return null;
-  return `${formatMoney(fee.feeCents, fee.currency)} to run · charged only when you confirm`;
+  return `${formatMoneyCents(fee.feeCents, fee.currency)} to run · charged only when you confirm`;
 }

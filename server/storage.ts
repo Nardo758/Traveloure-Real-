@@ -3576,6 +3576,10 @@ export class DatabaseStorage implements IStorage {
           // every row carries one and they sum to the price, the kept gross is Σ delivered allocations
           // exactly; a pre-307 row falls back to the D-35 snapshot pro-rata. The basis is NAMED below.
           allocationCents: r.allocationCents ?? null,
+          // Locked Decision 50, second half (ledger `2026-09-16-bundle-component-traveler-cancel`): a
+          // traveler-CANCELLED component's pinned policy outcome. The reduction refunds `allocation ×
+          // percent` and keeps the remainder as delivered value; a cancelled row with no pin REFUSES.
+          cancelRefundPercent: r.cancelRefundPercent ?? null,
         })),
       });
       if (!reduced.ok) {
@@ -3587,7 +3591,14 @@ export class DatabaseStorage implements IStorage {
       grossAmount = parseFloat(reduced.grossAmount);
       platformFee = parseFloat(reduced.platformFee);
       providerEarningsAmount = parseFloat(reduced.providerEarnings);
-      mintBasis = ` (partially completed — ${reduced.undeliveredComponentIds.length} undelivered component(s) deducted; basis ${reduced.basis})`;
+      // The basis NAMES what it read (§13): which fact reduced it, and — when a traveler cancel left
+      // the seller a policy remainder — how many cents of cancelled allocation were RETAINED and minted
+      // as delivered value, so a ledger reader can tell a nonperformance deduction from a policy one.
+      const retained =
+        reduced.cancelledRetainedCents > 0
+          ? `; ${reduced.cancelledComponentIds.length} traveler-cancelled component(s) retained ${reduced.cancelledRetainedCents} cents under the snapshotted cancellation policy`
+          : "";
+      mintBasis = ` (partially completed — ${reduced.undeliveredComponentIds.length} undelivered component(s) deducted; basis ${reduced.basis}${retained})`;
     }
     // Earnings become available after the configurable hold period (config, `holdWindowDays`).
     //
