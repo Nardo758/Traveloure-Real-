@@ -17,6 +17,7 @@ import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.ser
 import { computeJobHealth, isAnyJobUnhealthy } from "../services/job-heartbeats.service";
 import { JOB_CADENCE } from "./internal.routes";
 import { listGemCandidates, approveGemCandidate, rejectGemCandidate } from "../services/gem-promotion.service";
+import { MOMENTS } from "../services/landing-moments";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
 import {
@@ -7671,7 +7672,10 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
       return res.status(403).json({ message: "Admin access required" });
     }
     try {
-      res.json({ candidates: await listGemCandidates() });
+      res.json({
+        candidates: await listGemCandidates(),
+        momentOptions: MOMENTS.map(({ key, label, city }) => ({ key, label, city })),
+      });
     } catch (err) {
       console.error("[Gem Candidates] list error:", err);
       res.status(500).json({ message: "Failed to fetch gem candidates" });
@@ -7680,7 +7684,7 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
 
   // POST /api/admin/gem-candidates/:id/approve — SCORING happens here: the reviewing
   // admin assigns gem_score (1–100, integer, validated). Body is a hand-named
-  // allowlist (§19): gemScore + optional placeName/placeType/country overrides.
+  // allowlist (§19): gemScore + optional placeName/placeType/country/momentKey overrides.
   // The place name defaults to the nugget's linked POI; with neither, the approve
   // is refused rather than a gem born nameless (§13 — never guess a place).
   router.post("/api/admin/gem-candidates/:id/approve", isAuthenticated, async (req, res) => {
@@ -7697,6 +7701,7 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
         placeName: typeof req.body?.placeName === "string" ? req.body.placeName : null,
         placeType: typeof req.body?.placeType === "string" ? req.body.placeType : null,
         country: typeof req.body?.country === "string" ? req.body.country : null,
+        momentKey: typeof req.body?.momentKey === "string" ? req.body.momentKey : null,
       });
       if (!result.ok) return res.status(result.status).json({ message: result.message });
 
@@ -7711,6 +7716,7 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
           gemScore: result.gem.gemScore,
           placeName: result.gem.placeName,
           curatedByExpertId: result.gem.curatedByExpertId,
+          momentKey: result.gem.momentKey,
         },
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,

@@ -2,14 +2,9 @@
  * moments-section.tsx — "Some trips are really one evening." (Landing v2.5 Lane 2, position 2).
  * Visual of record: docs/design/landing-earn-mock-v2.5.html (the Moments section).
  *
- * ONE moment per slide. Data is GET /api/landing/moments: `moments` = the LIVE set (each with ≥1
- * attributed real photo — the TRUST-surface gate, 2026-09-01-photo-tiers), `roster` = the whole
- * moment roster for the tab strip's faint pills (server-owned, never restated here — §18 rule 1;
- * the count is deliberately not written down, so adding a moment cannot make this comment lie).
- *
- * EMPTY STATE B (2026-09-01-landing-moments): when the live set is empty the section renders
- * NOTHING and appears the moment the first attributed real photo lands. With today's data the
- * gate admits zero (Phase 0: gem photos are Unsplash stock), so this is suppressed on real data.
+ * ONE moment per slide. Data is GET /api/landing/moments. Strictly eligible expert photos take
+ * precedence; bundled Creative Commons photos are visibly marked as representative and never
+ * carry expert attribution.
  *
  * Rotation reuses the shared useRotation (8s · hover pause · reduced-motion hold; one photo never
  * ticks and hides its dots). Attribution mirrors the upsell session posture (a per-session token,
@@ -26,7 +21,15 @@ import { usePlanning } from "@/contexts/PlanningContext";
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
-interface MomentPhoto { url: string; place: string; handle: string }
+interface MomentPhoto {
+  url: string;
+  place: string;
+  source: "expert" | "representative";
+  handle: string | null;
+  credit?: string;
+  license?: string;
+  sourceUrl?: string;
+}
 interface LiveMoment {
   key: string;
   label: string;
@@ -91,6 +94,9 @@ export function MomentsSection() {
   const [photoHover, setPhotoHover] = useState(false);
   const photoCount = moment?.photos.length ?? 0;
   const photoIdx = useRotation(photoCount, { intervalMs: 8000, paused: photoHover });
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const photo = moment?.photos[Math.min(photoIdx, Math.max(photoCount - 1, 0))] ?? moment?.photos[0];
+  useEffect(() => setPhotoFailed(false), [photo?.url]);
 
   // Impression: the active moment ≥2s visible = one impression.
   const sectionRef = useRef<HTMLDivElement | null>(null);
@@ -115,7 +121,7 @@ export function MomentsSection() {
   // Empty state B — suppress entirely until ≥1 moment is live. (All hooks run above this return.)
   if (moments.length === 0 || !moment) return null;
 
-  const photo = moment.photos[Math.min(photoIdx, photoCount - 1)] ?? moment.photos[0];
+  const isRepresentative = photo.source === "representative";
 
   return (
     <div ref={sectionRef}>
@@ -138,24 +144,59 @@ export function MomentsSection() {
             onMouseEnter={() => setPhotoHover(true)}
             onMouseLeave={() => setPhotoHover(false)}
           >
-            <img
-              src={photo.url}
-              alt={photo.place}
-              className="absolute inset-0 h-full w-full object-cover"
-              data-testid="moment-photo"
-            />
+            {photoFailed ? (
+              <div
+                className="absolute inset-0"
+                style={{ background: "linear-gradient(135deg,#B9C8D8,#7C97B4 52%,#E5C6B6)" }}
+                data-testid="moment-photo-fallback"
+                role="img"
+                aria-label={photo.place}
+              />
+            ) : (
+              <img
+                src={photo.url}
+                alt={photo.place}
+                className="absolute inset-0 h-full w-full object-cover"
+                data-testid="moment-photo"
+                onError={() => setPhotoFailed(true)}
+              />
+            )}
             <span
               className="absolute left-3.5 top-3.5 rounded-[6px] bg-white px-2 py-1 text-[9.5px] font-medium uppercase tracking-[0.08em]"
               style={{ fontFamily: EARN_MONO }}
             >
               {moment.label}
             </span>
+            {isRepresentative && (
+              <span
+                className="absolute right-3.5 top-3.5 rounded-[6px] bg-white/90 px-2 py-1 text-[9px] font-medium uppercase tracking-[0.08em]"
+                style={{ fontFamily: EARN_MONO, color: "var(--earn-navy)" }}
+                data-testid="moment-representative-label"
+              >
+                Representative photo
+              </span>
+            )}
             <div
               className="absolute bottom-3.5 left-3.5 text-[10.5px] uppercase tracking-[0.08em]"
               style={{ fontFamily: EARN_MONO, color: "rgba(255,255,255,0.9)", textShadow: "0 1px 6px rgba(0,0,0,0.5)" }}
               data-testid="moment-caption"
             >
-              {photo.place} · @{photo.handle}
+              {photo.place}
+              {photo.source === "expert" && photo.handle ? ` · @${photo.handle}` : ""}
+              {isRepresentative && photo.credit && (
+                <>
+                  {" · "}
+                  <a
+                    href={photo.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline decoration-white/60 underline-offset-2"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    Photo: {photo.credit}{photo.license ? ` (${photo.license})` : ""}
+                  </a>
+                </>
+              )}
             </div>
             {photoCount > 1 && (
               <div className="absolute bottom-4 right-3.5 flex gap-1.5" data-testid="moment-dots">
@@ -220,7 +261,11 @@ export function MomentsSection() {
                 Plan this moment
               </button>
               {moment.builder && (
-                <span className="text-[11px]" style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}>
+                <span
+                  className="text-[11px]"
+                  style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
+                  data-testid="moment-builder"
+                >
                   built by @{moment.builder.handle}
                   {moment.builder.reviews > 0 ? ` · ${moment.builder.reviews} review${moment.builder.reviews === 1 ? "" : "s"}` : ""}
                 </span>

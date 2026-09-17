@@ -63,7 +63,12 @@ const LIVE_PAYLOAD = {
       pieces: ["one", "two", "three"],
       experienceType: "wedding",
       experienceSlug: "wedding",
-      photos: [{ url: "https://example.test/fixture.jpg", place: "Nanzen-ji", handle: "fixture" }],
+      photos: [{
+        url: "https://example.test/fixture.jpg",
+        place: "Nanzen-ji",
+        source: "expert",
+        handle: "fixture",
+      }],
       builder: { handle: "fixture", reviews: 0 },
     },
   ],
@@ -71,6 +76,24 @@ const LIVE_PAYLOAD = {
 };
 
 const EMPTY_PAYLOAD = { moments: [], roster: [{ key: "wedding", label: "Wedding" }] };
+const REPRESENTATIVE_PAYLOAD = {
+  moments: [
+    {
+      ...LIVE_PAYLOAD.moments[0],
+      photos: [{
+        url: "/images/moments/kyoto-wedding.jpg",
+        place: "Kyoto after dark",
+        source: "representative",
+        handle: null,
+        credit: "Julien",
+        license: "Pexels license",
+        sourceUrl: "https://www.pexels.com/photo/couple-strolling-in-kyoto-s-nighttime-alley-34576557/",
+      }],
+      builder: null,
+    },
+  ],
+  roster: LIVE_PAYLOAD.roster,
+};
 
 function render(node: React.ReactElement, payload: unknown): string {
   const qc = new QueryClient({ defaultOptions: { queries: { enabled: false, retry: false } } });
@@ -138,5 +161,26 @@ describe("Moments — the 'Planning your own?' callout", () => {
       "one anchor in the callout — the /start/events link and nothing else",
     );
     assert.equal((callout.match(/<button/g) || []).length, 0, "no button in the callout");
+  });
+
+  it("C5 labels representative imagery and shows its linked license credit without expert attribution", () => {
+    const html = render(<MomentsSection />, REPRESENTATIVE_PAYLOAD);
+
+    assert.ok(html.includes("Representative photo"));
+    assert.ok(html.includes("Photo: "));
+    assert.ok(html.includes("Julien"));
+    assert.ok(html.includes("(Pexels license)"));
+    assert.ok(html.includes('href="https://www.pexels.com/photo/couple-strolling-in-kyoto-s-nighttime-alley-34576557/"'));
+    assert.ok(!html.includes("built by @"), "representative imagery never receives a builder byline");
+    assert.ok(!html.includes("Kyoto after dark · @"), "representative caption never receives an expert handle");
+  });
+
+  it("C6 keeps real expert attribution and omits the representative label", () => {
+    const html = render(<MomentsSection />, LIVE_PAYLOAD);
+
+    assert.ok(html.includes("Nanzen-ji"));
+    assert.ok(html.includes("@fixture"));
+    assert.ok(html.includes('data-testid="moment-builder"'));
+    assert.ok(!html.includes("Representative photo"));
   });
 });

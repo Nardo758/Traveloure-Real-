@@ -4751,6 +4751,10 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
   // manually by admins or via the expert workspace "Recommend a gem" action.
   curatedByExpertId: varchar("curated_by_expert_id", { length: 255 }),
 
+  // Optional landing Moment association. NULL means the media is not approved for any
+  // specific Moment and therefore cannot replace a Moment's representative photo.
+  momentKey: varchar("moment_key", { length: 30 }),
+
   // Timestamps
   detectedAt: timestamp("detected_at").defaultNow(),
   lastUpdated: timestamp("last_updated").defaultNow(),

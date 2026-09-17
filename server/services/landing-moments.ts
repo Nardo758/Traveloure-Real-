@@ -6,13 +6,10 @@
  * `experienceType` its CTA prefills (ruling 2026-09-01-moment-key — momentKey carries the fine
  * identity, and it equals `key`). The `label` is the tab-strip pill text.
  *
- * PHOTO GATE — a TRUST surface (ruling 2026-09-01-photo-tiers): a moment's photos are ATTRIBUTED
- * REAL photos ONLY — an expert-curated gem whose image is NOT stock, with the curating expert's
- * `@handle` resolving the caption. Stock hosts (unsplash/pexels/google) are excluded, so seeded
- * gem imagery never counts. `resolveLandingMoments` returns only moments with ≥1 such photo;
- * with today's data that is [] (Phase 0: every photo-bearing gem is Unsplash stock), so the
- * client suppresses the section (empty state B). Builder byline is the curating expert's real
- * handle + review count, honest-omitted when absent (§13).
+ * PHOTO GATE — a TRUST surface (ruling 2026-09-01-photo-tiers): attributed expert photos remain
+ * subject to the strict non-stock gate. Until one qualifies, the moment uses a bundled Creative
+ * Commons representative photo with visible license credit and no expert attribution. A real
+ * photo replaces that fallback only when it is associated with the specific Moment.
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
@@ -47,11 +44,9 @@ export const MOMENTS: MomentConfig[] = [
     // order the live set is built in, and the section's rotation starts at index 0 — so the
     // artboard's "Wedding active by default" is exactly this position, not a second concept.
     //
-    // NO PHOTO IS SEEDED FOR THIS ROW, deliberately (§13 + the PHOTO GATE above): a moment goes
-    // live only when its city has ≥1 attributed real, non-stock, expert-curated gem photo. Kyoto
-    // has none in production today, so this row is configured and INVISIBLE until a real
-    // attributed photo exists. That is the honest state, not a gap to route around — the gate is
-    // never loosened to make a moment appear.
+    // No expert photo is seeded for this row. Until a qualifying attributed photo exists, the
+    // resolver uses the visibly labeled representative image; the real-photo gate is never
+    // loosened to make a stock image appear expert-supplied.
     key: "wedding",
     label: "Wedding",
     eyebrow: "A wedding weekend in Kyoto",
@@ -214,7 +209,13 @@ export function occasionPromptLine(momentKey: unknown): string {
 export interface MomentPhoto {
   url: string;
   place: string;
-  handle: string;
+  source: "expert" | "representative";
+  handle: string | null;
+  credit?: string;
+  license?: string;
+  sourceUrl?: string;
+  /** Server-side association used to prevent city-level media from crossing Moment boundaries. */
+  momentKey?: string;
 }
 export interface LiveMoment {
   key: string;
@@ -229,27 +230,125 @@ export interface LiveMoment {
   builder: { handle: string; reviews: number } | null;
 }
 
+const REPRESENTATIVE_PHOTOS: Record<
+  string,
+  Pick<MomentPhoto, "url" | "place" | "source" | "handle" | "credit" | "license" | "sourceUrl">
+> = {
+  wedding: {
+    url: "/images/moments/goa-honeymoon.jpg",
+    place: "Goa at sunset",
+    source: "representative",
+    handle: null,
+    credit: "Lucksborn Sangma",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/silhouettes-of-bride-and-groom-hugging-at-sunset-5026140/",
+  },
+  proposal: {
+    url: "/images/moments/proposal-after-dark.jpg",
+    place: "A proposal after dark",
+    source: "representative",
+    handle: null,
+    credit: "Elist Nguyen",
+    license: "Unsplash License",
+    sourceUrl: "https://unsplash.com/photos/man-proposes-to-woman-at-night-by-city-lights-IvXYgLLo08A?utm_source=traveloure&utm_medium=referral",
+  },
+  golf: {
+    url: "/images/moments/edinburgh-golf.jpg",
+    place: "The final tee time",
+    source: "representative",
+    handle: null,
+    credit: "cottonbro studio",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/a-man-holding-a-golf-club-6256838/",
+  },
+  girls_trip: {
+    url: "/images/moments/cartagena-girls-trip.jpg",
+    place: "A night out together",
+    source: "representative",
+    handle: null,
+    credit: "Yaroslav Shuraev",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/young-women-in-street-style-fashion-standing-for-a-group-photo-7645790/",
+  },
+  anniversary: {
+    url: "/images/moments/porto-anniversary.jpg",
+    place: "The Douro riverfront, Porto",
+    source: "representative",
+    handle: null,
+    credit: "Yuri Félix",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/woman-sitting-and-man-lying-down-on-wall-by-river-19196622/",
+  },
+  honeymoon: {
+    url: "/images/moments/kyoto-wedding.jpg",
+    place: "Kyoto after dark",
+    source: "representative",
+    handle: null,
+    credit: "Julien",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/couple-strolling-in-kyoto-s-nighttime-alley-34576557/",
+  },
+  milestone_birthday: {
+    url: "/images/moments/mumbai-birthday.jpg",
+    place: "A rooftop celebration after dark",
+    source: "representative",
+    handle: null,
+    credit: "Nguyen Hung",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/night-party-celebration-with-friends-on-rooftop-30592863/",
+  },
+  family_occasion: {
+    url: "/images/moments/jaipur-family.jpg",
+    place: "A family celebration at dusk",
+    source: "representative",
+    handle: null,
+    credit: "Yan Krukau",
+    license: "Pexels license",
+    sourceUrl: "https://www.pexels.com/photo/people-standing-on-the-balcony-while-holding-lighted-sparkler-8818591/",
+  },
+};
+
+export function selectMomentPhotos(
+  momentKey: string,
+  attributedPhotos: MomentPhoto[],
+  attributedBuilder: { handle: string; reviews: number } | null = null,
+): { photos: MomentPhoto[]; builder: { handle: string; reviews: number } | null } {
+  const representative = REPRESENTATIVE_PHOTOS[momentKey];
+
+  const matchingPhotos = attributedPhotos.filter((photo) => photo.momentKey === momentKey);
+  if (matchingPhotos.length > 0) {
+    return { photos: matchingPhotos, builder: attributedBuilder };
+  }
+
+  return {
+    photos: representative ? [representative] : [],
+    builder: null,
+  };
+}
+
 /**
- * Attributed real photos for a market: an expert-curated gem whose image is NOT stock, with the
- * curating expert's handle. The gate excludes stock hosts (unsplash/pexels/google), so seeded
+ * Attributed real photos for a Moment: an expert-curated gem in its market whose moment_key
+ * exactly matches. The gate excludes stock hosts (unsplash/pexels/google), so seeded
  * imagery never qualifies. Returns photos + the curating expert's handle/review-count (the
  * builder byline source). Best-effort: a query failure yields [] (the moment stays out — §13).
  */
-async function attributedPhotosForCity(
+async function attributedPhotosForMoment(
   city: string,
+  momentKey: string,
 ): Promise<{ photos: MomentPhoto[]; builder: { handle: string; reviews: number } | null }> {
   try {
     // NOTE: `users` has no review_count column, so the builder review count honest-omits (0 → the
     // byline shows "built by @handle" with no count). A real per-expert review count is a filed
     // follow-up; §13 — never a fabricated number.
     const rows = await db.execute(sql`
-      SELECT g.image_url AS url, g.place_name AS place, u.handle AS handle
+      SELECT g.image_url AS url, g.place_name AS place, u.handle AS handle, g.moment_key AS moment_key
       FROM travel_pulse_hidden_gems g
       JOIN users u ON u.id = g.curated_by_expert_id
       JOIN local_expert_forms f
         ON f.user_id = u.id
        AND LOWER(TRIM(f.city)) = LOWER(TRIM(${city}))
       WHERE g.city ILIKE ${city}
+        AND g.moment_key = ${momentKey}
         AND g.image_url IS NOT NULL AND g.image_url <> ''
         AND COALESCE(g.ai_generated, false) = false
         AND u.handle IS NOT NULL AND u.handle <> ''
@@ -261,8 +360,14 @@ async function attributedPhotosForCity(
       ORDER BY g.gem_score DESC NULLS LAST
       LIMIT 4
     `);
-    const list = (rows.rows ?? []) as Array<{ url: string; place: string; handle: string }>;
-    const photos: MomentPhoto[] = list.map((r) => ({ url: r.url, place: r.place, handle: r.handle }));
+    const list = (rows.rows ?? []) as Array<{ url: string; place: string; handle: string; moment_key: string }>;
+    const photos: MomentPhoto[] = list.map((r) => ({
+      url: r.url,
+      place: r.place,
+      source: "expert",
+      handle: r.handle,
+      momentKey: r.moment_key,
+    }));
     const builder = list.length > 0 ? { handle: list[0].handle, reviews: 0 } : null;
     return { photos, builder };
   } catch (e: any) {
@@ -271,12 +376,14 @@ async function attributedPhotosForCity(
   }
 }
 
-/** Only moments with ≥1 attributed real photo. Today: [] (the section suppresses — empty state B). */
+/** Real attributed photos win; otherwise each configured moment uses its honest representative fallback. */
 export async function resolveLandingMoments(): Promise<LiveMoment[]> {
   const live: LiveMoment[] = [];
   for (const m of MOMENTS) {
-    const { photos, builder } = await attributedPhotosForCity(m.city);
-    if (photos.length === 0) continue;
+    const attributed = await attributedPhotosForMoment(m.city, m.key);
+    const selected = selectMomentPhotos(m.key, attributed.photos, attributed.builder);
+    const resolvedPhotos = selected.photos;
+    if (resolvedPhotos.length === 0) continue;
     live.push({
       key: m.key,
       label: m.label,
@@ -285,8 +392,8 @@ export async function resolveLandingMoments(): Promise<LiveMoment[]> {
       pieces: [...m.pieces],
       experienceType: m.experienceType,
       experienceSlug: m.experienceSlug,
-      photos,
-      builder,
+      photos: resolvedPhotos,
+      builder: selected.builder,
     });
   }
   return live;
