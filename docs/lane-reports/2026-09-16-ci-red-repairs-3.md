@@ -100,3 +100,34 @@ branch's commit for the exact lines.
 - `check:mutation-auth-coverage` is not wired into any workflow; the coverage files can go stale silently.
 - The `EXCLUSIONS` comment block still says the excluded rails "need a purpose-built resource fixture" — true,
   and `RESOURCE_PROBES` is now the worked example of building one.
+
+---
+
+## Part 3 — the #971 orphan (`landing-moments-photo-selection.test.ts`)
+
+Ledger `2026-09-17-orphan-971-wired`.
+
+`origin/main` at `bc9abee0d` was red on `node scripts/check-test-files-wired.cjs` with one NEW ORPHAN:
+`server/services/__tests__/landing-moments-photo-selection.test.ts`, added by the cinematic-Moments photo lane
+(`a9020fd43` → `dc6e8dddd`, merged as PR #971, spec `docs/superpowers/specs/2026-09-16-cinematic-moments-hero-fallback-design.md`,
+no ledger row of its own). The ratchet is a branch-protection context, so every open PR inherited the red.
+
+**Triage: neither (a) nor (b) nor (c).** The test is right and the code is right. Standalone in a bare shell the
+suite dies at IMPORT — `Error: DATABASE_URL must be set. Did you forget to provision a database?`, thrown from
+`server/db.ts:8` because `server/services/landing-moments.ts` imports `../db` — and not on any assertion. With the
+`suite-server-services` env in place it is 6/6 green: the representative-photo fallback when no expert photo is
+associated, the deliberate wedding/honeymoon swap, the proposal night image with its credit, expert attribution on
+a matching association, and the two same-city Moments that must not trade each other's photos.
+
+**Why it read as unwired.** `server/services/__tests__` mixes node:test and vitest files, so the T-2 job selects
+that directory BY NAME rather than by a whole-directory glob — the job's own comment says a new file there "is
+orphaned until somebody names it". So the repair is exactly the one-line job change that comment predicts: the
+file joins the node:test list in the DB-backed `suite-server-services` job (which already supplies `DATABASE_URL`
+and a Postgres service), in alphabetical position after `landing-hero.test.ts`. Nothing else moves.
+
+**No allowlist, no baseline growth.** `scripts/test-orphan-baseline.txt` is untouched — the file was never on it,
+and the ratchet may only shrink (`2026-09-14-test-files-wired-orphans`, `2026-09-15-orphan-ratchet`). The one
+deliberate orphan in that directory, `content-matching.test.ts` (it fetches a booted app no job here runs), keeps
+its baseline row and its owed app-backed lane. The guard's predicate was not touched.
+
+**Files changed:** `.github/workflows/build.yml` (one selector line), `docs/DECISIONS.md` (one row), this report.
