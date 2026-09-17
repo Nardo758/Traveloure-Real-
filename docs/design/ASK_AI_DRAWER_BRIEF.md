@@ -367,8 +367,10 @@ row** — a half-written proposal would sit in the log as something the AI said 
 `slipBuildAiAction`**, whose two-way answer (`draft` on an empty slip, `optimize` otherwise) is
 unchanged and must not be restated (§18 rule 1).
 
-**Post-final: `TripCardRail.tsx`**, beside Booking agent · Your expert · Suggestion · Back to
-planning. This is the same two-surface posture `ExpertSuggestionsPanel` already takes
+**Post-final: `TripCardRail.tsx`** — **LANDED 2026-09-17** (ledger
+`2026-09-17-l16-lane4-postfinal`), in the **Suggestion card's SLOT** rather than as a fifth
+position: the suggestion panel renders nothing unless the expert has actually posted one, so the
+rail still reads FOUR cards in the ordinary case and five only when a suggestion is pending. This is the same two-surface posture `ExpertSuggestionsPanel` already takes
 (`client/src/components/plancard/ExpertSuggestionsPanel.tsx:32` — *"pre-final it renders on the
 SLIP … post-final it renders on the Trip Card"*), which makes that component the **layout**
 precedent and deliberately **not** the data one: expert suggestions are `trip_suggestions` rows,
@@ -379,8 +381,10 @@ RULED = A and its `reFinalizeIfCurrentlyFinal` call ships in LANE 1**, not with 
 the five rails are API-reachable on a finalized trip today. What is left for lane 4 is the MOUNT
 itself. The reason the block existed is preserved: `applyPlanProposal` does not call
 `reFinalizeIfCurrentlyFinal`, so applying on a finalized plan would rewrite items under a frozen
-Trip Card that never advances. Until it is ruled the drawer mounts **pre-final only** — an omitted
-control is honest; a control that silently rewrites a frozen snapshot is not (§13).
+Trip Card that never advances. ~~Until it is ruled the drawer mounts **pre-final only**~~ — **BOTH
+MOUNTS ARE LIVE as of lane 4** (2026-09-17), and the honesty rule that block stood for is kept
+where it belongs: the post-final card says, BEFORE the charge, that an apply makes a NEW Trip Card
+version and names it, so nothing rewrites a frozen snapshot silently (§13).
 
 ### 5.2 · Who sees what
 
@@ -646,9 +650,23 @@ lane 2's build item, not lane 1's**.
    later ruling — extended the proposals GET precisely so there is **no second fee read** (§18
    rule 1); two reads of one band are two numbers free to disagree in flight. §8 is satisfied
    either way: no literal exists in the client.
-4. **The drawer post-final on the Trip Card.** **No longer blocked** — D-49's call ships in lane 1,
-   so what is left here is the MOUNT itself. **Still open after lanes 2/3**, and deliberately so:
-   lane 3 mounted the drawer **pre-final only** and says so in `AskAiDrawer.tsx`'s own header.
+4. ~~**The drawer post-final on the Trip Card.**~~ **LANDED 2026-09-17** (ledger
+   `2026-09-17-l16-lane4-postfinal`, client only — no server, no schema, no new route). D-49's call
+   had already shipped in lane 1, so what this lane owed was the MOUNT, and it is a mount and not a
+   second drawer: the SAME `AskAiDrawer` renders on `TripCardRail`, in the **Suggestion card's
+   SLOT** (the suggestion panel draws nothing unless a suggestion is pending, so the rail still
+   reads four cards in the ordinary case). **Everything is read from the same server answers and
+   nothing branches on the page** — copy, visibility, the `aiTask` money line, the 503/409/429
+   readings, D-50 (c)'s staleness-as-refusal and the owner-only pay/apply are identical on both
+   mounts; `surface` picks a test id and no rule reads it. **The ONE addition is D-49's
+   review-first sentence**, `askAiApplyConsequence`, in the same copy module: a CURRENTLY-final
+   plan is told an apply makes a NEW Trip Card version and the version is NAMED (`v{n+1}`, with the
+   one being read kept); a REVISING plan (`finalized_at` NULL, a final exists) is told its card
+   keeps the version it has, because `reFinalizeIfCurrentlyFinal` writes none; and a surface that
+   does not state the plan's final standing — the slip, which passes no `planFinal` — says NOTHING
+   rather than guessing (§13). No undo is drawn (LD 42 D18), and LD 41 (b)'s empty-plan branch is
+   kept although it cannot fire post-final. Proofs:
+   `client/src/lib/__tests__/ask-ai-postfinal.test.ts` **F1–F6 · M1–M7, 13/13**.
 5. ~~**The conversation binding**, only if **D-45** rules a thread.~~ **D-45 ruled STATELESS, so this
    lane does not exist for L16.** Reopening it needs a new ruling and the answer LD 44's seventh
    open question needs.

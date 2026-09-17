@@ -1,7 +1,12 @@
 /**
  * THE ASK-AI DRAWER'S ONE HOME FOR ITS COPY AND ITS DERIVATIONS.
  *
- * (L16 lanes 2 and 3; ledger `2026-09-16-l16-lanes2-3-drawer`. Brief of record:
+ * (L16 lanes 2, 3 and 4; ledgers `2026-09-16-l16-lanes2-3-drawer` and
+ *  `2026-09-17-l16-lane4-postfinal`. THE SAME COPY SERVES BOTH MOUNTS — the slip's rail card
+ *  pre-final and the Trip Card's rail card post-final — because a second spelling of any sentence
+ *  below, kept "for the post-final surface", is precisely the drift §18 rule 1 names. What the
+ *  post-final mount adds is ONE derivation, `askAiApplyConsequence` (D-49), and it lives here.
+ *  Brief of record:
  *  `docs/design/ASK_AI_DRAWER_BRIEF.md` §5 — the visibility table (§5.2), the flow (§5.3) and the
  *  ten copy rules (§5.4) — and the LOCKED rulings **D-45..D-50** (§7.1, ledger
  *  `2026-09-16-l16-rulings-d45-d50`). CLAUDE.md Locked Decision 45 (3), Locked Decision 41 (b)/(c),
@@ -136,6 +141,16 @@ export const ASK_AI_COPY = {
   payAction: "Pay and apply",
   reAskAction: "Ask again",
 
+  // D-49 (ledger `2026-09-16-l16-rulings-d45-d50`) — AN APPLY ON A CURRENTLY-FINAL PLAN MAKES A
+  // NEW TRIP CARD VERSION, and the review-first copy says so BEFORE the charge and before the
+  // write (LD 42 D18: the seeing is the whole safeguard, because there is no undo and none is
+  // drawn). These two are the fallbacks used where the version number is not known;
+  // `askAiApplyConsequence` NAMES the version wherever the surface can state it.
+  applyMakesNewVersion:
+    "Applying writes to this plan and makes a new version of your Trip Card. The version you are reading stays as it was — this is not an edit of it.",
+  applyWhileRevising:
+    "You are revising this plan, so your Trip Card keeps the version it already has until you make it final again.",
+
   // D-48 — PAY and APPLY are OWNER-ONLY AT THE ROUTE. The drawer says why the controls are absent
   // rather than drawing one the server will refuse.
   advisorCannotApply:
@@ -222,6 +237,66 @@ export function askAiRailVisibility(input: AskAiVisibilityInput): AskAiVisibilit
     canApply: false,
     applyAbsenceNote: ASK_AI_COPY.advisorCannotApply,
   };
+}
+
+// ── D-49 — what an APPLY does to a plan that is already final (lane 4) ───────────────────────
+
+/**
+ * WHICH SURFACE THE DRAWER IS MOUNTED ON.
+ *
+ * It is a LAYOUT fact and nothing else: the slip's rail card and the Trip Card's rail card are the
+ * same control with the same copy, the same visibility answer and the same money line. Nothing
+ * below branches on it, and nothing should — what changes post-final is a fact about the PLAN
+ * (it is final), not about the page, and that fact travels as {@link AskAiPlanFinalState}.
+ */
+export type AskAiSurface = "slip" | "trip-card";
+
+/** The plan's final standing, exactly as the plancard DTO states it. */
+export interface AskAiPlanFinalState {
+  /** `trip.finalizedAt != null` — the plan is CURRENTLY final, so an apply re-finalizes (D-49). */
+  isFinalized: boolean;
+  /** `trip.finalVersion` — the version the Trip Card holds now. `null` = we do not know it. */
+  finalVersion: number | null;
+}
+
+/**
+ * WHAT AN APPLY WILL DO TO THE TRIP CARD, said BEFORE the traveler pays.
+ *
+ * D-49 (RULED = A, ledger `2026-09-16-l16-rulings-d45-d50`): `applyPlanProposal` calls
+ * `reFinalizeIfCurrentlyFinal` after the apply commits, so applying on a plan whose
+ * `finalized_at` is set writes a NEW `trip_finals` version rather than rewriting items under a
+ * frozen card. That is a consequence the traveler is buying, and LD 42 **D18** ruled that seeing
+ * what a run would do BEFORE the charge is the only safeguard there is — there is no undo, and
+ * this function draws none.
+ *
+ * ── §13, AND IT IS WHY THIS IS A FUNCTION AND NOT A STRING ───────────────────────────────────
+ *  · **No state ⇒ NO SENTENCE.** A surface that does not state the plan's final standing (the
+ *    slip does not pass it) claims nothing. An omitted sentence is honest; a guessed one is not.
+ *  · **NOT finalized ⇒ no version is made**, because that is exactly what
+ *    `reFinalizeIfCurrentlyFinal` returns `null` for. A plan that HAS a final but is being
+ *    revised (`finalized_at` NULL, `finalVersion` set) is told its card keeps the version it has
+ *    — never that an apply will advance it, which would be a claim the server refuses to keep.
+ *  · **The NEXT version is named only when the CURRENT one is known.** `finalizeTrip` numbers a
+ *    new final `max(version) + 1`, and an apply always moves the plan fingerprint because an
+ *    EMPTY change set draws no apply control at all (copy rule 8) — so `v{n+1}` is the server's
+ *    own arithmetic, not a forecast. With no `finalVersion` in hand the unnumbered sentence is
+ *    used: "a new version" is true; "v3" would be invented.
+ */
+export function askAiApplyConsequence(
+  planFinal: AskAiPlanFinalState | null | undefined,
+): string | null {
+  if (!planFinal || typeof planFinal !== "object") return null;
+  const version =
+    typeof planFinal.finalVersion === "number" && Number.isFinite(planFinal.finalVersion)
+      ? planFinal.finalVersion
+      : null;
+  if (!planFinal.isFinalized) {
+    // A plan with a final that is being revised; a plan with no final at all says nothing, since
+    // "your Trip Card keeps its version" would name a card that does not exist.
+    return version == null ? null : ASK_AI_COPY.applyWhileRevising;
+  }
+  if (version == null) return ASK_AI_COPY.applyMakesNewVersion;
+  return `Applying writes to this plan and makes a new version of your Trip Card, v${version + 1}. v${version} — the version you are reading — stays as it was.`;
 }
 
 // ── The coverage / price line (lane 2 — D-48's read half, rendered) ──────────────────────────
