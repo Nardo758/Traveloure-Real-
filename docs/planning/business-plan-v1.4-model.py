@@ -17,6 +17,7 @@ FEE = dict(
     pro_monthly=29.00,              # plans.pro_monthly (mig 258), beta-free until 2026-12-31
     affiliate_partner_commission=0.08,  # affiliate:<partner> bands seeded 0.08 "confirm per contract"
     stripe_pct=0.029, stripe_flat=0.30, # processing, absorbed by platform (REVENUE_MODEL.md §1)
+    booking_concierge_fee=0.05,     # fee_bands expert_concierge_booking (mig 066) — 5% on top of the concierge service price
 )
 
 # ---- Markets (v1.3 §6.8 sequence, forward-dated; Month 1 = first launch month) ----
@@ -37,9 +38,9 @@ SCENARIOS = {
     #                         bookings/active provider/month, ramp months to full, bookings per plan,
     #                         paid runs per plan, ai tasks per plan, pass attach, affiliate bookings per plan,
     #                         affiliate AOV, share of platform bookings that are expert services, fee-waived share
-    "Low":  dict(bpp=0.75, ramp=3, bookings_per_plan=1.5, runs=0.20, tasks=0.10, pass_attach=0.05, aff_per_plan=0.3, aff_aov=140, expert_mix=0.30, waived=0.15, pro_take=0.10),
-    "Base": dict(bpp=1.50, ramp=2, bookings_per_plan=2.0, runs=0.35, tasks=0.20, pass_attach=0.10, aff_per_plan=0.5, aff_aov=150, expert_mix=0.30, waived=0.20, pro_take=0.20),
-    "High": dict(bpp=3.00, ramp=1, bookings_per_plan=2.5, runs=0.50, tasks=0.30, pass_attach=0.15, aff_per_plan=0.7, aff_aov=160, expert_mix=0.35, waived=0.25, pro_take=0.30),
+    "Low":  dict(bc_attach=0.05, bc_price=20,  bpp=0.75, ramp=3, bookings_per_plan=1.5, runs=0.20, tasks=0.10, pass_attach=0.05, aff_per_plan=0.3, aff_aov=140, expert_mix=0.30, waived=0.15, pro_take=0.10),
+    "Base": dict(bc_attach=0.10, bc_price=25,  bpp=1.50, ramp=2, bookings_per_plan=2.0, runs=0.35, tasks=0.20, pass_attach=0.10, aff_per_plan=0.5, aff_aov=150, expert_mix=0.30, waived=0.20, pro_take=0.20),
+    "High": dict(bc_attach=0.15, bc_price=30,  bpp=3.00, ramp=1, bookings_per_plan=2.5, runs=0.50, tasks=0.30, pass_attach=0.15, aff_per_plan=0.7, aff_aov=160, expert_mix=0.35, waived=0.25, pro_take=0.30),
 }
 RM_HIRES = [(1,1500),(2,2000),(5,4000),(7,4000),(11,3000)]  # India, Colombia, Japan, UK, Portugal
 FIXED = dict(ai_cost_per_plan=0.35, tavily_cap=150, hosting=500, pro_billing_from_month=3)
@@ -47,7 +48,8 @@ FIXED = dict(ai_cost_per_plan=0.35, tavily_cap=150, hosting=500, pro_billing_fro
 def run(name, s):
     months = range(1, 13)
     tot = dict(gmv=0, bookings=0, plans=0, provider_take=0, expert_take=0, traveler_fee=0, runs=0, tasks=0,
-               passes=0, affiliate_gmv=0, affiliate_comm=0, pro=0, rm=0, launch=0, ai=0, stripe=0)
+               passes=0, affiliate_gmv=0, affiliate_comm=0, pro=0, rm=0, launch=0, ai=0, stripe=0,
+               bc_fee=0, bc_comm=0)
     per_market = {}
     for m, (launch, target, expert_share, aov, rm_cost) in MARKETS.items():
         mk = dict(gmv=0, bookings=0)
@@ -68,6 +70,10 @@ def run(name, s):
             tot["runs"]   += plans * s["runs"] * FEE["optimizer_run"]
             tot["tasks"]  += plans * s["tasks"] * FEE["ai_task"]
             tot["passes"] += plans * s["pass_attach"] * FEE["trip_pass"]
+            # Booking Concierge: a traveler buys an expert's facilitation service for the plan's partner items
+            bc_lines = plans * s["bc_attach"]
+            tot["bc_fee"]  += bc_lines * s["bc_price"] * FEE["booking_concierge_fee"]
+            tot["bc_comm"] += bc_lines * s["bc_price"] * FEE["expert_new"]
             aff_gmv = plans * s["aff_per_plan"] * s["aff_aov"]
             tot["affiliate_gmv"]  += aff_gmv
             tot["affiliate_comm"] += aff_gmv * FEE["affiliate_partner_commission"]
@@ -83,7 +89,8 @@ def run(name, s):
         tot["rm"] += cost * (12 - hire_month + 1)
     tot["tavily"] = FIXED["tavily_cap"] * 12
     tot["hosting"] = FIXED["hosting"] * 12
-    revenue = tot["provider_take"] + tot["expert_take"] + tot["traveler_fee"] + tot["runs"] + tot["tasks"] + tot["passes"] + tot["affiliate_comm"] + tot["pro"]
+    revenue = (tot["provider_take"] + tot["expert_take"] + tot["traveler_fee"] + tot["runs"] + tot["tasks"] + tot["passes"]
+               + tot["affiliate_comm"] + tot["pro"] + tot["bc_fee"] + tot["bc_comm"])
     costs = tot["rm"] + tot["launch"] + tot["ai"] + tot["stripe"] + tot["tavily"] + tot["hosting"]
     return tot, per_market, revenue, costs
 
@@ -104,6 +111,8 @@ rows = [
  ("Optimization runs", "runs", "`optimization_fees` $5.99"),
  ("AI Concierge tasks", "tasks", "`concierge:ai_task` $2.99"),
  ("Trip Pass", "passes", "`plans.trip_pass` $19"),
+ ("Booking Concierge fee (5% on the expert's facilitation price)", "bc_fee", "`expert_concierge_booking` 5% (mig 066)"),
+ ("Commission on Booking Concierge services", "bc_comm", "`expert_new` 15% (mig 033)"),
  ("Affiliate GMV (partner-collected)", "affiliate_gmv", "assumption"),
  ("Affiliate commission received", "affiliate_comm", "`affiliate:<partner>` 8% — unverified per contract"),
  ("Pro subscriptions", "pro", "`plans.pro_monthly` $29 from month 3"),
@@ -131,7 +140,7 @@ for m,(launch,target,es,aov,rm) in MARKETS.items():
 out.append("\n### Assumptions (every one is tunable; none is a fee row)\n")
 out.append("| Assumption | Low | Base | High |")
 out.append("|---|---|---|---|")
-names = [("Bookings per active provider per month","bpp"),("Months for a market to reach its provider target","ramp"),("Bookings per plan","bookings_per_plan"),
+names = [("Share of plans that buy a Booking Concierge service","bc_attach"),("Expert's Booking Concierge price (USD)","bc_price"),("Bookings per active provider per month","bpp"),("Months for a market to reach its provider target","ramp"),("Bookings per plan","bookings_per_plan"),
          ("Paid optimization runs per plan","runs"),("Paid AI tasks per plan","tasks"),("Trip Pass attach rate per plan","pass_attach"),
          ("Affiliate bookings per plan","aff_per_plan"),("Affiliate booking value","aff_aov"),("Share of platform bookings that are expert services","expert_mix"),
          ("Share of bookings with the traveler fee waived (Trip Pass / rails)","waived"),("Share of active providers on Pro once billing starts","pro_take")]

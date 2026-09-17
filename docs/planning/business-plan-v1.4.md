@@ -48,15 +48,15 @@ Traveloure is a planning platform for trips and occasions in eight launch cities
 
 **Where we are.** The platform is built and pre-launch. The eight operating markets are declared in code (`shared/operating-markets.ts`): Mumbai, Bogotá, Goa, Kyoto, Edinburgh, Cartagena, Jaipur, Porto. No market has recruited its provider network or taken a paying booking. The next two phases are provider recruitment and demand generation, exactly as v1.3 §1.5 described them; v1.4 corrects what the platform will charge and what it will earn while doing so.
 
-**The five bets this version adds** (researched September 2026; each is a section below):
+**The five ideas this version adds** (researched September 2026; each is a section below):
 
-1. **Agent-discoverable content** — Traveloure's content becomes sourceable by AI agents (Tavily-backed and otherwise), as a distribution channel. §4a.
-2. **An agent surface** — an MCP server / connector so Grok Bot, Claude and ChatGPT can search and stage plans on Traveloure; humans pay. §4b.
-3. **Trending content with a source link** — the measured trend engine surfaces why a place is trending and where that came from. §5.
-4. **The AI booking agent** — prepares every purchase; a human or a partner API completes it; a facilitation fee is charged where the platform takes the payment. §6.
-5. **Share → duplicate → book** — a shared ready-made trip can be made your own in one action, on a journey map. §7.
+1. **One catalog, many sources** — partner inventory that offers no booking API is brought into Traveloure's own catalog through the partner's sanctioned feed where one exists, with a link back to the product, so a traveler never has to search several websites to build one plan. §4.
+2. **Logistics on every item** — location, duration, meeting point and hours travel with the item onto the plan and the map, so the AI and the expert can sequence it. §4.
+3. **Trending content with a source link** — the measured trend engine says why a place is trending and where that came from. §5.
+4. **The booking agent and its fee** — a traveler hands the plan's partner items to a booking agent by buying a Booking Concierge service; the platform earns the Booking Concierge fee on top and the commission on the service. §6.
+5. **Share → duplicate → book** — a shared plan or ready-made trip becomes the recipient's own plan in one action, drawn on a journey map. §7.
 
-**Financial headline (§9).** On the ratified fee ladder and v1.3's own market sequence, the base case for Year 1 is roughly $216K of platform-rail GMV plus $71K of affiliate GMV, $54K of platform revenue, and an operating loss of about $95K before engineering. v1.3's $1.2M GMV target implied 5 to 27 bookings per provider per month from the launch month; the base case assumes 1.5. Reaching the old target is a demand problem, not a pricing problem, and this document does not claim it.
+**Financial headline (§9).** On the ratified fee ladder and v1.3's own market sequence, the base case for Year 1 is roughly $216K of platform-rail GMV plus $71K of affiliate GMV, $55K of platform revenue, and an operating loss of about $95K before engineering. v1.3's $1.2M GMV target implied 5 to 27 bookings per provider per month from the launch month; the base case assumes 1.5. Reaching the old target is a demand problem, not a pricing problem, and this document does not claim it.
 
 ## 2. What Traveloure Is
 
@@ -87,7 +87,7 @@ An expert publishes a plan they have built as a purchasable listing. A buyer pay
 
 ## 3. Business Model and Pricing
 
-All figures are ratified rows (`PRICING_AND_FEATURE_MAP.md`, August 27, 2026, amended September 2). The pricing page reads them; the fee resolver reads them; this document cites them.
+All figures are ratified rows (`docs/design/PRICING_AND_FEATURE_MAP.md`, August 27, 2026, amended September 2). The pricing page reads them; the fee resolver reads them; this document cites them.
 
 ### 3.1 The traveler ladder
 
@@ -122,7 +122,7 @@ $29 per month (`plans.pro_monthly`), **free during beta until December 31, 2026*
 | Affiliate commission | partner | per partner, received from the partner's report | `affiliate:<partner>` | seeded 4–12%, **confirm per contract** |
 | Optimization run | traveler | per run | `optimization_fees` | $5.99 / $19.99 |
 | AI Concierge task | traveler | per task, charged on apply | `concierge:ai_task` | $2.99 |
-| Booking Concierge facilitation | traveler | % of a facilitated amount, capped | `concierge:booking_pct`, `concierge:booking_cap_cents` | 5%, cap $40 |
+| Booking Concierge fee | traveler | on top of an expert's Booking Concierge service price; live band uncapped, ratified cap $40 awaits its reader | `expert_concierge_booking`; `concierge:booking_pct`, `concierge:booking_cap_cents` | 5%, cap $40 |
 | Done-for-you deposit | traveler | % of quote at acceptance | `concierge:done_for_you_deposit_pct` | 20% |
 | Event coordination fee | client | greater of a floor or a share of the event budget; the $19.99 event run is credited against it | `coordination_floor`, `coordination_percent` | $499 / 8% |
 | Ready-made trip | buyer | list price; platform share by the author's band | `ready_made_trip` | inherits |
@@ -145,45 +145,46 @@ $29 per month (`plans.pro_monthly`), **free during beta until December 31, 2026*
 
 Traveloure has four demand channels. Two exist today, two are the new bets. None is paid acquisition; the paid-acquisition budget is a decision for the first market's launch review, not a line in this plan.
 
-### 4a. Agent-discoverable content — Planned
+### 4a. One catalog, many sources — Live, extended — Planned
 
-**The idea.** AI agents — Grok Bot, ChatGPT, Claude, Perplexity and the search layers underneath them such as Tavily — answer "what should I do in Kyoto in November" by sourcing from the open web. Traveloure's local knowledge, hidden gems, DMO-sourced places and ready-made trips should be what they source, with a link back.
+**The idea.** Partners such as GetYourGuide do not give Traveloure a booking API. Their inventory should still appear in Traveloure's own catalog, with a link back to the product on the partner's site, so the traveler builds one plan in one place and the booking agent (§6) can complete the purchase. The value to the traveler is not having to search several websites; the value to Traveloure is that every such item is on a plan we hold.
 
-**What the research found.** Tavily has no publisher program. It is a search, extract and crawl API that agents call; its source set is undisclosed and an agent can restrict it to named domains. Being sourceable therefore means being publicly crawlable, stably addressed and machine-readable — the same work that gets a page cited by ChatGPT or Perplexity. The `llms.txt` convention is fetched by agent tooling but has negligible effect on citation; crawlable HTML, sitemaps and structured data do the work.
+**What the research found.** Two of the partners without an open API have terms that decide the method. GetYourGuide's partner terms prohibit automated extraction of its content and prohibit redistributing platform content, and its API is granted by traffic and booking volume. Klook's API is likewise tiered by volume. Scraping either would forfeit the affiliate relationship the link-back depends on (§6.2 sets out why partners enforce this). The rest of the market is more open than "no API" suggests:
 
-**Where Traveloure stands.** The platform consumes Tavily at four points (DMO ingestion, content-gap discovery, booking verification, expert-claim scoring) and serves nothing to it. The sitemap lists static pages, approved services, ready-made trips and storefronts — not city pages, gems or DMO content. `robots.txt` disallows every JSON endpoint. There is no JSON-LD, no `llms.txt`, no public read API. DMO content is born hidden and carries `license: unknown` by default.
+| Partner | Sanctioned data route | Coordinates | Booking route today |
+|---|---|---|---|
+| Viator | affiliate API, Basic access at signup, no approval; product content carries a `logistics` object with meeting point and coordinates | yes | affiliate link; Full + Booking on certification (§6.5) |
+| Tiqets | self-service API token for affiliates; content and availability APIs at signup; booking API by performance (~200 orders a month) | yes | affiliate link |
+| Fever | full product catalogs through Impact (already read by the platform) | partial | affiliate link |
+| WeGoTrip, Stasher | product feeds with coordinates (already ingested) | yes | affiliate link with attribution token |
+| Travelpayouts network | Viator deals feed, Tiqets offers file, JSON data files | partial | affiliate links |
+| GetYourGuide | partner portal links and widgets; API by volume | — | affiliate deep link |
+| Klook | affiliate links and widgets; API by volume | — | affiliate deep link |
 
-**The plan (no schema change except one column).**
+**Where Traveloure stands — Live.** One catalog table (`affiliate_products`) already holds partner items with price, city, coordinates, duration, images and the product link, registered with a Traveloure tracking number. Feed ingestion already fills it from Tiqets, Viator, WeGoTrip, Stasher and the two hotel deep-link builders. A scraper exists for partners without a feed, driven from the admin console, egress-guarded, extracting fields with an AI model and deduplicating on the product URL. Two rulings already govern scraped content: a scraped item resolves its booking path in strict order — a live Traveloure provider first, then the partner's own channel, then a recognised marketplace, then reference-only — so scraped content never competes with a provider on the platform; and a scraped booking link becomes a call to action only when it is the operator's own verified domain or a recognised catalog match.
 
-| Build | What | Ratification |
-|---|---|---|
-| Sitemap widening | city pages, published gems, published DMO places and expert storefronts join the sitemap | none |
-| Structured data | JSON-LD (`TouristAttraction`, `Event`, `Product`, `Person`) on the SSR head of the eight public routes, extended to city and place pages | none |
-| `llms.txt` | served from the existing `/.well-known/` static mount | none |
-| Licence gate | the `resale_class` vocabulary (`first_party` / `licensed_no_resale` / `open_license`) that already governs trend signals is extended to content tables; only `first_party` and `open_license` rows are exposed to agents; DMO rows with `license: unknown` never are | decision-maker (schema column) |
-| Attribution | ODbL and DMO attribution strings travel with every exposed row, as they already do on the Discover cards | none |
-
-**What it earns.** Nothing directly. It is a distribution channel measured by referred sessions and plans minted from agent referrals, and it is the precondition for §4b.
-
-### 4b. An agent surface — Planned
-
-**The idea.** Rather than hoping an agent's search finds Traveloure, give agents a door: an MCP server (the protocol Grok Bot, Claude and the major agent runtimes speak) through which an agent can search content, read a market's services and stage a plan on a traveler's slip.
-
-**The ruling this fits.** Locked Decision 45 already settled the posture for connected agents: agents build and stage; humans pay. An agent may search, may draft, may add proposals to a slip; every write is a proposal the traveler applies, and every charge happens at the traveler's own confirm. No fourth AI write path is created.
-
-**Where Traveloure stands.** Grok already generates itineraries, gems and city intelligence; Claude does optimization, chat and booking verification (routing table in `server/services/ai-orchestrator.ts`). There is no MCP server, no public API namespace and no OpenAPI description. The two AI cost ledgers are disjoint (Grok writes `ai_usage_logs`, Anthropic writes `ai_cost_tracking`) and the `grok-3` model has no pricing row, so AI spend cannot yet be reported from one place.
+**Where it falls short.** The scraper checks no robots.txt (the flag exists but nothing reads it) and asks for no coordinates. The catalog has no meeting-point or opening-hours columns. Coordinates reach a plan item only through the AI grounding step, not when a traveler adds an item from Discover, which drops the catalog reference entirely. The optimizer sequences only Traveloure's own provider listings, so partner items are placed but never re-ordered.
 
 **The plan.**
 
-1. A read-only MCP server exposing search over the §4a content set and a market's approved services, with the same allowlist projections the public routes already use (no `users.id`, no rates — Locked Decision 40 and §14 of the architecture rules).
-2. A staging tool: "add this to my plan" that lands on the existing proposal store (`plan_proposals`) behind the traveler's own session, so the human applies and pays exactly as they do in the Ask-AI drawer.
-3. One cost ledger: Grok calls join `ai_cost_tracking` with a `grok-3` pricing row, so §6's "every copilot call is costed" holds when Grok joins the copilot.
+| Build | What | Ratification |
+|---|---|---|
+| Feeds first | Viator product content and Tiqets content API replace search-page deep links for those partners; Fever and Travelpayouts feeds kept; every item carries its source and link back | none |
+| GetYourGuide and Klook | deep links until the platform's volume qualifies for their APIs; applications re-opened at that threshold | ruling — amends the August 2 directive that pursued Musement only |
+| Scraping, narrowed | reserved for operators' own sites (with their consent or open terms) and for sources whose terms allow it; robots.txt enforced by code, not a flag; the scraped operator list doubles as the recruitment lead list for that market | none |
+| Logistics columns | meeting point, opening hours and a last-verified timestamp on the catalog row | ruling — schema |
+| Lossless add-to-plan | adding a partner item from any surface carries its catalog reference and coordinates onto the plan item, through the one item-write path | none |
+| Sequenceable partner items | partner items join the optimizer's catalog beside provider listings, labelled by source | ruling — the optimizer reads provider listings only today |
 
-**Grok Bot as a purchaser** is a different proposition and is treated under §6 as contingent.
+**Discoverability hygiene** (a small, separate item): the public sitemap lists only static pages, services, ready-made trips and storefronts; widening it to city pages and published content, and adding structured data to the public routes, is low-cost search work with no schema change.
+
+### 4b. An agent surface — Planned (Wave 3)
+
+Agents such as Grok Bot, Claude and ChatGPT speak the MCP protocol. A read surface that lets an agent search Traveloure's catalog and stage items onto a signed-in traveler's plan, with the traveler applying and paying, fits the ruling that agents build and stage while humans pay (Locked Decision 45). Letting an agent mint the plan itself needs a ruling, since only doors on the site mint today. This is sequenced after the catalog work in 4a, which it depends on; Tavily is the platform's own reading tool and plays no part in it.
 
 ### 4c. Share → duplicate → book — Planned (§7)
 
-A traveler who receives a shared plan or a ready-made trip makes it their own in one action and books through Traveloure. The mechanics and the missing pieces are in §7.
+A traveler who receives a shared plan or a ready-made trip makes it their own in one action and books through Traveloure. §7.
 
 ### 4d. Supply recruitment — retained from v1.3 §6.9
 
@@ -234,19 +235,28 @@ This is not only a house rule. Four external facts bind it:
 - The request rail: a traveler asks the booking agent to handle a partner item; the request is born unclaimed; an agent claims it (atomic, first claim wins); a verification step reads the partner page and reports price, availability, cancellation terms and a verdict; the agent opens the partner page through a gated, attributed redirect that never exposes the affiliate URL; the agent records the purchase as `purchased_by_human`; `confirmed` is written only when the partner's own report is matched by attribution token.
 - Attribution: a per-request token rides the outbound link and is read back from the partner's commission report, so a confirmed booking links to its request and its plan.
 
-### 6.4 What is charged today, and what will be
+### 6.4 The booking fee — Live, and how the hand-off earns it
 
-Today an affiliate purchase creates **no platform charge and no PaymentIntent**; the partner takes the payment (Locked Decision 43(c)). The affiliate commission arrives later on the partner's report.
+The established fee is the **Booking Concierge fee**. An expert offers a "Booking Concierge" service — "I'll book this off-site item and add it to your trip" — as an approved listing at their own price. When a traveler buys it at checkout, the platform adds a 5% fee on top of that price (`expert_concierge_booking`, ratified display name "Destination Concierge booking fee — powered by local experts") and takes its normal commission on the expert's price. The partner item itself is still paid on the partner's site by the human who presses buy; the platform never takes that payment, so no affiliate purchase creates a platform charge (Locked Decision 43(c)).
 
-The ratified facilitation fee — `concierge:booking_pct` 5%, capped by `concierge:booking_cap_cents` at $40 — is charged only where the platform takes the payment. So the revenue design for the agent is:
+That is the revenue design for the hand-off: **handing the plan's partner items to a booking agent is the purchase of a Booking Concierge service.**
 
-| Path | Who completes the purchase | Where the money runs | Platform revenue | Status |
+| Path | Who completes the purchase | Where the item's money runs | Platform revenue | Status |
 |---|---|---|---|---|
-| Platform inventory (provider services) | the traveler at checkout, from a plan the agent staged | Traveloure checkout | commission by band + traveler fee (+ facilitation where an agent facilitated) | Live |
-| API partner | the agent, end to end, through the partner's booking API with a real confirmation id | partner as merchant of record, or Traveloure as merchant with a net rate | facilitation 5% cap $40 on the facilitated amount; partner commission where applicable | Contingent — see 6.5 |
-| Affiliate link partner | a human (the agent or the traveler) presses buy on the partner page | partner | partner commission on report; no platform charge | Live |
+| Platform inventory (provider services) | the traveler at checkout, from a plan the agent staged | Traveloure checkout | commission by band + traveler service fee | Live |
+| Partner item, human-facilitated | the booking agent, on the partner's page, through the attributed redirect | partner | Booking Concierge fee 5% on the service price + commission on the service; partner commission on report | Live fee; hand-off wiring Planned |
+| API partner | the agent, end to end, through the partner's booking API with a real confirmation id | partner as merchant of record, or Traveloure as merchant at a net rate | facilitation fee on the facilitated amount; partner commission where applicable | Contingent — 6.5 |
 | Agentic payment rails | the agent, with a network-issued agent credential the merchant accepts | network token; Stripe SPT | as API partner | Contingent — 2027 |
-| Browser automation | the agent drives the partner's checkout | — | — | **Only with that partner's written consent recorded in the ledger** (LD 44(d)) |
+| Browser automation | the agent drives the partner's checkout | — | — | **only with that partner's written consent recorded in the ledger** (LD 44(d)) |
+
+**What must be built.**
+
+| Build | What | Ratification |
+|---|---|---|
+| Hand-off creates the requests | buying a Booking Concierge service for a plan creates one booking-agent request per partner item on that plan and lands them in the pooled queue; today the purchase rail and the request rail do not meet | none |
+| The cap | the August ruling caps the fee at $40 (`concierge:booking_cap_cents`); the live band is uncapped and the ratified rows have no reader; give them their reader and retire the duplicate key | none (punch-list item) |
+| Platform-run concierge | a platform-owned Booking Concierge listing for a market where no expert offers one, so the pooled queue can be sold before an expert network exists | ruling — the offering is expert-owned by design |
+| Queue completeness | the pooled queue gains the verify control the ruling calls for, and the copilot's research and packet (Phase 1) | brief |
 
 ### 6.5 The first API partner — Contingent
 
@@ -254,9 +264,9 @@ Viator's affiliate program has a "Full + Booking" access level: a real booking e
 
 This is the first concrete candidate for Locked Decision 44's Phase 2, whose open question Q7 ("which partner is first?") had no answer. The steps: apply for Full + Booking; design the payment handoff with counsel and Stripe; certify; then build the client. No speculative partner client is built before that.
 
-### 6.6 Grok Bot as a purchaser — Contingent
+### 6.6 Agents as customers — Contingent
 
-xAI's Grok Bot (beta, August 2026) runs on a cloud VM with a browser and speaks MCP. Pointed at Traveloure's agent surface (§4b) it is a customer of the same rails as any agent: it searches, stages and hands the human the pay step. Using it to drive a partner's checkout is browser automation and falls under 6.4's last row until a partner consents in writing or the agentic payment rails cover that partner.
+xAI's Grok Bot (beta, August 2026) and its peers run a browser and speak MCP. Pointed at Traveloure's agent surface (§4b), an agent is a customer of the same rails as any traveler: it searches, stages, and hands the human the pay step. Using one to drive a partner's checkout is browser automation and stays under the last row of 6.4 until a partner consents in writing or the agentic payment rails cover that partner.
 
 ## 7. Ready-Made Trips and the Journey Map
 
@@ -268,15 +278,9 @@ xAI's Grok Bot (beta, August 2026) runs on a cloud VM with a browser and speaks 
 
 ### 7.2 Make it mine, and book it — Planned
 
-**The gap.** A viewer of a shared plan has no "make this my plan" action, and when a shared ready-made trip is purchased nobody records who shared it: the purchase table's attribution column has no reader and no writer.
+**The gap.** A viewer of a shared plan has no "make this my plan" action.
 
-**The plan.**
-
-| Build | What | Ratification |
-|---|---|---|
-| "Make this my plan" | on the shared-plan and shared-variant pages, a signed-in viewer mints their own plan through the one mint door (`mintTripSlip`), copying items with the same allowlist the ready-made clone uses; dates stay placeholders | none |
-| Sharer attribution | the share link carries the sharer's short-link code; the ready-made purchase writes `attributionRef`; earnings-by-source shows it | none for the write; **a ruling for whether the sharer is paid** (a new fee band or a share of the author's band — never a literal) |
-| Buy the parts | items whose provider services are approved are offered for booking on the new plan's slip through the existing checkout | none |
+**The plan.** On the shared-plan and shared-variant pages, a signed-in viewer mints their own plan through the one mint door, copying items with the same allowlist the ready-made clone uses; dates stay placeholders; items whose provider services are approved are offered for booking on the new plan. No schema change. **The person who shared the plan is not paid** — sharing is a courtesy of the product, not an earning channel, and the purchase table's unused attribution column stays unused.
 
 ### 7.3 The journey map — Live, extended — Planned
 
@@ -344,18 +348,20 @@ v1.3's Year-1 projection ($955K revenue, break-even in month 11) rested on a mem
 | Optimization runs | $704 | $1,993 | $4,888 | `optimization_fees` $5.99 |
 | AI Concierge tasks | $176 | $568 | $1,464 | `concierge:ai_task` $2.99 |
 | Trip Pass | $558 | $1,806 | $4,651 | `plans.trip_pass` $19 |
+| Booking Concierge fee (5% on the expert's facilitation price) | $29 | $119 | $367 | `expert_concierge_booking` 5% (mig 066) |
+| Commission on Booking Concierge services | $88 | $356 | $1,102 | `expert_new` 15% (mig 033) |
 | Affiliate GMV (partner-collected) | $24,675 | $71,297 | $182,784 | assumption |
 | Affiliate commission received | $1,974 | $5,704 | $14,623 | `affiliate:<partner>` 8% — unverified per contract |
 | Pro subscriptions | $3,296 | $7,018 | $11,092 | `plans.pro_monthly` $29 from month 3 |
-| **Platform revenue** | **$24,121** | **$54,054** | **$115,857** | sum of fee lines |
+| **Platform revenue** | **$24,238** | **$54,530** | **$117,326** | sum of fee lines |
 | Regional managers (5, by region, hired at first launch in region) | ($102,000) | ($102,000) | ($102,000) | assumption |
 | Market launch investment (v1.3 §6.8) | ($32,500) | ($32,500) | ($32,500) | assumption |
 | AI model spend | ($206) | ($333) | ($571) | assumption |
 | Stripe processing (absorbed) | ($3,158) | ($6,839) | ($14,724) | assumption |
 | Tavily cap | ($1,800) | ($1,800) | ($1,800) | assumption |
 | Hosting | ($6,000) | ($6,000) | ($6,000) | assumption |
-| **Operating result before engineering** | **$-121,543** | **$-95,418** | **$-41,738** | revenue − costs |
-| Blended take on all GMV | 19.4% | 18.8% | 17.9% | derived |
+| **Operating result before engineering** | **$-121,425** | **$-94,942** | **$-40,269** | revenue − costs |
+| Blended take on all GMV | 19.5% | 19.0% | 18.1% | derived |
 
 ### Per-market platform-rail GMV (Base)
 
@@ -374,6 +380,8 @@ v1.3's Year-1 projection ($955K revenue, break-even in month 11) rested on a mem
 
 | Assumption | Low | Base | High |
 |---|---|---|---|
+| Share of plans that buy a Booking Concierge service | 0.05 | 0.1 | 0.15 |
+| Expert's Booking Concierge price (USD) | 20 | 25 | 30 |
 | Bookings per active provider per month | 0.75 | 1.5 | 3.0 |
 | Months for a market to reach its provider target | 3 | 2 | 1 |
 | Bookings per plan | 1.5 | 2.0 | 2.5 |
@@ -396,11 +404,12 @@ v1.3's Year-1 projection ($955K revenue, break-even in month 11) rested on a mem
 ### Reading the numbers
 
 - **v1.3's targets implied a booking rate nobody had stated.** At the AOVs above, $150K of Mumbai GMV from 30 providers over twelve months is 4.6 bookings per provider per month from the first month; Porto's $130K over two months is 27. The base case assumes 1.5, which v1.3's own orientation script ("first booking usually within 2–3 weeks") supports better than 5.
-- **Year 1 is an investment year on every scenario.** The base case loses about $95K before engineering; the high case about $42K. The largest cost is people, not technology: five regional managers are $102K, AI spend is under $1K.
+- **Year 1 is an investment year on every scenario.** The base case loses about $95K before engineering; the high case about $40K. The largest cost is people, not technology: five regional managers are $102K, AI spend is under $1K.
 - **The blended take is 18–19% of all GMV**, in line with v1.3's 20% assumption, because the traveler fee sits on top of the earner commission.
 - **What moves the result is volume per provider and the event lane, not price.** Each coordinated event adds max($499, 8% of budget) — $800 on a $10,000 event, $2,000 on $25,000 — and none is in the model because no coordinator network exists yet. Ten Kyoto or Cartagena weddings at $25,000 add $20,000 of coordination fees plus the vendor commissions underneath. The June 2026 reframe's thesis — that the event lane carries the platform — is a hypothesis this model does not yet support with a row; it is the first thing to measure in the first market.
 - **Plus is $0** until it delivers (Locked Decision 26). **Pro** contributes from month 3 at the assumed take-up because beta pricing ends December 31, 2026.
 - **Affiliate commission is the least certain line.** The 8% band is seeded with "confirm per contract" on every row and no partner report has yet been reconciled.
+- **The Booking Concierge fee is small at 5% of a $20–30 service; the commission on the service is the larger half.** The line exists to show the shape, not to carry the year: it grows with the number of partner items per plan, which is what §4a's catalog work drives.
 
 ### What the decision-maker is asked to set
 
@@ -429,16 +438,20 @@ Lanes are sequenced in the wave grammar the architecture rules use; each lane ap
 | Wave | Lane | From | Schema / ruling |
 |---|---|---|---|
 | 0 | Memberships checkout: Stripe products for Trip Pass, Plus, Pro; subscription webhook writes `plan_memberships` | ratified, starts 2026-10-01 | none |
-| 1 | Sitemap widening, JSON-LD, `llms.txt` | §4a | none |
+| 1 | Viator product-content and Tiqets content-API ingestion replace search deep links; robots.txt enforced in the scraper | §4a | none |
+| 1 | Lossless add-to-plan for partner items | §4a | none |
+| 1 | Hand-off creates booking-agent requests from a Booking Concierge purchase; the $40 cap reader | §6.4 | none |
 | 1 | Surface `whyText` and sources on the city page; source-click tracking | §5.2 | none |
-| 1 | "Make this my plan" on shared pages; `attributionRef` writer | §7.2 | none |
+| 1 | "Make this my plan" on shared pages | §7.2 | none |
 | 1 | Neighbourhood rings on the journey map | §7.3 | none |
-| 1 | One AI cost ledger; `grok-3` pricing row | §4b | none |
-| 2 | Licence gate: `resale_class` on content tables | §4a | *ruling* (column) |
-| 2 | Read-only MCP server + staging tool on the proposal store | §4b | brief |
-| 2 | Item-grain trend resolution; search and gem-view capture | §5.2 | brief |
-| 2 | Sharer payment band | §7.2 | *ruling* (fee band) |
+| 1 | Sitemap widening and structured data | §4a | none |
+| 2 | Logistics columns on the catalog row (meeting point, hours, last verified) | §4a | *ruling* (schema) |
+| 2 | Partner items in the optimizer catalog | §4a | *ruling* |
+| 2 | Platform-owned Booking Concierge listing | §6.4 | *ruling* |
+| 2 | Re-open GetYourGuide and Klook API applications at the volume threshold | §4a | *ruling* (amends the Aug 2 directive) |
 | 2 | Booking agent Phase 1: copilot research/prepare on the pooled queue; inbox verify control; purchase packet carrier | §6, LD 44 | *ruling* (packet carrier) |
+| 2 | Item-grain trend resolution; search and gem-view capture | §5.2 | brief |
+| 3 | Agent surface (MCP): search + stage; mint by agent | §4b | *ruling* (mint) |
 | 3 | Viator Full + Booking: application, payment handoff design with counsel, certification, then the client | §6.5 | *contingent* |
 | 3 | Neighbourhood boundary extract | §7.3 | *ruling* (column) |
 | 3 | Agentic payment rails (Stripe SPT / Agent Pay / AP2) | §6.4 | *contingent* |
@@ -460,7 +473,8 @@ Lanes are sequenced in the wave grammar the architecture rules use; each lane ap
 | `traveler_service_fee` (`traveler:service_fee_pct`, `_cap_cents`) | percent, cap | 0.07, 2500 | migration 258 |
 | `optimization_fees` | flat | 5.99 / 19.99 | migration 076 |
 | `concierge:ai_task` | flat_cents | 299 | migration 258 |
-| `concierge:booking_pct` / `concierge:booking_cap_cents` | percent / flat_cents | 0.05 / 4000 | migration 258 |
+| `expert_concierge_booking` (Booking Concierge fee, live) | percent | 0.05, uncapped | migrations 064, 066 |
+| `concierge:booking_pct` / `concierge:booking_cap_cents` (ratified cap, no reader yet) | percent / flat_cents | 0.05 / 4000 | migration 258 |
 | `concierge:done_for_you_deposit_pct` | percent | 0.20 | migration 258 |
 | `coordination_floor` / `coordination_percent` | flat / percent | 499.00 / 0.08 | migration 122 |
 | `ready_made_trip` | percent | inherits author band | migration 133 |
@@ -470,9 +484,9 @@ Lanes are sequenced in the wave grammar the architecture rules use; each lane ap
 
 ### Appendix B — Sources consulted for this version
 
-Repository: `docs/design/PRICING_AND_FEATURE_MAP.md`; `docs/backoffice/REVENUE_MODEL.md`; `docs/planning/business-plan-delivery-map.md`; `docs/design/AI_BOOKING_AGENT_BRIEF.md`; `docs/MONEY_MAP.md`; `docs/MARKET_LAUNCH_CHECKLIST.md`; `TREND_ENGINE_PHASE0_FINDINGS.md`; `BUSINESS_MODEL_REFRAME_CORRECTION_BRIEF.md`; `research/traveloure_bp_reframed_analysis.md`; `CLAUDE.md` Locked Decisions 20, 22, 26, 27, 33, 39, 40, 41, 42, 43, 44, 45.
+Repository: `docs/design/PRICING_AND_FEATURE_MAP.md`; `docs/briefs/MUSEMENT_INTEGRATION_BRIEF.md`; `docs/PUNCHLIST.md`; `docs/backoffice/REVENUE_MODEL.md`; `docs/planning/business-plan-delivery-map.md`; `docs/design/AI_BOOKING_AGENT_BRIEF.md`; `docs/MONEY_MAP.md`; `docs/MARKET_LAUNCH_CHECKLIST.md`; `TREND_ENGINE_PHASE0_FINDINGS.md`; `BUSINESS_MODEL_REFRAME_CORRECTION_BRIEF.md`; `research/traveloure_bp_reframed_analysis.md`; `CLAUDE.md` Locked Decisions 20, 22, 26, 27, 33, 39, 40, 41, 42, 43, 44, 45.
 
-External (September 2026): Tavily documentation and product notes (search, extract, crawl; no publisher program); xAI Grok Bot announcement and third-party breakdowns (August 2026 beta; browser and MCP); Viator Partner Resource Center — affiliate API levels of access and certification; Travelpayouts network terms; Bloomberg Law and the Technology & Marketing Law Blog on *Ryanair v. Booking.com*; Forbes and Payments Dive on Mastercard Agent Pay, Visa Intelligent Commerce, Stripe agentic commerce and AP2; PCI SAQ scoping guidance for travel businesses.
+External (September 2026): Tavily documentation and product notes (search, extract, crawl; no publisher program); xAI Grok Bot announcement and third-party breakdowns (August 2026 beta; browser and MCP); Viator Partner Resource Center — affiliate API levels of access, basic-access product content with logistics, and certification; GetYourGuide partner terms and API access requirements; Tiqets affiliate API token and API programme pages; Klook partner programme; Impact partner catalog documentation; Travelpayouts day-tours data and network terms; Bloomberg Law and the Technology & Marketing Law Blog on *Ryanair v. Booking.com*; Forbes and Payments Dive on Mastercard Agent Pay, Visa Intelligent Commerce, Stripe agentic commerce and AP2; PCI SAQ scoping guidance for travel businesses.
 
 ### Appendix C — v1.3 sections and their disposition
 
