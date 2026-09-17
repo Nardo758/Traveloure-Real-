@@ -9,8 +9,7 @@
  * PHOTO GATE — a TRUST surface (ruling 2026-09-01-photo-tiers): attributed expert photos remain
  * subject to the strict non-stock gate. Until one qualifies, the moment uses a bundled Creative
  * Commons representative photo with visible license credit and no expert attribution. A real
- * photo replaces that fallback only when it is associated with the specific Moment; the current
- * city-level query is intentionally bypassed for the approved pinned Moments below.
+ * photo replaces that fallback only when it is associated with the specific Moment.
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
@@ -35,11 +34,6 @@ export interface MomentConfig {
    */
   experienceSlug: string | null;
   city: string; // market
-  /**
-   * The approved image for this curated Moment is more specific than the city-level expert
-   * photo query. Keep it pinned until expert media can be associated with a moment key.
-   */
-  representativeOnly?: boolean;
 }
 
 /** Ratified copy (MOMENTS_COPY.md). momentKey === key. */
@@ -68,7 +62,6 @@ export const MOMENTS: MomentConfig[] = [
     // The seeded `experience_types` row (server/seed-experience-types.ts) — a real catalog slug.
     experienceSlug: "wedding",
     city: "Kyoto",
-    representativeOnly: true,
   },
   {
     key: "proposal",
@@ -83,7 +76,6 @@ export const MOMENTS: MomentConfig[] = [
     experienceType: "event",
     experienceSlug: "proposal",
     city: "Kyoto",
-    representativeOnly: true,
   },
   {
     key: "golf",
@@ -102,7 +94,6 @@ export const MOMENTS: MomentConfig[] = [
     // step that collects them is only visible when the bound occasion says it has a schedule.
     experienceSlug: "golf-trip",
     city: "Edinburgh",
-    representativeOnly: true,
   },
   {
     key: "girls_trip",
@@ -117,7 +108,6 @@ export const MOMENTS: MomentConfig[] = [
     experienceType: "travel",
     experienceSlug: "girls-trip",
     city: "Cartagena",
-    representativeOnly: true,
   },
   {
     key: "anniversary",
@@ -224,6 +214,8 @@ export interface MomentPhoto {
   credit?: string;
   license?: string;
   sourceUrl?: string;
+  /** Server-side association used to prevent city-level media from crossing Moment boundaries. */
+  momentKey?: string;
 }
 export interface LiveMoment {
   key: string;
@@ -321,15 +313,11 @@ export function selectMomentPhotos(
   attributedPhotos: MomentPhoto[],
   attributedBuilder: { handle: string; reviews: number } | null = null,
 ): { photos: MomentPhoto[]; builder: { handle: string; reviews: number } | null } {
-  const moment = MOMENTS.find((candidate) => candidate.key === momentKey);
   const representative = REPRESENTATIVE_PHOTOS[momentKey];
 
-  if (moment?.representativeOnly && representative) {
-    return { photos: [representative], builder: null };
-  }
-
-  if (attributedPhotos.length > 0) {
-    return { photos: attributedPhotos, builder: attributedBuilder };
+  const matchingPhotos = attributedPhotos.filter((photo) => photo.momentKey === momentKey);
+  if (matchingPhotos.length > 0) {
+    return { photos: matchingPhotos, builder: attributedBuilder };
   }
 
   return {
@@ -339,26 +327,28 @@ export function selectMomentPhotos(
 }
 
 /**
- * Attributed real photos for a market: an expert-curated gem whose image is NOT stock, with the
- * curating expert's handle. The gate excludes stock hosts (unsplash/pexels/google), so seeded
+ * Attributed real photos for a Moment: an expert-curated gem in its market whose moment_key
+ * exactly matches. The gate excludes stock hosts (unsplash/pexels/google), so seeded
  * imagery never qualifies. Returns photos + the curating expert's handle/review-count (the
  * builder byline source). Best-effort: a query failure yields [] (the moment stays out — §13).
  */
-async function attributedPhotosForCity(
+async function attributedPhotosForMoment(
   city: string,
+  momentKey: string,
 ): Promise<{ photos: MomentPhoto[]; builder: { handle: string; reviews: number } | null }> {
   try {
     // NOTE: `users` has no review_count column, so the builder review count honest-omits (0 → the
     // byline shows "built by @handle" with no count). A real per-expert review count is a filed
     // follow-up; §13 — never a fabricated number.
     const rows = await db.execute(sql`
-      SELECT g.image_url AS url, g.place_name AS place, u.handle AS handle
+      SELECT g.image_url AS url, g.place_name AS place, u.handle AS handle, g.moment_key AS moment_key
       FROM travel_pulse_hidden_gems g
       JOIN users u ON u.id = g.curated_by_expert_id
       JOIN local_expert_forms f
         ON f.user_id = u.id
        AND LOWER(TRIM(f.city)) = LOWER(TRIM(${city}))
       WHERE g.city ILIKE ${city}
+        AND g.moment_key = ${momentKey}
         AND g.image_url IS NOT NULL AND g.image_url <> ''
         AND COALESCE(g.ai_generated, false) = false
         AND u.handle IS NOT NULL AND u.handle <> ''
@@ -370,12 +360,13 @@ async function attributedPhotosForCity(
       ORDER BY g.gem_score DESC NULLS LAST
       LIMIT 4
     `);
-    const list = (rows.rows ?? []) as Array<{ url: string; place: string; handle: string }>;
+    const list = (rows.rows ?? []) as Array<{ url: string; place: string; handle: string; moment_key: string }>;
     const photos: MomentPhoto[] = list.map((r) => ({
       url: r.url,
       place: r.place,
       source: "expert",
       handle: r.handle,
+      momentKey: r.moment_key,
     }));
     const builder = list.length > 0 ? { handle: list[0].handle, reviews: 0 } : null;
     return { photos, builder };
@@ -389,9 +380,7 @@ async function attributedPhotosForCity(
 export async function resolveLandingMoments(): Promise<LiveMoment[]> {
   const live: LiveMoment[] = [];
   for (const m of MOMENTS) {
-    const attributed = m.representativeOnly
-      ? { photos: [], builder: null }
-      : await attributedPhotosForCity(m.city);
+    const attributed = await attributedPhotosForMoment(m.city, m.key);
     const selected = selectMomentPhotos(m.key, attributed.photos, attributed.builder);
     const resolvedPhotos = selected.photos;
     if (resolvedPhotos.length === 0) continue;

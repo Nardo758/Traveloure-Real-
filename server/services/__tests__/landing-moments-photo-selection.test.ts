@@ -7,10 +7,11 @@ const expertPhoto = {
   place: "A city photo",
   source: "expert" as const,
   handle: "local-expert",
+  momentKey: "anniversary",
 };
 
 describe("landing Moment photo selection", () => {
-  it("keeps the approved representative image for curated wedding, proposal, golf, and girls-trip Moments", () => {
+  it("keeps the approved representative image when expert media has no matching Moment association", () => {
     for (const key of ["wedding", "proposal", "golf", "girls_trip"]) {
       const selected = selectMomentPhotos(key, [expertPhoto]);
       assert.equal(selected.photos[0]?.source, "representative", key);
@@ -31,10 +32,29 @@ describe("landing Moment photo selection", () => {
     assert.equal(selected.photos[0]?.credit, "Elist Nguyen");
   });
 
-  it("keeps expert attribution for an unpinned Moment when a city photo exists", () => {
+  it("keeps expert attribution when the photo association matches the Moment", () => {
     const selected = selectMomentPhotos("anniversary", [expertPhoto], { handle: "local-expert", reviews: 4 });
     assert.deepEqual(selected.photos, [expertPhoto]);
     assert.deepEqual(selected.builder, { handle: "local-expert", reviews: 4 });
+  });
+
+  it("keeps two Moments in the same city from receiving each other's expert photos", () => {
+    const weddingPhoto = {
+      ...expertPhoto,
+      url: "https://example.test/kyoto-wedding.jpg",
+      place: "A Kyoto wedding",
+      momentKey: "wedding",
+    };
+    const proposalPhoto = {
+      ...expertPhoto,
+      url: "https://example.test/kyoto-proposal.jpg",
+      place: "A Kyoto proposal",
+      momentKey: "proposal",
+    };
+    const sameCityPhotos = [weddingPhoto, proposalPhoto];
+
+    assert.deepEqual(selectMomentPhotos("wedding", sameCityPhotos).photos, [weddingPhoto]);
+    assert.deepEqual(selectMomentPhotos("proposal", sameCityPhotos).photos, [proposalPhoto]);
   });
 
   it("falls back to the configured representative image when no expert photo exists", () => {

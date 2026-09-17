@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { resolveHeroTilePhoto } from "../landing/landing-hero";
+import { HERO_EXPERT_FALLBACK, resolveHeroTilePhoto } from "../landing/landing-hero";
 
 const REMOTE = "https://images.example.test/kyoto.jpg";
 const FALLBACK = "/images/landing/hero-fushimi-inari.jpg";
@@ -23,6 +23,14 @@ describe("landing hero tile photo fallback", () => {
   it("switches to the bundled representative image after the remote image fails", () => {
     assert.deepEqual(resolveHeroTilePhoto(REMOTE, true, FALLBACK), {
       src: FALLBACK,
+      usesFallback: true,
+    });
+  });
+
+  it("uses the generic guide photo for a local expert without a usable profile image", () => {
+    assert.equal(HERO_EXPERT_FALLBACK, "/images/landing/hero-generic-expert.jpg");
+    assert.deepEqual(resolveHeroTilePhoto(undefined, false, HERO_EXPERT_FALLBACK), {
+      src: "/images/landing/hero-generic-expert.jpg",
       usesFallback: true,
     });
   });
