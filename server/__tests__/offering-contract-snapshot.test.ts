@@ -322,6 +322,14 @@ test("W2 · nothing UPDATEs the column; one module WRITES it and its readers are
       // THE WRITER (W1 proves it stamps inside the insert).
       path.join("server", "services", "plan-work-access.service.ts"),
       path.join("server", "storage.ts"),
+      // READERS (ledger `2026-09-16-bundle-component-traveler-cancel`, LD 50 second half) — each named
+      // with what it reads the snapshot FOR; the UPDATE checks below run over them exactly as over the writer.
+      // The component-cancel rail reads the BUNDLE snapshot's policy tier to price a traveler-cancelled
+      // component, and the purchase-time cents the reduced mint is derived from.
+      path.join("server", "services", "booking-completion.service.ts"),
+      // `resolveSnapshottedCancellationTerms` reads `policy.cancellationPolicyType` off the purchase-time
+      // snapshot; a missing tier is `policy_snapshot_missing`, never a defaulted one (§13).
+      path.join("server", "services", "cancellation-policy.service.ts"),
     ].sort(),
     "the one writer plus its named readers; an unlisted namer is a second place the terms can be written",
   );

@@ -102,16 +102,29 @@ import {
   PARTIAL_COMPLETION_FROM_STATUSES,
 } from "../utils/booking-from-states";
 import {
+  BUNDLE_COMPONENT_STATUS,
   PARTIALLY_COMPLETED_STATUS,
+  allocationsAreComplete,
+  cancelledComponentRefundCents,
   deriveBundleOutcome,
+  isValidCancelRefundPercent,
   reducedBundleFigures,
 } from "@shared/bundle-component-states";
 import {
+  claimComponentCancelled,
   claimComponentCompleted,
   claimComponentFailed,
+  readBundleComponentRows,
   readBundleComponentStates,
   type ComponentStateSource,
 } from "./bundle-component-states.service";
+// Locked Decision 50, second half (ledger `2026-09-16-bundle-component-traveler-cancel`): the
+// SNAPSHOTTED cancellation terms a traveler-cancelled component follows. The policy module imports
+// only `db` and the traveler-charge composition, so it sits below this one.
+import {
+  resolveSnapshottedCancellationTerms,
+  type CancellationPolicyType,
+} from "./cancellation-policy.service";
 // D-51 (ledger `2026-09-16-bundle-partial-settlement`): the MONEY LEG of a partial settlement — the
 // claim, the one Stripe refund and the promote. Sits BELOW this module in the import graph.
 import {
@@ -148,6 +161,13 @@ export type CompletionActor =
   | "provider_declared"
   | "provider_bundle_components"
   /**
+   * Locked Decision 50, second half (ledger `2026-09-16-bundle-component-traveler-cancel`): THE
+   * TRAVELER CANCELLED A BUNDLE COMPONENT and that answer was the last one outstanding, so the parent
+   * moved to `partially_completed` and settled. The ONLY traveler-driven caller of the partial
+   * settlement; it grants nothing the recorder's own gate did not already check.
+   */
+  | "traveler_bundle_component_cancel"
+  /**
    * D-6 (ledger `2026-09-15-d24-d26-acceptance-columns`): THE TRAVELER ACCEPTED THE ARTIFACT.
    * A new CALLER of the ONE completion implementation, with its own actor tag — never a second
    * minting path (§18 rule 1, and the brief's own non-negotiable rule 3). It is the only actor
@@ -171,6 +191,7 @@ const DIARY_ACTOR: Record<CompletionActor, TransitionActorType> = {
   provider_session_end: "provider",
   provider_declared: "provider",
   provider_bundle_components: "provider",
+  traveler_bundle_component_cancel: "traveler",
   traveler_accepted: "traveler",
   window_elapsed: "auto_complete",
 };
@@ -288,6 +309,13 @@ interface BookingRow {
   tripId: string | null;
   serviceId: string | null;
   providerId: string | null;
+  /** The traveler who bought it — the ONLY principal the component-cancel rail admits (§14: matched against the session). */
+  travelerId: string | null;
+  /**
+   * OC-B1's purchase-time contract snapshot (migration 291). Read by the component-cancel rail for the
+   * SNAPSHOTTED cancellation policy tier (`policy.cancellationPolicyType`); NULL = never snapshotted (§13).
+   */
+  offeringContractSnapshot: unknown;
   confirmedAt: Date | null;
   /** D-26's per-booking delivery instant. NULL = the per-booking source has no answer (§13). */
   deliveredAt: Date | null;
@@ -318,6 +346,8 @@ async function loadBooking(bookingId: string): Promise<BookingRow | null> {
       tripId: serviceBookings.tripId,
       serviceId: serviceBookings.serviceId,
       providerId: serviceBookings.providerId,
+      travelerId: serviceBookings.travelerId,
+      offeringContractSnapshot: serviceBookings.offeringContractSnapshot,
       confirmedAt: serviceBookings.confirmedAt,
       deliveredAt: serviceBookings.deliveredAt,
       completionDeclaredAt: serviceBookings.completionDeclaredAt,
@@ -1309,6 +1339,235 @@ export async function recordBundleComponentFailure(input: {
     parentOutcome: outcome,
     componentStateSource: source,
   };
+}
+
+/** The terms a traveler-cancelled component was cancelled under, as the rail states them back. */
+export interface BundleComponentCancellationTerms {
+  /** The SNAPSHOTTED tier (the bundle listing's policy at purchase), after the ONE normalization. */
+  policyType: CancellationPolicyType;
+  /** True when the snapshot recorded NO policy and the normalizer defaulted to flexible. */
+  policyDefaulted: boolean;
+  /** Hours from the cancel instant to the scheduled start; null = no scheduled date (most generous tier). */
+  hoursUntilStart: number | null;
+  /** The pinned percent — `refundPercentFor(policyType, hoursUntilStart)` at the cancel instant. */
+  refundPercent: number;
+  allocationCents: number;
+  /** `cancelledComponentRefundCents(allocationCents, refundPercent)` — the allocation share coming back. */
+  refundCents: number;
+  /** allocation − refund: what the seller retains, minted as delivered value at the flip. */
+  retainedCents: number;
+}
+
+export type BundleComponentCancellationResult =
+  | {
+      recorded: true;
+      /** The row was ALREADY cancelled (a double click / retry): the terms are the PINNED ones, nothing moved. */
+      alreadyRecorded: boolean;
+      bookingId: string;
+      componentServiceId: string;
+      terms: BundleComponentCancellationTerms;
+      /** The parent moved to `partially_completed` on THIS call (this cancel was the last answer outstanding). */
+      partiallyCompleted: boolean;
+      /** D-51's money leg, present only when a settlement was attempted on this call (§13). */
+      settlement: BundlePartialSettlementResult | null;
+      parentOutcome?: string;
+      reason?: IneligibleReason | "lost_race";
+      evidence: Record<string, unknown>;
+    }
+  | {
+      recorded: false;
+      bookingId: string;
+      componentServiceId: string;
+      reason:
+        | "booking_not_found"
+        /** The session user is not the booking's traveler — the route answers an undifferentiated 404. */
+        | "not_traveler"
+        /** Not a `bundle_components` booking; `detail` carries the resolver's own reason. */
+        | "rule_not_bundle"
+        /** A legacy bundle (no rows): the jsonb cannot be claimed atomically and holds no allocation (§13). */
+        | "bundle_component_states_unavailable"
+        | "unknown_component"
+        /** The component is no longer `pending` (delivered, failed, refunded — or the parent left `confirmed`). `currentStatus` says which. */
+        | "component_not_pending"
+        /** No allocation on this component (or the bundle's allocations do not sum): no refund can be computed, so the cancel is refused rather than filed at a guessed share. */
+        | "allocation_missing"
+        /** The row carries no purchase-time policy snapshot: the tier the traveler bought under is unknown (§13). */
+        | "policy_snapshot_missing";
+      currentStatus?: string | null;
+      detail?: string;
+      evidence?: Record<string, unknown>;
+    };
+
+/**
+ * Locked Decision 50, third paragraph, second sentence — "when the traveler voluntarily cancels an
+ * outstanding component, the component's allocated amount follows the SNAPSHOTTED cancellation policy
+ * and deadline" (ledger `2026-09-16-bundle-component-traveler-cancel`; migration 309). THE ONE
+ * TRAVELER-SIDE COMPONENT WRITER, the third recorder beside the seller's two above.
+ *
+ *  1. The PRINCIPAL is the booking's traveler and nobody else (§14: `travelerUserId` is the session's,
+ *     matched against the row; the route turns a mismatch into an undifferentiated 404).
+ *  2. Same server-side rule resolution as the seller rails: only a `bundle_components` booking with
+ *     component ROWS may take it; a legacy jsonb bundle is refused by name.
+ *  3. The refund needs an ALLOCATION to apply a percent to: a component without one (a pre-307 row,
+ *     an unpriced snapshot) is refused `allocation_missing` — the traveler is never shown, and the
+ *     settlement never owed, a share nobody can compute.
+ *  4. THE TERMS ARE THE SNAPSHOT'S (`resolveSnapshottedCancellationTerms`): the tier is the bundle
+ *     listing's policy AT PURCHASE off `offering_contract_snapshot`, the deadline is the booking's own
+ *     scheduled start through the whole-row quote's SAME parse, and the percent is the ONE resolver's
+ *     (`refundPercentFor`). A row with no snapshot is refused `policy_snapshot_missing` — never the
+ *     live listing, never a default (§13). A live policy edit after purchase is not an input.
+ *  5. ONE ATOMIC FLIP (`claimComponentCancelled`): `pending → cancelled` with the parent `confirmed`
+ *     in the same WHERE, stamping `cancelled_at` AND PINNING `cancel_refund_percent` in that statement,
+ *     so a double call is one flip and the second caller is handed the PINNED terms, never re-resolved
+ *     ones (a clock that moved between the two calls must not change the answer).
+ *  6. Then the ONE derivation decides the parent exactly as the seller rails do: every component
+ *     conclusive with ≥1 delivered ⇒ `settleBundlePartially` (the D-34 flip, the D-35 mint reading the
+ *     pin, then the money leg); some still pending ⇒ recorded, waiting; none delivered ⇒
+ *     `all_undelivered`, nothing flips — the whole-row cancel rail owns that case.
+ *
+ * NO AMOUNT, RATE, PERCENT OR STATUS ARRIVES FROM THE CALLER (§14/§19): the status written is this
+ * function's, the percent is the snapshot's, the cents are the row's allocation × that percent.
+ */
+export async function recordBundleComponentCancellation(input: {
+  bookingId: string;
+  componentServiceId: string;
+  /** The SESSION user (§14). Matched against `service_bookings.traveler_id`; never taken from a body. */
+  travelerUserId: string;
+  reason?: string | null;
+  now?: Date;
+}): Promise<BundleComponentCancellationResult> {
+  const now = input.now ?? new Date();
+  const { bookingId, componentServiceId } = input;
+  const booking = await loadBooking(bookingId);
+  if (!booking) return { recorded: false, bookingId, componentServiceId, reason: "booking_not_found" };
+  if (!booking.travelerId || booking.travelerId !== input.travelerUserId) {
+    return { recorded: false, bookingId, componentServiceId, reason: "not_traveler" };
+  }
+
+  const pre = await resolveCompletionEligibility(bookingId, now);
+  if (pre.rule !== "bundle_components") {
+    return { recorded: false, bookingId, componentServiceId, reason: "rule_not_bundle", detail: pre.reason ?? pre.rule ?? undefined, evidence: pre.evidence };
+  }
+  const source = (pre.evidence as any).componentStateSource as ComponentStateSource | undefined;
+  if (source !== "rows") {
+    return { recorded: false, bookingId, componentServiceId, reason: "bundle_component_states_unavailable", evidence: pre.evidence };
+  }
+  const states = await readBundleComponentStates({
+    bookingId,
+    bookingDetails: booking.bookingDetails,
+    bundleServiceId: booking.serviceId ?? null,
+  });
+  const component = states.components.find((c) => c.componentServiceId === componentServiceId);
+  if (!component) return { recorded: false, bookingId, componentServiceId, reason: "unknown_component", evidence: pre.evidence };
+
+  // The refund is `allocation × percent`; with no allocation there is nothing to apply a percent to.
+  // The WHOLE bundle's allocations must be the contract fact (they sum to the price), or the settlement
+  // this cancel may trigger would refuse `allocation_missing` after the traveler was told a number.
+  const totalCents = Math.round((Number(booking.totalAmount ?? 0) || 0) * 100);
+  if (
+    !Number.isInteger(component.allocationCents) ||
+    (component.allocationCents as number) < 0 ||
+    !allocationsAreComplete(states.components, totalCents)
+  ) {
+    return { recorded: false, bookingId, componentServiceId, reason: "allocation_missing", evidence: pre.evidence };
+  }
+  const allocationCents = component.allocationCents as number;
+
+  const scheduledDate = (booking.bookingDetails ?? {}).scheduledDate;
+  const termsFor = (at: Date, pinnedPercent?: number): BundleComponentCancellationTerms | null => {
+    const resolved = resolveSnapshottedCancellationTerms({
+      offeringContractSnapshot: booking.offeringContractSnapshot,
+      scheduledDate: typeof scheduledDate === "string" ? scheduledDate : null,
+      now: at,
+    });
+    if (!resolved.ok) return null;
+    // A PINNED percent (the already-cancelled path) wins over a re-resolution: the row's answer is the
+    // answer the traveler was given, and the clock has moved since.
+    const refundPercent = pinnedPercent ?? resolved.refundPercent;
+    const refundCents = cancelledComponentRefundCents(allocationCents, refundPercent);
+    return {
+      policyType: resolved.policyType,
+      policyDefaulted: resolved.policyDefaulted,
+      hoursUntilStart: resolved.hoursUntilStart,
+      refundPercent,
+      allocationCents,
+      refundCents,
+      retainedCents: allocationCents - refundCents,
+    };
+  };
+
+  // A row already `cancelled` (a retry, a double click): hand back the PINNED terms, move nothing.
+  if (component.status === BUNDLE_COMPONENT_STATUS.cancelled) {
+    return alreadyCancelled();
+  }
+  if (component.status !== BUNDLE_COMPONENT_STATUS.pending) {
+    return { recorded: false, bookingId, componentServiceId, reason: "component_not_pending", currentStatus: component.status, evidence: pre.evidence };
+  }
+
+  const terms = termsFor(now);
+  if (!terms) return { recorded: false, bookingId, componentServiceId, reason: "policy_snapshot_missing", evidence: pre.evidence };
+
+  const claim = await claimComponentCancelled({
+    bookingId,
+    componentServiceId,
+    parentFromStatuses: COMPLETION_ALLOWED_FROM_STATUSES,
+    refundPercent: terms.refundPercent,
+    reason: typeof input.reason === "string" && input.reason.trim().length > 0 ? input.reason.trim() : null,
+    now,
+  });
+  if (!claim.claimed) {
+    // Lost to a concurrent caller — or the parent left `confirmed` between the read and the write.
+    if (claim.currentStatus === BUNDLE_COMPONENT_STATUS.cancelled) return alreadyCancelled();
+    return { recorded: false, bookingId, componentServiceId, reason: "component_not_pending", currentStatus: claim.currentStatus, evidence: pre.evidence };
+  }
+  return afterWrite(false, terms);
+
+  async function alreadyCancelled(): Promise<BundleComponentCancellationResult> {
+    const rows = await readBundleComponentRows(db, bookingId);
+    const row = rows.find((r) => r.componentServiceId === componentServiceId);
+    const pinned = row?.cancelRefundPercent;
+    const at = row?.cancelledAt ?? now;
+    const t = isValidCancelRefundPercent(pinned) ? termsFor(at, pinned) : null;
+    if (!t) {
+      // Cancelled by something other than this rail (no pin) — the settlement will refuse it by name;
+      // this rail has nothing true to state and does not invent terms (§13).
+      return { recorded: false, bookingId, componentServiceId, reason: "component_not_pending", currentStatus: BUNDLE_COMPONENT_STATUS.cancelled, detail: "cancel_terms_missing", evidence: pre.evidence };
+    }
+    return afterWrite(true, t);
+  }
+
+  async function afterWrite(alreadyRecorded: boolean, t: BundleComponentCancellationTerms): Promise<BundleComponentCancellationResult> {
+    // Re-derive AFTER the write — the resolver is the one authority on what the components now say.
+    const post = await resolveCompletionEligibility(bookingId, now);
+    const outcome = (post.evidence as any).outcome as string | undefined;
+    if (post.reason === "bundle_partially_completed") {
+      const settled = await settleBundlePartially({ bookingId, actor: "traveler_bundle_component_cancel", now });
+      return {
+        recorded: true,
+        alreadyRecorded,
+        bookingId,
+        componentServiceId,
+        terms: t,
+        partiallyCompleted: settled.flipped,
+        settlement: settled.settlement,
+        parentOutcome: outcome,
+        reason: settled.settled ? undefined : settled.reason,
+        evidence: settled.evidence,
+      };
+    }
+    return {
+      recorded: true,
+      alreadyRecorded,
+      bookingId,
+      componentServiceId,
+      terms: t,
+      partiallyCompleted: false,
+      settlement: null,
+      parentOutcome: outcome,
+      reason: post.reason,
+      evidence: post.evidence,
+    };
+  }
 }
 
 export interface SettleBundlePartialResult {

@@ -48,7 +48,13 @@ const POLICY_TYPES: readonly CancellationPolicyType[] = ['flexible', 'moderate',
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const NAIVE_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/i;
 
-function normalizePolicy(raw: string | null | undefined): { type: CancellationPolicyType; defaulted: boolean } {
+/**
+ * THE ONE normalization of a stored policy value (exported for the bundle component-cancel rail, which
+ * reads the tier off the purchase-time `offering_contract_snapshot` and must default a missing/unknown
+ * value exactly as the whole-row quote does — §18 rule 1; a second copy of "NULL means flexible" is how
+ * a component cancel and a booking cancel start disagreeing about the same listing).
+ */
+export function normalizeCancellationPolicy(raw: string | null | undefined): { type: CancellationPolicyType; defaulted: boolean } {
   if (raw && (POLICY_TYPES as readonly string[]).includes(raw)) {
     return { type: raw as CancellationPolicyType, defaulted: false };
   }
@@ -64,6 +70,20 @@ function parseScheduledInstant(raw: string): Date | null {
       : normalized;
   const parsed = new Date(explicitInstant);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * THE ONE deadline arithmetic: hours from `now` until the booking's scheduled start, or NULL when no
+ * parseable scheduled date exists (⇒ the most generous tier, see the header). Extracted from
+ * `computeCancellationRefund` so the bundle component-cancel rail reads the SAME parse of the SAME
+ * `booking_details.scheduledDate` — a component cancelled at instant T and the whole booking cancelled
+ * at T must resolve the same tier, or the traveler's answer depends on which button they pressed.
+ */
+export function hoursUntilScheduledStart(scheduledDate: string | null | undefined, now: Date): number | null {
+  if (!scheduledDate) return null;
+  const start = parseScheduledInstant(scheduledDate);
+  if (!start) return null;
+  return (start.getTime() - now.getTime()) / (1000 * 60 * 60);
 }
 
 /** Percent refunded for a policy given hours-until-start (null = unknown → most generous tier). */
@@ -113,17 +133,9 @@ export function computeCancellationRefund(params: {
   scheduledDate: string | null | undefined;
   now?: Date;
 }): CancellationRefundQuote {
-  const { type, defaulted } = normalizePolicy(params.policyType);
+  const { type, defaulted } = normalizeCancellationPolicy(params.policyType);
   const now = params.now ?? new Date();
-
-  let hoursUntilStart: number | null = null;
-  if (params.scheduledDate) {
-    const start = parseScheduledInstant(params.scheduledDate);
-    if (start) {
-      hoursUntilStart = (start.getTime() - now.getTime()) / (1000 * 60 * 60);
-    }
-  }
-
+  const hoursUntilStart = hoursUntilScheduledStart(params.scheduledDate, now);
   const refundPercent = refundPercentFor(type, hoursUntilStart);
   const total = isFinite(params.totalAmount) ? Math.max(params.totalAmount, 0) : 0;
   const refundAmount = Math.round(total * refundPercent) / 100; // percent of dollars, rounded to cents
@@ -181,4 +193,55 @@ export async function quoteCancellationForBooking(bookingId: string): Promise<
     scheduledDate: row.scheduled_date,
   });
   return { ...quote, bookingStatus: row.status, travelerId: row.traveler_id ?? null };
+}
+
+/**
+ * THE SNAPSHOTTED TERMS for a bundle COMPONENT the traveler cancels (Locked Decision 50, third paragraph:
+ * "the component's allocated amount follows the SNAPSHOTTED cancellation policy and deadline"; ledger
+ * `2026-09-16-bundle-component-traveler-cancel`).
+ *
+ * WHICH SNAPSHOT. The tier is `service_bookings.offering_contract_snapshot.policy.cancellationPolicyType`
+ * (migration 291) — the BUNDLE listing's policy AT PURCHASE, the one listing the traveler contracted with.
+ * A component listing's own policy was never shown to them and is not an input. Reading the live
+ * `provider_services.cancellation_policy_type` here would be exactly the retroactive tightening that
+ * snapshot exists to stop, and `quoteCancellationForBooking`'s live join is NOT reused for that reason.
+ * The deadline is the booking's own `booking_details.scheduledDate` through `hoursUntilScheduledStart`
+ * — a bundle is ONE booking under ONE service window, so its components share the deadline.
+ *
+ * §13 — THE ABSENCES. NO snapshot on the row (a booking committed before migration 291, or one whose
+ * composition failed and was committed without it) ⇒ `policy_snapshot_missing`: the tier the traveler
+ * bought under is unknown, and the rail REFUSES the cancel rather than apply today's listing or a
+ * default. A snapshot whose policy is NULL is a different fact — "the listing declared no policy at
+ * purchase" — and takes the ONE normalizer's stance (flexible, `policyDefaulted: true`), exactly as a
+ * whole-row cancel of the same booking would. No scheduled date ⇒ NULL hours ⇒ the most generous tier,
+ * the header's documented edge case, never a deduction we cannot justify.
+ *
+ * PURE: reads its inputs, resolves nothing else, writes nothing. The caller pins `refundPercent` on the
+ * component row inside the atomic flip; nothing downstream re-runs this.
+ */
+export type SnapshottedCancellationTerms =
+  | {
+      ok: true;
+      policyType: CancellationPolicyType;
+      policyDefaulted: boolean;
+      hoursUntilStart: number | null;
+      refundPercent: number;
+    }
+  | { ok: false; reason: "policy_snapshot_missing" };
+
+export function resolveSnapshottedCancellationTerms(params: {
+  offeringContractSnapshot: unknown;
+  scheduledDate: string | null | undefined;
+  now: Date;
+}): SnapshottedCancellationTerms {
+  const snap = params.offeringContractSnapshot;
+  if (!snap || typeof snap !== "object") return { ok: false, reason: "policy_snapshot_missing" };
+  const policy = (snap as { policy?: unknown }).policy;
+  if (!policy || typeof policy !== "object" || !("cancellationPolicyType" in (policy as object))) {
+    return { ok: false, reason: "policy_snapshot_missing" };
+  }
+  const raw = (policy as { cancellationPolicyType?: unknown }).cancellationPolicyType;
+  const { type, defaulted } = normalizeCancellationPolicy(typeof raw === "string" ? raw : null);
+  const hoursUntilStart = hoursUntilScheduledStart(params.scheduledDate, params.now);
+  return { ok: true, policyType: type, policyDefaulted: defaulted, hoursUntilStart, refundPercent: refundPercentFor(type, hoursUntilStart) };
 }
