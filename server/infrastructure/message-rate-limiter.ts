@@ -174,6 +174,130 @@ export function checkMessageRateLimit(params: {
   return { allowed: true };
 }
 
+/**
+ * ── THE AI-ASK LIMITS (decision-maker ruling 2026-09-16, punchlist **D-46** = A amended;
+ *    ledger `2026-09-16-l16-rulings-d45-d50`; CLAUDE.md Locked Decision 45 (3), §13, §14,
+ *    §18 rule 1) ───────────────────────────────────────────────────────────────────────────────
+ *
+ * WHY THEY LIVE HERE AND NOT IN A MODULE OF THEIR OWN. D-46 rules "one more NAMED limit in that
+ * SAME fixed-window module … never a second limiter implementation" (§18 rule 1). Everything below
+ * shares THIS file's single `store`, its single `hit()`, its single `cleanup` timer, its single
+ * loopback-only `bypassActive()` and its single `__resetMessageRateLimiter()`. A second counter map
+ * somewhere else is how one limiter starts throttling traffic the other has already allowed.
+ *
+ * WHY `checkMessageRateLimit` COULD NOT SIMPLY BE CALLED. It **requires a `recipientId`** and
+ * returns `{allowed:true}` outright when one is missing (`:137` above). An AI ask has no recipient:
+ * the counterpart is the platform's own model call, not a person. Passing a fabricated one would be
+ * an invented identity on an identity key — the class §14 refuses one table over, and the thing
+ * D-46 forbids by name. So this is a NAMED SECOND ENTRY POINT over the same machinery, never a
+ * fake recipient and never a fork.
+ *
+ * TWO LIMITS, AND THE SECOND IS NOT BELT-AND-BRACES (D-46 ii):
+ *   1. **Per trip** — asks from one sender against ONE plan, per window. This is the shape of the
+ *      abuse that actually costs tokens: re-asking the same plan over and over.
+ *   2. **Per sender, DAILY** — every ask that account makes, across every plan. **Trips are free to
+ *      create**, so a per-trip limit ALONE fans out: mint twenty plans, get twenty buckets. The
+ *      daily ceiling is what makes the first limit mean anything.
+ *
+ * ASKING IS FREE (D-21), so what these protect is TOKENS, not money. Nothing here is a fee, a rate
+ * or a band (§8): they are counts and windows.
+ *
+ * **STATED LIMIT, ACCEPTED BY RULING, NOT CLOSED (D-46 iii).** The store above is in-memory PER
+ * PROCESS and `.replit` declares `deploymentTarget = "autoscale"`, so both limits multiply by
+ * instance count and a cross-instance double-submit is not seen here at all. That is the same limit
+ * this module's own header already states for messaging. It was ACCEPTED for L16 because the
+ * exposure is tokens rather than money, and the shared-store lane is filed in `docs/PUNCHLIST.md`
+ * §4 with its trigger stated verbatim: *"when observed instance count > 1 or ask volume makes token
+ * spend material."* Do not close it quietly by adding a second store here.
+ */
+
+// Per trip: a traveler refining one plan asks a handful of questions in a sitting. Eight in ten
+// minutes is a generous conversation and a poor script.
+export const AI_ASK_PER_TRIP_MAX = 8;
+export const AI_ASK_PER_TRIP_WINDOW_MS = 10 * 60 * 1000;
+
+// Per sender, DAILY: the fan-out ceiling. A person planning several trips at once still lands well
+// inside this; an account minting plans to farm free model calls does not.
+export const AI_ASK_PER_SENDER_DAILY_MAX = 40;
+export const AI_ASK_PER_SENDER_DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** The two named AI-ask scopes. Deliberately distinct strings from `MessageRateScope`'s. */
+export type AiAskRateScope = "ai_ask_trip" | "ai_ask_sender_daily";
+
+export interface AiAskRateResult {
+  allowed: boolean;
+  scope?: AiAskRateScope;
+  retryAfterSec?: number;
+  message?: string;
+}
+
+function denyAiAsk(scope: AiAskRateScope, resetTime: number, message: string): AiAskRateResult {
+  return {
+    allowed: false,
+    scope,
+    retryAfterSec: Math.max(1, Math.ceil((resetTime - Date.now()) / 1000)),
+    message,
+  };
+}
+
+/**
+ * Check (and, on allow, record) ONE Ask-AI request against both AI-ask limits.
+ *
+ * Call once per attempted ask, BEFORE the model call — the model call is the expensive half, so a
+ * limit checked after it would protect nothing.
+ *
+ * Strictest-first, and BOTH are recorded when both pass: an ask that trips the per-trip limit does
+ * not also consume the sender's daily budget, which is the right way round — the traveler is told
+ * to slow down on this plan, not charged a day's allowance for a refusal.
+ *
+ * @param senderId the AUTHENTICATED asker's user id (§14 — from the session, never a body)
+ * @param tripId   the plan being asked about (the route's own path parameter)
+ * @param peerIp   socket peer address; scopes the CI bypass to loopback only, exactly as above
+ */
+export function checkAiAskRateLimit(params: {
+  senderId: string;
+  tripId: string;
+  peerIp?: string | null;
+}): AiAskRateResult {
+  const { senderId, tripId, peerIp } = params;
+  if (bypassActive(peerIp)) return { allowed: true };
+  // Fail OPEN on a missing id, exactly as `checkMessageRateLimit` does: a limiter is not an
+  // authorization gate, and the route's own §12 gate has already refused an unauthenticated caller
+  // before this is ever reached. Inventing a key out of an empty id would throttle every such
+  // caller into ONE shared bucket, which is a worse answer than not counting.
+  if (!senderId || !tripId) return { allowed: true };
+
+  // 1. Per trip (strictest) — the shape of the abuse that costs tokens.
+  const perTrip = hit(`ai-ask:trip:${senderId}:${tripId}`, AI_ASK_PER_TRIP_WINDOW_MS);
+  if (perTrip.count > AI_ASK_PER_TRIP_MAX) {
+    logger.warn(
+      { senderId, tripId, scope: "ai_ask_trip", count: perTrip.count },
+      "AI ask rate limit exceeded",
+    );
+    return denyAiAsk(
+      "ai_ask_trip",
+      perTrip.resetTime,
+      "You've asked about this plan a lot in a short time. Please wait a moment before asking again.",
+    );
+  }
+
+  // 2. Per sender, DAILY — the fan-out ceiling a per-trip limit alone cannot provide.
+  const daily = hit(`ai-ask:sender-daily:${senderId}`, AI_ASK_PER_SENDER_DAILY_WINDOW_MS);
+  if (daily.count > AI_ASK_PER_SENDER_DAILY_MAX) {
+    logger.warn(
+      { senderId, scope: "ai_ask_sender_daily", count: daily.count },
+      "AI ask rate limit exceeded",
+    );
+    return denyAiAsk(
+      "ai_ask_sender_daily",
+      daily.resetTime,
+      "You've reached today's limit for AI questions. Please try again tomorrow.",
+    );
+  }
+
+  return { allowed: true };
+}
+
 /** Test-only: clear all counters so suites don't leak state between cases. */
 export function __resetMessageRateLimiter(): void {
   store.clear();

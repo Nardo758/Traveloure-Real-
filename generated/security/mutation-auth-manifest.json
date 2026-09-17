@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-manifest.ts",
   "entrypoint": "server/routes.ts",
-  "mutationCount": 596,
-  "rawRegistrationCount": 596,
-  "uniqueMethodNormalizedPathCount": 587,
-  "distinctMethodPathCount": 587,
+  "mutationCount": 597,
+  "rawRegistrationCount": 597,
+  "uniqueMethodNormalizedPathCount": 588,
+  "distinctMethodPathCount": 588,
   "duplicateRegistrations": [
     {
       "methodPath": "POST /api/chats",
@@ -17,7 +17,7 @@
         },
         {
           "source": "server/routes/trips.routes.ts",
-          "line": 666,
+          "line": 676,
           "rawPath": "/api/chats"
         }
       ]
@@ -32,7 +32,7 @@
         },
         {
           "source": "server/routes/trips.routes.ts",
-          "line": 822,
+          "line": 832,
           "rawPath": "/api/itinerary-comparisons/:id/apply-to-cart"
         }
       ]
@@ -47,7 +47,7 @@
         },
         {
           "source": "server/routes/trips.routes.ts",
-          "line": 793,
+          "line": 803,
           "rawPath": "/api/itinerary-comparisons/:id/select"
         }
       ]
@@ -62,7 +62,7 @@
         },
         {
           "source": "server/routes/trips.routes.ts",
-          "line": 1496,
+          "line": 1506,
           "rawPath": "/api/itinerary-items/:id/backup"
         }
       ]
@@ -77,7 +77,7 @@
         },
         {
           "source": "server/routes/trips.routes.ts",
-          "line": 1531,
+          "line": 1541,
           "rawPath": "/api/itinerary/estimate-travel"
         }
       ]
@@ -92,7 +92,7 @@
         },
         {
           "source": "server/routes/trips.routes.ts",
-          "line": 862,
+          "line": 872,
           "rawPath": "/api/quick-start-itinerary"
         }
       ]
@@ -107,7 +107,7 @@
         },
         {
           "source": "server/routes/trips.routes.ts",
-          "line": 505,
+          "line": 515,
           "rawPath": "/api/trips"
         }
       ]
@@ -122,7 +122,7 @@
         },
         {
           "source": "server/routes/trips.routes.ts",
-          "line": 591,
+          "line": 601,
           "rawPath": "/api/trips/:id"
         }
       ]
@@ -137,7 +137,7 @@
         },
         {
           "source": "server/routes/trips.routes.ts",
-          "line": 549,
+          "line": 559,
           "rawPath": "/api/trips/:id"
         }
       ]
@@ -146,20 +146,20 @@
   "categoryTotals": {
     "payments": 31,
     "admin": 148,
-    "user-data": 199,
+    "user-data": 200,
     "other": 209
   },
   "boundaryTotals": {
     "admin-role": 148,
-    "session-self": 305,
-    "resource-owner": 90,
+    "session-self": 304,
+    "resource-owner": 92,
     "signature": 6,
     "public-or-system": 38,
     "unknown": 0
   },
   "historicalComparison": {
     "count": 546,
-    "delta": 50,
+    "delta": 51,
     "note": "The historical count is a comparison-only baseline; generation reads only the current source mount graph."
   },
   "diagnostics": [],
@@ -2756,7 +2756,7 @@
       "path": "/api/anchors/:id",
       "effectivePath": "/api/anchors/:id",
       "source": "server/routes/trips.routes.ts",
-      "line": 1693,
+      "line": 1703,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2773,7 +2773,7 @@
       "path": "/api/anchors/:id",
       "effectivePath": "/api/anchors/:id",
       "source": "server/routes/trips.routes.ts",
-      "line": 1666,
+      "line": 1676,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3470,7 +3470,7 @@
       "path": "/api/chats",
       "effectivePath": "/api/chats",
       "source": "server/routes/trips.routes.ts",
-      "line": 666,
+      "line": 676,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -4899,7 +4899,7 @@
       "path": "/api/expert-review/:shareToken/acknowledge",
       "effectivePath": "/api/expert-review/:shareToken/acknowledge",
       "source": "server/routes/trips.routes.ts",
-      "line": 2847,
+      "line": 2857,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],
@@ -4916,7 +4916,7 @@
       "path": "/api/expert-review/:shareToken/submit",
       "effectivePath": "/api/expert-review/:shareToken/submit",
       "source": "server/routes/trips.routes.ts",
-      "line": 2710,
+      "line": 2720,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],
@@ -6327,7 +6327,7 @@
       "path": "/api/itinerary-comparisons/:id/apply-to-cart",
       "effectivePath": "/api/itinerary-comparisons/:id/apply-to-cart",
       "source": "server/routes/trips.routes.ts",
-      "line": 822,
+      "line": 832,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6395,7 +6395,7 @@
       "path": "/api/itinerary-comparisons/:id/select",
       "effectivePath": "/api/itinerary-comparisons/:id/select",
       "source": "server/routes/trips.routes.ts",
-      "line": 793,
+      "line": 803,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6429,7 +6429,7 @@
       "path": "/api/itinerary-items/:id/backup",
       "effectivePath": "/api/itinerary-items/:id/backup",
       "source": "server/routes/trips.routes.ts",
-      "line": 1496,
+      "line": 1506,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6446,7 +6446,7 @@
       "path": "/api/itinerary-share/:token/acknowledge",
       "effectivePath": "/api/itinerary-share/:token/acknowledge",
       "source": "server/routes/trips.routes.ts",
-      "line": 2677,
+      "line": 2687,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],
@@ -6463,7 +6463,7 @@
       "path": "/api/itinerary-share/:token/suggest",
       "effectivePath": "/api/itinerary-share/:token/suggest",
       "source": "server/routes/trips.routes.ts",
-      "line": 2620,
+      "line": 2630,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],
@@ -6480,7 +6480,7 @@
       "path": "/api/itinerary-variants/:variantId/calculate-transport",
       "effectivePath": "/api/itinerary-variants/:variantId/calculate-transport",
       "source": "server/routes/trips.routes.ts",
-      "line": 2575,
+      "line": 2585,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6497,7 +6497,7 @@
       "path": "/api/itinerary-variants/:variantId/share",
       "effectivePath": "/api/itinerary-variants/:variantId/share",
       "source": "server/routes/trips.routes.ts",
-      "line": 1904,
+      "line": 1914,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6531,7 +6531,7 @@
       "path": "/api/itinerary/estimate-travel",
       "effectivePath": "/api/itinerary/estimate-travel",
       "source": "server/routes/trips.routes.ts",
-      "line": 1531,
+      "line": 1541,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -8010,7 +8010,7 @@
       "path": "/api/quick-start-itinerary",
       "effectivePath": "/api/quick-start-itinerary",
       "source": "server/routes/trips.routes.ts",
-      "line": 862,
+      "line": 872,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -8792,7 +8792,7 @@
       "path": "/api/transport-legs/:legId/mode",
       "effectivePath": "/api/transport-legs/:legId/mode",
       "source": "server/routes/trips.routes.ts",
-      "line": 2231,
+      "line": 2241,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -8983,7 +8983,7 @@
       "path": "/api/trips",
       "effectivePath": "/api/trips",
       "source": "server/routes/trips.routes.ts",
-      "line": 505,
+      "line": 515,
       "risk": "user-data",
       "expectedAuth": "public",
       "expectedRoles": [],
@@ -9017,7 +9017,7 @@
       "path": "/api/trips/:id",
       "effectivePath": "/api/trips/:id",
       "source": "server/routes/trips.routes.ts",
-      "line": 591,
+      "line": 601,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9051,7 +9051,7 @@
       "path": "/api/trips/:id",
       "effectivePath": "/api/trips/:id",
       "source": "server/routes/trips.routes.ts",
-      "line": 549,
+      "line": 559,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9255,7 +9255,7 @@
       "path": "/api/trips/:tripId/analytics/infer",
       "effectivePath": "/api/trips/:tripId/analytics/infer",
       "source": "server/routes/trips.routes.ts",
-      "line": 3027,
+      "line": 3037,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9272,7 +9272,7 @@
       "path": "/api/trips/:tripId/anchor-suggestions",
       "effectivePath": "/api/trips/:tripId/anchor-suggestions",
       "source": "server/routes/trips.routes.ts",
-      "line": 1848,
+      "line": 1858,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9289,7 +9289,7 @@
       "path": "/api/trips/:tripId/anchors",
       "effectivePath": "/api/trips/:tripId/anchors",
       "source": "server/routes/trips.routes.ts",
-      "line": 1631,
+      "line": 1641,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9306,7 +9306,7 @@
       "path": "/api/trips/:tripId/anchors/:anchorId/impacts",
       "effectivePath": "/api/trips/:tripId/anchors/:anchorId/impacts",
       "source": "server/routes/trips.routes.ts",
-      "line": 1828,
+      "line": 1838,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9408,7 +9408,7 @@
       "path": "/api/trips/:tripId/contracts/:contractId/documents",
       "effectivePath": "/api/trips/:tripId/contracts/:contractId/documents",
       "source": "server/routes/trips.routes.ts",
-      "line": 1073,
+      "line": 1083,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9425,7 +9425,7 @@
       "path": "/api/trips/:tripId/day-boundaries",
       "effectivePath": "/api/trips/:tripId/day-boundaries",
       "source": "server/routes/trips.routes.ts",
-      "line": 1732,
+      "line": 1742,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9442,7 +9442,7 @@
       "path": "/api/trips/:tripId/destinations",
       "effectivePath": "/api/trips/:tripId/destinations",
       "source": "server/routes/trips.routes.ts",
-      "line": 462,
+      "line": 472,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9510,7 +9510,7 @@
       "path": "/api/trips/:tripId/expert-traveler-note",
       "effectivePath": "/api/trips/:tripId/expert-traveler-note",
       "source": "server/routes/trips.routes.ts",
-      "line": 3255,
+      "line": 3265,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9612,7 +9612,7 @@
       "path": "/api/trips/:tripId/itinerary-items/:itemId",
       "effectivePath": "/api/trips/:tripId/itinerary-items/:itemId",
       "source": "server/routes/trips.routes.ts",
-      "line": 3189,
+      "line": 3199,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9629,7 +9629,7 @@
       "path": "/api/trips/:tripId/itinerary-items/:itemId",
       "effectivePath": "/api/trips/:tripId/itinerary-items/:itemId",
       "source": "server/routes/trips.routes.ts",
-      "line": 3048,
+      "line": 3058,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9680,7 +9680,7 @@
       "path": "/api/trips/:tripId/occasion",
       "effectivePath": "/api/trips/:tripId/occasion",
       "source": "server/routes/trips.routes.ts",
-      "line": 3364,
+      "line": 3374,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9727,11 +9727,11 @@
     },
     {
       "method": "POST",
-      "rawPath": "/api/trips/:tripId/proposals/:id/apply",
-      "path": "/api/trips/:tripId/proposals/:id/apply",
-      "effectivePath": "/api/trips/:tripId/proposals/:id/apply",
+      "rawPath": "/api/trips/:tripId/proposals",
+      "path": "/api/trips/:tripId/proposals",
+      "effectivePath": "/api/trips/:tripId/proposals",
       "source": "server/routes/trips.routes.ts",
-      "line": 3647,
+      "line": 3580,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9744,11 +9744,28 @@
     },
     {
       "method": "POST",
+      "rawPath": "/api/trips/:tripId/proposals/:id/apply",
+      "path": "/api/trips/:tripId/proposals/:id/apply",
+      "effectivePath": "/api/trips/:tripId/proposals/:id/apply",
+      "source": "server/routes/trips.routes.ts",
+      "line": 3826,
+      "risk": "user-data",
+      "expectedAuth": "required",
+      "expectedRoles": [],
+      "expectedOwnership": "verified",
+      "expectedBoundary": "resource-owner",
+      "ownershipApplies": true,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": []
+    },
+    {
+      "method": "POST",
       "rawPath": "/api/trips/:tripId/proposals/:id/discard",
       "path": "/api/trips/:tripId/proposals/:id/discard",
       "effectivePath": "/api/trips/:tripId/proposals/:id/discard",
       "source": "server/routes/trips.routes.ts",
-      "line": 3510,
+      "line": 3668,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9765,12 +9782,12 @@
       "path": "/api/trips/:tripId/proposals/:id/pay",
       "effectivePath": "/api/trips/:tripId/proposals/:id/pay",
       "source": "server/routes/trips.routes.ts",
-      "line": 3561,
+      "line": 3719,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
-      "expectedOwnership": "unknown",
-      "expectedBoundary": "session-self",
+      "expectedOwnership": "verified",
+      "expectedBoundary": "resource-owner",
       "ownershipApplies": true,
       "fixtureStatus": "unknown",
       "testStatus": "unknown",
@@ -9918,7 +9935,7 @@
       "path": "/api/trips/:tripId/validate-schedule",
       "effectivePath": "/api/trips/:tripId/validate-schedule",
       "source": "server/routes/trips.routes.ts",
-      "line": 1755,
+      "line": 1765,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9935,7 +9952,7 @@
       "path": "/api/trips/:tripId/vendors/bulk-email",
       "effectivePath": "/api/trips/:tripId/vendors/bulk-email",
       "source": "server/routes/trips.routes.ts",
-      "line": 1131,
+      "line": 1141,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],

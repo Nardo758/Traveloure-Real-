@@ -44,7 +44,7 @@
  * four as real columns. Including free-text items is a deliberate improvement, not a side effect:
  * they are part of the plan, so an optimizer that never saw them was optimizing a subset.
  */
-import { and, asc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, providerServices } from "@shared/schema";
 import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
@@ -260,8 +260,31 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
  *    (`providerServiceId` NULL) — honest emptiness, never another city's services (§13).
  */
 export async function loadOptimizerCatalog(destination: string | null | undefined) {
-  // A comparison with no destination (nullable column) gets the unscoped active+approved set —
-  // there is no city to scope to, and inventing one would be a guess (§13).
+  return db
+    .select()
+    .from(providerServices)
+    .where(optimizerCatalogLivenessWhere(destination))
+    .limit(100);
+}
+
+/**
+ * THE ONE LIVENESS PREDICATE for a catalog listing the optimizer or an AI proposal may name
+ * (ledger `2026-09-16-l16-lane1-review-fixes`; §18 rule 1).
+ *
+ * "Active AND approved AND scoped to this destination" was spelled once, inline, in
+ * `loadOptimizerCatalog` above. The AI-proposal apply then re-validated a NAMED listing by
+ * set-membership in that reader's result — which is `.limit(100)` with no `ORDER BY`, so on a
+ * destination carrying more than 100 live listings a perfectly live one could fall outside the page
+ * and be refused as `listing_unavailable`: a false claim (§13) on a PAID rail. The fix is to check a
+ * named listing BY ID under the SAME predicate, and the only way two callers can share a predicate
+ * without drifting is for it to be written down ONCE. `loadOptimizerCatalog` pages over it;
+ * `proposal-charge.service.ts` ANDs it with `inArray(id, …)` and no page. Nothing about the
+ * optimizer's own reader — its page, its lack of order, its unscoped no-destination arm — changed.
+ *
+ * A comparison with no destination (nullable column) gets the unscoped active+approved set — there
+ * is no city to scope to, and inventing one would be a guess (§13).
+ */
+export function optimizerCatalogLivenessWhere(destination: string | null | undefined): SQL {
   const city = destination?.split(",")[0]?.trim() ?? "";
   const locationScope =
     city.length > 0
@@ -270,15 +293,10 @@ export async function loadOptimizerCatalog(destination: string | null | undefine
           ilike(providerServices.location, `%${destination}%`),
         )
       : undefined;
-  return db
-    .select()
-    .from(providerServices)
-    .where(
-      and(
-        eq(providerServices.status, "active"),
-        eq(providerServices.approvalStatus, "approved"),
-        ...(locationScope ? [locationScope] : []),
-      ),
-    )
-    .limit(100);
+  // `and()` with at least one clause is never undefined; the two status clauses are unconditional.
+  return and(
+    eq(providerServices.status, "active"),
+    eq(providerServices.approvalStatus, "approved"),
+    ...(locationScope ? [locationScope] : []),
+  ) as SQL;
 }

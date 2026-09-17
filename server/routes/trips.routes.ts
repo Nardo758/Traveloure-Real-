@@ -18,7 +18,13 @@ import * as cartProjection from "../services/cart-projection.service";
 // The ONE server-side resolution of the item→EVENT link (migration 277) — shared with the live
 // POST rail in server/routes.ts so the two cannot drift (§18 rule 1).
 import { resolveItemEventLink } from "../services/item-event-link.service";
-import { discardPlanProposal, listPlanProposals } from "../services/plan-proposals.service";
+import { createPlanProposal, discardPlanProposal, listPlanProposals } from "../services/plan-proposals.service";
+// L16 lane 1 — the CREATE rail (punchlist D-45..D-50, ledger `2026-09-16-l16-rulings-d45-d50`).
+// The two named limits live in the ONE existing fixed-window limiter module (§18 rule 1, D-46 ii);
+// the in-flight marker is a mutual exclusion over the model call, never a §15 claim (D-46 i).
+import { checkAiAskRateLimit } from "../infrastructure/message-rate-limiter";
+import { beginAiAsk, endAiAsk } from "../services/ai-ask-inflight";
+import { aiAskBodySchema } from "@shared/ai-ask-request";
 // The APPLY and its CHARGE (punchlist D-20/D-21, ledger `2026-09-15-d20-d21-proposal-charge`).
 // The route holds the gate and the sequence; every money decision lives in the two modules below —
 // the PURE authorization predicate and the one charge/apply service (§18 rule 1).
@@ -28,6 +34,7 @@ import {
 } from "../services/proposal-apply-authorization";
 import {
   applyPlanProposal,
+  assertProposalCatalogStillValid,
   claimProposalCharge,
   createProposalChargeIntent,
   getPlanProposal,
@@ -37,8 +44,11 @@ import {
   retrieveProposalPaymentIntent,
   stampProposalPaymentIntent,
   verifyProposalPayment,
+  isRefundableProposalRefusal,
+  refundRefusedProposalCharge,
+  type ProposalRefundOutcome,
 } from "../services/proposal-charge.service";
-import { PLAN_PROPOSAL_STATUS_PROPOSED } from "@shared/plan-proposals";
+import { PLAN_PROPOSAL_STATUS_PROPOSED, PLAN_PROPOSAL_STATUS_REFUNDED } from "@shared/plan-proposals";
 import { coversAction } from "../services/trip-entitlement.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 // Ledger `2026-09-05-slip-own-your-plan` (review R14): the ONE row-level answer to "is this row
@@ -3483,10 +3493,158 @@ router.get("/api/trips/:tripId/proposals", isAuthenticated, async (req, res) => 
     // than a record. §13: an empty array means this plan has never been asked anything, which is
     // NOT "the AI had nothing to say", and no surface may render it as the latter.
     const proposals = await listPlanProposals(tripId);
-    res.json({ proposals });
+
+    // ── D-48's READ HALF: the coverage and price line, SERVER-RESOLVED (ruling 2026-09-16;
+    //    ledger `2026-09-16-l16-rulings-d45-d50`) ─────────────────────────────────────────────
+    // The only coverage read that existed (`GET /api/trips/:tripId/trip-pass`) is OWNER-ONLY and
+    // 403s an advisor, so an advisor-viewed drawer could not honestly say whether the plan was
+    // covered. The ruling extends THIS response instead: the SAME `coversAction` call and the SAME
+    // fee-band resolver the charge point uses, behind the gate this route already ran — **no second
+    // entitlement rail and no second fee read** (§18 rule 1), and **no literal** (§8).
+    //
+    // §13 — AN UNANSWERED FIELD IS OMITTED, NEVER GUESSED, and each direction matters:
+    //   · `coveredByTripPass` absent = "we have no answer", which is NEITHER "covered" NOR "not
+    //     covered". The drawer makes neither claim (the `shouldOfferSavePayment` posture, LD 43 (d)).
+    //   · `priceCents` absent = the band could not be resolved. `requireFlatCentsBand` is fail-loud
+    //     by declaration, which is right for a CHARGE and wrong for a DISPLAY read — so the failure
+    //     is caught here and the number is omitted rather than shown as `0`, which would read as
+    //     "this is free". The charge point's own fail-loud behaviour is untouched.
+    // Neither failure may 500 this route: the proposal LOG is the thing the caller asked for.
+    const aiTask: { coveredByTripPass?: boolean; priceCents?: number } = {};
+    try {
+      aiTask.coveredByTripPass = await coversAction(tripId, "ai_task");
+    } catch (err: any) {
+      console.error("[trips] proposals: trip-pass coverage read failed (omitted, not guessed):", err?.message);
+    }
+    try {
+      aiTask.priceCents = await resolveAiTaskChargeCents();
+    } catch (err: any) {
+      console.error("[trips] proposals: ai-task band read failed (omitted, never rendered as 0):", err?.message);
+    }
+
+    res.json({ proposals, aiTask });
   } catch (err: any) {
     console.error("[trips] list plan proposals failed:", err?.message);
     res.status(500).json({ message: "Failed to load proposals" });
+  }
+});
+
+// ── THE CREATE RAIL (L16 lane 1) ────────────────────────────────────────────────────────────────
+//
+// (decision-maker rulings 2026-09-16, punchlist **D-45..D-50**; ledger
+//  `2026-09-16-l16-rulings-d45-d50`. Brief of record: `docs/design/ASK_AI_DRAWER_BRIEF.md` §4.
+//  CLAUDE.md Locked Decision 45 (3), Locked Decision 41 (b)/(c), Locked Decision 42 D3/D17,
+//  §13, §14, §18 rule 1, §19.)
+//
+// POST /api/trips/:tripId/proposals — the traveler asks a question about THEIR OWN plan.
+//
+// **THE MODEL CALL IS NOT BUILT, BY INSTRUCTION, AND THIS ROUTE SAYS SO.** L16 lane 1 was stopped
+// before the prompt builder and the model call so the decision-maker can read their design first
+// (`docs/lane-reports/2026-09-16-l16-lane1-create-rail.md` §4). Everything around the call is here
+// and is exercised: the gate, the §19 body allowlist, the two named limits, the server-minted id
+// and the in-flight marker. The terminal answer today is an honest **503 naming the reason** — an
+// omitted capability stated out loud, never a fabricated proposal and never a silent success (§13).
+// No client calls this route: the drawer is lane 3.
+//
+// THE GATE is the SAME shared predicate the read and discard routes run —
+// `authorizeTripLogistics(..., { requireWriteAccess: true })`: owner ‖ §12 WRITE-status advisor
+// (accepted/assigned, NEVER pending) ‖ trip author ‖ audit-logged admin. **ASK stays at the WRITE
+// tier by ruling (D-48)**; it is PAY and APPLY that were narrowed to the owner. One predicate, one
+// more caller — never a second copy (§18 rule 1, LD 42 D17).
+//
+// THE BODY is `{ question }` and nothing else — `aiAskBodySchema`, a `.strict()` pick-shaped
+// allowlist in `shared/ai-ask-request.ts` whose header lists every field deliberately absent and
+// why (§19). An unknown key is REFUSED, not silently stripped.
+//
+// D-46 (i) — THE SERVER MINTS THE PROPOSAL ID BEFORE ANYTHING ELSE. The in-flight marker holds
+// THAT id, a 409 NAMES it, and the `ai_cost_tracking` row the model call will write carries it as
+// `requestId` (D-47). Two consequences are INTENDED: a 409 can name a proposal that has no row
+// yet, and a failed ask that burned tokens is still attributable with no `plan_proposals` row
+// behind it. A half-written proposal row would sit in the log as something the AI said (§13).
+//
+// D-46 (ii) — TWO NAMED LIMITS, in the ONE existing fixed-window module: per (sender, trip) and a
+// sender-alone DAILY ceiling, because trips are free to create and a per-trip limit alone fans
+// out. Never a second limiter implementation and never a fabricated recipient.
+//
+// D-46 (iii) — the marker and the counters are PER PROCESS and `.replit` is autoscale, so both
+// multiply by instance count. ACCEPTED for L16 by ruling (the exposure is tokens, not money); the
+// shared-store lane is filed in `docs/PUNCHLIST.md` §4 with its trigger stated verbatim.
+//
+// **ASKING IS FREE (D-21).** Nothing on this rail reads a price, takes a claim, or touches Stripe.
+// The charge point is the APPLY, and it is a different route.
+//
+// **IT IS NOT A SECOND FREE-DRAFT RAIL (LD 41 (b)).** It calls no `saveGeneratedItinerarySnapshot`
+// and performs no rebuild delete — it writes ONE jsonb row — so `check-ai-draft-eligibility`'s
+// predicate correctly does not reach it. The rule LD 41 (b) governs is the free REBUILD of a plan,
+// and this rail rebuilds nothing. Do not add either call here.
+router.post("/api/trips/:tripId/proposals", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { tripId } = req.params;
+    const denied = await authorizeTripLogistics(
+      tripId, userId, "POST /api/trips/:tripId/proposals", { requireWriteAccess: true },
+    );
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+
+    const parsed = aiAskBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Ask a question to get a proposal." });
+    }
+    const { question } = parsed.data;
+
+    // The limits come AFTER the gate (an unauthorized caller is refused before they can consume a
+    // bucket) and BEFORE the model call (the expensive half — a limit checked after it protects
+    // nothing). `req.ip` scopes the CI bypass to a loopback peer only, exactly as messaging does.
+    // lane 2: move the limit hit to the model-call site — today the terminal 503 below consumes a bucket.
+    const limit = checkAiAskRateLimit({ senderId: userId, tripId, peerIp: req.ip });
+    if (!limit.allowed) {
+      if (limit.retryAfterSec) res.setHeader("Retry-After", String(limit.retryAfterSec));
+      return res.status(429).json({
+        message: limit.message,
+        scope: limit.scope,
+        retryAfterSec: limit.retryAfterSec,
+      });
+    }
+
+    // D-46 (i): minted HERE, before the marker and before the call.
+    const proposalId = crypto.randomUUID();
+    const started = beginAiAsk({ tripId, userId, proposalId });
+    if (!started.started) {
+      // 409 NAMING the in-flight ask. §13: the drawer says an answer is already on its way — it
+      // does not claim a row exists, because one may not yet.
+      return res.status(409).json({
+        message: "An answer for this plan is already on its way.",
+        inFlightProposalId: started.inFlightProposalId,
+      });
+    }
+
+    try {
+      // ────────────────────────────────────────────────────────────────────────────────────────
+      // L16 lane 1: THE MODEL CALL IS NOT BUILT. Its exact design — input scope and exclusion
+      // list (D-50), the `.strict()` output schema, the `trackAnthropicResponse` shape (D-47), the
+      // model knob and every failure path — is written out in
+      // `docs/lane-reports/2026-09-16-l16-lane1-create-rail.md` §4 for the decision-maker to read
+      // BEFORE it is written. When it lands it goes exactly here, and it hands `proposalId` to
+      // `createPlanProposal` explicitly. Until then this rail states what it cannot do (§13)
+      // rather than returning an empty proposal, which would be an answer nobody gave.
+      //
+      // `createPlanProposal` is imported and is the ONE writer this route will use — never a
+      // direct insert (§18 rule 1, pinned by `plan-proposals.db.test.ts` P5).
+      void createPlanProposal;
+      void question;
+      return res.status(503).json({
+        message: "Asking the AI about a plan is not available yet.",
+        reason: "model_call_not_built",
+      });
+    } finally {
+      // Always, on every path out of the block above, including a throw: a marker that outlives its
+      // ask would wedge the plan until its TTL, and the TTL exists for a dead process, not for a
+      // forgotten `finally`.
+      endAiAsk(tripId, userId);
+    }
+  } catch (err: any) {
+    console.error("[trips] create plan proposal failed:", err?.message);
+    res.status(500).json({ message: "Failed to ask about this plan" });
   }
 });
 
@@ -3562,8 +3720,15 @@ router.post("/api/trips/:tripId/proposals/:id/pay", isAuthenticated, async (req,
   try {
     const userId = getUserId(req)!;
     const { tripId, id } = req.params;
-    const denied = await authorizeTripLogistics(
-      tripId, userId, "POST /api/trips/:tripId/proposals/:id/pay", { requireWriteAccess: true },
+    // D-48 (decision-maker ruling 2026-09-16, AMENDED against the brief's recommendation; ledger
+    // `2026-09-16-l16-rulings-d45-d50`): PAY is **OWNER-ONLY AT THE ROUTE**. The PaymentIntent is
+    // built from `getOrCreateCustomer(<session user>)`, so an advisor who pays pays with their own
+    // card — the earner-funds-a-traveler rail LD 44 **D19** refuses by name, reached from the other
+    // direction. `authorizeTripOwnerTier` is the EXISTING shared predicate in the same module:
+    // "the same principal set MINUS the assigned-expert branch" (§18 rule 1 — a swap, not a new
+    // gate). ASK, READ and DISCARD stay at the §12 WRITE tier.
+    const denied = await authorizeTripOwnerTier(
+      tripId, userId, "POST /api/trips/:tripId/proposals/:id/pay",
     );
     if (denied) return res.status(denied.status).json({ message: denied.message });
 
@@ -3572,7 +3737,21 @@ router.post("/api/trips/:tripId/proposals/:id/pay", isAuthenticated, async (req,
     // and discard routes already take (Locked Decision 40's `POST /api/conversations/start` rule).
     if (!proposal) return res.status(404).json({ message: "Proposal not found" });
     if (proposal.status !== PLAN_PROPOSAL_STATUS_PROPOSED) {
-      return res.status(409).json({ message: "This proposal has already been applied or discarded." });
+      return res.status(409).json({ message: "This proposal is no longer open — it has been applied, discarded or refunded." });
+    }
+
+    // D-50 (b)/(c) — REFUSE BEFORE CHARGING. ONE implementation, two callers
+    // (`assertProposalCatalogStillValid`, §18 rule 1): the apply refuses a proposal whose catalog
+    // prices are past their window or whose listing has gone away, so the PAY rail must refuse it
+    // FIRST. Charging for an apply that is already certain to be refused is money taken for nothing,
+    // and it happens BEFORE the claim and before any Stripe call so no claim is left behind.
+    try {
+      await assertProposalCatalogStillValid({ proposal, tripId });
+    } catch (err: any) {
+      if (err instanceof ProposalApplyRefused) {
+        return res.status(409).json({ message: err.message, reason: err.code, itemIds: err.itemIds });
+      }
+      throw err;
     }
 
     // THE PASS IS READ FIRST, and it is the SERVER's read — the client never asserts coverage. It
@@ -3648,15 +3827,50 @@ router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (re
   try {
     const userId = getUserId(req)!;
     const { tripId, id } = req.params;
-    const denied = await authorizeTripLogistics(
-      tripId, userId, "POST /api/trips/:tripId/proposals/:id/apply", { requireWriteAccess: true },
+    // D-48 (ruling 2026-09-16, AMENDED against the brief's recommendation): APPLY is **OWNER-ONLY
+    // AT THE ROUTE** too. The brief recommended leaving it at the §12 WRITE tier because a
+    // Trip-Pass-covered apply moves no money; three reasons on the record overrule that.
+    //   (1) An accepted advisor's own `trip_suggestions` require the OWNER's acceptance, so letting
+    //       the same advisor ask the AI and apply the result is a CONSENT BACK DOOR — and the row
+    //       lands stamped `origin:'ai'`, so the plan cannot even show whose choice it was.
+    //   (2) A render rule never keeps a write out (LD 42 D16's own wording, the §14 posture): the
+    //       ROUTE is the policy, so hiding apply in the drawer while admitting it here is exactly
+    //       the gap that rule names.
+    //   (3) The preserved case — an advisor applying a covered proposal — is marginal, and the
+    //       owner can still do it.
+    // Re-widening is revisited ONLY when the `authorizeTripLogistics`/`canMutateTrip` reconciliation
+    // lane rules; it is not a lane's to take back.
+    const denied = await authorizeTripOwnerTier(
+      tripId, userId, "POST /api/trips/:tripId/proposals/:id/apply",
     );
     if (denied) return res.status(denied.status).json({ message: denied.message });
 
     const proposal = await getPlanProposal(id, tripId);
     if (!proposal) return res.status(404).json({ message: "Proposal not found" });
+    if (proposal.status === PLAN_PROPOSAL_STATUS_REFUNDED) {
+      // OPTION B, the RETRY: a paid proposal the apply already refused and refunded. The same
+      // proposal-derived idempotency key means this re-drives NO second refund — it reports the one
+      // issued, or completes a claim whose Stripe call failed (§15b). §13: the row's own recorded
+      // charge and PaymentIntent, never a request value; a row that somehow carries neither says
+      // only that it was refunded.
+      const refund: ProposalRefundOutcome | undefined =
+        proposal.stripePaymentIntentId && proposal.chargedAmountCents != null
+          ? await refundRefusedProposalCharge({
+              proposalId: id,
+              tripId,
+              paymentIntentId: proposal.stripePaymentIntentId,
+              amountCents: proposal.chargedAmountCents,
+              refusal: null,
+            })
+          : undefined;
+      return res.status(409).json({
+        message: "This proposal could not be applied as read, and its fee has been refunded. Ask again for a fresh answer.",
+        reason: "refunded",
+        ...(refund ? { refund } : {}),
+      });
+    }
     if (proposal.status !== PLAN_PROPOSAL_STATUS_PROPOSED) {
-      return res.status(409).json({ message: "This proposal has already been applied or discarded." });
+      return res.status(409).json({ message: "This proposal is no longer open — it has been applied, discarded or refunded." });
     }
 
     const auth = await resolveProposalApplyAuthorization(
@@ -3696,6 +3910,8 @@ router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (re
       applied = await applyPlanProposal({
         proposalId: id,
         tripId,
+        // D-49: the actor for the post-commit re-finalize. §14 — the session, never a body.
+        actorId: userId,
         basis: auth.basis,
         // §13: a covered apply charged nothing, and that is NULL — never `0`, which would read as
         // "we charged them nothing" rather than "no charge was made".
@@ -3706,7 +3922,35 @@ router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (re
       if (err instanceof ProposalApplyRefused) {
         // D3 / D18: the reason is said out loud, and NOTHING was written — the whole apply is one
         // transaction, so a refusal leaves the plan exactly as it was.
-        return res.status(409).json({ message: err.message, reason: err.code, itemIds: err.itemIds });
+        //
+        // OPTION B, WIDENED (decision-maker rulings 2026-09-16 and 2026-09-17, ledger
+        // `2026-09-16-l16-lane1-review-fixes`): a PAID proposal refused at apply — stale price,
+        // unavailable listing, or protected work (D3) — is REFUNDED. Never applied at a changed
+        // price, never applied over an expert's work, never left paid-and-unappliable (a
+        // `protected_item` row could not even be discarded, since discard refuses a row carrying a
+        // PaymentIntent). WHICH refusals qualify is asked ONCE, of the charge service's own list —
+        // never re-typed here as a string compare (§18 rule 1). The refund is the ONE
+        // implementation in the charge service: it claims the row atomically FIRST (§15b), then
+        // drives the ONE shared Stripe refund site under a proposal-derived key. §14: the amount is
+        // what Stripe reported the intent took (`auth.amountCents`), never a body value. A
+        // Trip-Pass-covered apply moved no money and gets no `refund` block — an absent block is
+        // "nothing was charged", which is the truth, not a refund of nothing (§13).
+        const refund: ProposalRefundOutcome | undefined =
+          auth.basis === "paid" && isRefundableProposalRefusal(err.code)
+            ? await refundRefusedProposalCharge({
+                proposalId: id,
+                tripId,
+                paymentIntentId: auth.paymentIntentId,
+                amountCents: auth.amountCents,
+                refusal: err.code,
+              })
+            : undefined;
+        return res.status(409).json({
+          message: err.message,
+          reason: err.code,
+          itemIds: err.itemIds,
+          ...(refund ? { refund } : {}),
+        });
       }
       throw err;
     }
