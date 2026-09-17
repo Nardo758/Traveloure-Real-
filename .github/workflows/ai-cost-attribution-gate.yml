@@ -76,6 +76,14 @@ jobs:
       - name: The attribution rails (W1-W7)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/ai-cost-attribution.db.test.ts
       # The migration is also re-run here as a no-op: a second apply must change nothing (the
-      # `ADD COLUMN IF NOT EXISTS` posture), and the ledger must report zero new applies.
+      # `ADD COLUMN IF NOT EXISTS` posture), and the ledger must report zero new applies. The re-run
+      # goes through the SAME composite action as the first apply — `ci-db-setup-lint` refuses an
+      # inline migration step (even in a comment) in any workflow with a Postgres service, and the
+      # action's first step is exactly that apply — so this proves the second apply against the
+      # runner the first one built, with nothing copied inline. The sessions-table step the action
+      # also runs is idempotent (CREATE TABLE IF NOT EXISTS), and it seeds nothing.
       - name: Re-running the migrations is a no-op
-        run: npx tsx server/migrations/migrate-entry.ts
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
