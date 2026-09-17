@@ -1798,6 +1798,22 @@ jobs:
       # settlement. No DB — wired in this `npm ci` job because it imports `@shared/` (the #812 lesson).
       - name: The one settlement derivation (SP1-SP9)
         run: npx tsx --test --test-force-exit shared/__tests__/bundle-partial-settlement.test.ts
+      # THE ALL-UNDELIVERED PARENT (decision-maker ruling 2026-09-17; ledger
+      # 2026-09-17-all-undelivered-parent; NO schema change, NO migration, NO new status value). When the
+      # LAST deliverable component of a bundle becomes terminal-undelivered and none remain, the ONE
+      # component writer flips the PARENT confirmed -> cancelled in one atomic statement that also
+      # releases the booking's claimed slot units exactly once, records booking_details.allUndelivered
+      # { at, cause, componentIds }, and hands the money to the EXISTING D-51 settlement. U1 the last
+      # component failed => cause seller_failed and the slot released once; U2 traveler-cancelled =>
+      # traveler_cancelled; U3 both => mixed, never collapsed; U4 one deliverable component left (and a
+      # bundle with no component rows) never triggers it, and nothing is released; U5 two concurrent
+      # last-flips => one flip, one release, one settlement row, one Stripe call; U6 a retry is a no-op
+      # and the sweep re-drives nothing; U7 the settlement refunds a failed component in full and a
+      # traveler-cancelled one at its pinned percent as ONE refund, and a cancelled parent MINTS NOTHING;
+      # U8 the whole-row cancel rail is refused by its own from-state list, so capacity is never handed
+      # back twice. Stripe.refunds.create is stubbed.
+      - name: The all-undelivered parent (U1-U8)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/bundle-all-undelivered.db.test.ts
       # OC-B1's LAST GAP + LD 46/D-27's MONEY OUTCOME (ledger 2026-09-17-ld50-remainder-and-artifact-refund).
       # B1-B4: the WHOLE-ROW cancel quote now reads the tier PINNED on `offering_contract_snapshot`, so a
       # post-purchase policy edit moves nothing; a snapshot with a NULL policy is a different fact from no

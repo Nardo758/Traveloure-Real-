@@ -436,21 +436,32 @@ test("C3b (D-34): the SAME state is reached through the completion rail when the
   assert.equal((await mintedAmounts(full)).providerEarning, "75.00", "the full mint over the row's full figures");
 });
 
-test("C3c (D-34): EVERY component failed ⇒ NOTHING flips — the existing whole-row refund rail's case, said out loud", async () => {
+test("C3c (D-34): EVERY component failed ⇒ the D-34 PARTIAL flip is still refused — and since 2026-09-17 the parent is CANCELLED instead, never left `confirmed`", async () => {
   const bk = await bornBundleBooking();
+  let last: Awaited<ReturnType<typeof recordBundleComponentFailure>> | undefined;
   for (const c of COMPONENTS) {
-    const r = await recordBundleComponentFailure({ bookingId: bk, componentServiceId: c.id, actor });
-    assert.equal(r.recorded, true);
-    assert.equal(r.partiallyCompleted, false);
+    last = await recordBundleComponentFailure({ bookingId: bk, componentServiceId: c.id, actor });
+    assert.equal(last.recorded, true);
+    assert.equal(last.partiallyCompleted, false, "`partially_completed` still means SOME component was delivered");
   }
-  const parent = await readBooking(bk);
-  assert.equal(parent.status, "confirmed", "no state of this lane is entered; the refund rail owns the whole row");
-  assert.equal(await mintedRowCount(bk), 0, "nothing was delivered, nothing mints");
-  const e = await resolveCompletionEligibility(bk);
-  assert.equal(e.reason, "bundle_components_undelivered");
-  assert.equal((e.evidence as any).outcome, "all_undelivered");
+  // The D-34 derivation is UNCHANGED: this is `all_undelivered`, taken by the ONE derivation before the
+  // parent moved, and it is NOT the partial rail's case. What changed (ledger
+  // `2026-09-17-all-undelivered-parent`) is that the ONE component writer now CANCELS the parent for it
+  // and releases the booking's claimed slot units once, instead of leaving a live row holding capacity
+  // until a human acted. The full proof of that rail — cause, release, settlement, retry, concurrency —
+  // is `server/__tests__/bundle-all-undelivered.db.test.ts` (U1-U8); this pins only that D-34 itself did
+  // not widen, and that nothing minted.
+  assert.equal(last!.parentOutcome, "all_undelivered");
+  assert.equal(await mintedRowCount(bk), 0, "nothing was delivered, nothing mints — a cancelled parent mints nothing either");
   const settle = await settleBundlePartialCompletion({ bookingId: bk, actor });
-  assert.equal(settle.settled, false, "the settle path refuses a bundle with no delivered component");
+  assert.equal(settle.settled, false, "the PARTIAL settle path never settles a bundle with no delivered component");
+  const parent = await readBooking(bk);
+  assert.equal(parent.status, "cancelled", "the all-undelivered parent rail owns the whole row now");
+  assert.equal(parent.booking_details?.allUndelivered?.cause, "seller_failed");
+  // And a DECIDED row is no longer a completion candidate at all — the resolver says so by name.
+  const e = await resolveCompletionEligibility(bk);
+  assert.equal(e.reason, "wrong_status");
+  assert.equal((e.evidence as any).status, "cancelled");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

@@ -59,6 +59,23 @@
  * promoted at once. Component refund columns are stamped only where `refundCents > 0`: a cancelled row
  * refunded 0 was NOT refunded, and `refunded_at` on it would say it was (§13).
  *
+ * ══ THE SECOND STATE THIS LEG SETTLES — THE ALL-UNDELIVERED PARENT (decision-maker ruling 2026-09-17;
+ * ledger `2026-09-17-all-undelivered-parent`) ═════════════════════════════════════════════════════
+ * A bundle whose EVERY component ended undelivered is now CANCELLED by the ONE component writer
+ * (`settleBundleAllUndelivered`), which flips the parent, releases the booking's claimed slot units
+ * inside that same atomic statement, and MERGES `booking_details.allUndelivered = { at, cause,
+ * componentIds }` onto the row. This module then refunds it through EXACTLY the spine above — one
+ * claim, one Stripe refund, one promote — with each component at its OWN pinned answer: a `failed`
+ * one at its full allocation (seller nonperformance is never excused by a cancellation policy), a
+ * `cancelled` one at the percent its snapshotted policy pinned. NO SECOND REFUND PATH EXISTS.
+ * Two narrownesses carry it, and both are load-bearing: the status gate admits `cancelled` ONLY with
+ * that marker (an ordinary whole-row cancellation is still `wrong_status`, so this rail can never
+ * refund beside the cancel rail's own refund), and `deriveBundlePartialSettlement`'s
+ * `nothing_delivered` refusal is opted out of by THIS caller alone, through an explicit input.
+ * NOTHING MINTS on that path — a cancelled parent mints no earning — so the retained remainder of a
+ * late strict traveler-cancel is recorded on the immutable claim row and is NOT a seller earning;
+ * minting on a cancelled parent is a new money event and needs its own ruling (§13, stated not built).
+ *
  * IMPORTS NO `storage` and nothing from `booking-completion.service` (which imports THIS): the flip and
  * its mint are that module's; the entry `settleBundlePartially` there calls `issueBundlePartialSettlement`
  * here after the flip. §14: nothing here reads a request; every amount comes from the rows.
@@ -113,6 +130,21 @@ export type BundlePartialSettlementResult =
         | "stripe_refund_failed";
       detail?: string;
     };
+
+/**
+ * TRUE for the ONE non-`partially_completed` state this money leg may settle: a parent the component
+ * writer cancelled because every component ended undelivered. The shape check is deliberately narrow
+ * (an object carrying one of the three ruled causes), because the marker is what stands between this
+ * rail and every ordinary cancellation. This module imports nothing from `booking-completion.service`
+ * (which imports THIS), so the predicate is stated here rather than borrowed — it reads a jsonb key,
+ * not a decision, and the WRITER of that key is still the single one over there.
+ */
+function isAllUndeliveredCancel(status: string | null | undefined, details: Record<string, any> | null): boolean {
+  if (status !== "cancelled") return false;
+  const raw = details?.allUndelivered;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  return raw.cause === "seller_failed" || raw.cause === "traveler_cancelled" || raw.cause === "mixed";
+}
 
 /** Injectable for the suite: the shared issuer's shape. Default = the real one. */
 export type BundleRefundIssuer = (input: {
@@ -176,11 +208,20 @@ export async function issueBundlePartialSettlement(input: {
 
   const [booking] = await db.select().from(serviceBookings).where(eq(serviceBookings.id, bookingId));
   if (!booking) return { settled: false, bookingId, reason: "booking_not_found" };
-  if (booking.status !== PARTIALLY_COMPLETED_STATUS) {
+  const details = (booking.bookingDetails ?? null) as Record<string, any> | null;
+  // ── THE ALL-UNDELIVERED PARENT (ledger `2026-09-17-all-undelivered-parent`) ──────────────────────
+  // The SECOND state this money leg may settle, and the narrowness is the whole of it: NOT every
+  // `cancelled` booking, only one the ONE component writer cancelled because every component ended
+  // undelivered — which it says by MERGING `booking_details.allUndelivered` onto the row in the same
+  // call as the flip. An ordinary whole-row traveler cancellation carries no such marker and is still
+  // refused `wrong_status` here, so this rail can never issue a second refund beside that one (§13: an
+  // absent marker is never read as a default one). `deriveBundlePartialSettlement`'s `nothing_delivered`
+  // refusal is likewise opted OUT OF only for this case, and by this caller alone.
+  const allUndelivered = isAllUndeliveredCancel(booking.status, details);
+  if (booking.status !== PARTIALLY_COMPLETED_STATUS && !allUndelivered) {
     return { settled: false, bookingId, reason: "wrong_status", detail: booking.status ?? undefined };
   }
 
-  const details = (booking.bookingDetails ?? null) as Record<string, any> | null;
   const states = await readBundleComponentStates({
     bookingId,
     bookingDetails: details,
@@ -210,6 +251,8 @@ export async function issueBundlePartialSettlement(input: {
     parentHasPaymentIntent: typeof booking.stripePaymentIntentId === "string" && booking.stripePaymentIntentId.length > 0,
     travelerFeesChargedCents,
     travelerServiceFeeChargedCents,
+    // Opted in ONLY for the all-undelivered parent above; every other caller keeps `nothing_delivered`.
+    allowNothingDelivered: allUndelivered,
   });
   if (!derived.ok) return { settled: false, bookingId, reason: derived.reason, detail: derived.detail };
   const paymentIntentId = booking.stripePaymentIntentId as string;
@@ -459,7 +502,14 @@ export async function sweepUnsettledBundlePartials(opts?: {
       SELECT sb.id
         FROM service_bookings sb
         LEFT JOIN bundle_partial_settlements s ON s.booking_id = sb.id
-       WHERE sb.status = ${PARTIALLY_COMPLETED_STATUS}
+       WHERE (
+               sb.status = ${PARTIALLY_COMPLETED_STATUS}
+               -- Ledger 2026-09-17-all-undelivered-parent: a parent cancelled because every component
+               -- ended undelivered owes the same refund, and the process can die between its flip and
+               -- its claim in exactly the same way. Keyed on the MARKER, never on the status alone, so
+               -- an ordinary whole-row cancellation is never swept into this rail.
+               OR (sb.status = 'cancelled' AND sb.booking_details -> 'allUndelivered' IS NOT NULL)
+             )
          AND (s.id IS NULL OR s.settled_at IS NULL)${scopeSql}
        ORDER BY sb.updated_at ASC
        LIMIT ${limit}
