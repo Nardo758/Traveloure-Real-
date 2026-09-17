@@ -1748,7 +1748,7 @@ jobs:
       # refuses by name while failed settles (S9); a pre-307 row mints by snapshot pro-rata and cannot
       # settle (S10). Stripe.refunds.create is stubbed.
       # LD 50 SECOND HALF — THE TRAVELER-CANCELLED COMPONENT (ledger
-      # 2026-09-16-bundle-component-traveler-cancel; migration 308): the cancel is ONE flip under a
+      # 2026-09-16-bundle-component-traveler-cancel; migration 309): the cancel is ONE flip under a
       # concurrent double call, pins `cancel_refund_percent`, and refuses a non-pending component, a
       # non-traveler and an unknown component by name (S11); a flexible cancel before the deadline
       # refunds 100% of the allocation + fee share (S12); a moderate cancel inside the window refunds 50%

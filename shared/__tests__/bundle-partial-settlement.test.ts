@@ -218,7 +218,7 @@ test("SP8 — FAILED refunds its FULL allocation regardless of policy; a CANCELL
   assert.equal(failed.componentOutcomes[2].refundPercent, null);
 
   // A CANCELLED row with no pinned `cancelRefundPercent` (a row no writer of the rail produced) is refused
-  // by name — never settled under a guessed tier (LD 50 second half; the pin is migration 308's column).
+  // by name — never settled under a guessed tier (LD 50 second half; the pin is migration 309's column).
   const cancelled = deriveBundlePartialSettlement({ ...BASE, components: THREE(BUNDLE_COMPONENT_STATUS.cancelled) });
   assert.equal(cancelled.ok, false);
   assert.equal((cancelled as any).reason, "cancel_terms_missing");

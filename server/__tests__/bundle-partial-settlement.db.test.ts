@@ -21,7 +21,7 @@
  *  S10  a pre-307 row (NULL allocations) still mints by snapshot pro-rata but cannot settle (`allocation_missing`)
  *
  * Locked Decision 50, SECOND HALF — the traveler-cancelled component (ledger
- * `2026-09-16-bundle-component-traveler-cancel`; migration 308):
+ * `2026-09-16-bundle-component-traveler-cancel`; migration 309):
  *  S11  the cancel is ONE flip under a concurrent double call, pins `cancel_refund_percent` and `cancelled_at`
  *       in that flip, hands the loser the PINNED terms; a non-pending component, a non-traveler and an unknown
  *       component are refused by name; the body is a `.strict()` pick reading no amount, percent or status

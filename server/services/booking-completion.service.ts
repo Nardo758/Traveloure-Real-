@@ -1401,7 +1401,7 @@ export type BundleComponentCancellationResult =
 /**
  * Locked Decision 50, third paragraph, second sentence — "when the traveler voluntarily cancels an
  * outstanding component, the component's allocated amount follows the SNAPSHOTTED cancellation policy
- * and deadline" (ledger `2026-09-16-bundle-component-traveler-cancel`; migration 308). THE ONE
+ * and deadline" (ledger `2026-09-16-bundle-component-traveler-cancel`; migration 309). THE ONE
  * TRAVELER-SIDE COMPONENT WRITER, the third recorder beside the seller's two above.
  *
  *  1. The PRINCIPAL is the booking's traveler and nobody else (§14: `travelerUserId` is the session's,

@@ -91,7 +91,7 @@ export type BundlePartialSettlementRefusal =
    * A `cancelled` component carries no pinned `cancelRefundPercent` — the snapshotted policy's outcome
    * at the cancel instant was never recorded (a row no writer of this rail produced). Refused by name
    * rather than settled under a guessed tier (§13). The writer that pins it is the traveler's
-   * component-cancel rail (ledger `2026-09-16-bundle-component-traveler-cancel`, migration 308).
+   * component-cancel rail (ledger `2026-09-16-bundle-component-traveler-cancel`, migration 309).
    */
   | "cancel_terms_missing"
   /** A component already reads `refunded` — no writer exists; a human decides, never a second refund. */

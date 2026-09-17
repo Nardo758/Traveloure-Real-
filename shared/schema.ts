@@ -4747,6 +4747,10 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
   // manually by admins or via the expert workspace "Recommend a gem" action.
   curatedByExpertId: varchar("curated_by_expert_id", { length: 255 }),
 
+  // Optional landing Moment association. NULL means the media is not approved for any
+  // specific Moment and therefore cannot replace a Moment's representative photo.
+  momentKey: varchar("moment_key", { length: 30 }),
+
   // Timestamps
   detectedAt: timestamp("detected_at").defaultNow(),
   lastUpdated: timestamp("last_updated").defaultNow(),
@@ -10929,7 +10933,7 @@ export const bookingComponentStates = pgTable("booking_component_states", {
   failureReason: text("failure_reason"),
   cancelledAt: timestamp("cancelled_at"),
   // Locked Decision 50, second half (ledger `2026-09-16-bundle-component-traveler-cancel`; migration
-  // 308): the refund percent the SNAPSHOTTED cancellation policy
+  // 309): the refund percent the SNAPSHOTTED cancellation policy
   // (`service_bookings.offering_contract_snapshot.policy.cancellationPolicyType`, the BUNDLE listing's
   // tier at purchase) yielded against the booking's scheduled start at the instant the traveler
   // cancelled this component. Pinned in the SAME atomic UPDATE as the `pending → cancelled` flip, so a

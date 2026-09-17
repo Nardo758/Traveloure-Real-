@@ -1,4 +1,4 @@
--- Migration 308: THE TRAVELER-CANCELLED COMPONENT FOLLOWS THE SNAPSHOTTED CANCELLATION POLICY AND DEADLINE.
+-- Migration 309: THE TRAVELER-CANCELLED COMPONENT FOLLOWS THE SNAPSHOTTED CANCELLATION POLICY AND DEADLINE.
 -- Decision-maker ruling 2026-09-16 (CLAUDE.md Locked Decision 50, third paragraph, second sentence):
 -- "when the traveler voluntarily cancels an outstanding component, the component's allocated amount
 -- follows the snapshotted cancellation policy and deadline." Ledger `2026-09-16-bundle-component-traveler-cancel`.

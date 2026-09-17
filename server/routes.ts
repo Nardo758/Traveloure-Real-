@@ -7552,7 +7552,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/expert/bookings/:id/component-failed", isAuthenticated, handleOwnerBookingComponentFailed);
 
   // ── THE TRAVELER CANCELS ONE BUNDLE COMPONENT (Locked Decision 50, third paragraph, second sentence;
-  // ledger `2026-09-16-bundle-component-traveler-cancel`; migration 308) ───────────────────────────
+  // ledger `2026-09-16-bundle-component-traveler-cancel`; migration 309) ───────────────────────────
   //
   // "When the traveler voluntarily cancels an outstanding component, the component's allocated amount
   // follows the SNAPSHOTTED cancellation policy and deadline." The third component recorder, and the

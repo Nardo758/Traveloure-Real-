@@ -38,7 +38,7 @@
  * ══ §13 ══════════════════════════════════════════════════════════════════════════════════════════
  * Every refusal is NAMED (`BundlePartialSettlementResult`): a bundle with no allocation cannot settle
  * and says so; a bundle with no PaymentIntent has unknown custody and is refused, never assumed; a
- * `cancelled` component with no PINNED policy outcome (`cancel_refund_percent`, migration 308) refuses
+ * `cancelled` component with no PINNED policy outcome (`cancel_refund_percent`, migration 309) refuses
  * the whole settlement rather than guessing a tier. The booking's status is never moved here — it
  * STAYS `partially_completed`.
  *

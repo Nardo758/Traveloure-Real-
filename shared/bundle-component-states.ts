@@ -72,7 +72,7 @@ export interface BundleComponentView {
   allocationCents?: number | null;
   /**
    * Locked Decision 50, second half (ledger `2026-09-16-bundle-component-traveler-cancel`; migration
-   * 308): for a `cancelled` component, the refund percent the SNAPSHOTTED cancellation policy yielded at
+   * 309): for a `cancelled` component, the refund percent the SNAPSHOTTED cancellation policy yielded at
    * the instant the traveler cancelled — pinned by the cancel writer in the same atomic flip, read here
    * and never re-resolved. NULL/absent on a `cancelled` row = the terms were never recorded (a row no
    * writer of this rail produced), which every reader REFUSES by name (`cancel_terms_missing`, §13)

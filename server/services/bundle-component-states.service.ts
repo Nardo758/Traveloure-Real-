@@ -260,7 +260,7 @@ export async function claimComponentFailed(input: {
 /**
  * TRANSITION — `pending → cancelled` for ONE component: THE TRAVELER's statement that they no longer
  * want this component (Locked Decision 50, third paragraph; ledger
- * `2026-09-16-bundle-component-traveler-cancel`; migration 308). Same guard shape as the two seller
+ * `2026-09-16-bundle-component-traveler-cancel`; migration 309). Same guard shape as the two seller
  * claims — the component must still be `pending` AND the parent still in `parentFromStatuses`, one
  * statement, so a double click or a concurrent cancel is ONE flip and the loser is told the state.
  *

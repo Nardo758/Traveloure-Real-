@@ -2,7 +2,7 @@
 
 **Ledger row:** `2026-09-16-bundle-component-traveler-cancel`
 **Punchlist:** D-51's recorded remainder ("the traveler-CANCEL component path") STRUCK; the settlement surfaces remain
-**Migration:** `308_bundle_component_cancel_terms.sql` — two additive nullable columns on `booking_component_states`:
+**Migration:** `309_bundle_component_cancel_terms.sql` — two additive nullable columns on `booking_component_states`:
 `cancel_refund_percent` (INTEGER) and `cancel_reason` (TEXT). NO DEFAULT, NO CHECK, NO BACKFILL; both declared in
 `shared/schema.ts`; registered in `server/migrations/migration-files.ts`.
 **Predecessor:** `2026-09-16-bundle-partial-settlement` (migration 307), which built the seller-FAILURE half of LD 50
@@ -22,7 +22,7 @@ is that writer and the policy-tiered settlement it feeds.
 And from the same ruling: *"Historical purchases always use their stored component, fee, commission, custody, and
 cancellation snapshots."*
 
-## 2 · Where the snapshot lives — and why migration 308 pins an OUTCOME, not inputs (brief item 2)
+## 2 · Where the snapshot lives — and why migration 309 pins an OUTCOME, not inputs (brief item 2)
 
 The brief asked this lane to find where the purchase-time policy tier and the component's service instant live, and
 to add `policy_tier` + `service_at` only if no per-component snapshot exists. Both inputs already live on the parent
@@ -34,7 +34,7 @@ row and need no copy:
 | the DEADLINE | `booking_details.scheduledDate`, read through `hoursUntilScheduledStart` — the SAME parse the whole-row cancel quote uses (extracted in place from `computeCancellationRefund`) | a bundle is ONE booking under ONE service window, so its components share the deadline; and a component cancelled at instant T must resolve the same tier a whole-booking cancel at T would, or the answer depends on which button was pressed (§18 rule 1). |
 
 What NO row held was the policy's **outcome at the cancel instant** — and the policy is a function of that instant.
-So 308 adds `cancel_refund_percent`: the ONE resolver's output (`refundPercentFor`, the terms §8.1 schedule) pinned in
+So 309 adds `cancel_refund_percent`: the ONE resolver's output (`refundPercentFor`, the terms §8.1 schedule) pinned in
 the SAME atomic UPDATE that moves the row `pending → cancelled`. A cancelled row can therefore never lack the terms
 it was cancelled under; the D-35 mint and the D-51 settlement READ the pin and never re-resolve. The percent is pinned
 rather than the cents because a percent cannot disagree with the allocation it applies to — the cents are DERIVED by
@@ -144,14 +144,14 @@ Neighbours re-run green: `bundle-component-states.db.test.ts` 10/10, `bundle-com
 | `check-duplicate-migration-prefixes.cjs` | OK (308 registry entries) |
 | `check-undeclared-tables.cjs` (local DB) | no undeclared tables |
 | chain-integrity | 2/2 |
-| migrations from EMPTY (local Postgres 55550) | 307 → 308 applied; second run 0 applied / 308 skipped; both columns present |
+| migrations from EMPTY (local Postgres) | 309/309 applied after the merge with `main` (its `308_hidden_gems_moment_key.sql` took 308, so this lane's migration is **309**); second run 0 applied / 309 skipped; both columns present |
 | mutation-auth manifest + coverage | regenerated for the ONE new rail (`POST /api/bookings/:id/components/:componentServiceId/cancel` — user-data, required auth, session-self, ownership-applies); `check:mutation-auth` and `check:mutation-auth-coverage` exit 0 |
 | new/extended suites | 17/17 DB, 9/9 pure |
 | `grep -c replit.local package-lock.json` | 0 |
 
 ## 6 · Proposed CLAUDE.md sentence (NOT applied — appended to Locked Decision 50)
 
-> **THE TRAVELER-CANCEL HALF LANDED (ledger `2026-09-16-bundle-component-traveler-cancel`; migration 308).** The
+> **THE TRAVELER-CANCEL HALF LANDED (ledger `2026-09-16-bundle-component-traveler-cancel`; migration 309).** The
 > writer is `POST /api/bookings/:id/components/:componentServiceId/cancel` — traveler-gated (§14, undifferentiated
 > 404), `.strict()` `{ reason? }` body, ONE atomic conditional `pending → cancelled` with the parent `confirmed` in the
 > same WHERE. The SNAPSHOT is what the row already holds: the tier is the BUNDLE listing's
