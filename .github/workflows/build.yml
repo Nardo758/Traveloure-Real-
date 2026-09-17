@@ -1849,8 +1849,9 @@ jobs:
       # flipping to `refunded` with the recorded charge and a booking-less `refunds` audit row; R5
       # that a retry reports the SAME refund with no second Stripe call and the row is terminal; R6
       # that two concurrent applies produce ONE refund (the claim is the status flip); R7 that a
-      # failed Stripe call keeps the claim, answers `pending`, and the retry re-drives the SAME key;
-      # and R8 that OPTION B is WIDENED to EVERY apply
+      # failed Stripe call keeps the claim, answers `pending`, and the retry re-drives the SAME key —
+      # recording an UNKNOWABLE prior refusal as exactly that (ruling 2026-09-17) rather than `retry`,
+      # which named the call and not the reason (§13); and R8 that OPTION B is WIDENED to EVERY apply
       # refusal of a PAID proposal — a `protected_item` refusal (LD 42 D3) refunds through the SAME
       # path under the SAME key, which closes a row that was previously stuck for good (unappliable
       # by D3, undiscardable because discard refuses a row carrying a PaymentIntent).

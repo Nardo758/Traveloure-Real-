@@ -3,7 +3,8 @@
  * REFUNDED EXACTLY ONCE.
  *
  * (review fixes on the L16 lane-1 create rail; decision-maker ruling 2026-09-16 OPTION B — refund
- *  the fee on a refused apply — WIDENED 2026-09-17 to every refusal of a PAID proposal; ledger
+ *  the fee on a refused apply — WIDENED 2026-09-17 to every refusal of a PAID proposal, with the
+ *  audit `reason` recording the refusal rather than the call; ledger
  *  `2026-09-16-l16-lane1-review-fixes`. CLAUDE.md Locked Decision 45 (3),
  *  Locked Decision 41 (a), §8, §13, §14, §15, §15b, §18 rule 1.)
  *
@@ -25,7 +26,9 @@
  *   R6  TWO CONCURRENT applies of a paid+stale proposal produce ONE refund (§15b — the claim is the
  *       status flip, one statement).
  *   R7  A FAILED Stripe call leaves the CLAIM (row `refunded`), answers `pending`, and the retry
- *       re-drives the SAME key, succeeds, and records once. Never a compensating rollback.
+ *       re-drives the SAME key, succeeds, and records once. Never a compensating rollback. Its
+ *       audit row records an UNKNOWABLE prior refusal as exactly that (ruling 2026-09-17) — never
+ *       `retry`, which named the call and not the reason, and never a re-derived guess (§13).
  *   R8  PAID + PROTECTED WORK (LD 42 D3) ⇒ APPLY 409 `protected_item` WITH `refund.issued = true`
  *       (ruling 2026-09-17, OPTION B widened to EVERY apply refusal of a paid proposal). Before it,
  *       such a row was STUCK: unappliable for good, and undiscardable because discard refuses a row
@@ -62,6 +65,7 @@ import {
   PLAN_PROPOSAL_STATUS_REFUNDED,
   planProposalRefundIdempotencyKey,
   planProposalRefundReason,
+  PLAN_PROPOSAL_REFUND_UNKNOWN_REFUSAL,
   type PlanProposalChangeSet,
 } from "@shared/plan-proposals";
 import { createPlanProposal } from "../services/plan-proposals.service";
@@ -574,7 +578,19 @@ test("R7: a failed Stripe refund leaves the CLAIM standing and answers pending; 
   const audit = await refundRowsFor(paid.pi);
   assert.equal(audit.length, 1, "recorded once");
   assert.equal(audit[0].stripe_refund_id, second.body.refund.refundId);
-  assert.equal(audit[0].reason, planProposalRefundReason("retry", paid.row.id), "the audit row says it landed on a retry");
+  // RULING 2026-09-17: the audit row records the REFUSAL that caused the refund, never `retry` —
+  // which described the CALL and told a reconciler nothing about why the fee went back. On THIS one
+  // path the original refusal is not knowable (no column carries it; the audit row that would is
+  // absent by construction here), so the row says so rather than guessing or re-deriving (§13).
+  assert.equal(
+    audit[0].reason,
+    planProposalRefundReason(PLAN_PROPOSAL_REFUND_UNKNOWN_REFUSAL, paid.row.id),
+    "the audit row names an unknowable prior refusal honestly, never the mechanics of the call",
+  );
+  assert.ok(
+    !String(audit[0].reason).includes(":retry:"),
+    "and never `retry`, which is not a reason",
+  );
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════

@@ -76,6 +76,7 @@ import {
   planProposalApplyIdempotencyKey,
   planProposalRefundIdempotencyKey,
   planProposalRefundReason,
+  PLAN_PROPOSAL_REFUND_UNKNOWN_REFUSAL,
   type PlanProposalChangeSet,
   type PlanProposalChargeBasis,
 } from "@shared/plan-proposals";
@@ -706,10 +707,19 @@ export async function refundRefusedProposalCharge(params: {
   paymentIntentId: string;
   /** What Stripe reported the intent took (`auth.amountCents`), or the row's recorded charge on a retry. */
   amountCents: number;
-  /** Which refusal triggered it; on a retry of an already-`refunded` row this is `null` (not re-derived). */
+  /**
+   * Which refusal triggered it. Every refusing caller passes its own `err.code`, so the audit row
+   * names the reason the fee went back. `null` ONLY on the apply route's early return for a row
+   * already `refunded` — there the refusal is not knowable and is recorded as
+   * `PLAN_PROPOSAL_REFUND_UNKNOWN_REFUSAL`, never re-derived (§13; the full reasoning is on that
+   * constant in `shared/plan-proposals.ts`).
+   */
   refusal: ProposalRefundableRefusal | null;
 }): Promise<ProposalRefundOutcome> {
   const { proposalId, tripId, paymentIntentId } = params;
+  // §13: the refusal, or an explicit "not knowable" — never `retry`, which describes the CALL and
+  // not the reason, and never a guess re-derived from the proposal's state now.
+  const auditRefusal = params.refusal ?? PLAN_PROPOSAL_REFUND_UNKNOWN_REFUSAL;
 
   // §15b THE CLAIM — one statement, taken before any network call.
   const [claimed] = await db
@@ -775,10 +785,10 @@ export async function refundRefusedProposalCharge(params: {
       paymentIntentId,
       amountCents,
       idempotencyKey: planProposalRefundIdempotencyKey(proposalId),
-      auditReason: planProposalRefundReason(params.refusal ?? "retry", proposalId),
+      auditReason: planProposalRefundReason(auditRefusal, proposalId),
     });
     console.info(
-      `[proposal-refund] fee refunded for a refused paid apply (refusal:${params.refusal ?? "retry"})`,
+      `[proposal-refund] fee refunded for a refused paid apply (refusal:${auditRefusal})`,
       { proposalId, tripId, paymentIntentId, refundId: refund.id },
     );
     return { issued: true, refundId: refund.id, amountCents };

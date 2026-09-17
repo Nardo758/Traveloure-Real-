@@ -486,7 +486,7 @@ S1–S10, refund-retry-convergence, traveler-fee-refund; `grep -c replit.local p
 ## 6 · Rulings 2026-09-17 (folded in before merge)
 
 Two follow-up rulings from the decision-maker, landed on this branch. **No schema change, no
-migration**; one commit each. §6.2 lands in the next commit.
+migration**; one commit each.
 
 ### 6.1 · Ruling (a) — OPTION B is widened to EVERY apply refusal of a PAID proposal
 
@@ -517,6 +517,31 @@ basis `paid` with `applied_at` still NULL and the payment identity unrewritten (
 booking-less `refunds` audit row naming the refusal; the plan byte-identical (the protected row
 survives, the addition was never created); and a retry answering `reason:"refunded"` with the SAME
 refund id and **zero** new Stripe calls.
+
+### 6.2 · Ruling (b) — the retry-completion audit `reason` names the refusal, never `retry`
+
+`refundRefusedProposalCharge` wrote `planProposalRefundReason(params.refusal ?? "retry", …)`. `retry`
+describes the CALL that happened to write the row; it tells a reconciler nothing about why the fee
+went back, which is the one thing that audit row exists to carry.
+
+Every refusing caller already knows its own `err.code` and threads it — the concurrent loser
+included. Exactly **one** path cannot: the apply route's early return for a row that is already
+`refunded` but whose Stripe call has not completed (the winner's call threw — R7 constructs it).
+That path exists, so it was checked rather than assumed away, and on it the original refusal is
+genuinely not knowable:
+
+* no `plan_proposals` column carries it, and this lane adds none (no migration);
+* the `refunds` audit row that *would* carry it is absent **by construction** — its presence is
+  precisely what makes this path return early without calling Stripe at all;
+* **re-deriving** it by re-running the apply's own checks is refused under §13: the refusal standing
+  *now* need not be the one that caused the refund. A proposal refunded for an unavailable listing
+  while still fresh becomes stale later, and re-derivation would then attribute the refund to a
+  refusal that had not yet happened. That is an invented reason wearing a plausible face.
+
+So that one path records `PLAN_PROPOSAL_REFUND_UNKNOWN_REFUSAL` — `unknown_prior_refusal`, spelled
+once in `shared/plan-proposals.ts` with the whole reasoning on the constant. A reconciler can act on
+"we do not know"; it cannot act on a guess. R7's pin now asserts the real recorded reason and that
+`:retry:` never appears in it.
 
 ### 6.3 · Validation (2026-09-17)
 

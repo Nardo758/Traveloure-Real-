@@ -36,9 +36,9 @@
  *               refunded, and this is the terminal state that records it. The flip to it IS the
  *               §15b claim on the refund — taken atomically BEFORE the Stripe call — so the row is
  *               never `proposed` again and can never be applied or discarded afterwards. It is
- *               deliberately ONE state for every refusal reason — stale price, unavailable listing
- *               and, since the 2026-09-17 widening, protected work (LD 42 D3): what happened to the
- *               MONEY is the same, and the `refunds` audit row carries the reason.
+ *               deliberately ONE state for both refusal reasons (stale price, unavailable
+ *               listing): what happened to the MONEY is the same, and the `refunds` audit row
+ *               carries the reason.
  *
  * There is no `expired`, no `superseded` and no `failed`. Two ways to say one thing is how a
  * reader ends up guessing which was meant (§13, the ruling-31 posture on empty states). A paid
@@ -216,10 +216,33 @@ export function planProposalRefundIdempotencyKey(proposalId: string): string {
 /**
  * The `refunds.reason` text a proposal refund records, spelled once so the writer and the reader
  * that recognises it agree (§18 rule 1). Carries the refusal that triggered it — the ONE place the
- * refusal reason survives, since `refunded` is a single terminal status for both (§13).
+ * refusal reason survives, since `refunded` is a single terminal status for all of them (§13).
  */
 export const PLAN_PROPOSAL_REFUND_REASON = "ai_task_proposal_refused";
 
+/**
+ * THE ONE PATH ON WHICH THE REFUSAL IS GENUINELY NOT KNOWABLE, said out loud rather than filled in
+ * (decision-maker ruling 2026-09-17, ledger `2026-09-16-l16-lane1-review-fixes`; §13).
+ *
+ * The refund's audit `reason` must name the refusal that CAUSED it, never the mechanics of the call
+ * that happened to write it — the first cut recorded `retry`, which says only "a second caller got
+ * here" and tells a reconciler nothing about why the fee went back.
+ *
+ * On every path where an apply refused, the refusal IS known and is threaded through: the refusing
+ * caller hands `refusal: err.code`, including the concurrent loser. Exactly one path cannot: the
+ * apply route's early return for a row that is ALREADY `refunded` whose Stripe call has not
+ * completed (the winner's call threw — `plan-proposal-refund.db.test.ts` **R7** constructs it). That
+ * path re-drives the same idempotency key to finish the refund, and at that moment:
+ *   • no column on `plan_proposals` carries the refusal (and this lane adds none — no migration);
+ *   • the `refunds` audit row that WOULD carry it is absent by construction — its presence is
+ *     precisely what makes this path return early without calling Stripe at all;
+ *   • RE-DERIVING the refusal by re-running the apply's own checks is REFUSED, because the refusal
+ *     standing NOW need not be the one that caused the refund — a proposal refunded for an
+ *     unavailable listing while still fresh becomes stale later, and re-derivation would then
+ *     attribute the refund to a refusal that had not yet happened. That is an invented reason.
+ * So the row says it does not know, which a reconciler can act on; a plausible guess is not.
+ */
+export const PLAN_PROPOSAL_REFUND_UNKNOWN_REFUSAL = "unknown_prior_refusal";
 export function planProposalRefundReason(refusal: string, proposalId: string): string {
   return `${PLAN_PROPOSAL_REFUND_REASON}:${refusal}:${proposalId}`;
 }
