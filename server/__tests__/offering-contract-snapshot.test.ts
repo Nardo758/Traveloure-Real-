@@ -243,6 +243,11 @@ test("K1 · the Stripe idempotency-key templates are exactly what they were — 
     [
       "${params.idempotencyKey}-recover",
       "${stripeRequestOptions.idempotencyKey}-recover",
+      // Ledger `2026-09-16-bundle-partial-settlement` (LD 50): the partial settlement's amount-scoped
+      // refund key, proven behaviourally by `bundle-partial-settlement.db.test.ts` S2 (the ONE Stripe
+      // call carries it) and S5 (a retry after a Stripe failure carries the SAME key). Ratcheted in
+      // deliberately by `2026-09-16-ci-red-repairs-3`; the pin stays an exact set, never a superset.
+      "bundle-settle-${input.bookingId}",
       "coord-fee-${coordinationId}",
       "coord-refund-${coordinationId}",
       "expert-svc-${variantId}-${comparisonId}-${serviceType}-${userId}",
