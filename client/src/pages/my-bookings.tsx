@@ -51,6 +51,11 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { isBookingCancellable } from "@shared/booking-cancellation"; // §18 rule 1 — the cancel route's OWN from-state list, never a second copy
 import { CancelBookingDialog } from "@/components/booking/CancelBookingDialog";
+// ledger `2026-09-17-surfaces-quotes-settlement`: the two surfaces LD 48/49/50 shipped their
+// rails without. The quotes panel reads `/api/me/quotes` and calls the existing accept/decline
+// rails; the components panel reads the one new read and calls the existing traveler-cancel rail.
+import { TravelerQuotesPanel } from "@/components/quotes/TravelerQuotesPanel";
+import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { formatStartWindow, formatHours, formatMinutes, formatTransportProvision } from "@/lib/service-good-to-know";
 import {
@@ -448,6 +453,13 @@ export default function MyBookingsPage() {
                   Trips ({rmPurchases.length})
                 </TabsTrigger>
               )}
+              {/* A QUOTE IS NOT A BOOKING, so it is not counted into the status tabs above: a
+                  requested or quoted row mints nothing and charges nothing (LD 49). It gets its
+                  own tab rather than a number folded into "Pending", which would claim a booking
+                  exists (§13). */}
+              <TabsTrigger value="quotes" data-testid="tab-quotes">
+                Quotes
+              </TabsTrigger>
             </TabsList>
 
             {/* L12 (ledger 2026-09-07-bookings-by-plan): every list is GROUPED BY PLAN. The
@@ -482,6 +494,15 @@ export default function MyBookingsPage() {
             </TabsContent>
 
             {/* Purchased Ready Made Trips — the store lane's delivery surface */}
+            <TabsContent value="quotes" className="space-y-4">
+              {/* The deposit-vs-full line on an ACCEPTED quote is read off the MINTED BOOKING the
+                  server wrote — this page already holds those rows, so nothing is re-derived and a
+                  booking it has not loaded yields no line at all rather than a guess (§13). */}
+              <TravelerQuotesPanel
+                bookingsById={Object.fromEntries((bookings ?? []).map((b) => [b.id, b]))}
+              />
+            </TabsContent>
+
             <TabsContent value="packages" className="space-y-4">
               {/* Ready-made STORE purchases — clone access + the concierge recourse ladder
                   (ledger 2026-08-22-concierge-p3): revision status is the primary affordance;
@@ -1094,6 +1115,12 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
             {showVisaTimeline && booking.bookingMetadata && (
               <VisaStatusTimeline metadata={booking.bookingMetadata} bookingId={booking.id} />
             )}
+
+            {/* LD 48/50: a purchased BUNDLE's parts, their outcomes and what settled. The panel
+                draws NOTHING for a booking that has no component rows, so it is mounted
+                unconditionally rather than behind a client-side "is this a bundle?" guess — the
+                server's own read is the authority on that (§18 rule 1). */}
+            <BundleComponentsPanel bookingId={booking.id} audience="traveler" />
           </div>
           
           <div className="text-right">

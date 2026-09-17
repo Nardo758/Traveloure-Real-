@@ -45,6 +45,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
 
 interface VisaBookingMetadata {
   passportNationality?: string;
@@ -689,6 +690,12 @@ export default function ExpertBookings() {
                         {booking.notes && (
                           <p className="text-sm text-console-mid mt-2 italic">Note: {booking.notes}</p>
                         )}
+                        {/* LD 48/50 (ledger `2026-09-17-surfaces-quotes-settlement`): a purchased
+                            BUNDLE's parts, with the seller's "will not be delivered" calling the
+                            EXISTING `/api/expert/bookings/:id/component-failed` rail. The panel
+                            draws nothing for a booking with no component rows, so no client-side
+                            "is this a bundle?" guess is made here. */}
+                        <BundleComponentsPanel bookingId={booking.id} audience="seller" sellerRail="expert" />
                         {(() => {
                           // Two-sided fee disclosure: show the expert their cut BEFORE they accept
                           // (the traveler already sees the fee at checkout). Fields ride the booking
