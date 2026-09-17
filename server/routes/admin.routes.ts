@@ -1530,6 +1530,121 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
   }
 });
 
+// ── LD 46 / D-27's MONEY OUTCOME — "RESOLVED FOR THE TRAVELER ON A REJECTED ARTIFACT" ────────────
+// (decision-maker ruled 2026-09-17; ledger `2026-09-17-ld50-remainder-and-artifact-refund`.)
+//
+// THE THIRD RESOLUTION OUTCOME on this rail, beside /reject and /uphold, because the rail spells one
+// outcome per route. A traveler's REJECTION of a delivered artifact moves no money by itself — D-27
+// ASKs and then ESCALATEs it into this queue through the ONE dispute writer — so the refund is the
+// ADMIN's finding, taken by an admin session (§2's blanket guard plus the explicit role check every
+// action on this rail carries, and §14's rule that the actor of a money movement is a session).
+//
+// The whole spine lives in `artifact-rejection-refund.service.ts`: the §15b claim on the `disputed`
+// from-state taken BEFORE the Stripe call, the ledger reversals first, ONE more caller of the ONE
+// `stripe.refunds.create` site under the key `artifact-reject-refund-<bookingId>`, the `refunds` audit
+// row through the ONE recorder, and the booking plus its bundle components moved to `refunded` in the
+// same statement. NOTHING money-related is read from the body: the body is a `.strict()` pick of an
+// optional admin note, recorded in the audit log and nowhere else (§19).
+const artifactRejectionRefundBody = z.object({ note: z.string().trim().max(2000).optional() }).strict();
+router.post("/api/admin/disputes/:bookingId/refund-rejected-artifact", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const parsed = artifactRejectionRefundBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Optionally record why you resolved this for the traveler (note); nothing else is accepted.",
+      issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+    });
+  }
+  try {
+    const { bookingId } = req.params;
+    const { refundRejectedArtifact } = await import("../services/artifact-rejection-refund.service");
+    const outcome = await refundRejectedArtifact({ bookingId, actorUserId: user.id });
+    if (!outcome.refunded) {
+      switch (outcome.reason) {
+        case "booking_not_found":
+          return res.status(404).json({ message: "Booking not found" });
+        case "wrong_status":
+          return res.status(409).json({
+            message:
+              "This booking is not in the disputed state this resolution consumes, so nothing was refunded. Reload the queue and try again.",
+            reason: outcome.reason,
+            currentStatus: outcome.currentStatus ?? null,
+          });
+        case "no_payment_intent":
+          return res.status(409).json({
+            message:
+              "This booking records no Traveloure payment, so no refund can be issued against it — custody is unknown. Handle it outside this rail.",
+            reason: outcome.reason,
+          });
+        case "nothing_charged":
+          return res.status(409).json({
+            message: "This booking records no traveler charge, so there is nothing to refund.",
+            reason: outcome.reason,
+          });
+        case "stripe_refund_failed":
+          return res.status(502).json({
+            message: "Stripe refused the refund; the booking was left disputed and can be retried.",
+            reason: outcome.reason,
+            ...(outcome.detail ? { detail: outcome.detail } : {}),
+          });
+      }
+    }
+    // The ROUTING reversal edge, exactly as /uphold takes it: a refunded booking's plan item goes back
+    // to `in_planning` so the Trip Card stops showing it as bought. ONE helper, one more caller.
+    const routingReversal = await revertPurchasedItemsForBooking(bookingId);
+
+    let auditWarning: string | undefined;
+    await insertAccessAuditLog({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "dispute_artifact_rejection_refunded",
+      resourceType: "dispute",
+      resourceId: bookingId,
+      metadata: {
+        note: parsed.data.note ?? null,
+        stripeRefundId: outcome.stripeRefundId,
+        amountCents: outcome.amountCents,
+        componentsRefunded: outcome.componentsRefunded,
+        reversedEarnings: outcome.reversedEarnings,
+        skippedPaidOut: outcome.skippedPaidOut,
+        reversedRevenueRows: outcome.reversedRevenueRows,
+        revertedPlanItems: routingReversal.reverted,
+        alreadyRefunded: outcome.alreadyRefunded,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    }).catch((err: any) => {
+      console.error("[admin/disputes] audit log failed (non-fatal):", err);
+      auditWarning = `Audit log write failed for dispute_artifact_rejection_refunded on booking ${bookingId}: ${err?.message ?? "unknown error"}. The refund was applied but this action has no audit trail.`;
+    });
+
+    // §13: "refund issued" is said only with a refund id in hand. A retry that found the booking already
+    // refunded reports `alreadyRefunded` and carries no id, because THIS call issued none.
+    return res.json({
+      success: true,
+      alreadyRefunded: outcome.alreadyRefunded,
+      stripeRefundId: outcome.stripeRefundId,
+      amountCents: outcome.amountCents,
+      travelerServiceFeeRefundCents: outcome.travelerServiceFeeRefundCents,
+      componentsRefunded: outcome.componentsRefunded,
+      reversedEarnings: outcome.reversedEarnings,
+      skippedPaidOut: outcome.skippedPaidOut,
+      reversedRevenueRows: outcome.reversedRevenueRows,
+      revertedPlanItems: routingReversal.reverted,
+      note: outcome.alreadyRefunded
+        ? "Already resolved — this booking was refunded before; nothing moved and no second refund was issued."
+        : "Rejected artifact resolved for the traveler: earnings reversed, platform revenue reversed, full refund issued.",
+      ...(auditWarning ? { auditWarning } : {}),
+    });
+  } catch (err: any) {
+    console.error("Admin artifact-rejection refund error:", err);
+    res.status(500).json({ message: `Failed to refund the rejected artifact: ${err.message}` });
+  }
+});
+
 /**
  * GET /api/admin/reconciliation/run-now
  * Triggers Stripe reconciliation immediately and returns the result.

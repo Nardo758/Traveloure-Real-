@@ -296,6 +296,23 @@ export const ARTIFACT_RECORD_ONLY_STATUSES: readonly string[] = ["confirmed", "d
  */
 export const DISPUTE_REJECT_FROM_STATUSES: readonly string[] = ["disputed"];
 
+/**
+ * ── LD 46 / D-27's MONEY OUTCOME — WHICH BOOKINGS AN ADMIN MAY REFUND AS "RESOLVED FOR THE TRAVELER
+ * ON A REJECTED ARTIFACT" (ledger `2026-09-17-ld50-remainder-and-artifact-refund`) ─────────────────
+ *
+ * A traveler's REJECTION of a delivered artifact does not itself move money: D-27 routes a rejection
+ * to ASK and then ESCALATE into the existing admin dispute queue, and §14 wants the actor of a money
+ * movement to be a session with standing. The refund is therefore the ADMIN's resolution of that
+ * dispute, and the ONLY state it may consume is the one the dispute writers create — the same single
+ * entry `DISPUTE_REJECT_FROM_STATUSES` uses, for the same reason: this is the money-riskiest write on
+ * the rail, and a wider list would let it refund a booking no dispute ever reached.
+ *
+ * Both dispute writers land here: the traveler's own `POST /api/bookings/:id/dispute` and the D-27
+ * escalation (`awaiting_acceptance → disputed`, `systemDisputeReason = acceptance_window_elapsed`).
+ * The rail cannot tell them apart and deliberately does not try — an admin reads the queue and decides.
+ */
+export const ARTIFACT_REJECTION_REFUND_FROM_STATUSES: readonly string[] = ["disputed"];
+
 /*
  * ── D-34 (punchlist D-32..D-35, ruled A; ledger `2026-09-16-d32-d35-bundle-components`) ─────────
  * A BUNDLE COMPLETES PARTIALLY. `confirmed → partially_completed` — the parent flip a bundle takes

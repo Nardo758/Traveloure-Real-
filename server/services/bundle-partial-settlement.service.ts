@@ -27,9 +27,14 @@
  *          changes. A Stripe failure leaves the claim CLAIMED-BUT-UNPROMOTED: no compensating rollback
  *          of money facts (rollback code runs in exactly the conditions that broke the operation).
  * PROMOTE  `UPDATE … SET settled_at, stripe_refund_id WHERE booking_id = ? AND settled_at IS NULL`, and
- *          the failed components' `refunded_at`/`refund_amount_cents`/`stripe_refund_id` in the same
- *          transaction. Two promoters — this module and the `charge.refunded` webhook — converge on
- *          one promote (§15c's shape). A retry after promote finds `settled_at` set and is a no-op.
+ *          the refunded components' `refunded_at`/`refund_amount_cents`/`stripe_refund_id` — plus
+ *          `status = 'refunded'` for the ones whose WHOLE allocation came back (ledger
+ *          `2026-09-17-ld50-remainder-and-artifact-refund`: this is that status's ONE writer) — in the
+ *          same transaction. Two promoters — this module and the `charge.refunded` webhook — converge
+ *          on one promote (§15c's shape). A retry after promote finds `settled_at` set and is a no-op,
+ *          and is answered from the SETTLED ROW without re-deriving (the derivation refuses a
+ *          `refunded` component by name, so re-deriving over a promote would turn a retry into a
+ *          refusal).
  * RECLAIM  a claim older than `BUNDLE_SETTLEMENT_CLAIM_TTL_MINUTES` with `settled_at IS NULL` is
  *          re-stamped by the sweep and re-driven; Stripe's idempotency key returns the SAME refund if
  *          the first call did land. Inside the TTL a second caller is told `settlement_in_progress`
@@ -58,10 +63,10 @@
  * its mint are that module's; the entry `settleBundlePartially` there calls `issueBundlePartialSettlement`
  * here after the flip. §14: nothing here reads a request; every amount comes from the rows.
  */
-import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookingComponentStates, bundlePartialSettlements, serviceBookings } from "@shared/schema";
-import { PARTIALLY_COMPLETED_STATUS } from "@shared/bundle-component-states";
+import { BUNDLE_COMPONENT_STATUS, PARTIALLY_COMPLETED_STATUS } from "@shared/bundle-component-states";
 import {
   deriveBundlePartialSettlement,
   type BundlePartialSettlementRefusal,
@@ -145,6 +150,29 @@ export async function issueBundlePartialSettlement(input: {
   const ttl = input.ttlMinutes ?? BUNDLE_SETTLEMENT_CLAIM_TTL_MINUTES;
   const issuer = input.refundIssuer ?? defaultIssuer;
   const bookingId = input.bookingId;
+
+  // ── A PROMOTED SETTLEMENT IS THE IMMUTABLE RECORD; NOTHING IS RE-DERIVED OVER IT ────────────────
+  // (ledger `2026-09-17-ld50-remainder-and-artifact-refund`.) The promote now ALSO stamps the fully
+  // refunded components' `status = 'refunded'` (see the promote below), and
+  // `deriveBundlePartialSettlement` REFUSES a component reading `refunded` by name
+  // (`component_already_refunded` — "no second refund, a human decides"). Re-deriving after a promote
+  // would therefore turn a plain retry into a refusal. This read goes FIRST because the settled row
+  // already answers the question: "the settlement amount and component outcome set are immutable after
+  // successful settlement" (the D-51 ruling), so a re-derivation could tell us nothing it may act on.
+  const [settledClaim] = await db
+    .select()
+    .from(bundlePartialSettlements)
+    .where(and(eq(bundlePartialSettlements.bookingId, bookingId), sql`${bundlePartialSettlements.settledAt} IS NOT NULL`));
+  if (settledClaim) {
+    return {
+      settled: true,
+      bookingId,
+      alreadySettled: true,
+      stripeRefundId: settledClaim.stripeRefundId ?? null,
+      travelerRefundCents: settledClaim.travelerRefundCents,
+      settledAmountCents: settledClaim.settledAmountCents,
+    };
+  }
 
   const [booking] = await db.select().from(serviceBookings).where(eq(serviceBookings.id, bookingId));
   if (!booking) return { settled: false, bookingId, reason: "booking_not_found" };
@@ -319,6 +347,31 @@ export async function issueBundlePartialSettlement(input: {
  * the same transaction, each guarded by its own `refunded_at IS NULL`. A component whose refund is 0
  * is NOT stamped: nothing was refunded, and `refunded_at` would say otherwise (§13).
  * `stripeRefundId` is NULL only for a settlement that moved no money (see the module header).
+ *
+ * ══ LD 50 REMAINDER — `refunded` FINALLY HAS ITS ONE WRITER, AND IT IS THIS STATEMENT ════════════
+ * (ledger `2026-09-17-ld50-remainder-and-artifact-refund`.) `BUNDLE_COMPONENT_STATUS.refunded` was
+ * DECLARED so readers read it correctly and written by NOTHING, so a component whose allocation had
+ * actually gone back to the traveler still read `failed` or `cancelled` forever. It is stamped HERE —
+ * in the SAME transaction and the SAME UPDATE as the refund columns, never a second pass — so the money
+ * fact and the status can never disagree, and the promote's `settled_at IS NULL` guard is what makes it
+ * exactly-once: the loser of a concurrent promote matches zero rows and stamps nothing.
+ *
+ * WHICH COMPONENTS, AND WHAT THE STATUS NOW MEANS. Exactly the ones this settlement refunded something
+ * for — the rows whose pinned outcome carries `refundCents > 0`; a component refunded 0 (a late strict
+ * cancel) was NOT refunded and is not stamped at all (§13). `refunded` therefore means THIS COMPONENT'S
+ * MONEY IS SETTLED, which is precisely the fact `deriveBundlePartialSettlement`'s
+ * `component_already_refunded` refusal turns on ("a row reading it is handed to a human, never refunded
+ * twice"). NOTHING about WHO ended the component or WHY is lost: `failed_at`/`failure_reason`,
+ * `cancelled_at`/`cancel_reason` and the pinned `cancel_refund_percent` all stay on the row beside
+ * `refund_amount_cents`, so a seller's nonperformance and a traveler's 50% cancel remain distinguishable
+ * — and the settlement row's immutable `component_outcomes` names both outcomes verbatim.
+ *
+ * IT CANNOT MOVE AN AMOUNT ANYONE LATER DERIVES, because nothing re-derives over a promoted settlement:
+ * `issueBundlePartialSettlement` answers a retry from the SETTLED ROW before deriving, the sweep's
+ * candidate scan excludes promoted rows, and the flip + reduced mint only ever runs from `confirmed`.
+ *
+ * THE FROM-STATE IS IN THE STATEMENT (§18b): `status IN ('failed','cancelled')`. A row already
+ * `refunded` matches nothing, and a row somehow back in `pending` is never silently terminalised.
  */
 export async function promoteBundlePartialSettlement(input: {
   bookingId: string;
@@ -336,14 +389,32 @@ export async function promoteBundlePartialSettlement(input: {
     const outcomes = ((rows[0].componentOutcomes ?? {}) as Partial<ClaimedOutcomes>).components ?? [];
     for (const o of outcomes) {
       if (o.outcome === "delivered" || !(o.refundCents > 0)) continue;
+      // LD 50 remainder: the status moves to `refunded` for EVERY component this settlement refunded
+      // something for — "the component rows it refunded", the ruling's own words. WHY and BY WHOM the
+      // component ended is not lost: `failed_at`/`failure_reason`, `cancelled_at`/`cancel_reason` and the
+      // pinned `cancel_refund_percent` stay on the row beside `refund_amount_cents`, so a reader can
+      // still tell a seller's nonperformance from a traveler's 50% cancel — the status now says the money
+      // is SETTLED, which is the fact the derivation's `component_already_refunded` refusal turns on.
       await tx
         .update(bookingComponentStates)
-        .set({ refundedAt: now, refundAmountCents: o.refundCents, stripeRefundId: input.stripeRefundId, updatedAt: now })
+        .set({
+          refundedAt: now,
+          refundAmountCents: o.refundCents,
+          stripeRefundId: input.stripeRefundId,
+          status: BUNDLE_COMPONENT_STATUS.refunded,
+          updatedAt: now,
+        })
         .where(
           and(
             eq(bookingComponentStates.bookingId, input.bookingId),
             eq(bookingComponentStates.componentServiceId, o.componentServiceId),
             isNull(bookingComponentStates.refundedAt),
+            // §18b — the from-state is IN the statement. Only the two undelivered answers a settlement
+            // refunds may become `refunded`; an already-`refunded` or a `pending` row matches nothing.
+            inArray(bookingComponentStates.status, [
+              BUNDLE_COMPONENT_STATUS.failed,
+              BUNDLE_COMPONENT_STATUS.cancelled,
+            ]),
           ),
         );
     }

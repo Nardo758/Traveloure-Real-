@@ -23,6 +23,7 @@
 
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import { logger } from '../infrastructure/logger';
 import { travelerChargeForRow } from './traveler-charge';
 
 export type CancellationPolicyType = 'flexible' | 'moderate' | 'strict' | 'non_refundable';
@@ -59,6 +60,75 @@ export function normalizeCancellationPolicy(raw: string | null | undefined): { t
     return { type: raw as CancellationPolicyType, defaulted: false };
   }
   return { type: 'flexible', defaulted: true };
+}
+
+/**
+ * WHICH RECORD ANSWERED "what policy was this booking bought under?" — a reader that cannot say this
+ * cannot be trusted about the rest (§13, the `componentStateSource` posture).
+ *
+ *   `purchase_snapshot` — `service_bookings.offering_contract_snapshot.policy.cancellationPolicyType`
+ *                         (migration 291): the listing's tier AT PURCHASE, the one the traveler
+ *                         contracted with. A seller who tightens their policy afterwards moves nothing.
+ *   `live_listing`      — the `provider_services.cancellation_policy_type` join, read ONLY when the row
+ *                         carries NO snapshot (a booking committed before migration 291, or one whose
+ *                         snapshot composition failed). An explicit, logged fallback — never silent.
+ */
+export type CancellationPolicySource = 'purchase_snapshot' | 'live_listing';
+
+/**
+ * THE ONE STRUCTURAL PARSE of the purchase-time snapshot's policy tier, shared by the whole-row quote
+ * (`resolveBookingCancellationPolicy`) and the bundle component-cancel rail
+ * (`resolveSnapshottedCancellationTerms`) — §18 rule 1. A second reading of the same blob is how the
+ * two rails start disagreeing about which tier a booking was sold under.
+ *
+ * `found` is about the SNAPSHOT, not the tier: a snapshot whose `policy.cancellationPolicyType` is NULL
+ * is FOUND with a null raw value — "the listing declared no policy at purchase", which the ONE
+ * normalizer turns into `flexible, defaulted: true`. That is a different fact from "this row was never
+ * snapshotted", which is `found: false` (§13).
+ */
+export function readSnapshotPolicyType(
+  offeringContractSnapshot: unknown,
+): { found: true; raw: string | null } | { found: false } {
+  if (!offeringContractSnapshot || typeof offeringContractSnapshot !== 'object') return { found: false };
+  const policy = (offeringContractSnapshot as { policy?: unknown }).policy;
+  if (!policy || typeof policy !== 'object' || !('cancellationPolicyType' in (policy as object))) {
+    return { found: false };
+  }
+  const raw = (policy as { cancellationPolicyType?: unknown }).cancellationPolicyType;
+  return { found: true, raw: typeof raw === 'string' ? raw : null };
+}
+
+/**
+ * OC-B1's stated gap, closed (ledger `2026-09-17-ld50-remainder-and-artifact-refund`). The whole-row
+ * cancel/refund rail used to read the LIVE listing's `cancellation_policy_type`, so a seller who
+ * tightened their policy tightened it RETROACTIVELY for every outstanding booking — the exact
+ * retroactive move `service_bookings.offering_contract_snapshot` (migration 291) was recorded to stop,
+ * and which the bundle component-cancel rail already refuses to make. Both rails now read the SAME
+ * pinned tier through the SAME parse above, so a component cancelled at instant T and the whole booking
+ * cancelled at T resolve the same tier.
+ *
+ * §13 — THE FALLBACK IS EXPLICIT AND LOGGED, NEVER SILENT. A row with NO snapshot (pre-291, or a
+ * committed booking whose snapshot composition failed — §15b lets a snapshot fail without failing the
+ * booking) has no pinned tier to read, and REFUSING the cancellation for that would strand every legacy
+ * traveler behind a record-keeping gap they had no part in. So the live listing is read, the source is
+ * NAMED on the quote (`policySource: 'live_listing'`), and one notice is logged per resolution so the
+ * remaining unsnapshotted population is visible rather than assumed empty. The component rail refuses
+ * instead, and correctly: it exists only for bundles bought after 307, which are snapshotted by
+ * construction.
+ */
+export function resolveBookingCancellationPolicy(input: {
+  offeringContractSnapshot: unknown;
+  liveListingPolicyType: string | null | undefined;
+  /** For the log line only — grants nothing and changes no arithmetic. */
+  bookingId?: string;
+}): { policyType: string | null; source: CancellationPolicySource } {
+  const snap = readSnapshotPolicyType(input.offeringContractSnapshot);
+  if (snap.found) return { policyType: snap.raw, source: 'purchase_snapshot' };
+  logger.info(
+    { bookingId: input.bookingId ?? null, livePolicyType: input.liveListingPolicyType ?? null },
+    '[cancellation-policy] no purchase-time contract snapshot on this booking — quoting from the LIVE listing policy (pre-291 row); the tier it was sold under is not on record',
+  );
+  return { policyType: input.liveListingPolicyType ?? null, source: 'live_listing' };
 }
 
 function parseScheduledInstant(raw: string): Date | null {
@@ -158,13 +228,19 @@ export function computeCancellationRefund(params: {
  * service_id is NULL have no declared policy → flexible default (see header).
  */
 export async function quoteCancellationForBooking(bookingId: string): Promise<
-  | (CancellationRefundQuote & { bookingStatus: string; travelerId: string | null })
+  | (CancellationRefundQuote & {
+      bookingStatus: string;
+      travelerId: string | null;
+      /** WHICH record the tier came from — the pinned snapshot, or the live listing fallback (§13). */
+      policySource: CancellationPolicySource;
+    })
   | null
 > {
   const rows = await db.execute(sql`
     SELECT sb.status, sb.traveler_id, sb.total_amount, sb.platform_fee, sb.insurance_fee,
            sb.booking_details ->> 'scheduledDate' AS scheduled_date,
            sb.booking_details -> 'travelerCharge' ->> 'conciergeFee' AS traveler_charge_concierge_fee,
+           sb.offering_contract_snapshot,
            ps.cancellation_policy_type
     FROM service_bookings sb
     LEFT JOIN provider_services ps ON ps.id = sb.service_id
@@ -187,12 +263,20 @@ export async function quoteCancellationForBooking(bookingId: string): Promise<
     insuranceFee: row.insurance_fee,
     conciergeFeeSnapshot: row.traveler_charge_concierge_fee ?? null,
   });
+  // OC-B1 (ledger `2026-09-17-ld50-remainder-and-artifact-refund`): THE TIER IS THE PINNED ONE. The
+  // live `ps.cancellation_policy_type` above is now the EXPLICIT fallback for a row that carries no
+  // purchase-time snapshot, and only that — never the first answer. One resolver, both rails.
+  const { policyType, source } = resolveBookingCancellationPolicy({
+    offeringContractSnapshot: row.offering_contract_snapshot,
+    liveListingPolicyType: row.cancellation_policy_type,
+    bookingId,
+  });
   const quote = computeCancellationRefund({
-    policyType: row.cancellation_policy_type,
+    policyType,
     totalAmount: amountPaid,
     scheduledDate: row.scheduled_date,
   });
-  return { ...quote, bookingStatus: row.status, travelerId: row.traveler_id ?? null };
+  return { ...quote, bookingStatus: row.status, travelerId: row.traveler_id ?? null, policySource: source };
 }
 
 /**
@@ -234,14 +318,14 @@ export function resolveSnapshottedCancellationTerms(params: {
   scheduledDate: string | null | undefined;
   now: Date;
 }): SnapshottedCancellationTerms {
-  const snap = params.offeringContractSnapshot;
-  if (!snap || typeof snap !== "object") return { ok: false, reason: "policy_snapshot_missing" };
-  const policy = (snap as { policy?: unknown }).policy;
-  if (!policy || typeof policy !== "object" || !("cancellationPolicyType" in (policy as object))) {
-    return { ok: false, reason: "policy_snapshot_missing" };
-  }
-  const raw = (policy as { cancellationPolicyType?: unknown }).cancellationPolicyType;
-  const { type, defaulted } = normalizeCancellationPolicy(typeof raw === "string" ? raw : null);
+  // ONE structural parse, shared with the whole-row quote's `resolveBookingCancellationPolicy`
+  // (§18 rule 1 — ledger `2026-09-17-ld50-remainder-and-artifact-refund`). The two rails differ only
+  // in what they do with `found: false`: this one REFUSES (a bundle bought after 307 is snapshotted by
+  // construction, so an absent snapshot is a row no writer of this rail produced), the whole-row one
+  // falls back to the live listing explicitly and logs it (a legacy population it must still serve).
+  const snap = readSnapshotPolicyType(params.offeringContractSnapshot);
+  if (!snap.found) return { ok: false, reason: "policy_snapshot_missing" };
+  const { type, defaulted } = normalizeCancellationPolicy(snap.raw);
   const hoursUntilStart = hoursUntilScheduledStart(params.scheduledDate, params.now);
   return { ok: true, policyType: type, policyDefaulted: defaulted, hoursUntilStart, refundPercent: refundPercentFor(type, hoursUntilStart) };
 }
