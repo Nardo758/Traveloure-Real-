@@ -1,0 +1,23 @@
+[
+  {
+    "file": "birthday.jpg",
+    "title": "Friends celebrating a birthday with cake",
+    "license": "Pexels license",
+    "licenseUrl": "https://www.pexels.com/license/",
+    "source": "https://www.pexels.com/photo/35446446/"
+  },
+  {
+    "file": "anniversary.jpg",
+    "title": "Couple sharing dinner together",
+    "license": "Unsplash license",
+    "licenseUrl": "https://unsplash.com/license",
+    "source": "https://unsplash.com/photos/fce066805cd1"
+  },
+  {
+    "file": "date-night.jpg",
+    "title": "Couple walking through the city at night",
+    "license": "Pexels license",
+    "licenseUrl": "https://www.pexels.com/license/",
+    "source": "https://www.pexels.com/photo/14936642/"
+  }
+]

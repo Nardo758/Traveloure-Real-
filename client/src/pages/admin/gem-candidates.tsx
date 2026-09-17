@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -33,12 +34,19 @@ interface GemCandidate {
   authorLastName: string | null;
 }
 
-function CandidateCard({ candidate }: { candidate: GemCandidate }) {
+interface MomentOption {
+  key: string;
+  label: string;
+  city: string;
+}
+
+function CandidateCard({ candidate, momentOptions }: { candidate: GemCandidate; momentOptions: MomentOption[] }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [gemScore, setGemScore] = useState("");
   const [placeName, setPlaceName] = useState(candidate.linkedPoi ?? "");
   const [rejectReason, setRejectReason] = useState("");
+  const [momentKey, setMomentKey] = useState("none");
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/admin/gem-candidates"] });
 
@@ -47,6 +55,7 @@ function CandidateCard({ candidate }: { candidate: GemCandidate }) {
       apiRequest("POST", `/api/admin/gem-candidates/${candidate.id}/approve`, {
         gemScore: Number(gemScore),
         ...(placeName.trim() ? { placeName: placeName.trim() } : {}),
+        ...(momentKey !== "none" ? { momentKey } : {}),
       }),
     onSuccess: () => {
       invalidate();
@@ -84,6 +93,22 @@ function CandidateCard({ candidate }: { candidate: GemCandidate }) {
             <p className="text-xs text-muted-foreground mt-0.5" data-testid={`text-candidate-author-${candidate.id}`}>
               Proposed by {authorName}
             </p>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">Landing Moment (optional)</label>
+            <Select value={momentKey} onValueChange={setMomentKey}>
+              <SelectTrigger className="h-8 w-56 text-sm" data-testid={`select-candidate-moment-${candidate.id}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Not a landing Moment</SelectItem>
+                {momentOptions.map((moment) => (
+                  <SelectItem key={moment.key} value={moment.key}>
+                    {moment.label} · {moment.city}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {candidate.promotionSubmittedAt && (
             <p className="text-xs text-muted-foreground">
@@ -155,10 +180,11 @@ function CandidateCard({ candidate }: { candidate: GemCandidate }) {
 }
 
 export default function AdminGemCandidates() {
-  const { data, isLoading } = useQuery<{ candidates: GemCandidate[] }>({
+  const { data, isLoading } = useQuery<{ candidates: GemCandidate[]; momentOptions: MomentOption[] }>({
     queryKey: ["/api/admin/gem-candidates"],
   });
   const candidates = data?.candidates ?? [];
+  const momentOptions = data?.momentOptions ?? [];
 
   return (
     <AdminLayout title="Gem Candidates">
@@ -181,7 +207,7 @@ export default function AdminGemCandidates() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {candidates.map((c) => (
-              <CandidateCard key={c.id} candidate={c} />
+              <CandidateCard key={c.id} candidate={c} momentOptions={momentOptions} />
             ))}
           </div>
         )}

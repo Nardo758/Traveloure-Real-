@@ -1721,4 +1721,8 @@ export const MIGRATION_FILES = [
   // commit (deploy-push durability rule). No CHECK added or changed, so
   // `preflight-prod-constraints.cjs` needs no entry.
   "307_bundle_partial_settlements.sql",
+  // Expert-curated hidden-gem media may replace a landing Moment representative only with an
+  // explicit exact Moment association. Nullable, no default, no backfill: city is insufficient
+  // evidence to infer an occasion. The partial lookup index supports city + Moment resolution.
+  "308_hidden_gems_moment_key.sql",
 ] as const;

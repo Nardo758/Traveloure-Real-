@@ -144,7 +144,7 @@ describe("nugget → gem promotion rail (ruling 4)", () => {
   it("G4: approve births the gem with provenance, score, and linkage", async () => {
     const nugget = await makeNugget();
     await proposeNuggetAsGem(nugget.id, expertId);
-    const result = await approveGemCandidate({ id: nugget.id, adminId, gemScore: 88 });
+    const result = await approveGemCandidate({ id: nugget.id, adminId, gemScore: 88, momentKey: "proposal" });
     assert.ok(result.ok, "approve must succeed");
     const gem = (result as any).gem;
     // PROVENANCE: the born gem is attributed to the nugget's author — from the
@@ -155,6 +155,7 @@ describe("nugget → gem promotion rail (ruling 4)", () => {
     assert.equal(gem.city, CITY);
     assert.equal(gem.description, nugget.insight);
     assert.equal(gem.aiGenerated, false);
+    assert.equal(gem.momentKey, "proposal");
 
     const [after1] = await db
       .select()
@@ -188,6 +189,9 @@ describe("nugget → gem promotion rail (ruling 4)", () => {
       assert.equal(r.ok, false);
       assert.equal((r as any).status, 400);
     }
+    const badMoment = await approveGemCandidate({ id: nugget.id, adminId, gemScore: 80, momentKey: "not-a-moment" });
+    assert.equal(badMoment.ok, false);
+    assert.equal((badMoment as any).status, 400);
     const noName = await approveGemCandidate({ id: nugget.id, adminId, gemScore: 80 });
     assert.equal(noName.ok, false, "no linked POI and no placeName ⇒ refuse, never guess (§13)");
     assert.equal((noName as any).status, 400);

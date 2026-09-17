@@ -378,11 +378,41 @@ test("T5: the cancel route derives its amount, and the refunder carries a key an
     "this lane added no escape hatch, and none should appear here",
   );
 
+  // (c) The route's refund path reaches the whole-row refunder, and nothing else.
+  assert.match(handlerBody, /stripePaymentService\.refundServiceBooking\(/, "the cancel route refunds through the ONE whole-row refunder");
+
   const payment = stripComments(read(PAYMENT_SERVICE));
-  const refunder = payment.slice(payment.indexOf("async refundServiceBooking("));
-  assert.ok(refunder.length > 0, "refundServiceBooking must still exist");
+  // A class method's body runs from its declaration to the next method declared at the class's
+  // own indent (two spaces); body lines are indented deeper and cannot match.
+  const methodBody = (signature: string): string => {
+    const start = payment.indexOf(signature);
+    assert.ok(start >= 0, `${signature.trim()} must still exist`);
+    const rest = payment.slice(start + signature.length);
+    const next = rest.search(/\n  (?:private |public |protected )?(?:static )?(?:async )?[A-Za-z_]\w*\s*\(/);
+    return payment.slice(start, next < 0 ? payment.length : start + signature.length + next);
+  };
+  const refunder = methodBody("async refundServiceBooking(");
   // §15, both layers: a deterministic Stripe idempotency key AND an atomic status claim.
-  assert.match(refunder, /\{ idempotencyKey \}/, "the Stripe refund must carry an idempotency key");
+  // THE KEY IS PINNED AS AN INVARIANT, NOT A SPELLING (ledger `2026-09-16-ci-red-repairs-3`).
+  // Ledger `2026-09-16-bundle-partial-settlement` moved the ONE `stripe.refunds.create` call site
+  // into `createStripeRefundForBooking`, shared with the partial settlement (§18 rule 1), and the
+  // old pin on an inline `{ idempotencyKey }` went red while the key was still carried at
+  // runtime.  This suite has no fake Stripe client (T4's stated negative space), so the proof is
+  // structural, in three parts: (a) exactly ONE Stripe refund call site in this file, inside that
+  // helper; (b) the helper hands Stripe the caller's key; (c) the whole-row refunder reaches the
+  // helper carrying an amount-scoped key of its own.
+  const refundCallSites = [...payment.matchAll(/stripe\.refunds\.create\(/g)];
+  assert.equal(refundCallSites.length, 1, "exactly ONE Stripe refund call site — a second is a second place the key can be forgotten");
+  const helperSignature = "private async createStripeRefundForBooking(";
+  const helperStart = payment.indexOf(helperSignature);
+  const helper = methodBody(helperSignature);
+  const callSite = refundCallSites[0].index!;
+  assert.ok(callSite > helperStart && callSite < helperStart + helper.length, "the one call site lives inside createStripeRefundForBooking");
+  assert.match(helper, /\{\s*idempotencyKey:\s*input\.idempotencyKey\s*\}/, "the helper must hand Stripe the caller's idempotency key");
+  const handoff = refunder.indexOf("this.createStripeRefundForBooking(");
+  assert.ok(handoff >= 0, "the whole-row refunder must reach the ONE call site");
+  assert.match(refunder.slice(handoff, refunder.indexOf("});", handoff)), /\bidempotencyKey\b/, "the whole-row refunder must pass a key to the helper");
+  assert.match(refunder, /`refund-sb-\$\{bookingId\}-\$\{amountCents\}`/, "the key stays amount-scoped: a policy-scaled partial and a full refund are retry-distinct at Stripe");
   assert.match(
     refunder,
     /UPDATE service_bookings SET status = 'refunded', updated_at = NOW\(\)\s*\n?\s*WHERE id = \$\{bookingId\} AND status <> 'refunded'/,
