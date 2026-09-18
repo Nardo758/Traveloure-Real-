@@ -1,5 +1,7 @@
 import FirecrawlApp from "@mendable/firecrawl-js";
 import { createTavilyClient, type TavilyLoggingClient } from "../../services/tavily-client";
+import { fetchRobotsRules, isPathAllowed, RobotsDisallowedError } from "../../utils/robots-txt";
+import { ROBOTS_TXT_USER_AGENT_TOKEN } from "../../config/robots-txt.config";
 
 // Brave Search API is a simple REST API — no official SDK, so we use fetch
 interface BraveSearchResult {
@@ -95,6 +97,15 @@ interface CrawlJob {
   excludePaths?: string[];
   maxDepth?: number;
   limit?: number;
+  /**
+   * Mirrors the DMO source row's `scrapeConfig.respectRobotsTxt`
+   * (`DMOSourceRegistry.ts`). Absent ⇒ treated as true. Ledger
+   * `2026-09-18-scraper-robots`: robots.txt is now ALWAYS consulted regardless
+   * of this flag's value — a source that sets it `false` is logged, not
+   * honoured, because the flag never granted a real bypass; it only existed
+   * unread until this ruling.
+   */
+  respectRobotsTxt?: boolean;
 }
 
 // ============================================================
@@ -114,6 +125,43 @@ export class DMOCrawler {
     // so a missing/bad key fails at the real Tavily call rather than being swallowed here.
     this.tavily = createTavilyClient(config.tavilyApiKey);
     this.braveApiKey = config.braveApiKey;
+  }
+
+  /**
+   * Robots.txt consult (ledger `2026-09-18-scraper-robots`), through the SAME
+   * shared module the affiliate scraper uses. `respectRobotsTxt` is read here
+   * for the first time — but ONLY to decide whether a `false` value gets a log
+   * line; the consult itself always runs. `DMOSourceRegistry`'s flag never
+   * grants a bypass.
+   *
+   * Firecrawl (our third-party scrape provider) does the actual page FETCH on
+   * its own infrastructure, so this cannot close every hop the way the
+   * affiliate scraper's own `fetchGuardedText` call does — it is a PRE-CHECK
+   * gate in front of asking Firecrawl to fetch at all, scoped to the two
+   * entry points that target one specific site (`scrapeUrl`, `crawlSite`'s
+   * start URL). Stated negative space: `batchScrape`/`discoverUrls` take URLs
+   * discovered via Brave/Tavily search, a different provenance, and are
+   * deliberately out of scope for this lane.
+   */
+  private async assertRobotsAllowed(url: string, respectRobotsTxt?: boolean): Promise<void> {
+    if (respectRobotsTxt === false) {
+      console.warn(
+        `[DMOCrawler] source for ${url} set respectRobotsTxt=false; robots.txt is still consulted — the flag no longer grants a bypass (ledger 2026-09-18-scraper-robots).`,
+      );
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return; // an unparseable URL fails downstream on its own terms; nothing to consult
+    }
+
+    const rules = await fetchRobotsRules(parsed.origin);
+    const path = parsed.pathname || "/";
+    if (!isPathAllowed(rules, path, ROBOTS_TXT_USER_AGENT_TOKEN)) {
+      throw new RobotsDisallowedError(parsed.origin, path, ROBOTS_TXT_USER_AGENT_TOKEN);
+    }
   }
 
   // ----------------------------------------------------------------
@@ -193,7 +241,12 @@ export class DMOCrawler {
    * Scrape a single URL into clean markdown + structured JSON.
    * Handles JS rendering, anti-bot, PDF parsing automatically.
    */
-  async scrapeUrl(url: string, opts: { formats?: ("markdown" | "html" | "json")[]; prompt?: string } = {}): Promise<ScrapedResult> {
+  async scrapeUrl(
+    url: string,
+    opts: { formats?: ("markdown" | "html" | "json")[]; prompt?: string; respectRobotsTxt?: boolean } = {},
+  ): Promise<ScrapedResult> {
+    await this.assertRobotsAllowed(url, opts.respectRobotsTxt);
+
     const formats = opts.formats || ["markdown", "json"];
     const jsonOptions = opts.prompt
       ? { prompt: opts.prompt }
@@ -279,6 +332,8 @@ export class DMOCrawler {
    * Filters by includePaths (e.g., ["/wedding", "/weddings"]) to target wedding sections.
    */
   async crawlSite(startUrl: string, opts: CrawlJob): Promise<ScrapedResult[]> {
+    await this.assertRobotsAllowed(startUrl, opts.respectRobotsTxt);
+
     const job = await this.firecrawl.asyncCrawlUrl(startUrl, {
       includePaths: opts.includePaths,
       excludePaths: opts.excludePaths,
