@@ -291,7 +291,7 @@ That is the revenue design for the hand-off: **handing the plan's partner items 
 
 | Build | What | Ratification |
 |---|---|---|
-| Hand-off creates the requests | buying a Booking Concierge service for a plan creates one booking-agent request per partner item on that plan and lands them in the pooled queue; today the purchase rail and the request rail do not meet | none |
+| Hand-off creates the requests | buying a Booking Concierge service for a plan creates one booking-agent request per partner item on that plan and lands them in the pooled queue; today the purchase rail and the request rail do not meet | none — **superseded@8872dd5 (ledger `2026-09-18-concierge-handoff`): landed.** |
 | The cap | the August ruling caps the fee at $40 (`concierge:booking_cap_cents`); the live band is uncapped and the ratified rows have no reader; give them their reader and retire the duplicate key | none (punch-list item) |
 | Platform-run concierge | a platform-owned Booking Concierge listing for a market where no expert offers one, so the pooled queue can be sold before an expert network exists | ruling — the offering is expert-owned by design |
 | Queue completeness | the pooled queue gains the verify control the ruling calls for, and the copilot's research and packet (Phase 1) | brief |
