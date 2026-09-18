@@ -6139,6 +6139,29 @@ export const itineraryItemEventLinkSchema = createInsertSchema(itineraryItems)
   .extend({ userExperienceId: z.string().min(1).nullish() });
 
 /**
+ * ALLOWLIST (§19, ledger `2026-09-18-add-to-plan-lossless`, migration 256) — the ONLY way a
+ * request body may reach `itinerary_items.affiliate_product_id`, on the exact
+ * `itineraryItemEventLinkSchema` pattern immediately above. Pick-based on purpose: a future
+ * privileged column added to `itinerary_items` is unreachable through this schema until someone
+ * deliberately names it.
+ *
+ * ONE FIELD, OPTIONAL, NEVER NULLABLE. Discover's Add-to-plan is the only caller and it either
+ * names the product it is adding or says nothing at all — there is no "clear this item's partner
+ * link" affordance anywhere, so unlike the event link above this schema admits no explicit `null`.
+ * Absent ⇒ the caller is not naming a partner product; leave the column alone (NULL, unchanged).
+ *
+ * ACCEPTING THE ID IS NOT TRUSTING IT. This schema proves only the SHAPE — a non-empty string. The
+ * PAIRING — that the `affiliate_products` row exists AND is currently active — is resolved against
+ * the DB by `resolveItemAffiliateLink` (server/services/item-affiliate-link.service.ts) on every
+ * write rail, because a client-supplied foreign key naming an unknown or retired row is exactly the
+ * §14 class `resolveItemEventLink` already closes for the event link.
+ */
+export const itineraryItemAffiliateLinkSchema = createInsertSchema(itineraryItems)
+  .pick({ affiliateProductId: true })
+  .partial()
+  .extend({ affiliateProductId: z.string().min(1).optional() });
+
+/**
  * ALLOWLIST (§19) — the ONLY way a request body may reach `POST /api/trips/:tripId/advisors`,
  * the slip's CHOOSE-an-expert rail (ledger `2026-09-04-hire-from-slip`, the missing piece named
  * by `2026-09-04-slip-precondition` (c)). Pick-based on purpose: `trip_expert_advisors` carries
