@@ -364,7 +364,11 @@ test("D7 — the concierge fee/split resolvers take no expertId/listing paramete
   // §18's "never expert-settable" rule, applied to the Booking Concierge cap and split: a pure
   // signature grep, so an expertId/serviceId/providerId/listingId parameter added to any of these
   // functions later fails here rather than being caught only by a code reviewer.
+  // `resolveConciergeBookingFee` is DECLARED in fee-band-requirements.ts (DB-free by this module's
+  // own header) and re-exported from commission.ts — checked in BOTH files by NAME, not by which
+  // file declares it, so the pin survives either shape.
   const commission = readStripped("server/services/commission.ts");
+  const feeBandRequirements = readStripped("server/services/fee-band-requirements.ts");
   const PRIVILEGED_PARAM = /\b(expertId|serviceId|providerId|listingId)\b/i;
   for (const fnName of [
     "getConciergeBookingRate",
@@ -373,8 +377,10 @@ test("D7 — the concierge fee/split resolvers take no expertId/listing paramete
     "resolveConciergeBookingFee",
     "resolveConciergeExpertShareRate",
   ]) {
-    const m = commission.match(new RegExp(`export (?:async )?function ${fnName}\\(([^)]*)\\)`));
-    assert.ok(m, `${fnName} must be declared as an exported function in commission.ts`);
+    const m =
+      commission.match(new RegExp(`export (?:async )?function ${fnName}\\(([^)]*)\\)`)) ??
+      feeBandRequirements.match(new RegExp(`export (?:async )?function ${fnName}\\(([^)]*)\\)`));
+    assert.ok(m, `${fnName} must be declared as an exported function in commission.ts or fee-band-requirements.ts`);
     assert.doesNotMatch(
       m![1],
       PRIVILEGED_PARAM,

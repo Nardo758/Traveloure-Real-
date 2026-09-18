@@ -412,6 +412,31 @@ export function declaredFallbackValue(bandKey: string): number {
   return requirement.fallback.value;
 }
 
+/**
+ * Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`, migration 311): the Booking
+ * Concierge facilitation fee for ONE LINE — fee = min(price × rate, capAmount ?? ∞), rounded to
+ * cents.
+ *
+ * PURE: no db, no expertId, no listing/serviceId parameter — the rate and the cap are platform
+ * bands only (§18), resolved ONCE per checkout by `getConciergeBookingRate` /
+ * `requireConciergeBookingRate` and `getConciergeBookingCap` (`commission.ts`) and passed in here,
+ * never re-resolved per line from a listing. Every quote/charge/preview surface calls this SAME
+ * function so the amount quoted and the amount charged can never disagree about the cap (§18 rule 1).
+ *
+ * DECLARED HERE, not in `commission.ts` (which re-exports it) — this module's own header requires
+ * it stay free of database imports, which is what lets `traveler-charge-composition.test.ts`'s
+ * dedicated CI job (no DATABASE_URL; the file is documented and proven DB-free) import it directly.
+ */
+export function resolveConciergeBookingFee(
+  price: number,
+  rate: number,
+  capAmount: number | null,
+): { fee: number; rate: number; capApplied: boolean } {
+  const uncapped = Math.round(price * rate * 100) / 100;
+  const capped = capAmount !== null && uncapped > capAmount ? capAmount : uncapped;
+  return { fee: capped, rate, capApplied: capped !== uncapped };
+}
+
 /** `getFee` has one active row for each event type and each tier default. */
 export const OPTIMIZATION_EVENT_TYPES = [
   "vacation",

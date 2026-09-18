@@ -42,6 +42,11 @@ export {
   CONCIERGE_BOOKING_FEE_BAND_KEY,
   CONCIERGE_BOOKING_EXPERT_SHARE_BAND,
   EXPERIENCE_CART_BAND_KEY,
+  // Locked Decision 51: PURE (no db) — declared in fee-band-requirements.ts, which this module's
+  // own header requires to stay import-free of `../db`, so the DB-free
+  // traveler-charge-composition.test.ts can import it without needing DATABASE_URL. Re-exported
+  // here so every existing money-surface caller keeps importing it from commission.ts.
+  resolveConciergeBookingFee,
 } from "./fee-band-requirements";
 
 // 3.0.1b: Structural invariant — AI fulfillment has no expert counterparty, so the
@@ -456,26 +461,6 @@ export async function getConciergeBookingCap(): Promise<number | null> {
     console.warn("[commission] Failed to load concierge booking cap — returning null (uncapped):", err);
     return null;
   }
-}
-
-/**
- * Locked Decision 51: the Booking Concierge facilitation fee for ONE LINE —
- * fee = min(price × rate, capAmount ?? ∞), rounded to cents.
- *
- * PURE: no db, no expertId, no listing/serviceId parameter — the rate and the cap are platform
- * bands only (§18), resolved ONCE per checkout by `getConciergeBookingRate` /
- * `requireConciergeBookingRate` and `getConciergeBookingCap` and passed in here, never re-resolved
- * per line from a listing. Every quote/charge/preview surface calls this SAME function so the
- * amount quoted and the amount charged can never disagree about the cap (§18 rule 1).
- */
-export function resolveConciergeBookingFee(
-  price: number,
-  rate: number,
-  capAmount: number | null,
-): { fee: number; rate: number; capApplied: boolean } {
-  const uncapped = Math.round(price * rate * 100) / 100;
-  const capped = capAmount !== null && uncapped > capAmount ? capAmount : uncapped;
-  return { fee: capped, rate, capApplied: capped !== uncapped };
 }
 
 /**

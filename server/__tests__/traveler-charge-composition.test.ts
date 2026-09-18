@@ -59,7 +59,11 @@ import {
   travelerChargeForRow,
   TRAVELER_CHARGE_SNAPSHOT_KEY,
 } from "../services/traveler-charge";
-import { resolveConciergeBookingFee } from "../services/commission";
+// Imported from fee-band-requirements.ts DIRECTLY, never from commission.ts: this file's dedicated
+// CI job sets no DATABASE_URL (it is documented and proven DB-free), and commission.ts imports
+// `../db` at module load — pulling it in here would break that job at import time regardless of
+// whether any test in it ever calls a db-touching export.
+import { resolveConciergeBookingFee } from "../services/fee-band-requirements";
 
 const REPO = path.resolve(import.meta.dirname, "..", "..");
 const read = (rel: string) => fs.readFileSync(path.join(REPO, rel), "utf8");
