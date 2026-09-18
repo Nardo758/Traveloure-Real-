@@ -32,12 +32,17 @@ import { users } from "@shared/schema";
 import {
   AFFILIATE_STANDARD_BAND,
   CONCIERGE_BOOKING_FEE_BAND_KEY,
+  CONCIERGE_BOOKING_EXPERT_SHARE_BAND,
   EXPERT_STANDARD_BAND,
   EXPERIENCE_CART_BAND_KEY,
   TIP_HANDLING_BAND,
   declaredFallbackValue,
 } from "./fee-band-requirements";
-export { CONCIERGE_BOOKING_FEE_BAND_KEY, EXPERIENCE_CART_BAND_KEY } from "./fee-band-requirements";
+export {
+  CONCIERGE_BOOKING_FEE_BAND_KEY,
+  CONCIERGE_BOOKING_EXPERT_SHARE_BAND,
+  EXPERIENCE_CART_BAND_KEY,
+} from "./fee-band-requirements";
 
 // 3.0.1b: Structural invariant — AI fulfillment has no expert counterparty, so the
 // platform keeps the full per-task fee by definition. Not a safety-net fallback;
@@ -425,6 +430,68 @@ export async function requireConciergeBookingRate(): Promise<number> {
     );
   }
   return rate;
+}
+
+/**
+ * Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`, migration 311): the per-booking
+ * DOLLAR ceiling the admin panel already edits on `expert_concierge_booking.max_amount` — until
+ * this lane nothing applied it. Null means the band carries no cap today (a real, admin-settable
+ * state up to the moment `max_amount` is required — see `requiresMaxAmount` on this band's
+ * manifest entry, which refuses CLEARING the cap once set, not the absence of one it was never
+ * given). Never throws: a cap-read failure must not break a caller that only needs the RATE
+ * (`getConciergeBookingRate` / `requireConciergeBookingRate` already fail loud on their own terms).
+ */
+export async function getConciergeBookingCap(): Promise<number | null> {
+  try {
+    const result = await db.execute(sql`
+      SELECT CAST(max_amount AS FLOAT) AS max_amount
+      FROM fee_bands
+      WHERE band_key = ${CONCIERGE_BOOKING_FEE_BAND_KEY}
+        AND is_active = true
+      LIMIT 1
+    `);
+    const row = result.rows?.[0] as { max_amount: number | null } | undefined;
+    return row?.max_amount == null ? null : Number(row.max_amount);
+  } catch (err) {
+    console.warn("[commission] Failed to load concierge booking cap — returning null (uncapped):", err);
+    return null;
+  }
+}
+
+/**
+ * Locked Decision 51: the Booking Concierge facilitation fee for ONE LINE —
+ * fee = min(price × rate, capAmount ?? ∞), rounded to cents.
+ *
+ * PURE: no db, no expertId, no listing/serviceId parameter — the rate and the cap are platform
+ * bands only (§18), resolved ONCE per checkout by `getConciergeBookingRate` /
+ * `requireConciergeBookingRate` and `getConciergeBookingCap` and passed in here, never re-resolved
+ * per line from a listing. Every quote/charge/preview surface calls this SAME function so the
+ * amount quoted and the amount charged can never disagree about the cap (§18 rule 1).
+ */
+export function resolveConciergeBookingFee(
+  price: number,
+  rate: number,
+  capAmount: number | null,
+): { fee: number; rate: number; capApplied: boolean } {
+  const uncapped = Math.round(price * rate * 100) / 100;
+  const capped = capAmount !== null && uncapped > capAmount ? capAmount : uncapped;
+  return { fee: capped, rate, capApplied: capped !== uncapped };
+}
+
+/**
+ * Locked Decision 51: the EXPERT'S SHARE of the Booking Concierge facilitation fee, minted at
+ * completion (R6 posture, migration-142 precedent — `expert_review_expert_share`). Admin-editable
+ * via `expert_concierge_booking_expert_share`; falls back to the documented default (0.75) when
+ * the band is absent, inactive, non-percent or non-positive — a fee's safe failure mode, never a
+ * blocked mint. PURE INPUTS: no expertId/listing parameter — this is the SAME platform-set rate
+ * for every booking, never a per-expert override.
+ */
+export async function resolveConciergeExpertShareRate(): Promise<number> {
+  const band = await getBand(CONCIERGE_BOOKING_EXPERT_SHARE_BAND);
+  if (!band || band.rateType !== "percent" || !(band.rate > 0)) {
+    return declaredFallbackValue(CONCIERGE_BOOKING_EXPERT_SHARE_BAND);
+  }
+  return band.rate;
 }
 
 /**

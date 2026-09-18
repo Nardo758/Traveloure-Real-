@@ -80,6 +80,12 @@ export const PLUS_TASK_ALLOWANCE_BAND = "plans:plus_task_allowance";
 export const READY_MADE_PLATFORM_BAND = "ready_made:platform_band";
 
 export const CONCIERGE_BOOKING_FEE_BAND_KEY = "expert_concierge_booking";
+/**
+ * Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`, migration 311): the expert's
+ * share of the Booking Concierge facilitation fee, minted at completion. Platform-set only — no
+ * expertId/listing parameter reaches it anywhere (the "never expert-settable" rule).
+ */
+export const CONCIERGE_BOOKING_EXPERT_SHARE_BAND = "expert_concierge_booking_expert_share";
 export const EXPERIENCE_CART_BAND_KEY = "experience_cart_checkout";
 export const PLATFORM_DEPOSIT_BAND = "platform_deposit";
 export const AFFILIATE_STANDARD_BAND = "affiliate_standard";
@@ -202,7 +208,26 @@ export const RESOLVER_FEE_BAND_REQUIREMENTS: readonly FeeBandRequirement[] = [
     expectedType: "percent",
     required: true,
     owner: "commission checkout resolver",
+    // Locked Decision 51: the panel already edits this band's `max_amount` cap, but nothing
+    // applied it — `resolveConciergeBookingFee` now refuses to charge past it, so clearing the
+    // cap is refused exactly as `traveler_service_fee`'s is (fee-band-admin.service V-4c).
+    requiresMaxAmount: true,
     fallback: failLoud("resolveCommissionRates (commission)"),
+  },
+  {
+    bandKey: CONCIERGE_BOOKING_EXPERT_SHARE_BAND,
+    expectedType: "percent",
+    // R6 posture (migration 142 precedent): admin-editable with a documented code-constant
+    // fallback, never fail-loud — a misconfigured/absent row keeps splitting at the ratified
+    // default rather than blocking a completion mint.
+    required: false,
+    owner: "commission concierge split resolver / mintCompletionEarningsForBooking (storage.ts)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "resolveConciergeExpertShareRate (commission)",
+      value: 0.75, // fee-literal-ok: documented fallback default (R6 posture), read by commission.ts
+      unit: "fraction",
+    },
   },
   {
     bandKey: EXPERIENCE_CART_BAND_KEY,

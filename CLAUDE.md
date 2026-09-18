@@ -1896,6 +1896,19 @@ This document captures architectural decisions to maintain consistency across co
     nobody has ratified. **Left, named, not built:** no notification for the parent cancel, and
     `revertPurchasedItemsForBooking` is not called on this path.
 
+51. **THE BOOKING CONCIERGE FEE IS CAPPED, AND ITS EXPERT SHARE IS SPLIT AT COMPLETION — ALL
+    PLATFORM-SET, NEVER EXPERT-SETTABLE (decision-maker ratified Sep 18, 2026 — ledger
+    `2026-09-18-concierge-fee-cap-split`; migration 311, DATA-ONLY).** The 5% facilitation fee is
+    `min(price × rate, max_amount)` from ONE band, `expert_concierge_booking` — the admin panel's
+    own cap field, unread until this lane (`resolveConciergeBookingFee`, PURE, no expertId/listing
+    parameter). At COMPLETION, `mintCompletionEarningsForBooking` credits the listing owner the
+    share snapshotted at PURCHASE from `expert_concierge_booking_expert_share` (percent,
+    admin-editable, `fee-literal-ok` fallback 0.75 — the R6/migration-142 posture), folded into the
+    SAME earnings rows and out of `platform_revenue.platform_fee`, inside the EXISTING idempotent
+    mint (a retry mints nothing new). Migration 258's `concierge:booking_pct` /
+    `concierge:booking_cap_cents` duplicates are retired (`is_active=false`, kept, never dropped).
+    A row born before this lane carries no share snapshot and splits nothing — no backfill (§13).
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

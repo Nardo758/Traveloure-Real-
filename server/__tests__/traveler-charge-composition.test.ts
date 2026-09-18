@@ -59,6 +59,7 @@ import {
   travelerChargeForRow,
   TRAVELER_CHARGE_SNAPSHOT_KEY,
 } from "../services/traveler-charge";
+import { resolveConciergeBookingFee } from "../services/commission";
 
 const REPO = path.resolve(import.meta.dirname, "..", "..");
 const read = (rel: string) => fs.readFileSync(path.join(REPO, rel), "utf8");
@@ -228,6 +229,34 @@ describe("A3 — what the traveler pays", () => {
     assert.equal(composeTravelerCharge(parts), composeTravelerCharge({ ...parts }));
     assert.equal(composeTravelerCharge(parts), 473.13);
   });
+
+  // ── Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`): the CAP on the
+  // concierge fee itself — `resolveConciergeBookingFee` is what feeds `conciergeFee` above on a
+  // concierge line, so its own clamp is proven here beside the composition it feeds. PURE: no db.
+  it("P13 below the cap, the fee is price × rate and the cap is not applied", () => {
+    const r = resolveConciergeBookingFee(500, 0.05, 40);
+    assert.equal(r.fee, 25);
+    assert.equal(r.rate, 0.05);
+    assert.equal(r.capApplied, false);
+  });
+
+  it("P14 above the cap, the fee clamps to the cap and says so", () => {
+    const r = resolveConciergeBookingFee(2000, 0.05, 40);
+    assert.equal(r.fee, 40);
+    assert.equal(r.capApplied, true);
+  });
+
+  it("P15 capAmount null is uncapped — no ceiling is invented", () => {
+    const r = resolveConciergeBookingFee(2000, 0.05, null);
+    assert.equal(r.fee, 100);
+    assert.equal(r.capApplied, false);
+  });
+
+  it("P16 a $0-price concierge line resolves to $0, never negative or NaN", () => {
+    const r = resolveConciergeBookingFee(0, 0.05, 40);
+    assert.equal(r.fee, 0);
+    assert.equal(r.capApplied, false);
+  });
 });
 
 describe("A3 — the call sites (a composition is worth what its callers are)", () => {
@@ -252,11 +281,13 @@ describe("A3 — the call sites (a composition is worth what its callers are)", 
     assert.ok(!/lineFullCharge = price \+ surchargeAmt \+ totalPlatformFeeAmt/.test(payments));
   });
 
-  it("S3 the claim stamps the travelerCharge snapshot on the row", () => {
+  it("S3 the claim stamps the travelerCharge snapshot on the row, WITH the expert's split beside it", () => {
     assert.equal(TRAVELER_CHARGE_SNAPSHOT_KEY, "travelerCharge");
+    // Locked Decision 51: `conciergeFeeExpertShare` rides the SAME snapshot object, computed at
+    // purchase — the completion mint reads it and never re-resolves the split band (LD 48).
     assert.match(
       payments,
-      /\[TRAVELER_CHARGE_SNAPSHOT_KEY\]: \{ conciergeFee: conciergeFeeAmt\.toFixed\(2\) \}/,
+      /\[TRAVELER_CHARGE_SNAPSHOT_KEY\]: \{\s*conciergeFee: conciergeFeeAmt\.toFixed\(2\),\s*conciergeFeeExpertShare: conciergeFeeExpertShareAmt\.toFixed\(2\),\s*\}/,
     );
   });
 

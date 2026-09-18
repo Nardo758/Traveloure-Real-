@@ -3600,6 +3600,28 @@ export class DatabaseStorage implements IStorage {
           : "";
       mintBasis = ` (partially completed — ${reduced.undeliveredComponentIds.length} undelivered component(s) deducted; basis ${reduced.basis}${retained})`;
     }
+    // ── Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`): THE EXPERT'S SHARE OF
+    // THE BOOKING CONCIERGE FEE, re-split here rather than at capture (R6 posture, migration-142
+    // precedent) — the fee is still collected 100% platform at capture (payments.routes.ts). The
+    // share was computed at PURCHASE from the `expert_concierge_booking_expert_share` band and
+    // snapshotted onto the row (`booking_details.travelerCharge.conciergeFeeExpertShare`) — it is
+    // READ here and never re-resolved (LD 48's "no rate re-resolved at completion" posture). It is
+    // folded into `providerEarningsAmount` / subtracted from `platformFee` BEFORE the transaction's
+    // inserts below, so it rides the EXISTING `onConflictDoNothing` guard on those SAME rows — a
+    // retry mints exactly ONE combined earning, never a second row. A booking with no such key
+    // (every row before this lane) splits nothing — no backfill (§13).
+    const conciergeExpertShareSnapshot = parseFloat(
+      String((booking.bookingDetails as any)?.travelerCharge?.conciergeFeeExpertShare ?? '0'),
+    );
+    if (Number.isFinite(conciergeExpertShareSnapshot) && conciergeExpertShareSnapshot > 0) {
+      // Never drives the platform's own take negative — a bundle's partial-completion reduction
+      // (D-35, above) can shrink `platformFee` below the purchase-time concierge share; clamp
+      // rather than mint a fee the row no longer carries.
+      const share = Math.min(conciergeExpertShareSnapshot, platformFee);
+      platformFee -= share;
+      providerEarningsAmount += share;
+      mintBasis += ` (concierge split: $${share.toFixed(2)} to provider)`;
+    }
     // Earnings become available after the configurable hold period (config, `holdWindowDays`).
     //
     // D-37 (ledger `2026-09-15-d36-d39-completion-declared`): ANCHORED TO THE DECLARATION when the

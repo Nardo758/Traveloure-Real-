@@ -1991,6 +1991,55 @@ jobs:
       - name: The transition is the guard (F1-F7)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/from-state-guards.db.test.ts
 
+  concierge-fee-split:
+    name: concierge-fee-split (Locked Decision 51; ledger 2026-09-18-concierge-fee-cap-split)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # THE CAP AND THE SPLIT (migration 311). The Booking Concierge fee is still collected
+      # 100%-platform at capture (payments.routes.ts) — `resolveConciergeBookingFee` (proven
+      # purely in traveler-charge-composition.test.ts P13-P16) is what applies the per-booking
+      # dollar cap the admin panel already edited but nothing read until this lane. The expert's
+      # completion-time SPLIT is snapshotted at purchase (`travelerCharge.conciergeFeeExpertShare`)
+      # and re-split by `storage.mintCompletionEarningsForBooking` — C1 proves the combined mint,
+      # C2 that a retry mints nothing new (the EXISTING onConflictDoNothing guard, never a second
+      # row), C3/C4 that a row with no share key (every booking before this lane) splits nothing
+      # (§13, no backfill), C5 that the split never drives the platform's own take negative, and
+      # C6 that a $0.00 snapshot is present-but-zero, the same posture the fee itself already
+      # proves (P10 in traveler-charge-composition.test.ts).
+      - name: the concierge fee cap and its completion-time split (C1-C6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/concierge-fee-split.db.test.ts
+
   one-trip-write-resolver:
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
     runs-on: ubuntu-latest
