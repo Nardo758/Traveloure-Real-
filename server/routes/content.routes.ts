@@ -39,6 +39,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
 import { EgressBlockedError } from "../utils/egress-guard";
+import { RobotsDisallowedError } from "../utils/robots-txt";
 import { buildAttributedAffiliateUrl } from "../services/affiliate-attribution.service";
 // §16: live-feed DTOs never ship partner URLs to the client — they are vaulted server-side and
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
@@ -8637,6 +8638,19 @@ router.post("/api/admin/affiliate/partners/:id/scrape", isAuthenticated, async (
         return res.status(400).json({
           message: `Scrape target refused by the egress guard: ${error.message}`,
           reason: error.reason,
+        });
+      }
+      // robots.txt refusal (ledger 2026-09-18-scraper-robots): the target's own
+      // robots.txt disallows this path for our honest UA — refused BEFORE any
+      // page request left the server. Same posture as the egress-guard refusal
+      // above: a bad partner row / disallowed path, not a server fault, and
+      // never surfaced as a silent "0 products".
+      if (error instanceof RobotsDisallowedError) {
+        return res.status(400).json({
+          message: `Scrape target refused by robots.txt: ${error.message}`,
+          reason: error.reason,
+          origin: error.origin,
+          path: error.path,
         });
       }
       console.error("Scrape error:", error);
