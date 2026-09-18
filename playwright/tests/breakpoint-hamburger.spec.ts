@@ -3,18 +3,22 @@
  *
  * Responsive navbar behaviour across viewport breakpoints.
  *
- * Layout breakpoint: `lg` = 1024 px.
- *   < 1024 px  → hamburger button visible, desktop nav hidden, mobile panel
+ * Layout breakpoint: `xl` = 1280 px (moved from `lg` = 1024 px by R2 of the
+ * cosmetic-public-surfaces dispatch: at 1024–1100 px the desktop nav's three
+ * trigger labels wrapped and collided with "Pricing" and the language globe,
+ * even shortened and `nowrap`'d, so the hamburger now owns everything below
+ * 1280 px instead of everything below 1024 px).
+ *   < 1280 px  → hamburger button visible, desktop nav hidden, mobile panel
  *               renders on click (AnimatePresence motion.div)
- *   ≥ 1024 px  → hamburger hidden, desktop nav links visible
+ *   ≥ 1280 px  → hamburger hidden, desktop nav links visible
  *
  * Key data-testids (layout.tsx):
- *   button-mobile-menu         — hamburger toggle (div.flex.items-center.lg:hidden)
+ *   button-mobile-menu         — hamburger toggle (div.flex.items-center.xl:hidden)
  *   button-mobile-sign-in      — sign-in CTA in mobile menu footer (unauthenticated)
  *   button-mobile-logout       — logout button inside mobile menu (authenticated)
  *   link-mobile-{name}         — each top-level nav item rendered as a link
  *   link-mobile-ways-to-earn   — "Ways to earn" leaf link
- *   button-nav-dropdown-{slug} — desktop dropdown triggers (hidden < lg)
+ *   button-nav-dropdown-{slug} — desktop dropdown triggers (hidden < xl)
  *
  * Tests are grouped into:
  *   A. Visibility — what shows / hides at each breakpoint
@@ -31,9 +35,11 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
 
 const MOBILE_375  = { width: 375,  height: 667  };  // iPhone SE/8 portrait
 const MOBILE_320  = { width: 320,  height: 568  };  // smallest common phone
-const TABLET_768  = { width: 768,  height: 1024 };  // iPad portrait  (< lg)
-const DESKTOP_1280 = { width: 1280, height: 800  };  // standard desktop (≥ lg)
-const LG_BOUNDARY = { width: 1024, height: 768  };  // exact breakpoint edge
+const TABLET_768  = { width: 768,  height: 1024 };  // iPad portrait  (< xl)
+const DESKTOP_1280 = { width: 1280, height: 800  };  // standard desktop (≥ xl); also the exact new breakpoint edge
+// R2: 1024 px used to BE the breakpoint edge (`lg`); it is now comfortably below the
+// new `xl` = 1280 px edge, so the hamburger must be visible here, not hidden.
+const PRE_XL_1024 = { width: 1024, height: 768  };  // former breakpoint edge — now mobile-panel range
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,9 +76,9 @@ test.describe('A — Hamburger visibility across breakpoints', () => {
     await page.setViewportSize(MOBILE_375);
     await gotoHome(page);
 
-    // Desktop dropdowns are wrapped in div.hidden.lg:flex — none should be visible
-    const desktopDiscoverTrigger = page.getByTestId('button-nav-dropdown-discover');
-    await expect(desktopDiscoverTrigger).not.toBeVisible();
+    // Desktop dropdowns are wrapped in div.hidden.xl:flex — none should be visible
+    const desktopMarketplaceTrigger = page.getByTestId('button-nav-dropdown-marketplace');
+    await expect(desktopMarketplaceTrigger).not.toBeVisible();
   });
 
   // ── A2: Mobile 320 ───────────────────────────────────────────────────────
@@ -93,15 +99,15 @@ test.describe('A — Hamburger visibility across breakpoints', () => {
     }
   });
 
-  // ── A3: Tablet 768 (still < lg) ─────────────────────────────────────────
+  // ── A3: Tablet 768 (still < xl) ─────────────────────────────────────────
 
-  test('A3: at 768 px (tablet) hamburger is still visible — below lg breakpoint', async ({ page }) => {
+  test('A3: at 768 px (tablet) hamburger is still visible — below xl breakpoint', async ({ page }) => {
     await page.setViewportSize(TABLET_768);
     await gotoHome(page);
     await expect(page.getByTestId('button-mobile-menu')).toBeVisible();
   });
 
-  // ── A4: Desktop 1280 (≥ lg) ─────────────────────────────────────────────
+  // ── A4: Desktop 1280 (≥ xl, the exact new breakpoint edge) ────────────────
 
   test('A4a: at 1280 px hamburger button is NOT visible', async ({ page }) => {
     await page.setViewportSize(DESKTOP_1280);
@@ -112,16 +118,25 @@ test.describe('A — Hamburger visibility across breakpoints', () => {
   test('A4b: at 1280 px desktop nav dropdown triggers ARE visible', async ({ page }) => {
     await page.setViewportSize(DESKTOP_1280);
     await gotoHome(page);
-    await expect(page.getByTestId('button-nav-dropdown-discover')).toBeVisible();
+    await expect(page.getByTestId('button-nav-dropdown-marketplace')).toBeVisible();
   });
 
-  // ── A5: Exact lg boundary ────────────────────────────────────────────────
+  // ── A5: Former lg boundary (1024) — R2 moved the breakpoint to xl (1280) ──
 
-  test('A5: at exactly 1024 px hamburger is NOT visible (lg:hidden kicks in at ≥ lg)', async ({ page }) => {
-    await page.setViewportSize(LG_BOUNDARY);
+  test('A5: at 1024 px hamburger IS visible (xl:hidden only kicks in at ≥ xl = 1280)', async ({ page }) => {
+    await page.setViewportSize(PRE_XL_1024);
     await gotoHome(page);
-    // Tailwind lg: starts at 1024 px (inclusive), so hamburger becomes hidden
-    await expect(page.getByTestId('button-mobile-menu')).not.toBeVisible();
+    // R2: 1024 px used to be the `lg` breakpoint edge, where the hamburger hid and the
+    // desktop nav showed. That is exactly the width band (1024–1100 px) where three
+    // trigger labels wrapped and collided, so the breakpoint moved to `xl` (1280 px) —
+    // at 1024 px the hamburger must now be visible and the desktop nav hidden.
+    await expect(page.getByTestId('button-mobile-menu')).toBeVisible();
+  });
+
+  test('A5b: at 1024 px desktop nav dropdown triggers are NOT visible', async ({ page }) => {
+    await page.setViewportSize(PRE_XL_1024);
+    await gotoHome(page);
+    await expect(page.getByTestId('button-nav-dropdown-marketplace')).not.toBeVisible();
   });
 });
 
@@ -215,7 +230,7 @@ test.describe('C — Mobile menu content for unauthenticated users', () => {
   });
 
   test('C4: mobile menu does not overflow viewport width at 375 px', async ({ page }) => {
-    const menuPanel = page.locator('.lg\\:hidden.border-t.border-border.bg-background');
+    const menuPanel = page.locator('#mobile-menu');
     const box = await menuPanel.boundingBox();
     expect(box).not.toBeNull();
     if (box) {
@@ -226,7 +241,7 @@ test.describe('C — Mobile menu content for unauthenticated users', () => {
 
   test('C5: mobile menu is vertically scrollable when content exceeds viewport', async ({ page }) => {
     // The menu container has overflow-y-auto — confirm it has a scroll container
-    const menuPanel = page.locator('.lg\\:hidden.border-t.border-border.bg-background');
+    const menuPanel = page.locator('#mobile-menu');
     const overflowY = await menuPanel.evaluate(el =>
       window.getComputedStyle(el).overflowY,
     );
@@ -300,7 +315,7 @@ test.describe('E — button-become-expert-nav in the desktop navbar', () => {
     await page.setViewportSize(MOBILE_375);
     await gotoHome(page);
 
-    // The whole desktop nav row is hidden below lg — the nav button must not be visible
+    // The whole desktop nav row is hidden below xl — the nav button must not be visible
     await expect(page.getByTestId('button-become-expert-nav')).not.toBeVisible();
   });
 

@@ -71,6 +71,16 @@ export interface NavGroupConfig {
   name: string;
   i18nKey?: string;
   href?: string;
+  /**
+   * R2 (cosmetic-public-surfaces dispatch, A2): the header row is over budget at every
+   * desktop width up to 1440px with the full group name, even with `nowrap` — three trigger
+   * labels wrap to two lines and their chevrons detach. An OPTIONAL short form for the
+   * TOP-LEVEL TRIGGER TEXT ONLY: the dropdown's own section headings and the mobile menu's
+   * group heading keep rendering `name`/`i18nKey` untouched (layout.tsx reads `shortName` only
+   * at the desktop trigger's two render sites), so shortening here never shortens those.
+   */
+  shortName?: string;
+  shortI18nKey?: string;
   sections?: NavSectionConfig[];
   /**
    * A group-level FOOTER leaf, rendered once beneath the dropdown's sections (ledger
@@ -129,6 +139,8 @@ export const navGroupsConfig: NavGroupConfig[] = [
   {
     name: "Experts & Services",
     i18nKey: "groups.expertsAndServices",
+    shortName: "Experts",
+    shortI18nKey: "groups.expertsAndServicesShort",
     sections: [
       {
         title: "FIND HELP",
@@ -230,12 +242,14 @@ export const navGroupsConfig: NavGroupConfig[] = [
   {
     name: "Planning Tools",
     i18nKey: "groups.planningTools",
+    shortName: "Tools",
+    shortI18nKey: "groups.planningToolsShort",
     sections: [
       {
         title: "TOOLS",
         i18nKey: "sections.tools",
         items: [
-          { name: "AI Plan Planner", i18nKey: "links.aiPlanPlanner", href: "/ai-assistant", description: "Instant AI-powered itineraries", requiresAuth: true },
+          { name: "AI Planner", i18nKey: "links.aiPlanPlanner", href: "/ai-assistant", description: "Instant AI-powered itineraries", requiresAuth: true },
           { name: "Visa Help", i18nKey: "links.visaHelp", href: "/visa-help", description: "Visa requirements & expert help" },
         ],
       },
@@ -252,7 +266,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
       },
     ],
   },
-  { name: "Ways to Earn", i18nKey: "groups.waysToEarn", href: "/earn" },
+  { name: "Ways to Earn", i18nKey: "groups.waysToEarn", shortName: "Earn", shortI18nKey: "groups.waysToEarnShort", href: "/earn" },
   // 2026-08-26: plain main-nav leaf beside Ways to Earn per the ratified pricing map
   // (ledger 2026-08-27-pricing-nav, corrected same day) — not the utility cluster.
   { name: "Pricing", i18nKey: "groups.pricing", href: "/pricing" },
