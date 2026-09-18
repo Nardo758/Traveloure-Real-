@@ -123,6 +123,21 @@ jobs:
       - name: Plan item unit count pin (D-41)
         run: npx tsx --test server/__tests__/plan-item-units.test.ts
 
+      # 2026-09-18-tavily-spend-logged: every Tavily call now logs to api_usage_logs through ONE
+      # client module (§18 rule 1), so TAVILY_MONTHLY_CAP_USD (server/config/trailhead.config.ts,
+      # R-T1-c) finally has something to read against (FOLLOWUPS.md tavily-spend-unlogged / F4).
+      # Pure — injected SDK + logger, no DB, no network. Pins: one logged row per call (right
+      # endpoint, tenths-of-cents pricing derived from config, never restated); a throwing SDK call
+      # still logs (success:false) then rethrows unchanged (§15b); a throwing logger never
+      # surfaces; getTavilyClient() null-vs-createTavilyClient() always-constructs split preserves
+      # each of the four call sites' existing "no key" posture; and (second file) the admin cost
+      # view's TRACKED_PROVIDERS now carries "tavily" and all four call sites route through this
+      # one module.
+      - name: Tavily client logging pin
+        run: npx tsx --test server/__tests__/tavily-client.test.ts
+      - name: Tavily pricing/wiring source pin
+        run: npx tsx --test server/__tests__/api-usage-tavily-pricing.test.ts
+
 
       # ── tsc baseline ratchet ──────────────────────────────────────────────────
       # The repo is NOT tsc-clean, so the gate is a CEILING, not zero. THE NUMBER

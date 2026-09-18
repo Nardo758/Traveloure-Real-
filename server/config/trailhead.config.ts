@@ -29,6 +29,29 @@ export const TAVILY_MONTHLY_CAP_USD = 150 as const;
 export const TAVILY_PRICE_PER_SEARCH_USD = 0.008 as const;
 
 /**
+ * Tavily per-call price assumption for `extract` calls, used by `server/services/tavily-client.ts`
+ * (ledger `2026-09-18-tavily-spend-logged`) to price every Tavily `extract` call it logs to
+ * `api_usage_logs`, the way `TAVILY_PRICE_PER_SEARCH_USD` prices `search`. Basic-depth search is
+ * one credit; Tavily's `extractDepth: "advanced"` — what every extract call site in this codebase
+ * uses (`dmo-ingestion.service.ts`, `booking-verification.service.ts`, `DMOCrawler.ts`) — is priced
+ * roughly double a basic search per Tavily's published credit table. Verify against the live Tavily
+ * dashboard before relying on this for a real spend decision — this is the committed estimate, the
+ * dashboard is the authority (same posture as `TAVILY_PRICE_PER_SEARCH_USD` above).
+ *
+ * Env-overridable through `TAVILY_PRICE_PER_EXTRACT_USD` — a decision-maker (or an ops correction
+ * once the real per-credit price is confirmed) can move it without a code change; an absent/invalid
+ * override falls back to the committed estimate below (§8 safe-failure posture, `fee-literal-ok` —
+ * this is a cost estimate, not a fee/commission rate, so it is excluded from the fee-literal gate
+ * by the same file-path rule as `TAVILY_MONTHLY_CAP_USD` above).
+ */
+function envUsdPrice(key: string, dflt: number): number {
+  const v = parseFloat(process.env[key] ?? "");
+  return Number.isFinite(v) && v > 0 ? v : dflt;
+}
+
+export const TAVILY_PRICE_PER_EXTRACT_USD = envUsdPrice("TAVILY_PRICE_PER_EXTRACT_USD", 0.016);
+
+/**
  * R-T1-b — Tier-2 browsable-minimum content profile (~26 items/market). The editorial target MAGNITUDE
  * per DMO content type for a market that has ignited to browsable-minimum. Keyed by `dmoContentTypeEnum`
  * member. Kyoto (the wedge) carries a DEEPER hand-set plan (see KYOTO_CONTENT_PLAN, ~57 items) and is
