@@ -1762,4 +1762,17 @@ export const MIGRATION_FILES = [
   // `preflight-prod-constraints.cjs` needs no entry; the UNIQUE is over two brand-new all-NULL
   // columns, so no prod duplicate risk.
   "312_affiliate_booking_requests_handoff_link.sql",
+  // 313 — ledger `2026-09-18-platform-concierge-listing` (CLAUDE.md Locked Decision 51, "the
+  // platform may itself offer Booking Concierge in every market"). DATA-ONLY, idempotent
+  // ON CONFLICT DO NOTHING on every insert: one reserved `users` row (id fixed, role
+  // 'local_expert', handle 'traveloure-concierge', never a login), the `platform_settings` key
+  // `platform_concierge_user_id` naming it, an APPROVED `local_expert_forms` row covering all 8
+  // `OPERATING_MARKETS` cities (surfacing reuses the two LIVE gates — `/api/experts`'s location
+  // filter and `lead-routing.service.ts`'s scorer — no new predicate, no `expert_neighborhoods`
+  // touch), a `fee_bands` row for the listing's own list price (seeded once, not read live — the
+  // D4/D4b undeclared-band posture), and the APPROVED `provider_services` listing itself
+  // (`created_via='seed'`, `expert_offering_type_key='booking_concierge'`). No ALTER, no CHECK,
+  // no shared/schema.ts change — every referenced table already exists and is already declared —
+  // so `preflight-prod-constraints.cjs` needs no new manifest entry.
+  "313_platform_concierge_listing.sql",
 ] as const;

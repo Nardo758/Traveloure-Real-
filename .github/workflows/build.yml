@@ -2106,6 +2106,53 @@ jobs:
       - name: the hand-off — checkout of a Booking Concierge line (H1-H6)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/concierge-handoff.db.test.ts
 
+  platform-concierge-listing:
+    name: platform-concierge-listing (Locked Decision 51 lane F; ledger 2026-09-18-platform-concierge-listing)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # THE PLATFORM'S OWN BOOKING CONCIERGE LISTING (migration 313). F1/F1b the seeder is
+      # idempotent and the account clears the same security gate every local expert clears; F2/F2b
+      # the two LIVE gates (GET /api/experts's location filter via lead-routing's scorer, and a
+      # static pin that neither gained a new isPlatform* branch) surface it with no new predicate;
+      # F2c (LD 40) the account resolves by handle, never a raw user id; F3/F3b a platform-owned
+      # hand-off is POOLED (expert_id NULL) while a real expert's still stamps the owner; F4 the
+      # concierge fee's expert share is never minted for the platform-owned listing; F5 a real
+      # expert with a matching specialty outranks the platform's floor row; F6 the seeded
+      # destinations equal shared/operating-markets.ts.
+      - name: the platform's own Booking Concierge listing (F1-F6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/platform-concierge-listing.db.test.ts
+
   one-trip-write-resolver:
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
     runs-on: ubuntu-latest
