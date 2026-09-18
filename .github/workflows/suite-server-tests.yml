@@ -120,7 +120,7 @@ jobs:
       # all and vitest cannot run a node:test file, so a directory is only ONE
       # runner when it happens to be — the §18d one-runner rule.
       - name: server/__tests__ (vitest suites)
-        run: npx vitest run --root . server/__tests__/concierge-suggest-add.test.ts server/__tests__/config-completeness.test.ts server/__tests__/coordination-credit.test.ts server/__tests__/db-role-authorization.test.ts server/__tests__/egress-guard.test.ts server/__tests__/event-coordination.test.ts server/__tests__/expert-profile-xss.http.test.ts
+        run: npx vitest run --root . server/__tests__/concierge-suggest-add.test.ts server/__tests__/config-completeness.test.ts server/__tests__/coordination-credit.test.ts server/__tests__/db-role-authorization.test.ts server/__tests__/egress-guard.test.ts server/__tests__/event-coordination.test.ts server/__tests__/expert-profile-xss.http.test.ts server/__tests__/robots-txt.test.ts
       # NOT RUN HERE, and each is a decision rather than an oversight:
       #   * e2e-purge-fk-naming.db.test.ts — its SUBJECT is purgeE2EAccountsFromProd,
       #     which neutralises EVERY @traveloure.test account. That includes the four
