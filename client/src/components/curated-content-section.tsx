@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
+import { buildDiscoverAddBody } from "@/lib/discover-add-body";
 
 interface CuratedItem {
   id: string;
@@ -94,20 +95,11 @@ function AddToTripDialog({
   const addItemMutation = useMutation({
     mutationFn: async (tripId: string) => {
       if (!item) return;
-      return apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, {
-        title: item.title,
-        description: item.description || "",
-        itemType: item.contentCategory || "experience",
-        dayNumber: 1,
-        status: "planned",
-        estimatedCost: item.price || null,
-        currency: "USD",
-        // §16 (ledger 2026-08-22-ai-slip-defects): the affiliate URL is deliberately NOT
-        // persisted onto the trip item — partner URLs stay server-side; booking rides the
-        // agent rail. (The old code wrote it into `notes` and a `sourceUrl` field that no
-        // column backs — the URL then lived durably on the traveler's plan.)
-        notes: `Source: ${item.source}`,
-      });
+      return apiRequest(
+        "POST",
+        `/api/trips/${tripId}/itinerary-items`,
+        buildDiscoverAddBody(item, tripId),
+      );
     },
     onSuccess: (_, tripId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "itinerary-items"] });

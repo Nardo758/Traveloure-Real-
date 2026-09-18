@@ -191,6 +191,7 @@ import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
 import transportLegsRoutes from "./routes/transport-legs.routes";
 import { resolveItemEventLink } from "./services/item-event-link.service";
+import { resolveItemAffiliateLink } from "./services/item-affiliate-link.service";
 import { authoredItemPriceRefusal } from "@shared/item-kind";
 // D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): `cart_items.quantity` is
 // UNITS of the listing (the price multiplier) and `cart_items.party_size` is the PARTY fact. Which
@@ -268,6 +269,7 @@ import {
   insertItineraryItemSchema,
   itineraryItemBookingInputsSchema,
   itineraryItemEventLinkSchema,
+  itineraryItemAffiliateLinkSchema,
   insertTripEmergencyContactSchema,
   insertTripAlertSchema,
   insertProviderAvailabilityScheduleSchema,
@@ -12493,6 +12495,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       );
       if (!resolvedEvent.ok) return res.status(400).json({ message: resolvedEvent.message });
       if (resolvedEvent.action === "set") itemData.userExperienceId = resolvedEvent.value;
+      // Ledger 2026-09-18-add-to-plan-lossless (migration 256) — the item→AFFILIATE PRODUCT link,
+      // admitted through its OWN pick-based allowlist for the same §19 reason as the event link
+      // immediately above: `insertItineraryItemSchema` omits `affiliateProductId`, so the generic
+      // parse cannot grant a column that names a row in another table. Shape is all the schema
+      // proves; the PAIRING — that the product exists and is currently active — is re-read from the
+      // DB by the shared resolver (§14). An unknown or retired id is a visible 400, never a
+      // silently dropped link; absent leaves the column NULL exactly as before this lane.
+      const affiliateLink = itineraryItemAffiliateLinkSchema.safeParse(req.body);
+      if (!affiliateLink.success) {
+        return res.status(400).json({ message: "Invalid affiliate link", errors: affiliateLink.error.errors });
+      }
+      const resolvedAffiliate = await resolveItemAffiliateLink(
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, "affiliateProductId"),
+        affiliateLink.data.affiliateProductId,
+      );
+      if (!resolvedAffiliate.ok) {
+        return res.status(400).json({ message: "That partner item could not be found or is no longer available.", reason: resolvedAffiliate.reason });
+      }
+      if (resolvedAffiliate.action === "set") itemData.affiliateProductId = resolvedAffiliate.value;
       // ── THE AUTHORING CONTRACT (decision-maker ruling 2026-09-15, punchlist D-4 option A;
       // ledger `2026-09-15-d4-item-kind-contract`) ────────────────────────────────────────────
       // A READY-MADE AUTHOR MAY NOT PUBLISH A PRICED ITEM THAT NAMES NO BOOKABLE THING. Checkout

@@ -503,6 +503,11 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/bundle-component-state-copy.test.ts
       - name: API refusal parse pin
         run: npx tsx --test client/src/lib/__tests__/api-refusal.test.ts
+      # Ledger `2026-09-18-add-to-plan-lossless`: Discover's Add-to-plan body carries
+      # `affiliateProductId` when `tracking.productId` is a non-empty string and omits the key
+      # entirely otherwise — the server-side admission already existed, this is the client half.
+      - name: Discover add-to-plan body pin
+        run: npx tsx --test client/src/lib/__tests__/discover-add-body.test.ts
       # EX-2: insertProviderServiceSchema rejects negative/non-numeric prices on the create AND
       # .partial() (PATCH) shapes; zero stays parseable (draft state — publish gate is route-level).
       - name: EX-2 service price-floor pin

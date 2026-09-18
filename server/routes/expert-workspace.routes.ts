@@ -1057,10 +1057,25 @@ async function executeScrapeJob(jobId: string) {
       const batchResults = await crawler.batchScrape(urls, { prompt: defaultPrompt });
       results = batchResults;
     } else if (job.jobType === "crawl" && job.startUrl) {
+      // Ledger `2026-09-18-scraper-robots`: the source row's own
+      // `scrapeConfig.respectRobotsTxt` is finally READ here — absent ⇒
+      // treated as true by `DMOCrawler.assertRobotsAllowed`, and robots.txt is
+      // consulted regardless of the value; a source that set it `false` only
+      // gets a log line, never a bypass.
+      let respectRobotsTxt: boolean | undefined;
+      if (job.sourceId) {
+        const [source] = await db.select({ scrapeConfig: dmoSources.scrapeConfig })
+          .from(dmoSources)
+          .where(eq(dmoSources.id, job.sourceId))
+          .limit(1);
+        respectRobotsTxt = (source?.scrapeConfig as { respectRobotsTxt?: boolean } | null)?.respectRobotsTxt;
+      }
+
       const crawlResults = await crawler.crawlSite(job.startUrl, {
         includePaths: (job.includePaths as string[]) || undefined,
         excludePaths: (job.excludePaths as string[]) || undefined,
         maxDepth: job.maxDepth || 2,
+        respectRobotsTxt,
       });
       results = crawlResults;
     } else if (job.jobType === "batch_scrape" && job.targetUrls) {

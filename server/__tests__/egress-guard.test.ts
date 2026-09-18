@@ -7,7 +7,7 @@
  *
  * Run: npx vitest run --root . server/__tests__/egress-guard.test.ts
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   EgressBlockedError,
   assertSafeEgressUrl,
@@ -15,6 +15,7 @@ import {
   fetchGuardedText,
   registrableDomain,
 } from "../utils/egress-guard";
+import { RobotsDisallowedError, resetRobotsCacheForTests } from "../utils/robots-txt";
 
 const ALLOWED = ["partner.example"];
 
@@ -436,6 +437,68 @@ vi.mock("../db", () => ({ db: {}, pool: {}, getPoolStats: () => ({}) }));
 vi.mock("../storage", () => ({ storage: {} }));
 
 describe("AffiliateScraperService.fetchWebPage", () => {
+  // The robots.txt consult caches per origin for the process lifetime
+  // (`ROBOTS_TXT_CACHE_TTL_MS`); clearing it before each test keeps these
+  // proofs independent of test order and of each other's cache fills.
+  beforeEach(() => {
+    resetRobotsCacheForTests();
+  });
+
+  it("never fetches the page when robots.txt disallows the path (ledger 2026-09-18-scraper-robots)", async () => {
+    const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
+    // A literal IP host (already public/routable per `classifyBlockedAddress` —
+    // reused from the redirect tests above) so BOTH the robots.txt fetch and a
+    // would-be page fetch skip DNS entirely; the test stays pure with no real
+    // network or resolver call.
+    const host = "93.184.216.34";
+    const fetchSpy = vi.fn(async (url: any) => {
+      if (String(url) === `http://${host}/robots.txt`) {
+        return okResponse("User-agent: *\nDisallow: /private/\n");
+      }
+      throw new Error(`the page fetch must never happen; got ${String(url)}`);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      await expect(
+        (affiliateScraperService as any).fetchWebPage(
+          `http://${host}/private/tours`,
+          [host],
+        ),
+      ).rejects.toBeInstanceOf(RobotsDisallowedError);
+      // Only the robots.txt URL was ever requested — the disallowed page URL
+      // never reached `fetch` at all.
+      expect(fetchSpy.mock.calls.map((call) => String(call[0]))).toEqual([
+        `http://${host}/robots.txt`,
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("fetches the page when robots.txt allows the path", async () => {
+    const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
+    const host = "93.184.216.34";
+    const fetchSpy = vi.fn(async (url: any) => {
+      if (String(url) === `http://${host}/robots.txt`) {
+        return okResponse("User-agent: *\nDisallow: /private/\n");
+      }
+      if (String(url) === `http://${host}/tours`) {
+        return okResponse("<html>tours</html>");
+      }
+      throw new Error(`unexpected fetch to ${String(url)}`);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const text = await (affiliateScraperService as any).fetchWebPage(
+        `http://${host}/tours`,
+        [host],
+      );
+      expect(text).toBe("<html>tours</html>");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("never calls fetch when the guard refuses the target", async () => {
     const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
     const fetchSpy = vi.fn();

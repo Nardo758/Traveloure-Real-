@@ -18,6 +18,9 @@ import * as cartProjection from "../services/cart-projection.service";
 // The ONE server-side resolution of the item→EVENT link (migration 277) — shared with the live
 // POST rail in server/routes.ts so the two cannot drift (§18 rule 1).
 import { resolveItemEventLink } from "../services/item-event-link.service";
+// The ONE server-side resolution of the item→AFFILIATE PRODUCT link (migration 256), on the same
+// pattern and shared with the live POST rail in server/routes.ts (§18 rule 1).
+import { resolveItemAffiliateLink } from "../services/item-affiliate-link.service";
 import { discardPlanProposal, listPlanProposals } from "../services/plan-proposals.service";
 import { createProposalFromAsk } from "../services/proposal-create.service";
 // L16 lane 1 — the CREATE rail (punchlist D-45..D-50, ledger `2026-09-16-l16-rulings-d45-d50`).
@@ -168,6 +171,7 @@ import {
   insertTripTransactionSchema,
   insertItineraryItemSchema,
   itineraryItemEventLinkSchema,
+  itineraryItemAffiliateLinkSchema,
   insertTripEmergencyContactSchema,
   insertTripAlertSchema,
   insertProviderAvailabilityScheduleSchema,
@@ -3120,6 +3124,17 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
         // client-chosen foreign key straight into the write, naming a row in another table (and
         // possibly on another trip). This destructure is layer 1; the resolver is the §14 layer.
         userExperienceId: _uxid,
+        // Ledger `2026-09-18-add-to-plan-lossless` (migration 256): the item→AFFILIATE PRODUCT
+        // link is stripped out of the raw destructure for the SAME §14 reason as the event link
+        // immediately above — this route parses no insert schema, so a raw `...safeBody` would
+        // carry a client-chosen foreign key straight into the write with no verification that the
+        // product exists or is still active. Re-admitted below through its own pick-based
+        // allowlist + the shared resolver (layer 1); storage carries no layer-2 strip for this
+        // column because, unlike routingStatus/bookingId/customVenueId/contentType/contentId, this
+        // route is not its only writer of concern — `authoredItemPriceRefusal` below reads the
+        // MERGED value, so the verified id (or its absence) must already be the one on `safeBody`
+        // by the time that check runs.
+        affiliateProductId: _apid,
         // Ledger `2026-09-15-d16-plan-holds-venues-and-content` (migration 295): the two SUBJECT
         // links — the traveler's own venue, and the Discover content a line came from — are
         // stripped for the same §19 reason and admitted by NO allowlist at all. They are stamped
@@ -3155,6 +3170,25 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       // ABSENT ≠ NULL: `ignore` leaves the existing link untouched, `set` writes it (including an
       // explicit null, which moves the item back to the plan's implicit event).
       if (resolvedEvent.action === "set") (safeBody as any).userExperienceId = resolvedEvent.value;
+      // Ledger 2026-09-18-add-to-plan-lossless (migration 256), on the item→EVENT link's pattern
+      // immediately above: `affiliateProductId` is admitted through its OWN pick-based allowlist
+      // and its PAIRING — that the `affiliate_products` row exists and is currently active — is
+      // re-read from the DB by the shared resolver (§14), the same one the live POST rail calls
+      // (§18 rule 1). An unknown or retired id is a 400 naming the reason and NOTHING is written;
+      // absent leaves the item's existing link untouched. This runs BEFORE the authoring-contract
+      // check below, which reads the MERGED (verified) value off `safeBody`.
+      const affiliateLink = itineraryItemAffiliateLinkSchema.safeParse(req.body);
+      if (!affiliateLink.success) {
+        return res.status(400).json({ message: "Invalid affiliate link", errors: affiliateLink.error.errors });
+      }
+      const resolvedAffiliate = await resolveItemAffiliateLink(
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, "affiliateProductId"),
+        affiliateLink.data.affiliateProductId,
+      );
+      if (!resolvedAffiliate.ok) {
+        return res.status(400).json({ message: "That partner item could not be found or is no longer available.", reason: resolvedAffiliate.reason });
+      }
+      if (resolvedAffiliate.action === "set") (safeBody as any).affiliateProductId = resolvedAffiliate.value;
       // THE AUTHORING CONTRACT, on the EDIT side (decision-maker ruling 2026-09-15, punchlist D-4;
       // ledger `2026-09-15-d4-item-kind-contract`). ONE predicate, two callers — the other is the
       // create rail in server/routes.ts (§18 rule 1); a second wording of the same refusal is the
