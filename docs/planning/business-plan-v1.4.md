@@ -293,7 +293,7 @@ That is the revenue design for the hand-off: **handing the plan's partner items 
 |---|---|---|
 | Hand-off creates the requests | buying a Booking Concierge service for a plan creates one booking-agent request per partner item on that plan and lands them in the pooled queue; today the purchase rail and the request rail do not meet | none — **superseded@8872dd5 (ledger `2026-09-18-concierge-handoff`): landed.** |
 | The cap | the August ruling caps the fee at $40 (`concierge:booking_cap_cents`); the live band is uncapped and the ratified rows have no reader; give them their reader and retire the duplicate key | none (punch-list item) |
-| Platform-run concierge | a platform-owned Booking Concierge listing for a market where no expert offers one, so the pooled queue can be sold before an expert network exists | ruling — the offering is expert-owned by design — **superseded@<sha> (ledger `2026-09-18-platform-concierge-listing`): landed.** |
+| Platform-run concierge | a platform-owned Booking Concierge listing for a market where no expert offers one, so the pooled queue can be sold before an expert network exists | ruling — the offering is expert-owned by design — **superseded@bf1ec7d (ledger `2026-09-18-platform-concierge-listing`): landed.** |
 | Queue completeness | the pooled queue gains the verify control the ruling calls for, and the copilot's research and packet (Phase 1) | brief |
 
 ### 6.5 The first API partner — Contingent
@@ -490,7 +490,7 @@ Lanes are sequenced in the wave grammar the architecture rules use; each lane ap
 | 2 | Dining reservations for the couple streams: apply to the OpenTable affiliate API (restaurant data plus reservation links; approval takes weeks) and Resy's partner APIs (opening to third parties in 2026); TheFork for Porto and Edinburgh to be verified; the reservation link rides the booking-agent rail like every partner link, with no platform charge on the table | §4 coverage table | *contingent* (partner approvals) |
 | 2 | Logistics columns on the catalog row (meeting point, hours, last verified) | §4a | *ruling* (schema) |
 | 2 | Partner items in the optimizer catalog | §4a | *ruling* |
-| 2 | Platform-owned Booking Concierge listing | §6.4 | *ruling* — **superseded@<sha> (ledger `2026-09-18-platform-concierge-listing`): landed.** |
+| 2 | Platform-owned Booking Concierge listing | §6.4 | *ruling* — **superseded@bf1ec7d (ledger `2026-09-18-platform-concierge-listing`): landed.** |
 | 2 | Re-open GetYourGuide and Klook API applications at the volume threshold | §4a | *ruling* (amends the Aug 2 directive) |
 | 2 | Booking agent Phase 1: copilot research/prepare on the pooled queue; inbox verify control; purchase packet carrier | §6, LD 44 | *ruling* (packet carrier) |
 | 2 | Item-grain trend resolution; search and gem-view capture | §5.2 | brief |
