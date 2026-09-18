@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { apiUsageLogs } from "@shared/schema";
 import { gte, and, lte, inArray } from "drizzle-orm";
+import { TAVILY_MONTHLY_CAP_USD } from "../config/trailhead.config";
 
 export interface ApiCostEntry {
   provider: string;
@@ -13,12 +14,16 @@ export interface ApiCostsSummary {
   totalCostDollars: number;
 }
 
-const TRACKED_PROVIDERS = ["amadeus", "serpapi", "serp_api"];
+// "tavily" added ledger 2026-09-18-tavily-spend-logged — server/services/tavily-client.ts now
+// logs every Tavily search/extract call here, and this view was hardcoding the tracked provider
+// list, so those rows were aggregated but never shown (FOLLOWUPS.md tavily-spend-unlogged / F4).
+const TRACKED_PROVIDERS = ["amadeus", "serpapi", "serp_api", "tavily"];
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   amadeus: "Amadeus",
   serpapi: "SerpAPI",
   serp_api: "SerpAPI",
+  tavily: "Tavily",
 };
 
 function getDateBounds(period: string): { from: Date; to: Date } {
@@ -83,4 +88,25 @@ export async function getApiCostsSummary(period: string): Promise<ApiCostsSummar
   const totalCostDollars = entries.reduce((sum, e) => sum + e.costDollars, 0);
 
   return { entries, totalCostDollars };
+}
+
+export interface TavilySpendStatus {
+  monthToDateUsd: number;
+  capUsd: number;
+}
+
+/**
+ * READ-ONLY month-to-date Tavily spend beside its ratified hard cap
+ * (`TAVILY_MONTHLY_CAP_USD`, `server/config/trailhead.config.ts`, R-T1-c). This makes the number
+ * OBSERVABLE — it does not enforce the cap. Enforcing it (refusing further Tavily calls once
+ * month-to-date spend reaches the cap) is a separate, unruled decision and is deliberately not
+ * built here (ledger `2026-09-18-tavily-spend-logged`).
+ */
+export async function getTavilyMonthToDateUsd(): Promise<TavilySpendStatus> {
+  const summary = await getApiCostsSummary("this_month");
+  const entry = summary.entries.find((e) => e.provider === PROVIDER_DISPLAY_NAMES.tavily);
+  return {
+    monthToDateUsd: entry?.costDollars ?? 0,
+    capUsd: TAVILY_MONTHLY_CAP_USD,
+  };
 }

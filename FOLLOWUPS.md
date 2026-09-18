@@ -386,6 +386,13 @@ Filed, not fixed, per the dispatch. Evidence lives in `docs/audits/expert-field-
 - **`tavily-spend-unlogged` (F4).** No Tavily call (DMO ingestion, booking verification) writes to
   `api_usage_logs`; the R-T1-c $150 cap is unobservable in `api-costs.service.ts:16`. Phase 2's web-gap
   search must log `provider: "tavily"`; the two existing callers should follow.
+  **closed 2026-09-18-tavily-spend-logged @32b0d6e.** All four Tavily call sites (`dmo-ingestion.service.ts`,
+  `booking-verification.service.ts`, `evidence-scorer.service.ts`, `content/scrapers/DMOCrawler.ts`) now
+  route through the ONE `server/services/tavily-client.ts`, which logs every `search`/`extract` call
+  (success or throw) to `api_usage_logs` with `provider:"tavily"`; `api-costs.service.ts:16`'s
+  `TRACKED_PROVIDERS` now includes `"tavily"` so the admin cost view shows it, and `getTavilyMonthToDateUsd()`
+  reports month-to-date spend beside `TAVILY_MONTHLY_CAP_USD` (read only — the cap is still not enforced,
+  which remains a separate, unruled decision). See `docs/DECISIONS.md` row `2026-09-18-tavily-spend-logged`.
 - **`service-form-upload-comment-stale` (F5).** `client/src/components/ServiceForm.tsx:272` says there is no
   upload/object-storage rail to reuse; `server/infrastructure/object-storage.ts` (deliverable rail) exists.
 - **`crowd-forecasts-no-source` (F6).** `travel_pulse_crowd_forecasts` has no `source` column, so first-party
@@ -516,6 +523,10 @@ the first revenue aggregation that sums `traveler_service_fee` must net the `fee
   against the first two backfill replies and tune `evidence_thresholds` from there (companion §8.1).
 - **`web-gap-spend-logging` (F4, still open).** The web-gap search does not yet write `api_usage_logs`
   (`provider: "tavily"`); the R-T1-c $150 cap remains unobservable in the admin cost view.
+  **closed 2026-09-18-tavily-spend-logged @32b0d6e.** `evidence-scorer.service.ts`'s `defaultSearch()` (the
+  web-gap check) now builds its client through `server/services/tavily-client.ts`'s `getTavilyClient()`,
+  so every web-gap search call logs to `api_usage_logs` the same way the other three Tavily call sites do.
+  See `docs/DECISIONS.md` row `2026-09-18-tavily-spend-logged`.
 - **`corroboration-chip`.** The dispatch's Phase 2 line "corroboration/conflict chip when two claimants' P2
   constraints agree or clash on the same venue" is not built here; the D7 duplicate flag covers the P1
   venue case only. Needs a P2 hard-constraint join (same `normalized_name` in `mini_slip_templates.items`).

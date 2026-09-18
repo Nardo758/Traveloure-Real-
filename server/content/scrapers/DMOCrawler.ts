@@ -1,5 +1,5 @@
 import FirecrawlApp from "@mendable/firecrawl-js";
-import { tavily, type TavilyClient } from "tavily";
+import { createTavilyClient, type TavilyLoggingClient } from "../../services/tavily-client";
 
 // Brave Search API is a simple REST API — no official SDK, so we use fetch
 interface BraveSearchResult {
@@ -103,13 +103,16 @@ interface CrawlJob {
 
 export class DMOCrawler {
   private firecrawl: FirecrawlApp;
-  private tavily: TavilyClient;
+  private tavily: TavilyLoggingClient;
   private braveApiKey: string;
   private rateLimiters: Map<string, number> = new Map();
 
   constructor(config: CrawlerConfig) {
     this.firecrawl = new FirecrawlApp({ apiKey: config.firecrawlApiKey });
-    this.tavily = tavily({ apiKey: config.tavilyApiKey });
+    // createTavilyClient (not getTavilyClient) preserves this class's existing behaviour: it
+    // constructs unconditionally, even with an empty key (createDMOCrawler() below only warns),
+    // so a missing/bad key fails at the real Tavily call rather than being swallowed here.
+    this.tavily = createTavilyClient(config.tavilyApiKey);
     this.braveApiKey = config.braveApiKey;
   }
 

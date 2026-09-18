@@ -27,7 +27,7 @@
  * network; production wiring is `@anthropic-ai/sdk` + `tavily`, key-gated.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { tavily } from "tavily";
+import { getTavilyClient } from "./tavily-client";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
@@ -91,9 +91,8 @@ function defaultModel(): ScorerDeps["model"] {
 }
 
 function defaultSearch(): ScorerDeps["search"] {
-  const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) return null;
-  const client = tavily({ apiKey });
+  const client = getTavilyClient();
+  if (!client) return null;
   return async (query) => {
     const r = await client.search(query, { maxResults: WEB_GAP_TOP_RESULTS, searchDepth: WEB_GAP_SEARCH_DEPTH, includeAnswer: false } as any);
     const hits: WebSearchHit[] = (r?.results ?? []).map((x: any) => ({ url: String(x?.url ?? ""), title: x?.title ? String(x.title) : undefined, content: x?.content ? String(x.content) : undefined }));

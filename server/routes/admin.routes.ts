@@ -4783,7 +4783,7 @@ router.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
         { getViatorCommissions },
         { getFeverCommissions },
         { getBookingComCommissions },
-        { getApiCostsSummary },
+        { getApiCostsSummary, getTavilyMonthToDateUsd },
       ] = await Promise.all([
         import("../services/travelpayouts/statistics.service"),
         import("../services/viator-commissions.service"),
@@ -4835,12 +4835,14 @@ router.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
         };
       })();
 
-      const [travelpayouts, viator, fever, bookingCom, apiCosts, stripePeriodSummary, stripePriorSummary] = await Promise.all([
+      const [travelpayouts, viator, fever, bookingCom, apiCosts, tavilySpend, stripePeriodSummary, stripePriorSummary] = await Promise.all([
         getTravelpayoutsStatistics(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD", balance: 0, byPartner: [] })),
         getViatorCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
         getFeverCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
         getBookingComCommissions(period).catch(() => ({ configured: false, thisMonth: 0, lastMonth: 0, total: 0, currency: "USD" })),
         getApiCostsSummary(period).catch(() => ({ entries: [], totalCostDollars: 0 })),
+        // READ only — TAVILY_MONTHLY_CAP_USD (R-T1-c) is not enforced (ledger 2026-09-18-tavily-spend-logged).
+        getTavilyMonthToDateUsd().catch(() => null),
         // Fetch period-accurate Stripe total directly from DB
         storage.getPlatformRevenueSummary(periodBounds.start, periodBounds.end).catch(() => ({ totalPlatformFee: 0, totalGross: 0, bySource: {} })),
         // Fetch prior period for MoM comparison
@@ -4892,7 +4894,7 @@ router.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
         viator,
         fever,
         bookingCom,
-        apiCosts,
+        apiCosts: { ...apiCosts, tavilyCap: tavilySpend },
       });
     } catch (error: any) {
       console.error("[UnifiedRevenue] Error:", error);
