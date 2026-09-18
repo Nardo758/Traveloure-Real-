@@ -259,6 +259,16 @@ test("K1 · the Stripe idempotency-key templates are exactly what they were — 
       "coord-refund-${coordinationId}",
       "expert-svc-${variantId}-${comparisonId}-${serviceType}-${userId}",
       "pi-${idempotencyKey}",
+      // Ledger `2026-09-18-quote-born-charge` (LD 49's filed charge lane): the QUOTE-BORN arm of
+      // `POST /api/checkout`. ONE accepted quote mints ONE booking and that booking is charged
+      // ONCE, so the booking id IS the whole scope — no amount term, no actor term (§14 puts the
+      // actor in the WHERE clause of the claim, not in the key, because only the traveler on the
+      // row may ever reach this rail). A retry rebuilds it verbatim and Stripe returns the SAME
+      // PaymentIntent; `createPaymentIntent` prefixes it `pi-` exactly as it does the cart's.
+      // Ratcheted in DELIBERATELY by that lane; the pin stays an exact set, never a superset.
+      // Proven behaviourally by `quote-born-charge.db.test.ts` Q1 (the plan carries it) and Q7
+      // (two concurrent charges, one claim, one key).
+      "quote-buy-${String(row.id)}",
       "rm-buy-${listing.id}-${userId}",
       "rm-refund-${ledger.purchase.id}",
       "tp-buy-${trip!.id}-${userId}",

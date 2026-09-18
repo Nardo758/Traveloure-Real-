@@ -130,3 +130,24 @@ export const quoteIssueBodySchema = z
   })
   .strict();
 export type QuoteIssueBody = z.infer<typeof quoteIssueBodySchema>;
+
+/**
+ * §19 — the ONE body `POST /api/checkout`'s QUOTE-BORN ARM may carry (ledger
+ * `2026-09-18-quote-born-charge`). `.strict()` REFUSES an unknown key rather than silently
+ * stripping it, which is also what makes the two arms MUTUALLY EXCLUSIVE by construction: a cart
+ * body's `idempotencyKey` / `tripId` / `notes` / `ref` cannot ride alongside `quoteBookingId`, and
+ * a quote body cannot smuggle a cart term.
+ *
+ * §14 — there is deliberately NO amount, NO price, NO `userId`, NO quote id and NO deposit choice
+ * here. The charge is composed from the BOOKING ROW the accept rail wrote, the actor is the
+ * session, and whether a deposit applies was decided at accept time by `resolveDepositPlan`. The
+ * only other key is the one-click preference, which is a PREFERENCE and not a money input — the
+ * same field name `/api/checkout`'s cart arm and `/api/optimization-payments` already use.
+ */
+export const quoteCheckoutBodySchema = z
+  .object({
+    quoteBookingId: z.string().trim().min(1).max(128),
+    useSavedCard: z.boolean().optional(),
+  })
+  .strict();
+export type QuoteCheckoutBody = z.infer<typeof quoteCheckoutBodySchema>;

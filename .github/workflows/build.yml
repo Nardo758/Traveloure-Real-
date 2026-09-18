@@ -1360,6 +1360,54 @@ jobs:
       - name: Service quotes — request, issue, expiry, re-quote, accept, deposit, V-22
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/service-quotes.db.test.ts
 
+  quote-born-charge:
+    name: quote-born-charge (LD 49's charge lane; ledger 2026-09-18-quote-born-charge)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # LD 49 filed the charge as its own lane and `service-quotes.service.ts`'s header stated the
+      # gap out loud: the quote-born booking was BORN unpaid and no rail could charge it. This is
+      # that lane — ONE ARM on `POST /api/checkout`, reusing the §15 claim → authorize → promote
+      # spine rather than adding a second checkout, a second PaymentIntent site or a second
+      # promotion. Q1 pins the ORDER (claim, THEN the §15b marker, THEN the atomic stamp) and the
+      # `quote-buy-<id>` key; Q2/Q3 prove the webhook and client-fallback promotions work on a
+      # quote-born row with NO change to either (and N17c's posture holds); Q4 is §14's allowlist;
+      # Q5 refuses an expired quote 409 with its expiry and charges nothing; Q6 is the ONE 404;
+      # Q7 is the concurrency guard — the claim's own WHERE clause refuses the loser; Q8 charges
+      # the deposit the ACCEPT path pinned; Q9/Q10 prove the TTL sweep, the §17 drift job and
+      # §19b's provenance see a quote-born row exactly as a cart row.
+      - name: Quote-born booking charge (Q1–Q11)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/quote-born-charge.db.test.ts
+
   booking-birth-provenance:
     name: booking-birth-provenance (rulings 41/46; ledger 2026-09-12-booking-birth-holes)
     runs-on: ubuntu-latest

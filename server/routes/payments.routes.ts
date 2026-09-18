@@ -54,6 +54,11 @@ import {
 // from req.body — and the balance is a SECOND checkout the traveler completes before a cutoff.
 import { resolveDepositPlan, resolveBalanceDueAt } from "../services/deposit.service";
 import { resolveTravelSurcharge, type TravelSurchargeResult } from "../services/travel-surcharge.service";
+// LD 49's filed charge lane (ledger `2026-09-18-quote-born-charge`): the DECISION and the §15
+// CLAIM of `/api/checkout`'s quote-born arm. Everything after the claim is this file's EXISTING
+// `authorizeAndPromote` — one Stripe creation site, one promotion, one more caller (§18 rule 1).
+import { resolveQuoteCharge, claimQuoteBornBooking } from "../services/quote-charge.service";
+import { quoteCheckoutBodySchema } from "@shared/service-quotes";
 // T2 (ruling 62/64 D7 capture; ruling 83 wiring): the D7 booking-eligibility gates — party size,
 // start window, lead time — validated against the listing's own constraints BEFORE any slot claim or
 // Stripe call (the B1 pickup_out_of_range placement). §13: NULL field ⇒ no constraint; §14: pure
@@ -531,6 +536,22 @@ async function authorizeAndPromote(
      * or it would under-charge relative to the first attempt. Absent/0 ⇒ byte-identical to pre-fee (§13).
      */
     travelerFeeTotal?: number;
+    /**
+     * LD 49's filed charge lane (ledger `2026-09-18-quote-born-charge`): this checkout is the
+     * QUOTE-BORN ARM — ONE already-minted `service_bookings` row whose claim was taken by
+     * `claimQuoteBornBooking`, not a set of rows claimed out of the traveler's cart.
+     *
+     * It changes exactly TWO things and must never be allowed to change a third:
+     *   · the CART IS NOT CLEARED. The traveler's cart has nothing to do with this charge, and
+     *     clearing it would destroy lines they never bought (§13 — an ancillary effect may not
+     *     take something the operation did not authorize, §15b's own reasoning one step out).
+     *   · the reported `bookingType` names what this is, rather than calling a single quoted
+     *     provider booking an experience cart.
+     * Everything else — the §15b marker, the Stripe call, the atomic stamp, the fee-ledger
+     * writes, the promotion — is byte-identical to the cart arm's, which is the whole point of
+     * the arm living here (§18 rule 1). Absent/false ⇒ unchanged for every existing caller.
+     */
+    quoteBorn?: boolean;
   },
 ) {
   const { userId, checkoutKey, bookings, subtotal, platformFee, conciergeFee } = args;
@@ -656,7 +677,7 @@ async function authorizeAndPromote(
     );
   }
 
-  await promoteAuthorizedCheckout(userId, bookingIds);
+  await promoteAuthorizedCheckout(userId, bookingIds, { clearCart: args.quoteBorn !== true });
 
   // ── B2: the off-session confirm already SUCCEEDED, so payment is a fact, not a promise ──────
   // Drive the SAME shared promotion the webhook and the client fallback drive (§15c: one
@@ -711,7 +732,7 @@ async function authorizeAndPromote(
     travelerFee: travelerFeeTotal.toFixed(2),
     total: total.toFixed(2),
     paymentIntent,
-    bookingType: BookingType.EXPERIENCE_CART,
+    bookingType: args.quoteBorn ? BookingType.PROVIDER_BOOKING : BookingType.EXPERIENCE_CART,
     commissionRate: effectiveCommissionRate,
     // Lane 7 (ruling 72): when this checkout collected deposits, `total` is the amount charged NOW
     // (the deposit sum); `fullAmount` is the full cart value, and the outstanding balance is
@@ -747,7 +768,14 @@ async function authorizeAndPromote(
  * booking is the money truth, and a plan flag / counter / notification must never fail a
  * checkout that Stripe has already authorized.
  */
-async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): Promise<void> {
+async function promoteAuthorizedCheckout(
+  userId: string,
+  bookingIds: string[],
+  /** Ledger `2026-09-18-quote-born-charge`: the quote-born arm charges ONE already-minted row and
+   *  owns no cart lines, so it passes `clearCart: false`. Omitted ⇒ true ⇒ the cart arm's
+   *  behaviour, unchanged. */
+  opts: { clearCart?: boolean } = {},
+): Promise<void> {
   if (bookingIds.length === 0) return;
 
   const rows = await db.execute(sql`
@@ -835,12 +863,130 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
   // Cart clear LAST, and only now: while a claim is unauthorized the traveler must still have a
   // cart to retry from. This single line moving below the Stripe call is what turns "fresh key ⇒
   // Cart is empty" into a working retry.
-  await cartProjection.clearCart(userId);
+  //
+  // SKIPPED ENTIRELY for the quote-born arm: that charge was never assembled from a cart, so
+  // clearing one would silently discard lines the traveler is still shopping (see the
+  // `quoteBorn` arg doc above).
+  if (opts.clearCart !== false) {
+    await cartProjection.clearCart(userId);
+  }
+}
+
+/**
+ * `POST /api/checkout` — THE QUOTE-BORN ARM (LD 49's filed lane; ledger
+ * `2026-09-18-quote-born-charge`).
+ *
+ * A SECOND ARM ON ONE CHECKOUT, not a second checkout. It reuses the whole §15 spine below it:
+ * `authorizeAndPromote` writes the §15b pre-flight marker, makes the ONE
+ * `stripePaymentService.createPaymentIntent` call (wallets per LD 43(c), `metadata.bookingIds`
+ * naming this booking), takes the atomic `stampAuthorization`, and hands back the clientSecret.
+ * `promotePaidCheckout` is UNCHANGED and is reached by the webhook and by the client fallback
+ * exactly as for a cart row — both are already generic over `service_bookings`.
+ *
+ * THE ORDER IS THE POINT, and it is the cart arm's own:
+ *   resolve (read-only) → CLAIM (atomic, §15) → marker → Stripe → stamp → promote.
+ * Nothing irreversible happens before the PaymentIntent exists, and a claim that never reaches
+ * the stamp is reclaimed by the SAME TTL sweep (an unmarked quote-born claim is provably
+ * un-attempted; a marked one is reconciled against Stripe, never voided blind).
+ *
+ * §14: the body carries ONE booking id and the one-click preference. The AMOUNT comes from the
+ * row `acceptQuote` wrote from the provider's quote, and the ACTOR is the session.
+ * §13: an unresolvable address — missing, not yours, not quote-born — is ONE 404, so the rail
+ * cannot be used to probe which bookings exist; an expired quote is refused 409 `quote_expired`
+ * with its expiry stated and is never repriced.
+ */
+async function chargeQuoteBornBooking(req: any, res: any, userId: string) {
+  // §19 — a pick-based `.strict()` allowlist. An unknown key is REFUSED, which is also what makes
+  // the two arms mutually exclusive (a cart term cannot ride a quote body, or the reverse).
+  const parsed = quoteCheckoutBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: "invalid_body",
+      message:
+        "Paying for a quoted booking takes the booking id alone. Nothing was claimed and nothing was charged.",
+    });
+  }
+
+  const plan = await resolveQuoteCharge({ bookingId: parsed.data.quoteBookingId, actorUserId: userId });
+  if (!plan.ok) {
+    return res.status(plan.status).json({
+      success: false,
+      error: plan.code,
+      message: plan.message,
+      ...(plan.expiresAt ? { expiresAt: plan.expiresAt } : {}),
+      ...(plan.bookingStatus ? { bookingStatus: plan.bookingStatus } : {}),
+    });
+  }
+
+  // ALREADY AUTHORIZED — hand back the SAME PaymentIntent (the cart arm's own prior-claim answer:
+  // one claim, one PI, one charge). Never a second creation for the same booking.
+  if (plan.authorizedPaymentIntentId) {
+    const { stripePaymentService } = await import("../services/stripe-payment.service");
+    const pi = await stripePaymentService
+      .getPaymentIntentClientSecret(plan.authorizedPaymentIntentId)
+      .catch(() => null);
+    return res.status(200).json({
+      success: true,
+      duplicate: true,
+      bookings: [{ booking: { id: plan.bookingId } }],
+      ...(pi ? { paymentIntent: pi } : {}),
+      note: "This booking's payment was already started — completing the existing payment.",
+    });
+  }
+
+  // THE §15 CLAIM. Skipped only when THIS traveler's earlier attempt already holds the provisional
+  // claim and never authorized it — that is a RE-DRIVE against the same rows and the same Stripe
+  // key, exactly as the cart arm re-drives a same-key claim, not a second checkout.
+  if (!plan.alreadyClaimed) {
+    const claimed = await claimQuoteBornBooking({
+      bookingId: plan.bookingId,
+      actorUserId: userId,
+      balanceDueAt: plan.balanceDueAt,
+    });
+    if (!claimed) {
+      // The atomic conditional matched zero rows: a concurrent charge for this same booking took
+      // the claim between the read above and this statement. Exactly one of them reaches Stripe.
+      return res.status(409).json({
+        success: false,
+        error: "quote_charge_in_progress",
+        message: "A payment for this booking has already been started. Reload and complete that one.",
+        retryable: true,
+      });
+    }
+  }
+
+  return await authorizeAndPromote(res, {
+    userId,
+    // §15 layer (a): the key is derived from the BOOKING, so a retry rebuilds it verbatim and
+    // Stripe returns the SAME PaymentIntent. Pinned in the K1 key-template set.
+    checkoutKey: plan.idempotencyKey,
+    bookings: [{ booking: { id: plan.bookingId } }],
+    subtotal: plan.subtotal,
+    // DISCLOSED, never charged (A3): platform_fee is the provider's withheld share.
+    platformFee: plan.platformFee,
+    // A quote-born row sells no booking-concierge line (see quote-charge.service.ts's header).
+    conciergeFee: 0,
+    // Present only when the accept rail pinned a deposit split — the amount due NOW, read off the
+    // row, never re-derived from a listing whose config may have moved since (§13).
+    ...(plan.chargeAmount != null ? { chargeAmount: plan.chargeAmount } : {}),
+    quoteBorn: true,
+    useSavedCard: parsed.data.useSavedCard === true,
+  });
 }
 
 router.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
+
+      // ── THE QUOTE-BORN ARM (ledger `2026-09-18-quote-born-charge`) ──────────────────────────
+      // Taken on the PRESENCE of the key, before the cart arm's own `idempotencyKey` requirement:
+      // the two bodies are disjoint by `.strict()`, and a quote charge derives its key from the
+      // booking rather than taking one from the client.
+      if (req.body && Object.prototype.hasOwnProperty.call(req.body, "quoteBookingId")) {
+        return await chargeQuoteBornBooking(req, res, userId);
+      }
+
       const { tripId, notes, idempotencyKey } = req.body;
 
       // ── Idempotency guard (DB level) ────────────────────────────────────────

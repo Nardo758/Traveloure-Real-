@@ -12,26 +12,32 @@
  *    would be a second authority on the fact the accept claim carries in its WHERE clause, and the
  *    two would disagree the moment a clock did.
  *  · IT AUTHORS NO AMOUNT AND NO WINDOW. Every figure is the row's (§14). No day count appears.
- *  · IT DOES NOT CHARGE. LD 49: the quote-born booking is born UNPAID and the charge through
- *    `/api/checkout` is its own lane, which has not landed — so Accept creates the booking and the
- *    card then says, in words, that paying for it is not available on the site yet
- *    (`QUOTE_CHECKOUT_UNAVAILABLE_NOTE`). A Pay button that leads nowhere would be the §13 lie.
+ *  · IT MINTS NO CHECKOUT OF ITS OWN. Ledger `2026-09-18-quote-born-charge` landed LD 49's filed
+ *    charge lane, so the accepted card now carries a real Pay control — which POSTs
+ *    `{ quoteBookingId }` to the EXISTING `/api/checkout` and mounts the EXISTING `StripeCheckout`
+ *    Payment Element the cart mounts. No second checkout component, no second rail, and no amount
+ *    of this page's own: the sheet renders what the server answered, and the confirm falls back to
+ *    the same `POST /api/bookings/confirm-payment` the cart uses when the webhook is slow.
  *  · IT RE-SPLITS NOTHING. The deposit-vs-full line is read off the MINTED BOOKING the server
  *    wrote (`quoteDepositLine`), so what the traveler reads is what `resolveDepositPlan` decided.
  */
+import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Loader2, FileText, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Loader2, FileText, CheckCircle2, XCircle, Clock, CreditCard } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { apiRefusalMessage } from "@/lib/api-refusal";
+import { apiRefusalMessage, parseApiRefusal } from "@/lib/api-refusal";
 import { useToast } from "@/hooks/use-toast";
+import StripeCheckout from "@/components/booking/StripeCheckout";
 import {
   QUOTE_CHECKOUT_UNAVAILABLE_NOTE,
+  QUOTE_PAY_ACTION_LABEL,
   quoteAmountLine,
+  quoteChargeRefusalLine,
   quoteDepositLine,
   quoteIsAcceptable,
   quoteStateCopy,
@@ -104,6 +110,68 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
       }),
   });
 
+  // The open payment sheet, or null. ONE at a time: a traveler pays one booking at a time, and a
+  // second open sheet would be a second clientSecret on screen with no way to say which is live.
+  const [paying, setPaying] = useState<
+    { bookingId: string; clientSecret: string; paymentIntentId: string; amount: number } | null
+  >(null);
+
+  /**
+   * LD 49's charge, through the EXISTING rail (ledger `2026-09-18-quote-born-charge`).
+   *
+   * §14: the body is the booking id and nothing else — no amount, no price, no user id. The server
+   * composes the charge from the row the accept rail wrote and answers with the PaymentIntent it
+   * created; this page renders THAT answer and never states a figure of its own.
+   */
+  const pay = useMutation({
+    mutationFn: async (bookingId: string) => {
+      const res = await apiRequest("POST", "/api/checkout", { quoteBookingId: bookingId });
+      return (await res.json()) as {
+        paymentIntent?: { clientSecret: string; paymentIntentId: string; amount: number };
+      };
+    },
+    onSuccess: (data, bookingId) => {
+      if (!data.paymentIntent?.clientSecret) {
+        // §13: no clientSecret is NOT "paid" — it is no answer, and the sheet does not open.
+        toast({
+          variant: "destructive",
+          title: "Payment could not be started",
+          description: "The payment provider did not return a payment to complete. Nothing was charged.",
+        });
+        return;
+      }
+      setPaying({ bookingId, ...data.paymentIntent });
+    },
+    onError: (err: unknown) =>
+      toast({
+        variant: "destructive",
+        title: "Payment not started",
+        // The server's OWN refusal — `quote_expired` carries its expiry, and this page repeats it
+        // rather than recomputing a deadline (the same rule the validity line follows).
+        description:
+          quoteChargeRefusalLine(parseApiRefusal(err), formatDay) ??
+          apiRefusalMessage(err, "This booking could not be paid for right now."),
+      }),
+  });
+
+  /**
+   * The SAME client-side fallback the cart uses: the webhook is the primary promotion and this is
+   * the belt — `POST /api/bookings/confirm-payment` refuses a PaymentIntent that is not the one the
+   * SERVER stamped on this row, so it can confirm nothing the webhook would not have (§15c).
+   */
+  const confirmPaid = async (bookingId: string, paymentIntentId: string) => {
+    await fetch("/api/bookings/confirm-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ bookingId, paymentIntentId }),
+    }).catch(() => undefined);
+    queryClient.invalidateQueries({ queryKey: ["/api/me/quotes"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+    setPaying(null);
+    toast({ title: "Payment complete", description: "Your provider has been told." });
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-3" data-testid="quotes-loading">
@@ -168,9 +236,40 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
                 </p>
               )}
               {q.lifecycle === "accepted" && (
-                <div className="rounded-md border bg-muted/30 px-3 py-2 space-y-1" data-testid={`quote-accepted-${q.id}`}>
+                <div className="rounded-md border bg-muted/30 px-3 py-2 space-y-2" data-testid={`quote-accepted-${q.id}`}>
                   {depositLine && <p className="text-sm">{depositLine}</p>}
                   <p className="text-xs text-muted-foreground">{QUOTE_CHECKOUT_UNAVAILABLE_NOTE}</p>
+                  {/* §13: an accepted row whose booking id did not come back gets the note and NO
+                      pay control — a Pay button with nothing to address is worse than none. */}
+                  {!q.bookingId ? null : paying?.bookingId === q.bookingId ? (
+                    <StripeCheckout
+                      paymentIntent={{
+                        clientSecret: paying.clientSecret,
+                        paymentIntentId: paying.paymentIntentId,
+                        amount: paying.amount,
+                      }}
+                      bookingIds={[q.bookingId]}
+                      onSuccess={(paymentIntentId) => confirmPaid(q.bookingId!, paymentIntentId)}
+                      onError={(error) =>
+                        toast({ variant: "destructive", title: "Payment failed", description: error })
+                      }
+                      onCancel={() => setPaying(null)}
+                    />
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => pay.mutate(q.bookingId!)}
+                      disabled={pay.isPending || paying !== null}
+                      data-testid={`button-pay-quote-${q.id}`}
+                    >
+                      {pay.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <CreditCard className="w-4 h-4 mr-2" />
+                      )}
+                      {QUOTE_PAY_ACTION_LABEL}
+                    </Button>
+                  )}
                 </div>
               )}
               {quoteIsAcceptable(q) && (

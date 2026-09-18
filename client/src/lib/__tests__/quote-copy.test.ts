@@ -21,6 +21,8 @@ import assert from "node:assert/strict";
 
 import {
   QUOTE_CHECKOUT_UNAVAILABLE_NOTE,
+  QUOTE_PAY_ACTION_LABEL,
+  quoteChargeRefusalLine,
   quoteAmountLine,
   quoteDepositLine,
   quoteIsAcceptable,
@@ -141,9 +143,35 @@ test("R1-R3: the seller's refusal repeats the SERVER's numbers", () => {
   assert.equal(quoteIssueRefusalLine(null), null);
 });
 
-test("C1: the charge is not built, and the note says so instead of promising payment", () => {
+test("C1: the note still says the booking is UNPAID, and now points at where it is paid", () => {
   assert.match(QUOTE_CHECKOUT_UNAVAILABLE_NOTE, /not paid yet/);
-  assert.match(QUOTE_CHECKOUT_UNAVAILABLE_NOTE, /not available on the site yet/);
-  // It never claims the booking is paid, confirmed or charged.
-  assert.ok(!/\bpaid in full\b|\bcharged\b|\bconfirmed\b/i.test(QUOTE_CHECKOUT_UNAVAILABLE_NOTE));
+  // Ledger `2026-09-18-quote-born-charge`: the charge landed, so the old "not available on the
+  // site yet" half is gone — it stopped being true, and a surface that kept saying it would be
+  // the §13 lie in the other direction.
+  assert.ok(!/not available/i.test(QUOTE_CHECKOUT_UNAVAILABLE_NOTE));
+  // It still never claims the booking is paid or confirmed.
+  assert.ok(!/\bpaid in full\b|\bconfirmed\b/i.test(QUOTE_CHECKOUT_UNAVAILABLE_NOTE));
+  assert.match(QUOTE_PAY_ACTION_LABEL, /Pay/);
+});
+
+test("C2: a charge refusal is the SERVER's fact — the expiry is repeated, never recomputed", () => {
+  const fmt = (iso: string) => `on ${iso.slice(0, 10)}`;
+  const expired = quoteChargeRefusalLine(
+    { code: "quote_expired", expiresAt: "2026-09-01T10:00:00.000Z", message: "ignored" },
+    fmt,
+  );
+  assert.match(expired ?? "", /on 2026-09-01/);
+  assert.match(expired ?? "", /not repriced/);
+  assert.match(expired ?? "", /nothing was charged/i);
+  // No expiry from the server ⇒ the server's own sentence, never a date this module invents.
+  assert.equal(
+    quoteChargeRefusalLine({ code: "quote_expired", message: "This quote expired." }, fmt),
+    "This quote expired.",
+  );
+  assert.match(
+    quoteChargeRefusalLine({ code: "quote_charge_in_progress" }, fmt) ?? "",
+    /already been started/,
+  );
+  assert.equal(quoteChargeRefusalLine(null, fmt), null);
+  assert.equal(quoteChargeRefusalLine({}, fmt), null);
 });
