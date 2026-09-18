@@ -19,10 +19,16 @@
  * concierge booking is stamped `expertId` = the listing's OWNER — they agreed to the work by
  * listing it and being paid for it (Locked Decision 51 mints them 75% of the facilitation fee for
  * doing exactly this). The pool rule (`expertId: null`, claimed from the pooled queue) is
- * UNCHANGED for every other affiliate-booking-request rail: unpaid, traveler-initiated requests,
- * and — once lane F lands — a platform-owned listing's requests, which this module also handles by
- * simply carrying whatever owner `provider_services.userId` names (a platform account is still a
- * `users` row, so no branch is needed here).
+ * UNCHANGED for every other affiliate-booking-request rail: unpaid, traveler-initiated requests.
+ *
+ * CORRECTED (ledger `2026-09-18-platform-concierge-listing`, lane F — this paragraph originally
+ * said a platform-owned listing needed "no branch... a platform account is still a `users` row").
+ * That was WRONG: the platform's reserved account never agreed to do the work by listing it — it
+ * IS the fallback, not a person who opted in — so stamping `expertId` to that account would
+ * "assign" the request to an account that can never open the pooled queue and work it. A
+ * platform-owned listing's requests are POOLED instead (`expertId: null`), exactly like every
+ * unpaid/traveler-initiated request, through `isPlatformConciergeUserId` (§18 rule 1: the SAME
+ * helper `storage.mintCompletionEarningsForBooking` reads for the money-side skip).
  *
  * WHY IT NEVER THROWS INTO THE MONEY PATH (§15b). The booking is the money truth: Stripe has been
  * charged and the row is confirmed before either caller reaches this function. A hand-off failure —
@@ -54,6 +60,7 @@ import { logger } from "../infrastructure/logger";
 import { resolveBookingConciergeItems } from "./booking-concierge.service";
 import { resolveAffiliateProductBookingReference } from "./affiliate-product-resolution.service";
 import { buildAttributedAffiliateUrl } from "./affiliate-attribution.service";
+import { isPlatformConciergeUserId } from "./platform-concierge.service";
 import crypto from "crypto";
 
 export type ConciergeHandoffReason = "not_concierge" | "no_plan_link" | "no_partner_product";
@@ -127,6 +134,13 @@ export async function createHandoffRequestsForBooking(
     const tripId = conciergeItem?.tripId ?? null;
     if (!tripId) return EMPTY_RESULT("no_plan_link");
 
+    // Locked Decision 51 lane F (ledger `2026-09-18-platform-concierge-listing`): a request born
+    // from the PLATFORM's own reserved Booking Concierge listing is POOLED, not assigned to that
+    // account — it never agreed to the work the way a real expert's PAID listing implies (see the
+    // module doc's correction above). Resolved ONCE per booking, not per candidate item.
+    const isPlatformOwnedListing = await isPlatformConciergeUserId(service.userId);
+    const handoffExpertId = isPlatformOwnedListing ? null : service.userId;
+
     // Candidate items: everything on the plan that is not itself a platform-bookable service and
     // not already purchased. `provider_service_id IS NULL` excludes the concierge line itself (it
     // IS a provider_services row) with no special-case needed. `affiliate_product_id` presence and
@@ -181,8 +195,10 @@ export async function createHandoffRequestsForBooking(
         userId: booking.travelerId!,
         // THE ASSUMPTION (see module doc): a PAID hand-off is stamped to the listing's own owner —
         // they are being paid a share of the facilitation fee (Locked Decision 51) to do this
-        // work. NOT the pool default every traveler-initiated request still gets.
-        expertId: service.userId,
+        // work. NOT the pool default every traveler-initiated request still gets — EXCEPT when
+        // the listing owner is the platform's own reserved account (lane F), which is pooled
+        // exactly like a traveler-initiated request.
+        expertId: handoffExpertId,
         tripId,
         itineraryItemId: item.id,
         serviceBookingId: bookingId,

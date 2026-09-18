@@ -1916,6 +1916,17 @@ This document captures architectural decisions to maintain consistency across co
     `2026-09-08-assignment-is-claimed` FOR PAID HAND-OFFS ONLY:** stamped `expert_id` = the
     listing's owner, who is paid this entry's share to do the work; the pool default stands for
     every other, traveler-initiated request.
+    **THE PLATFORM MAY ITSELF OFFER BOOKING CONCIERGE WHERE NO EXPERT DOES (decision-maker ratified
+    Sep 18, 2026 — ledger `2026-09-18-platform-concierge-listing`; migration 313, DATA-ONLY).** A
+    reserved `users` row + approved `local_expert_forms` row (all 8 `OPERATING_MARKETS`) + approved
+    `booking_concierge` listing surfaces through the SAME two live gates (`/api/experts`, the
+    lead-routing scorer) — no new predicate, no `expert_neighborhoods` touch (065's own comment
+    was stated intent, never live code — annotated in place, not rewritten). **NO SPLIT:** the
+    completion mint skips the concierge-fee expert-share re-split for this owner
+    (`isPlatformConciergeUserId`) — 100% stays platform revenue; base earnings mint is untouched.
+    **POOLED, NOT ASSIGNED:** a platform-owned hand-off stamps `expertId: null` (corrects
+    `2026-09-18-concierge-handoff`'s stale "no branch needed" note). **RANKS LAST** by the scorer's
+    own floor (`specialties: []`, no history) — no new column, no tie-break.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

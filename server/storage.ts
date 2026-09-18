@@ -10,6 +10,10 @@ import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-adviso
 import { upsertTripAdvisorRow } from "./services/booking-actions.service";
 import type { TripAdvisorRowStatus } from "./utils/trip-advisor-status";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
+// Locked Decision 51 lane F (ledger `2026-09-18-platform-concierge-listing`): the ONE helper that
+// answers "is this the platform's own reserved Booking Concierge account" — read here so the
+// concierge-fee expert-share re-split is skipped when the listing owner is not a person.
+import { isPlatformConciergeUserId } from "./services/platform-concierge.service";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
 import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
@@ -3623,7 +3627,19 @@ export class DatabaseStorage implements IStorage {
     const conciergeExpertShareSnapshot = parseFloat(
       String((booking.bookingDetails as any)?.travelerCharge?.conciergeFeeExpertShare ?? '0'),
     );
-    if (Number.isFinite(conciergeExpertShareSnapshot) && conciergeExpertShareSnapshot > 0) {
+    // Locked Decision 51 lane F (ledger `2026-09-18-platform-concierge-listing`, ruled choice (2)):
+    // NO SPLIT for the platform-owned listing. This is the ONE skip check the ruling names — a
+    // platform account is not a person the facilitation fee can be shared with, and minting a
+    // "held expert earning" to an account with no Stripe Connect account (and that will never
+    // have one) is a real payable nobody can ever draw, which is worse than not creating it
+    // (§13: a stated absence beats an unreachable claim). Scoped ONLY to this concierge-fee
+    // re-split — it does not touch `providerEarningsAmount`'s base figure above, which is the
+    // ordinary earnings-mint mechanism every booking already goes through regardless of who owns
+    // the listing.
+    const isPlatformOwnedListing = await isPlatformConciergeUserId(providerId);
+    if (isPlatformOwnedListing && Number.isFinite(conciergeExpertShareSnapshot) && conciergeExpertShareSnapshot > 0) {
+      mintBasis += ` (concierge split skipped: listing owner is the platform Booking Concierge account — 100% stays platform revenue, Locked Decision 51 lane F)`;
+    } else if (Number.isFinite(conciergeExpertShareSnapshot) && conciergeExpertShareSnapshot > 0) {
       // Never drives the platform's own take negative — a bundle's partial-completion reduction
       // (D-35, above) can shrink `platformFee` below the purchase-time concierge share; clamp
       // rather than mint a fee the row no longer carries.
