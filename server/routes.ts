@@ -286,6 +286,8 @@ import {
   resolveCommissionRates,
   calcInsuranceFee,
   getConciergeBookingRate,
+  getConciergeBookingCap,
+  resolveConciergeBookingFee,
   resolveServiceOwnerShareRate,
   type CommissionRates,
 } from "./services/commission";
@@ -8655,6 +8657,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     );
     const cartHasConcierge = cartConciergeLines.hasAny;
     const cartConciergeRate = cartHasConcierge ? await getConciergeBookingRate() : 0;
+    // Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`): the SAME per-booking cap
+    // /api/checkout and /api/cart/fee-preview read — this live cart total cannot quote higher
+    // than the eventual charge.
+    const cartConciergeCap = cartHasConcierge ? await getConciergeBookingCap() : null;
 
     // -- s13 ON THE TOTALS (ledger `2026-09-13-cart-priceless-gap`) ---------------------------
     // The add rails now refuse a priceless listing, but rows added BEFORE this landed are still
@@ -8729,7 +8735,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       subtotal += price;
       platformFeeTotal += price * (1 - expertShare) + calcInsuranceFee(price, rates, feeCategory);
       const isConciergeItem = cartConciergeLines.isBookingConcierge(item.service);
-      if (isConciergeItem) conciergeFeeTotal += price * cartConciergeRate;
+      if (isConciergeItem) {
+        conciergeFeeTotal += resolveConciergeBookingFee(price, cartConciergeRate, cartConciergeCap).fee;
+      }
       const sc = cartSurcharges.get(item.id);
       if (sc?.eligible) surchargeTotal += sc.amount;
     }

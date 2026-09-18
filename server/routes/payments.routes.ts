@@ -173,6 +173,9 @@ import {
   calcInsuranceFee,
   getConciergeBookingRate,
   requireConciergeBookingRate,
+  getConciergeBookingCap,
+  resolveConciergeBookingFee,
+  resolveConciergeExpertShareRate,
   type CommissionRates,
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
@@ -1397,6 +1400,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       const conciergeBookingRate = hasAnyBookingConciergeItem
         ? await requireConciergeBookingRate()
         : await getConciergeBookingRate();
+      // Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`): the per-booking DOLLAR
+      // cap and the expert's completion-time SPLIT, both loaded ONCE per checkout — same posture
+      // as the rate above — and applied per line through the ONE pure resolver
+      // `resolveConciergeBookingFee` (§18 rule 1), so the quote loop and the charge loop below can
+      // never disagree about the cap.
+      const conciergeBookingCap = await getConciergeBookingCap();
+      const conciergeExpertShareRate = await resolveConciergeExpertShareRate();
 
       // ── D6 RAILS ATTRIBUTION (docs/DECISIONS.md ruling 61) ───────────────────────────────────
       // ONE pre-pass, consumed by BOTH loops below, so the amount QUOTED and the amount CLAIMED can
@@ -1561,12 +1571,17 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         checkoutSubtotal += itemPrice;
         // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
-        // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
-        // conciergeBookingRate is a RATE (0.05 = 5 %), not a dollar amount; multiply by price.
+        // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066),
+        // capped per Locked Decision 51 (migration 311) — the SAME `resolveConciergeBookingFee`
+        // the charge loop below calls, so the quote can never exceed what checkout actually charges.
         const isBookingConcierge = conciergeLines.isBookingConcierge(item.service);
         checkoutBasePlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
         if (isBookingConcierge) {
-          checkoutConciergeFeeTotal += itemPrice * conciergeBookingRate;
+          checkoutConciergeFeeTotal += resolveConciergeBookingFee(
+            itemPrice,
+            conciergeBookingRate,
+            conciergeBookingCap,
+          ).fee;
         }
         // B1: the travel surcharge for this line — server-derived from the SAME map the charge loop
         // reads, so quote and charge cannot diverge (§14).
@@ -1627,12 +1642,19 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const basePlatformFeeAmt = price - baseExpertEarningsAmt;
         // Insurance tier (FEE-2 Phase 2): use feeCategory2 slug as bookingType so appliesTo filter works
         const insuranceFeeAmt = calcInsuranceFee(price, itemCategoryRates2, feeCategory2);
-        // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066).
-        // conciergeBookingRate is a RATE (fraction), so multiply by item price.
-        // The SAME resolution the quote loop above read — one decision per cart, so the amount
-        // quoted and the amount charged can never disagree about which lines are concierge lines.
+        // Phase 3.4: Booking Concierge facilitation fee — 5 % of booking value (migration 066),
+        // capped per Locked Decision 51 through the SAME `resolveConciergeBookingFee` the quote
+        // loop above calls — one decision per cart, so the amount quoted and the amount charged
+        // can never disagree about which lines are concierge lines, or about the cap.
         const isBookingConcierge2 = conciergeLines.isBookingConcierge(item.service);
-        const conciergeFeeAmt = isBookingConcierge2 ? price * conciergeBookingRate : 0;
+        const conciergeFeeAmt = isBookingConcierge2
+          ? resolveConciergeBookingFee(price, conciergeBookingRate, conciergeBookingCap).fee
+          : 0;
+        // The expert's completion-time SPLIT of this line's concierge fee, snapshotted at
+        // PURCHASE from the share band (LD 48: never re-resolved later at completion). 0 for a
+        // non-concierge line, so a "0.00" snapshot beside `conciergeFee: "0.00"` is the SAME
+        // present-but-zero posture P10 already proves for the fee itself (§13).
+        const conciergeFeeExpertShareAmt = conciergeFeeAmt * conciergeExpertShareRate;
         const totalPlatformFeeAmt = basePlatformFeeAmt + insuranceFeeAmt + conciergeFeeAmt;
         // ── B1 (ruling 81): the travel surcharge for THIS line, server-derived (§14) from the SAME
         // map the quote loop read. The surcharge is a pure provider pass-through — it is NOT the
@@ -1813,7 +1835,14 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
               // reconciliation job, the refund path and the cancellation quote all read it through
               // the ONE `travelerChargeForRow`, and a row without it is read the pre-A3 way rather
               // than re-derived (§13 — there is no backfill and no guess).
-              [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: conciergeFeeAmt.toFixed(2) },
+              // Locked Decision 51 (`conciergeFeeExpertShare`, ledger `2026-09-18-concierge-fee-cap-split`):
+              // the expert's completion-time split of the concierge fee, computed at PURCHASE and
+              // never re-resolved (LD 48). A row born before this lane carries no such key —
+              // `mintCompletionEarningsForBooking` reads its absence as "splits nothing" (§13).
+              [TRAVELER_CHARGE_SNAPSHOT_KEY]: {
+                conciergeFee: conciergeFeeAmt.toFixed(2),
+                conciergeFeeExpertShare: conciergeFeeExpertShareAmt.toFixed(2),
+              },
               // 1C (ruling 69 disposition 6): the DIRECT-lane decision, on the same snapshot
               // posture and for the same reason — a line that fell back to the legacy lane must
               // SAY so on the row, or a later reader would infer a D1 charge that never happened
@@ -2310,6 +2339,9 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       } else {
         previewConciergeRate = await getConciergeBookingRate();
       }
+      // Locked Decision 51: the SAME cap the checkout quote/charge loops read, loaded once —
+      // the preview cannot show a total lower than what /api/checkout will actually charge.
+      const previewConciergeCap = await getConciergeBookingCap();
 
       // s13 (ledger `2026-09-13-cart-priceless-gap`): the same statement `GET /api/cart` makes.
       // This quote's own loop prices an unpriceable line at 0 through `resolveItemBaseAmount`,
@@ -2384,10 +2416,16 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         previewSubtotal += itemPrice;
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemRates, feeCategory);
         previewPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
-        // Concierge facilitation fee: charged ON TOP of the normal split (mirrors checkout).
+        // Concierge facilitation fee: charged ON TOP of the normal split (mirrors checkout),
+        // capped through the SAME `resolveConciergeBookingFee` the checkout charge loop calls
+        // (Locked Decision 51) — this preview can never quote higher than checkout will charge.
         const isBookingConciergePreview = previewConciergeLines.isBookingConcierge(item.service);
         if (isBookingConciergePreview) {
-          previewConciergeFeeTotal += itemPrice * previewConciergeRate;
+          previewConciergeFeeTotal += resolveConciergeBookingFee(
+            itemPrice,
+            previewConciergeRate,
+            previewConciergeCap,
+          ).fee;
         }
         // B1: only an ELIGIBLE surcharge is previewed as a charge (an out-of-range pickup shows 0
         // here; the checkout is where it becomes a hard 400).

@@ -1743,4 +1743,13 @@ export const MIGRATION_FILES = [
   // `ALTER COLUMN user_id TYPE varchar`, which is a §20 DECLINE prompt at publish.
   // No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no entry.
   "310_ai_cost_tracking_actor_id.sql",
+  // 311 — Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`). DATA-ONLY, no ALTER,
+  // no schema.ts change: (a) fills `expert_concierge_booking.max_amount` to the ratified $40.00
+  // ONLY where NULL — the admin panel's own cap field, so `resolveConciergeBookingFee` finally
+  // applies it; (b) deactivates the migration-258 duplicates `concierge:booking_pct` /
+  // `concierge:booking_cap_cents` (kept, never dropped, description says why); (c) seeds
+  // `expert_concierge_booking_expert_share` (percent, 0.75, ON CONFLICT DO NOTHING) — the
+  // expert/platform split minted at completion. No CHECK added or changed, so
+  // `preflight-prod-constraints.cjs` needs no entry.
+  "311_concierge_fee_cap_split.sql",
 ] as const;

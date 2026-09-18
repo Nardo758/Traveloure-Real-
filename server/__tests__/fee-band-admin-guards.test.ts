@@ -138,18 +138,35 @@ test("D4 — an UNDECLARED band is allowed off and claims NOTHING about the cons
   assert.doesNotMatch(ruling.consequence, /falls back to/);
 });
 
-test("D4b — the four seeded bands no resolver reads today are reported as undeclared, not as safe", () => {
+test("D4b — the two still-dead seeded bands no resolver reads today are reported as undeclared, not as safe", () => {
+  // Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`, migration 311) RETIRED the
+  // other two of the original four — `concierge:booking_pct` / `concierge:booking_cap_cents` are
+  // now is_active=false duplicates of `expert_concierge_booking`, proven inactive in D4c below.
   // These exist in migration 258 and are re-exported as constants, but nothing calls a resolver
   // with them. That is a real state and the panel says so rather than guessing either way.
-  for (const bandKey of [
-    "concierge:booking_pct",
-    "concierge:booking_cap_cents",
-    "plans:plus_task_allowance",
-    "ready_made:platform_band",
-  ]) {
+  for (const bandKey of ["plans:plus_task_allowance", "ready_made:platform_band"]) {
     assert.equal(feeBandRequirement(bandKey), null, `${bandKey} is expected to be undeclared today`);
     assert.equal(feeBandDeactivationRuling(bandKey).reason, "not_declared");
   }
+});
+
+test("D4c — the retired concierge pair is inactive, and the migration says why (no database is needed)", () => {
+  // Locked Decision 51: migration 311 is the ONE place that flips `concierge:booking_pct` /
+  // `concierge:booking_cap_cents` to is_active=false — read as SOURCE TEXT, the same posture
+  // every other pin in this file takes (this suite reaches no database at all).
+  const migration = readStripped("server/migrations/311_concierge_fee_cap_split.sql");
+  assert.match(migration, /SET\s+is_active\s*=\s*false/i);
+  assert.match(migration, /'concierge:booking_pct'/);
+  assert.match(migration, /'concierge:booking_cap_cents'/);
+  assert.match(
+    migration,
+    /retired 2026-09-18-concierge-fee-cap-split: duplicate of expert_concierge_booking/,
+    "the retirement must name WHY, not just flip the flag",
+  );
+  // Still undeclared in the resolver manifest — retiring a row is not the same as a resolver
+  // starting to read it.
+  assert.equal(feeBandRequirement("concierge:booking_pct"), null);
+  assert.equal(feeBandRequirement("concierge:booking_cap_cents"), null);
 });
 
 // ── D5 — the derivation pin ───────────────────────────────────────────────────────────────
@@ -337,4 +354,38 @@ test("§8b — no resolved fee moved: the documented fallbacks hold their pre-la
   assert.equal(declaredFallbackValue("full_concierge_flat"), 100);
   assert.equal(declaredFallbackValue("full_concierge_percent"), 0.08);
   assert.equal(declaredFallbackValue("expert_review_expert_share"), 0.75);
+  // Locked Decision 51 — the SAME R6 fallback default (0.75), on the Booking Concierge split.
+  assert.equal(declaredFallbackValue("expert_concierge_booking_expert_share"), 0.75);
+});
+
+// ── Locked Decision 51 — the concierge fee/split resolvers are never expert-settable ───────
+
+test("D7 — the concierge fee/split resolvers take no expertId/listing parameter (Locked Decision 51)", () => {
+  // §18's "never expert-settable" rule, applied to the Booking Concierge cap and split: a pure
+  // signature grep, so an expertId/serviceId/providerId/listingId parameter added to any of these
+  // functions later fails here rather than being caught only by a code reviewer.
+  // `resolveConciergeBookingFee` is DECLARED in fee-band-requirements.ts (DB-free by this module's
+  // own header) and re-exported from commission.ts — checked in BOTH files by NAME, not by which
+  // file declares it, so the pin survives either shape.
+  const commission = readStripped("server/services/commission.ts");
+  const feeBandRequirements = readStripped("server/services/fee-band-requirements.ts");
+  const PRIVILEGED_PARAM = /\b(expertId|serviceId|providerId|listingId)\b/i;
+  for (const fnName of [
+    "getConciergeBookingRate",
+    "requireConciergeBookingRate",
+    "getConciergeBookingCap",
+    "resolveConciergeBookingFee",
+    "resolveConciergeExpertShareRate",
+  ]) {
+    const m =
+      commission.match(new RegExp(`export (?:async )?function ${fnName}\\(([^)]*)\\)`)) ??
+      feeBandRequirements.match(new RegExp(`export (?:async )?function ${fnName}\\(([^)]*)\\)`));
+    assert.ok(m, `${fnName} must be declared as an exported function in commission.ts or fee-band-requirements.ts`);
+    assert.doesNotMatch(
+      m![1],
+      PRIVILEGED_PARAM,
+      `${fnName}'s signature must not accept an expert/listing identity — Locked Decision 51's ` +
+        `rate, cap and split are platform-set only`,
+    );
+  }
 });
