@@ -7576,10 +7576,16 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
         const entry = await resolveBookingToken(bookingToken);
         if (entry) resolved = { url: entry.url, name: entry.name, partner: entry.provider };
       } else if (typeof affiliateProductId === "string" && affiliateProductId) {
-        const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
-        const product = await affiliateScraperService.getProductById(affiliateProductId, { approvedOnly: true });
-        const url = product ? (product.affiliateUrl || product.productUrl || null) : null;
-        if (product && url) resolved = { url, name: product.name ?? null, partner: null };
+        // §18 rule 1: this resolution is shared with the concierge hand-off
+        // (`server/services/concierge-handoff.service.ts`) through the ONE implementation in
+        // `affiliate-product-resolution.service.ts`. `partner: null` is kept here deliberately —
+        // this route's existing fallback chain (`resolved.partner || partnerName || "Partner"`)
+        // is unchanged; the shared resolver's richer `partnerName` is a hand-off-only need.
+        const { resolveAffiliateProductBookingReference } = await import(
+          "../services/affiliate-product-resolution.service"
+        );
+        const ref = await resolveAffiliateProductBookingReference(affiliateProductId);
+        if (ref) resolved = { url: ref.url, name: ref.name, partner: null };
       } else if (typeof transportOptionId === "string" && transportOptionId) {
         const option = await storage.getTransportBookingOptionById(transportOptionId);
         if (option && option.externalUrl && (option.bookingType === "affiliate" || option.bookingType === "deep_link")) {

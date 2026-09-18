@@ -9879,12 +9879,29 @@ export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
   // by server/services/booking-verification.service.ts (Tavily-extract + LLM-extract, key-gated,
   // §13 never-fabricates). NEVER holds the affiliateUrl (§16 — enforced in the service layer).
   verification: jsonb("verification"),
+  // Migration 312 (ledger `2026-09-18-concierge-handoff`) — THE HAND-OFF LINK. Set only on a row
+  // born from checkout of a Booking Concierge line: `itineraryItemId` is the plan's partner item
+  // (affiliateProductId set, providerServiceId NULL) this request is booking; `serviceBookingId`
+  // is the concierge purchase whose promotion created it. Both nullable, ON DELETE SET NULL — a
+  // deleted plan item or booking must never delete the booking-agent's record of having been
+  // asked. NULL on both = a traveler-initiated or pre-hand-off row; never backfilled (§13). The
+  // pair is the exactly-once guard for a retried promotion (see the partial UNIQUE below — §15,
+  // the statement is the guard).
+  itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "set null" }),
+  serviceBookingId: varchar("service_booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   // Baseline migration: partial index for expert-scoped affiliate booking lookups.
   // Declared here — drizzle push drops indexes absent from this file on publish.
   index("idx_abr_expert_id").on(table.expertId).where(sql`expert_id IS NOT NULL`),
+  // Migration 312 — hot lookup for the hand-off's own booking, and the exactly-once guard: a
+  // retried promotion for the SAME booking and the SAME plan item inserts nothing a second time.
+  // Partial so legacy rows (both columns NULL) never collide with each other.
+  index("idx_abr_service_booking_id").on(table.serviceBookingId).where(sql`service_booking_id IS NOT NULL`),
+  uniqueIndex("uq_abr_booking_item")
+    .on(table.serviceBookingId, table.itineraryItemId)
+    .where(sql`service_booking_id IS NOT NULL AND itinerary_item_id IS NOT NULL`),
 ]);
 
 export const insertAffiliateBookingRequestSchema = createInsertSchema(affiliateBookingRequests).omit({ id: true, createdAt: true, updatedAt: true });

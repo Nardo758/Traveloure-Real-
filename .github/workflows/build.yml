@@ -2045,6 +2045,52 @@ jobs:
       - name: the concierge fee cap and its completion-time split (C1-C6)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/concierge-fee-split.db.test.ts
 
+  concierge-handoff:
+    name: concierge-handoff (ledger 2026-09-18-concierge-handoff)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # THE HAND-OFF (migration 312). Checkout of a Booking Concierge line creates the plan's
+      # partner requests: H1 one request per partner item with both FKs and expert_id = the
+      # listing owner (the lane's stated ASSUMPTION); H2 a retried promotion inserts nothing new
+      # (the migration-312 partial UNIQUE + ON CONFLICT DO NOTHING guard); H3 a non-concierge
+      # booking hands off nothing; H4 an item with no affiliate_product_id is skipped and counted,
+      # never invented (§13); H5 an injected insert failure returns without throwing (§15b); H6
+      # pins that both promotion paths (payments.routes.ts, checkout-claim.service.ts) import the
+      # ONE implementation (§18 rule 1).
+      - name: the hand-off — checkout of a Booking Concierge line (H1-H6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/concierge-handoff.db.test.ts
+
   one-trip-write-resolver:
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
     runs-on: ubuntu-latest

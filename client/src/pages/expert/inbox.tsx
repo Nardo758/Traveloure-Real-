@@ -451,6 +451,9 @@ interface AffiliateBookingRequest {
   id: string;
   expertId: string | null;
   tripId: string | null;
+  // Ledger `2026-09-18-concierge-handoff`: only present on a row born from a concierge hand-off.
+  itineraryItemId?: string | null;
+  serviceBookingId?: string | null;
   itemName: string;
   partnerName: string;
   partnerCategory?: string | null;
@@ -543,6 +546,17 @@ function AgentBookingRequestsSection() {
                         {r.travelDate ? ` · ${r.travelDate}` : ""}
                         {r.travelers ? ` · ${r.travelers} traveler${r.travelers > 1 ? "s" : ""}` : ""}
                       </p>
+                      {/* Ledger `2026-09-18-concierge-handoff`: only present when the server
+                          actually links this request to a trip — never guessed or restated. */}
+                      {r.tripId && (
+                        <Link
+                          href={`/plans/${r.tripId}`}
+                          className="text-xs text-console-mid underline underline-offset-2"
+                          data-testid={`link-inbox-agent-booking-plan-${r.id}`}
+                        >
+                          from plan
+                        </Link>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <StatusBadge status={r.status} />
