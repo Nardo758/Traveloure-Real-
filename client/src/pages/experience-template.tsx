@@ -2188,7 +2188,13 @@ export default function ExperienceTemplatePage() {
     <Layout>
       <SEOHead title={seo.title} description={seo.description} keywords={seo.keywords} url={seo.url} />
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <PanelGroup direction="horizontal" className="h-screen hidden lg:flex">
+        {/* B1 fix (cosmetic-public-surfaces dispatch): react-resizable-panels writes an inline
+            `display:flex` style on PanelGroup, which beats Tailwind's `.hidden` utility — so
+            `hidden lg:flex` directly on the PanelGroup never actually hid it below `lg`. Moving
+            the responsive visibility onto a plain wrapping div (no inline style writer) fixes it;
+            the PanelGroup itself keeps only its own layout classes. */}
+        <div className="hidden lg:block h-screen">
+        <PanelGroup direction="horizontal" className="h-screen">
           <Panel defaultSize={60} minSize={40} maxSize={80} className="h-full flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto min-h-0">
           {/* Ribbon bar with Expert Help, Generate Itinerary */}
@@ -2294,9 +2300,13 @@ export default function ExperienceTemplatePage() {
                 </Button>
               </div>
             )}
-            <div className="flex items-center justify-between">
+            {/* B2 fix (cosmetic-public-surfaces dispatch): the desktop tab strip had no overflow
+                handling and cut off the last tab with no scroll cue at the pane edge. Copy the
+                mobile tab strip's `overflow-x-auto` + `flex-nowrap` treatment (see the twin below,
+                "Mobile Tabs") so the strip scrolls horizontally instead of clipping. */}
+            <div className="flex items-center justify-between overflow-x-auto">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="h-auto bg-transparent p-0 gap-0">
+                <TabsList className="h-auto bg-transparent p-0 gap-0 flex-nowrap">
                   {effectiveTabs.map((tab) => (
                     <TabsTrigger
                       key={tab.id}
@@ -3091,6 +3101,7 @@ export default function ExperienceTemplatePage() {
             </div>
           </Panel>
         </PanelGroup>
+        </div>
 
         {/* Mobile Layout - Content stacked with collapsible map */}
         <div className="lg:hidden flex flex-col min-h-screen">
