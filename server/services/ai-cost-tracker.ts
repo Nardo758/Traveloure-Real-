@@ -127,15 +127,19 @@ export async function trackAICost(params: AICostTrackingParams): Promise<void> {
  * Use immediately after `anthropic.messages.create()`:
  *
  *   const response = await anthropic.messages.create({...});
- *   trackAnthropicResponse(response, { sourceType: "ai_concierge", userId });
+ *   await trackAnthropicResponse(response, { sourceType: "ai_concierge", userId });
+ *
+ * Returns the insert's own promise (never rejects — `trackAICost` catches and logs its own
+ * failures) so a caller that AWAITS this is guaranteed the row has been attempted before it moves
+ * on; a caller that treats this as a statement, as most existing callers do, is unaffected.
  */
 export function trackAnthropicResponse(
   response: { usage?: { input_tokens: number; output_tokens: number }; model?: string },
   opts: { sourceType: string; userId?: string | null; requestId?: string | null }
-): void {
-  if (!response.usage) return;
+): Promise<void> {
+  if (!response.usage) return Promise.resolve();
   const cost = calculateAnthropicCost(response.usage.input_tokens, response.usage.output_tokens);
-  trackAICost({
+  return trackAICost({
     sourceType: opts.sourceType,
     modelUsed: response.model ?? null,
     requestId: opts.requestId ?? null,
@@ -143,7 +147,7 @@ export function trackAnthropicResponse(
     costUsd: cost,
     tokensIn: response.usage.input_tokens,
     tokensOut: response.usage.output_tokens,
-  }).catch(err => logger.warn({ sourceType: opts.sourceType, requestId: opts.requestId ?? null, err: err?.message ?? String(err) }, "[ai-cost-tracker] async failure"));
+  });
 }
 
 /**

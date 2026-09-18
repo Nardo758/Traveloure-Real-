@@ -281,9 +281,10 @@ export async function createProposalFromAsk(
   // D-47 — the cost row, through the EXISTING `trackAnthropicResponse` (§18 rule 1, one more
   // caller): `sourceType: "ai_task"`, `userId` = the SESSION asker, `requestId` = the PRE-MINTED
   // proposal id. Called on the success path AND on the error path that surfaced usage; never
-  // called with a usage nobody reported.
-  const writeCostRow = (usage: { input_tokens: number; output_tokens: number }, model: string) => {
-    trackCost(
+  // called with a usage nobody reported. AWAITED: a reader that arrives right after the response
+  // must find the row, so the response never precedes the cost record.
+  const writeCostRow = async (usage: { input_tokens: number; output_tokens: number }, model: string) => {
+    await trackCost(
       { usage, model },
       { sourceType: "ai_task", userId: params.askerUserId, requestId: params.proposalId },
     );
@@ -295,7 +296,7 @@ export async function createProposalFromAsk(
   } catch (err: any) {
     const modelId = err instanceof AiTaskModelError ? err.model ?? resolveAiTaskModel() : resolveAiTaskModel();
     if (err instanceof AiTaskModelError && err.usage) {
-      writeCostRow(err.usage, modelId);
+      await writeCostRow(err.usage, modelId);
     } else {
       // §13 — THE HONEST RECORD IS NO ROW, AND THE LOG SAYS WHY. `trackAnthropicResponse` returns
       // early without usage, so inventing one here is the only way a row could exist — and a
@@ -313,7 +314,7 @@ export async function createProposalFromAsk(
     return { ok: false, reason, detail: err?.message ?? "the model call failed" };
   }
 
-  if (result.usage) writeCostRow(result.usage, result.model);
+  if (result.usage) await writeCostRow(result.usage, result.model);
 
   // A truncated answer is unparseable JSON — reported as what it is rather than as a generic
   // parse failure (the optimizer's own posture). Either way NO row is written: a half-understood
