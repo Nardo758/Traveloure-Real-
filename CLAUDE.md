@@ -1908,6 +1908,14 @@ This document captures architectural decisions to maintain consistency across co
     mint (a retry mints nothing new). Migration 258's `concierge:booking_pct` /
     `concierge:booking_cap_cents` duplicates are retired (`is_active=false`, kept, never dropped).
     A row born before this lane carries no share snapshot and splits nothing — no backfill (§13).
+    **THE HAND-OFF THIS FEE PAYS FOR IS WIRED (ledger `2026-09-18-concierge-handoff`, migration
+    312).** Checkout of a `booking_concierge` line creates the plan's partner requests: ONE
+    `createHandoffRequestsForBooking`, called by both promotion paths, turns each still-unpurchased
+    partner item (`affiliate_product_id` set, `provider_service_id` NULL) that resolves to a live
+    partner into ONE idempotent `affiliate_booking_requests` row. **AMENDS
+    `2026-09-08-assignment-is-claimed` FOR PAID HAND-OFFS ONLY:** stamped `expert_id` = the
+    listing's owner, who is paid this entry's share to do the work; the pool default stands for
+    every other, traveler-initiated request.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

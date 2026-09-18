@@ -1152,6 +1152,16 @@ export interface IStorage {
 
   createAffiliateBookingRequest(data: InsertAffiliateBookingRequest): Promise<AffiliateBookingRequest>;
 
+  // Ledger `2026-09-18-concierge-handoff`. §15: the statement is the guard —
+  // `ON CONFLICT (service_booking_id, itinerary_item_id) DO NOTHING` against the migration-312
+  // partial UNIQUE — so a retried hand-off for the same booking and the same plan item inserts
+  // nothing a second time. Returns `undefined` when the conflict fired (the row already exists),
+  // never throws. Only ever called with BOTH `itineraryItemId` and `serviceBookingId` set — the
+  // legacy `createAffiliateBookingRequest` above stays the writer for every row born without them.
+  createAffiliateBookingRequestIdempotent(
+    data: InsertAffiliateBookingRequest & { itineraryItemId: string; serviceBookingId: string },
+  ): Promise<AffiliateBookingRequest | undefined>;
+
   getAffiliateBookingRequestById(id: string): Promise<AffiliateBookingRequest | undefined>;
 
   getAffiliateBookingRequestsByUser(userId: string, tripId?: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
@@ -7837,6 +7847,23 @@ export class DatabaseStorage implements IStorage {
     return record;
   }
 
+  // Ledger `2026-09-18-concierge-handoff`: see the interface doc comment. The `target` +
+  // `where` pair must match the migration-312 partial UNIQUE index byte-for-byte, or Postgres
+  // has no arbiter to conflict on and the insert raises instead of no-opping.
+  async createAffiliateBookingRequestIdempotent(
+    data: InsertAffiliateBookingRequest & { itineraryItemId: string; serviceBookingId: string },
+  ): Promise<AffiliateBookingRequest | undefined> {
+    const [record] = await db
+      .insert(affiliateBookingRequests)
+      .values(data)
+      .onConflictDoNothing({
+        target: [affiliateBookingRequests.serviceBookingId, affiliateBookingRequests.itineraryItemId],
+        where: sql`service_booking_id IS NOT NULL AND itinerary_item_id IS NOT NULL`,
+      })
+      .returning();
+    return record;
+  }
+
   async getAffiliateBookingRequestById(id: string): Promise<AffiliateBookingRequest | undefined> {
     const [row] = await db
       .select()
@@ -7857,6 +7884,8 @@ export class DatabaseStorage implements IStorage {
     return rows.map(({ affiliateUrl: _url, ...rest }) => rest);
   }
 
+  // Ledger `2026-09-18-concierge-handoff`: `itineraryItemId`/`serviceBookingId` ride this full-row
+  // select automatically (both new columns, no `affiliateUrl` change) — no query change needed.
   async getAffiliateBookingRequestsByExpert(expertId: string, tripId?: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]> {
     const expertScope = or(
       eq(affiliateBookingRequests.expertId, expertId),

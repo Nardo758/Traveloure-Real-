@@ -7,6 +7,11 @@ import { storage } from "../storage";
 // The post-booking cart clear below goes through it. Passthrough; behavior identical.
 import * as cartProjection from "../services/cart-projection.service";
 import { markItemPurchased } from "../services/item-routing.service";
+// Ledger `2026-09-18-concierge-handoff` (Locked Decision 51's hand-off paragraph): checkout of a
+// Booking Concierge line creates the plan's partner requests. Mirrors the D6 rails-fee pattern
+// below — this promotion path AND its recovery twin (`checkout-claim.service.ts`
+// `promotePaidCheckout`) both call the ONE implementation.
+import { createHandoffRequestsForBooking } from "../services/concierge-handoff.service";
 // Ruling 38 (checkout atomicity): the claim → authorize → promote spine + the TTL reclaim.
 import {
   findPriorClaim,
@@ -785,6 +790,19 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
     // transaction (ruling 18); 0 rows matched is LOGGED AND IGNORED, never fatal.
     if (raw.itinerary_item_id) {
       await markItemPurchased(String(raw.itinerary_item_id), bookingId);
+    }
+
+    // Ledger `2026-09-18-concierge-handoff`: mirrors the D6 rails-fee event below — a best-effort
+    // effect run AFTER the money leg, never allowed to fail the checkout. The function itself
+    // decides whether this booking is even a `booking_concierge` purchase (§13: everything else
+    // is a no-op reason, not an error) and never throws (§15b).
+    try {
+      const handoff = await createHandoffRequestsForBooking(bookingId);
+      if (handoff.handedOff > 0 || handoff.skipped > 0) {
+        console.log(`[checkout] concierge hand-off for booking ${bookingId}:`, handoff);
+      }
+    } catch (handoffErr) {
+      console.error(`[checkout] concierge hand-off failed for booking ${bookingId} (booking stands):`, handoffErr);
     }
 
     if (raw.service_id) {

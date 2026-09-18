@@ -91,6 +91,10 @@ import { db } from "../db";
 import { serviceBookings, providerServices, users } from "@shared/schema";
 import { logItemTransition } from "./item-transition-log.service";
 import { markItemPurchased } from "./item-routing.service";
+// Ledger `2026-09-18-concierge-handoff`: mirrors the D6 rails-fee catch-up below — the recovery
+// twin of `payments.routes.ts` `promoteAuthorizedCheckout`'s own hand-off call, for the window
+// only a payment SIGNAL can reach (server died between authorization and the primary write).
+import { createHandoffRequestsForBooking } from "./concierge-handoff.service";
 import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
@@ -1127,6 +1131,18 @@ export async function promotePaidCheckout(opts: {
         logger.error({ err, bookingId: id, itemId }, "[checkout-promote] plan catch-up flip failed (booking stands)"),
       );
     }
+  }
+
+  // ── Ledger `2026-09-18-concierge-handoff`, retried from here ────────────────────────────────
+  // Mirrors the D6 rails-fee catch-up immediately below: the primary path
+  // (`payments.routes.ts` `promoteAuthorizedCheckout`) runs this on the normal path; this covers
+  // the window only a payment SIGNAL can reach — a server that died between the authorization
+  // stamp and that write. `createHandoffRequestsForBooking` is idempotent by its own partial
+  // UNIQUE (§15), so a double call here and there lands exactly the same rows once.
+  for (const id of [...result.promoted, ...result.lateAuthorized]) {
+    await createHandoffRequestsForBooking(id).catch((err) =>
+      logger.error({ err, bookingId: id }, "[checkout-promote] concierge hand-off catch-up failed (booking stands)"),
+    );
   }
 
   // ── D6 (ruling 61): the rails fee EVENT, retried from here ──────────────────────────────────

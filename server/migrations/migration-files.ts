@@ -1752,4 +1752,14 @@ export const MIGRATION_FILES = [
   // expert/platform split minted at completion. No CHECK added or changed, so
   // `preflight-prod-constraints.cjs` needs no entry.
   "311_concierge_fee_cap_split.sql",
+  // 312 — ledger `2026-09-18-concierge-handoff` (Locked Decision 51's hand-off paragraph). TWO
+  // additive nullable FKs on `affiliate_booking_requests`: `itinerary_item_id` (the plan's partner
+  // item this request books) and `service_booking_id` (the concierge purchase that produced it),
+  // ON DELETE SET NULL each, plus an index on `service_booking_id` and a partial UNIQUE
+  // `(service_booking_id, itinerary_item_id) WHERE both NOT NULL` — the exactly-once guard for a
+  // retried promotion. No DEFAULT, no CHECK, no backfill; DECLARED in `shared/schema.ts` in the
+  // same commit (deploy-push durability rule). No CHECK added or changed, so
+  // `preflight-prod-constraints.cjs` needs no entry; the UNIQUE is over two brand-new all-NULL
+  // columns, so no prod duplicate risk.
+  "312_affiliate_booking_requests_handoff_link.sql",
 ] as const;
