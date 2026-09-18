@@ -85,7 +85,13 @@ export type BundlePartialSettlementRefusal =
   | "component_pending"
   /** Every component was delivered — the FULL mint's case; nothing to settle partially. */
   | "nothing_undelivered"
-  /** Nothing was delivered — the EXISTING whole-row refund rail's case, never this one. */
+  /**
+   * Nothing was delivered. By DEFAULT this is refused — the caller has not said which rail owns the
+   * row, and a settlement over a bundle that delivered nothing is a different money event from a
+   * partial one. The ALL-UNDELIVERED parent rail (ledger `2026-09-17-all-undelivered-parent`) opts in
+   * explicitly with `allowNothingDelivered`, because by then the parent has already been flipped to
+   * `cancelled` by the ONE component writer and this IS the rail that owns it.
+   */
   | "nothing_delivered"
   /**
    * A `cancelled` component carries no pinned `cancelRefundPercent` — the snapshotted policy's outcome
@@ -158,6 +164,16 @@ export function deriveBundlePartialSettlement(input: {
   parentHasPaymentIntent: boolean;
   travelerFeesChargedCents: number;
   travelerServiceFeeChargedCents: number;
+  /**
+   * OPT-IN, default FALSE (ledger `2026-09-17-all-undelivered-parent`). When true, a bundle with NO
+   * delivered component settles here instead of being refused `nothing_delivered`. It is an INPUT
+   * rather than a widening so every existing caller keeps its answer byte-for-byte: only the caller
+   * that has established the parent is an all-undelivered CANCELLED row may pass it, and the
+   * arithmetic below needs no special case — `keptFraction` simply falls to the retained share of the
+   * traveller-cancelled components (0 when every component failed), so the seller's side is 0 without
+   * anything being invented.
+   */
+  allowNothingDelivered?: boolean;
 }): BundlePartialSettlementDerivation {
   if (!input.parentHasPaymentIntent) return { ok: false, reason: "custody_unknown" };
   const foreign = input.components.find(
@@ -193,7 +209,9 @@ export function deriveBundlePartialSettlement(input: {
     }
   }
   if (failed.length === 0 && cancelled.length === 0) return { ok: false, reason: "nothing_undelivered" };
-  if (delivered.length === 0) return { ok: false, reason: "nothing_delivered" };
+  if (delivered.length === 0 && input.allowNothingDelivered !== true) {
+    return { ok: false, reason: "nothing_delivered" };
+  }
 
   // Per-component refund: the whole allocation for nonperformance; the pinned percent of it for a cancel.
   const refundOf = (c: SettlementComponentView): number =>

@@ -8702,6 +8702,16 @@ export const aiCostTracking = pgTable("ai_cost_tracking", {
   modelUsed: varchar("model_used", { length: 100 }),
   requestId: varchar("request_id", { length: 255 }),
   userId: uuid("user_id"),
+  // Migration 310 (ledger `2026-09-17-ai-cost-actor-id`). THE ATTRIBUTION COLUMN, and it is a STRING
+  // because `users.id` is a varchar while `user_id` above is a uuid — so an account whose id is not
+  // uuid-shaped could not be recorded at all: the INSERT raised 22P02 and `trackAICost` swallowed it,
+  // losing the WHOLE cost row silently. `actor_id` is written whenever an actor is known; `user_id`
+  // keeps its type and is written only when the id parses as a uuid (one writer,
+  // `server/services/ai-cost-tracker.ts`). Additive, NULLABLE, NO DEFAULT, NO CHECK, NO INDEX, NO
+  // BACKFILL. §13: NULL = a pre-310 row (readers fall back to `user_id::text` through the ONE
+  // expression `aiCostActorMatchesSql`) or no known actor — never read as "nobody". The rejected
+  // alternative, `ALTER COLUMN user_id TYPE varchar`, is a §20 publish-time DECLINE prompt.
+  actorId: varchar("actor_id", { length: 255 }),
   cost: decimal("cost", { precision: 10, scale: 6 }).notNull(),
   tokensIn: integer("tokens_in"),
   tokensOut: integer("tokens_out"),

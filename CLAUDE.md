@@ -1454,8 +1454,19 @@ This document captures architectural decisions to maintain consistency across co
     EXISTING `trackAnthropicResponse` — and because that table is one of the two objects this file
     already names as a **deploy-push casualty** (created by `025b_ai_cost_tracking.sql`, absent from
     `shared/schema.ts`, so a publish drops it and the stamped migration never recreates it),
-    **declaring it is a prerequisite of multiplying call volume through it**, recorded here. The
-    copilot **never invents availability, price or policy — `null` WITH A REASON** — and **a partner
+    **declaring it is a prerequisite of multiplying call volume through it**, recorded here.
+    **THAT PREREQUISITE IS MET, AND SO IS THE ONE UNDERNEATH IT (ledger
+    `2026-09-17-ai-cost-actor-id`, migration 310; landed via PR #981).** `ai_cost_tracking` is
+    declared in `shared/schema.ts`, and the attribution it records is now a STRING: `users.id` is a
+    varchar while `user_id` here is a uuid, so an account whose id was not uuid-shaped raised
+    `22P02` and the WHOLE cost row vanished into a deliberately-swallowed error. `actor_id
+    varchar(255)` is additive, nullable, with NO DEFAULT, NO CHECK, NO INDEX and NO BACKFILL;
+    `user_id` keeps its type, because `ALTER COLUMN … TYPE` is a §20 DECLINE prompt at publish. ONE
+    writer sets `actor_id` always and `user_id` only when the id parses as a uuid, and a failed
+    insert is logged with its SQLSTATE instead of being silent; ONE reader expression,
+    `COALESCE(actor_id, user_id::text)`, attributes the pre-310 and post-310 eras alike (§13 — the
+    fallback is explicit and nothing was backfilled).
+    The copilot **never invents availability, price or policy — `null` WITH A REASON** — and **a partner
     page that cannot be read leaves the request `researching` with the reason, NEVER
     `ready_to_buy`**. Absent fields are OMITTED on the traveler surface, never zero-filled: a null
     price is "the page did not state one", not "$0".
@@ -1849,6 +1860,41 @@ This document captures architectural decisions to maintain consistency across co
     it. "Prepared, awaiting settlement" is NEVER rendered as "refunded", a claimed settlement is never
     rendered as settled, and NO capacity sentence is rendered anywhere, because nothing reserves
     capacity per component.
+    **PER-COMPONENT CAPACITY IS NOT BUILT, BY RULING (decision-maker ruled Sep 17, 2026 — ledger
+    `2026-09-17-per-component-capacity-not-built`; no PR — this is the ruling that closes the open
+    question the paragraph above named).** A bundle claims capacity as ONE cart line on the bundle
+    listing; its components never claimed a slot of their own, so a failed or cancelled component
+    has nothing to release, and the bundle's slot stays held because the occasion still happens. The
+    honest statement `released: 0` / `no_component_capacity_reserved` (landed via PR #973) is the
+    design, not a gap; a per-component slot record would invent a reservation nobody made.
+    **AN ALL-UNDELIVERED BUNDLE IS CANCELLED BY THE ONE COMPONENT WRITER, IN THE SAME ATOMIC
+    STATEMENT THAT RELEASES ITS SLOT (decision-maker ratified Sep 17, 2026 — ledger
+    `2026-09-17-all-undelivered-parent`; landed via PR #982; NO schema change, NO migration, NO new
+    status value).** When the LAST deliverable component of a bundle becomes terminal-undelivered
+    and none remain, the ONE component writer (`settleBundleAllUndelivered`, called by both the
+    seller's component-failure rail and the traveler's component-cancel rail — §18 rule 1) flips the
+    PARENT `service_bookings` row `confirmed → cancelled` through
+    `storage.updateServiceBookingStatus` with `ALL_UNDELIVERED_CANCEL_FROM_STATUSES` — ONE entry,
+    `confirmed`, deliberately not the whole-row cancel's list, which admits `pending` and would
+    terminalise an unauthorized claim (§15b) — so the transition is the guard (§15/§18b) and the
+    booking's claimed slot units come back inside that same transaction through the ONE
+    `deriveClaimedSlotIds`/`deriveClaimedSlotUnits` readers: a retry, a concurrent last-flip and the
+    whole-row cancel rail all release nothing twice. Provenance is a MERGE, never a column:
+    `booking_details.allUndelivered = { at, cause, componentIds }`, the components NAMED, the cause
+    from the ONE derivation `deriveAllUndeliveredCause` (`seller_failed` | `traveler_cancelled` |
+    `mixed`; **NULL for anything that is not all-undelivered ⇒ nothing is triggered and no cause is
+    written**, §13). **THE MONEY IS THE EXISTING D-51 SETTLEMENT AND THERE IS NO SECOND REFUND
+    PATH:** `issueBundlePartialSettlement` refunds each component at its OWN pinned answer — a
+    failed one at its full allocation (a listing's cancellation policy never excuses seller
+    nonperformance), a traveler-cancelled one at the percent its snapshotted policy pinned — plus
+    the same proportional share of every traveler-paid fee, as ONE Stripe refund. It admits
+    `cancelled` ONLY for a row carrying that marker, so an ordinary whole-row cancellation is still
+    refused, and its `nothing_delivered` refusal is opted out of by an explicit input only this
+    caller passes. **§13, and it is the load-bearing half: A CANCELLED PARENT MINTS NOTHING** — the
+    retained remainder of a late strict traveler-cancel is recorded on the immutable settlement row
+    and is deliberately NOT minted, because minting on a cancelled parent is a new money event
+    nobody has ratified. **Left, named, not built:** no notification for the parent cancel, and
+    `revertPurchasedItemsForBooking` is not called on this path.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
@@ -2457,11 +2503,13 @@ All service creation routes converge on one destination: `POST /api/provider/ser
   since a violated UNIQUE fails the publish and offers the destructive "copy dev over production" option.
   **THE SAME MECHANISM APPLIES TO TABLES, not just indexes (found Jul 30, 2026 by the table-existence sweep).**
   A table created by a registered migration but **absent from `shared/schema.ts`** is the same shape of object the
-  push targets. Live instance: **`ai_cost_tracking`** (created by `025b_ai_cost_tracking.sql`, missing from
-  `schema.ts`) is written from ~7 call sites (`claude.service.ts`, `itinerary-optimizer.ts`, chat routes,
-  content/experts/trips routers, `routes.ts`) and read by `lead-routing.service.ts` for the admin cost breakdown.
-  If a publish drops it, the migration is already stamped so `runMigrations()` will **never recreate it** — silent,
-  permanent loss of AI-cost observability. (`service_demand_requests` was dead and has since been RETIRED deliberately by migration 158 — dropped in both environments.) **Rule
+  push targets. Live instance, now CLOSED: **`ai_cost_tracking`** (created by `025b_ai_cost_tracking.sql`) was absent from
+  `schema.ts` and is now DECLARED, column for column and index for index — including `.desc().nullsFirst()` on
+  both indexes, which is load-bearing (drizzle's bare `.desc()` emits `DESC NULLS LAST` and made the push plan
+  `DROP INDEX` + `CREATE INDEX` on every publish). It remains the worked example of the rule: ~7 hot writers,
+  one reader, and a stamped migration that would never have recreated it.
+  `scripts/preview-ai-cost-tracking-shape.cjs` is the read-only instrument for checking a real database against
+  that declaration before publishing. (`service_demand_requests` was dead and has since been RETIRED deliberately by migration 158 — dropped in both environments.) **Rule
   generalized: any DB object the code depends on — index OR table — must be declared in `shared/schema.ts`, or the
   deploy push is authoritative and will remove it.**
 - Guard: **before publishing any migration that adds/changes a CHECK**, run

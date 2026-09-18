@@ -7513,10 +7513,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // REFUSED, not stripped. The acting user comes from the session (§14).
   //
   // WHAT IT MAY CAUSE, all server-decided: if the remaining components were already delivered the
-  // parent moves to `partially_completed` and mints ONCE over the reduced figures (D-35); if none
-  // were, nothing flips — the EXISTING whole-row refund rail owns that case and the response says
-  // `parentOutcome: "all_undelivered"`; if some are still pending, the failure is recorded and the
-  // parent waits. A LEGACY bundle (no `booking_component_states` rows) is refused with
+  // parent moves to `partially_completed` and mints ONCE over the reduced figures (D-35); if NONE
+  // were — every component now terminal-undelivered — the PARENT IS CANCELLED by the ONE component
+  // writer (ledger `2026-09-17-all-undelivered-parent`: `confirmed → cancelled` as one atomic
+  // statement that also releases the booking's claimed slot units exactly once, then the EXISTING
+  // D-51 money leg refunds every allocation at its own pinned answer), and the response carries
+  // `allUndelivered` beside `parentOutcome: "all_undelivered"`; if some are still pending, the
+  // failure is recorded and the parent waits. A LEGACY bundle (no `booking_component_states` rows) is refused with
   // `bundle_component_states_unavailable` — the jsonb never held FAILED (§13).
   const componentFailureBody = z
     .object({
@@ -7574,6 +7577,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         partiallyCompleted: outcome.partiallyCompleted,
         // D-51: the money leg's NAMED result, present only when a settlement was attempted (§13).
         ...(outcome.settlement ? { settlement: outcome.settlement } : {}),
+        // Ledger `2026-09-17-all-undelivered-parent`: present only when THIS failure was the last
+        // answer outstanding and nothing had been delivered — the parent cancel, its ONE slot release
+        // and the money leg it drove (§13: never a zero-filled stub on the other branches).
+        ...(outcome.allUndelivered ? { allUndelivered: outcome.allUndelivered } : {}),
         ...(outcome.parentOutcome ? { parentOutcome: outcome.parentOutcome } : {}),
         componentStateSource: outcome.componentStateSource,
         rule: outcome.rule,
@@ -7607,7 +7614,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // the parent moves to `partially_completed`, mints ONCE over the kept share (the retained remainder
   // of this cancel INCLUDED, named in the mint's basis) and settles — one Stripe refund of the refunded
   // allocation plus the same share of every traveler-paid fee, or NO Stripe call when the policy
-  // yielded 0. If nothing was delivered, nothing flips — the whole-row cancel above owns that case.
+  // yielded 0. If NOTHING was delivered, the PARENT IS CANCELLED by the same ONE writer the seller's
+  // failure rail calls (ledger `2026-09-17-all-undelivered-parent`) — one atomic flip that also
+  // releases the booking's claimed slot units once, then the EXISTING settlement — and the response
+  // carries `allUndelivered`.
   //
   // WHAT IT REFUSES, by name (§13): a component no longer pending (`component_not_pending`, the current
   // state stated); a bundle with no per-component rows or no allocation (`bundle_component_states_
@@ -7685,6 +7695,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         terms: outcome.terms,
         partiallyCompleted: outcome.partiallyCompleted,
         ...(outcome.settlement ? { settlement: outcome.settlement } : {}),
+        // Ledger `2026-09-17-all-undelivered-parent`: present only when THIS cancel was the last answer
+        // outstanding and nothing had been delivered — the parent cancel, its ONE slot release and the
+        // money leg it drove (§13: never a zero-filled stub on the other branches).
+        ...(outcome.allUndelivered ? { allUndelivered: outcome.allUndelivered } : {}),
         ...(outcome.parentOutcome ? { parentOutcome: outcome.parentOutcome } : {}),
         reason: outcome.reason,
         evidence: outcome.evidence,
