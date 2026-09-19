@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { localExpertForms, travelPulseHiddenGems, users } from "@shared/schema";
+import { demoSeedsAllowed } from "./lib/demo-seed-gate";
 
 const DEMO_CURATORS = {
   kyoto: {
@@ -81,8 +82,15 @@ const DEMO_MOMENT_GEMS = [
   },
 ] as const;
 
+/**
+ * Delegates to the ONE shared demo-seed predicate (§18 rule 1; consolidated
+ * 2026-09-19, ledger `2026-09-19-demo-seeders-gated` — this file previously
+ * carried its own copy of the NODE_ENV/ENVIRONMENT check, which is exactly the
+ * derivation-drift shape that rule forbids). The name is kept for the existing
+ * `server/__tests__/landing-moments.db.test.ts` import.
+ */
 export function shouldSeedLandingMomentDemo(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.NODE_ENV !== "production" && env.ENVIRONMENT !== "PROD";
+  return demoSeedsAllowed(env);
 }
 
 async function upsertDemoCurator(curator: (typeof DEMO_CURATORS)[keyof typeof DEMO_CURATORS]): Promise<string> {

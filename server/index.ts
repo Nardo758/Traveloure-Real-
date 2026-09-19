@@ -28,6 +28,7 @@ import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-accounts.seed";
 import { seedLocationCache } from "./seeds/location-cache.seed";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "./seeds/lib/demo-seed-gate";
 import { storage } from "./storage";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
@@ -324,30 +325,46 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed custom services");
   }
 
-  try {
-    await seedMockExperts();
-  } catch (err) {
-    logger.error({ err }, "Failed to seed mock experts");
-  }
-
-  try {
-    const momentDemoResult = await seedLandingMomentDemo();
-    if (momentDemoResult.upserted > 0) {
-      logger.info(
-        { count: momentDemoResult.upserted },
-        "Seeded attributed Landing Moment demo gems",
-      );
-    } else if (!momentDemoResult.expertFound) {
-      logger.warn("Skipped Landing Moment demo gems because the test expert was not found");
+  // DEMO/FICTIONAL seeders below this line are gated by the ONE shared
+  // predicate (server/seeds/lib/demo-seed-gate.ts, §18 rule 1) — never a
+  // per-call-site NODE_ENV check. See CLAUDE.md §13 and ledger row
+  // `2026-09-19-demo-seeders-gated`.
+  if (demoSeedsAllowed()) {
+    try {
+      await seedMockExperts();
+    } catch (err) {
+      logger.error({ err }, "Failed to seed mock experts");
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed Landing Moment demo gems");
+  } else {
+    logger.info(demoSeedSkipMessage("seedMockExperts"));
   }
 
-  try {
-    await seedProviderServices();
-  } catch (err) {
-    logger.error({ err }, "Failed to seed provider services");
+  if (demoSeedsAllowed()) {
+    try {
+      const momentDemoResult = await seedLandingMomentDemo();
+      if (momentDemoResult.upserted > 0) {
+        logger.info(
+          { count: momentDemoResult.upserted },
+          "Seeded attributed Landing Moment demo gems",
+        );
+      } else if (!momentDemoResult.expertFound) {
+        logger.warn("Skipped Landing Moment demo gems because the test expert was not found");
+      }
+    } catch (err) {
+      logger.error({ err }, "Failed to seed Landing Moment demo gems");
+    }
+  } else {
+    logger.info(demoSeedSkipMessage("seedLandingMomentDemo"));
+  }
+
+  if (demoSeedsAllowed()) {
+    try {
+      await seedProviderServices();
+    } catch (err) {
+      logger.error({ err }, "Failed to seed provider services");
+    }
+  } else {
+    logger.info(demoSeedSkipMessage("seedProviderServices"));
   }
 
   try {
@@ -385,22 +402,26 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to verify the expert_neighborhoods one-writer trigger");
   }
 
-  try {
-    const heroDemoResult = await seedLandingHeroDemo();
-    if (heroDemoResult.markets > 0) {
-      logger.info(
-        { markets: heroDemoResult.markets, services: heroDemoResult.services },
-        "Seeded development-only landing hero fixtures",
-      );
+  if (demoSeedsAllowed()) {
+    try {
+      const heroDemoResult = await seedLandingHeroDemo();
+      if (heroDemoResult.markets > 0) {
+        logger.info(
+          { markets: heroDemoResult.markets, services: heroDemoResult.services },
+          "Seeded development-only landing hero fixtures",
+        );
+      }
+      if (heroDemoResult.skipped.length > 0) {
+        logger.warn(
+          { markets: heroDemoResult.skipped },
+          "Skipped landing hero fixtures because city neighborhoods are missing",
+        );
+      }
+    } catch (err) {
+      logger.error({ err }, "Failed to seed landing hero fixtures");
     }
-    if (heroDemoResult.skipped.length > 0) {
-      logger.warn(
-        { markets: heroDemoResult.skipped },
-        "Skipped landing hero fixtures because city neighborhoods are missing",
-      );
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed landing hero fixtures");
+  } else {
+    logger.info(demoSeedSkipMessage("seedLandingHeroDemo"));
   }
 
   try {
@@ -431,16 +452,20 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed major cities backfill");
   }
 
-  try {
-    const phaseDResult = await seedPhaseDKyotoVendors();
-    if (phaseDResult.vendorsInserted > 0 || phaseDResult.servicesInserted > 0) {
-      logger.info(
-        { vendors: phaseDResult.vendorsInserted, services: phaseDResult.servicesInserted },
-        "Seeded Phase D Kyoto wedding & corporate vendors",
-      );
+  if (demoSeedsAllowed()) {
+    try {
+      const phaseDResult = await seedPhaseDKyotoVendors();
+      if (phaseDResult.vendorsInserted > 0 || phaseDResult.servicesInserted > 0) {
+        logger.info(
+          { vendors: phaseDResult.vendorsInserted, services: phaseDResult.servicesInserted },
+          "Seeded Phase D Kyoto wedding & corporate vendors",
+        );
+      }
+    } catch (err) {
+      logger.error({ err }, "Failed to seed Phase D Kyoto vendors");
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed Phase D Kyoto vendors");
+  } else {
+    logger.info(demoSeedSkipMessage("seedPhaseDKyotoVendors"));
   }
 
   try {

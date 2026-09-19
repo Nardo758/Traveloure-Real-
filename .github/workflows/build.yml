@@ -113,6 +113,21 @@ jobs:
       - name: Ready-made announce marker pin (D-18)
         run: npx tsx --test server/__tests__/ready-made-announce-marker.test.ts
 
+      # 2026-09-19-demo-seeders-gated: server/seeds/phase-d-kyoto-vendors.seed.ts inserted nine
+      # FICTIONAL businesses (*.traveloure.test contact fields) as `provider_services` rows born
+      # approved/active, and server/index.ts called it unconditionally at boot in every
+      # environment including production — a §13 lie a traveler could pay real money to book. The
+      # same sweep found the identical class, also ungated, in server/seed-expert-services.ts
+      # (seedMockExperts, seedProviderServices). Fixed by ONE shared predicate,
+      # server/seeds/lib/demo-seed-gate.ts's demoSeedsAllowed() (itself delegating to the existing
+      # canonical isProdStrictEnv — §18 rule 1), applied in two layers (the boot call site AND each
+      # seeder's own refusal). D1 DERIVES the set of DEMO/FICTIONAL seeder exports server/index.ts
+      # imports and calls (never a hand-typed list) and asserts every one is called under the gate;
+      # P1-P6 self-test the static parser itself against synthetic fixtures, including the negative
+      # (an ungated demo call must fail); S1/S1b pin each seeder's own second-layer refusal.
+      - name: Demo seeders gated out of production (ledger 2026-09-19-demo-seeders-gated)
+        run: npx tsx --test server/__tests__/demo-seeders-gated.test.ts
+
       # 2026-09-15-d41-item-quantity (punchlist D-41 = yes, migration 298): a plan item may carry a
       # unit count, NULL = one unit. The pure half — §19 omits it from the item insert schema and
       # strips it in storage; the count crosses between `cart_items` and `itinerary_items` in ONE

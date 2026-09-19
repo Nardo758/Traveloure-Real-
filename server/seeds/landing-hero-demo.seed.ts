@@ -15,6 +15,7 @@ import {
   submitClaim,
 } from "../services/neighborhood-claims.service";
 import type { ClaimCaptureSubmit } from "@shared/neighborhood-claims";
+import { demoSeedsAllowed } from "./lib/demo-seed-gate";
 
 const DEMO_SERVICE_IMAGES = [
   "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=1200&q=80",
@@ -33,8 +34,11 @@ const DEMO_SERVICE_IMAGES = [
  * existing production purge removes the complete fixture graph.
  */
 
+// Delegates to the ONE shared demo-seed predicate (§18 rule 1; consolidated
+// 2026-09-19, ledger `2026-09-19-demo-seeders-gated` — this file previously carried
+// its own copy of the NODE_ENV/ENVIRONMENT check).
 function shouldSeedLandingHeroDemo(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.NODE_ENV !== "production" && env.ENVIRONMENT !== "PROD";
+  return demoSeedsAllowed(env);
 }
 
 function assertDevelopmentEnvironment(): void {
