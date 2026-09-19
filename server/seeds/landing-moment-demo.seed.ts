@@ -81,6 +81,23 @@ const DEMO_MOMENT_GEMS = [
   },
 ] as const;
 
+/**
+ * DELIBERATELY NOT delegated to the wider `demoSeedsAllowed()` (ledger
+ * `2026-09-19-demo-seeders-gated`). An earlier version of this lane did
+ * delegate it, which changed this predicate's answer under
+ * `NODE_ENV=production` + `ALLOW_TEST_ACCOUNTS=1` — the exact boot shape the
+ * `suite-server-tests` CI job uses (it boots the production bundle with that
+ * escape hatch) — from `false` to `true`, causing this seeder to run for the
+ * first time in that job and pollute `landing-moments.db.test.ts` M5 (the
+ * seeded Kyoto proposal gem showed up alongside the test's own fixture).
+ * `demoSeedsAllowed()`'s wider ALLOW_TEST_ACCOUNTS=1 override exists for E2E
+ * TEST ACCOUNTS (a real platform need in that CI boot); this seeder's demo
+ * content is not that, and this predicate's narrower rule is preserved
+ * byte-for-byte from before this lane. See `server/index.ts`'s EXEMPTIONS
+ * comment beside its call and `server/__tests__/demo-seeders-gated.test.ts`'s
+ * D2 for the same reasoning stated once (§18 rule 1 on THIS predicate, not
+ * forced onto a predicate with different, incompatible semantics).
+ */
 export function shouldSeedLandingMomentDemo(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.NODE_ENV !== "production" && env.ENVIRONMENT !== "PROD";
 }

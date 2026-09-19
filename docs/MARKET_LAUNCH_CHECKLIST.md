@@ -110,6 +110,18 @@ These are judgment calls the automation deliberately does not make.
    (Places/geocoding autocomplete, not this layer), confirm billing/quota is provisioned for the new
    market's expected traffic before launch — a quota trip reads to users as a broken form, not a
    billing problem.
+7. **Demo/fictional seeders never reach production; confirm none already have.** Every
+   demo/fictional seeder `server/index.ts` invokes at boot (`seedPhaseDKyotoVendors`,
+   `seedMockExperts`, `seedProviderServices`, `seedLandingMomentDemo`, `seedLandingHeroDemo`) is
+   gated by `demoSeedsAllowed()` (`server/seeds/lib/demo-seed-gate.ts`, ledger
+   `2026-09-19-demo-seeders-gated`) and refuses on its own in a prod-strict environment — this needs
+   no per-market action. What DOES need a pre-launch check is item 3 above: a `provider_services`
+   row's `approvalStatus='approved'` alone does not distinguish a real, onboarded business from a
+   fictional one an earlier, ungated boot may already have written to this database. Run
+   `node scripts/preview-fictional-vendors.cjs "<DATABASE_URL>"` (READ-ONLY — lists any
+   `provider_services` row whose owning user or provider-form contact resolves to the reserved
+   `*.traveloure.test` domain) before announcing a launch, and treat any hit as a decision-maker
+   data question, not something to delete unilaterally.
 
 ## Explicitly NOT per-market
 

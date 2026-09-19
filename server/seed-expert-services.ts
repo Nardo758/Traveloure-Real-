@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { expertServiceCategories, expertServiceOfferings, users, localExpertForms } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "./seeds/lib/demo-seed-gate";
 
 const expertServiceData = [
   {
@@ -420,6 +421,18 @@ const mockExperts = [
 ];
 
 export async function seedMockExperts() {
+  // DEMO/FICTIONAL — found 2026-09-19 (ledger `2026-09-19-demo-seeders-gated`) as
+  // the same defect class as phase-d-kyoto-vendors.seed.ts: fictional "experts"
+  // (@example.com emails, invented bios) born with localExpertForms.status:
+  // "approved" — publicly visible — with NO prior environment gate at all, called
+  // unconditionally at every boot including production. Second layer (§18 "two
+  // layers"): this must refuse on its own even if called outside the gated
+  // server/index.ts boot path.
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("seedMockExperts"));
+    return;
+  }
+
   console.log("Seeding mock experts for testing...");
 
   // Deploy-speed fast path: skip the per-expert loops when every mock expert
@@ -636,6 +649,19 @@ import { providerServices } from "@shared/schema";
 import { sql } from "drizzle-orm";
 
 export async function seedProviderServices() {
+  // DEMO/FICTIONAL — found 2026-09-19 (ledger `2026-09-19-demo-seeders-gated`):
+  // fabricated generic listings (invented ratings, no real business behind them)
+  // attached to WHATEVER ROW HAPPENS TO BE users[0] in the target database — in
+  // production that is an arbitrary real signed-up account, not a seed fixture
+  // user. `status: "active"`, no prior environment gate, called unconditionally
+  // at every boot including production. Second layer (§18 "two layers"): this
+  // must refuse on its own even if called outside the gated server/index.ts boot
+  // path.
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("seedProviderServices"));
+    return;
+  }
+
   console.log("Seeding mock provider services for Services tab...");
 
   // Find the first user to use as the provider
