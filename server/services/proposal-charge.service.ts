@@ -77,6 +77,7 @@ import {
   planProposalRefundIdempotencyKey,
   planProposalRefundReason,
   PLAN_PROPOSAL_REFUND_UNKNOWN_REFUSAL,
+  PLAN_PROPOSAL_ALREADY_REFUNDED_MESSAGE,
   type PlanProposalChangeSet,
   type PlanProposalChargeBasis,
 } from "@shared/plan-proposals";
@@ -269,7 +270,13 @@ export class ProposalApplyRefused extends Error {
       // D-50 (b): a listing the proposal names is no longer bookable on this plan. Refused with the
       // reason for the same §13 reason as above — applying it would write a row naming a listing
       // the traveler cannot book, and re-pricing or silently dropping it changes what they read.
-      | "listing_unavailable",
+      | "listing_unavailable"
+      // ledger `2026-09-19-proposal-refund-race-reason`: this caller's OWN status read landed AFTER
+      // a concurrent caller's refusal already claimed and refunded the row (§15b — the claim is the
+      // status flip, one statement). `not_applicable` is the truth for every OTHER terminal state
+      // (applied, discarded) but not this one — the row's fee has already gone back to the
+      // traveler, and the route must say so rather than lump it into the generic refusal (§13).
+      | "refunded",
     message: string,
     readonly itemIds: string[] = [],
   ) {
@@ -460,14 +467,31 @@ export async function applyPlanProposal(params: {
    * proof in place of a string-index pin). Production callers pass nothing and get the real helper.
    */
   reFinalize?: typeof reFinalizeIfCurrentlyFinal;
+  /**
+   * A test-only seam (ledger `2026-09-19-proposal-refund-race-reason`) so a concurrent-loser
+   * interleaving — this caller's status read landing AFTER another caller's refund claim commits —
+   * can be forced DETERMINISTICALLY rather than relied on to land right by real timing. Called
+   * immediately before the status read below, inside the transaction. Production callers pass
+   * nothing and get a no-op; the same injection posture `createProposalFromAsk`'s `deps` takes.
+   */
+  beforeStatusRead?: () => Promise<void>;
 } = {}): Promise<AppliedProposalResult> {
   const result = await db.transaction(async (tx) => {
+    if (deps.beforeStatusRead) await deps.beforeStatusRead();
     const [row] = await tx
       .select()
       .from(planProposals)
       .where(and(eq(planProposals.id, params.proposalId), eq(planProposals.tripId, params.tripId)))
       .limit(1);
     if (!row || row.status !== PLAN_PROPOSAL_STATUS_PROPOSED) {
+      // §13/§15b — a row already `refunded` is a DIFFERENT fact than the generic "not applicable":
+      // a concurrent caller's OWN refusal already claimed this row (the claim IS the status flip,
+      // ledger `2026-09-19-proposal-refund-race-reason`) and its fee is already back with the
+      // traveler. `not_applicable` stays the answer for every OTHER terminal state — applied,
+      // discarded — where nothing is owed.
+      if (row?.status === PLAN_PROPOSAL_STATUS_REFUNDED) {
+        throw new ProposalApplyRefused("refunded", PLAN_PROPOSAL_ALREADY_REFUNDED_MESSAGE);
+      }
       throw new ProposalApplyRefused("not_applicable", "This proposal is no longer applicable.");
     }
 
@@ -631,8 +655,13 @@ export async function applyPlanProposal(params: {
  *
  * `not_applicable` is still NOT here, and that is not an oversight: it is the apply's own atomic
  * conditional reporting that the row was no longer `proposed` when it got there — so the row is
- * already applied, discarded or refunded, and whatever was owed on it was settled by the path that
- * moved it. Refunding on that code would be a second opinion about a terminal row.
+ * already applied or discarded, and whatever was owed on it was settled by the path that moved it.
+ * Refunding on that code would be a second opinion about a terminal row.
+ *
+ * `refunded` is ALSO not here (ledger `2026-09-19-proposal-refund-race-reason`) — it is not a
+ * refusal this function should re-claim and refund, it is the route's signal that ANOTHER caller
+ * already did. The route answers it through the SAME dedicated path the top-of-handler retry uses
+ * (`refusal: null` — the refund is looked up, never re-issued), not through this list.
  */
 export const PROPOSAL_REFUNDABLE_REFUSALS = [
   "stale_catalog_price",

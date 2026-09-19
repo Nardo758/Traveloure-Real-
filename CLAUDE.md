@@ -1636,6 +1636,10 @@ This document captures architectural decisions to maintain consistency across co
     unrecorded — a retry completing a refund whose Stripe call threw — it records
     `unknown_prior_refusal` and never a reason re-derived from the proposal's state now, which could
     attribute the refund to a refusal that had not yet happened (§13).
+    **A CALLER THAT LOSES THE RACE TO THE REFUND CLAIM IS ANSWERED `refunded`, NEVER
+    `not_applicable` (ledger `2026-09-19-proposal-refund-race-reason`):** a status read that lands
+    after a concurrent caller's claim commits is told the refund it can see; `not_applicable` keeps
+    meaning terminal-before-the-request (applied/discarded), never a raced refund.
     **(3) HAS LANDED AS FAR AS THE MODEL CALL (lanes 2 and 3, ledger
     `2026-09-16-l16-lanes2-3-drawer`).** The Ask-AI drawer is a rail card of its own on the slip —
     never a third branch of `slipBuildAiAction` — and every sentence it says has ONE home

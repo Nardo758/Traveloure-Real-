@@ -8,6 +8,7 @@ import fs from "fs";
 import { transformDevHtml } from "../vite-dev-html";
 import crypto from "crypto";
 import { Router } from "express";
+import type { Response } from "express";
 import { storage } from "../storage";
 import { db } from "../db";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
@@ -52,7 +53,11 @@ import {
   refundRefusedProposalCharge,
   type ProposalRefundOutcome,
 } from "../services/proposal-charge.service";
-import { PLAN_PROPOSAL_STATUS_PROPOSED, PLAN_PROPOSAL_STATUS_REFUNDED } from "@shared/plan-proposals";
+import {
+  PLAN_PROPOSAL_STATUS_PROPOSED,
+  PLAN_PROPOSAL_STATUS_REFUNDED,
+  PLAN_PROPOSAL_ALREADY_REFUNDED_MESSAGE,
+} from "@shared/plan-proposals";
 import { coversAction } from "../services/trip-entitlement.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 // Ledger `2026-09-05-slip-own-your-plan` (review R14): the ONE row-level answer to "is this row
@@ -3869,6 +3874,47 @@ router.post("/api/trips/:tripId/proposals/:id/pay", isAuthenticated, async (req,
   }
 });
 
+/**
+ * THE ONE ANSWER FOR A ROW THAT IS ALREADY `refunded`, TWO CALLERS (§18 rule 1; ledger
+ * `2026-09-19-proposal-refund-race-reason`).
+ *
+ * A caller reaches this in one of two ways: the route's own top-of-handler read finds the row
+ * ALREADY `refunded` before this request even started (an ordinary retry), or this caller's OWN
+ * `applyPlanProposal` attempt raced a concurrent one and lost — its internal status read landed
+ * AFTER the other caller's refund claim committed, so `applyPlanProposal` throws `"refunded"`
+ * rather than the generic `"not_applicable"`. Both are the SAME fact (the row's fee is already
+ * back with the traveler) reached by different roads, so both are answered here, once: look up the
+ * refund `refundRefusedProposalCharge` already recorded (or complete a claim whose Stripe call had
+ * failed, §15b) under `refusal: null` — never re-derived, never a second Stripe site — and report
+ * it. No `paymentIntentId`/`chargedAmountCents` pair means nothing was ever charged, and the
+ * response carries no `refund` block for that honestly (§13).
+ */
+async function respondProposalAlreadyRefunded(
+  res: Response,
+  ctx: {
+    proposalId: string;
+    tripId: string;
+    paymentIntentId: string | null;
+    chargedAmountCents: number | null;
+  },
+): Promise<void> {
+  const refund: ProposalRefundOutcome | undefined =
+    ctx.paymentIntentId && ctx.chargedAmountCents != null
+      ? await refundRefusedProposalCharge({
+          proposalId: ctx.proposalId,
+          tripId: ctx.tripId,
+          paymentIntentId: ctx.paymentIntentId,
+          amountCents: ctx.chargedAmountCents,
+          refusal: null,
+        })
+      : undefined;
+  res.status(409).json({
+    message: PLAN_PROPOSAL_ALREADY_REFUNDED_MESSAGE,
+    reason: "refunded",
+    ...(refund ? { refund } : {}),
+  });
+}
+
 // POST /api/trips/:tripId/proposals/:id/apply — the traveler applies ONE proposal to their plan.
 //
 // AUTHORIZATION IS THE ONE PURE PREDICATE (`resolveProposalApplyAuthorization`), bases ordered
@@ -3905,25 +3951,15 @@ router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (re
     const proposal = await getPlanProposal(id, tripId);
     if (!proposal) return res.status(404).json({ message: "Proposal not found" });
     if (proposal.status === PLAN_PROPOSAL_STATUS_REFUNDED) {
-      // OPTION B, the RETRY: a paid proposal the apply already refused and refunded. The same
-      // proposal-derived idempotency key means this re-drives NO second refund — it reports the one
-      // issued, or completes a claim whose Stripe call failed (§15b). §13: the row's own recorded
-      // charge and PaymentIntent, never a request value; a row that somehow carries neither says
-      // only that it was refunded.
-      const refund: ProposalRefundOutcome | undefined =
-        proposal.stripePaymentIntentId && proposal.chargedAmountCents != null
-          ? await refundRefusedProposalCharge({
-              proposalId: id,
-              tripId,
-              paymentIntentId: proposal.stripePaymentIntentId,
-              amountCents: proposal.chargedAmountCents,
-              refusal: null,
-            })
-          : undefined;
-      return res.status(409).json({
-        message: "This proposal could not be applied as read, and its fee has been refunded. Ask again for a fresh answer.",
-        reason: "refunded",
-        ...(refund ? { refund } : {}),
+      // OPTION B, the RETRY: a paid proposal the apply already refused and refunded. §13: the row's
+      // own recorded charge and PaymentIntent, never a request value. ONE implementation, two
+      // callers (§18 rule 1) — `respondProposalAlreadyRefunded`, shared with the concurrent-loser
+      // branch below (ledger `2026-09-19-proposal-refund-race-reason`).
+      return await respondProposalAlreadyRefunded(res, {
+        proposalId: id,
+        tripId,
+        paymentIntentId: proposal.stripePaymentIntentId,
+        chargedAmountCents: proposal.chargedAmountCents,
       });
     }
     if (proposal.status !== PLAN_PROPOSAL_STATUS_PROPOSED) {
@@ -3977,6 +4013,21 @@ router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (re
       });
     } catch (err: any) {
       if (err instanceof ProposalApplyRefused) {
+        // ledger `2026-09-19-proposal-refund-race-reason`: THIS caller's OWN `applyPlanProposal`
+        // attempt raced a concurrent one and LOST — its internal status read landed AFTER the other
+        // caller's refund claim committed (§15b: the claim is the status flip, one statement), so
+        // `applyPlanProposal` reports the row's REAL state (`"refunded"`) rather than the generic
+        // `"not_applicable"`. This is the SAME fact the top-of-handler retry above answers, reached
+        // by a different road (a race instead of a later request), so it is answered the SAME way —
+        // ONE implementation, two callers (§18 rule 1), never a re-typed string compare.
+        if (err.code === "refunded") {
+          return await respondProposalAlreadyRefunded(res, {
+            proposalId: id,
+            tripId,
+            paymentIntentId: auth.basis === "paid" ? auth.paymentIntentId : null,
+            chargedAmountCents: auth.basis === "paid" ? auth.amountCents : null,
+          });
+        }
         // D3 / D18: the reason is said out loud, and NOTHING was written — the whole apply is one
         // transaction, so a refusal leaves the plan exactly as it was.
         //
