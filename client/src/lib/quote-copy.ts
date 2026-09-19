@@ -169,16 +169,83 @@ export function quoteValidityLine(row: QuoteCardRow, formatDate: (iso: string) =
 }
 
 /**
- * THE CHARGE IS NOT BUILT, AND THE SURFACE SAYS SO (§13).
+ * THE TRAVELER SERVICE FEE, read from the SERVER's own numbers (ledger
+ * `2026-09-19-quote-born-traveler-fee`, decision-maker ruling): a quote-born booking carries the
+ * SAME ruled fee (§8/§14) as every other service booking, resolved by
+ * `resolveTravelerServiceFeeSnapshot` and echoed on the `POST /api/checkout` response's
+ * `travelerServiceFee` / `coveredByTripPass` fields. No 7%, no $25 — both live in `fee_bands` and
+ * this module knows neither; it only words the figures the server already sent.
+ */
+export interface QuoteTravelerServiceFee {
+  /** What rides the Stripe total. 0 when waived. */
+  charged: number;
+  /** The band-priced amount, resolved UNCONDITIONALLY — the real figure even on a waived line. */
+  wouldHaveBeen: number;
+  waived: boolean;
+  waiverBasis: "rails" | "trip_pass" | null;
+}
+
+/**
+ * §13: a `pay` response the panel has not yet received carries NO fee figures, and this renders
+ * NOTHING — never a guessed "$0.00 fee", which is a different fact from "not yet known". A charge
+ * that genuinely resolved to $0 (a $0-fee band, if one ever exists) also renders nothing: there is
+ * nothing to disclose on top of the quoted amount.
+ */
+export function quoteTravelerFeeLine(fee: QuoteTravelerServiceFee | null | undefined): string | null {
+  if (!fee) return null;
+  if (fee.waived) {
+    return fee.wouldHaveBeen > 0
+      ? `Your Trip Pass covers the traveler service fee (${fee.wouldHaveBeen.toFixed(2)}) — nothing added.`
+      : null;
+  }
+  if (fee.charged <= 0) return null;
+  return `Plus a ${fee.charged.toFixed(2)} traveler service fee, charged with this payment.`;
+}
+
+/**
+ * THE CHARGE IS BUILT, AND THE SURFACE HANDS OFF TO IT (ledger `2026-09-18-quote-born-charge`).
  *
  * LD 49: "The quote-born booking is born UNPAID; the charge through `/api/checkout` is its own
- * lane." That lane has not landed — `POST /api/checkout` prices cart lines from the listing and
- * has no quote arm — so an accepted quote produces a `pending` booking that no rail can charge
- * yet. The honest answer is to say that in the sentence, not to draw a Pay button that leads
- * nowhere and not to pretend the booking is paid.
+ * lane." That lane has landed: `POST /api/checkout` takes `{ quoteBookingId }` on a second arm
+ * and drives the SAME §15 claim → authorize → promote spine the cart does, so the accepted quote
+ * now has a real Pay control instead of a sentence explaining why it has none.
+ *
+ * §13 — THE SENTENCE STILL SAYS THE ROW IS UNPAID, because it is: this note sits beside the Pay
+ * control on a booking that has not been charged, and it must never read as a receipt. What
+ * changed is only the second half — from "payment is not available" (which stopped being true)
+ * to where the traveler pays. The amount itself is NOT restated here: it is the server's answer
+ * and is read off the minted row by `quoteDepositLine`.
  */
 export const QUOTE_CHECKOUT_UNAVAILABLE_NOTE =
-  "Your booking is recorded at this amount and is not paid yet. Paying for a quoted booking is not available on the site yet — your provider will be in touch about payment.";
+  "Your booking is recorded at this amount and is not paid yet. Pay for it here when you are ready — your card is charged only when you complete the payment.";
+
+/** The Pay control's own label. One spelling, so the card and any later surface agree (§18 rule 1). */
+export const QUOTE_PAY_ACTION_LABEL = "Pay for this booking";
+
+/**
+ * The server's refusal, worded from its OWN code (§13 — a refusal names WHICH fact refused it, and
+ * this module invents none of them). `quote_expired` is the one that carries an expiry; the rest
+ * are handed back as the server's sentence.
+ */
+export interface QuoteChargeRefusal {
+  code?: string;
+  message?: string;
+  expiresAt?: string;
+}
+
+export function quoteChargeRefusalLine(
+  refusal: QuoteChargeRefusal | null | undefined,
+  formatDate: (iso: string) => string,
+): string | null {
+  if (!refusal) return null;
+  if (refusal.code === "quote_expired" && refusal.expiresAt) {
+    return `This quote expired ${formatDate(refusal.expiresAt)} and is not repriced. Ask the provider for a new one — nothing was charged.`;
+  }
+  if (refusal.code === "quote_charge_in_progress") {
+    return "A payment for this booking has already been started. Reload the page and complete that one — nothing was charged twice.";
+  }
+  return refusal.message ?? null;
+}
 
 /**
  * WHAT THE SERVER ANSWERED ABOUT DEPOSIT vs FULL (LD 49 D-31). The accept rail resolves the

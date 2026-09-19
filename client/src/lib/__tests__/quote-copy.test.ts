@@ -13,6 +13,8 @@
  * D1-D4  the deposit line is the MINTED BOOKING's answer; an unloaded booking yields no line.
  * R1-R3  the seller's validity refusal repeats the SERVER's numbers, never one of its own.
  * C1     the charge is not built, and the note says so rather than promising payment.
+ * F1-F4  ledger `2026-09-19-quote-born-traveler-fee`: the fee line is the SERVER's own numbers,
+ *        never a computed one, and an absent answer renders nothing rather than a guessed $0.
  *
  * Run: npx tsx --test client/src/lib/__tests__/quote-copy.test.ts
  */
@@ -21,6 +23,8 @@ import assert from "node:assert/strict";
 
 import {
   QUOTE_CHECKOUT_UNAVAILABLE_NOTE,
+  QUOTE_PAY_ACTION_LABEL,
+  quoteChargeRefusalLine,
   quoteAmountLine,
   quoteDepositLine,
   quoteIsAcceptable,
@@ -28,6 +32,7 @@ import {
   quoteIsWithdrawable,
   quoteIssueRefusalLine,
   quoteStateCopy,
+  quoteTravelerFeeLine,
   quoteValidityLine,
   type QuoteCardRow,
 } from "../quote-copy";
@@ -141,9 +146,67 @@ test("R1-R3: the seller's refusal repeats the SERVER's numbers", () => {
   assert.equal(quoteIssueRefusalLine(null), null);
 });
 
-test("C1: the charge is not built, and the note says so instead of promising payment", () => {
+test("C1: the note still says the booking is UNPAID, and now points at where it is paid", () => {
   assert.match(QUOTE_CHECKOUT_UNAVAILABLE_NOTE, /not paid yet/);
-  assert.match(QUOTE_CHECKOUT_UNAVAILABLE_NOTE, /not available on the site yet/);
-  // It never claims the booking is paid, confirmed or charged.
-  assert.ok(!/\bpaid in full\b|\bcharged\b|\bconfirmed\b/i.test(QUOTE_CHECKOUT_UNAVAILABLE_NOTE));
+  // Ledger `2026-09-18-quote-born-charge`: the charge landed, so the old "not available on the
+  // site yet" half is gone — it stopped being true, and a surface that kept saying it would be
+  // the §13 lie in the other direction.
+  assert.ok(!/not available/i.test(QUOTE_CHECKOUT_UNAVAILABLE_NOTE));
+  // It still never claims the booking is paid or confirmed.
+  assert.ok(!/\bpaid in full\b|\bconfirmed\b/i.test(QUOTE_CHECKOUT_UNAVAILABLE_NOTE));
+  assert.match(QUOTE_PAY_ACTION_LABEL, /Pay/);
+});
+
+test("C2: a charge refusal is the SERVER's fact — the expiry is repeated, never recomputed", () => {
+  const fmt = (iso: string) => `on ${iso.slice(0, 10)}`;
+  const expired = quoteChargeRefusalLine(
+    { code: "quote_expired", expiresAt: "2026-09-01T10:00:00.000Z", message: "ignored" },
+    fmt,
+  );
+  assert.match(expired ?? "", /on 2026-09-01/);
+  assert.match(expired ?? "", /not repriced/);
+  assert.match(expired ?? "", /nothing was charged/i);
+  // No expiry from the server ⇒ the server's own sentence, never a date this module invents.
+  assert.equal(
+    quoteChargeRefusalLine({ code: "quote_expired", message: "This quote expired." }, fmt),
+    "This quote expired.",
+  );
+  assert.match(
+    quoteChargeRefusalLine({ code: "quote_charge_in_progress" }, fmt) ?? "",
+    /already been started/,
+  );
+  assert.equal(quoteChargeRefusalLine(null, fmt), null);
+  assert.equal(quoteChargeRefusalLine({}, fmt), null);
+});
+
+test("F1: no fee data yet ⇒ no line (§13 — 'not yet known' is not '$0.00')", () => {
+  assert.equal(quoteTravelerFeeLine(null), null);
+  assert.equal(quoteTravelerFeeLine(undefined), null);
+});
+
+test("F2: an UNCOVERED charge states the fee that actually rode the Stripe total", () => {
+  const line = quoteTravelerFeeLine({ charged: 7, wouldHaveBeen: 7, waived: false, waiverBasis: null });
+  assert.match(line ?? "", /7\.00/);
+  assert.match(line ?? "", /traveler service fee/i);
+  assert.match(line ?? "", /charged/i);
+});
+
+test("F3: a COVERED charge states the waiver and the REAL amount it covers — never '0-because-waived'", () => {
+  const line = quoteTravelerFeeLine({ charged: 0, wouldHaveBeen: 25, waived: true, waiverBasis: "trip_pass" });
+  assert.match(line ?? "", /Trip Pass/);
+  assert.match(line ?? "", /25\.00/, "the REAL band-priced amount, not the charged $0");
+  assert.doesNotMatch(line ?? "", /\$?0\.00 (traveler service fee|covers)/);
+});
+
+test("F4: a genuinely zero fee — uncovered charged=0, or a covered wouldHaveBeen=0 — discloses nothing extra", () => {
+  assert.equal(
+    quoteTravelerFeeLine({ charged: 0, wouldHaveBeen: 0, waived: false, waiverBasis: null }),
+    null,
+    "nothing to disclose on top of the quoted amount",
+  );
+  assert.equal(
+    quoteTravelerFeeLine({ charged: 0, wouldHaveBeen: 0, waived: true, waiverBasis: "rails" }),
+    null,
+    "a waiver over a real $0 fee is not a claim worth making",
+  );
 });

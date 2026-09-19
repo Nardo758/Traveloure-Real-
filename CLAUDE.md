@@ -1789,6 +1789,11 @@ This document captures architectural decisions to maintain consistency across co
     derives NO lifecycle and NO window — `expired` arrives resolved and no day count or ceiling exists
     client-side, so D-29's refusal is worded back from the server's own numbers. The CHARGE is still its
     own lane and the surface says so out loud rather than drawing a Pay button that leads nowhere (§13).
+    **THE CHARGE LANE LANDED (PR #988) AND NOW CARRIES THE RULED FEE (decision-maker ratified Sep
+    19, 2026 — ledger `2026-09-19-quote-born-traveler-fee`).** `POST /api/checkout`
+    `{ quoteBookingId }` charges the SAME ruled traveler service fee every service booking carries,
+    resolved/waived (Trip Pass) through the ONE shared `resolveTravelerServiceFeeSnapshot` (§18
+    rule 1) the cart calls too, and disclosed before the traveler completes payment.
 
 50. **A PARTIALLY FULFILLED BUNDLE SETTLES ONCE BY ITS PURCHASE-TIME COMPONENT ALLOCATION (decision-maker
     ruling, Sep 16, 2026 — ledger `2026-09-16-bundle-partial-settlement`; build lane dispatched the same
