@@ -52,7 +52,13 @@ router.post("/api/services/:id/quote-requests", isAuthenticated, async (req, res
   try {
     const travelerId = getUserId(req)!;
     const body = quoteRequestBodySchema.parse(req.body ?? {});
-    const r = await requestQuote({ serviceId: String(req.params.id), travelerId, note: body.note ?? null });
+    const r = await requestQuote({
+      serviceId: String(req.params.id),
+      travelerId,
+      note: body.note ?? null,
+      tripId: body.tripId ?? null,
+      itineraryItemId: body.itineraryItemId ?? null,
+    });
     if (!r.ok) return sendRefusal(res, r);
     return res.status(r.created ? 201 : 200).json({ quote: r.quote, created: r.created });
   } catch (err) {

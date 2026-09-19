@@ -11096,12 +11096,23 @@ export const serviceQuotes = pgTable("service_quotes", {
   withdrawnAt: timestamp("withdrawn_at"),
   supersededBy: varchar("superseded_by").references((): AnyPgColumn => serviceQuotes.id, { onDelete: "set null" }),
   bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
+  // Ledger `2026-09-19-quote-plan-link` (migration 314): the plan the traveler was asking from,
+  // when they asked from one. Server-verified at request time (verifyTripOwnership) — never
+  // client-trusted beyond that. NULL = not asked from a plan (§13); no backfill; every reader
+  // keeps today's behaviour for NULL.
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  // Ledger `2026-09-19-quote-plan-link` (migration 314): the plan's OWN item for this listing,
+  // when one already existed at request time. Requires tripId. Server-verified (the item must
+  // belong to tripId AND reference this provider_services row). NULL = no existing plan item
+  // named; no backfill.
+  itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   unique("service_quotes_service_traveler_position_unique").on(table.serviceId, table.travelerId, table.position),
   index("service_quotes_service_idx").on(table.serviceId),
   index("service_quotes_traveler_idx").on(table.travelerId),
+  index("idx_service_quotes_trip_id").on(table.tripId).where(sql`trip_id IS NOT NULL`),
 ]);
 export type ServiceQuote = typeof serviceQuotes.$inferSelect;
 

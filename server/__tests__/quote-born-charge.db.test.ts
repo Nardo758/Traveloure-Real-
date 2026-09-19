@@ -164,8 +164,15 @@ async function bookingRow(id: string): Promise<any> {
 /**
  * Request → issue → accept, the REAL rails, ending in the unpaid quote-born booking under test.
  * `amountCents` is fixture data (the provider's own price for this traveler), never a fee.
+ * `tripId` (ledger `2026-09-19-quote-plan-link`) is OPTIONAL — passed straight to `requestQuote`
+ * so `acceptQuote` copies it onto the booking through the real write path, exactly like every
+ * other fact this helper already exercises through the live rails rather than a raw UPDATE.
  */
-async function acceptedQuoteBooking(opts: { amountCents: number; depositPercentage?: number }): Promise<{
+async function acceptedQuoteBooking(opts: {
+  amountCents: number;
+  depositPercentage?: number;
+  tripId?: string;
+}): Promise<{
   serviceId: string;
   quoteId: string;
   bookingId: string;
@@ -173,7 +180,11 @@ async function acceptedQuoteBooking(opts: { amountCents: number; depositPercenta
   const serviceId = await makeQuoteListing(
     opts.depositPercentage === undefined ? {} : { depositPercentage: opts.depositPercentage },
   );
-  const requested = await requestQuote({ serviceId, travelerId: ids.traveler });
+  const requested = await requestQuote({
+    serviceId,
+    travelerId: ids.traveler,
+    ...(opts.tripId ? { tripId: opts.tripId } : {}),
+  });
   assert.equal(requested.ok, true, JSON.stringify(requested));
   const quoteId = (requested as any).quote.id as string;
   const issued = await issueQuote({ quoteId, actorUserId: ids.provider, amountCents: opts.amountCents });
@@ -593,19 +604,19 @@ test("Q12 · the ruled traveler service fee is ADDED and SNAPSHOTTED (no waiver)
 });
 
 test("Q13 · Trip Pass coverage WAIVES the fee, exactly as on the cart — charged 0, wouldHaveBeen the real amount", async () => {
-  const { bookingId } = await acceptedQuoteBooking({ amountCents: 80000 }); // $800, deposits off
-
-  // §14/the header: a quote-born booking carries NO trip_id through any live lane today — no
-  // writer sets one. This simulates the day a future lane associates one (the SELECT already
-  // reads the column), so the WAIVER MECHANISM is proven even though nothing produces this state
-  // yet; it is not a claim that today's flow mints a tripped quote-born booking.
+  // Ledger `2026-09-19-quote-plan-link` (migration 314; supersedes this test's earlier raw-SQL
+  // `UPDATE service_bookings SET trip_id = …` fixture): a quote asked FROM a plan now carries that
+  // plan onto its booking through the REAL request → issue → accept rails, the same live path
+  // `acceptedQuoteBooking` already exercises for every other fact in this file. This is no longer
+  // a simulation of a future lane's write — `acceptQuote` is the writer, today, on `main`.
   const tripId = `qc-${RUN}-trip`;
   createdTripIds.push(tripId);
   await db.execute(sql`
     INSERT INTO trips (id, user_id, title, start_date, end_date, destination)
     VALUES (${tripId}, ${ids.traveler}, ${`QC trip ${RUN}`}, '2030-01-01', '2030-01-05', 'Kyoto, Japan')
   `);
-  await db.execute(sql`UPDATE service_bookings SET trip_id = ${tripId} WHERE id = ${bookingId}`);
+  const { bookingId } = await acceptedQuoteBooking({ amountCents: 80000, tripId }); // $800, deposits off
+
   await db.execute(sql`
     INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source_payment_id, allowances_snapshot)
     VALUES (${`qc-${RUN}-tp`}, ${tripId}, 'trip_pass', 'active', ${`pi_qc_tp_${RUN}`}, '{}'::jsonb)

@@ -539,13 +539,20 @@ export default function ServiceDetailPage() {
   // server-side from the listing/slot rows (§14).
   const planRoute = targetTripId ? planningRouteForTrip(targetTripId, tripCtx.endDate) : "/cart";
 
-  // D-30 (ledger `2026-09-15-d28-d31-service-quotes`): the request store. ONE POST, body `{}` —
-  // the traveler prices nothing and names nothing but the listing in the path (§14/§19). The
-  // server hands back the open quote when one already exists (`created: false`), so a second
-  // press is not a second request.
+  // D-30 (ledger `2026-09-15-d28-d31-service-quotes`): the request store. The traveler prices
+  // nothing and names nothing but the listing in the path (§14/§19). The server hands back the
+  // open quote when one already exists (`created: false`), so a second press is not a second
+  // request.
+  // Ledger `2026-09-19-quote-plan-link`: `tripId` rides along when this page already resolved one
+  // (the SAME `targetTripId` every add on this page uses, §18 rule 1) — never a new fetch just for
+  // this. The server re-verifies ownership of whatever trip it names (§14); this is a courtesy
+  // carry, not a grant. No `itineraryItemId`: this page loads no per-trip item list to resolve one
+  // from.
   const requestQuoteMutation = useMutation<{ created: boolean }>({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/services/${id}/quote-requests`, {});
+      const res = await apiRequest("POST", `/api/services/${id}/quote-requests`, {
+        ...(targetTripId ? { tripId: targetTripId } : {}),
+      });
       return (await res.json()) as { created: boolean };
     },
     onSuccess: () => {

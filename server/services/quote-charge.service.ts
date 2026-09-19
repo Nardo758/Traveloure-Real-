@@ -293,8 +293,12 @@ export async function resolveQuoteCharge(input: {
   if (existingFeeSnapshot && typeof existingFeeSnapshot.charged === "number") {
     travelerServiceFee = existingFeeSnapshot;
   } else {
-    // §14: the trip id comes from the ROW, never the body, and a quote-born booking carries none
-    // today (see the header) — so this ordinarily resolves `false` and the fee is charged in full.
+    // §14: the trip id comes from the ROW, never the body. Ledger `2026-09-19-quote-plan-link`
+    // (migration 314): a quote-born booking NOW carries one when the quote was asked from a plan —
+    // `acceptQuote` copies `service_quotes.trip_id` onto this exact column, the same spelling the
+    // cart rail uses — so the waiver fires here with no change to this function. A quote asked
+    // with no plan in mind still carries none, and this resolves `false` and the fee is charged in
+    // full, exactly as before.
     const tripId = row.trip_id ? String(row.trip_id) : null;
     let tripPassCovers = false;
     try {

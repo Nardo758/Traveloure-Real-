@@ -53,7 +53,7 @@
  */
 import { and, desc, eq, sql } from "drizzle-orm";
 
-import { providerServices, serviceQuotes, type ServiceQuote } from "@shared/schema";
+import { providerServices, serviceQuotes, trips, type ServiceQuote } from "@shared/schema";
 import { isProviderRole } from "@shared/roles";
 import {
   SERVICE_QUOTE_CURRENCY,
@@ -68,6 +68,9 @@ import { quoteExpiresAt, resolveQuoteValidityDays } from "../config/quote-validi
 import { buildListingBuyAction } from "./buy-action-payload";
 import { resolveServiceOwnerShareRate } from "./commission";
 import { resolveDepositPlan } from "./deposit.service";
+import { resolveQuotePlanLink } from "./quote-plan-link.service";
+import { syncItemProjection } from "./cart-projection.service";
+import { logger } from "../infrastructure/logger";
 
 // ─── Refusals ─────────────────────────────────────────────────────────────────────────────────
 
@@ -85,7 +88,10 @@ export type QuoteRefusalCode =
   | "quote_withdrawn"
   | "quote_declined"
   | "quote_superseded"
-  | "lost_race";
+  | "lost_race"
+  // Ledger `2026-09-19-quote-plan-link`: `resolveQuotePlanLink`'s two refusals.
+  | "trip_not_found"
+  | "item_not_on_plan";
 
 export interface QuoteRefusal {
   ok: false;
@@ -139,6 +145,11 @@ export interface ServiceQuoteView {
   supersededBy?: string;
   bookingId?: string;
   createdAt?: string;
+  /** Ledger `2026-09-19-quote-plan-link`: present only when the quote was asked from a plan the
+   *  reader may still resolve a title for (a deleted plan leaves `tripId` NULL on this row per
+   *  ON DELETE SET NULL — the same SET-NULL posture every other plan-child link takes). */
+  tripId?: string;
+  tripTitle?: string;
 }
 
 const iso = (d: Date | string | null | undefined): string | undefined => {
@@ -147,7 +158,12 @@ const iso = (d: Date | string | null | undefined): string | undefined => {
   return Number.isNaN(dt.getTime()) ? undefined : dt.toISOString();
 };
 
-export function presentQuote(row: ServiceQuote, serviceName?: string | null, now: Date = new Date()): ServiceQuoteView {
+export function presentQuote(
+  row: ServiceQuote,
+  serviceName?: string | null,
+  now: Date = new Date(),
+  tripTitle?: string | null,
+): ServiceQuoteView {
   const view: ServiceQuoteView = {
     id: row.id,
     serviceId: row.serviceId,
@@ -170,6 +186,10 @@ export function presentQuote(row: ServiceQuote, serviceName?: string | null, now
   const withdrawnAt = iso(row.withdrawnAt); if (withdrawnAt) view.withdrawnAt = withdrawnAt;
   if (row.supersededBy) view.supersededBy = row.supersededBy;
   if (row.bookingId) view.bookingId = row.bookingId;
+  if (row.tripId) {
+    view.tripId = row.tripId;
+    if (tripTitle) view.tripTitle = tripTitle;
+  }
   const createdAt = iso(row.createdAt); if (createdAt) view.createdAt = createdAt;
   return view;
 }
@@ -207,16 +227,23 @@ export async function listQuotesForOwner(ownerUserId: string): Promise<ServiceQu
   return rows.map((r) => presentQuote(r.quote, r.serviceName, now));
 }
 
-/** Every quote the caller REQUESTED, newest first. The traveler is the session (§14). */
+/**
+ * Every quote the caller REQUESTED, newest first. The traveler is the session (§14).
+ *
+ * Ledger `2026-09-19-quote-plan-link`: a LEFT JOIN to `trips` — most quotes carry no `tripId` and
+ * must still list (§13: absent is not an error) — so `presentQuote` can name the plan the read-only
+ * `TravelerQuotesPanel` shows a quote as coming from.
+ */
 export async function listQuotesForTraveler(travelerId: string): Promise<ServiceQuoteView[]> {
   const rows = await db
-    .select({ quote: serviceQuotes, serviceName: providerServices.serviceName })
+    .select({ quote: serviceQuotes, serviceName: providerServices.serviceName, tripTitle: trips.title })
     .from(serviceQuotes)
     .innerJoin(providerServices, eq(providerServices.id, serviceQuotes.serviceId))
+    .leftJoin(trips, eq(trips.id, serviceQuotes.tripId))
     .where(eq(serviceQuotes.travelerId, travelerId))
     .orderBy(desc(serviceQuotes.createdAt));
   const now = new Date();
-  return rows.map((r) => presentQuote(r.quote, r.serviceName, now));
+  return rows.map((r) => presentQuote(r.quote, r.serviceName, now, r.tripTitle));
 }
 
 /** The OPEN offer between one traveler and one listing — `requested`, or `quoted` and unexpired. */
@@ -264,6 +291,11 @@ export async function requestQuote(input: {
   serviceId: string;
   travelerId: string;
   note?: string | null;
+  /** Ledger `2026-09-19-quote-plan-link`: the plan this request is being asked from, and — when
+   *  one already exists — that plan's own item for this listing. Both server-verified below
+   *  through `resolveQuotePlanLink`; never trusted beyond parsing (§14). */
+  tripId?: string | null;
+  itineraryItemId?: string | null;
 }): Promise<RequestQuoteResult | QuoteRefusal> {
   const service = await storage.getProviderServiceById(input.serviceId);
   // ONE 404 for absent, unapproved and inactive alike — the F2 read gate, never a 403 that says
@@ -294,6 +326,18 @@ export async function requestQuote(input: {
     );
   }
 
+  // Ledger `2026-09-19-quote-plan-link`: verify the pairing BEFORE touching any row — a refused
+  // link must store nothing (P2/P3).
+  const link = await resolveQuotePlanLink({
+    travelerId: input.travelerId,
+    serviceId: service.id,
+    tripId: input.tripId ?? null,
+    itineraryItemId: input.itineraryItemId ?? null,
+  });
+  if (!link.ok) {
+    return refuse(link.status, link.code as QuoteRefusalCode, link.message);
+  }
+
   const existing = await findOpenQuote(service.id, input.travelerId);
   if (existing) {
     return { ok: true, created: false, quote: presentQuote(existing, service.serviceName) };
@@ -310,6 +354,8 @@ export async function requestQuote(input: {
         position: sql<number>`(SELECT COALESCE(MAX(${serviceQuotes.position}), 0) + 1 FROM ${serviceQuotes} WHERE ${serviceQuotes.serviceId} = ${service.id} AND ${serviceQuotes.travelerId} = ${input.travelerId})`,
         status: "requested",
         requestNote: note,
+        ...(link.tripId ? { tripId: link.tripId } : {}),
+        ...(link.itineraryItemId ? { itineraryItemId: link.itineraryItemId } : {}),
       })
       .returning();
     return { ok: true, created: true, quote: presentQuote(row, service.serviceName) };
@@ -550,6 +596,14 @@ function explainUnclaimable(row: ServiceQuote, now: Date): QuoteRefusal {
  *      quote's amount as the server-derived total (§14), the `fee_bands` share through the ONE
  *      resolver, and the listing's deposit config through the ONE deposit derivation fed the quoted
  *      amount as the line total (brief §3);
+ *   2b. Ledger `2026-09-19-quote-plan-link`: WHEN THE QUOTE NAMES A PLAN, the link rides along —
+ *      `trip_id` onto the booking (a plain column) and `booking_details.itineraryItemId` by a
+ *      direct UPDATE (`createServiceBookingAtomic` would silently strip that key from its own
+ *      `bookingDetails` param, §19d), and the linked item is routed `in_planning ->
+ *      ready_for_checkout` so the EXISTING paid promotion's `markItemPurchased` can flip it later
+ *      with no new call site (LD 39). The cart's derived `cart_items` projection is reconciled
+ *      through `syncItemProjection` AFTER this transaction commits — best-effort, never allowed to
+ *      fail the accept (§15b).
  *   3. the STAMP — `booking_id` on the quote row.
  * A second concurrent call waits on the lock, then reads `accepted` + `booking_id` and returns the
  * same booking with `minted: false`. A claim that matches zero rows is explained from the row.
@@ -558,7 +612,13 @@ export async function acceptQuote(input: {
   quoteId: string;
   travelerId: string;
 }): Promise<AcceptQuoteResult | QuoteRefusal> {
-  return db.transaction(async (tx) => {
+  // Ledger `2026-09-19-quote-plan-link`: the linked item, captured INSIDE the transaction below
+  // but synced OUTSIDE it (§15b — a projection failure must never fail the accept, and
+  // `syncItemProjection` reads through the plain `db`, so it must run only after the routing flip
+  // and the booking link actually COMMIT, never against a row still mid-transaction).
+  let linkedItemToSync: string | null = null;
+
+  const result: AcceptQuoteResult | QuoteRefusal = await db.transaction(async (tx): Promise<AcceptQuoteResult | QuoteRefusal> => {
     const locked = await tx.execute(sql`
       SELECT q.*, s.user_id AS owner_user_id, s.service_name
       FROM service_quotes q
@@ -645,6 +705,10 @@ export async function acceptQuote(input: {
       // The same UNPAID state `POST /api/bookings` births. The charge is a separate lane (header).
       status: "pending",
       totalAmount,
+      // Ledger `2026-09-19-quote-plan-link`: the SAME spelling the cart rail uses
+      // (payments.routes.ts:1976). A plain column, never a SERVER_AUTHORED_BOOKING_DETAIL_KEY, so
+      // it rides this writer untouched — unlike `bookingDetails.itineraryItemId` below.
+      ...(quote.tripId ? { tripId: quote.tripId } : {}),
       ...(ownerShareRate !== null
         ? {
             platformFee: (amountNum * (1 - ownerShareRate)).toFixed(2),
@@ -660,6 +724,49 @@ export async function acceptQuote(input: {
       ...(quote.requestNote ? { bookingDetails: { notes: quote.requestNote } } : {}),
     } as Parameters<typeof storage.createServiceBookingAtomic>[0]);
 
+    // Ledger `2026-09-19-quote-plan-link`: copy `itinerary_item_id` onto the booking's
+    // `booking_details` (the SAME spelling the cart rail uses, payments.routes.ts:1997) and route
+    // the linked item into `ready_for_checkout` — both inside THIS transaction, the same posture
+    // `claimQuoteBornBooking` already takes for `booking_details.travelerCharge`:
+    // `createServiceBookingAtomic` would SILENTLY STRIP `itineraryItemId` if it were passed
+    // through its own `bookingDetails` param (§19d layer 2, correctly — that writer is the
+    // client-facing birth rail), so this is a direct, server-composed UPDATE instead, never a
+    // client-supplied value.
+    if (quote.itineraryItemId && quote.tripId) {
+      await tx.execute(sql`
+        UPDATE service_bookings
+           SET booking_details = COALESCE(booking_details, '{}'::jsonb)
+                 || jsonb_build_object('itineraryItemId', ${quote.itineraryItemId}::text),
+               updated_at = NOW()
+         WHERE id = ${booking.id}
+      `);
+
+      // The `in_planning -> ready_for_checkout` edge (ROUTING_STATE_CONTRACT §1), guarded exactly
+      // as `routing.routes.ts` guards every other traveler-driven crossing of it: the accept IS
+      // the traveler's purchase intent for this item. LD 39: the routing state is the source of
+      // truth here, not `cart_items` — `syncItemProjection` (called after commit, below) is the
+      // derived VIEW, and its own failure must never undo this flip or fail the accept.
+      const flipped = await tx.execute(sql`
+        UPDATE itinerary_items
+           SET routing_status = 'ready_for_checkout', updated_at = NOW()
+         WHERE id = ${quote.itineraryItemId}
+           AND trip_id = ${quote.tripId}
+           AND routing_status = 'in_planning'
+        RETURNING id
+      `);
+      if (flipped.rows.length === 1) {
+        linkedItemToSync = quote.itineraryItemId;
+      } else {
+        // 0 rows: the traveler routed the item elsewhere between request and accept (or it is
+        // already ready_for_checkout/purchased/with_expert). The booking still stands — it is the
+        // money truth (item-routing.service.ts's own posture) — logged, never fatal (§15b).
+        logger.warn(
+          { quoteId: quote.id, itemId: quote.itineraryItemId, tripId: quote.tripId },
+          "accept-quote: linked item was not in_planning at accept time; routing left untouched",
+        );
+      }
+    }
+
     // 3 · THE STAMP, in the same transaction as the claim.
     const [stamped] = await tx
       .update(serviceQuotes)
@@ -668,4 +775,19 @@ export async function acceptQuote(input: {
       .returning();
     return { ok: true, minted: true, bookingId: booking.id, quote: presentQuote(stamped, serviceName, now) };
   });
+
+  // Ledger `2026-09-19-quote-plan-link`: the cart's derived view, reconciled AFTER commit — best
+  // effort, never allowed to fail the (already-committed) accept (§15b).
+  if (linkedItemToSync) {
+    try {
+      await syncItemProjection(linkedItemToSync);
+    } catch (err) {
+      logger.error(
+        { err, itemId: linkedItemToSync },
+        "accept-quote: cart projection sync failed after linking the plan item (re-runnable)",
+      );
+    }
+  }
+
+  return result;
 }

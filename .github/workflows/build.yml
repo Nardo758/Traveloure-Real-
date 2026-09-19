@@ -1443,6 +1443,50 @@ jobs:
       - name: Quote-born booking charge (Q1–Q11)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/quote-born-charge.db.test.ts
 
+  quote-plan-link:
+    name: quote-plan-link (migration 314; ledger 2026-09-19-quote-plan-link)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # A quote's `trip_id`/`itinerary_item_id` (migration 314) are server-verified at request time
+      # (P1 stores a valid tripId; P2 is ONE 404 for another user's trip, nothing stored; P3 refuses
+      # an item on the wrong trip or for the wrong listing), copied onto the booking at accept
+      # (P4 — the same spellings the cart rail uses, and the linked item routes to
+      # ready_for_checkout with no new call site for the EXISTING paid promotion to later flip it
+      # to purchased, P6), and the Trip Pass waiver PR #988 shipped now actually fires (P5, the SAME
+      # mechanism Q13 proves). P7 pins an unlinked quote as byte-identical to before this lane.
+      - name: Quote-plan link (P1–P7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/quote-plan-link.db.test.ts
+
   booking-birth-provenance:
     name: booking-birth-provenance (rulings 41/46; ledger 2026-09-12-booking-birth-holes)
     runs-on: ubuntu-latest
