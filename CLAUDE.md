@@ -1506,6 +1506,13 @@ This document captures architectural decisions to maintain consistency across co
     confirmation (the copilot only DRAFTS it); the `origin` a copilot-prepared, human-pressed
     booking's itinerary item carries (the confirm path writes `origin:'expert'` today, true when an
     expert pressed and false when the traveler did); and which partner is Phase 2's first.
+    **CUSTODY PURCHASING IS RATIFIED IN PRINCIPLE, NOT YET BUILT (ledger `2026-09-19-concierge-custody-rulings`).**
+    `docs/design/CONCIERGE_BOOKING_UNIVERSAL_DESIGN.md` CB-1 and CB-3–CB-7 are adopted; CB-2 keeps
+    Locked Decision 51's Booking Concierge fee UNCHANGED (pass-through principal, no second fee, no
+    re-base on partner principal). LD 43(c)'s "affiliate purchases never see wallets" and LD 44(c)'s
+    "purchases with their own payment method" will be AMENDED when Lane 3 actually lands a platform
+    PaymentIntent / issued card — not now, since no code exists. The HARD STOP (CB-8 numbers, the
+    companion audit) still holds; do not start Lane 3 against this paragraph alone.
 
 45. **THE AI CONCIERGE IS AN ACTOR ON THE PLAN, NOT A PLACE; THE CONSOLE IS ONE SPINE WITH EVERY
     OTHER TAB A VIEW (decision-maker ratified Sep 7, 2026 — ledger rows
