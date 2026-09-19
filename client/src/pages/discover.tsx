@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocationMismatchGate } from "@/hooks/use-location-mismatch-gate";
 import { earnerProfilePath } from "@/lib/earner-address";
+import { deliveryMethodLabel } from "@/lib/delivery-method-label";
 import { LocationMismatchDialog } from "@/components/location-mismatch-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -218,8 +219,17 @@ function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) 
           {l.heroImageUrl && (
             <img src={l.heroImageUrl} alt={l.title} className="w-full h-full object-cover" />
           )}
+          {/* E2 (cosmetic-public-surfaces dispatch): `bg-[var(--earn-ink)]/70` compiled to no
+              CSS rule at all — verified in the built bundle. The dispatch's suggested
+              `bg-[color:var(--earn-ink)]/70` was tried next and ALSO produced no rule (verified
+              the same way, on this codebase's existing `bg-[color:var(--x)]/NN` usages
+              elsewhere — none of them emit an opacity-bearing rule either: `--earn-ink` is a
+              bare hex literal, not the space-separated RGB channel triple Tailwind's opacity
+              modifier needs to build `rgb(var(--x) / <alpha>)`). Writing the `color-mix()` as a
+              literal arbitrary value sidesteps the modifier machinery entirely and DOES compile
+              (confirmed in the built bundle). Same fix at the other card's copy below. */}
           <span
-            className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9.5px] uppercase tracking-wide bg-[var(--earn-ink)]/70 text-white"
+            className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9.5px] uppercase tracking-wide bg-[color-mix(in_srgb,var(--earn-ink)_70%,transparent)] text-white"
             style={{ fontFamily: EARN_MONO }}
           >
             {l.market}
@@ -417,7 +427,11 @@ function ServiceCard({
   const location = service.location || "Remote";
   // §13: a "Verified local" line is a claim, shown only once the service has real reviews.
   const isVerified = reviewCount >= 3;
-  const serviceType = category?.name || service.deliveryMethod || "Service";
+  // E1 (cosmetic-public-surfaces dispatch): a seed row with no category fell through to the raw
+  // `deliveryMethodEnum` token ("in_person", "pdf") as the visible "service type" text. Humanize
+  // it through the one shared mapper rather than printing the wire value; an unrecognized method
+  // still falls back to "Service" — never a guessed category (§13). No data backfill.
+  const serviceType = category?.name || deliveryMethodLabel(service.deliveryMethod) || "Service";
 
   // Real provider display name / initials from API data — never fabricated (§13).
   const providerName =
@@ -456,7 +470,7 @@ function ServiceCard({
         <Link href={detailHref} data-testid={`link-service-${service.id}`}>
           <div className="relative h-[140px] cursor-pointer bg-gradient-to-br from-[var(--earn-chip)] to-[color:var(--earn-border)]">
             <span
-              className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9.5px] uppercase tracking-wide bg-[var(--earn-ink)]/70 text-white"
+              className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9.5px] uppercase tracking-wide bg-[color-mix(in_srgb,var(--earn-ink)_70%,transparent)] text-white"
               style={{ fontFamily: EARN_MONO }}
             >
               {serviceType}
