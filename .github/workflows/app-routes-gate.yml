@@ -235,10 +235,131 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # cosmetic-public-surfaces: Playwright DOM gate.
+  #
+  # Arms `playwright/tests/cosmetic-public-surfaces.spec.ts` (lane D,
+  # `docs/briefs/COSMETIC_PUBLIC_SURFACES_DISPATCH.md`) — the 15 findings
+  # A1–E2 landed across PRs #995–#998 plus this lane's own D1 fix. Copy of
+  # app-routes-smoke's structure (same setup dependency, same server-boot
+  # recipe), swapped to the cosmetic spec.
+  # ─────────────────────────────────────────────────────────────────────────
+  cosmetic-public-surfaces:
+    name: cosmetic-public-surfaces (Playwright DOM gate)
+    runs-on: ubuntu-latest
+    needs: [setup]
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Restore Playwright browser cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright system deps
+        run: npx playwright install-deps chromium
+
+      - name: Restore production build cache
+        uses: actions/cache@v4
+        with:
+          path: dist/
+          key: build-${{ runner.os }}-${{ hashFiles('client/**', 'server/**', 'shared/**', 'package-lock.json') }}
+
+      - name: Set up CI database (migrations, sessions table, test users)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'true'
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          # The documented CI escape hatch (server/infrastructure/rate-limiter.ts
+          # loopbackSkip — already used by discover-tabs-gate.yml and others):
+          # this spec's own C1/C3/C4 each load /discover/location/Kyoto (50+ gems,
+          # ~60 /api calls per load from the SAME loopback IP), so three loads in
+          # one serial run can exceed generalRateLimiter's 100-req/60s cap and
+          # 429 a later test's own page load. NEVER set in production.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Assert spec file exists (cosmetic-public-surfaces)
+        run: |
+          if [ ! -f "playwright/tests/cosmetic-public-surfaces.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/cosmetic-public-surfaces.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
+      - name: Cosmetic public surfaces (A1–E2)
+        run: npx playwright test cosmetic-public-surfaces --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosmetic-public-surfaces-report
+          path: playwright-report/
+          retention-days: 14
+
   report:
     name: report (PR comment)
     runs-on: ubuntu-latest
-    needs: [app-routes-smoke]
+    needs: [app-routes-smoke, cosmetic-public-surfaces]
     if: ${{ always() && github.event_name == 'pull_request' }}
     steps:
       - name: Post pass/fail summary to the PR

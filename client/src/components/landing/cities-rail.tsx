@@ -52,8 +52,16 @@ export function CitiesRail() {
         title="Cities with momentum this month"
         link={{ label: "All destinations →", href: "/destinations", testId: "link-all-destinations" }}
       />
+      {/* D1 (cosmetic-public-surfaces dispatch): this row printed ALL of `cities` (up to the
+          full 8 operating markets) as one unbroken `whitespace-nowrap` line with
+          `overflow-hidden` and no scroll and no animation — 3 of 8 labels hard-clipped at
+          1440px, 7 of 8 at 390px. `overflow-x-auto` (the same treatment already used for the
+          mobile tab strip elsewhere, `experience-template.tsx`) makes the strip honestly
+          scrollable instead of silently truncating; `scrollbar-hide` (existing utility,
+          `client/src/index.css`) keeps the ticker's visual register — content still reachable
+          via touch/trackpad/keyboard scroll, no bar drawn over it. */}
       <div
-        className="mb-3 flex items-center gap-7 overflow-hidden whitespace-nowrap text-[10.5px] font-medium uppercase tracking-[0.14em]"
+        className="mb-3 flex items-center gap-7 overflow-x-auto scrollbar-hide whitespace-nowrap text-[10.5px] font-medium uppercase tracking-[0.14em]"
         style={{ fontFamily: EARN_MONO, color: "var(--earn-teal-ink)" }}
         data-testid="cities-ticker"
       >

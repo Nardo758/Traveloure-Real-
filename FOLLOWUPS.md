@@ -634,3 +634,79 @@ a stale badge query, so the same page shows two different numbers for the same f
 
 **Being fixed in the service-detail handoff PR** (`fix/service-detail-trip-handoff`). Recorded here only
 so it is not picked up a second time; do not open work against it.
+
+## From the cosmetic public surfaces lane (2026-09-19, `docs/briefs/COSMETIC_PUBLIC_SURFACES_DISPATCH.md`)
+
+Findings ruled out of scope by dispatch §4 ("What Not To Do") or explicitly deferred by a lane's own
+finding table. None of these were touched by PRs #995–#998 (or lane D's own PR); each needs its own
+lane, and several need a product decision this dispatch's audit was not positioned to make.
+
+### FU — A7: mobile nav menu needs an accordion, not a longer flat list
+
+The mobile panel is a flat ~1,979px list (≈2.5 screens) with a top-of-panel sign-in button added by
+lane A (`button-mobile-sign-in-top`) as the scoped fix. A full accordion/collapsible-section
+restructure of `layout.tsx:841–960` was explicitly out of scope (dispatch §4: "Do not restructure the
+mobile menu beyond A6/A7 as scoped").
+
+**Action:** a real IA pass — grouping the existing sections (Marketplace, Find Help, Tools, Earn,
+account) behind collapsible headers — is its own lane with its own design review, not a mechanical
+follow-on to A6/A7.
+
+### FU — D2: landing hero photo mismatch (wrong caption, reused image)
+
+"A wedding weekend in Kyoto" sits over a photo captioned "Goa at sunset"; the same photo is also used
+for the Goa gem "Tito's Lane" in the hero. Dispatch D2 (confidence L, "observed once") left this
+unmapped — it is a content/asset-selection defect, not a layout one, and lane D's own scope was the
+ticker strip (D1) only.
+
+**Action:** trace which hero-demo seed row supplies that image/caption pair
+(`server/seeds/landing-hero-demo.seed.ts`) and correct the mapping or swap the asset. Needs someone to
+confirm the intended caption/photo pairing before editing seed data — not a mechanical fix.
+
+### FU — Seed-data honesty gaps surfaced during the cosmetic audit: "Admin User", literal `Ladurée`, null service categories, missing service images, misfiled Wanted cards
+
+The audit's crawl surfaced several seed-data rows that render literally rather than meaningfully:
+a provider display name of "Admin User", a title containing the un-escaped literal `Ladurée`, service
+rows with no category (the root cause E1 had to route around, not fix), rows with no service image,
+and Wanted cards appearing to a viewer under a neighbourhood heading that does not match their own
+content. Dispatch §4 rules all of these out for the cosmetic lanes by name: "Do not edit, reseed or
+backfill data: … All → FOLLOWUPS.md. Null is honest; fabricated backfill is banned."
+
+**Action:** a seed-data hygiene pass, separate from any layout lane — confirm which of these are seed
+artifacts only (fix the seed) versus real production rows (fix the data or, per §13, confirm the
+absence is the honest state and stop treating it as a defect).
+
+### FU — `/api/media/place-photo` rate limiting causes a blank state on `/discover/location/:city`
+
+Back-to-back requests to a city's Discover page trip the general API rate limiter (100 req/window),
+observed directly while validating lane C locally: `/api/discover/location/Kyoto` itself can return
+429, and `/api/media/place-photo` calls (several per gem card) exhaust the budget fast on a page with
+50+ gems. Dispatch §4: "Do not touch `/api/media/place-photo` rate limiting or the blank-on-429 state
+of `/discover/location/:city`. Real, but not cosmetic → FOLLOWUPS.md." (Lanes C and E both documented
+this as a local-testing flake that clears on a fresh server / after the window resets — see PR #997 and
+#998's "Local test run" sections — but the underlying limiter tuning is the real, separate defect: a
+normal user browsing one city page quickly can plausibly hit the same wall production-side.)
+
+**Action:** review whether `/api/discover/location/:city` and `/api/media/place-photo` should sit under
+a higher-budget or per-route limiter rather than the general 100/window one, and whether the client
+should degrade gracefully (retry/backoff) on a 429 instead of rendering blank.
+
+### FU — `/deals` has no pagination (49,852px desktop / 147,106px mobile page height)
+
+Dispatch §4: "Do not paginate `/deals` … Real, needs a product decision → FOLLOWUPS.md." The page
+height figures are from the dispatch's own measurement.
+
+**Action:** needs a product decision on pagination vs. infinite scroll vs. a filtered/curated view
+before any implementation lane starts.
+
+### FU — 28-family Google Fonts `<link>` in `client/index.html:29` is unpruned
+
+Dispatch §4: "Do not prune the 28-family Google Fonts `<link>` … Real, separate perf lane →
+FOLLOWUPS.md." The app's actual type system uses a small named set (Fraunces / Inter / Geist Mono /
+DM Serif Display, per `client/src/index.css`'s `@import` and this dispatch's own "Method" line); the
+`<link>` tag requests far more than that.
+
+**Action:** a perf lane — audit which families/weights are actually referenced anywhere in
+`client/src`, trim the `<link>` to that set, and verify no page silently depended on an unused one
+(Japanese-locale fallback fonts included, per dispatch §5's stated gap on Japanese-locale text
+metrics).
