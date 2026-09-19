@@ -781,10 +781,14 @@ test.describe('city-feed bento — /discover/location', () => {
       )
       .toBe(true);
     const wanted = page.getByTestId('section-recruitment-gion');
-    await expect(wanted.getByTestId('link-wanted-more-info-gion')).toHaveAttribute('href', '/how-it-works');
+    // C5 (cosmetic-public-surfaces dispatch, decision-maker ruled 2026-09-18,
+    // landed via PR #997, ledger 2026-09-19-cosmetic-public-surfaces): a
+    // recruitment card's "More info" points at /earn, not the generic
+    // /how-it-works.
+    await expect(wanted.getByTestId('link-wanted-more-info-gion')).toHaveAttribute('href', '/earn');
     await expect(wanted.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
     const earn = page.getByTestId('feed-card-earn');
-    await expect(earn.getByTestId('link-earn-more-info')).toHaveAttribute('href', '/how-it-works');
+    await expect(earn.getByTestId('link-earn-more-info')).toHaveAttribute('href', '/earn');
     await expect(earn.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
     // View source → NO storefront/profile link on a partner tile; the source control
     // is present (its outbound rel="noopener,noreferrer" lives in the window.open call).
