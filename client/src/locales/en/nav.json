@@ -15,7 +15,7 @@
     "localExpert": "Local Expert",
     "localExpertDesc": "Turn your city knowledge into consultations & local guides",
     "eventPlanner": "Event Planner",
-    "eventPlannerDesc": "Plan your event — weddings, proposals & group celebrations",
+    "eventPlannerDesc": "Coordinate weddings, proposals & group celebrations for clients",
     "serviceProvider": "Service Provider",
     "serviceProviderDesc": "Offer venues, transport & speciality services",
     "executiveAssistant": "Executive Assistant",
@@ -24,9 +24,12 @@
   "groups": {
     "marketplace": "Marketplace",
     "expertsAndServices": "Experts & Services",
+    "expertsAndServicesShort": "Experts",
     "experiences": "Experiences",
     "planningTools": "Planning Tools",
+    "planningToolsShort": "Tools",
     "waysToEarn": "Ways to Earn",
+    "waysToEarnShort": "Earn",
     "pricing": "Pricing"
   },
   "sections": {
@@ -69,7 +72,7 @@
     "honeymoon": "Honeymoon",
     "anniversaryTrip": "Anniversary Trip",
     "browseAllOccasions": "Browse all occasions",
-    "aiPlanPlanner": "AI Plan Planner",
+    "aiPlanPlanner": "AI Planner",
     "visaHelp": "Visa Help",
     "liveIntel": "Live Intel",
     "todaysDeals": "Today's Deals"

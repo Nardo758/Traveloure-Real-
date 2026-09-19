@@ -8,7 +8,13 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 
-const DESKTOP_WIDTHS = [1024, 1100, 1280, 1440];
+// Authorised spec edit (dispatch §3, Lane A row): once R2 lands, the desktop nav breakpoint
+// moves from `lg` (1024px) to `xl` (1280px) — the hamburger now owns 1024 and 1100, so the
+// "no wrap, no overlap" desktop-nav assertions only apply where the desktop nav actually
+// renders. 1024/1100 get their own assertion below (button-mobile-menu visible there) instead
+// of being silently dropped from the file.
+const DESKTOP_WIDTHS = [1280, 1440];
+const HAMBURGER_WIDTHS = [1024, 1100];
 const MOBILE = { width: 390, height: 844 };
 
 async function settle(page: Page, path: string) {
@@ -54,6 +60,14 @@ test.describe('Lane A — header', () => {
     );
     expect(cut).toEqual([]);
   });
+
+  for (const width of HAMBURGER_WIDTHS) {
+    test(`A1/A2 @${width}px: hamburger owns this width (button-mobile-menu visible)`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await settle(page, '/');
+      await expect(page.getByTestId('button-mobile-menu')).toBeVisible();
+    });
+  }
 
   test('A6: mobile menu opens at scrollTop 0', async ({ page }) => {
     await page.setViewportSize(MOBILE);
