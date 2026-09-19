@@ -24,7 +24,6 @@
 # counted here as reachable OR as an orphan. That limit is unchanged by the ratchet.
 playwright/crossbrowser/smoke.spec.ts
 playwright/tests/breakpoint-hamburger.spec.ts
-playwright/tests/cosmetic-public-surfaces.spec.ts
 playwright/tests/content-system.spec.ts
 playwright/tests/deprecated-route-redirects.spec.ts
 playwright/tests/discover-bento-real-data.spec.ts
