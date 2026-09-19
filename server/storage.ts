@@ -10,6 +10,10 @@ import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-adviso
 import { upsertTripAdvisorRow } from "./services/booking-actions.service";
 import type { TripAdvisorRowStatus } from "./utils/trip-advisor-status";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
+// Locked Decision 51 lane F (ledger `2026-09-18-platform-concierge-listing`): the ONE helper that
+// answers "is this the platform's own reserved Booking Concierge account" — read here so the
+// concierge-fee expert-share re-split is skipped when the listing owner is not a person.
+import { isPlatformConciergeUserId } from "./services/platform-concierge.service";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
 import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
@@ -1151,6 +1155,16 @@ export interface IStorage {
   // Affiliate Booking Requests
 
   createAffiliateBookingRequest(data: InsertAffiliateBookingRequest): Promise<AffiliateBookingRequest>;
+
+  // Ledger `2026-09-18-concierge-handoff`. §15: the statement is the guard —
+  // `ON CONFLICT (service_booking_id, itinerary_item_id) DO NOTHING` against the migration-312
+  // partial UNIQUE — so a retried hand-off for the same booking and the same plan item inserts
+  // nothing a second time. Returns `undefined` when the conflict fired (the row already exists),
+  // never throws. Only ever called with BOTH `itineraryItemId` and `serviceBookingId` set — the
+  // legacy `createAffiliateBookingRequest` above stays the writer for every row born without them.
+  createAffiliateBookingRequestIdempotent(
+    data: InsertAffiliateBookingRequest & { itineraryItemId: string; serviceBookingId: string },
+  ): Promise<AffiliateBookingRequest | undefined>;
 
   getAffiliateBookingRequestById(id: string): Promise<AffiliateBookingRequest | undefined>;
 
@@ -3599,6 +3613,40 @@ export class DatabaseStorage implements IStorage {
           ? `; ${reduced.cancelledComponentIds.length} traveler-cancelled component(s) retained ${reduced.cancelledRetainedCents} cents under the snapshotted cancellation policy`
           : "";
       mintBasis = ` (partially completed — ${reduced.undeliveredComponentIds.length} undelivered component(s) deducted; basis ${reduced.basis}${retained})`;
+    }
+    // ── Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`): THE EXPERT'S SHARE OF
+    // THE BOOKING CONCIERGE FEE, re-split here rather than at capture (R6 posture, migration-142
+    // precedent) — the fee is still collected 100% platform at capture (payments.routes.ts). The
+    // share was computed at PURCHASE from the `expert_concierge_booking_expert_share` band and
+    // snapshotted onto the row (`booking_details.travelerCharge.conciergeFeeExpertShare`) — it is
+    // READ here and never re-resolved (LD 48's "no rate re-resolved at completion" posture). It is
+    // folded into `providerEarningsAmount` / subtracted from `platformFee` BEFORE the transaction's
+    // inserts below, so it rides the EXISTING `onConflictDoNothing` guard on those SAME rows — a
+    // retry mints exactly ONE combined earning, never a second row. A booking with no such key
+    // (every row before this lane) splits nothing — no backfill (§13).
+    const conciergeExpertShareSnapshot = parseFloat(
+      String((booking.bookingDetails as any)?.travelerCharge?.conciergeFeeExpertShare ?? '0'),
+    );
+    // Locked Decision 51 lane F (ledger `2026-09-18-platform-concierge-listing`, ruled choice (2)):
+    // NO SPLIT for the platform-owned listing. This is the ONE skip check the ruling names — a
+    // platform account is not a person the facilitation fee can be shared with, and minting a
+    // "held expert earning" to an account with no Stripe Connect account (and that will never
+    // have one) is a real payable nobody can ever draw, which is worse than not creating it
+    // (§13: a stated absence beats an unreachable claim). Scoped ONLY to this concierge-fee
+    // re-split — it does not touch `providerEarningsAmount`'s base figure above, which is the
+    // ordinary earnings-mint mechanism every booking already goes through regardless of who owns
+    // the listing.
+    const isPlatformOwnedListing = await isPlatformConciergeUserId(providerId);
+    if (isPlatformOwnedListing && Number.isFinite(conciergeExpertShareSnapshot) && conciergeExpertShareSnapshot > 0) {
+      mintBasis += ` (concierge split skipped: listing owner is the platform Booking Concierge account — 100% stays platform revenue, Locked Decision 51 lane F)`;
+    } else if (Number.isFinite(conciergeExpertShareSnapshot) && conciergeExpertShareSnapshot > 0) {
+      // Never drives the platform's own take negative — a bundle's partial-completion reduction
+      // (D-35, above) can shrink `platformFee` below the purchase-time concierge share; clamp
+      // rather than mint a fee the row no longer carries.
+      const share = Math.min(conciergeExpertShareSnapshot, platformFee);
+      platformFee -= share;
+      providerEarningsAmount += share;
+      mintBasis += ` (concierge split: $${share.toFixed(2)} to provider)`;
     }
     // Earnings become available after the configurable hold period (config, `holdWindowDays`).
     //
@@ -7815,6 +7863,23 @@ export class DatabaseStorage implements IStorage {
     return record;
   }
 
+  // Ledger `2026-09-18-concierge-handoff`: see the interface doc comment. The `target` +
+  // `where` pair must match the migration-312 partial UNIQUE index byte-for-byte, or Postgres
+  // has no arbiter to conflict on and the insert raises instead of no-opping.
+  async createAffiliateBookingRequestIdempotent(
+    data: InsertAffiliateBookingRequest & { itineraryItemId: string; serviceBookingId: string },
+  ): Promise<AffiliateBookingRequest | undefined> {
+    const [record] = await db
+      .insert(affiliateBookingRequests)
+      .values(data)
+      .onConflictDoNothing({
+        target: [affiliateBookingRequests.serviceBookingId, affiliateBookingRequests.itineraryItemId],
+        where: sql`service_booking_id IS NOT NULL AND itinerary_item_id IS NOT NULL`,
+      })
+      .returning();
+    return record;
+  }
+
   async getAffiliateBookingRequestById(id: string): Promise<AffiliateBookingRequest | undefined> {
     const [row] = await db
       .select()
@@ -7835,6 +7900,8 @@ export class DatabaseStorage implements IStorage {
     return rows.map(({ affiliateUrl: _url, ...rest }) => rest);
   }
 
+  // Ledger `2026-09-18-concierge-handoff`: `itineraryItemId`/`serviceBookingId` ride this full-row
+  // select automatically (both new columns, no `affiliateUrl` change) — no query change needed.
   async getAffiliateBookingRequestsByExpert(expertId: string, tripId?: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]> {
     const expertScope = or(
       eq(affiliateBookingRequests.expertId, expertId),

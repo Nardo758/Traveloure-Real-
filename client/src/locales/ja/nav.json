@@ -24,9 +24,12 @@
   "groups": {
     "marketplace": "マーケットプレイス",
     "expertsAndServices": "エキスパートとサービス",
+    "expertsAndServicesShort": "エキスパート",
     "experiences": "体験",
     "planningTools": "プランニングツール",
+    "planningToolsShort": "ツール",
     "waysToEarn": "収入を得る方法",
+    "waysToEarnShort": "収入",
     "pricing": "料金"
   },
   "sections": {

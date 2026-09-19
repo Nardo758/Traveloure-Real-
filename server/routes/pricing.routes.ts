@@ -16,6 +16,7 @@ import {
   requireFlatCentsBand,
   requireBandType,
   requireCountBand,
+  readBand,
   CONCIERGE_AI_TASK_BAND,
   CONCIERGE_DONE_FOR_YOU_DEPOSIT_BAND,
   PROVIDER_LIMITED_BAND,
@@ -24,6 +25,11 @@ import {
   PROVIDER_PRO_BAND_STEP,
   PROVIDER_RAILS_BAND,
 } from "../services/fee-resolution.service";
+import {
+  CONCIERGE_BOOKING_FEE_BAND_KEY,
+  CONCIERGE_BOOKING_EXPERT_SHARE_BAND,
+  declaredFallbackValue,
+} from "../services/fee-band-requirements";
 import { getFee } from "../services/optimization-fee.service";
 import { isPlusSalesEnabled } from "../config/plus-sales";
 
@@ -52,6 +58,8 @@ export const getPricingHandler = async (_req: any, res: any) => {
       railsBand,
       proBandStepBand,
       optimizerRun,
+      conciergeBookingBand,
+      conciergeExpertShareBand,
     ] = await Promise.all([
       requireBand(TRAVELER_SERVICE_FEE_BAND),
       requireFlatCentsBand(CONCIERGE_AI_TASK_BAND),
@@ -61,11 +69,26 @@ export const getPricingHandler = async (_req: any, res: any) => {
       requireBand(PROVIDER_RAILS_BAND),
       requireCountBand(PROVIDER_PRO_BAND_STEP),
       getFee(null, "simple"),
+      // Locked Decision 51: fail-loud like every other required band above — the cap is now
+      // REQUIRED (`requiresMaxAmount`), so a missing/uncapped row here means the same
+      // misconfiguration the checkout charge loop would also refuse.
+      requireBand(CONCIERGE_BOOKING_FEE_BAND_KEY),
+      // Fallback-backed (R6 posture): a missing/inactive/wrong-typed row is a real admin state,
+      // not a misconfiguration — the pricing page shows the SAME documented default the
+      // completion mint would split at.
+      readBand(CONCIERGE_BOOKING_EXPERT_SHARE_BAND),
     ]);
 
     if (travelerServiceFeeBand.maxAmount === null) {
       throw new Error("traveler_service_fee band is missing its max_amount cap");
     }
+    if (conciergeBookingBand.maxAmount === null) {
+      throw new Error("expert_concierge_booking band is missing its max_amount cap");
+    }
+    const conciergeExpertShareRate =
+      conciergeExpertShareBand && conciergeExpertShareBand.rateType === "percent" && conciergeExpertShareBand.rate > 0
+        ? conciergeExpertShareBand.rate
+        : declaredFallbackValue(CONCIERGE_BOOKING_EXPERT_SHARE_BAND);
 
     const bundle = {
       serviceFeePct: round1(travelerServiceFeeBand.rate * 100),
@@ -100,6 +123,14 @@ export const getPricingHandler = async (_req: any, res: any) => {
       proRateStepped: round1(proRateSteppedBand.rate * 100),
       railsRate: round1(railsBand.rate * 100),
       proBandStep: proBandStepBand.rate,
+      // Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`): the Booking Concierge
+      // fee's rate, dollar cap and expert/platform split — all THREE platform-set bands, never
+      // expert-settable, resolved live so a rate/cap edit is visible here without a deploy.
+      conciergeBooking: {
+        percent: round1(conciergeBookingBand.rate * 100),
+        capDollars: conciergeBookingBand.maxAmount,
+        expertSharePercent: round1(conciergeExpertShareRate * 100),
+      },
       // Plus-occasions lane (ledger 2026-08-27-plus-is-delivery): the sales gate. While false
       // (default), the /pricing + landing "Join Plus" CTAs show coming-soon / route to a waitlist
       // instead of checkout. Public read (this bundle is unauthenticated).

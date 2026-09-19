@@ -110,7 +110,7 @@ export const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: st
   "Boys Trip":         Users,
   "Girls Trip":        UsersRound,
   "Reunions":          PartyPopper,
-  "AI Plan Planner":   Bot,
+  "AI Planner":        Bot,
   "Visa Help":         FileText,
   "Live Intel":        Sparkles,
   "Today's Deals":     CreditCard,
@@ -130,6 +130,11 @@ const AUTH_NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>
 const navItems = navGroupsConfig.map((group) => ({
   name: group.name,
   i18nKey: group.i18nKey,
+  // R2 (cosmetic-public-surfaces dispatch, A2): carried through ONLY for the desktop trigger's
+  // own render sites (DesktopDropdown, below) — the mobile menu heading and dropdown section
+  // headings read `name`/`i18nKey` above, untouched, and keep the long form.
+  shortName: group.shortName,
+  shortI18nKey: group.shortI18nKey,
   href: group.href,
   icon: ChevronDown,
   // The group-level footer leaf (nav-config `footer`), carried through verbatim. Rendered from
@@ -286,7 +291,7 @@ function DesktopDropdown({
       <Link
         href={item.href || "#"}
         className={cn(
-          "text-[12.5px] font-medium tracking-[.05em] transition-colors px-3 py-2 relative rounded-md",
+          "text-[12.5px] font-medium tracking-[.05em] transition-colors px-3 py-2 relative rounded-md whitespace-nowrap",
           FOCUS_RING,
           isActive ? CHROME_LINK_ACTIVE : CHROME_LINK_REST
         )}
@@ -295,7 +300,9 @@ function DesktopDropdown({
         aria-current={isActive ? "page" : undefined}
         data-testid={`link-nav-${slugify(item.name)}`}
       >
-        {tr(item.i18nKey, item.name)}
+        {/* R2: the desktop trigger prefers the short label (item.shortName); the mobile menu's
+            own render of this same config item, below, deliberately keeps `name`/`i18nKey`. */}
+        {tr(item.shortI18nKey ?? item.i18nKey, item.shortName ?? item.name)}
       </Link>
     );
   }
@@ -315,7 +322,7 @@ function DesktopDropdown({
       <button
         ref={triggerRef}
         className={cn(
-          "flex items-center text-[12.5px] font-medium tracking-[.05em] transition-colors px-3 py-2 rounded-md",
+          "flex items-center text-[12.5px] font-medium tracking-[.05em] transition-colors px-3 py-2 rounded-md whitespace-nowrap",
           CHROME_LINK_REST,
           FOCUS_RING
         )}
@@ -327,7 +334,9 @@ function DesktopDropdown({
         onKeyDown={handleKeyDown}
         data-testid={`button-nav-dropdown-${slugify(item.name)}`}
       >
-        {tr(item.i18nKey, item.name)}
+        {/* R2: short trigger text only — the dropdown panel's own aria-label below keeps the
+            full name for screen readers, and the panel's section headings are untouched. */}
+        {tr(item.shortI18nKey ?? item.i18nKey, item.shortName ?? item.name)}
         <ChevronDown className={cn("ml-1 w-4 h-4 transition-transform text-[color:var(--earn-faint)]", isOpen && "rotate-180")} aria-hidden="true" />
       </button>
 
@@ -398,7 +407,12 @@ function DesktopDropdown({
                           </span>
                         )}
                         <div className="min-w-0">
-                          <div className="text-[color:var(--earn-ink)] font-medium truncate">
+                          {/* A3 (cosmetic-public-surfaces dispatch): `truncate` clipped a label to
+                              one line with no way to read the rest ("Wedding Anniver…"). The row
+                              is `items-start` with a fixed-size icon beside it, so a second line
+                              costs nothing layout-wise; `line-clamp-2` shows the whole label for
+                              every name this menu carries while still capping runaway length. */}
+                          <div className="text-[color:var(--earn-ink)] font-medium line-clamp-2">
                             {tr(child.i18nKey, child.name)}
                           </div>
                           {child.description && sections.length <= 2 && (
@@ -634,10 +648,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
     document.addEventListener("keydown", trapTab);
 
-    // Move focus into the menu when it opens
+    // A6 (cosmetic-public-surfaces dispatch): the menu opens pre-scrolled (scrollTop measured
+    // 72 on one run, 38 on another — never 0). Root cause: the container is still mid-height-
+    // animation (framer motion, 200ms `height: 0 -> auto`) when this rAF fires, so the browser's
+    // native focus-brings-element-into-view behaviour scrolls the not-yet-fully-open container
+    // by whatever partial height it has at that instant — a race, which is why the two runs
+    // measured two different numbers. `{ preventScroll: true }` stops the browser from doing
+    // that scroll at all, and the explicit `scrollTop = 0` covers the residual case where a
+    // previous open left the container scrolled before it was hidden.
+    if (mobileMenuRef.current) mobileMenuRef.current.scrollTop = 0;
     const focusable = getFocusable();
     if (focusable.length > 0) {
-      requestAnimationFrame(() => focusable[0].focus());
+      requestAnimationFrame(() => {
+        focusable[0].focus({ preventScroll: true });
+        if (mobileMenuRef.current) mobileMenuRef.current.scrollTop = 0;
+      });
     }
 
     return () => document.removeEventListener("keydown", trapTab);
@@ -700,7 +725,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </span>
               </Link>
 
-              <div className="hidden lg:ml-8 lg:flex lg:items-center gap-1">
+              <div className="hidden xl:ml-8 xl:flex xl:items-center gap-1">
                 {navItems.map((item) => (
                   <DesktopDropdown
                     key={item.name}
@@ -731,7 +756,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               */}
               {isAuthLoading && (
                 <div
-                  className="hidden lg:flex items-center gap-2"
+                  className="hidden xl:flex items-center gap-2"
                   aria-hidden="true"
                   data-testid="nav-account-pending"
                 >
@@ -741,7 +766,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               )}
 
               {!user && !isAuthLoading && (
-                <div className="hidden lg:flex items-center gap-2">
+                <div className="hidden xl:flex items-center gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -797,14 +822,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {user && (
                 <>
                   <NotificationBell />
-                  <div className="hidden lg:block">
+                  <div className="hidden xl:block">
                     <UserMenu />
                   </div>
                 </>
               )}
 
               {/* TEST 3 + 9 — Hamburger: aria-label, aria-expanded, aria-controls; min 44×44px */}
-              <div className="flex items-center lg:hidden">
+              <div className="flex items-center xl:hidden">
                 <button
                   ref={hamburgerRef}
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -838,9 +863,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
               aria-modal="true"
               aria-label={t("navigationMenu")}
               {...slideMotion}
-              className="lg:hidden border-t border-[color:var(--earn-border)] max-h-[calc(100svh-60px)] overflow-y-auto"
+              className="xl:hidden border-t border-[color:var(--earn-border)] max-h-[calc(100svh-60px)] overflow-y-auto"
               style={{ background: "var(--earn-ground)" }}
             >
+              {/* A7 (cosmetic-public-surfaces dispatch): the panel is a flat ~1,979px list
+                  (≈2.5 screens) with the ONLY sign-in affordance at its very bottom. Restructuring
+                  the list into an accordion is out of scope (FOLLOWUPS.md); moving the one control
+                  a signed-out visitor is most likely to want is not. Signed-out only — a signed-in
+                  visitor's identity/logout stays where it already was, at the panel's foot. */}
+              {!user && (
+                <div className="px-4 pt-3">
+                  <Button
+                    className="w-full text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      openSignInModal();
+                    }}
+                    data-testid="button-mobile-sign-in-top"
+                  >
+                    {t("signIn")}
+                  </Button>
+                </div>
+              )}
               {/* Mobile Nav */}
               <div className="pt-2 pb-3 space-y-1 px-4">
                 {navItems.map((item) => (

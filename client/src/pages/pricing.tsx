@@ -55,6 +55,7 @@ interface PricingBundle {
   proRateStepped: number;
   railsRate: number;
   proBandStep: number;
+  conciergeBooking: { percent: number; capDollars: number; expertSharePercent: number };
   plusSalesEnabled: boolean;
 }
 
@@ -300,6 +301,19 @@ export default function PricingPage() {
             </div>
           ))}
         </div>
+        {/* Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`): the Booking Concierge
+            fee, disclosed with the SAME live percent/cap the resolver applies — closes
+            REVENUE_MODEL F1's undisclosed-fee follow-up for this line. Ledger `2026-08-22-concierge-naming`
+            string. */}
+        <p
+          className="text-[11px] text-[color:var(--earn-faint)] text-center mt-4"
+          style={{ fontFamily: EARN_MONO }}
+          data-testid="text-concierge-fee-disclosure"
+        >
+          Destination Concierge booking fee — powered by local experts:{" "}
+          {pct(pricing.conciergeBooking.percent)}, capped at{" "}
+          {dollars(Math.round(pricing.conciergeBooking.capDollars * 100))}.
+        </p>
       </section>
 
       {/* Plus band */}

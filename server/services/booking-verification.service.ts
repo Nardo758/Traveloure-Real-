@@ -24,7 +24,7 @@
  * pattern (both are the established precedents for this class of service).
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { tavily, type TavilyClient } from "tavily";
+import { getTavilyClient as getLoggedTavilyClient, type TavilyLoggingClient } from "./tavily-client";
 import { storage } from "../storage";
 import { trackAnthropicResponse } from "./ai-cost-tracker";
 import { logger } from "../infrastructure/logger";
@@ -79,10 +79,6 @@ export interface ExtractedFacts {
 
 export function isBookingVerificationReady(): boolean {
   return !!process.env.TAVILY_API_KEY && !!process.env.ANTHROPIC_API_KEY;
-}
-
-function getTavilyClient(): TavilyClient {
-  return tavily({ apiKey: process.env.TAVILY_API_KEY as string });
 }
 
 // ── Throttling (one in-flight + ~1/min per request — Tavily + LLM calls cost real money) ──────
@@ -266,7 +262,7 @@ export interface BookingVerificationStorage {
 }
 
 export interface VerifyBookingRequestDeps {
-  tavilyClient?: TavilyClient;
+  tavilyClient?: TavilyLoggingClient;
   anthropicClient?: Anthropic;
   storage?: BookingVerificationStorage;
 }
@@ -315,7 +311,13 @@ export async function verifyBookingRequest(
       return { available: false, reason: "no_partner_url" };
     }
 
-    const tavilyClient = deps.tavilyClient ?? getTavilyClient();
+    // isBookingVerificationReady() above already required TAVILY_API_KEY, so
+    // getLoggedTavilyClient() cannot actually return null here — the check is defensive, not a
+    // behaviour change.
+    const tavilyClient = deps.tavilyClient ?? getLoggedTavilyClient();
+    if (!tavilyClient) {
+      return { available: false, reason: "verification_unavailable" };
+    }
     let pageText: string | undefined;
     try {
       const extract = await tavilyClient.extract([partnerUrl], {

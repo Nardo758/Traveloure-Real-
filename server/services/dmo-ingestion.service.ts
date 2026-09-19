@@ -18,7 +18,7 @@
  * The live run happens at deploy: outbound scraping to Tavily + source domains is blocked by the
  * agent proxy in dev/CI, so this is exercised there with a stubbed client and runs for real on Replit.
  */
-import { tavily, type TavilyClient } from "tavily";
+import { getTavilyClient, type TavilyLoggingClient } from "./tavily-client";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { dmoRawContent } from "@shared/schema";
@@ -57,8 +57,15 @@ export function isDmoIngestReady(): boolean {
   return !!process.env.TAVILY_API_KEY;
 }
 
-function getClient(): TavilyClient {
-  return tavily({ apiKey: process.env.TAVILY_API_KEY as string });
+function getClient(): TavilyLoggingClient {
+  // Every caller checks isDmoIngestReady() (TAVILY_API_KEY set) before reaching this function, so
+  // getTavilyClient() cannot actually return null here — the guard below is defensive, not a
+  // behaviour change.
+  const client = getTavilyClient();
+  if (!client) {
+    throw new Error("[dmo-ingest] getClient() called without TAVILY_API_KEY set");
+  }
+  return client;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -72,7 +79,7 @@ export async function ingestKyotoHeritage(
   opts: IngestOptions = {},
   // Optional injected Tavily client — used by tests to exercise the DB/D1a logic without the
   // (proxy-blocked, credit-spending) live API. Production always builds its own from the env key.
-  clientOverride?: TavilyClient,
+  clientOverride?: TavilyLoggingClient,
 ): Promise<KyotoIngestStats> {
   const ranAt = new Date();
   const base: KyotoIngestStats = { ready: true, total: 0, enriched: 0, failed: 0, skipped: 0, ranAt };
@@ -210,7 +217,7 @@ const slugify = (s: string) =>
  */
 export async function ingestKyotoContentGaps(
   opts: GapFillOptions = {},
-  clientOverride?: TavilyClient,
+  clientOverride?: TavilyLoggingClient,
 ): Promise<GapFillStats> {
   const ranAt = new Date();
   const base: GapFillStats = {

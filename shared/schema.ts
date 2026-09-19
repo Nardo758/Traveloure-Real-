@@ -6139,6 +6139,29 @@ export const itineraryItemEventLinkSchema = createInsertSchema(itineraryItems)
   .extend({ userExperienceId: z.string().min(1).nullish() });
 
 /**
+ * ALLOWLIST (§19, ledger `2026-09-18-add-to-plan-lossless`, migration 256) — the ONLY way a
+ * request body may reach `itinerary_items.affiliate_product_id`, on the exact
+ * `itineraryItemEventLinkSchema` pattern immediately above. Pick-based on purpose: a future
+ * privileged column added to `itinerary_items` is unreachable through this schema until someone
+ * deliberately names it.
+ *
+ * ONE FIELD, OPTIONAL, NEVER NULLABLE. Discover's Add-to-plan is the only caller and it either
+ * names the product it is adding or says nothing at all — there is no "clear this item's partner
+ * link" affordance anywhere, so unlike the event link above this schema admits no explicit `null`.
+ * Absent ⇒ the caller is not naming a partner product; leave the column alone (NULL, unchanged).
+ *
+ * ACCEPTING THE ID IS NOT TRUSTING IT. This schema proves only the SHAPE — a non-empty string. The
+ * PAIRING — that the `affiliate_products` row exists AND is currently active — is resolved against
+ * the DB by `resolveItemAffiliateLink` (server/services/item-affiliate-link.service.ts) on every
+ * write rail, because a client-supplied foreign key naming an unknown or retired row is exactly the
+ * §14 class `resolveItemEventLink` already closes for the event link.
+ */
+export const itineraryItemAffiliateLinkSchema = createInsertSchema(itineraryItems)
+  .pick({ affiliateProductId: true })
+  .partial()
+  .extend({ affiliateProductId: z.string().min(1).optional() });
+
+/**
  * ALLOWLIST (§19) — the ONLY way a request body may reach `POST /api/trips/:tripId/advisors`,
  * the slip's CHOOSE-an-expert rail (ledger `2026-09-04-hire-from-slip`, the missing piece named
  * by `2026-09-04-slip-precondition` (c)). Pick-based on purpose: `trip_expert_advisors` carries
@@ -9856,12 +9879,29 @@ export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
   // by server/services/booking-verification.service.ts (Tavily-extract + LLM-extract, key-gated,
   // §13 never-fabricates). NEVER holds the affiliateUrl (§16 — enforced in the service layer).
   verification: jsonb("verification"),
+  // Migration 312 (ledger `2026-09-18-concierge-handoff`) — THE HAND-OFF LINK. Set only on a row
+  // born from checkout of a Booking Concierge line: `itineraryItemId` is the plan's partner item
+  // (affiliateProductId set, providerServiceId NULL) this request is booking; `serviceBookingId`
+  // is the concierge purchase whose promotion created it. Both nullable, ON DELETE SET NULL — a
+  // deleted plan item or booking must never delete the booking-agent's record of having been
+  // asked. NULL on both = a traveler-initiated or pre-hand-off row; never backfilled (§13). The
+  // pair is the exactly-once guard for a retried promotion (see the partial UNIQUE below — §15,
+  // the statement is the guard).
+  itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "set null" }),
+  serviceBookingId: varchar("service_booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   // Baseline migration: partial index for expert-scoped affiliate booking lookups.
   // Declared here — drizzle push drops indexes absent from this file on publish.
   index("idx_abr_expert_id").on(table.expertId).where(sql`expert_id IS NOT NULL`),
+  // Migration 312 — hot lookup for the hand-off's own booking, and the exactly-once guard: a
+  // retried promotion for the SAME booking and the SAME plan item inserts nothing a second time.
+  // Partial so legacy rows (both columns NULL) never collide with each other.
+  index("idx_abr_service_booking_id").on(table.serviceBookingId).where(sql`service_booking_id IS NOT NULL`),
+  uniqueIndex("uq_abr_booking_item")
+    .on(table.serviceBookingId, table.itineraryItemId)
+    .where(sql`service_booking_id IS NOT NULL AND itinerary_item_id IS NOT NULL`),
 ]);
 
 export const insertAffiliateBookingRequestSchema = createInsertSchema(affiliateBookingRequests).omit({ id: true, createdAt: true, updatedAt: true });

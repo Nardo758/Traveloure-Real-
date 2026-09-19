@@ -1743,4 +1743,36 @@ export const MIGRATION_FILES = [
   // `ALTER COLUMN user_id TYPE varchar`, which is a §20 DECLINE prompt at publish.
   // No CHECK added or changed, so `preflight-prod-constraints.cjs` needs no entry.
   "310_ai_cost_tracking_actor_id.sql",
+  // 311 — Locked Decision 51 (ledger `2026-09-18-concierge-fee-cap-split`). DATA-ONLY, no ALTER,
+  // no schema.ts change: (a) fills `expert_concierge_booking.max_amount` to the ratified $40.00
+  // ONLY where NULL — the admin panel's own cap field, so `resolveConciergeBookingFee` finally
+  // applies it; (b) deactivates the migration-258 duplicates `concierge:booking_pct` /
+  // `concierge:booking_cap_cents` (kept, never dropped, description says why); (c) seeds
+  // `expert_concierge_booking_expert_share` (percent, 0.75, ON CONFLICT DO NOTHING) — the
+  // expert/platform split minted at completion. No CHECK added or changed, so
+  // `preflight-prod-constraints.cjs` needs no entry.
+  "311_concierge_fee_cap_split.sql",
+  // 312 — ledger `2026-09-18-concierge-handoff` (Locked Decision 51's hand-off paragraph). TWO
+  // additive nullable FKs on `affiliate_booking_requests`: `itinerary_item_id` (the plan's partner
+  // item this request books) and `service_booking_id` (the concierge purchase that produced it),
+  // ON DELETE SET NULL each, plus an index on `service_booking_id` and a partial UNIQUE
+  // `(service_booking_id, itinerary_item_id) WHERE both NOT NULL` — the exactly-once guard for a
+  // retried promotion. No DEFAULT, no CHECK, no backfill; DECLARED in `shared/schema.ts` in the
+  // same commit (deploy-push durability rule). No CHECK added or changed, so
+  // `preflight-prod-constraints.cjs` needs no entry; the UNIQUE is over two brand-new all-NULL
+  // columns, so no prod duplicate risk.
+  "312_affiliate_booking_requests_handoff_link.sql",
+  // 313 — ledger `2026-09-18-platform-concierge-listing` (CLAUDE.md Locked Decision 51, "the
+  // platform may itself offer Booking Concierge in every market"). DATA-ONLY, idempotent
+  // ON CONFLICT DO NOTHING on every insert: one reserved `users` row (id fixed, role
+  // 'local_expert', handle 'traveloure-concierge', never a login), the `platform_settings` key
+  // `platform_concierge_user_id` naming it, an APPROVED `local_expert_forms` row covering all 8
+  // `OPERATING_MARKETS` cities (surfacing reuses the two LIVE gates — `/api/experts`'s location
+  // filter and `lead-routing.service.ts`'s scorer — no new predicate, no `expert_neighborhoods`
+  // touch), a `fee_bands` row for the listing's own list price (seeded once, not read live — the
+  // D4/D4b undeclared-band posture), and the APPROVED `provider_services` listing itself
+  // (`created_via='seed'`, `expert_offering_type_key='booking_concierge'`). No ALTER, no CHECK,
+  // no shared/schema.ts change — every referenced table already exists and is already declared —
+  // so `preflight-prod-constraints.cjs` needs no new manifest entry.
+  "313_platform_concierge_listing.sql",
 ] as const;

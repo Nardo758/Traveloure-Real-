@@ -386,6 +386,13 @@ Filed, not fixed, per the dispatch. Evidence lives in `docs/audits/expert-field-
 - **`tavily-spend-unlogged` (F4).** No Tavily call (DMO ingestion, booking verification) writes to
   `api_usage_logs`; the R-T1-c $150 cap is unobservable in `api-costs.service.ts:16`. Phase 2's web-gap
   search must log `provider: "tavily"`; the two existing callers should follow.
+  **closed 2026-09-18-tavily-spend-logged @32b0d6e.** All four Tavily call sites (`dmo-ingestion.service.ts`,
+  `booking-verification.service.ts`, `evidence-scorer.service.ts`, `content/scrapers/DMOCrawler.ts`) now
+  route through the ONE `server/services/tavily-client.ts`, which logs every `search`/`extract` call
+  (success or throw) to `api_usage_logs` with `provider:"tavily"`; `api-costs.service.ts:16`'s
+  `TRACKED_PROVIDERS` now includes `"tavily"` so the admin cost view shows it, and `getTavilyMonthToDateUsd()`
+  reports month-to-date spend beside `TAVILY_MONTHLY_CAP_USD` (read only — the cap is still not enforced,
+  which remains a separate, unruled decision). See `docs/DECISIONS.md` row `2026-09-18-tavily-spend-logged`.
 - **`service-form-upload-comment-stale` (F5).** `client/src/components/ServiceForm.tsx:272` says there is no
   upload/object-storage rail to reuse; `server/infrastructure/object-storage.ts` (deliverable rail) exists.
 - **`crowd-forecasts-no-source` (F6).** `travel_pulse_crowd_forecasts` has no `source` column, so first-party
@@ -516,6 +523,10 @@ the first revenue aggregation that sums `traveler_service_fee` must net the `fee
   against the first two backfill replies and tune `evidence_thresholds` from there (companion §8.1).
 - **`web-gap-spend-logging` (F4, still open).** The web-gap search does not yet write `api_usage_logs`
   (`provider: "tavily"`); the R-T1-c $150 cap remains unobservable in the admin cost view.
+  **closed 2026-09-18-tavily-spend-logged @32b0d6e.** `evidence-scorer.service.ts`'s `defaultSearch()` (the
+  web-gap check) now builds its client through `server/services/tavily-client.ts`'s `getTavilyClient()`,
+  so every web-gap search call logs to `api_usage_logs` the same way the other three Tavily call sites do.
+  See `docs/DECISIONS.md` row `2026-09-18-tavily-spend-logged`.
 - **`corroboration-chip`.** The dispatch's Phase 2 line "corroboration/conflict chip when two claimants' P2
   constraints agree or clash on the same venue" is not built here; the D7 duplicate flag covers the P1
   venue case only. Needs a P2 hard-constraint join (same `normalized_name` in `mini_slip_templates.items`).
@@ -623,3 +634,79 @@ a stale badge query, so the same page shows two different numbers for the same f
 
 **Being fixed in the service-detail handoff PR** (`fix/service-detail-trip-handoff`). Recorded here only
 so it is not picked up a second time; do not open work against it.
+
+## From the cosmetic public surfaces lane (2026-09-19, `docs/briefs/COSMETIC_PUBLIC_SURFACES_DISPATCH.md`)
+
+Findings ruled out of scope by dispatch §4 ("What Not To Do") or explicitly deferred by a lane's own
+finding table. None of these were touched by PRs #995–#998 (or lane D's own PR); each needs its own
+lane, and several need a product decision this dispatch's audit was not positioned to make.
+
+### FU — A7: mobile nav menu needs an accordion, not a longer flat list
+
+The mobile panel is a flat ~1,979px list (≈2.5 screens) with a top-of-panel sign-in button added by
+lane A (`button-mobile-sign-in-top`) as the scoped fix. A full accordion/collapsible-section
+restructure of `layout.tsx:841–960` was explicitly out of scope (dispatch §4: "Do not restructure the
+mobile menu beyond A6/A7 as scoped").
+
+**Action:** a real IA pass — grouping the existing sections (Marketplace, Find Help, Tools, Earn,
+account) behind collapsible headers — is its own lane with its own design review, not a mechanical
+follow-on to A6/A7.
+
+### FU — D2: landing hero photo mismatch (wrong caption, reused image)
+
+"A wedding weekend in Kyoto" sits over a photo captioned "Goa at sunset"; the same photo is also used
+for the Goa gem "Tito's Lane" in the hero. Dispatch D2 (confidence L, "observed once") left this
+unmapped — it is a content/asset-selection defect, not a layout one, and lane D's own scope was the
+ticker strip (D1) only.
+
+**Action:** trace which hero-demo seed row supplies that image/caption pair
+(`server/seeds/landing-hero-demo.seed.ts`) and correct the mapping or swap the asset. Needs someone to
+confirm the intended caption/photo pairing before editing seed data — not a mechanical fix.
+
+### FU — Seed-data honesty gaps surfaced during the cosmetic audit: "Admin User", literal `Ladurée`, null service categories, missing service images, misfiled Wanted cards
+
+The audit's crawl surfaced several seed-data rows that render literally rather than meaningfully:
+a provider display name of "Admin User", a title containing the un-escaped literal `Ladurée`, service
+rows with no category (the root cause E1 had to route around, not fix), rows with no service image,
+and Wanted cards appearing to a viewer under a neighbourhood heading that does not match their own
+content. Dispatch §4 rules all of these out for the cosmetic lanes by name: "Do not edit, reseed or
+backfill data: … All → FOLLOWUPS.md. Null is honest; fabricated backfill is banned."
+
+**Action:** a seed-data hygiene pass, separate from any layout lane — confirm which of these are seed
+artifacts only (fix the seed) versus real production rows (fix the data or, per §13, confirm the
+absence is the honest state and stop treating it as a defect).
+
+### FU — `/api/media/place-photo` rate limiting causes a blank state on `/discover/location/:city`
+
+Back-to-back requests to a city's Discover page trip the general API rate limiter (100 req/window),
+observed directly while validating lane C locally: `/api/discover/location/Kyoto` itself can return
+429, and `/api/media/place-photo` calls (several per gem card) exhaust the budget fast on a page with
+50+ gems. Dispatch §4: "Do not touch `/api/media/place-photo` rate limiting or the blank-on-429 state
+of `/discover/location/:city`. Real, but not cosmetic → FOLLOWUPS.md." (Lanes C and E both documented
+this as a local-testing flake that clears on a fresh server / after the window resets — see PR #997 and
+#998's "Local test run" sections — but the underlying limiter tuning is the real, separate defect: a
+normal user browsing one city page quickly can plausibly hit the same wall production-side.)
+
+**Action:** review whether `/api/discover/location/:city` and `/api/media/place-photo` should sit under
+a higher-budget or per-route limiter rather than the general 100/window one, and whether the client
+should degrade gracefully (retry/backoff) on a 429 instead of rendering blank.
+
+### FU — `/deals` has no pagination (49,852px desktop / 147,106px mobile page height)
+
+Dispatch §4: "Do not paginate `/deals` … Real, needs a product decision → FOLLOWUPS.md." The page
+height figures are from the dispatch's own measurement.
+
+**Action:** needs a product decision on pagination vs. infinite scroll vs. a filtered/curated view
+before any implementation lane starts.
+
+### FU — 28-family Google Fonts `<link>` in `client/index.html:29` is unpruned
+
+Dispatch §4: "Do not prune the 28-family Google Fonts `<link>` … Real, separate perf lane →
+FOLLOWUPS.md." The app's actual type system uses a small named set (Fraunces / Inter / Geist Mono /
+DM Serif Display, per `client/src/index.css`'s `@import` and this dispatch's own "Method" line); the
+`<link>` tag requests far more than that.
+
+**Action:** a perf lane — audit which families/weights are actually referenced anywhere in
+`client/src`, trim the `<link>` to that set, and verify no page silently depended on an unused one
+(Japanese-locale fallback fonts included, per dispatch §5's stated gap on Japanese-locale text
+metrics).

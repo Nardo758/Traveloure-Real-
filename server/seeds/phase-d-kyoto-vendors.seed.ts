@@ -1,11 +1,25 @@
 #!/usr/bin/env tsx
 
 /**
- * Phase D: Kyoto launch-market inventory — Wedding & Corporate vendors.
+ * Phase D: Kyoto launch-market DEMO/FICTIONAL vendor fixtures — Wedding & Corporate.
  *
- * SERP-fill surfaces discovery content; this seed creates real, bookable
- * vendor profiles on the platform so the Kyoto city feed has actual supply
- * to match against gems in Gion, Higashiyama, Arashiyama, etc.
+ * DEMO/FICTIONAL, NOT real supply (corrected 2026-09-19, ledger
+ * `2026-09-19-demo-seeders-gated`): despite the header this file previously carried
+ * ("real, bookable vendor profiles"), every vendor below is invented — contact
+ * fields resolve to the reserved `*.traveloure.test` domain and fabricated phone
+ * numbers — and each was inserted as a `provider_services` row with
+ * `approvalStatus: "approved"` / `status: "active"`, i.e. publicly bookable. A
+ * fictional "approved" listing a traveler could pay real money to book is exactly
+ * the §13 lie CLAUDE.md's honesty rule forbids. This seeder is gated by
+ * `demoSeedsAllowed()` (server/seeds/lib/demo-seed-gate.ts) both at its
+ * server/index.ts boot call site AND here, as its own second layer (§18 "two
+ * layers" placement) — it must refuse on its own when imported and called
+ * directly (`tsx server/seeds/phase-d-kyoto-vendors.seed.ts`), not only when
+ * reached through the gated boot path.
+ *
+ * SERP-fill surfaces discovery content; this seed exists so the Kyoto city feed
+ * has SOME demo supply to match against gems in Gion, Higashiyama, Arashiyama,
+ * etc. during development. It must never run against production data.
  *
  * Creates:
  *   5 wedding vendors  — bridal, ceremony, florals, photography, music
@@ -23,6 +37,7 @@ import { users, serviceProviderForms, providerServices, serviceCategories } from
 import { eq, inArray } from "drizzle-orm";
 import * as crypto from "crypto";
 import { resolveNeighborhoodCentroid } from "./lib/neighborhood-centroid";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "./lib/demo-seed-gate";
 
 // ─── Category placeholders (vendor arrays reference these at module load time) ─
 // Values are key names — the seed function resolves real IDs from the DB at runtime.
@@ -711,6 +726,16 @@ export async function seedPhaseDKyotoVendors(): Promise<{
   vendorsSkipped: number;
   servicesInserted: number;
 }> {
+  // Second layer (§18 "two layers" placement): this seeder must be safe to call
+  // directly — `tsx server/seeds/phase-d-kyoto-vendors.seed.ts`, or a stray import
+  // from a script — not only when reached through server/index.ts's gated boot
+  // path. Nine fictional "approved" businesses reaching a production database is
+  // exactly the incident this refusal exists to make structurally impossible.
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("seedPhaseDKyotoVendors"));
+    return { vendorsInserted: 0, vendorsSkipped: 0, servicesInserted: 0 };
+  }
+
   let vendorsInserted = 0;
   let vendorsSkipped = 0;
   let servicesInserted = 0;

@@ -28,6 +28,7 @@ import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-accounts.seed";
 import { seedLocationCache } from "./seeds/location-cache.seed";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "./seeds/lib/demo-seed-gate";
 import { storage } from "./storage";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
@@ -324,12 +325,30 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed custom services");
   }
 
-  try {
-    await seedMockExperts();
-  } catch (err) {
-    logger.error({ err }, "Failed to seed mock experts");
+  // DEMO/FICTIONAL seeders below this line are gated by the ONE shared
+  // predicate (server/seeds/lib/demo-seed-gate.ts, §18 rule 1) — never a
+  // per-call-site NODE_ENV check. See CLAUDE.md §13 and ledger row
+  // `2026-09-19-demo-seeders-gated`.
+  if (demoSeedsAllowed()) {
+    try {
+      await seedMockExperts();
+    } catch (err) {
+      logger.error({ err }, "Failed to seed mock experts");
+    }
+  } else {
+    logger.info(demoSeedSkipMessage("seedMockExperts"));
   }
 
+  // seedLandingMomentDemo is intentionally NOT wrapped in `if (demoSeedsAllowed())`
+  // (ledger `2026-09-19-demo-seeders-gated`, EXEMPTION — see
+  // server/__tests__/demo-seeders-gated.test.ts's EXEMPTIONS for the same reason
+  // printed on every run): it keeps its own, narrower, pre-existing env gate
+  // (`shouldSeedLandingMomentDemo`, unrelated to `isProdStrictEnv`'s
+  // ALLOW_TEST_ACCOUNTS=1 escape hatch), which the seeder itself already checks
+  // internally. Wrapping it in the WIDER `demoSeedsAllowed()` here would have no
+  // restricting effect (the seeder's own check still applies) but was found, while
+  // building this lane, to invite exactly this confusion — so the call is left in
+  // its original, unconditional shape and the seeder's own gate is the only one.
   try {
     const momentDemoResult = await seedLandingMomentDemo();
     if (momentDemoResult.upserted > 0) {
@@ -344,10 +363,14 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed Landing Moment demo gems");
   }
 
-  try {
-    await seedProviderServices();
-  } catch (err) {
-    logger.error({ err }, "Failed to seed provider services");
+  if (demoSeedsAllowed()) {
+    try {
+      await seedProviderServices();
+    } catch (err) {
+      logger.error({ err }, "Failed to seed provider services");
+    }
+  } else {
+    logger.info(demoSeedSkipMessage("seedProviderServices"));
   }
 
   try {
@@ -385,6 +408,10 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to verify the expert_neighborhoods one-writer trigger");
   }
 
+  // seedLandingHeroDemo is intentionally NOT wrapped in `if (demoSeedsAllowed())`
+  // — same reasoning as seedLandingMomentDemo above (ledger
+  // `2026-09-19-demo-seeders-gated` EXEMPTION): it keeps its own, narrower,
+  // pre-existing env gate, checked internally by the seeder itself.
   try {
     const heroDemoResult = await seedLandingHeroDemo();
     if (heroDemoResult.markets > 0) {
@@ -431,16 +458,20 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed major cities backfill");
   }
 
-  try {
-    const phaseDResult = await seedPhaseDKyotoVendors();
-    if (phaseDResult.vendorsInserted > 0 || phaseDResult.servicesInserted > 0) {
-      logger.info(
-        { vendors: phaseDResult.vendorsInserted, services: phaseDResult.servicesInserted },
-        "Seeded Phase D Kyoto wedding & corporate vendors",
-      );
+  if (demoSeedsAllowed()) {
+    try {
+      const phaseDResult = await seedPhaseDKyotoVendors();
+      if (phaseDResult.vendorsInserted > 0 || phaseDResult.servicesInserted > 0) {
+        logger.info(
+          { vendors: phaseDResult.vendorsInserted, services: phaseDResult.servicesInserted },
+          "Seeded Phase D Kyoto wedding & corporate vendors",
+        );
+      }
+    } catch (err) {
+      logger.error({ err }, "Failed to seed Phase D Kyoto vendors");
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed Phase D Kyoto vendors");
+  } else {
+    logger.info(demoSeedSkipMessage("seedPhaseDKyotoVendors"));
   }
 
   try {

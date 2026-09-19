@@ -4,8 +4,12 @@
  * Responsive navbar QA — 8 breakpoints + 6 hamburger menu behavioural tests
  * + sticky navbar test.
  *
- * Desktop nav appears at: lg (1024px+)
- * Mobile hamburger appears at: < 1024px
+ * Desktop nav appears at: xl (1280px+) — moved from lg (1024px) by R2 of the
+ * cosmetic-public-surfaces dispatch: at 1024-1100px the desktop nav's three
+ * trigger labels wrapped and collided even shortened + nowrap'd, so the
+ * hamburger now owns everything below 1280px instead of everything below
+ * 1024px.
+ * Mobile hamburger appears at: < 1280px
  */
 
 import { test, expect, Page } from "@playwright/test";
@@ -17,7 +21,9 @@ const BREAKPOINTS = [
   { label: "375px  (iPhone SE)",         width: 375,  height: 812, mobile: true  },
   { label: "425px  (large phone)",       width: 425,  height: 812, mobile: true  },
   { label: "768px  (tablet portrait)",   width: 768,  height: 1024, mobile: true  },
-  { label: "1024px (tablet landscape)",  width: 1024, height: 768, mobile: false },
+  // R2: 1024px used to be the `lg` breakpoint edge (desktop); it is now
+  // comfortably below the new `xl` (1280px) edge, so the hamburger owns it.
+  { label: "1024px (tablet landscape)",  width: 1024, height: 768, mobile: true  },
   { label: "1280px (laptop)",            width: 1280, height: 800, mobile: false },
   { label: "1440px (desktop)",           width: 1440, height: 900, mobile: false },
   { label: "1920px (large monitor)",     width: 1920, height: 1080, mobile: false },
@@ -52,13 +58,13 @@ async function hamburgerVisible(page: Page) {
 }
 
 async function desktopNavVisible(page: Page) {
-  // Desktop nav items sit in the `hidden lg:flex` container
-  return page.locator("nav .hidden.lg\\:flex").first().isVisible();
+  // Desktop nav items sit in the `hidden xl:flex` container
+  return page.locator("nav .hidden.xl\\:flex").first().isVisible();
 }
 
 async function mobileMenuOpen(page: Page) {
-  // The animated mobile menu div has overflow-y-auto and is lg:hidden
-  const menu = page.locator("nav .lg\\:hidden.border-t.border-border").first();
+  // The animated mobile menu div has overflow-y-auto and is xl:hidden
+  const menu = page.locator("nav .xl\\:hidden.border-t.border-border").first();
   return menu.isVisible();
 }
 
@@ -93,8 +99,8 @@ test.describe("Breakpoint tests — navbar renders correctly", () => {
         expect(box?.height ?? 0, `Touch target height at ${bp.width}px should be ≥ 44px`).toBeGreaterThanOrEqual(44);
 
         // F) Desktop nav hidden on mobile
-        const desktopLinks = page.locator("nav .hidden.lg\\:flex").first();
-        // hidden lg:flex means it's display:none below lg — evaluate computed style
+        const desktopLinks = page.locator("nav .hidden.xl\\:flex").first();
+        // hidden xl:flex means it's display:none below xl — evaluate computed style
         const isHiddenOnMobile = await page.evaluate(() => {
           const el = document.querySelector("nav .hidden") as HTMLElement | null;
           if (!el) return true;
@@ -103,10 +109,10 @@ test.describe("Breakpoint tests — navbar renders correctly", () => {
         expect(isHiddenOnMobile, `Desktop nav should be hidden at ${bp.width}px`).toBe(true);
       } else {
         // G) Desktop nav visible on desktop
-        const desktopContainer = page.locator("nav").locator(".hidden.lg\\:flex, .lg\\:flex").first();
-        // At 1024px+ the lg:flex makes it visible
+        const desktopContainer = page.locator("nav").locator(".hidden.xl\\:flex, .xl\\:flex").first();
+        // At 1280px+ (R2: moved from 1024px) the xl:flex makes it visible
         const desktopNavDisplayed = await page.evaluate(() => {
-          const selectors = ["nav .hidden.lg\\:ml-8", "nav [class*='lg:flex']"];
+          const selectors = ["nav .hidden.xl\\:ml-8", "nav [class*='xl:flex']"];
           for (const s of selectors) {
             const el = document.querySelector(s) as HTMLElement | null;
             if (el) return getComputedStyle(el).display !== "none";
@@ -152,7 +158,7 @@ test.describe("Hamburger menu — behavioural tests (375px)", () => {
 
   test("Test 1 — Open: menu slides in above content (z-index)", async ({ page }) => {
     await page.click('[data-testid="button-mobile-menu"]');
-    const menu = page.locator("nav .lg\\:hidden.border-t").first();
+    const menu = page.locator("nav .xl\\:hidden.border-t").first();
     await expect(menu).toBeVisible();
     // Verify menu is within the sticky nav (z-50) so it overlays content
     const navZIndex = await page.evaluate(() => {
@@ -164,7 +170,7 @@ test.describe("Hamburger menu — behavioural tests (375px)", () => {
 
   test("Test 2 — Close by clicking X button", async ({ page }) => {
     await page.click('[data-testid="button-mobile-menu"]'); // open
-    const menu = page.locator("nav .lg\\:hidden.border-t").first();
+    const menu = page.locator("nav .xl\\:hidden.border-t").first();
     await expect(menu).toBeVisible();
     await page.click('[data-testid="button-mobile-menu"]'); // X / close
     await expect(menu).not.toBeVisible();
@@ -172,7 +178,7 @@ test.describe("Hamburger menu — behavioural tests (375px)", () => {
 
   test("Test 3 — Close by clicking outside menu area", async ({ page }) => {
     await page.click('[data-testid="button-mobile-menu"]');
-    const menu = page.locator("nav .lg\\:hidden.border-t").first();
+    const menu = page.locator("nav .xl\\:hidden.border-t").first();
     await expect(menu).toBeVisible();
     // Click below the nav (outside menu)
     await page.mouse.click(187, 600);
@@ -181,7 +187,7 @@ test.describe("Hamburger menu — behavioural tests (375px)", () => {
 
   test("Test 4 — Close by pressing Escape", async ({ page }) => {
     await page.click('[data-testid="button-mobile-menu"]');
-    const menu = page.locator("nav .lg\\:hidden.border-t").first();
+    const menu = page.locator("nav .xl\\:hidden.border-t").first();
     await expect(menu).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(menu).not.toBeVisible();
@@ -189,7 +195,7 @@ test.describe("Hamburger menu — behavioural tests (375px)", () => {
 
   test("Test 5 — Navigate from mobile menu: closes menu AND navigates", async ({ page }) => {
     await page.click('[data-testid="button-mobile-menu"]');
-    const menu = page.locator("nav .lg\\:hidden.border-t").first();
+    const menu = page.locator("nav .xl\\:hidden.border-t").first();
     await expect(menu).toBeVisible();
     // Click the first visible mobile link
     const firstMobileLink = page.locator('[data-testid^="link-mobile-"]').first();
@@ -200,11 +206,11 @@ test.describe("Hamburger menu — behavioural tests (375px)", () => {
 
   test("Test 6 — Scroll with menu open: menu scrolls independently or body locked", async ({ page }) => {
     await page.click('[data-testid="button-mobile-menu"]');
-    const menu = page.locator("nav .lg\\:hidden.border-t").first();
+    const menu = page.locator("nav .xl\\:hidden.border-t").first();
     await expect(menu).toBeVisible();
     // Either body scroll is locked or the menu itself has overflow-y-auto (independent)
     const result = await page.evaluate(() => {
-      const nav = document.querySelector("nav .lg\\:hidden.border-t") as HTMLElement | null;
+      const nav = document.querySelector("nav .xl\\:hidden.border-t") as HTMLElement | null;
       const bodyOverflow = getComputedStyle(document.body).overflow;
       const menuOverflow = nav ? getComputedStyle(nav).overflowY : "";
       return {

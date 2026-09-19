@@ -33,6 +33,13 @@ const DEMO_SERVICE_IMAGES = [
  * existing production purge removes the complete fixture graph.
  */
 
+// DELIBERATELY NOT delegated to the wider `demoSeedsAllowed()` (ledger
+// `2026-09-19-demo-seeders-gated`). An earlier version of this lane delegated it,
+// which changed this predicate's answer under NODE_ENV=production + ALLOW_TEST_ACCOUNTS=1
+// — the exact boot shape the `suite-server-tests` CI job uses — from `false` to `true`,
+// which would have run this seeder for the first time in that job. See the identical note
+// on `shouldSeedLandingMomentDemo` (server/seeds/landing-moment-demo.seed.ts) for the full
+// reasoning; kept byte-for-byte from before this lane.
 function shouldSeedLandingHeroDemo(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.NODE_ENV !== "production" && env.ENVIRONMENT !== "PROD";
 }

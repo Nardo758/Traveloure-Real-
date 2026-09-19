@@ -17,6 +17,8 @@ import {
   normalizeHost,
   registrableDomain,
 } from "../utils/egress-guard";
+import { assertRobotsAllowed } from "../utils/robots-txt";
+import { ROBOTS_TXT_USER_AGENT, ROBOTS_TXT_USER_AGENT_TOKEN } from "../config/robots-txt.config";
 
 const GROK_MODEL = "grok-3";
 
@@ -373,13 +375,23 @@ class AffiliateScraperService {
    * address deny on the resolved addresses, and a 3-redirect cap where every hop is
    * re-validated — see `server/utils/egress-guard.ts` for the layers and their stated
    * negative space (notably: DNS rebinding between check and connect is NOT covered).
+   *
+   * Ledger `2026-09-18-scraper-robots`: robots.txt is consulted HERE, before the guarded
+   * fetch, so a disallowed path never reaches `fetchGuardedText` at all — and the crawl
+   * identity is the honest `ROBOTS_TXT_USER_AGENT`, replacing a spoofed desktop-Chrome UA
+   * that made the group in a site's own robots.txt unaddressable to us in the first place.
    */
   private async fetchWebPage(url: string, allowedHosts: string[]): Promise<string> {
+    // A robots.txt refusal is scoped to the CANDIDATE url's own origin, never widened to
+    // `allowedHosts` — the same one-url-at-a-time posture `assertSafeEgressUrl` already
+    // takes for the SSRF layers.
+    await assertRobotsAllowed(url, ROBOTS_TXT_USER_AGENT_TOKEN);
+
     try {
       return await fetchGuardedText(url, {
         allowedHosts,
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "User-Agent": ROBOTS_TXT_USER_AGENT,
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
           "Accept-Language": "en-US,en;q=0.5",
         },
