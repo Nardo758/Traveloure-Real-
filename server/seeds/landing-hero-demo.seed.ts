@@ -15,7 +15,6 @@ import {
   submitClaim,
 } from "../services/neighborhood-claims.service";
 import type { ClaimCaptureSubmit } from "@shared/neighborhood-claims";
-import { demoSeedsAllowed } from "./lib/demo-seed-gate";
 
 const DEMO_SERVICE_IMAGES = [
   "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=1200&q=80",
@@ -34,11 +33,15 @@ const DEMO_SERVICE_IMAGES = [
  * existing production purge removes the complete fixture graph.
  */
 
-// Delegates to the ONE shared demo-seed predicate (§18 rule 1; consolidated
-// 2026-09-19, ledger `2026-09-19-demo-seeders-gated` — this file previously carried
-// its own copy of the NODE_ENV/ENVIRONMENT check).
+// DELIBERATELY NOT delegated to the wider `demoSeedsAllowed()` (ledger
+// `2026-09-19-demo-seeders-gated`). An earlier version of this lane delegated it,
+// which changed this predicate's answer under NODE_ENV=production + ALLOW_TEST_ACCOUNTS=1
+// — the exact boot shape the `suite-server-tests` CI job uses — from `false` to `true`,
+// which would have run this seeder for the first time in that job. See the identical note
+// on `shouldSeedLandingMomentDemo` (server/seeds/landing-moment-demo.seed.ts) for the full
+// reasoning; kept byte-for-byte from before this lane.
 function shouldSeedLandingHeroDemo(env: NodeJS.ProcessEnv = process.env): boolean {
-  return demoSeedsAllowed(env);
+  return env.NODE_ENV !== "production" && env.ENVIRONMENT !== "PROD";
 }
 
 function assertDevelopmentEnvironment(): void {

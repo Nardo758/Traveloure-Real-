@@ -339,22 +339,28 @@ async function runDatabaseSeeding() {
     logger.info(demoSeedSkipMessage("seedMockExperts"));
   }
 
-  if (demoSeedsAllowed()) {
-    try {
-      const momentDemoResult = await seedLandingMomentDemo();
-      if (momentDemoResult.upserted > 0) {
-        logger.info(
-          { count: momentDemoResult.upserted },
-          "Seeded attributed Landing Moment demo gems",
-        );
-      } else if (!momentDemoResult.expertFound) {
-        logger.warn("Skipped Landing Moment demo gems because the test expert was not found");
-      }
-    } catch (err) {
-      logger.error({ err }, "Failed to seed Landing Moment demo gems");
+  // seedLandingMomentDemo is intentionally NOT wrapped in `if (demoSeedsAllowed())`
+  // (ledger `2026-09-19-demo-seeders-gated`, EXEMPTION — see
+  // server/__tests__/demo-seeders-gated.test.ts's EXEMPTIONS for the same reason
+  // printed on every run): it keeps its own, narrower, pre-existing env gate
+  // (`shouldSeedLandingMomentDemo`, unrelated to `isProdStrictEnv`'s
+  // ALLOW_TEST_ACCOUNTS=1 escape hatch), which the seeder itself already checks
+  // internally. Wrapping it in the WIDER `demoSeedsAllowed()` here would have no
+  // restricting effect (the seeder's own check still applies) but was found, while
+  // building this lane, to invite exactly this confusion — so the call is left in
+  // its original, unconditional shape and the seeder's own gate is the only one.
+  try {
+    const momentDemoResult = await seedLandingMomentDemo();
+    if (momentDemoResult.upserted > 0) {
+      logger.info(
+        { count: momentDemoResult.upserted },
+        "Seeded attributed Landing Moment demo gems",
+      );
+    } else if (!momentDemoResult.expertFound) {
+      logger.warn("Skipped Landing Moment demo gems because the test expert was not found");
     }
-  } else {
-    logger.info(demoSeedSkipMessage("seedLandingMomentDemo"));
+  } catch (err) {
+    logger.error({ err }, "Failed to seed Landing Moment demo gems");
   }
 
   if (demoSeedsAllowed()) {
@@ -402,26 +408,26 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to verify the expert_neighborhoods one-writer trigger");
   }
 
-  if (demoSeedsAllowed()) {
-    try {
-      const heroDemoResult = await seedLandingHeroDemo();
-      if (heroDemoResult.markets > 0) {
-        logger.info(
-          { markets: heroDemoResult.markets, services: heroDemoResult.services },
-          "Seeded development-only landing hero fixtures",
-        );
-      }
-      if (heroDemoResult.skipped.length > 0) {
-        logger.warn(
-          { markets: heroDemoResult.skipped },
-          "Skipped landing hero fixtures because city neighborhoods are missing",
-        );
-      }
-    } catch (err) {
-      logger.error({ err }, "Failed to seed landing hero fixtures");
+  // seedLandingHeroDemo is intentionally NOT wrapped in `if (demoSeedsAllowed())`
+  // — same reasoning as seedLandingMomentDemo above (ledger
+  // `2026-09-19-demo-seeders-gated` EXEMPTION): it keeps its own, narrower,
+  // pre-existing env gate, checked internally by the seeder itself.
+  try {
+    const heroDemoResult = await seedLandingHeroDemo();
+    if (heroDemoResult.markets > 0) {
+      logger.info(
+        { markets: heroDemoResult.markets, services: heroDemoResult.services },
+        "Seeded development-only landing hero fixtures",
+      );
     }
-  } else {
-    logger.info(demoSeedSkipMessage("seedLandingHeroDemo"));
+    if (heroDemoResult.skipped.length > 0) {
+      logger.warn(
+        { markets: heroDemoResult.skipped },
+        "Skipped landing hero fixtures because city neighborhoods are missing",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed landing hero fixtures");
   }
 
   try {

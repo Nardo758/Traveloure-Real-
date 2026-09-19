@@ -316,6 +316,17 @@ const EXEMPTIONS: Record<string, string> = {
     "no-op since migration 013 removed the ESO workflow columns it used to write (see its own " +
     "body: \"Skipping mock custom services seed…\") — zero DB side effects. The body's lone " +
     "\"mock\" match is a stale comment naming what it no longer does, not fictional data.",
+  "seeds/landing-moment-demo.seed.ts::seedLandingMomentDemo":
+    "keeps its own, narrower, pre-existing env gate (shouldSeedLandingMomentDemo — NOT " +
+    "delegated to demoSeedsAllowed()). An earlier version of this lane DID delegate it, which " +
+    "changed the predicate's answer under NODE_ENV=production + ALLOW_TEST_ACCOUNTS=1 — the " +
+    "exact boot shape the suite-server-tests CI job uses — from false to true, and broke " +
+    "landing-moments.db.test.ts M5 (the demo Kyoto gem got seeded into that job's DB for the " +
+    "first time and polluted the test's own fixture query). Reverted; this seeder's own " +
+    "internal check is its sole, sufficient, already-correct gate.",
+  "seeds/landing-hero-demo.seed.ts::seedLandingHeroDemo":
+    "same reasoning and same regression as seedLandingMomentDemo directly above — reverted for " +
+    "the identical reason.",
 };
 
 function relKey(file: string, exportName: string): string {
