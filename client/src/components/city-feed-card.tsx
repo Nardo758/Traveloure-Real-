@@ -482,7 +482,25 @@ interface MoreInfoSheetProps {
   data: any;
 }
 
+// C3 / R4 (cosmetic-public-surfaces dispatch): at desktop widths the details sheet opened as a
+// full-width, mostly-empty 85vh bottom drawer. R4 rules a right-side panel (≤480px) at `lg`
+// (1024px) and above, staying a bottom sheet below it. `client/src/hooks/use-mobile.tsx` exists
+// but is fixed at 768px for a different purpose (checked first, per the dispatch's mechanics
+// note); this is a local, single-consumer media query rather than widening that hook's meaning.
+function useIsDesktopPanel(): boolean {
+  const [isDesktop, setIsDesktop] = useState(false);
+  React.useEffect(() => {
+    const mql = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => setIsDesktop(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return isDesktop;
+}
+
 function MoreInfoSheet({ open, onClose, cardType, data }: MoreInfoSheetProps) {
+  const isDesktopPanel = useIsDesktopPanel();
   // Thin gem detail (2026-08-29 Replit-audit ruling 3): the sheet renders the
   // ruled TEASER set only. Address, the locals-vs-tourists popularity ratio,
   // the "goes mainstream" forecast and the discovery status were REMOVED —
@@ -502,7 +520,13 @@ function MoreInfoSheet({ open, onClose, cardType, data }: MoreInfoSheetProps) {
         </p>
       )}
 
-      {data.description && (
+      {/* C4 (cosmetic-public-surfaces dispatch): the card face already prefers
+          `whyLocalsLoveIt || description` (see the compact gem card render, ~line 851 below),
+          but this sheet rendered both sections unconditionally, so a gem whose two fields are
+          identical printed the same sentence twice under "About" and "Why locals love it".
+          Render "About" only when the two differ — never when whyLocalsLoveIt is absent, since
+          then description IS the only copy. Gem card rows themselves are untouched. */}
+      {data.description && data.description !== data.whyLocalsLoveIt && (
         <div>
           <p className="text-[13px] font-semibold text-foreground mb-1">About</p>
           <p className="text-[13px] text-muted-foreground leading-relaxed">{data.description}</p>
@@ -747,7 +771,14 @@ function MoreInfoSheet({ open, onClose, cardType, data }: MoreInfoSheetProps) {
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <SheetContent side="bottom" className="h-[85vh] overflow-y-auto rounded-t-2xl px-5 pb-8">
+      <SheetContent
+        side={isDesktopPanel ? "right" : "bottom"}
+        className={
+          isDesktopPanel
+            ? "h-full w-full sm:max-w-[480px] overflow-y-auto px-5 pb-8"
+            : "h-[85vh] overflow-y-auto rounded-t-2xl px-5 pb-8"
+        }
+      >
         <SheetHeader className="mb-2">
           <SheetTitle className="text-left text-[17px] leading-snug pr-8">{titleMap[cardType]}</SheetTitle>
         </SheetHeader>
@@ -1126,7 +1157,11 @@ export function CityFeedCardGem({
               {gem.placeName}
             </h3>
             <CompactMetaLine text={metaText} testid={`gem-facts-${gem.id}`} />
-            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+            {/* C1 (cosmetic-public-surfaces dispatch): the compact action row had no `flex-wrap`
+                (unlike the non-compact row above, which already carries it), so at a 4-col grid
+                width the buttons overflowed the card and "Ask an expert" clipped at the right
+                edge. Fixed identically on all four compact-row copies in this file. */}
+            <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
               {compactHasBookAction && (
                 <Button
                   size="sm"
@@ -1323,7 +1358,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{eventName}</h3>
             <CompactMetaLine text={metaText} testid={`event-facts-${event.id}`} />
-            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+            <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
               {event.url && (
                 <Button
                   size="sm"
@@ -1649,7 +1684,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{service.serviceName}</h3>
             <CompactSourceMetaLine duration={durationLabel} source={source} testid={`svc-facts-${service.id}`} />
-            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+            <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
               {compactActionState === "platform" && resolvedBookability !== "info_only" && (
                 <Button
                   size="sm"
@@ -1978,7 +2013,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{itemName}</h3>
             <CompactSourceMetaLine duration={compactDur} source={source} testid={`supply-facts-${item.id}`} />
-            <div className="flex gap-1.5 pt-0.5 items-center mt-auto">
+            <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
               <Button
                 size="sm"
                 className="h-7 text-xs px-3"
