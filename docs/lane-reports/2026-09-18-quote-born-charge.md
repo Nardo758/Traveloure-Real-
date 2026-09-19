@@ -185,7 +185,8 @@ everything else on it.
 
 ---
 
-**`superseded@<sha>` — ledger `2026-09-19-quote-plan-link` (migration 314).** The Q13 sentence above
+**`superseded@7f11ee508d9aa940a4eedf1cd21362b5e30f779a` — ledger `2026-09-19-quote-plan-link`
+(migration 314; PR #1006).** The Q13 sentence above
 — *"Trip Pass waiver end to end, via a fixture that directly associates a trip since no live lane
 does today"* — is no longer accurate. `service_quotes` now carries `trip_id`/`itinerary_item_id`
 (server-verified at request time), `acceptQuote` is a REAL writer of `service_bookings.trip_id` on
