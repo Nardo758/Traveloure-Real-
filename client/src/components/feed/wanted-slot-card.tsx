@@ -57,7 +57,10 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
             🔥 High demand
           </span>
         )}
-        <p className="truncate text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }}>
+        {/* C2 (cosmetic-public-surfaces dispatch): `truncate` clipped the only variable part of
+            this line ("Local City Itinerary wanted in A…") on a ~200px card. line-clamp-2 shows
+            the whole name instead of an ellipsis mid-word. */}
+        <p className="line-clamp-2 text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }}>
           {offeringLabel} wanted in {neighborhoodName}
         </p>
         <p className="line-clamp-2 text-[11px]" style={{ color: "var(--earn-muted)" }}>
@@ -65,8 +68,10 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
             ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
             : `Be the first to offer ${offeringLabel.toLowerCase()} for travellers in ${neighborhoodName}`}
         </p>
+        {/* C5 (cosmetic-public-surfaces dispatch, ruled): /earn is the specific target for a
+            recruitment card's "More info" — /how-it-works was generic and unrelated to earning. */}
         <a
-          href="/how-it-works"
+          href="/earn"
           className="mt-1 inline-flex w-fit text-[11px] hover:underline"
           style={{ color: "var(--earn-teal-ink)", fontFamily: EARN_MONO }}
           data-testid={`link-wanted-more-info-${neighborhoodId}`}
