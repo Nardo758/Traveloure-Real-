@@ -1513,6 +1513,12 @@ This document captures architectural decisions to maintain consistency across co
     "purchases with their own payment method" will be AMENDED when Lane 3 actually lands a platform
     PaymentIntent / issued card — not now, since no code exists. The HARD STOP (CB-8 numbers, the
     companion audit) still holds; do not start Lane 3 against this paragraph alone.
+    **A PURCHASE NOW WRITES THE LINKED PLAN ITEM IN PLACE (ledger `2026-09-19-linked-item-purchase-write`;
+    design doc §5 S5/S6).** `markLinkedItemBooked`/`markLinkedItemConfirmed`
+    (`server/services/partner-item-write.service.ts`) update the request's own linked
+    `itinerary_items` row atomically, keyed on `itinerary_item_id` + `trip_id`, and never a second
+    item; the unlinked legacy create is kept byte-for-byte, and the `origin` question above stays
+    open — this lane does not decide it.
 
 45. **THE AI CONCIERGE IS AN ACTOR ON THE PLAN, NOT A PLACE; THE CONSOLE IS ONE SPINE WITH EVERY
     OTHER TAB A VIEW (decision-maker ratified Sep 7, 2026 — ledger rows

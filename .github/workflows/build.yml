@@ -2169,6 +2169,53 @@ jobs:
       - name: the hand-off — checkout of a Booking Concierge line (H1-H6)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/concierge-handoff.db.test.ts
 
+  linked-item-purchase-write:
+    name: linked-item-purchase-write (ledger 2026-09-19-linked-item-purchase-write)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # LANE P (design doc §5 S5/S6). A purchase updates the LINKED plan item IN PLACE, never a
+      # second item. L1 the linked item flips in place and the trip's item count is unchanged; L2
+      # a re-driven purchase creates and changes nothing (COALESCE never blanks a prior reference);
+      # L3 routing_status/booking_id/origin are untouched (LD 44); L4 an unlinked request with a
+      # tripId still creates one item — the legacy branch is pinned, not widened (source pin); L5 a
+      # partner-report confirmation upgrades the linked item's bookingStatus and leaves an unlinked
+      # request's plan untouched; L6 a request whose item belongs to another trip updates 0 rows
+      # and creates nothing; L7 pins that both call sites import the ONE module and that it never
+      # writes routing_status/booking_id/origin (§18 rule 1).
+      - name: purchase updates the linked plan item in place (L1-L7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/linked-item-purchase-write.db.test.ts
+
   platform-concierge-listing:
     name: platform-concierge-listing (Locked Decision 51 lane F; ledger 2026-09-18-platform-concierge-listing)
     runs-on: ubuntu-latest
