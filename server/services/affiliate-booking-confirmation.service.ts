@@ -48,10 +48,21 @@
  * item, no earning, no notification and no money movement; it never un-confirms a row; and it has
  * nothing to say about partner-side CHANGES or CANCELLATIONS, for which no signal exists at all —
  * an agent handles those by hand, and the surfaces say so rather than implying we would know.
+ *
+ * LANE P AMENDMENT (design doc §5 S6; ledger `2026-09-19-linked-item-purchase-write`). This
+ * writer's NEGATIVE SPACE above still holds — it creates no itinerary item. What changed: on a WIN
+ * (this call is the one that flipped the row), it now also calls
+ * `markLinkedItemConfirmed` (`server/services/partner-item-write.service.ts`) — the linked plan
+ * item's own upgrade to `bookingStatus: "confirmed"`, guarded on that item already carrying
+ * `status: "booked"`. It is the SAME kind of echo `markItemPurchased` writes on the cart rail
+ * (`item-routing.service.ts`), one rail over, and it is best-effort: 0 rows matched (no link, or
+ * the item never reached `"booked"`) is logged by that helper and never surfaces here — the
+ * REQUEST's own confirmation already stands on its own regardless of the plan item's state.
  */
 
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { markLinkedItemConfirmed } from "./partner-item-write.service";
 
 /** What the partner actually reported. Every field is optional: absent means "not reported". */
 export interface PartnerConfirmationEvidence {
@@ -146,5 +157,12 @@ export async function confirmFromPartnerReport(
   `);
 
   if (!result.rowCount) return { confirmed: false, reason: "already_confirmed", previousStatus };
+
+  // Lane P (design §5 S6): THIS call is the one that flipped the row — the plan-side echo runs
+  // only on a genuine win, never on a replay that lost the race above. Best-effort and swallowed
+  // by `markLinkedItemConfirmed` itself (0 rows logged, never thrown): the REQUEST's confirmation
+  // already stands regardless of what the linked plan item's own state turns out to be.
+  await markLinkedItemConfirmed(requestId);
+
   return { confirmed: true, previousStatus };
 }

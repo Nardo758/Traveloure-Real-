@@ -20,6 +20,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
 import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
+import { markLinkedItemBooked } from "../services/partner-item-write.service";
 import { api } from "@shared/routes";
 import {
   bookingAgentStatusRefusal,
@@ -8098,29 +8099,41 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       // the old `"confirmed"`, and `bookingStatus: "pending"` replaces it too — so no surface
       // renders a "Confirmed" tick for a booking the partner has not confirmed. The agent's typed
       // reference still rides along, because it is a real fact.
-      // NAMED LIMITATION, not a silent gap: when the partner's report later flips the REQUEST to
-      // `confirmed`, this plan item is NOT upgraded — there is no column linking an itinerary item
-      // back to its booking request, and matching one by trip + name would be exactly the guess
-      // §13 refuses. Recorded in the D-10 ledger row as open.
+      //
+      // LANE P (design doc §5 S5; ledger `2026-09-19-linked-item-purchase-write`) — REPLACES the
+      // D-10 "NAMED LIMITATION" note that used to sit here: it said no column linked an itinerary
+      // item back to its booking request. That stopped being true when migration 312
+      // (`2026-09-18-concierge-handoff`) added `affiliate_booking_requests.itinerary_item_id`,
+      // stamped by `concierge-handoff.service.ts` on every Booking Concierge hand-off. A LINKED
+      // request therefore updates that plan item IN PLACE — never a second item beside the one the
+      // traveler planned (`server/services/partner-item-write.service.ts` `markLinkedItemBooked`;
+      // never writes `routing_status`/`booking_id`/`origin` — LD 44). An UNLINKED request (no plan
+      // item named — every traveler-initiated request today; LD 44's `origin` question for a
+      // partner-purchased item stays OPEN, not decided here) keeps today's create, byte-for-byte —
+      // wiring a link onto that path is Lane 5 (design doc §9), not this lane.
       if (updated.tripId && isRecordingPurchase) {
-        await storage.createItineraryItem({
-          tripId: updated.tripId,
-          title: updated.itemName,
-          description: updated.itemDescription ?? `Booked via ${updated.partnerName}`,
-          itemType: "activity",
-          status: "booked",
-          dayNumber: deriveItineraryDayNumber(updated.travelDate, trip),
-          scheduledDate: updated.travelDate ?? null,
-          bookingReference: updated.confirmationRef ?? null,
-          bookingStatus: "pending",
-          confirmationNumber: updated.confirmationRef ?? null,
-          estimatedCost: updated.price ?? null,
-          actualCost: updated.price ?? null,
-          suggestedBy: "expert",
-          // D2: purchased by the assigned booking agent/expert (isExpertAssignedToTrip-gated
-          // above) on the traveler's behalf — provenance is the expert.
-          origin: "expert",
-        } as any);
+        if (updated.itineraryItemId) {
+          await markLinkedItemBooked(updated.id, { confirmationRef: updated.confirmationRef ?? null });
+        } else {
+          await storage.createItineraryItem({
+            tripId: updated.tripId,
+            title: updated.itemName,
+            description: updated.itemDescription ?? `Booked via ${updated.partnerName}`,
+            itemType: "activity",
+            status: "booked",
+            dayNumber: deriveItineraryDayNumber(updated.travelDate, trip),
+            scheduledDate: updated.travelDate ?? null,
+            bookingReference: updated.confirmationRef ?? null,
+            bookingStatus: "pending",
+            confirmationNumber: updated.confirmationRef ?? null,
+            estimatedCost: updated.price ?? null,
+            actualCost: updated.price ?? null,
+            suggestedBy: "expert",
+            // D2: purchased by the assigned booking agent/expert (isExpertAssignedToTrip-gated
+            // above) on the traveler's behalf — provenance is the expert.
+            origin: "expert",
+          } as any);
+        }
 
         // Mid-trip purchase auto-versions the Trip Card (ledger 2026-08-31-mid-trip-purchase-versions):
         // a completed booking that adds a NEW item to a FINALIZED trip creates v+1 — the traveler
