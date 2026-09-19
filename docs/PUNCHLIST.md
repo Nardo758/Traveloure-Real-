@@ -488,3 +488,14 @@ the concierge ownership check, the shadowed-twin sweep, the agent status vocabul
 trip link, and **the fee correction on both money rails** (`2026-09-08-cart-fee-line`,
 `2026-09-08-legacy-rail-fee`) — travelers are no longer billed the commission that is also withheld
 from the provider's payout.
+
+## 6 · Open — companion audit missing from the repo
+
+- **The Concierge Booking custody design's companion audit is not committed.**
+  `docs/design/CONCIERGE_BOOKING_UNIVERSAL_DESIGN.md` (Grounded-at line, and its §12 build sequence)
+  cites `docs/audits/booking-process-e2e-audit.md` for BP-1, BP-3, BP-5 and BP-6, and ledger
+  `2026-09-19-concierge-custody-rulings` records the same gap. BP-1 has since landed independently
+  via PR #988, but BP-3/BP-5/BP-6 have no committed audit behind them — they are **[reported]**
+  pointers, not **[verified]** facts, per this file's own evidence discipline (§0). Until the audit
+  is committed, Lane P and Lane C (design §12, items 1–2) cannot start from it, and any prose citing
+  BP-3/BP-5/BP-6 should be read as unverified until the file lands.
