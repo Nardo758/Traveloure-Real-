@@ -1775,4 +1775,12 @@ export const MIGRATION_FILES = [
   // no shared/schema.ts change — every referenced table already exists and is already declared —
   // so `preflight-prod-constraints.cjs` needs no new manifest entry.
   "313_platform_concierge_listing.sql",
+  // 314 — ledger `2026-09-19-quote-plan-link` (CLAUDE.md Locked Decision 49, amended). TWO
+  // additive nullable columns on `service_quotes`: `trip_id` (the plan the traveler was asking
+  // from, ON DELETE SET NULL) and `itinerary_item_id` (the plan's own item for this listing when
+  // one already existed at request time, ON DELETE SET NULL, requires `trip_id`), plus an index
+  // on `trip_id`. No DEFAULT, no CHECK, no backfill; DECLARED in `shared/schema.ts` in the same
+  // commit (deploy-push durability rule). No CHECK added or changed, so
+  // `preflight-prod-constraints.cjs` needs no new manifest entry.
+  "314_service_quotes_plan_link.sql",
 ] as const;

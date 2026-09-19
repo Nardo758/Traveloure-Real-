@@ -1811,6 +1811,10 @@ This document captures architectural decisions to maintain consistency across co
     `{ quoteBookingId }` charges the SAME ruled traveler service fee every service booking carries,
     resolved/waived (Trip Pass) through the ONE shared `resolveTravelerServiceFeeSnapshot` (§18
     rule 1) the cart calls too, and disclosed before the traveler completes payment.
+    **A QUOTE MAY NAME THE PLAN IT WAS ASKED FROM, AMENDED (ledger `2026-09-19-quote-plan-link`;
+    migration 314).** `service_quotes.trip_id`/`itinerary_item_id` are additive, server-verified
+    (LD 40 posture) at request; accept copies the link onto the booking (so the #988 waiver now
+    fires) and the item is projected through the ONE copy-down, LD 39. NULL = not from a plan (§13).
 
 50. **A PARTIALLY FULFILLED BUNDLE SETTLES ONCE BY ITS PURCHASE-TIME COMPONENT ALLOCATION (decision-maker
     ruling, Sep 16, 2026 — ledger `2026-09-16-bundle-partial-settlement`; build lane dispatched the same

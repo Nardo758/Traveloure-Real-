@@ -182,3 +182,15 @@ unchanged — this amendment adds no new idempotency key.
 nothing, because the fee is assessed once at the deposit charge; refunds and cancellation still
 ride the existing whole-row rails, which read the fee back off the row's own stamped snapshot like
 everything else on it.
+
+---
+
+**`superseded@<sha>` — ledger `2026-09-19-quote-plan-link` (migration 314).** The Q13 sentence above
+— *"Trip Pass waiver end to end, via a fixture that directly associates a trip since no live lane
+does today"* — is no longer accurate. `service_quotes` now carries `trip_id`/`itinerary_item_id`
+(server-verified at request time), `acceptQuote` is a REAL writer of `service_bookings.trip_id` on
+a quote-born booking, and Q13 was amended in place to reach the covered state through the live
+`requestQuote(tripId)` -> `issueQuote` -> `acceptQuote` rails rather than a raw-SQL stamp. The new
+lane's own `quote-plan-link.db.test.ts` P5 proves the same waiver end to end from a fresh fixture.
+`<sha>` is filled by a follow-up commit once this lane's PR merges, per the `2026-09-19-linked-item-
+purchase-write-sha` precedent.

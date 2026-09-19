@@ -103,14 +103,29 @@ export function centsToAmount(cents: number): string {
 }
 
 /**
- * §19 — the ONE body a traveler's quote REQUEST may carry: their words and nothing else.
- * `.strict()` REFUSES an unknown key rather than silently stripping it. There is deliberately no
- * amount (a traveler does not price a quote), no `serviceId` (the path names the listing), no
- * `tripId` (a quote request is not a plan write) and no status.
+ * §19 — the ONE body a traveler's quote REQUEST may carry: their words, and — since migration
+ * 314 (ledger `2026-09-19-quote-plan-link`) — the plan they are asking from. `.strict()` REFUSES
+ * an unknown key rather than silently stripping it. There is deliberately no amount (a traveler
+ * does not price a quote), no `serviceId` (the path names the listing) and no status.
+ *
+ * `tripId` and `itineraryItemId` are the same shape as every other client-supplied FOREIGN KEY on
+ * this platform (LD 40 / `resolveItemEventLink` posture, §14): admission here proves only that a
+ * non-empty string arrived, never that the trip is this traveler's or that the item belongs to
+ * it. `resolveQuotePlanLink` (`server/services/quote-plan-link.service.ts`) does that verification
+ * server-side; the route calls it, never trusting these fields beyond parsing. `itineraryItemId`
+ * REQUIRES `tripId` — an item cannot be named without the plan it is on.
  */
 export const quoteRequestBodySchema = z
-  .object({ note: z.string().trim().max(2000).nullish() })
-  .strict();
+  .object({
+    note: z.string().trim().max(2000).nullish(),
+    tripId: z.string().trim().min(1).nullish(),
+    itineraryItemId: z.string().trim().min(1).nullish(),
+  })
+  .strict()
+  .refine((v) => !(v.itineraryItemId && !v.tripId), {
+    message: "itineraryItemId requires tripId.",
+    path: ["itineraryItemId"],
+  });
 export type QuoteRequestBody = z.infer<typeof quoteRequestBodySchema>;
 
 /**

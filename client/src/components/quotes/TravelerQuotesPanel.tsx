@@ -40,6 +40,7 @@ import {
   quoteChargeRefusalLine,
   quoteDepositLine,
   quoteIsAcceptable,
+  quotePlanLine,
   quoteStateCopy,
   quoteTravelerFeeLine,
   quoteValidityLine,
@@ -222,6 +223,7 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
       {quotes.map((q) => {
         const copy = quoteStateCopy(q.lifecycle);
         const validity = quoteValidityLine(q, formatDay);
+        const planLine = quotePlanLine(q);
         const minted = q.bookingId ? bookingsById?.[q.bookingId] : undefined;
         const depositLine = q.bookingId ? quoteDepositLine(minted ?? null) : null;
         return (
@@ -246,6 +248,11 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
                 <p className="text-xs text-muted-foreground flex items-center gap-1.5" data-testid={`quote-validity-${q.id}`}>
                   <Clock className="w-3.5 h-3.5" />
                   {validity}
+                </p>
+              )}
+              {planLine && (
+                <p className="text-xs text-muted-foreground" data-testid={`quote-plan-${q.id}`}>
+                  {planLine}
                 </p>
               )}
               <p className="text-sm text-muted-foreground" data-testid={`quote-meaning-${q.id}`}>

@@ -46,6 +46,20 @@ export interface QuoteCardRow {
   supersededBy?: string;
   bookingId?: string;
   createdAt?: string;
+  /** Ledger `2026-09-19-quote-plan-link`: present only when this quote was asked from a plan the
+   *  server could still name a title for. Absent = not asked from a plan, or the plan's own title
+   *  could not be resolved — never rendered as "no plan" (§13). */
+  tripId?: string;
+  tripTitle?: string;
+}
+
+/**
+ * "for plan <title>", or nothing (§13 — `tripTitle` absent is a different fact from "no plan" and
+ * is never worded as one). Ledger `2026-09-19-quote-plan-link`.
+ */
+export function quotePlanLine(row: Pick<QuoteCardRow, "tripId" | "tripTitle">): string | null {
+  if (!row.tripId || !row.tripTitle) return null;
+  return `for plan ${row.tripTitle}`;
 }
 
 export type QuoteTone = "waiting" | "live" | "done" | "dead";
