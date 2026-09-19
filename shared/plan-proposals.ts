@@ -246,3 +246,17 @@ export const PLAN_PROPOSAL_REFUND_UNKNOWN_REFUSAL = "unknown_prior_refusal";
 export function planProposalRefundReason(refusal: string, proposalId: string): string {
   return `${PLAN_PROPOSAL_REFUND_REASON}:${refusal}:${proposalId}`;
 }
+
+/**
+ * THE ONE MESSAGE A CALLER SEES FOR A ROW THAT IS ALREADY `refunded`, spelled once so both call
+ * sites agree (§18 rule 1; ledger `2026-09-19-proposal-refund-race-reason`).
+ *
+ * Two callers land here with the SAME true fact — the row they are looking at has already been
+ * refused and its fee refunded — by two different roads: the route's own top-of-handler read of a
+ * row that was ALREADY `refunded` before this request started (a plain retry), and a caller whose
+ * OWN `applyPlanProposal` attempt raced a concurrent one and lost — its internal status read landed
+ * AFTER the other caller's refund claim committed. Both are told the same thing, because both are
+ * looking at the same terminal fact (§13).
+ */
+export const PLAN_PROPOSAL_ALREADY_REFUNDED_MESSAGE =
+  "This proposal could not be applied as read, and its fee has been refunded. Ask again for a fresh answer.";

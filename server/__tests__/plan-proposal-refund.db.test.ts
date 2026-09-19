@@ -5,7 +5,9 @@
  * (review fixes on the L16 lane-1 create rail; decision-maker ruling 2026-09-16 OPTION B — refund
  *  the fee on a refused apply — WIDENED 2026-09-17 to every refusal of a PAID proposal, with the
  *  audit `reason` recording the refusal rather than the call; ledger
- *  `2026-09-16-l16-lane1-review-fixes`. CLAUDE.md Locked Decision 45 (3),
+ *  `2026-09-16-l16-lane1-review-fixes`. R9/R10 add ledger `2026-09-19-proposal-refund-race-reason`
+ *  — a caller that loses the race to a concurrent refund claim is told `refunded`, never
+ *  `not_applicable`. CLAUDE.md Locked Decision 45 (3),
  *  Locked Decision 41 (a), §8, §13, §14, §15, §15b, §18 rule 1.)
  *
  *   R1  A STALE proposal is refused by PAY before the claim: 409 `stale_catalog_price`,
@@ -34,6 +36,18 @@
  *       such a row was STUCK: unappliable for good, and undiscardable because discard refuses a row
  *       carrying a PaymentIntent. ONE Stripe call on the SAME shared path under the SAME key, the
  *       audit row names `protected_item`, the plan is untouched, and the retry adds no Stripe call.
+ *   R9  TWO CONCURRENT applies, forced DETERMINISTICALLY (ledger
+ *       `2026-09-19-proposal-refund-race-reason`): caller B's OWN internal status read is made to
+ *       land AFTER caller A's refund claim has fully committed, via the test-only
+ *       `deps.beforeStatusRead` seam on `applyPlanProposal`. Before the fix, B's internal check saw
+ *       the row already `refunded` and, seeing anything other than `proposed`, reported the generic
+ *       `not_applicable` — a true-sounding but wrong answer (§13): the row's fee WAS already
+ *       refunded, B just did not say so. B now throws `ProposalApplyRefused("refunded", …)`, and
+ *       the SAME shared refund-lookup path (`refusal: null`, exactly what the route's new
+ *       concurrent-loser branch calls) reports the SAME refund with NO second Stripe call. Money
+ *       safety was never at risk — this fixes the LOSING caller's response honesty.
+ *   R10 `not_applicable` still covers every OTHER terminal state — applied, discarded — so the R9
+ *       carve-out is exactly one code, not a general softening of the guard.
  *
  * ── HOW STRIPE IS HANDLED, STATED (§18d) ─────────────────────────────────────────────────────
  * `paymentIntents.retrieve` and `refunds.create` are stubbed on the shared Stripe prototype (the
@@ -63,17 +77,22 @@ import { itineraryItems } from "@shared/schema";
 import {
   PLAN_PROPOSAL_STATUS_PROPOSED,
   PLAN_PROPOSAL_STATUS_REFUNDED,
+  PLAN_PROPOSAL_CHARGE_BASIS_PAID,
   planProposalRefundIdempotencyKey,
   planProposalRefundReason,
   PLAN_PROPOSAL_REFUND_UNKNOWN_REFUSAL,
   type PlanProposalChangeSet,
 } from "@shared/plan-proposals";
-import { createPlanProposal } from "../services/plan-proposals.service";
+import { createPlanProposal, discardPlanProposal } from "../services/plan-proposals.service";
 import {
   PROPOSAL_PAYMENT_METADATA_TYPE,
   claimProposalCharge,
   resolveAiTaskChargeCents,
   stampProposalPaymentIntent,
+  applyPlanProposal,
+  ProposalApplyRefused,
+  refundRefusedProposalCharge,
+  type ProposalRefundOutcome,
 } from "../services/proposal-charge.service";
 import { AI_TASK_PROPOSAL_STALE_AFTER_HOURS_ENV_VAR } from "../config/proposal-staleness.config";
 import tripsRoutes from "../routes/trips.routes";
@@ -664,4 +683,160 @@ test("R8: a PAID proposal that names PROTECTED work is refused AND refunded; the
   assert.equal(retry.body.refund.refundId, res.body.refund.refundId, "the SAME refund");
   assert.equal(refundCalls.length, 1, "no second Stripe call — the audit row answered");
   assert.equal((await refundRowsFor(paid.pi)).length, 1, "still one audit row");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// R9 — THE INTERLEAVING, FORCED DETERMINISTICALLY: a caller whose OWN status read lands AFTER a
+// concurrent caller's refund claim commits is told `refunded`, never `not_applicable`.
+// (ledger `2026-09-19-proposal-refund-race-reason`)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test("R9: caller B's status read forced to land after caller A's refund commit ⇒ ONE refund, B told 'refunded'", async () => {
+  const paid = await stagePaid(ids.paid, namingListing(`r9 ${RUN}`));
+  await backdate(paid.row.id);
+  const before = await itemsOn(ids.paid);
+
+  const applyParams = {
+    proposalId: paid.row.id,
+    tripId: ids.paid,
+    basis: PLAN_PROPOSAL_CHARGE_BASIS_PAID,
+    chargedAmountCents: paid.amount,
+    paymentIntentId: paid.pi,
+    actorId: ids.owner,
+  } as const;
+
+  let aOutcome: { code: string; refund: ProposalRefundOutcome } | null = null;
+
+  // Caller B's internal status read (inside `applyPlanProposal`, right before its `tx.select()`)
+  // is paused HERE and does not resume until caller A's ENTIRE request — refuse, then refund — has
+  // committed. This is exactly the interleaving that made R6 flaky on GitHub's runner: B's route
+  // reads the row while it is still `proposed`, but by the time B's OWN transaction reads the row,
+  // A has already claimed and refunded it.
+  const bPromise = applyPlanProposal(applyParams, {
+    beforeStatusRead: async () => {
+      try {
+        await applyPlanProposal(applyParams);
+        assert.fail("caller A should have been refused as stale");
+      } catch (err: any) {
+        if (!(err instanceof ProposalApplyRefused)) throw err;
+        assert.equal(err.code, "stale_catalog_price", "A reads the row while it is still `proposed`");
+        // Mirrors the ROUTE's own catch handler exactly (trips.routes.ts): the refusal IS known
+        // here, so it is threaded through, never re-derived.
+        const refund = await refundRefusedProposalCharge({
+          proposalId: paid.row.id,
+          tripId: ids.paid,
+          paymentIntentId: paid.pi,
+          amountCents: paid.amount,
+          refusal: err.code,
+        });
+        aOutcome = { code: err.code, refund };
+      }
+    },
+  });
+
+  let bCode: string | undefined;
+  try {
+    await bPromise;
+    assert.fail("caller B should have been refused too");
+  } catch (err: any) {
+    assert.ok(err instanceof ProposalApplyRefused, `B's refusal, not a crash: ${err?.stack ?? err}`);
+    bCode = err.code;
+  }
+  assert.equal(
+    bCode,
+    "refunded",
+    "B's OWN read landed on an already-refunded row — the row's real state, never `not_applicable`",
+  );
+
+  // Mirrors the ROUTE's NEW concurrent-loser branch exactly: `refusal: null` — the refusal is NOT
+  // knowable to B (it never reached `assertProposalCatalogStillValid`), so it is never guessed.
+  const bRefund = await refundRefusedProposalCharge({
+    proposalId: paid.row.id,
+    tripId: ids.paid,
+    paymentIntentId: paid.pi,
+    amountCents: paid.amount,
+    refusal: null,
+  });
+
+  assert.ok(aOutcome, "A's hook ran to completion");
+  assert.equal(aOutcome!.refund.issued, true);
+  assert.equal(bRefund.issued, true);
+  assert.equal(
+    bRefund.issued && aOutcome!.refund.issued ? bRefund.refundId === aOutcome!.refund.refundId : false,
+    true,
+    "both callers are told about the SAME refund",
+  );
+
+  // Money safety: exactly ONE Stripe call — B found A's audit row already written and never
+  // re-drove Stripe.
+  assert.equal(refundCalls.length, 1, "exactly one refunds.create across both callers");
+  assert.equal(refundCalls[0].options?.idempotencyKey, planProposalRefundIdempotencyKey(paid.row.id));
+
+  const row = await proposalRow(paid.row.id);
+  assert.equal(row.status, PLAN_PROPOSAL_STATUS_REFUNDED);
+  assert.equal(row.charged_amount_cents, paid.amount);
+
+  const audit = await refundRowsFor(paid.pi);
+  assert.equal(audit.length, 1, "ONE refunds audit row — the refusal that actually caused it");
+  assert.equal(
+    audit[0].reason,
+    planProposalRefundReason("stale_catalog_price", paid.row.id),
+    "the KNOWN refusal (A's), never a guess and never `retry`",
+  );
+
+  assert.deepEqual(
+    (await itemsOn(ids.paid)).map((i) => i.id).sort(),
+    before.map((i) => i.id).sort(),
+    "the plan is untouched by either caller",
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// R10 — `not_applicable` still covers every OTHER terminal state. `refunded` is exactly one carve-
+// out, not a general softening of the guard.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+test("R10: not_applicable still covers an already-APPLIED or already-DISCARDED proposal", async () => {
+  // Applied (trip-pass basis — no Stripe/refund plumbing needed to prove this).
+  const applied = await stage(ids.covered, { additions: [{ title: `r10 applied ${RUN}` }] });
+  const appliedParams = {
+    proposalId: applied.id,
+    tripId: ids.covered,
+    basis: "trip_pass" as const,
+    chargedAmountCents: null,
+    paymentIntentId: null,
+    actorId: ids.owner,
+  };
+  await applyPlanProposal(appliedParams);
+  await assert.rejects(
+    () => applyPlanProposal(appliedParams),
+    (err: any) => {
+      assert.ok(err instanceof ProposalApplyRefused);
+      assert.equal(err.code, "not_applicable", "an APPLIED row is not_applicable, never refunded");
+      return true;
+    },
+  );
+
+  // Discarded.
+  const discardable = await stage(ids.covered, { additions: [{ title: `r10 discarded ${RUN}` }] });
+  const discarded = await discardPlanProposal(discardable.id, ids.covered);
+  assert.ok(discarded, "fixture: the discard itself succeeded");
+  await assert.rejects(
+    () =>
+      applyPlanProposal({
+        proposalId: discardable.id,
+        tripId: ids.covered,
+        basis: "trip_pass" as const,
+        chargedAmountCents: null,
+        paymentIntentId: null,
+        actorId: ids.owner,
+      }),
+    (err: any) => {
+      assert.ok(err instanceof ProposalApplyRefused);
+      assert.equal(err.code, "not_applicable", "a DISCARDED row is not_applicable, never refunded");
+      return true;
+    },
+  );
+
+  assert.equal(refundCalls.length, 0, "neither terminal state calls Stripe");
 });
