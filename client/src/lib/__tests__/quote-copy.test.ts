@@ -13,6 +13,8 @@
  * D1-D4  the deposit line is the MINTED BOOKING's answer; an unloaded booking yields no line.
  * R1-R3  the seller's validity refusal repeats the SERVER's numbers, never one of its own.
  * C1     the charge is not built, and the note says so rather than promising payment.
+ * F1-F4  ledger `2026-09-19-quote-born-traveler-fee`: the fee line is the SERVER's own numbers,
+ *        never a computed one, and an absent answer renders nothing rather than a guessed $0.
  *
  * Run: npx tsx --test client/src/lib/__tests__/quote-copy.test.ts
  */
@@ -30,6 +32,7 @@ import {
   quoteIsWithdrawable,
   quoteIssueRefusalLine,
   quoteStateCopy,
+  quoteTravelerFeeLine,
   quoteValidityLine,
   type QuoteCardRow,
 } from "../quote-copy";
@@ -174,4 +177,36 @@ test("C2: a charge refusal is the SERVER's fact — the expiry is repeated, neve
   );
   assert.equal(quoteChargeRefusalLine(null, fmt), null);
   assert.equal(quoteChargeRefusalLine({}, fmt), null);
+});
+
+test("F1: no fee data yet ⇒ no line (§13 — 'not yet known' is not '$0.00')", () => {
+  assert.equal(quoteTravelerFeeLine(null), null);
+  assert.equal(quoteTravelerFeeLine(undefined), null);
+});
+
+test("F2: an UNCOVERED charge states the fee that actually rode the Stripe total", () => {
+  const line = quoteTravelerFeeLine({ charged: 7, wouldHaveBeen: 7, waived: false, waiverBasis: null });
+  assert.match(line ?? "", /7\.00/);
+  assert.match(line ?? "", /traveler service fee/i);
+  assert.match(line ?? "", /charged/i);
+});
+
+test("F3: a COVERED charge states the waiver and the REAL amount it covers — never '0-because-waived'", () => {
+  const line = quoteTravelerFeeLine({ charged: 0, wouldHaveBeen: 25, waived: true, waiverBasis: "trip_pass" });
+  assert.match(line ?? "", /Trip Pass/);
+  assert.match(line ?? "", /25\.00/, "the REAL band-priced amount, not the charged $0");
+  assert.doesNotMatch(line ?? "", /\$?0\.00 (traveler service fee|covers)/);
+});
+
+test("F4: a genuinely zero fee — uncovered charged=0, or a covered wouldHaveBeen=0 — discloses nothing extra", () => {
+  assert.equal(
+    quoteTravelerFeeLine({ charged: 0, wouldHaveBeen: 0, waived: false, waiverBasis: null }),
+    null,
+    "nothing to disclose on top of the quoted amount",
+  );
+  assert.equal(
+    quoteTravelerFeeLine({ charged: 0, wouldHaveBeen: 0, waived: true, waiverBasis: "rails" }),
+    null,
+    "a waiver over a real $0 fee is not a claim worth making",
+  );
 });

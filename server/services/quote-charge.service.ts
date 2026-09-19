@@ -60,12 +60,24 @@
  *     carries; a quote-born row with no service date resolves to NULL and the column is LEFT NULL
  *     rather than given a guessed deadline.
  *
- * ── DELIBERATE NEGATIVE SPACE (report it, do not "fix" it in passing) ─────────────────────────
- * NO TRAVELER SERVICE FEE is folded into this charge. The traveler accepted a quote that stated
- * ONE number, and the accept rail disclosed no fee on top of it; adding one at charge time would
- * charge more than the quote said. Whether a quote-born booking should carry the ruled traveler
- * service fee is a DISCLOSURE decision for the accept surface, not something a charge arm may
- * decide on its own (§8/§13). No rate, band or fee is resolved in this file.
+ * ── THE TRAVELER SERVICE FEE APPLIES HERE TOO (decision-maker ruling, ledger
+ * `2026-09-19-quote-born-traveler-fee`) ────────────────────────────────────────────────────────
+ * This entry originally recorded that NO traveler service fee was folded into this charge — a
+ * quote states one number and the accept rail disclosed nothing on top of it, so charging more
+ * felt like a bait-and-switch. The decision-maker ruled otherwise: a quote-born booking carries
+ * the SAME ruled traveler service fee (ledger `2026-09-02-traveler-fee-applies-everywhere`) as
+ * every other service booking, resolved through the SAME band-driven resolver, waived by the SAME
+ * Trip Pass entitlement, and disclosed to the traveler BEFORE they complete payment (the quotes
+ * panel's Pay sheet), exactly the same as the cart's own pre-checkout disclosure. `resolveQuoteCharge`
+ * resolves it (read-only — see below) and `claimQuoteBornBooking` stamps it in the SAME statement
+ * that takes the §15 claim, through the ONE shared `resolveTravelerServiceFeeSnapshot`
+ * (`fee-resolution.service.ts`, §18 rule 1) — never a second computation of the fee shape.
+ *
+ * WHY A TRIP ID CAN BE CHECKED AT ALL: `service_bookings.trip_id` is nullable and a quote-born
+ * booking is minted with none (no lane mints one — the quote/accept flow carries no trip context),
+ * so `coversAction` is skipped and the fee is simply never waived UNLESS a future lane starts
+ * associating a quote-born booking with a trip. The SELECT still reads `trip_id` off the row
+ * (never a body value, §14) so that day requires no further change here.
  */
 import { sql } from "drizzle-orm";
 
@@ -74,6 +86,11 @@ import { TRAVELER_CHARGE_SNAPSHOT_KEY } from "@shared/booking-details-admission"
 import { composeTravelerCharge, travelerChargeBasis, travelerChargeForRow } from "./traveler-charge";
 import { resolveBalanceDueAt } from "./deposit.service";
 import { resolveServiceDate } from "./booking-completion.service";
+// Ledger `2026-09-19-quote-born-traveler-fee`: the SAME band-driven resolver/snapshot shape the
+// cart arm uses (§18 rule 1) and the SAME Trip Pass entitlement check the cart's pre-pass makes —
+// neither is re-implemented here.
+import { resolveTravelerServiceFeeSnapshot, round2, type TravelerServiceFeeSnapshot } from "./fee-resolution.service";
+import { coversAction } from "./trip-entitlement.service";
 
 /**
  * The `conciergeFee` portion of a quote-born row's traveler charge. A custom quote is a provider
@@ -111,12 +128,21 @@ export interface QuoteChargePlan {
   ok: true;
   bookingId: string;
   quoteId: string;
-  /** The traveler's FULL charge for this row, through the shared composition/reading (§18 rule 1). */
+  /** The traveler's FULL charge for this row, EXCLUDING the traveler service fee — through the
+   *  shared composition/reading (§18 rule 1). */
   subtotal: number;
   /** The provider's WITHHELD share. DISCLOSED in the response; never a term of the charge (A3). */
   platformFee: number;
-  /** Present only when the row carries a deposit split — the amount due NOW, read off the row. */
+  /** Present only when the row carries a deposit split — the amount due NOW (deposit + the fee
+   *  below, "assessed ONCE, at the deposit charge" — the same posture the cart's Ruling D takes),
+   *  read off the row plus the resolved fee, never re-derived from a listing config that may have
+   *  moved since. */
   chargeAmount?: number;
+  /** Ledger `2026-09-19-quote-born-traveler-fee`: the ONE shared snapshot shape, resolved here
+   *  (read-only) and stamped by the claim in the SAME statement (§18 rule 1). */
+  travelerServiceFee: TravelerServiceFeeSnapshot;
+  /** Derived from `travelerServiceFee.waiverBasis` — never a second entitlement check. */
+  coveredByTripPass: boolean;
   /** The §15 Stripe/DB idempotency key for this booking's charge. A retry rebuilds it verbatim. */
   idempotencyKey: string;
   /** true ⇒ an earlier attempt already holds the provisional claim; re-drive, do not re-claim. */
@@ -177,6 +203,7 @@ export async function resolveQuoteCharge(input: {
            b.slot_id,
            b.booking_details,
            b.stripe_payment_intent_id,
+           b.trip_id,
            q.id            AS quote_id,
            q.status        AS quote_status,
            q.expires_at    AS quote_expires_at,
@@ -255,6 +282,36 @@ export async function resolveQuoteCharge(input: {
     ? null
     : num(row.deposit_amount);
 
+  // THE TRAVELER SERVICE FEE (ledger `2026-09-19-quote-born-traveler-fee`). A row already CLAIMED
+  // (its booking_details already carries the stamp `claimQuoteBornBooking` wrote) reads that
+  // snapshot BACK rather than re-resolving it — exactly the A3 `travelerCharge` posture above, and
+  // for the same reason: a re-drive must never disagree with what the claim already stamped and
+  // what the fee-ledger write at authorization will read, even if the band moved in between (§13).
+  // Only a genuinely FIRST attempt resolves it fresh.
+  const existingFeeSnapshot = details.travelerServiceFee as TravelerServiceFeeSnapshot | undefined;
+  let travelerServiceFee: TravelerServiceFeeSnapshot;
+  if (existingFeeSnapshot && typeof existingFeeSnapshot.charged === "number") {
+    travelerServiceFee = existingFeeSnapshot;
+  } else {
+    // §14: the trip id comes from the ROW, never the body, and a quote-born booking carries none
+    // today (see the header) — so this ordinarily resolves `false` and the fee is charged in full.
+    const tripId = row.trip_id ? String(row.trip_id) : null;
+    let tripPassCovers = false;
+    try {
+      tripPassCovers = tripId ? await coversAction(tripId, "traveler_service_fee") : false;
+    } catch (tpErr: any) {
+      // Best-effort, the SAME posture the cart's own trip-pass pre-pass takes: a coverage-check
+      // failure never fails the charge — it just means no waiver is offered this attempt.
+      console.error(
+        `[quote-charge] trip-pass coverage check failed for booking ${String(row.id)} (no waiver offered):`,
+        tpErr?.message ?? tpErr,
+      );
+      tripPassCovers = false;
+    }
+    travelerServiceFee = await resolveTravelerServiceFeeSnapshot(subtotal, tripPassCovers ? "trip_pass" : null);
+  }
+  const coveredByTripPass = travelerServiceFee.waiverBasis === "trip_pass";
+
   // The cutoff, through the ONE derivation. A quote-born row carries no booked slot and no
   // `scheduledDate` snapshot, so this ordinarily resolves NULL and the column stays NULL — an
   // honest "the platform holds no date this can key on", never a guessed deadline.
@@ -277,7 +334,11 @@ export async function resolveQuoteCharge(input: {
     quoteId: String(row.quote_id),
     subtotal,
     platformFee: num(row.platform_fee),
-    ...(depositAmount !== null ? { chargeAmount: depositAmount } : {}),
+    // The fee is assessed ONCE, at the deposit charge (the cart's own Ruling D posture) — so it
+    // rides the amount due NOW here, and the balance leg (pay-balance) adds nothing on top of it.
+    ...(depositAmount !== null ? { chargeAmount: round2(depositAmount + travelerServiceFee.charged) } : {}),
+    travelerServiceFee,
+    coveredByTripPass,
     // §15 layer (a). ONE booking, ONE charge, so the booking id IS the scope: a retry of the same
     // traveler's same charge rebuilds this key verbatim and Stripe hands back the SAME
     // PaymentIntent rather than creating a second one. Pinned in the K1 key-template set.
@@ -310,6 +371,12 @@ export async function resolveQuoteCharge(input: {
 export async function claimQuoteBornBooking(input: {
   bookingId: string;
   actorUserId: string;
+  /** Ledger `2026-09-19-quote-born-traveler-fee`: the snapshot `resolveQuoteCharge` resolved —
+   *  stamped in this SAME statement, exactly as the A3 `travelerCharge` snapshot beside it, so a
+   *  re-drive and the fee-ledger write at authorization both read back what THIS claim decided
+   *  rather than a band that may have moved since. REQUIRED, not optional: a claim with no fee
+   *  snapshot is exactly the silent-drift shape §18 rule 1 exists to refuse. */
+  travelerServiceFee: TravelerServiceFeeSnapshot;
   balanceDueAt?: Date | null;
 }): Promise<boolean> {
   const setBalanceDue = input.balanceDueAt
@@ -320,7 +387,8 @@ export async function claimQuoteBornBooking(input: {
        SET status = 'payment_pending',
            booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(
              ${TRAVELER_CHARGE_SNAPSHOT_KEY}::text,
-             jsonb_build_object('conciergeFee', ${QUOTE_BORN_CONCIERGE_PORTION}::text)
+             jsonb_build_object('conciergeFee', ${QUOTE_BORN_CONCIERGE_PORTION}::text),
+             'travelerServiceFee', ${JSON.stringify(input.travelerServiceFee)}::jsonb
            ),
            updated_at = NOW()${setBalanceDue}
      WHERE id = ${input.bookingId}

@@ -297,6 +297,63 @@ export async function resolveTravelerServiceFee(
   };
 }
 
+/**
+ * WHAT SUPPRESSES the traveler service fee, for the ONE booking-details snapshot shape both charge
+ * arms write. `"rails"` — a provider-referral link waiver — is cart-only (a quote is bespoke pricing
+ * already; no referral link rides an accepted quote); `"trip_pass"` is available to either arm that
+ * can name a `trips.id` to check `coversAction` against.
+ */
+export type TravelerServiceFeeWaiverBasis = "rails" | "trip_pass" | null;
+
+/**
+ * The `booking_details.travelerServiceFee` snapshot shape (ledger `2026-09-02-traveler-fee-applies-
+ * everywhere`), read by `recordTravelerServiceFeeLedger`/`buildTravelerServiceFeeRows` and by the
+ * re-drive reconstruction. `charged` is what rode the Stripe total (0 when waived); `wouldHaveBeen`
+ * is the band-priced fee, resolved UNCONDITIONALLY so it always names the real amount even on a
+ * waived line — never 0-because-waived standing in for 0-because-the-band-said-so.
+ */
+export interface TravelerServiceFeeSnapshot {
+  charged: number;
+  wouldHaveBeen: number;
+  rate: number;
+  bandId: string | null;
+  bandKey: string | null;
+  capApplied: boolean;
+  waived: boolean;
+  waiverBasis: TravelerServiceFeeWaiverBasis;
+}
+
+/**
+ * ONE snapshot builder for BOTH checkout arms (§18 rule 1; ledger `2026-09-19-quote-born-traveler-
+ * fee`). Extracted from the cart loop's own inline computation in `payments.routes.ts` — a second
+ * caller copying that shape by hand is exactly the derivation-drift class §18 rule 1 names, and it
+ * is how a cart line and a quote-born line could end up charged from two different formulas for the
+ * same band.
+ *
+ * `resolveTravelerServiceFee` is called WITHOUT `{waived}` here — always resolving the real amount —
+ * and the waiver is applied on top for `charged`, matching the cart loop's own two-step shape
+ * (`travelerFeeResolved` unconditional, `feeChargedAmt` conditional). Passing `{waived:true}` into
+ * the resolver instead would make `wouldHaveBeen` read 0 on every waived line, which is a different
+ * (wrong) fact for a disclosure surface that means to show what the fee WOULD have been.
+ */
+export async function resolveTravelerServiceFeeSnapshot(
+  subtotal: number,
+  waiverBasis: TravelerServiceFeeWaiverBasis,
+): Promise<TravelerServiceFeeSnapshot> {
+  const resolved = await resolveTravelerServiceFee(subtotal);
+  const waived = waiverBasis !== null;
+  return {
+    charged: waived ? 0 : resolved.amount,
+    wouldHaveBeen: resolved.amount,
+    rate: resolved.rate,
+    bandId: resolved.bandId,
+    bandKey: resolved.bandKey,
+    capApplied: resolved.capApplied,
+    waived,
+    waiverBasis,
+  };
+}
+
 /** Money rounding shared by both resolvers — half-up to cents, matching the checkout's toFixed(2). */
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;

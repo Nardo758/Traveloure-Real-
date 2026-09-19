@@ -79,6 +79,9 @@ const {
   CLAIM_EXPIRED_STATUS,
 } = await import("../services/checkout-claim.service");
 const { travelerChargeBasis, travelerChargeForRow } = await import("../services/traveler-charge");
+// Ledger `2026-09-19-quote-born-traveler-fee`: NO LITERALS (§8) — every expected fee in Q12-Q14 is
+// read off the SAME `fee_bands` row the resolver reads, never typed here.
+const { requireBand, round2, TRAVELER_SERVICE_FEE_BAND } = await import("../services/fee-resolution.service");
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -88,6 +91,7 @@ const ids = {
 };
 const createdServiceIds: string[] = [];
 const createdCategoryIds: string[] = [];
+const createdTripIds: string[] = [];
 let categoryId: string;
 
 // ── Disposable-DB guard (the service-quotes / booking-birth-provenance posture) ───────────────
@@ -217,6 +221,10 @@ after(async () => {
     await db.execute(sql`DELETE FROM content_registry WHERE content_id = ${sid}`).catch(() => {});
     await db.execute(sql`DELETE FROM provider_services WHERE id = ${sid}`).catch(() => {});
   }
+  for (const tid of createdTripIds) {
+    await db.execute(sql`DELETE FROM trip_entitlements WHERE trip_id = ${tid}`).catch(() => {});
+    await db.execute(sql`DELETE FROM trips WHERE id = ${tid}`).catch(() => {});
+  }
   await db.execute(sql`DELETE FROM users WHERE id IN (${ids.provider}, ${ids.traveler}, ${ids.other})`).catch(() => {});
   for (const id of createdCategoryIds) {
     await db.execute(sql`DELETE FROM service_categories WHERE id = ${id}`).catch(() => {});
@@ -247,7 +255,15 @@ test("Q1 · happy path and ORDER: resolve → CLAIM (no marker yet) → marker �
   assert.equal((await bookingRow(bookingId)).status, "pending");
 
   // THE CLAIM.
-  assert.equal(await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, balanceDueAt: p.balanceDueAt }), true);
+  assert.equal(
+    await claimQuoteBornBooking({
+      bookingId,
+      actorUserId: ids.traveler,
+      travelerServiceFee: p.travelerServiceFee,
+      balanceDueAt: p.balanceDueAt,
+    }),
+    true,
+  );
   const claimed = await bookingRow(bookingId);
   assert.equal(claimed.status, "payment_pending");
   assert.equal(claimed.stripe_payment_intent_id, null);
@@ -287,7 +303,7 @@ test("Q1 · happy path and ORDER: resolve → CLAIM (no marker yet) → marker �
 test("Q2 · the WEBHOOK promotion is UNCHANGED: one flip, and a double signal is a no-op", async () => {
   const { bookingId } = await acceptedQuoteBooking({ amountCents: 22000 });
   const p = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "resolve");
-  await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler });
+  await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, travelerServiceFee: p.travelerServiceFee });
   const pi = `pi_qc_${RUN}_q2`;
   await markStripeAttempt([bookingId], `pi-${p.idempotencyKey}`);
   await stampAuthorization([bookingId], pi);
@@ -305,7 +321,7 @@ test("Q2 · the WEBHOOK promotion is UNCHANGED: one flip, and a double signal is
 test("Q3 · the CLIENT fallback promotes too — and a client-named PaymentIntent that is not the stamped one does nothing (N17c)", async () => {
   const { bookingId } = await acceptedQuoteBooking({ amountCents: 19000 });
   const p = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "resolve");
-  await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler });
+  await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, travelerServiceFee: p.travelerServiceFee });
   const pi = `pi_qc_${RUN}_q3`;
   await markStripeAttempt([bookingId], `pi-${p.idempotencyKey}`);
   await stampAuthorization([bookingId], pi);
@@ -388,8 +404,14 @@ test("Q6 · someone else's booking, and a booking no quote names, are the SAME 4
   assert.equal(notYours.status, 404, "§13/LD 40: 'no such thing' and 'not yours' are one sentence");
   assert.equal(notYours.code, "not_found");
   assert.equal((await bookingRow(bookingId)).status, "pending", "and it cost nothing");
-  // The claim ITSELF is actor-scoped too — a defence in depth, not only the read above.
-  assert.equal(await claimQuoteBornBooking({ bookingId, actorUserId: ids.other }), false);
+  // The claim ITSELF is actor-scoped too — a defence in depth, not only the read above. The fee
+  // snapshot is read as the OWNER (a real, resolved one — never a fabricated test literal); the
+  // claim is expected to match zero rows on the actor mismatch before it is ever written.
+  const ownerPlan = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "as owner");
+  assert.equal(
+    await claimQuoteBornBooking({ bookingId, actorUserId: ids.other, travelerServiceFee: ownerPlan.travelerServiceFee }),
+    false,
+  );
   assert.equal((await bookingRow(bookingId)).status, "pending");
 
   const missing = refused(await resolveQuoteCharge({ bookingId: `qc-${RUN}-nope`, actorUserId: ids.traveler }), "missing");
@@ -410,9 +432,10 @@ test("Q6 · someone else's booking, and a booking no quote names, are the SAME 4
 
 test("Q7 · two concurrent charges: EXACTLY ONE claim wins — the loser is refused by `AND status = 'pending'`", async () => {
   const { bookingId } = await acceptedQuoteBooking({ amountCents: 51000 });
+  const p = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "resolve");
   const [a, b] = await Promise.all([
-    claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler }),
-    claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler }),
+    claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, travelerServiceFee: p.travelerServiceFee }),
+    claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, travelerServiceFee: p.travelerServiceFee }),
   ]);
   assert.equal([a, b].filter(Boolean).length, 1, "the atomic conditional is the guard, not a prior read");
   const row = await bookingRow(bookingId);
@@ -434,15 +457,27 @@ test("Q8 · a DEPOSIT-enabled listing charges the deposit the ACCEPT path pinned
   assert.ok(row.deposit_amount, "the accept rail pinned the split through the ONE resolveDepositPlan");
 
   const p = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "resolve");
-  assert.equal(p.chargeAmount, parseFloat(row.deposit_amount), "the amount due NOW is READ, never re-derived");
+  // Ledger `2026-09-19-quote-born-traveler-fee`: the fee is assessed ONCE, at the deposit charge —
+  // the amount due NOW is the deposit the accept path pinned (READ, never re-derived) PLUS the
+  // fee `resolveTravelerServiceFeeSnapshot` resolved, never the deposit alone.
+  assert.equal(
+    p.chargeAmount,
+    Math.round((parseFloat(row.deposit_amount) + p.travelerServiceFee.charged) * 100) / 100,
+    "the amount due NOW is the deposit (READ, never re-derived) plus the traveler service fee",
+  );
   assert.ok(p.chargeAmount! < p.subtotal, "a deposit is a PARTIAL payment by definition");
   assert.equal(
     Math.round((parseFloat(row.deposit_amount) + parseFloat(row.balance_amount)) * 100),
     Math.round(p.subtotal * 100),
-    "the traveler pays the same total, split in time",
+    "the traveler pays the same total, split in time — the fee rides ON TOP of that total, not inside it",
   );
 
-  await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, balanceDueAt: p.balanceDueAt });
+  await claimQuoteBornBooking({
+    bookingId,
+    actorUserId: ids.traveler,
+    travelerServiceFee: p.travelerServiceFee,
+    balanceDueAt: p.balanceDueAt,
+  });
   const claimed = await bookingRow(bookingId);
   assert.equal(claimed.deposit_amount, row.deposit_amount, "the claim does not re-split");
   assert.equal(claimed.balance_amount, row.balance_amount);
@@ -456,7 +491,8 @@ test("Q9 · the TTL sweep treats it as a cart row: an UNMARKED claim voids, a MA
   const unmarked = await acceptedQuoteBooking({ amountCents: 9000 });
   const marked = await acceptedQuoteBooking({ amountCents: 9500 });
   for (const b of [unmarked, marked]) {
-    await claimQuoteBornBooking({ bookingId: b.bookingId, actorUserId: ids.traveler });
+    const bp = plan(await resolveQuoteCharge({ bookingId: b.bookingId, actorUserId: ids.traveler }), "resolve");
+    await claimQuoteBornBooking({ bookingId: b.bookingId, actorUserId: ids.traveler, travelerServiceFee: bp.travelerServiceFee });
     await db.execute(sql`UPDATE service_bookings SET created_at = NOW() - interval '2 hours' WHERE id = ${b.bookingId}`);
   }
   await markStripeAttempt([marked.bookingId], `pi-quote-buy-${marked.bookingId}`);
@@ -479,7 +515,7 @@ test("Q9 · the TTL sweep treats it as a cart row: an UNMARKED claim voids, a MA
 test("Q10 · §17/§19b see it as a cart row: the drift job's expected charge matches, and the marker clears provenance", async () => {
   const { bookingId } = await acceptedQuoteBooking({ amountCents: 64000 });
   const p = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "resolve");
-  await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler });
+  await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, travelerServiceFee: p.travelerServiceFee });
   await markStripeAttempt([bookingId], `pi-${p.idempotencyKey}`);
   await stampAuthorization([bookingId], `pi_qc_${RUN}_q10`);
   const row = await bookingRow(bookingId);
@@ -512,4 +548,116 @@ test("Q11 · the §15 key template is RATCHETED into the K1 pinned set, with its
     "K1 pins the exact key-template SET; a new key must be ratcheted in deliberately, never by a superset",
   );
   assert.ok(k1.includes("2026-09-18-quote-born-charge"), "and the pin names the ledger row that added it");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// Q12–Q14 — LD 49's DELIBERATE NEGATIVE SPACE, CLOSED (decision-maker ruling, ledger
+// `2026-09-19-quote-born-traveler-fee`): the ruled traveler service fee now applies to a
+// quote-born booking exactly like every other service booking, resolved through the SAME
+// `resolveTravelerServiceFeeSnapshot` the cart arm calls (§18 rule 1), waived by the SAME Trip
+// Pass entitlement check. See quote-charge.service.ts's rewritten header section.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("Q12 · the ruled traveler service fee is ADDED and SNAPSHOTTED (no waiver): amount = quote + fee, band-derived, never a literal", async () => {
+  const { bookingId } = await acceptedQuoteBooking({ amountCents: 50000 }); // $500, deposits off
+  const p = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "resolve");
+
+  // NO LITERAL (§8): the expected fee is read straight off the SAME `fee_bands` row the resolver
+  // itself reads — never typed here as "7%" or "$25".
+  const band = await requireBand(TRAVELER_SERVICE_FEE_BAND);
+  const uncapped = round2(p.subtotal * band.rate);
+  const expectedFee = band.maxAmount !== null && uncapped > band.maxAmount ? band.maxAmount : uncapped;
+
+  assert.equal(p.travelerServiceFee.bandKey, band.bandKey);
+  assert.equal(p.travelerServiceFee.rate, band.rate);
+  assert.equal(p.travelerServiceFee.wouldHaveBeen, expectedFee);
+  assert.equal(p.travelerServiceFee.charged, expectedFee, "not covered ⇒ the full fee rides the charge");
+  assert.equal(p.travelerServiceFee.waived, false);
+  assert.equal(p.travelerServiceFee.waiverBasis, null);
+  assert.equal(p.coveredByTripPass, false, "no trip_id on the row (see the header) ⇒ never covered");
+  assert.equal("chargeAmount" in p, false, "deposits are off for this listing ⇒ the full amount+fee is due");
+
+  await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, travelerServiceFee: p.travelerServiceFee });
+  const claimed = await bookingRow(bookingId);
+  const stamped = (claimed.booking_details ?? {}).travelerServiceFee;
+  assert.ok(stamped, "the claim stamps the SAME snapshot the resolve computed, in the SAME statement as the A3 one");
+  assert.equal(stamped.charged, expectedFee);
+  assert.equal(stamped.bandKey, band.bandKey);
+  assert.equal(stamped.waived, false);
+
+  // A RE-DRIVE (already claimed, unauthorized) reads the STAMPED snapshot BACK rather than
+  // re-resolving it — the same band-drift-safety posture the A3 `travelerCharge` read takes (§13).
+  const redrive = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "redrive");
+  assert.equal(redrive.alreadyClaimed, true);
+  assert.deepEqual(redrive.travelerServiceFee, p.travelerServiceFee);
+});
+
+test("Q13 · Trip Pass coverage WAIVES the fee, exactly as on the cart — charged 0, wouldHaveBeen the real amount", async () => {
+  const { bookingId } = await acceptedQuoteBooking({ amountCents: 80000 }); // $800, deposits off
+
+  // §14/the header: a quote-born booking carries NO trip_id through any live lane today — no
+  // writer sets one. This simulates the day a future lane associates one (the SELECT already
+  // reads the column), so the WAIVER MECHANISM is proven even though nothing produces this state
+  // yet; it is not a claim that today's flow mints a tripped quote-born booking.
+  const tripId = `qc-${RUN}-trip`;
+  createdTripIds.push(tripId);
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, title, start_date, end_date, destination)
+    VALUES (${tripId}, ${ids.traveler}, ${`QC trip ${RUN}`}, '2030-01-01', '2030-01-05', 'Kyoto, Japan')
+  `);
+  await db.execute(sql`UPDATE service_bookings SET trip_id = ${tripId} WHERE id = ${bookingId}`);
+  await db.execute(sql`
+    INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source_payment_id, allowances_snapshot)
+    VALUES (${`qc-${RUN}-tp`}, ${tripId}, 'trip_pass', 'active', ${`pi_qc_tp_${RUN}`}, '{}'::jsonb)
+  `);
+
+  const p = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "resolve");
+  assert.equal(p.coveredByTripPass, true);
+  assert.equal(p.travelerServiceFee.waived, true);
+  assert.equal(p.travelerServiceFee.waiverBasis, "trip_pass");
+  assert.equal(p.travelerServiceFee.charged, 0, "a covered line charges NO fee — nothing rides the Stripe total");
+  assert.ok(
+    p.travelerServiceFee.wouldHaveBeen > 0,
+    "wouldHaveBeen states the REAL band-priced amount — never 0-because-waived masquerading as 0-because-the-band-said-so",
+  );
+
+  await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, travelerServiceFee: p.travelerServiceFee });
+  const claimed = await bookingRow(bookingId);
+  const stamped = (claimed.booking_details ?? {}).travelerServiceFee;
+  assert.equal(stamped.waived, true);
+  assert.equal(stamped.waiverBasis, "trip_pass");
+  assert.equal(stamped.charged, 0);
+  assert.equal(stamped.wouldHaveBeen, p.travelerServiceFee.wouldHaveBeen, "the −X fee_waiver ledger leg reads THIS number");
+});
+
+test("Q14 · the fee is resolved from the fee_bands ROW — editing the band changes the fee, never a code literal", async () => {
+  const band = await requireBand(TRAVELER_SERVICE_FEE_BAND);
+  // $100 at either the current rate or double it stays well under the band's $-cap, so this test
+  // proves the RATE relationship without also exercising the cap (A5 in fee-resolution-authority
+  // already proves the cap on its own).
+  const { bookingId } = await acceptedQuoteBooking({ amountCents: 10000 });
+
+  const before1 = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "before the band edit");
+  assert.equal(before1.travelerServiceFee.rate, band.rate);
+  assert.equal(before1.travelerServiceFee.charged, round2(before1.subtotal * band.rate));
+
+  const doubledRate = round2(band.rate * 2);
+  await db.execute(sql`UPDATE fee_bands SET default_rate = ${doubledRate} WHERE band_key = ${TRAVELER_SERVICE_FEE_BAND}`);
+  try {
+    // The SAME booking, still unclaimed — a fresh resolve reads the band again rather than
+    // caching anything, exactly as a service-category band edit reaches `resolveProviderRate`
+    // with no service row touched (ruling 32's own A1 proof, one band over).
+    const after1 = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "after the band edit");
+    assert.equal(after1.travelerServiceFee.rate, doubledRate);
+    assert.equal(after1.travelerServiceFee.charged, round2(after1.subtotal * doubledRate));
+    assert.equal(
+      Math.round(after1.travelerServiceFee.charged * 100),
+      Math.round(before1.travelerServiceFee.charged * 2 * 100),
+      "doubling the band rate doubles the resolved fee — no per-service snapshot outranks it, no code literal stands in for it",
+    );
+  } finally {
+    // Restore ALWAYS, even on assertion failure, so a red run never leaves a mutated band for the
+    // suites that run after this one.
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${band.rate} WHERE band_key = ${TRAVELER_SERVICE_FEE_BAND}`);
+  }
 });

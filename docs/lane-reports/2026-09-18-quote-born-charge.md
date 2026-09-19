@@ -123,3 +123,62 @@ Append to Locked Decision 49:
 > `quote_expired` with the expiry stated and is NEVER repriced. **DELIBERATELY NOT FOLDED IN:** the
 > ruled traveler service fee — the quote stated one number and the accept surface disclosed no fee on
 > top, so that is a disclosure decision for the accept surface, recorded open.
+
+---
+
+## Fee amendment (2026-09-19, ledger `2026-09-19-quote-born-traveler-fee`)
+
+The "Deliberately NOT done" section above recorded, verbatim: *"No traveler service fee on this
+charge... Whether a quote-born booking should carry it is a DISCLOSURE decision for the accept
+surface — recorded as open in the ledger and the punchlist, not decided by a charge arm (§13)."*
+
+**The decision-maker has now decided it, overriding that open item:** a quote-born booking carries
+the SAME ruled traveler service fee (ledger `2026-09-02-traveler-fee-applies-everywhere`) as every
+other service booking — 7% of the quote's own base price, capped by the `traveler_service_fee`
+band's `max_amount`, resolved and disclosed no differently than the cart's own line — and it is
+waived by an active Trip Pass exactly as on the cart.
+
+**What changed, file by file:**
+
+* `server/services/fee-resolution.service.ts` — new `resolveTravelerServiceFeeSnapshot(subtotal,
+  waiverBasis)`, extracted from the cart loop's own inline computation in `payments.routes.ts`
+  (§18 rule 1: one implementation, two callers). It resolves `resolveTravelerServiceFee`
+  UNCONDITIONALLY (so `wouldHaveBeen` always names the real band-priced amount, never 0-because-
+  waived) and applies the waiver on top for `charged`.
+* `server/routes/payments.routes.ts` — the cart loop's inline `feeWaived`/`feeWaiverBasis`/
+  `travelerFeeResolved`/`feeChargedAmt` computation now calls the shared snapshot builder instead
+  (behaviour and every existing response field byte-identical); `authorizeAndPromote` gains an
+  additive-only `travelerServiceFeeDisclosure` argument that echoes `{travelerServiceFee,
+  coveredByTripPass}` on its JSON response only when a caller passes one (today: the quote-born
+  arm's two success branches).
+* `server/services/quote-charge.service.ts` — `resolveQuoteCharge` now reads `b.trip_id`, resolves
+  the fee snapshot (best-effort Trip Pass check, never failing the charge), and returns
+  `travelerServiceFee` + `coveredByTripPass` on the plan; the deposit `chargeAmount` folds the fee
+  in (`deposit_amount + travelerServiceFee.charged`), matching Ruling D's "assessed once, at the
+  deposit charge" posture, because `authorizeAndPromote` treats a supplied `chargeAmount` as the
+  final amount due now rather than adding `travelerFeeTotal` on top of it. `claimQuoteBornBooking`
+  takes a now-REQUIRED `travelerServiceFee` parameter and stamps it into `booking_details` in the
+  SAME statement as the A3 snapshot, so the existing `recordTravelerServiceFeeLedger` (already
+  called inside `authorizeAndPromote` for every checkout) writes the `traveler_service_fee` /
+  `fee_waiver` legs for a quote-born row with no change to that writer. The module's header is
+  rewritten in place to record this override rather than leaving the superseded reasoning in place
+  uncorrected.
+* `client/src/lib/quote-copy.ts` + `TravelerQuotesPanel.tsx` — a new `quoteTravelerFeeLine` reads
+  the server's `travelerServiceFee`/`coveredByTripPass` off the pay response and renders it in the
+  payment sheet, above the Stripe Payment Element — before the traveler completes payment. No
+  client-computed amount; an unanswered fee renders nothing (§13), never a guessed $0.
+
+**Tests:** `quote-born-charge.db.test.ts` Q1–Q11 updated in place (every `claimQuoteBornBooking`
+call site now passes a real, resolved `travelerServiceFee`; Q8's deposit assertion now accounts for
+the fee riding on top of the deposit — the ruling's own arithmetic, not a loosened proof) plus new
+Q12 (fee added/snapshotted/stamped, band-derived, re-drive reads the stamp back), Q13 (Trip Pass
+waiver end to end, via a fixture that directly associates a trip since no live lane does today —
+stated as such), Q14 (the fee is read from `fee_bands`, not a literal — proven by editing the
+band's rate and observing the resolved fee change, restored in a `finally`). `quote-copy.test.ts`
+gains F1–F4 for `quoteTravelerFeeLine`. K1's key-template pin (`quote-buy-<bookingId>`) is
+unchanged — this amendment adds no new idempotency key.
+
+**Negative space, unchanged by this amendment:** the balance leg (`pay-balance`) still adds
+nothing, because the fee is assessed once at the deposit charge; refunds and cancellation still
+ride the existing whole-row rails, which read the fee back off the row's own stamped snapshot like
+everything else on it.

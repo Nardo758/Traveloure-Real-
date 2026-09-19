@@ -48,7 +48,14 @@ import {
 // Ruling 2026-09-02-traveler-fee-applies-everywhere: the traveler service fee is now CHARGED on
 // every marketplace booking, computed ONLY by this one band-driven resolver (rate + cap from
 // `fee_bands`, no literals, §8/§14). Per-item (per-booking) with a per-booking $25 cap.
-import { resolveTravelerServiceFee } from "../services/fee-resolution.service";
+// `resolveTravelerServiceFeeSnapshot` is the ONE booking_details.travelerServiceFee shape (ledger
+// `2026-09-19-quote-born-traveler-fee`, §18 rule 1) — the cart loop below and the quote-born arm
+// (`quote-charge.service.ts`) both call it rather than each building the object by hand.
+import {
+  resolveTravelerServiceFee,
+  resolveTravelerServiceFeeSnapshot,
+  type TravelerServiceFeeSnapshot,
+} from "../services/fee-resolution.service";
 import {
   composeTravelerCharge,
   travelerChargeForRow,
@@ -560,6 +567,14 @@ async function authorizeAndPromote(
      * the arm living here (§18 rule 1). Absent/false ⇒ unchanged for every existing caller.
      */
     quoteBorn?: boolean;
+    /**
+     * Ledger `2026-09-19-quote-born-traveler-fee`: the SAME `TravelerServiceFeeSnapshot` object
+     * stamped onto the claimed row, echoed in the response so the quote-born arm's payer sees the
+     * fee (and any Trip Pass waiver) BEFORE completing the Stripe Payment Element — the cart arm
+     * already has its own pre-checkout disclosure surface (`GET /api/cart/fee-preview`), so this is
+     * additive and quote-arm-only; absent ⇒ byte-identical response for every existing caller.
+     */
+    travelerServiceFeeDisclosure?: TravelerServiceFeeSnapshot;
   },
 ) {
   const { userId, checkoutKey, bookings, subtotal, platformFee, conciergeFee } = args;
@@ -738,6 +753,16 @@ async function authorizeAndPromote(
     // already inside `total`; disclosing it as its own line is what lets the client's summary add
     // up to the amount Stripe took (the F1 disclosure posture, ruling 80).
     travelerFee: travelerFeeTotal.toFixed(2),
+    // Ledger `2026-09-19-quote-born-traveler-fee`: the RICH snapshot (charged/wouldHaveBeen/waived/
+    // waiverBasis), disclosed only when a caller passed one — today, the quote-born arm only, ahead
+    // of the cart's own pre-checkout `GET /api/cart/fee-preview` surface. `coveredByTripPass` is
+    // derived from the SAME snapshot's `waiverBasis`, never a second entitlement check (§18 rule 1).
+    ...(args.travelerServiceFeeDisclosure
+      ? {
+          travelerServiceFee: args.travelerServiceFeeDisclosure,
+          coveredByTripPass: args.travelerServiceFeeDisclosure.waiverBasis === "trip_pass",
+        }
+      : {}),
     total: total.toFixed(2),
     paymentIntent,
     bookingType: args.quoteBorn ? BookingType.PROVIDER_BOOKING : BookingType.EXPERIENCE_CART,
@@ -952,6 +977,10 @@ async function chargeQuoteBornBooking(req: any, res: any, userId: string) {
       duplicate: true,
       bookings: [{ booking: { id: plan.bookingId } }],
       ...(pi ? { paymentIntent: pi } : {}),
+      // Ledger `2026-09-19-quote-born-traveler-fee`: the SAME disclosure the fresh-authorize branch
+      // gives below, so a traveler who reloads mid-payment sees the same fee line, not a blank one.
+      travelerServiceFee: plan.travelerServiceFee,
+      coveredByTripPass: plan.coveredByTripPass,
       note: "This booking's payment was already started — completing the existing payment.",
     });
   }
@@ -963,6 +992,7 @@ async function chargeQuoteBornBooking(req: any, res: any, userId: string) {
     const claimed = await claimQuoteBornBooking({
       bookingId: plan.bookingId,
       actorUserId: userId,
+      travelerServiceFee: plan.travelerServiceFee,
       balanceDueAt: plan.balanceDueAt,
     });
     if (!claimed) {
@@ -991,6 +1021,13 @@ async function chargeQuoteBornBooking(req: any, res: any, userId: string) {
     // Present only when the accept rail pinned a deposit split — the amount due NOW, read off the
     // row, never re-derived from a listing whose config may have moved since (§13).
     ...(plan.chargeAmount != null ? { chargeAmount: plan.chargeAmount } : {}),
+    // Ledger `2026-09-19-quote-born-traveler-fee`: the SAME ruled traveler service fee every other
+    // service booking carries — resolved by `resolveQuoteCharge` and stamped by the claim above.
+    // `travelerFeeTotal` folds it into the Stripe amount (the composition `authorizeAndPromote`
+    // already runs for the cart); `travelerServiceFeeDisclosure` echoes the rich snapshot in the
+    // response so the quotes panel can show it before the traveler completes the Payment Element.
+    travelerFeeTotal: plan.travelerServiceFee.charged,
+    travelerServiceFeeDisclosure: plan.travelerServiceFee,
     quoteBorn: true,
     useSavedCard: parsed.data.useSavedCard === true,
   });
@@ -1848,20 +1885,20 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
 
         // ── Traveler service fee for THIS line (ruling 2026-09-02-traveler-fee-applies-everywhere) ──
         // Per-booking, on the line's own base price, from the ONE band-driven resolver (§8/§14): no
-        // literal, no second calculator, $25 cap per booking. `wouldHaveBeen` is the fee at the band
-        // rate+cap; `feeChargedAmt` is what actually rides the charge (0 when the line is covered).
-        // Suppression precedence matches the two pre-passes above — a rails waiver wins, else Trip
-        // Pass (the trip-pass pre-pass already skips any line rails waived, so the two are exclusive).
+        // literal, no second calculator, $25 cap per booking. Suppression precedence — a rails waiver
+        // wins, else Trip Pass (the trip-pass pre-pass already skips any line rails waived, so the two
+        // are exclusive) — and the resolve-and-snapshot shape itself are the ONE
+        // `resolveTravelerServiceFeeSnapshot` (§18 rule 1; ledger `2026-09-19-quote-born-traveler-fee`),
+        // shared with the quote-born arm rather than built here a second way.
         const lineRailsWaiver = itemRails2?.travelerFeeWaiver ? true : false;
         const lineTripPassWaiver = tripPassWaiverByItemId.has(item.id);
-        const feeWaived = lineRailsWaiver || lineTripPassWaiver;
-        const feeWaiverBasis: "rails" | "trip_pass" | null = lineRailsWaiver
+        const lineFeeWaiverBasis: "rails" | "trip_pass" | null = lineRailsWaiver
           ? "rails"
           : lineTripPassWaiver
             ? "trip_pass"
             : null;
-        const travelerFeeResolved = await resolveTravelerServiceFee(price);
-        const feeChargedAmt = feeWaived ? 0 : travelerFeeResolved.amount;
+        const travelerFeeSnapshot = await resolveTravelerServiceFeeSnapshot(price, lineFeeWaiverBasis);
+        const feeChargedAmt = travelerFeeSnapshot.charged;
         checkoutTravelerFeeTotal += feeChargedAmt;
 
         const depositPlan = resolveDepositPlan(
@@ -1980,19 +2017,11 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
                 : {}),
               // Traveler service fee SNAPSHOT (ruling 2026-09-02-traveler-fee-applies-everywhere),
               // locked at claim time so the fee-ledger row written at the authorization stamp records
-              // what was CHARGED, never a re-resolved band. `charged` is what rode the Stripe total
-              // (0 when covered); `wouldHaveBeen` is the band-priced fee; `waiverBasis` names the
-              // coverage. Read by recordTravelerServiceFeeLedger and by the re-drive reconstruction.
-              travelerServiceFee: {
-                charged: feeChargedAmt,
-                wouldHaveBeen: travelerFeeResolved.amount,
-                rate: travelerFeeResolved.rate,
-                bandId: travelerFeeResolved.bandId,
-                bandKey: travelerFeeResolved.bandKey,
-                capApplied: travelerFeeResolved.capApplied,
-                waived: feeWaived,
-                waiverBasis: feeWaiverBasis,
-              },
+              // what was CHARGED, never a re-resolved band. The shape is `travelerFeeSnapshot` itself
+              // — the ONE `resolveTravelerServiceFeeSnapshot` object (§18 rule 1) — never rebuilt
+              // field-by-field here. Read by recordTravelerServiceFeeLedger and by the re-drive
+              // reconstruction.
+              travelerServiceFee: travelerFeeSnapshot,
               // Ledger 2026-09-08-cart-fee-line: the part of `platform_fee` that the TRAVELER
               // actually paid — the concierge fee, and nothing else. Its PRESENCE is also how a
               // later reader knows this row was priced under the A3 composition: the re-drive, the

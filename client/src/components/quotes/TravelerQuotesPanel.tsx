@@ -41,9 +41,11 @@ import {
   quoteDepositLine,
   quoteIsAcceptable,
   quoteStateCopy,
+  quoteTravelerFeeLine,
   quoteValidityLine,
   type MintedBookingDepositRow,
   type QuoteCardRow,
+  type QuoteTravelerServiceFee,
 } from "@/lib/quote-copy";
 
 const TONE_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -112,8 +114,18 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
 
   // The open payment sheet, or null. ONE at a time: a traveler pays one booking at a time, and a
   // second open sheet would be a second clientSecret on screen with no way to say which is live.
+  // Ledger `2026-09-19-quote-born-traveler-fee`: `travelerServiceFee`/`coveredByTripPass` are the
+  // SERVER's own answer, carried straight through from the pay response — never computed here.
   const [paying, setPaying] = useState<
-    { bookingId: string; clientSecret: string; paymentIntentId: string; amount: number } | null
+    | {
+        bookingId: string;
+        clientSecret: string;
+        paymentIntentId: string;
+        amount: number;
+        travelerServiceFee?: QuoteTravelerServiceFee;
+        coveredByTripPass?: boolean;
+      }
+    | null
   >(null);
 
   /**
@@ -128,6 +140,10 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
       const res = await apiRequest("POST", "/api/checkout", { quoteBookingId: bookingId });
       return (await res.json()) as {
         paymentIntent?: { clientSecret: string; paymentIntentId: string; amount: number };
+        // Ledger `2026-09-19-quote-born-traveler-fee`: the fee disclosure the response carries
+        // for this arm only. Absent ⇒ the fee line is simply not shown (§13 — not yet known).
+        travelerServiceFee?: QuoteTravelerServiceFee;
+        coveredByTripPass?: boolean;
       };
     },
     onSuccess: (data, bookingId) => {
@@ -140,7 +156,12 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
         });
         return;
       }
-      setPaying({ bookingId, ...data.paymentIntent });
+      setPaying({
+        bookingId,
+        ...data.paymentIntent,
+        travelerServiceFee: data.travelerServiceFee,
+        coveredByTripPass: data.coveredByTripPass,
+      });
     },
     onError: (err: unknown) =>
       toast({
@@ -242,19 +263,29 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
                   {/* §13: an accepted row whose booking id did not come back gets the note and NO
                       pay control — a Pay button with nothing to address is worse than none. */}
                   {!q.bookingId ? null : paying?.bookingId === q.bookingId ? (
-                    <StripeCheckout
-                      paymentIntent={{
-                        clientSecret: paying.clientSecret,
-                        paymentIntentId: paying.paymentIntentId,
-                        amount: paying.amount,
-                      }}
-                      bookingIds={[q.bookingId]}
-                      onSuccess={(paymentIntentId) => confirmPaid(q.bookingId!, paymentIntentId)}
-                      onError={(error) =>
-                        toast({ variant: "destructive", title: "Payment failed", description: error })
-                      }
-                      onCancel={() => setPaying(null)}
-                    />
+                    <>
+                      {/* Ledger `2026-09-19-quote-born-traveler-fee`: shown BEFORE the traveler
+                          completes the Payment Element below — the server's own figures, read
+                          straight off the pay response (§13/§14: no client-computed amount). */}
+                      {quoteTravelerFeeLine(paying.travelerServiceFee) && (
+                        <p className="text-xs text-muted-foreground" data-testid={`quote-traveler-fee-${q.id}`}>
+                          {quoteTravelerFeeLine(paying.travelerServiceFee)}
+                        </p>
+                      )}
+                      <StripeCheckout
+                        paymentIntent={{
+                          clientSecret: paying.clientSecret,
+                          paymentIntentId: paying.paymentIntentId,
+                          amount: paying.amount,
+                        }}
+                        bookingIds={[q.bookingId]}
+                        onSuccess={(paymentIntentId) => confirmPaid(q.bookingId!, paymentIntentId)}
+                        onError={(error) =>
+                          toast({ variant: "destructive", title: "Payment failed", description: error })
+                        }
+                        onCancel={() => setPaying(null)}
+                      />
+                    </>
                   ) : (
                     <Button
                       size="sm"

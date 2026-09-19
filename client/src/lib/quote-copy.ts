@@ -169,6 +169,40 @@ export function quoteValidityLine(row: QuoteCardRow, formatDate: (iso: string) =
 }
 
 /**
+ * THE TRAVELER SERVICE FEE, read from the SERVER's own numbers (ledger
+ * `2026-09-19-quote-born-traveler-fee`, decision-maker ruling): a quote-born booking carries the
+ * SAME ruled fee (§8/§14) as every other service booking, resolved by
+ * `resolveTravelerServiceFeeSnapshot` and echoed on the `POST /api/checkout` response's
+ * `travelerServiceFee` / `coveredByTripPass` fields. No 7%, no $25 — both live in `fee_bands` and
+ * this module knows neither; it only words the figures the server already sent.
+ */
+export interface QuoteTravelerServiceFee {
+  /** What rides the Stripe total. 0 when waived. */
+  charged: number;
+  /** The band-priced amount, resolved UNCONDITIONALLY — the real figure even on a waived line. */
+  wouldHaveBeen: number;
+  waived: boolean;
+  waiverBasis: "rails" | "trip_pass" | null;
+}
+
+/**
+ * §13: a `pay` response the panel has not yet received carries NO fee figures, and this renders
+ * NOTHING — never a guessed "$0.00 fee", which is a different fact from "not yet known". A charge
+ * that genuinely resolved to $0 (a $0-fee band, if one ever exists) also renders nothing: there is
+ * nothing to disclose on top of the quoted amount.
+ */
+export function quoteTravelerFeeLine(fee: QuoteTravelerServiceFee | null | undefined): string | null {
+  if (!fee) return null;
+  if (fee.waived) {
+    return fee.wouldHaveBeen > 0
+      ? `Your Trip Pass covers the traveler service fee (${fee.wouldHaveBeen.toFixed(2)}) — nothing added.`
+      : null;
+  }
+  if (fee.charged <= 0) return null;
+  return `Plus a ${fee.charged.toFixed(2)} traveler service fee, charged with this payment.`;
+}
+
+/**
  * THE CHARGE IS BUILT, AND THE SURFACE HANDS OFF TO IT (ledger `2026-09-18-quote-born-charge`).
  *
  * LD 49: "The quote-born booking is born UNPAID; the charge through `/api/checkout` is its own
