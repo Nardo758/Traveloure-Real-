@@ -538,6 +538,11 @@ jobs:
       # entirely otherwise — the server-side admission already existed, this is the client half.
       - name: Discover add-to-plan body pin
         run: npx tsx --test client/src/lib/__tests__/discover-add-body.test.ts
+      # Locked Decision 3 (the canonical 7 delivery methods): the label humanizes every
+      # deliveryMethodEnum value and never guesses a label for null/undefined/empty/unrecognized
+      # (§13) — the pure logic behind cosmetic-public-surfaces.spec.ts E1 (no raw enum tokens).
+      - name: Delivery-method label pin
+        run: npx tsx --test client/src/lib/__tests__/delivery-method-label.test.ts
       # EX-2: insertProviderServiceSchema rejects negative/non-numeric prices on the create AND
       # .partial() (PATCH) shapes; zero stays parseable (draft state — publish gate is route-level).
       - name: EX-2 service price-floor pin
