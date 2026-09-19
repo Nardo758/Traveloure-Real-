@@ -18,6 +18,8 @@ FEE = dict(
     affiliate_partner_commission=0.08,  # affiliate:<partner> bands seeded 0.08 "confirm per contract"
     stripe_pct=0.029, stripe_flat=0.30, # processing, absorbed by platform (REVENUE_MODEL.md §1)
     booking_concierge_fee=0.05,     # fee_bands expert_concierge_booking (mig 066) — 5% on top of the concierge service price
+    booking_concierge_cap=40.00,    # fee_bands expert_concierge_booking.max_amount (mig 311) — min(price × rate, cap) per line, base = the concierge listing's own price
+    booking_concierge_expert_share=0.75,  # fee_bands expert_concierge_booking_expert_share (mig 311) — LD 51: 75% of the fee to the listing owner at completion, 25% stays platform revenue
 )
 
 # ---- Markets (v1.3 §6.8 sequence, forward-dated; Month 1 = first launch month) ----
@@ -72,7 +74,10 @@ def run(name, s):
             tot["passes"] += plans * s["pass_attach"] * FEE["trip_pass"]
             # Booking Concierge: a traveler buys an expert's facilitation service for the plan's partner items
             bc_lines = plans * s["bc_attach"]
-            tot["bc_fee"]  += bc_lines * s["bc_price"] * FEE["booking_concierge_fee"]
+            # LD 51 (migration 311): the 5% fee is min(price × rate, cap) per line, and only the platform's
+            # 25% retained share is platform revenue — the other 75% mints to the listing owner at completion.
+            bc_fee_per_line = min(s["bc_price"] * FEE["booking_concierge_fee"], FEE["booking_concierge_cap"])
+            tot["bc_fee"]  += bc_lines * bc_fee_per_line * (1 - FEE["booking_concierge_expert_share"])
             tot["bc_comm"] += bc_lines * s["bc_price"] * FEE["expert_new"]
             aff_gmv = plans * s["aff_per_plan"] * s["aff_aov"]
             tot["affiliate_gmv"]  += aff_gmv
@@ -111,7 +116,7 @@ rows = [
  ("Optimization runs", "runs", "`optimization_fees` $5.99"),
  ("AI Concierge tasks", "tasks", "`concierge:ai_task` $2.99"),
  ("Trip Pass", "passes", "`plans.trip_pass` $19"),
- ("Booking Concierge fee (5% on the expert's facilitation price)", "bc_fee", "`expert_concierge_booking` 5% (mig 066)"),
+ ("Booking Concierge fee, platform's 25% retained share (5% of listing price, capped $40, 75% to the listing owner)", "bc_fee", "`expert_concierge_booking` 5%/$40 cap + `expert_concierge_booking_expert_share` 75% (mig 311)"),
  ("Commission on Booking Concierge services", "bc_comm", "`expert_new` 15% (mig 033)"),
  ("Affiliate GMV (partner-collected)", "affiliate_gmv", "assumption"),
  ("Affiliate commission received", "affiliate_comm", "`affiliate:<partner>` 8% — unverified per contract"),
