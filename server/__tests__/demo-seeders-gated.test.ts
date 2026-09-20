@@ -144,6 +144,7 @@ const CLI_ONLY_DEMO_SEEDERS: ReadonlyArray<{
   fn: string;
   firstWrite: string;
 }> = [
+  { file: "dev-fixtures.seed.ts", fn: "seedDevFixtures", firstWrite: "db.insert(" },
   { file: "phase-4-kyoto-fill.seed.ts", fn: "seedPhase4KyotoFill", firstWrite: "db.insert(" },
   { file: "beta-launch-data.ts", fn: "seedBetaData", firstWrite: "db.insert(" },
   { file: "beta-data-extended.ts", fn: "seedExpertServices", firstWrite: "db.insert(" },
