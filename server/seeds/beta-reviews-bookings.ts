@@ -8,6 +8,7 @@
  */
 
 import { db } from "../db";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "./lib/demo-seed-gate";
 import {
   users,
   reviewRatings,
@@ -192,6 +193,20 @@ export async function seedReviewsAndBookings(
   travelers: any[],
   services: any[]
 ) {
+  // Refusal FIRST, before any DB write (CLAUDE.md §13). This seeder mints 70+ fabricated
+  // reviews and 45 fabricated bookings — invented social proof and invented
+  // transactions, both of which a traveler would read as real.
+  // CLI-only (reached via `npm run seed:beta` / run-beta-seed.ts, never from
+  // server/index.ts), so it sits outside demo-seeders-gated.test.ts's D1
+  // boot-path scan by construction and carries its own refusal as the second
+  // layer — the shape S1/S1b/SCF1 already pin elsewhere. Named as
+  // found-but-not-fixed debt by ledger `2026-09-19-demo-seeders-gated`; closed
+  // by `2026-09-20-cli-demo-seeders-gated`. One predicate, never a second copy
+  // of "what counts as production" (§18 rule 1).
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("beta-reviews-bookings"));
+    return { reviews: [], serviceReviewsData: [], bookings: [] };
+  }
   console.log("\n⭐ Creating Service Reviews...");
   
   const reviews: any[] = [];
@@ -379,6 +394,19 @@ export async function seedReviewsAndBookings(
 
 // Influencer content pieces
 export async function seedInfluencerContent(experts: any[]) {
+  // Refusal FIRST, before any DB write (CLAUDE.md §13). This seeder mints fabricated
+  // influencer content attributed to the fictional beta experts.
+  // CLI-only (reached via `npm run seed:beta` / run-beta-seed.ts, never from
+  // server/index.ts), so it sits outside demo-seeders-gated.test.ts's D1
+  // boot-path scan by construction and carries its own refusal as the second
+  // layer — the shape S1/S1b/SCF1 already pin elsewhere. Named as
+  // found-but-not-fixed debt by ledger `2026-09-19-demo-seeders-gated`; closed
+  // by `2026-09-20-cli-demo-seeders-gated`. One predicate, never a second copy
+  // of "what counts as production" (§18 rule 1).
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("beta-influencer-content"));
+    return [];
+  }
   console.log("\n📱 Creating Influencer Content...");
   
   const influencerExperts = experts.filter(e => 
