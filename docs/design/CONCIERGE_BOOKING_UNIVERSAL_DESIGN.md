@@ -105,8 +105,8 @@ Exactly two implementations are in scope:
 | Actor | May | May not |
 |---|---|---|
 | Traveler | accept/decline the quote; cancel a line under the snapshotted terms | be charged off-session; be charged more than the accepted quote |
-| Expert (owns a concierge listing) | prepare lines to `ready_to_buy`; earn the LD 51 share | issue a quote amount by hand; hold a card; press buy (CB-5) |
-| Platform concierge | claim a funded line, receive its card, purchase, record the reference | purchase an unfunded line; type the spent amount |
+| Expert (owns a concierge listing) | prepare lines to `ready_to_buy`; earn the LD 51 share; reads the plan (pending advisor) — `2026-09-20-concierge-plan-read` | issue a quote amount by hand; hold a card; press buy (CB-5) |
+| Platform concierge | claim a funded line, receive its card, purchase, record the reference; reads the plan (pending advisor) — `2026-09-20-concierge-plan-read` | purchase an unfunded line; type the spent amount |
 | Copilot | run `prepare`, draft the packet and the traveler message | spend money in any form (LD 44(f), unchanged) |
 | API adapter | purchase a funded line | run outside a won claim |
 | Admin | review partner profiles; work reconciliation exceptions | write `confirmed` |

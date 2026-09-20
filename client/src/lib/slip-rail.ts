@@ -22,6 +22,12 @@
 // The services-browse URL contract is stated ONCE, in its own module, and both ends import it
 // (§18 rule 1) — see `slipBrowseServicesHref` below.
 import { buildServicesBrowseHref } from "@/lib/services-browse";
+// The ONE sentence a booking-concierge read grant writes onto `trip_expert_advisors.message`
+// (decision-maker ruling 2026-09-20, ledger `2026-09-20-concierge-plan-read`). Imported from
+// `shared/` so the server's writer and this reader can never spell it two different ways
+// (§18 rule 1) — see `slipAdvisorStandingLine` below for why this must not fall through to the
+// ordinary pending-invitation sentence.
+import { CONCIERGE_READ_GRANT_MESSAGE } from "@shared/concierge-plan-read";
 
 /** The four cards the rail regroups into, in render order. One name each, used as the testid tail. */
 export const SLIP_RAIL_CARDS = ["build", "plan", "share", "finish"] as const;
@@ -94,6 +100,14 @@ export interface SlipRailAdvisor {
    * person who does not exist (§13).
    */
   profile_image_url?: string | null;
+  /**
+   * `trip_expert_advisors.message`, as the owner-gated advisor read already ships it. Read for
+   * exactly ONE reason (`slipAdvisorStandingLine` below): a `pending` row carrying the booking
+   * concierge's sentinel message (`CONCIERGE_READ_GRANT_MESSAGE`) is a READ GRANT the concierge
+   * never accepted and was never invited to accept, and must not render as an ordinary pending
+   * invitation (§13, decision-maker ruling 2026-09-20).
+   */
+  message?: string | null;
 }
 
 /**
@@ -118,8 +132,24 @@ export type SlipExpertRailState =
    * An advisor is on this plan — offer the ONE Message control, addressed by the PLAN.
    * `handle` is `null` for an advisor who has claimed none, and that no longer withholds anything:
    * the plan address does not need it (D22).
+   *
+   * `isConciergeReadGrant` (decision-maker ruling 2026-09-20, ledger
+   * `2026-09-20-concierge-plan-read`): true when this `pending` row is the booking concierge's
+   * READ grant rather than an ordinary invitation. A caller must not render `pending` copy
+   * ("awaiting reply") over this row — see `isConciergeReadGrantAdvisor`.
    */
-  | { kind: "message"; name: string; handle: string | null; pending: boolean };
+  | { kind: "message"; name: string; handle: string | null; pending: boolean; isConciergeReadGrant: boolean };
+
+/**
+ * Is this `pending` advisor row actually the booking concierge's READ grant, rather than an
+ * ordinary invitation the traveler sent and is waiting on? Decision-maker ruling 2026-09-20,
+ * ledger `2026-09-20-concierge-plan-read`. Stated ONCE — `slipExpertRailState`'s `message` state
+ * and `slipAdvisorStandingLine` both read it, so the rail's meta text and the standing sentence
+ * can never disagree about the same row (§18 rule 1).
+ */
+export function isConciergeReadGrantAdvisor(advisor: SlipRailAdvisor | null | undefined): boolean {
+  return !!advisor && advisor.status === "pending" && advisor.message === CONCIERGE_READ_GRANT_MESSAGE;
+}
 
 /** "Aya Tanaka" from the row, or null — never a placeholder name (§13). */
 export function slipAdvisorName(advisor: SlipRailAdvisor | null | undefined): string | null {
@@ -148,7 +178,13 @@ export function slipExpertRailState(advisor: SlipRailAdvisor | null | undefined)
   const name = slipAdvisorName(advisor) ?? "your expert";
   const pending = advisor.status === "pending";
   const raw = typeof advisor.handle === "string" ? advisor.handle.trim() : "";
-  return { kind: "message", name, handle: raw.length > 0 ? raw : null, pending };
+  return {
+    kind: "message",
+    name,
+    handle: raw.length > 0 ? raw : null,
+    pending,
+    isConciergeReadGrant: isConciergeReadGrantAdvisor(advisor),
+  };
 }
 
 // ── Share ─────────────────────────────────────────────────────────────────────────────────────
@@ -254,6 +290,17 @@ export const SLIP_ADVISOR_ADVISING_FALLBACK_NAME = "An expert" as const;
  *
  * Returns `null` when there is NO advisor: that is not a standing, and a caller must render
  * nothing rather than a sentence about an absence.
+ *
+ * A THIRD READING, ADDED WITHOUT TOUCHING THE OTHER TWO (decision-maker ruling 2026-09-20, ledger
+ * `2026-09-20-concierge-plan-read`). A `pending` row can now also be the booking concierge's READ
+ * grant — written by `grantConciergePlanRead` at hand-off/claim, carrying the sentinel
+ * `CONCIERGE_READ_GRANT_MESSAGE` on `message` — rather than an ordinary invitation the traveler
+ * sent and is waiting on. Those are different facts and must not share a sentence: "Request sent
+ * — awaiting <name>" implies a traveler who invited someone and is waiting for a reply, and the
+ * concierge is neither invited-by-the-traveler nor a state anyone is waiting on. Checked BEFORE
+ * the `pending` branch, on the message field alone — never on `first_name`/`last_name` being
+ * empty, which a real nameless invitation can equally have (§13: the two absences are not the
+ * same fact).
  */
 /**
  * THE PEOPLE THE CARD IS NOT ABOUT — Locked Decision 42 **D7**, ledger
@@ -285,8 +332,14 @@ export function slipOtherAdvisorsLine(
   return `Also on this plan: ${named.join(", ")}`;
 }
 
+/** The sentence for a booking-concierge read grant — stated once, exported for its own test. */
+export const SLIP_ADVISOR_CONCIERGE_READ_LINE = "Booking concierge (reads this plan)" as const;
+
 export function slipAdvisorStandingLine(advisor: SlipRailAdvisor | null | undefined): string | null {
   if (!advisor) return null;
+  if (isConciergeReadGrantAdvisor(advisor)) {
+    return SLIP_ADVISOR_CONCIERGE_READ_LINE;
+  }
   const name = slipAdvisorName(advisor);
   if (advisor.status === "pending") {
     return `Request sent — awaiting ${name ?? SLIP_ADVISOR_PENDING_FALLBACK_NAME}`;

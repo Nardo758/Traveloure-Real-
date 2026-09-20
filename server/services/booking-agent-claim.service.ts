@@ -36,12 +36,20 @@
  * lives in `storage.getAffiliateBookingRequestsByExpert` and is untouched by this lane. It does not
  * RELEASE a claim (nothing un-claims a request today, and inventing an un-claim would be a second
  * assignee-moving rail nobody has ruled). It touches no money, no amount and no rate.
+ *
+ * AMENDED (decision-maker ruling 2026-09-20, ledger `2026-09-20-concierge-plan-read`): a WINNING
+ * claim on a request that names a `tripId` now also grants the claimant READ-only standing
+ * (`trip_expert_advisors.status = "pending"`) on that plan, through the ONE `upsertTripAdvisorRow`
+ * author — see `concierge-plan-read.service.ts`. The claim's own write and its atomic guard are
+ * unchanged; the grant is an ancillary effect that never throws into this function's result.
  */
 import { z } from "zod";
 
 import { storage } from "../storage";
 import { isExpertRole } from "@shared/roles";
 import type { AffiliateBookingRequest } from "@shared/schema";
+import { grantConciergePlanRead } from "./concierge-plan-read.service";
+import { logger } from "../infrastructure/logger";
 
 /**
  * The claim takes NO input beyond the row id in the path and the actor in the session. `.strict()`
@@ -80,16 +88,33 @@ export const BOOKING_AGENT_CLAIM_MESSAGE: Record<BookingAgentClaimRefusal, strin
 };
 
 /**
+ * Injectable seam for the plan-read grant only (ledger `2026-09-20-concierge-plan-read`, on the
+ * `concierge-handoff.service.ts` `ConciergeHandoffDeps` precedent, §18 rule 1's pattern applied to
+ * a second module): defaults to the real grant; a test injects a failure to prove a WINNING
+ * claim's own result is unchanged by it (§15b).
+ */
+export interface ClaimBookingRequestDeps {
+  grantConciergePlanRead: typeof grantConciergePlanRead;
+}
+
+const defaultClaimDeps: ClaimBookingRequestDeps = {
+  grantConciergePlanRead: (input) => grantConciergePlanRead(input),
+};
+
+/**
  * Claim one pooled affiliate booking request for `actorUserId`.
  *
  * The gate is the SAME one the pooled read and the PATCH rail apply — an expert role, or admin —
  * because the pool a request lands in is exactly the pool those routes serve. A claimant the queue
  * would never show the row to may not take it.
  */
-export async function claimBookingRequest(params: {
-  requestId: string;
-  actorUserId: string;
-}): Promise<BookingAgentClaimOutcome> {
+export async function claimBookingRequest(
+  params: {
+    requestId: string;
+    actorUserId: string;
+  },
+  deps: ClaimBookingRequestDeps = defaultClaimDeps,
+): Promise<BookingAgentClaimOutcome> {
   const { requestId, actorUserId } = params;
 
   const actor = await storage.getUser(actorUserId);
@@ -99,7 +124,32 @@ export async function claimBookingRequest(params: {
 
   // §15: the write is the guard and it goes first.
   const claimed = await storage.claimAffiliateBookingRequest(requestId, actorUserId);
-  if (claimed) return { ok: true, row: claimed, alreadyYours: false };
+  if (claimed) {
+    // THE CLAIM HALF OF THE PLAN-READ GRANT (decision-maker ruling 2026-09-20, ledger
+    // `2026-09-20-concierge-plan-read`). Fires only on a WINNING claim — the branch above ran
+    // exactly once for this pair — never on a lost race (the caller below never reaches this) and
+    // never re-run on the actor's own retry (`alreadyYours`, further down): the grant already
+    // landed the first time this branch ran, and the one author's upsert would no-op a repeat
+    // anyway. §13: a pooled request with no `tripId` grants nothing — there is no plan to read.
+    // §15b, locally guarded (unlike `concierge-handoff.service.ts`, this function has no outer
+    // try/catch of its own to fall back on — an unguarded throw here would turn a WON claim into
+    // a 500 the caller never asked for): the real implementation never throws, and this call is
+    // ALSO wrapped so an injected/future one cannot cost the win either (G7b,
+    // `concierge-plan-read.db.test.ts`).
+    try {
+      await deps.grantConciergePlanRead({
+        tripId: claimed.tripId,
+        expertUserId: actorUserId,
+        requestId: claimed.id,
+      });
+    } catch (err) {
+      logger.error(
+        { err, requestId: claimed.id, tripId: claimed.tripId, actorUserId },
+        "[booking-agent-claim] plan-read grant threw — the claim stands (§15b)",
+      );
+    }
+    return { ok: true, row: claimed, alreadyYours: false };
+  }
 
   // Zero rows matched. That is EITHER "no such request" OR "already claimed" — the statement
   // cannot tell them apart, so read the row to choose the message. This read decides nothing.

@@ -48,14 +48,18 @@ import { fileURLToPath } from "node:url";
 import {
   SLIP_RAIL_CARDS,
   countCheckoutReadyItems,
+  isConciergeReadGrantAdvisor,
   slipAdvisorName,
+  slipAdvisorStandingLine,
   slipBuildAiAction,
   slipCalendarPath,
   slipDraftDisabledReason,
   slipExpertRailState,
   slipPdfPath,
   slipShareUrl,
+  SLIP_ADVISOR_CONCIERGE_READ_LINE,
 } from "../slip-rail";
+import { CONCIERGE_READ_GRANT_MESSAGE } from "@shared/concierge-plan-read";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT_SRC = join(HERE, "..", "..");
@@ -166,7 +170,13 @@ describe("slip rail — the ONE AI action, and its honest absences", () => {
       last_name: "Tanaka",
       handle: "aya",
     });
-    assert.deepEqual(messaged, { kind: "message", name: "Aya Tanaka", handle: "aya", pending: false });
+    assert.deepEqual(messaged, {
+      kind: "message",
+      name: "Aya Tanaka",
+      handle: "aya",
+      pending: false,
+      isConciergeReadGrant: false,
+    });
 
     // A PENDING advisor is still an advisor — the picker is not re-offered, and the standing is
     // reported. LD 12 stops them WRITING; it does not stop the traveler writing to them.
@@ -195,6 +205,43 @@ describe("slip rail — the ONE AI action, and its honest absences", () => {
     // §13: a nameless advisor row is never given a fabricated name.
     assert.equal(slipAdvisorName({ first_name: null, last_name: null }), null);
     assert.equal(slipAdvisorName(null), null);
+  });
+
+  it("R6 a booking-concierge read grant (pending + the sentinel message) is never mislabelled as an ordinary invitation (decision-maker ruling 2026-09-20, ledger 2026-09-20-concierge-plan-read)", () => {
+    const conciergeRow = {
+      status: "pending",
+      first_name: "Traveloure",
+      last_name: "Concierge",
+      handle: null,
+      message: CONCIERGE_READ_GRANT_MESSAGE,
+    };
+    assert.equal(isConciergeReadGrantAdvisor(conciergeRow), true);
+    assert.equal(isConciergeReadGrantAdvisor(null), false);
+    assert.equal(isConciergeReadGrantAdvisor(undefined), false);
+
+    // The standing sentence: never "Request sent — awaiting <name>".
+    const standing = slipAdvisorStandingLine(conciergeRow);
+    assert.equal(standing, SLIP_ADVISOR_CONCIERGE_READ_LINE);
+    assert.doesNotMatch(standing ?? "", /awaiting/i);
+
+    // The rail's message-row state: `isConciergeReadGrant` is true, so a caller must not print
+    // "awaiting reply" for this row either (SlipRail.tsx's `meta`).
+    const state = slipExpertRailState(conciergeRow);
+    assert.equal(state.kind, "message");
+    assert.equal(state.kind === "message" && state.isConciergeReadGrant, true);
+    assert.equal(state.kind === "message" && state.pending, true);
+
+    // A REAL pending invitation (no sentinel message) is untouched — same status, different fact.
+    const realInvite = { status: "pending", first_name: "Aya", last_name: null, handle: "aya", message: null };
+    assert.equal(isConciergeReadGrantAdvisor(realInvite), false);
+    assert.equal(slipAdvisorStandingLine(realInvite), "Request sent — awaiting Aya");
+    const realState = slipExpertRailState(realInvite);
+    assert.equal(realState.kind === "message" && realState.isConciergeReadGrant, false);
+    assert.equal(realState.kind === "message" && realState.pending, true);
+
+    // A row with no `message` field at all (the common case — every other advisor path) reads as
+    // an ordinary pending row, never as the concierge grant.
+    assert.equal(isConciergeReadGrantAdvisor({ status: "pending", handle: null }), false);
   });
 
   it("R4 the share URL is the TOKEN link, and carries no trip id (S10)", () => {

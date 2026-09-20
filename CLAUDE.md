@@ -480,6 +480,8 @@ This document captures architectural decisions to maintain consistency across co
     committed `--self-test` fixtures, §18d): no `.ts` under `server/` outside the author file may
     insert this row. It catches inserts, not updates — the guard states its own negative space.
     No schema change, no migration.
+    **Callers now include the concierge read grant** (ledger `2026-09-20-concierge-plan-read`,
+    §51) — `grantConciergePlanRead` is one more CALLER of this ONE author, never a new insert site.
     **Side findings recorded, not fixed here.** The first two are now **FIXED** by ledger
     `2026-09-04-golf-occasion-and-housekeeping`: (a) `expertAdvisorStatusEnum` in `shared/schema.ts`
     omitted `assigned`, which code writes and gates on (no DB CHECK — verified against every
@@ -1964,6 +1966,12 @@ This document captures architectural decisions to maintain consistency across co
     **POOLED, NOT ASSIGNED:** a platform-owned hand-off stamps `expertId: null` (corrects
     `2026-09-18-concierge-handoff`'s stale "no branch needed" note). **RANKS LAST** by the scorer's
     own floor (`specialties: []`, no history) — no new column, no tie-break.
+    **THE CONCIERGE READS THE PLAN IT WORKS (decision-maker ratified Sep 20, 2026 — ledger
+    `2026-09-20-concierge-plan-read`).** A `pending` (§12 READ-only) `trip_expert_advisors` row is
+    granted at HAND-OFF (the listing owner, never the platform account) and at CLAIM (whoever
+    takes a pooled request that names a trip), through the ONE author `upsertTripAdvisorRow`
+    (`server/services/concierge-plan-read.service.ts`, never throws — §15b). A conflict never
+    downgrades an already-`accepted`/`assigned` advisor. No schema change.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

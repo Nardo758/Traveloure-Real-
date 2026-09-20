@@ -579,7 +579,13 @@ function BuildCard({
       {isOwner && expertState.kind === "message" && (
         <RailRow
           label={`Message ${expertState.name}`}
-          meta={expertState.pending ? "awaiting reply" : "expert"}
+          meta={
+            expertState.isConciergeReadGrant
+              ? "reads this plan"
+              : expertState.pending
+                ? "awaiting reply"
+                : "expert"
+          }
           icon={<MessageCircle className="w-3.5 h-3.5" />}
           onClick={() =>
             void askExpert({
