@@ -20,6 +20,12 @@ name: Scheduler Jobs Gate
 #   startup-delay                    — the boot-herd floor+jitter contract
 #   check-jobs-cron-roster           — jobs-cron.yml has ONE cron schedule + posts every in-scope
 #                                       JOB_CADENCE route (ledger 2026-09-20-jobs-cron-single-schedule)
+#   post-internal-jobs.test.sh       — the cron script's cold-start warm-up + bounded 404/503 retry
+#                                       against a local stub server (ledger
+#                                       2026-09-20-jobs-cron-cold-start-retry): a boot-window 404
+#                                       is retried and recovers; a truly dead route still fails; a
+#                                       401 or 500 is never retried; readiness that never arrives
+#                                       fails cleanly, naming the readiness path
 #
 # Negative space (ruling 43): this gate proves the jobs are idempotent and the endpoints are
 # default-deny. It does NOT boot the app, so the owner-rail HTTP half of booking completion
@@ -28,6 +34,10 @@ name: Scheduler Jobs Gate
 # WORKFLOW's static shape (one schedule, every roster route named) — it does NOT prove GitHub
 # actually fires that schedule in production; that is verified in the Actions tab after merge
 # (jobs-cron.yml), or by a future external trigger (recorded, not built — see the ledger row above).
+# post-internal-jobs.test.sh proves the SCRIPT's retry/warm-up logic against a stub it starts
+# itself — it does NOT prove production's actual cold-start behaviour, which is why the fix also
+# keeps the three-check health contract (HTTP 200 + JSON + ok:true) unweakened: a stub can be
+# wrong about production timing, but it cannot make a genuinely dead route pass.
 #
 # Same Postgres + composite-migration shape as fee-resolution-authority-gate.yml. Sequential steps,
 # not one combined `npx tsx --test a b c` — node:test aggregates exit codes across files unhelpfully.
@@ -85,6 +95,9 @@ jobs:
 
       - name: jobs-cron roster guard — one schedule, every route posted
         run: node scripts/check-jobs-cron-roster.cjs
+
+      - name: post-internal-jobs.sh — cold-start warm-up + bounded retry (vs a local stub server)
+        run: bash scripts/ci/post-internal-jobs.test.sh
 
       # Migrations are the fixture; the composite action is mandatory (ci-db-setup-lint forbids
       # inline DB setup). No authenticated routes here — every suite creates its own rows directly.

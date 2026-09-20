@@ -125,7 +125,9 @@ These are judgment calls the automation deliberately does not make.
 8. **Scheduled MONEY/INTEGRITY jobs are actually running.** GitHub schedule dispatch is best-effort;
    verify `/internal/jobs/health` shows no stale jobs before launch, or add an external trigger
    (ledger `2026-09-20-jobs-cron-single-schedule`) — a launch is a bad time to discover a cron never
-   fired.
+   fired. A single stale-job report is not necessarily that: `post-internal-jobs.sh` now warms the
+   instance and retries a boot-window 404/503 (ledger `2026-09-20-jobs-cron-cold-start-retry`), so a
+   report that survives ITS retry budget is the signal worth acting on.
 
 ## Explicitly NOT per-market
 
