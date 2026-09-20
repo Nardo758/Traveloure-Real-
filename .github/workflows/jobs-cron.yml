@@ -1,75 +1,64 @@
 name: Scheduled jobs (jobs-cron)
 
-# Authoritative external trigger for the MONEY/INTEGRITY schedulers (scheduler-reliability lane,
-# #1712). The production app is Replit Autoscale, so its in-process timers are only best-effort
-# defense-in-depth — this workflow is the reliable runner. Each internal endpoint is idempotent
-# (§15 atomic conditionals / dedupe keys / DB-guarded mints), so a cron pass racing a warm
-# in-process timer no-ops via overlap dedup.
+# BACKUP external trigger for the MONEY/INTEGRITY schedulers (scheduler-reliability lane, #1712).
 #
-# ONE SCHEDULE, EVERY RUN POSTS EVERY BUCKET THAT IS DUE (ledger 2026-09-20-jobs-cron-single-schedule).
-# This workflow used to declare FIVE cron schedules and gate each bucket with
-# `if: github.event.schedule == '<that cron>'`. GitHub dispatches a multi-schedule workflow's
-# matching schedule LATE and UNEVENLY under load: run 35487463992 (2026-09-20T03:46Z) was fired
-# for the six-hourly cron only — the 15-minute, hourly, four-hourly and daily buckets were ALL
-# `skipped` that run — and production's /internal/jobs/health reported six stale MONEY/INTEGRITY
-# jobs (checkout-sweep, itinerary-generation-sweep, email-outbox, earnings-release,
-# booking-auto-completion, score-neighborhood-claims) although INTERNAL_JOB_SECRET was correct and
-# every endpoint answered 200. The `github.event.schedule` gate was trusting GitHub to fire the
-# RIGHT cron line every time; it doesn't.
+# THE AUTHORITATIVE TRIGGER IS A REPLIT SCHEDULED DEPLOYMENT (ledger
+# 2026-09-20-jobs-trigger-replit-scheduled), running the SAME script — scripts/ci/post-internal-jobs.sh
+# --due — against production directly, every 15 minutes. See docs/ops/REPLIT_SCHEDULED_JOBS.md for the
+# operator setup and how to verify it is actually firing. This workflow stays as a SECOND, independent
+# path: GitHub's own schedule dispatch under-delivers under load — five runs were observed in ten
+# hours against a */15 schedule on 2026-09-20, with gaps of 30 minutes to 5 hours — so it cannot be
+# the SOLE trigger for MONEY/INTEGRITY jobs, but a GitHub-triggered pass racing a Replit-triggered one
+# still just no-ops via each job's overlap dedupe (every job here is idempotent by design — §15 atomic
+# conditionals / dedupe keys / DB-guarded mints), so running both is safe redundancy, not risk.
 #
-# The fix: ONE `*/15 * * * *` schedule. Every dispatched run computes, from wall-clock UTC, which
-# cadence buckets are DUE and posts all of them in ONE job — so any run that lands, whenever it
-# lands, covers every bucket that should have fired by then. This is deliberately more permissive
-# than "exactly once": the hourly bucket is posted on EVERY run (up to 4x/hour) and the
-# four-/six-hourly/daily buckets are posted at ANY minute within their due hour, not gated to a
-# specific minute — a late or resumed-after-a-gap run still posts what's overdue. OVER-POSTING IS
-# SAFE: `runBackgroundJob` skips an overlapping pass (answers `200 {skipped:true}` — §17 rule 2)
-# and every job here is idempotent by design (§15 atomic conditionals / dedupe keys / DB-guarded
-# mints), so the only cost of a bucket firing more than strictly necessary is one extra HTTP round
-# trip per bucket per 15-minute run.
+# THE DUE-BUCKET LOGIC LIVES IN THE SCRIPT, NOT HERE (ledger 2026-09-20-jobs-trigger-replit-scheduled).
+# Two triggers — this workflow and the Replit Scheduled Deployment — must not carry two copies of
+# "which cadence buckets are due right now" (§18 rule 1: one implementation): a copy here and a copy
+# in the Replit deployment's own command would drift the moment either one changed, silently, the same
+# way the FIVE-cron-schedule shape below it used to drift. So this workflow is now a THIN CALLER: one
+# step runs `scripts/ci/post-internal-jobs.sh --due`, unmodified between the two triggers, which
+# computes the due buckets from wall-clock UTC, maps them to routes from its OWN bucket→routes table,
+# and posts them. See that script's header comment for the due rules and the bucket→routes table's
+# parse contract.
 #
-# Each bucket is its own STEP (not a separate job) so a failure in one bucket is visible on its own
-# in the run log without blocking any other bucket: every POST step below runs unless the workflow
-# itself was cancelled (`!cancelled()`), regardless of whether an earlier bucket step failed.
-#
-# HEALTH CONTRACT (lane: internal-jobs-hardening, L2): every bucket runs the SAME script,
-# scripts/ci/post-internal-jobs.sh, which passes a route only on HTTP 200 + JSON content-type +
-# `.ok == true`. The status code alone is NOT a health signal — a dead /internal route used to be
-# answered by the SPA fallback with 200 text/html, so a renamed or deleted MONEY route reported
-# green forever (§9). Five inline copies of that curl loop is how the check drifts, hence one
-# script.
+# HISTORY, kept for context: this workflow used to declare FIVE cron schedules and gate each bucket
+# with `if: github.event.schedule == '<that cron>'`. GitHub dispatches a multi-schedule workflow's
+# matching schedule LATE and UNEVENLY under load: run 35487463992 (2026-09-20T03:46Z) fired for the
+# six-hourly cron only — the 15-minute, hourly, four-hourly and daily buckets were ALL `skipped` that
+# run — and production's /internal/jobs/health reported six stale MONEY/INTEGRITY jobs although
+# INTERNAL_JOB_SECRET was correct and every endpoint answered 200. Ledger
+# `2026-09-20-jobs-cron-single-schedule` collapsed that to ONE `*/15 * * * *` schedule with the
+# due-by-wall-clock computation described above (at the time, still inline in this file); ledger
+# `2026-09-20-jobs-trigger-replit-scheduled` (this revision) moved that computation into the script so
+# a second, non-GitHub trigger could call the identical logic, and made the Replit Scheduled
+# Deployment — not this workflow — the authoritative one, because even a single correctly-shaped
+# schedule here inherited GitHub's own delivery unreliability (see that ledger row for the evidence).
 #
 # GUARDED (§18d): scripts/check-jobs-cron-roster.cjs pins that this file carries exactly ONE cron
-# schedule and that every server/routes/internal.routes.ts JOB_CADENCE route this workflow is
-# responsible for is posted by some ROUTES line here — run in scheduler-jobs-gate.yml.
+# schedule and invokes the script in `--due` mode, and that every server/routes/internal.routes.ts
+# JOB_CADENCE route this workflow is responsible for is posted by some bucket in the SCRIPT's own
+# bucket→routes table — run in scheduler-jobs-gate.yml.
 #
 # NOTE: occasion-drafts has its own workflow (occasion-drafts-daily.yml) and is intentionally not
 # duplicated here — its JOB_CADENCE bucket (`occasion-drafts-daily`) is out of this workflow's and
 # the roster guard's scope. Partnerize's report-poll is intentionally NOT included — held for
 # Lane 4's 404 triage; only Travelpayouts' poll is wired.
 #
-# NEGATIVE SPACE, stated because it is the load-bearing half of this fix: this workflow (and its
-# guard) make every DISPATCHED run cover every due bucket — they do not, and cannot, make GitHub
-# Actions dispatch the schedule reliably in the first place. A reliable *external* trigger (e.g. a
-# non-GitHub cron hitting the workflow_dispatch API, on the pattern the Autoscale in-process-timer
-# note already flags as best-effort) is a separate, unbuilt, recorded decision — see ledger
-# 2026-09-20-jobs-cron-single-schedule and docs/MARKET_LAUNCH_CHECKLIST.md.
+# NEGATIVE SPACE, stated because it is the load-bearing half of this fix: neither this workflow nor
+# the script it calls can make GitHub Actions dispatch its schedule reliably, or make a Replit
+# Scheduled Deployment fire on time — both are platform-level facts this repo cannot assert from
+# inside a workflow run. Verifying the AUTHORITATIVE trigger is actually firing is an operator step —
+# see docs/ops/REPLIT_SCHEDULED_JOBS.md's "How to verify" section.
 #
-# COLD-START WARM-UP + BOUNDED RETRY (ledger 2026-09-20-jobs-cron-cold-start-retry). A DISPATCHED
-# run landing on a scaled-to-zero Autoscale instance can hit it inside the few-second window between
-# `node dist/index.cjs` starting and `registerRoutes()` mounting `/internal` — run 35486145870
-# (2026-09-20T03:16:42Z) got a plain HTTP 404 from POST /internal/jobs/booking-expiry this way,
-# although the deployed sha demonstrably carried the route. post-internal-jobs.sh now (a) polls
-# `GET $BASE_URL/api/ready` until it reports `ready:true` before posting anything, and (b) retries a
-# 404 or 503 route response (never 401, never 500, never a 200 that fails the health contract) up to
-# a few times with backoff. Both are bounded, so a genuinely dead/misconfigured route still reports
-# red — see the script's own header comment for the full contract and its stated negative space.
-# Env knobs the script reads (left at their defaults below; only set them here to override):
+# COLD-START WARM-UP + BOUNDED RETRY (ledger 2026-09-20-jobs-cron-cold-start-retry) — unchanged by
+# this revision; see scripts/ci/post-internal-jobs.sh's header for the full contract. Env knobs the
+# script reads (left at their defaults below; only set them here to override):
 #   READY_PATH          — the readiness path polled before the first POST (default /api/ready).
 #   WARMUP_MAX_SECONDS   — how long to wait for readiness before failing (default 120).
 #   POST_RETRIES         — how many times a 404/503 route response is retried (default 3).
-# `timeout-minutes` below is sized for the worst case: every step's warm-up poll timing out plus
-# every route in it exhausting its retries.
+# `timeout-minutes` below is sized for the worst case: the warm-up poll timing out plus every posted
+# route exhausting its retries.
 
 on:
   schedule:
@@ -91,91 +80,14 @@ env:
 
 jobs:
   post-due-buckets:
-    name: Post every cadence bucket due this run
+    name: Post every cadence bucket due this run (backup trigger — see header)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compute due buckets
-        id: due
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          DISPATCH_BUCKET: ${{ github.event.inputs.bucket }}
-        run: |
-          set -euo pipefail
-
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            echo "Manual dispatch — forcing bucket: $DISPATCH_BUCKET (every other bucket skipped this run)"
-            for b in backstops hourly four-hourly six-hourly daily; do
-              key="due_${b//-/_}"
-              if [[ "$b" == "$DISPATCH_BUCKET" ]]; then
-                echo "${key}=true" >> "$GITHUB_OUTPUT"
-              else
-                echo "${key}=false" >> "$GITHUB_OUTPUT"
-              fi
-            done
-            exit 0
-          fi
-
-          # Scheduled (or a bucket-less manual) run: compute due-by-wall-clock, UTC.
-          hour="$(date -u +%H)"
-          hour=$((10#$hour))  # force base-10 so a leading zero (e.g. 09) isn't read as octal
-
-          # backstops/hourly: due on EVERY run — see the file header for why over-posting is safe
-          # and why this is deliberately more permissive than "once per cadence".
-          due_backstops=true
-          due_hourly=true
-
-          # four-/six-hourly/daily: due for the WHOLE matching UTC hour, at any minute within it —
-          # never gated to a specific minute, so a late-delivered or resumed-after-a-gap run still
-          # posts what's overdue instead of silently missing its one narrow window.
-          due_four_hourly=false
-          if (( hour % 4 == 0 )); then due_four_hourly=true; fi
-          due_six_hourly=false
-          if (( hour % 6 == 0 )); then due_six_hourly=true; fi
-          due_daily=false
-          if (( hour == 9 )); then due_daily=true; fi
-
-          echo "due_backstops=$due_backstops" >> "$GITHUB_OUTPUT"
-          echo "due_hourly=$due_hourly" >> "$GITHUB_OUTPUT"
-          echo "due_four_hourly=$due_four_hourly" >> "$GITHUB_OUTPUT"
-          echo "due_six_hourly=$due_six_hourly" >> "$GITHUB_OUTPUT"
-          echo "due_daily=$due_daily" >> "$GITHUB_OUTPUT"
-
-          echo "Due this run (UTC hour=$hour): backstops=$due_backstops hourly=$due_hourly four_hourly=$due_four_hourly six_hourly=$due_six_hourly daily=$due_daily"
-
-      - name: POST the backstop runners (checkout-sweep, itinerary-generation-sweep, email-outbox)
-        if: ${{ !cancelled() && steps.due.outputs.due_backstops == 'true' }}
+      - name: Post every due cadence bucket (or the dispatched FORCE_BUCKET)
         env:
           INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
-          ROUTES: "checkout-sweep itinerary-generation-sweep email-outbox"
-        run: ./scripts/ci/post-internal-jobs.sh
-
-      - name: POST the hourly MONEY + integrity runners (earnings-release, booking-auto-completion, score-neighborhood-claims)
-        if: ${{ !cancelled() && steps.due.outputs.due_hourly == 'true' }}
-        env:
-          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
-          ROUTES: "earnings-release booking-auto-completion score-neighborhood-claims"
-        run: ./scripts/ci/post-internal-jobs.sh
-
-      - name: POST the four-hourly runner (booking-expiry)
-        if: ${{ !cancelled() && steps.due.outputs.due_four_hourly == 'true' }}
-        env:
-          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
-          ROUTES: "booking-expiry"
-        run: ./scripts/ci/post-internal-jobs.sh
-
-      - name: POST the six-hourly runner (travelpayouts-report-poll)
-        if: ${{ !cancelled() && steps.due.outputs.due_six_hourly == 'true' }}
-        env:
-          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
-          ROUTES: "travelpayouts-report-poll"
-        run: ./scripts/ci/post-internal-jobs.sh
-
-      - name: POST the daily runners (stripe-reconciliation, availability-materialization)
-        if: ${{ !cancelled() && steps.due.outputs.due_daily == 'true' }}
-        env:
-          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
-          ROUTES: "stripe-reconciliation availability-materialization"
-        run: ./scripts/ci/post-internal-jobs.sh
+          FORCE_BUCKET: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.bucket || '' }}
+        run: ./scripts/ci/post-internal-jobs.sh --due

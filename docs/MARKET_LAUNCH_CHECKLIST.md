@@ -122,10 +122,14 @@ These are judgment calls the automation deliberately does not make.
    `provider_services` row whose owning user or provider-form contact resolves to the reserved
    `*.traveloure.test` domain) before announcing a launch, and treat any hit as a decision-maker
    data question, not something to delete unilaterally.
-8. **Scheduled MONEY/INTEGRITY jobs are actually running.** GitHub schedule dispatch is best-effort;
-   verify `/internal/jobs/health` shows no stale jobs before launch, or add an external trigger
-   (ledger `2026-09-20-jobs-cron-single-schedule`) — a launch is a bad time to discover a cron never
-   fired. A single stale-job report is not necessarily that: `post-internal-jobs.sh` now warms the
+8. **Scheduled MONEY/INTEGRITY jobs are actually running.** GitHub schedule dispatch is best-effort
+   and independently unreliable (observed: 5 deliveries in 10 hours against a `*/15` schedule) — the
+   AUTHORITATIVE trigger is a Replit Scheduled Deployment; see `docs/ops/REPLIT_SCHEDULED_JOBS.md`
+   for the operator setup, verification steps and failure-log reference (ledger
+   `2026-09-20-jobs-trigger-replit-scheduled`). GitHub's `jobs-cron.yml` stays wired up as backup
+   only. The pre-launch check is: **the Scheduled Deployment exists (per that doc) and
+   `/internal/jobs/health` shows `staleCount: 0`** — a launch is a bad time to discover a cron never
+   fired. A single stale-job report is not necessarily that: `post-internal-jobs.sh` warms the
    instance and retries a boot-window 404/503 (ledger `2026-09-20-jobs-cron-cold-start-retry`), so a
    report that survives ITS retry budget is the signal worth acting on.
 

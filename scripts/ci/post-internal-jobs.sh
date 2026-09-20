@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 #
-# post-internal-jobs.sh — the ONE health-check implementation for the /internal/jobs/* runners.
+# post-internal-jobs.sh — the ONE health-check implementation for the /internal/jobs/* runners, AND
+# (ledger 2026-09-20-jobs-trigger-replit-scheduled) the ONE place the cadence due-bucket logic lives.
 #
-# Every cadence bucket/step in .github/workflows/jobs-cron.yml calls this script; five inline
-# copies of the same curl loop drifted apart the moment one was edited, so the logic lives here
-# once.
+# Two triggers call this script: .github/workflows/jobs-cron.yml (BACKUP — see that file's header)
+# and a Replit Scheduled Deployment (AUTHORITATIVE — see docs/ops/REPLIT_SCHEDULED_JOBS.md), both
+# running `post-internal-jobs.sh --due` every 15 minutes. They must never carry two copies of "which
+# buckets are due right now" (§18 rule 1) — so that computation, and the bucket→routes table, live
+# HERE, once, and both triggers call the unmodified script.
 #
 # HEALTH CONTRACT (lane: internal-jobs-hardening, L2) — a route passes only when ALL THREE hold:
 #   1. HTTP 200,
@@ -15,26 +18,62 @@
 # the SPA fallback and answer 200 text/html, so a renamed or deleted MONEY route reported green
 # forever while the job never ran (§9 — a dead endpoint returns 200-HTML, NOT 404). Checks 2 and 3
 # make that impossible to miss even if the server-side /internal 404 (L3) is ever regressed. THIS
-# THREE-CHECK CONTRACT IS UNCHANGED BY THE COLD-START LOGIC BELOW — it decides whether a *given*
-# attempt passed; the lane below decides whether a *failing* attempt is worth a retry at all.
+# THREE-CHECK CONTRACT IS UNCHANGED BY ANYTHING BELOW — it decides whether a *given* attempt passed;
+# the due-bucket logic decides WHICH routes get attempted, and the cold-start lane below decides
+# whether a *failing* attempt is worth a retry at all.
 #
 # `skipped:true` is a PASS: an overlap skip means the in-process timer was mid-flight, which is the
 # designed dedup behaviour, not a failure.
 #
+# DUE-BUCKET MODE (ledger 2026-09-20-jobs-trigger-replit-scheduled) — three ways ROUTES is decided,
+# checked in this order:
+#   1. FORCE_BUCKET=<bucket> is set — post exactly that one bucket's routes, ignoring the due
+#      computation. This is what a manual jobs-cron.yml workflow_dispatch's `bucket` input maps to,
+#      and what a one-off "run this bucket now" invocation uses.
+#   2. `--due` is on the command line and FORCE_BUCKET is unset — post every bucket that is DUE by
+#      wall-clock UTC (or by the injectable NOW_UTC env var, for tests only — see below), unioned in
+#      BUCKET_ORDER order.
+#   3. neither — ROUTES must already be set in the environment. This is the pre-existing
+#      direct-invocation shape and is unchanged: `ROUTES="foo bar" ./post-internal-jobs.sh` still
+#      posts exactly "foo" and "bar", with no due-bucket log line and no bucket-table lookup.
+#
+# DUE RULES (copied byte-for-byte from the due-bucket bash that used to live inline in
+# .github/workflows/jobs-cron.yml's "Compute due buckets" step — that copy is now DELETED; this is
+# the only one):
+#   - backstops, hourly: due on EVERY run (over-posting is safe — see the workflow's header for why).
+#   - four-hourly: due for the whole UTC hour where hour % 4 == 0.
+#   - six-hourly: due for the whole UTC hour where hour % 6 == 0.
+#   - daily: due for the whole UTC hour where hour == 9.
+#   None of these are gated to a specific minute — a late-delivered or resumed-after-a-gap run still
+#   posts what's overdue instead of silently missing a narrow window.
+#
+# NOW_UTC (env, tests only) — an ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`) the due computation
+# reads its hour from, instead of `date -u`. Unset (the production/Replit/GitHub case) falls back to
+# the real wall clock. This is how scripts/ci/post-internal-jobs.test.sh proves the due arithmetic at
+# fixed fake times without waiting for the real clock to reach them.
+#
+# BUCKET_ROUTES_TABLE PARSE CONTRACT — read by scripts/check-jobs-cron-roster.cjs, which asserts every
+# in-scope server/routes/internal.routes.ts JOB_CADENCE route is posted by SOME bucket in this table.
+# The guard scans this file's text between the `# BUCKET_ROUTES_TABLE_BEGIN` and
+# `# BUCKET_ROUTES_TABLE_END` marker comments below for lines matching
+#   ["<bucket>"]="<space-separated route names>"
+# Keep the table inside those exact markers, one bucket per line, in that exact `["key"]="value"`
+# shape — the guard's regex is `\["([a-z0-9-]+)"\]="([^"]*)"` — or the guard fails loudly (it refuses
+# to pass vacuously on an unparseable table) rather than silently trusting a shape it can't read.
+#
 # COLD-START WARM-UP + BOUNDED RETRY (ledger 2026-09-20-jobs-cron-cold-start-retry) — Replit
-# Autoscale scales an idle instance to zero, so the four-hourly (and rarer) cadence buckets are
-# routinely the first request after a cold start. Run 35486145870 (2026-09-20T03:16:42Z) got a
-# plain HTTP 404 from POST /internal/jobs/booking-expiry although the deployed sha (32b0d6e)
-# contained the route (born 868909a38, 2026-09-15): the deployment log shows the instance cold-
-# starting at 03:16:39–41 and the request landing at 03:16:42, ONE TO THREE SECONDS after
-# `node dist/index.cjs` started — before `registerRoutes()` had mounted `/internal` at all. During
-# that window a request to any /internal/* path falls through server/static.ts's pre-bind catch-all
-# (which exempts /api and /internal from the SPA fallback but has nothing else mounted yet) into
-# Express's own default 404 — plain, not the JSON shape `server/infrastructure/error-handler.ts`'s
-# `notFoundHandler` produces once real routes are registered. That is DELIBERATE (L3): a dead route
-# must never report green. It also means a COLD but otherwise healthy instance is briefly
-# indistinguishable, from this script's point of view, from a dead route — which is exactly why the
-# fix below is a bounded retry, not a status-code change.
+# Autoscale scales an idle instance to zero, so any due bucket can be the first request after a cold
+# start. Run 35486145870 (2026-09-20T03:16:42Z) got a plain HTTP 404 from POST
+# /internal/jobs/booking-expiry although the deployed sha (32b0d6e) contained the route (born
+# 868909a38, 2026-09-15): the deployment log shows the instance cold-starting at 03:16:39–41 and the
+# request landing at 03:16:42, ONE TO THREE SECONDS after `node dist/index.cjs` started — before
+# `registerRoutes()` had mounted `/internal` at all. During that window a request to any /internal/*
+# path falls through server/static.ts's pre-bind catch-all (which exempts /api and /internal from the
+# SPA fallback but has nothing else mounted yet) into Express's own default 404 — plain, not the JSON
+# shape `server/infrastructure/error-handler.ts`'s `notFoundHandler` produces once real routes are
+# registered. That is DELIBERATE (L3): a dead route must never report green. It also means a COLD but
+# otherwise healthy instance is briefly indistinguishable, from this script's point of view, from a
+# dead route — which is exactly why the fix below is a bounded retry, not a status-code change.
 #
 # Two independent guards close that gap without weakening L3 or the three-check contract above:
 #
@@ -71,13 +110,19 @@
 # point. This script does not and cannot make Replit Autoscale keep an instance warm — that stays
 # the operator's to manage (CLAUDE.md, docs/MARKET_LAUNCH_CHECKLIST.md item 8).
 #
-# Inputs (env): BASE_URL, ROUTES (space-separated route names), INTERNAL_JOB_SECRET,
-#   READY_PATH (default /api/ready), WARMUP_MAX_SECONDS (default 120), POST_RETRIES (default 3).
-# Exit: 0 if every route passed (after any allowed retries), 1 otherwise.
+# NEGATIVE SPACE, due-bucket half: this script proves what IT would post given a wall clock (or an
+# injected NOW_UTC) — it does not, and cannot, prove that either trigger (GitHub's schedule, or the
+# Replit Scheduled Deployment) actually invoked it at all. That is an operator-observed fact — see
+# docs/ops/REPLIT_SCHEDULED_JOBS.md's verification steps.
+#
+# Inputs (env/args): BASE_URL, ROUTES (space-separated route names; ignored when --due or
+#   FORCE_BUCKET decide it instead), FORCE_BUCKET (one bucket name), `--due` (arg), NOW_UTC (tests
+#   only), INTERNAL_JOB_SECRET, READY_PATH (default /api/ready), WARMUP_MAX_SECONDS (default 120),
+#   POST_RETRIES (default 3).
+# Exit: 0 if every posted route passed (after any allowed retries), 1 otherwise.
 set -uo pipefail
 
 : "${BASE_URL:?BASE_URL is required}"
-: "${ROUTES:?ROUTES is required}"
 
 READY_PATH="${READY_PATH:-/api/ready}"
 WARMUP_MAX_SECONDS="${WARMUP_MAX_SECONDS:-120}"
@@ -99,9 +144,10 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # LOG HYGIENE (lane: internal-jobs-hardening, L5) — this script runs in GitHub Actions on a PUBLIC
-# repository, so every line it prints is on the open internet. It used to `cat` the whole response
-# body: earnings counts, reconciliation results, and on a 500 the server's verbatim err.message,
-# which for a database failure can carry row detail.
+# repository (and, via the Replit Scheduled Deployment, against production directly), so every line
+# it prints may be on the open internet or in an operator-visible run log. It used to `cat` the whole
+# response body: earnings counts, reconciliation results, and on a 500 the server's verbatim
+# err.message, which for a database failure can carry row detail.
 #
 # So: an ALLOWLIST, never the body. Booleans `ok`/`skipped`/`reason` plus every NUMERIC leaf (the
 # counts that make a run legible — drained, expert, provider, voided…). Strings are excluded by
@@ -247,6 +293,68 @@ post_route_with_retry() {
     sleep "$delay"
   done
 }
+
+# ── BUCKET → ROUTES TABLE (§18 rule 1 — see the PARSE CONTRACT note in the header comment above;
+# scripts/check-jobs-cron-roster.cjs reads this exact block). Order below is BUCKET_ORDER's order —
+# the order buckets are checked and, when due, posted in. ──
+# BUCKET_ROUTES_TABLE_BEGIN
+declare -A BUCKET_ROUTES=(
+  ["backstops"]="checkout-sweep itinerary-generation-sweep email-outbox"
+  ["hourly"]="earnings-release booking-auto-completion score-neighborhood-claims"
+  ["four-hourly"]="booking-expiry"
+  ["six-hourly"]="travelpayouts-report-poll"
+  ["daily"]="stripe-reconciliation availability-materialization"
+)
+# BUCKET_ROUTES_TABLE_END
+BUCKET_ORDER=(backstops hourly four-hourly six-hourly daily)
+
+# True (0) iff $1's bucket is due this run, by the DUE RULES stated in the header comment. Reads
+# DUE_HOUR, which the due-mode branch below computes once from NOW_UTC (or the real wall clock).
+is_bucket_due() {
+  case "$1" in
+    backstops|hourly) return 0 ;;
+    four-hourly) (( DUE_HOUR % 4 == 0 )) ;;
+    six-hourly) (( DUE_HOUR % 6 == 0 )) ;;
+    daily) (( DUE_HOUR == 9 )) ;;
+    *) return 1 ;;
+  esac
+}
+
+# ── MODE RESOLUTION (ledger 2026-09-20-jobs-trigger-replit-scheduled) — see the header comment's
+# "DUE-BUCKET MODE" section for the three-way precedence this implements. ──
+DUE_MODE=0
+for _arg in "$@"; do
+  if [[ "$_arg" == "--due" ]]; then DUE_MODE=1; fi
+done
+
+if [[ -n "${FORCE_BUCKET:-}" ]]; then
+  _forced_routes="${BUCKET_ROUTES[$FORCE_BUCKET]:-}"
+  if [[ -z "$_forced_routes" ]]; then
+    echo "::error title=Unknown bucket::FORCE_BUCKET='$FORCE_BUCKET' is not a known cadence bucket (${BUCKET_ORDER[*]})."
+    exit 1
+  fi
+  ROUTES="$_forced_routes"
+  echo "Forced bucket: $FORCE_BUCKET -- routes: $ROUTES"
+elif [[ "$DUE_MODE" -eq 1 ]]; then
+  _now_utc="${NOW_UTC:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+  DUE_HOUR="${_now_utc:11:2}"
+  DUE_HOUR=$((10#$DUE_HOUR))  # force base-10 so a leading zero (e.g. 09) isn't read as octal
+
+  _due_buckets=()
+  _due_routes=""
+  for _b in "${BUCKET_ORDER[@]}"; do
+    if is_bucket_due "$_b"; then
+      _due_buckets+=("$_b")
+      _due_routes="$_due_routes ${BUCKET_ROUTES[$_b]}"
+    fi
+  done
+  # shellcheck disable=SC2086
+  ROUTES="$(echo $_due_routes)"  # collapse repeated whitespace between bucket lists
+
+  echo "Due this run (NOW_UTC=$_now_utc, UTC hour=$DUE_HOUR, buckets=${_due_buckets[*]:-none}) -- routes: ${ROUTES:-none}"
+else
+  : "${ROUTES:?ROUTES is required (or pass --due, or set FORCE_BUCKET=<bucket>)}"
+fi
 
 if ! wait_for_warm_instance; then
   exit 1

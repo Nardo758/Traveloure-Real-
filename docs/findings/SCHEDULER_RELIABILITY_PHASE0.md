@@ -293,3 +293,36 @@ healthy.
 **Left open, named, not taken here:** this makes a *cold but otherwise healthy* instance pass once it
 finishes booting. It does not, and cannot, make Replit Autoscale keep an instance warm in the first
 place — that remains an operator concern (`docs/MARKET_LAUNCH_CHECKLIST.md` item 8).
+
+## 2026-09-20 — GitHub's own schedule delivery is unreliable too; the authoritative trigger moves to Replit
+
+The two notes above closed the multi-schedule dispatch gap and the cold-start gap — every
+DISPATCHED run now posts every due bucket, and warms + retries through a boot window. Neither
+closed a third, more basic gap: **GitHub Actions' schedule delivery itself is unreliable under
+load**, independent of anything this repo's workflow does. Against the single `*/15 * * * *`
+schedule landed above, GitHub delivered the workflow only **5 times in 10 hours** on 2026-09-20 —
+gaps of 30 minutes to 5 hours between runs, when every 15 minutes was expected. The workflow ran
+correctly every time it *was* dispatched (one job, every due bucket, all 200s, no 404 — e.g. run
+#435) — the schedule itself, not the workflow's logic, was the unreliable part.
+
+**Fix (ledger `2026-09-20-jobs-trigger-replit-scheduled`):** a **Replit Scheduled Deployment**,
+independent of GitHub Actions' scheduler entirely, becomes the AUTHORITATIVE trigger — running
+`scripts/ci/post-internal-jobs.sh --due` directly against production every 15 minutes. See
+`docs/ops/REPLIT_SCHEDULED_JOBS.md` for the operator setup and verification steps.
+`.github/workflows/jobs-cron.yml` stays wired up as a BACKUP trigger (same script, same cadence,
+still calling `--due`) — over-posting is safe by the same idempotency properties as always, so
+running both triggers is redundancy, not risk.
+
+Because two independent triggers now exist, the due-bucket computation — which cadence buckets are
+due, and which routes each maps to — MOVED OUT of `jobs-cron.yml`'s own inline bash and INTO
+`scripts/ci/post-internal-jobs.sh` itself (a `--due` CLI mode, plus a `FORCE_BUCKET=<bucket>` env
+override for the workflow's manual-dispatch input). This is the §18 rule-1 posture applied to the
+due logic itself: two triggers must not carry two copies of "what's due right now", or the copies
+would drift the moment either trigger's configuration changed without the other. Both triggers now
+call the identical, unmodified script.
+
+**Left open, named, not taken here:** neither the roster guard nor the script's own test suite can
+prove that the Replit Scheduled Deployment is actually configured and firing in production — that
+remains an operator-observed fact, verified via `/internal/jobs/health` and the deployment's own run
+log (see `docs/ops/REPLIT_SCHEDULED_JOBS.md`'s "How to verify" section and
+`docs/MARKET_LAUNCH_CHECKLIST.md` item 8).
