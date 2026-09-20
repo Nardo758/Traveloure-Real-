@@ -14,6 +14,17 @@
  * is the ONE place that gap closes; both promotion paths call it (see the annotations at each call
  * site — a second copy of this decision is the derivation-drift class §18 rule 1 names).
  *
+ * THE PLAN IS RESOLVED TWO WAYS, RECORDED (ledger `2026-09-20-handoff-booking-trip-basis`). The
+ * cart rail (`payments.routes.ts` ~1997) stamps `bookingDetails.itineraryItemId` only when the cart
+ * line came from a plan item, but stamps `service_bookings.trip_id` from `tripId || item.tripId`
+ * regardless — so a traveler who adds the Booking Concierge listing straight off the marketplace
+ * (not from a plan item) paid, got a `trip_id` on the booking, and got NO hand-off: the item-link
+ * lookup found nothing and the booking's own `trip_id` was never consulted. The resolution order is
+ * now: the item link's trip when present (`planBasis: "item_link"`, unchanged), else the booking's
+ * own `trip_id` when set (`planBasis: "booking_trip"`), else `no_plan_link` with no basis — exactly
+ * as before when NEITHER exists. §13: the basis actually used is returned and logged, never
+ * guessed after the fact from which fields happen to be non-null.
+ *
  * THE ASSUMPTION THIS LANE STANDS ON (stated for the decision-maker; reversible by ledger,
  * amending `2026-09-08-assignment-is-claimed` for PAID hand-offs only). A request born from a PAID
  * concierge booking is stamped `expertId` = the listing's OWNER — they agreed to the work by
@@ -38,10 +49,11 @@
  *
  * §13 — THE ABSENCES ARE ANSWERS, NEVER INVENTED:
  *   · not a `booking_concierge` listing            ⇒ `reason: "not_concierge"`, nothing touched.
- *   · no `bookingDetails.itineraryItemId`, or the
- *     item names no trip                            ⇒ `reason: "no_plan_link"` — the purchase was
+ *   · no `bookingDetails.itineraryItemId` (or the item names no trip), AND no
+ *     `service_bookings.trip_id`                    ⇒ `reason: "no_plan_link"` — the purchase was
  *                                                       never tied to a plan, so there is no plan
- *                                                       to hand items off from.
+ *                                                       to hand items off from. An unlinked,
+ *                                                       tripless booking still hands off nothing.
  *   · a candidate item carries no `affiliateProductId`, or its product no longer resolves to a
  *     live, approved-partner reference                ⇒ counted in `skipped`, reason
  *     `"no_partner_product"` — never invented into a request with a fabricated URL.
@@ -65,6 +77,10 @@ import crypto from "crypto";
 
 export type ConciergeHandoffReason = "not_concierge" | "no_plan_link" | "no_partner_product";
 
+/** Which fact resolved the plan this hand-off works from — recorded, never guessed (§13,
+ *  ledger `2026-09-20-handoff-booking-trip-basis`). `null` only when no plan was resolved. */
+export type ConciergeHandoffPlanBasis = "item_link" | "booking_trip" | null;
+
 export interface ConciergeHandoffResult {
   /** Number of NEW `affiliate_booking_requests` rows created by this call. */
   handedOff: number;
@@ -76,6 +92,10 @@ export interface ConciergeHandoffResult {
    *  `handedOff > 0` never needs it). */
   reason?: ConciergeHandoffReason;
   requestIds: string[];
+  /** Which fact resolved the plan: the item link, the booking's own `trip_id`, or none. Present
+   *  only once plan resolution was actually attempted — a `not_concierge` exit never got that far,
+   *  so it carries no basis at all rather than a fabricated `null` (§13). */
+  planBasis?: ConciergeHandoffPlanBasis;
 }
 
 const EMPTY_RESULT = (reason: ConciergeHandoffReason): ConciergeHandoffResult => ({
@@ -84,6 +104,16 @@ const EMPTY_RESULT = (reason: ConciergeHandoffReason): ConciergeHandoffResult =>
   reason,
   requestIds: [],
 });
+
+/** `no_plan_link`: resolution WAS attempted (both bases were checked) and found neither — `null`
+ *  is the honest, recorded answer, never omitted the way `not_concierge`'s pre-resolution exit is. */
+const NO_PLAN_LINK_RESULT: ConciergeHandoffResult = {
+  handedOff: 0,
+  skipped: 0,
+  reason: "no_plan_link",
+  requestIds: [],
+  planBasis: null,
+};
 
 /**
  * Injectable seam, on the `proposal-create.service.ts` `CreateProposalDeps` precedent — a real
@@ -123,16 +153,45 @@ export async function createHandoffRequestsForBooking(
       return EMPTY_RESULT("not_concierge");
     }
 
+    // THE PLAN IS RESOLVED TWO WAYS (ledger `2026-09-20-handoff-booking-trip-basis`): the item
+    // link when the cart line came from a plan item (unchanged, preferred — it names the EXACT
+    // item the concierge purchase replaced), else the booking's own `trip_id`, which the cart rail
+    // stamps on EVERY concierge purchase regardless of origin (`payments.routes.ts` ~1976). Neither
+    // present ⇒ the purchase was truly never tied to a plan (unchanged `no_plan_link`).
     const bookingDetails = (booking.bookingDetails ?? {}) as Record<string, unknown>;
     const conciergeItemId =
       typeof bookingDetails.itineraryItemId === "string" ? bookingDetails.itineraryItemId : null;
-    if (!conciergeItemId) return EMPTY_RESULT("no_plan_link");
 
-    const conciergeItem = await db.query.itineraryItems.findFirst({
-      where: eq(itineraryItems.id, conciergeItemId),
-    });
-    const tripId = conciergeItem?.tripId ?? null;
-    if (!tripId) return EMPTY_RESULT("no_plan_link");
+    let tripId: string | null = null;
+    let planBasis: ConciergeHandoffPlanBasis = null;
+
+    if (conciergeItemId) {
+      const conciergeItem = await db.query.itineraryItems.findFirst({
+        where: eq(itineraryItems.id, conciergeItemId),
+      });
+      if (conciergeItem?.tripId) {
+        tripId = conciergeItem.tripId;
+        planBasis = "item_link";
+      }
+    }
+
+    if (!tripId && booking.tripId) {
+      tripId = booking.tripId;
+      planBasis = "booking_trip";
+    }
+
+    if (!tripId) {
+      logger.info(
+        { bookingId },
+        "[concierge-handoff] no_plan_link — neither an item link nor the booking's own trip_id resolved a plan",
+      );
+      return NO_PLAN_LINK_RESULT;
+    }
+
+    logger.info(
+      { bookingId, tripId, planBasis },
+      "[concierge-handoff] plan resolved",
+    );
 
     // Locked Decision 51 lane F (ledger `2026-09-18-platform-concierge-listing`): a request born
     // from the PLATFORM's own reserved Booking Concierge listing is POOLED, not assigned to that
@@ -231,6 +290,7 @@ export async function createHandoffRequestsForBooking(
       skipped,
       reason: skipped > 0 ? "no_partner_product" : undefined,
       requestIds,
+      planBasis,
     };
   } catch (err) {
     // §15b: an ancillary effect may not break the operation that authorizes it. The booking is

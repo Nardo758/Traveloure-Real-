@@ -1950,6 +1950,9 @@ This document captures architectural decisions to maintain consistency across co
     `2026-09-08-assignment-is-claimed` FOR PAID HAND-OFFS ONLY:** stamped `expert_id` = the
     listing's owner, who is paid this entry's share to do the work; the pool default stands for
     every other, traveler-initiated request.
+    **THE PLAN IS RESOLVED BY THE ITEM LINK, ELSE THE BOOKING'S OWN `trip_id` (ledger
+    `2026-09-20-handoff-booking-trip-basis`)** — a marketplace-added concierge purchase with no
+    plan item behind it now hands off too; the basis is recorded (`planBasis`), never guessed.
     **THE PLATFORM MAY ITSELF OFFER BOOKING CONCIERGE WHERE NO EXPERT DOES (decision-maker ratified
     Sep 18, 2026 — ledger `2026-09-18-platform-concierge-listing`; migration 313, DATA-ONLY).** A
     reserved `users` row + approved `local_expert_forms` row (all 8 `OPERATING_MARKETS`) + approved

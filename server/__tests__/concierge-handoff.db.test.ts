@@ -60,15 +60,19 @@ async function makeItem(opts: {
   return id;
 }
 
-async function makeBooking(opts: { serviceId: string; itineraryItemId: string | null }): Promise<string> {
+async function makeBooking(opts: {
+  serviceId: string;
+  itineraryItemId: string | null;
+  tripId?: string | null;
+}): Promise<string> {
   const id = crypto.randomUUID();
   const bookingDetails = opts.itineraryItemId ? { itineraryItemId: opts.itineraryItemId } : {};
   await db.execute(sql`
     INSERT INTO service_bookings
-      (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee, provider_earnings, booking_details)
+      (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee, provider_earnings, booking_details, trip_id)
     VALUES
       (${id}, ${opts.serviceId}, ${travelerId}, ${expertId}, 'confirmed', '100.00', '25.00', '75.00',
-       ${JSON.stringify(bookingDetails)}::jsonb)
+       ${JSON.stringify(bookingDetails)}::jsonb, ${opts.tripId ?? null})
   `);
   bookingIds.push(id);
   return id;
@@ -232,4 +236,51 @@ test("H6: both promotion paths import the ONE hand-off implementation (§18 rule
   assert.match(checkoutClaim, /from ["']\.\/concierge-handoff\.service["']/);
   assert.match(payments, /createHandoffRequestsForBooking/);
   assert.match(checkoutClaim, /createHandoffRequestsForBooking/);
+});
+
+test("H7: a concierge booking with trip_id and NO item link hands off by the booking's own trip (planBasis: booking_trip)", async () => {
+  const tripId = await makeTrip();
+  const partnerItem = await makeItem({ tripId, title: "Partner activity", affiliateProductId: productA });
+  // No itineraryItemId in bookingDetails — the marketplace-cart-line case this lane fixes.
+  const bookingId = await makeBooking({ serviceId: conciergeServiceId, itineraryItemId: null, tripId });
+
+  const result = await createHandoffRequestsForBooking(bookingId);
+  assert.equal(result.handedOff, 1);
+  assert.equal(result.skipped, 0);
+  assert.equal(result.planBasis, "booking_trip");
+  assert.equal(result.requestIds.length, 1);
+
+  const rows = await requestsForBooking(bookingId);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].itinerary_item_id, partnerItem);
+  assert.equal(rows[0].service_booking_id, bookingId);
+  assert.equal(rows[0].trip_id, tripId);
+});
+
+test("H8: the same booking-trip-basis booking promoted twice creates none", async () => {
+  const tripId = await makeTrip();
+  await makeItem({ tripId, title: "Partner activity", affiliateProductId: productA });
+  const bookingId = await makeBooking({ serviceId: conciergeServiceId, itineraryItemId: null, tripId });
+
+  const first = await createHandoffRequestsForBooking(bookingId);
+  assert.equal(first.handedOff, 1);
+  assert.equal(first.planBasis, "booking_trip");
+
+  const second = await createHandoffRequestsForBooking(bookingId);
+  assert.equal(second.handedOff, 0, "the retry inserts nothing new");
+  assert.equal(second.skipped, 0, "a conflict is not a skip — it was already done, not passed over");
+  assert.equal(second.planBasis, "booking_trip", "the basis is still resolved and reported on a no-op retry");
+
+  const rows = await requestsForBooking(bookingId);
+  assert.equal(rows.length, 1, "still exactly one row for this (booking, item) pair");
+});
+
+test("H9: a booking with neither an item link nor its own trip_id ⇒ no_plan_link, zero rows (unchanged)", async () => {
+  const bookingId = await makeBooking({ serviceId: conciergeServiceId, itineraryItemId: null, tripId: null });
+
+  const result = await createHandoffRequestsForBooking(bookingId);
+  assert.deepEqual(result, { handedOff: 0, skipped: 0, reason: "no_plan_link", requestIds: [], planBasis: null });
+
+  const rows = await requestsForBooking(bookingId);
+  assert.equal(rows.length, 0);
 });

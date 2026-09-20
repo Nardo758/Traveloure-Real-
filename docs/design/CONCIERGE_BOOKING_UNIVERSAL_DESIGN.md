@@ -65,7 +65,7 @@ Exactly two implementations are in scope:
 
 | # | Stage | What happens | Exists? |
 |---|---|---|---|
-| S0 | **Hand-off** | Checkout of a `booking_concierge` line creates one `affiliate_booking_requests` row per partner stop, linked by `itinerary_item_id`. | ✅ landed `2026-09-18-concierge-handoff` |
+| S0 | **Hand-off** | Checkout of a `booking_concierge` line creates one `affiliate_booking_requests` row per partner stop, linked by `itinerary_item_id`. (plan basis: item link, else the booking's own trip — `2026-09-20-handoff-booking-trip-basis`) | ✅ landed `2026-09-18-concierge-handoff` |
 | S1 | **Prepare** | `adapter.prepare` per request → a packet snapshot (product, slot, party, price, currency, cancellation terms, captured-at, source). Request → `ready_to_buy`, `unavailable`, or stays `researching` with the reason. | verification leg exists; packet carrier is LD 44's open question → CB-3 |
 | S2 | **Quote** | ONE `service_quotes` row on the concierge listing for the prepared stops, with one child **purchase line** per stop. Amount = Σ line amounts + FX buffer + fee (CB-2). Short expiry from config. Unavailable stops are excluded **and named**. | `service_quotes` ✅; lines new |
 | S3 | **Fund** | Traveler accepts on-session (saved method / wallet, one tap). `acceptQuote` mints the `pending` booking; **checkout charges the pre-born booking (audit BP-1)**. Lines → `funded`. | blocked on BP-1 |
