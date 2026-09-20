@@ -51,6 +51,11 @@ export interface QuoteCardRow {
    *  could not be resolved — never rendered as "no plan" (§13). */
   tripId?: string;
   tripTitle?: string;
+  /** Ledger `2026-09-20-quote-fee-preaccept`: the server's READ-ONLY list-time disclosure of the
+   *  ruled traveler service fee — present on every ISSUED quote (one carrying `amountCents`), absent
+   *  on a `requested` row (nothing to fee yet). The SAME shape `quoteTravelerFeeLine` already words
+   *  for the pay response; this is the pre-accept reading of that same figure, never a second one. */
+  travelerServiceFee?: QuoteTravelerServiceFee;
 }
 
 /**
