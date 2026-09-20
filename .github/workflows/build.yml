@@ -3446,6 +3446,10 @@ jobs:
       # already use, which keeps the components under test unmodified.
       - name: client/src/components/__tests__ (all)
         run: npx tsx --test client/src/components/__tests__/*.test.ts*
+      # Landing hero is an API/client lockstep contract. Keep these exact paths named so
+      # neither the server composer nor representative-card proof can disappear behind globs.
+      - name: landing-hero-contract (server composer + representative component)
+        run: npx tsx --test server/services/__tests__/landing-hero.test.ts client/src/components/__tests__/landing-hero-photo-fallback.test.ts client/src/components/__tests__/landing-hero-representative.test.tsx client/src/hooks/__tests__/use-rotation.test.ts
       - name: client/src/components/plancard/__tests__ (all)
         run: npx tsx --test client/src/components/plancard/__tests__/*.test.ts*
 

@@ -160,6 +160,8 @@ export async function gatherOfferingCandidates(opts: {
    *  approved+published `expert_templates` to the ranked slate on the Discover surfaces.
    *  Still accepted so existing callers compile unchanged; it now adds no candidates. */
   includePackages?: boolean;
+  /** Preserve the legacy [] fallback by default; honesty-sensitive callers may observe failure. */
+  throwOnError?: boolean;
 }): Promise<RankInputCandidate[]> {
   const endorsedSet = new Set(opts.expertEndorsedKeys ?? []);
   const effectiveTemplate = resolveTemplateKey(opts.templateKey);
@@ -240,6 +242,7 @@ export async function gatherOfferingCandidates(opts: {
     return candidates;
   } catch (err) {
     console.error("[upsell] gatherOfferingCandidates failed:", err);
+    if (opts.throwOnError) throw err;
     return [];
   }
 }

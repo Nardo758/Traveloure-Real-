@@ -6,23 +6,10 @@
  * contract of docs/design/LANDING_SPEC.md exactly once.
  */
 
-// ── Types ────────────────────────────────────────────────────────────────────────────────
+import type { LandingHeroPayload } from "@shared/landing-hero";
+export type { LandingHeroPayload } from "@shared/landing-hero";
 
-export interface LandingHeroPayload {
-  city: string | null;
-  /** trend_scores trendingScore; 0 = below confidence floor (no badge), null = no city. */
-  trend: number | null;
-  crowd: string | null;
-  anchorExpert: {
-    name: string;
-    handle: string | null;
-    fromPriceCents: number | null;
-    imageUrl?: string;
-  } | null;
-  gem: { name: string; score: number | null; imageUrl?: string } | null;
-  service: { name: string; priceCents: number | null; imageUrl?: string } | null;
-  wanted: { title: string; neighborhood: string } | null;
-}
+// ── Types ────────────────────────────────────────────────────────────────────────────────
 
 export interface HeroNeighborhood {
   id?: unknown;
@@ -68,25 +55,23 @@ export function pickAnchorExpert(
 }
 
 /**
- * MIRROR of discover-location.tsx:1881-1906 (do not fork the rule): the wanted pool is the
- * offering types absent from the covered set; when the covered set is empty (slot data
- * unavailable) the FULL list is the pool; slot i pairs neighborhoods[i] with
- * pool[i % pool.length]. The landing hero takes slot 0. Null when there are no
- * neighborhoods or no offering types — never an invented recruitment line.
+ * Deliberate, honest divergence from discover-location.tsx's decorative neighborhood slots:
+ * the landing route knows whether its coverage gather ran, so null means "unknown" and MUST
+ * suppress recruitment copy. A real Set (including an empty Set) means coverage is known.
+ * Coverage is city-scoped, therefore these slots use the city and never invent neighborhood
+ * precision. Keep the corresponding discover comment in sync if either rule changes.
  */
-export function deriveWantedSlot(
-  neighborhoods: HeroNeighborhood[],
-  coveredOfferingIds: Set<string>,
+export function deriveWantedSlots(
+  city: string | null,
+  coveredOfferingIds: Set<string> | null,
   offeringTypes: HeroOfferingType[],
-): { title: string; neighborhood: string } | null {
-  if (neighborhoods.length === 0 || offeringTypes.length === 0) return null;
-  const uncovered = offeringTypes.filter((o) => !coveredOfferingIds.has(o.offering_type_key));
-  const pool = uncovered.length > 0 ? uncovered : offeringTypes;
-  const nb = neighborhoods[0];
-  const nbName = (nb?.name ?? "").trim();
-  if (!nbName) return null;
-  const offering = pool[0];
-  return { title: offering.display_name, neighborhood: nbName };
+): Array<{ title: string; city: string }> | null {
+  const cityName = city?.trim() ?? "";
+  if (coveredOfferingIds === null) return null;
+  if (!cityName || offeringTypes.length === 0) return [];
+  return offeringTypes
+    .filter((o) => !coveredOfferingIds.has(o.offering_type_key))
+    .map((o) => ({ title: o.display_name, city: cityName }));
 }
 
 /** Assemble the payload from already-resolved legs. Absent legs stay null — no defaults. */
@@ -105,7 +90,7 @@ export function composeLandingHero(input: {
     serviceImage?: unknown;
     vendorPhoto?: unknown;
   }>;
-  wanted: { title: string; neighborhood: string } | null;
+  wanted: Array<{ title: string; city: string }> | null;
 }): LandingHeroPayload {
   const { topCity } = input;
   const gemRow = input.gems.find((g) => (g?.placeName ?? "").toString().trim().length > 0) ?? null;
