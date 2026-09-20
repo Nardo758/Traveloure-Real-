@@ -24,30 +24,49 @@ just no-ops via overlap dedupe), but is no longer the thing a launch should rely
 
 ## Operator setup
 
-1. In the Replit dashboard for the production app: **Deployments → Scheduled → New Scheduled
-   Deployment**.
-2. **Command:**
+**CORRECTED 2026-09-20 (ledger `2026-09-20-dummy-seeder-gated-preview-widened`):** this section
+originally assumed the Scheduled Deployment could be added to the production app's own Repl.
+Replit has confirmed a Scheduled Deployment cannot coexist with a web (Autoscale) deployment on the
+same Repl. The runner below is therefore a **SECOND, separate Repl** — it never runs the app itself
+(no server process, no `DATABASE_URL`, no Stripe key) and does nothing but periodically call the
+script, which in turn makes ordinary HTTPS `POST` requests to production's own `/internal/jobs/*`
+routes over `BASE_URL`, exactly as `jobs-cron.yml`'s GitHub runner already does.
+
+1. **Create the second Repl.** In the Replit dashboard: **Create Repl → Import from GitHub**,
+   repository `Nardo758/Traveloure-Real-`, branch `main`. Suggested name:
+   `traveloure-jobs-runner`. This Repl exists ONLY to host the Scheduled Deployment below and is
+   never itself deployed as a web/Autoscale app.
+2. On that Repl: **Deployments → Scheduled → New Scheduled Deployment**.
+3. **Command:**
    ```
-   bash scripts/ci/post-internal-jobs.sh --due
+   git pull --ff-only origin main && bash scripts/ci/post-internal-jobs.sh --due
    ```
-   Run it from the repository root (the deployment's working directory should already be the app
-   checkout — the script is at `scripts/ci/post-internal-jobs.sh` relative to that root).
-3. **Schedule:** `*/15 * * * *` (every 15 minutes, matching `jobs-cron.yml`'s own cadence — the two
+   **Why a `git pull` and not a pasted copy of the script (§18 rule 1 — one implementation):**
+   `scripts/ci/post-internal-jobs.sh` is the ONE place the due-bucket arithmetic and the
+   bucket→routes table live — moving them there in the first place is what let a second trigger
+   call the identical logic instead of carrying its own copy. A runner that pasted its own copy of
+   the script would be a SECOND implementation of that logic, free to drift from `main`'s the next
+   time either one changed — the exact failure shape this ledger row already fixed once, one layer
+   up. Pulling `main` immediately before each run means this Repl always executes the SAME script
+   GitHub's workflow calls, with no extra step for an operator to remember when the script changes.
+4. **Schedule:** `*/15 * * * *` (every 15 minutes, matching `jobs-cron.yml`'s own cadence — the two
    triggers should run at roughly the same frequency, though they do not need to be phase-aligned;
    over-posting a due bucket is safe by design).
-4. **Environment variables**, set on the Scheduled Deployment (not inherited from the app's own env
-   unless the Replit UI does so automatically — verify):
+5. **Secrets, set on this Scheduled Deployment, and NOTHING ELSE:**
    - `BASE_URL=https://www.traveloure.com`
    - `INTERNAL_JOB_SECRET` — the **production** value of this secret (the same one
      `server/routes/internal.routes.ts`'s `requireInternalSecret` checks). This is required; the
      script refuses to run without it.
-   - `WARMUP_MAX_SECONDS` (optional) — how long to wait for `/api/ready` before failing. Default
-     `120`. Raise this if the production instance is observed taking longer than 2 minutes to cold
-     boot.
-   - `POST_RETRIES` (optional) — how many times a 404/503 route response is retried. Default `3`.
-     Leave at the default unless the cold-start retry budget (see the script's own header comment,
-     ledger `2026-09-20-jobs-cron-cold-start-retry`) is observed to be insufficient.
-5. Save and enable the Scheduled Deployment.
+
+   No `DATABASE_URL`, no Stripe key and no other app secret belongs on this Repl — it never runs
+   the app, only the script, and the script's only outbound calls are the HTTPS `POST`s to
+   `BASE_URL`. Optionally, also:
+   - `WARMUP_MAX_SECONDS` — how long to wait for `/api/ready` before failing. Default `120`. Raise
+     this if the production instance is observed taking longer than 2 minutes to cold boot.
+   - `POST_RETRIES` — how many times a 404/503 route response is retried. Default `3`. Leave at the
+     default unless the cold-start retry budget (see the script's own header comment, ledger
+     `2026-09-20-jobs-cron-cold-start-retry`) is observed to be insufficient.
+6. Save and enable the Scheduled Deployment.
 
 Do **not** set `ROUTES` or `FORCE_BUCKET` on the recurring deployment — `--due` is what makes it
 compute the due buckets itself, matching `jobs-cron.yml`'s own behavior. `FORCE_BUCKET=<bucket>` is
