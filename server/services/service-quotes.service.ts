@@ -71,6 +71,10 @@ import { resolveDepositPlan } from "./deposit.service";
 import { resolveQuotePlanLink } from "./quote-plan-link.service";
 import { syncItemProjection } from "./cart-projection.service";
 import { logger } from "../infrastructure/logger";
+// Ledger `2026-09-20-quote-fee-preaccept`: the SAME snapshot shape/resolver the charge arm uses
+// (§18 rule 1) — a list-time reader and the charge arm must never carry two formulas for one fee.
+import { resolveTravelerServiceFeeSnapshot, type TravelerServiceFeeSnapshot } from "./fee-resolution.service";
+import { coversAction } from "./trip-entitlement.service";
 
 // ─── Refusals ─────────────────────────────────────────────────────────────────────────────────
 
@@ -150,6 +154,15 @@ export interface ServiceQuoteView {
    *  ON DELETE SET NULL — the same SET-NULL posture every other plan-child link takes). */
   tripId?: string;
   tripTitle?: string;
+  /**
+   * Ledger `2026-09-20-quote-fee-preaccept`: the READ-ONLY, LIST-TIME disclosure of the ruled
+   * traveler service fee, present on every ISSUED quote (a row that carries an `amountCents`).
+   * Nothing is stamped by computing this — the charge-time snapshot `claimQuoteBornBooking` writes
+   * stays the record, and if the band moves between list and charge the CHARGE-TIME figure wins and
+   * the payment sheet re-discloses (§13). Absent on a `requested` row (no amount yet ⇒ nothing to
+   * fee — never rendered as a $0 fee).
+   */
+  travelerServiceFee?: TravelerServiceFeeSnapshot;
 }
 
 const iso = (d: Date | string | null | undefined): string | undefined => {
@@ -163,6 +176,10 @@ export function presentQuote(
   serviceName?: string | null,
   now: Date = new Date(),
   tripTitle?: string | null,
+  /** Ledger `2026-09-20-quote-fee-preaccept`: the caller's already-resolved list-time fee snapshot,
+   *  or undefined when the caller does not compute one (every caller but `listQuotesForTraveler`
+   *  today — the owner list, and every mutation result, have no traveler-facing fee to disclose). */
+  travelerServiceFee?: TravelerServiceFeeSnapshot,
 ): ServiceQuoteView {
   const view: ServiceQuoteView = {
     id: row.id,
@@ -190,6 +207,7 @@ export function presentQuote(
     view.tripId = row.tripId;
     if (tripTitle) view.tripTitle = tripTitle;
   }
+  if (travelerServiceFee) view.travelerServiceFee = travelerServiceFee;
   const createdAt = iso(row.createdAt); if (createdAt) view.createdAt = createdAt;
   return view;
 }
@@ -228,11 +246,52 @@ export async function listQuotesForOwner(ownerUserId: string): Promise<ServiceQu
 }
 
 /**
+ * Ledger `2026-09-20-quote-fee-preaccept`: the LIST-TIME traveler-service-fee disclosure for ONE
+ * issued quote, READ ONLY — nothing is stamped here. Computed through the SAME
+ * `resolveTravelerServiceFeeSnapshot` the charge arm calls (§18 rule 1), over the quote's OWN
+ * `amountCents` (never the listing's live price — a quote IS the price). `coversAction` is
+ * consulted only when the quote already carries a `tripId` (ledger `2026-09-19-quote-plan-link`);
+ * a quote asked with no plan in mind resolves `false` and the fee is disclosed in full. A best-effort
+ * failure of the coverage check never fails the LIST — it just discloses the uncovered fee, the same
+ * posture `resolveQuoteCharge` takes at charge time.
+ *
+ * §13: a quote with no amount yet (`requested`) has nothing to fee — this returns undefined, and
+ * `presentQuote` omits the field entirely rather than rendering a $0.00 fee.
+ *
+ * NOTE — WHICH FIGURE WINS. This is a DISCLOSURE read, not a claim: if `fee_bands` moves between
+ * this list read and the actual charge, the CHARGE-TIME snapshot `claimQuoteBornBooking` stamps is
+ * the one that is ever billed, and the payment sheet re-discloses from that snapshot (see
+ * `quote-charge.service.ts`'s own header and `resolveQuoteCharge`'s re-drive branch). This figure is
+ * never written back to the row.
+ */
+async function resolveListTravelerServiceFee(quote: ServiceQuote): Promise<TravelerServiceFeeSnapshot | undefined> {
+  if (quote.amountCents === null || quote.amountCents === undefined) return undefined;
+  const subtotal = quote.amountCents / 100;
+  let tripPassCovers = false;
+  if (quote.tripId) {
+    try {
+      tripPassCovers = await coversAction(quote.tripId, "traveler_service_fee");
+    } catch (tpErr: any) {
+      logger.error(
+        { quoteId: quote.id, tripId: quote.tripId, err: tpErr?.message ?? tpErr },
+        "list-quotes: trip-pass coverage check failed (disclosing the uncovered fee)",
+      );
+      tripPassCovers = false;
+    }
+  }
+  return resolveTravelerServiceFeeSnapshot(subtotal, tripPassCovers ? "trip_pass" : null);
+}
+
+/**
  * Every quote the caller REQUESTED, newest first. The traveler is the session (§14).
  *
  * Ledger `2026-09-19-quote-plan-link`: a LEFT JOIN to `trips` — most quotes carry no `tripId` and
  * must still list (§13: absent is not an error) — so `presentQuote` can name the plan the read-only
  * `TravelerQuotesPanel` shows a quote as coming from.
+ *
+ * Ledger `2026-09-20-quote-fee-preaccept`: each row also carries the READ-ONLY list-time fee
+ * disclosure (above) so the accept card can state the fee BEFORE the traveler accepts, not one
+ * screen later at the payment sheet.
  */
 export async function listQuotesForTraveler(travelerId: string): Promise<ServiceQuoteView[]> {
   const rows = await db
@@ -243,7 +302,12 @@ export async function listQuotesForTraveler(travelerId: string): Promise<Service
     .where(eq(serviceQuotes.travelerId, travelerId))
     .orderBy(desc(serviceQuotes.createdAt));
   const now = new Date();
-  return rows.map((r) => presentQuote(r.quote, r.serviceName, now, r.tripTitle));
+  return Promise.all(
+    rows.map(async (r) => {
+      const travelerServiceFee = await resolveListTravelerServiceFee(r.quote);
+      return presentQuote(r.quote, r.serviceName, now, r.tripTitle, travelerServiceFee);
+    }),
+  );
 }
 
 /** The OPEN offer between one traveler and one listing — `requested`, or `quoted` and unexpired. */

@@ -1815,6 +1815,10 @@ This document captures architectural decisions to maintain consistency across co
     migration 314).** `service_quotes.trip_id`/`itinerary_item_id` are additive, server-verified
     (LD 40 posture) at request; accept copies the link onto the booking (so the #988 waiver now
     fires) and the item is projected through the ONE copy-down, LD 39. NULL = not from a plan (§13).
+    **THE FEE IS DISCLOSED ON THE ACCEPT CARD, NOT ONE SCREEN LATER (ledger
+    `2026-09-20-quote-fee-preaccept`)**, a READ-ONLY list-time figure via the same shared resolver
+    (the charge-time snapshot stays the record); a FULL refund is proven to carry the fee back
+    through the identical whole-row rail and ledger reversal the cart uses.
 
 50. **A PARTIALLY FULFILLED BUNDLE SETTLES ONCE BY ITS PURCHASE-TIME COMPONENT ALLOCATION (decision-maker
     ruling, Sep 16, 2026 — ledger `2026-09-16-bundle-partial-settlement`; build lane dispatched the same
