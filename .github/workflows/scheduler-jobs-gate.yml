@@ -18,12 +18,16 @@ name: Scheduler Jobs Gate
 #   internal-jobs-heartbeat.db       — cron liveness: roster-driven staleness; a skip never stamps (L6)
 #   internal-spa-fallback-exemption  — a dead /internal route can never be answered 200-HTML (L3)
 #   startup-delay                    — the boot-herd floor+jitter contract
+#   check-jobs-cron-roster           — jobs-cron.yml has ONE cron schedule + posts every in-scope
+#                                       JOB_CADENCE route (ledger 2026-09-20-jobs-cron-single-schedule)
 #
 # Negative space (ruling 43): this gate proves the jobs are idempotent and the endpoints are
 # default-deny. It does NOT boot the app, so the owner-rail HTTP half of booking completion
 # (booking-completion-machinery.db.test.ts, which needs a running server at JOURNEY_BASE_URL) is
-# out of scope here and runs where a booted server is available. It also says nothing about the cron
-# schedule firing in production — that is verified in the Actions tab after merge (jobs-cron.yml).
+# out of scope here and runs where a booted server is available. check-jobs-cron-roster proves the
+# WORKFLOW's static shape (one schedule, every roster route named) — it does NOT prove GitHub
+# actually fires that schedule in production; that is verified in the Actions tab after merge
+# (jobs-cron.yml), or by a future external trigger (recorded, not built — see the ledger row above).
 #
 # Same Postgres + composite-migration shape as fee-resolution-authority-gate.yml. Sequential steps,
 # not one combined `npx tsx --test a b c` — node:test aggregates exit codes across files unhelpfully.
@@ -74,6 +78,13 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+
+      # Self-test first (§18d): a predicate that never lies to itself before it lies about the repo.
+      - name: jobs-cron roster guard — self-test
+        run: node scripts/check-jobs-cron-roster.cjs --self-test
+
+      - name: jobs-cron roster guard — one schedule, every route posted
+        run: node scripts/check-jobs-cron-roster.cjs
 
       # Migrations are the fixture; the composite action is mandatory (ci-db-setup-lint forbids
       # inline DB setup). No authenticated routes here — every suite creates its own rows directly.

@@ -233,3 +233,33 @@ as the next lane, the three cap-bypassers fixed here.
   `reconciliation-detection.db.test.ts`. A live test DB was not available in the build environment, so
   these were not re-run here; the endpoints add no new money logic — they call those same idempotent
   entry points.
+
+---
+
+## 2026-09-20 — multi-schedule dispatch was itself unreliable; collapsed to one schedule
+
+The external trigger this audit called for (`jobs-cron.yml`, `/internal/jobs/*`) landed and closed
+the in-process-timer unreliability documented above — but it introduced an unreliability of its own.
+The workflow declared FIVE cron schedules (one per cadence bucket) and gated each bucket with
+`if: github.event.schedule == '<that cron>'`, trusting GitHub Actions to fire the matching schedule
+line every time. It doesn't: run **35487463992** (2026-09-20T03:46Z) was dispatched for the
+six-hourly cron only, so the 15-minute, hourly, four-hourly and daily buckets were all `skipped` that
+run, and production's `/internal/jobs/health` reported six stale MONEY/INTEGRITY jobs
+(checkout-sweep, itinerary-generation-sweep, email-outbox, earnings-release,
+booking-auto-completion, score-neighborhood-claims) although `INTERNAL_JOB_SECRET` was correct and
+every endpoint answered 200. The secret and the routes were never the problem — GitHub's multi-schedule
+dispatch was.
+
+**Fix (ledger `2026-09-20-jobs-cron-single-schedule`):** `jobs-cron.yml` now carries exactly ONE
+`*/15 * * * *` schedule. Every dispatched run computes which cadence buckets are DUE by wall-clock
+UTC and posts all of them, so no bucket depends on GitHub choosing to fire one specific cron line
+over another. Over-posting is safe by the same idempotency/overlap-skip properties this audit already
+established (`runBackgroundJob`, §15/§17 rule 2), so the fix costs one extra HTTP round trip per
+bucket per 15-minute run at worst. Guarded statically by `scripts/check-jobs-cron-roster.cjs` (one
+schedule, every `JOB_CADENCE` route named).
+
+**Left open, named, not taken here:** this fix makes every DISPATCHED run cover every due bucket — it
+does not make GitHub Actions dispatch the `*/15 * * * *` schedule reliably in the first place. A
+reliable external trigger independent of GitHub's own scheduler (hitting the `workflow_dispatch` API
+on a cadence, on the pattern the original Autoscale in-process-timer finding above already flags as
+best-effort) remains a separate, unbuilt, recorded decision.
