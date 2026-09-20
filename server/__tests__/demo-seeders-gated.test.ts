@@ -46,6 +46,14 @@
  *   S1    — phase-d-kyoto-vendors.seed.ts refuses to insert when the gate says
  *           no, even called directly (the second §18 layer), asserted from its
  *           OWN source text (no DB import needed for a static proof).
+ *   CR1-2 — ledger `2026-09-20-admin-test-account-not-in-prod`: server/routes/
+ *           content.routes.ts's `seedDatabase()` is called from server/routes.ts,
+ *           not server/index.ts, so it sits outside D1's scanned file set by
+ *           construction (see negative space below). Targeted static pins prove
+ *           BOTH of its branches are gated: the "always ensure
+ *           admin@traveloure.test" block (now `if (demoSeedsAllowed())`) and the
+ *           pre-existing help-guide/`admin@traveloure.com` dummy-user block
+ *           (the early-return `if (!demoSeedsAllowed()) return;` guard).
  *
  * STATED NEGATIVE SPACE (§18d):
  *   - The DEMO/FICTIONAL file-set derivation (see `candidateSeedFiles` /
@@ -82,6 +90,7 @@ const SERVER_DIR = path.join(ROOT, "server");
 const SEEDS_DIR = path.join(SERVER_DIR, "seeds");
 const INDEX_TS = path.join(SERVER_DIR, "index.ts");
 const PHASE_D_FILE = path.join(SEEDS_DIR, "phase-d-kyoto-vendors.seed.ts");
+const CONTENT_ROUTES_FILE = path.join(SERVER_DIR, "routes", "content.routes.ts");
 
 // ─── The predicate under test: name pattern OR content pattern (§13 markers) ──
 const NAME_MARKER = /demo|mock|fictional/i;
@@ -549,4 +558,59 @@ test("S1b: seed-expert-services.ts's two demo functions carry the same second-la
       `${name} must refuse on its own when demoSeedsAllowed() is false`,
     );
   }
+});
+
+// ═══ CR — content.routes.ts's seedDatabase(), out of D1's scanned scope (§18d) ═══
+//
+// seedDatabase() (server/routes/content.routes.ts) is called from server/routes.ts,
+// not server/index.ts, and is not a top-level file under server/seeds/ or server/seed*.ts
+// — so it is invisible to D1's derivation by construction (stated negative space above).
+// Ledger `2026-09-20-admin-test-account-not-in-prod` gated its "always ensure
+// admin@traveloure.test" branch; these are the targeted static pins the lane's own spec
+// calls for, proving BOTH branches of that one function without widening D1's file set.
+
+test("CR1: seedDatabase's admin@traveloure.test ensure (content.routes.ts) is gated by demoSeedsAllowed()", () => {
+  const src = fs.readFileSync(CONTENT_ROUTES_FILE, "utf8");
+  const fnBody = findFunctionBody(src, "seedDatabase");
+  assert.ok(fnBody, "seedDatabase must still be an async function this parser can find");
+
+  const needle = '"admin@traveloure.test"';
+  let searchFrom = 0;
+  let occurrences = 0;
+  for (;;) {
+    const idx = fnBody!.indexOf(needle, searchFrom);
+    if (idx === -1) break;
+    occurrences++;
+    assert.equal(
+      isPositionGated(fnBody!, idx),
+      true,
+      `occurrence of ${needle} at offset ${idx} in seedDatabase must sit inside if (demoSeedsAllowed())`,
+    );
+    searchFrom = idx + needle.length;
+  }
+  assert.ok(
+    occurrences >= 2,
+    `expected at least the getAdminUserByEmail check and the insertUser email field ` +
+      `(found ${occurrences})`,
+  );
+});
+
+test("CR2: seedDatabase's admin@traveloure.com dummy-user insert (content.routes.ts) is gated by the early-return demoSeedsAllowed() guard", () => {
+  const src = fs.readFileSync(CONTENT_ROUTES_FILE, "utf8");
+  const fnBody = findFunctionBody(src, "seedDatabase");
+  assert.ok(fnBody, "seedDatabase must still be an async function this parser can find");
+
+  const guardMatch = /if\s*\(\s*!\s*demoSeedsAllowed\(\)\s*\)\s*\{[^}]*return;[^}]*\}/.exec(fnBody!);
+  assert.ok(
+    guardMatch,
+    "seedDatabase must refuse via an early return when demoSeedsAllowed() is false " +
+      "(the help-guide/dummy-user branch's own second layer)",
+  );
+
+  const insertIndex = fnBody!.indexOf('email: "admin@traveloure.com"');
+  assert.ok(insertIndex > 0, "expected an admin@traveloure.com dummy-user insert in seedDatabase");
+  assert.ok(
+    insertIndex > guardMatch!.index,
+    "the admin@traveloure.com insert must come after the early-return demoSeedsAllowed() guard",
+  );
 });
