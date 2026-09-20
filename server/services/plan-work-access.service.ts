@@ -77,6 +77,17 @@
  *     is about the access the traveler paid for existing at all.
  *   · It never UPDATES an advisor row's other columns (`workspace_status`, `expert_response`, the
  *     plan-approval handshake). Those are the one author's insert-only fields and stay so.
+ *   · IT NEVER GRANTS WRITE FOR A `booking_concierge` LISTING (ledger
+ *     `2026-09-20-plan-work-grant-concierge-exclusion`, LD 51 addendum, decision-maker ruling
+ *     2026-09-20). `booking_concierge` sits in the `coordination` tier and `impactClassFor`
+ *     correctly classifies it `plan_work` — the checkout precondition "plan work needs a plan"
+ *     still applies to it — but the Booking Concierge's plan access is READ (`pending`), granted
+ *     by the hand-off/claim rail (`concierge-plan-read.service.ts`), never WRITE at checkout. This
+ *     is a named skip (`booking_concierge_read_grant`), not a change to `impact-class.ts`.
+ *   · IT NEVER GRANTS TO THE PLATFORM'S OWN RESERVED CONCIERGE ACCOUNT (same ruling; LD 51 lane F,
+ *     migration 313, `platform-concierge.service.ts`). That account is a pool marker, never an
+ *     advisor (named skip `platform_account`), defended again at the one author
+ *     (`upsertTripAdvisorRow`, which refuses it outright for every caller).
  */
 import { sql } from "drizzle-orm";
 
@@ -88,6 +99,12 @@ import {
 } from "./booking-actions.service";
 import { loadOfferingListingInput } from "./offering-listing-input";
 import type { TripAdvisorRowStatus } from "../utils/trip-advisor-status";
+// The canonical `booking_concierge` key. `booking-concierge.service.ts` sources it from here too
+// rather than restating the literal (§18 rule 1); it exports no constant of its own — only its
+// async predicate, shaped for a cart line's `expertOfferingTypeKey` rather than a snapshot's
+// `offeringTypeKey` — so this reads the same one source directly instead of adding an indirection.
+import { CONCIERGE_BOOKING_CONCERN } from "./commission";
+import { isPlatformConciergeUserId } from "./platform-concierge.service";
 
 /** The ONE impact class this module acts on. Named once so no caller spells it (§18 rule 1). */
 export const PLAN_WORK_IMPACT_CLASS = "plan_work" as const;
@@ -124,21 +141,42 @@ export function isPlanWorkFacts(facts: PlanWorkListingFacts | null | undefined):
 }
 
 /**
+ * The snapshot's `listing` object, or `null` for the same reasons `isPlanWorkSnapshot` treats the
+ * whole snapshot as absent (§13). Shared so the classification and the concierge-key read cannot
+ * drift about what counts as "no listing recorded" (§18 rule 1).
+ */
+function snapshotListingRecord(snapshot: unknown): Record<string, unknown> | null {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const listing = (snapshot as { listing?: unknown }).listing;
+  if (!listing || typeof listing !== "object") return null;
+  return listing as Record<string, unknown>;
+}
+
+/**
  * PURE. Reads the listing facts out of a stored `offering_contract_snapshot` and classifies them.
  *
  * A NULL, non-object or shape-less snapshot is NOT plan work: it says "never snapshotted", which is
  * a fact about our own record-keeping and not a statement about the listing (§13).
  */
 export function isPlanWorkSnapshot(snapshot: unknown): boolean {
-  if (!snapshot || typeof snapshot !== "object") return false;
-  const listing = (snapshot as { listing?: unknown }).listing;
-  if (!listing || typeof listing !== "object") return false;
-  const l = listing as Record<string, unknown>;
+  const l = snapshotListingRecord(snapshot);
+  if (!l) return false;
   return isPlanWorkFacts({
     offeringTypeKey: typeof l.offeringTypeKey === "string" ? l.offeringTypeKey : null,
     categoryKey: typeof l.categoryKey === "string" ? l.categoryKey : null,
     deliveryMethod: typeof l.deliveryMethod === "string" ? l.deliveryMethod : null,
   });
+}
+
+/**
+ * The snapshot's `offeringTypeKey`, or `null` when the snapshot carries none — used ONLY to tell
+ * a `booking_concierge` plan-work listing apart from every other one (the named skip below). Never
+ * a second classifier: `isPlanWorkSnapshot` still decides whether the row is plan work at all.
+ */
+function snapshotOfferingTypeKey(snapshot: unknown): string | null {
+  const l = snapshotListingRecord(snapshot);
+  const key = l?.offeringTypeKey;
+  return typeof key === "string" && key.length > 0 ? key : null;
 }
 
 /**
@@ -170,7 +208,16 @@ export interface PlanWorkGrantResult {
   /** Bookings whose snapshot says plan work AND which carried both a trip and a seller. */
   granted: string[];
   /** Plan-work bookings that could not be granted, with the fact that stopped it (§13). */
-  skipped: Array<{ bookingId: string; reason: "no_trip" | "no_seller" | "grant_failed" }>;
+  skipped: Array<{
+    bookingId: string;
+    reason:
+      | "no_trip"
+      | "no_seller"
+      | "grant_failed"
+      // Ledger `2026-09-20-plan-work-grant-concierge-exclusion` — the two named skips below.
+      | "booking_concierge_read_grant"
+      | "platform_account";
+  }>;
 }
 
 /**
@@ -216,6 +263,34 @@ export async function grantPlanWorkAdvisorAccess(
 
   for (const row of rows) {
     if (!isPlanWorkSnapshot(row.snapshot)) continue;
+
+    // Named skip 1 (ledger `2026-09-20-plan-work-grant-concierge-exclusion`, LD 51 addendum):
+    // `booking_concierge` classifies `plan_work` correctly — the checkout precondition still
+    // applies — but its GRANT is READ, via the hand-off/claim rail, never WRITE at checkout.
+    // Checked BEFORE no_trip/no_seller so a concierge purchase with no plan still reads as this
+    // reason rather than the unrelated "no_trip" one.
+    if (snapshotOfferingTypeKey(row.snapshot) === CONCIERGE_BOOKING_CONCERN) {
+      result.skipped.push({ bookingId: row.id, reason: "booking_concierge_read_grant" });
+      logger.info(
+        { bookingId: row.id, tripId: row.tripId },
+        "[plan-work-access] booking_concierge is plan_work but its grant is READ via hand-off/claim " +
+          "(ledger 2026-09-20-concierge-plan-read) — no WRITE grant at checkout",
+      );
+      continue;
+    }
+
+    // Named skip 2, same ruling: the platform's own reserved concierge account (LD 51 lane F,
+    // migration 313) is a pool marker, never an advisor. Defended again, unconditionally, at the
+    // one author (`upsertTripAdvisorRow`) — this is the fast, logged path for THIS caller.
+    if (await isPlatformConciergeUserId(row.providerId)) {
+      result.skipped.push({ bookingId: row.id, reason: "platform_account" });
+      logger.info(
+        { bookingId: row.id, tripId: row.tripId },
+        "[plan-work-access] the platform concierge account is never an advisor — no WRITE grant at checkout",
+      );
+      continue;
+    }
+
     if (!row.tripId) {
       // The claim step refuses this before Stripe is called; reaching it here means a row was born
       // on some other rail. Recorded, never invented into a plan (§13).

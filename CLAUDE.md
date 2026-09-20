@@ -1976,6 +1976,10 @@ This document captures architectural decisions to maintain consistency across co
     takes a pooled request that names a trip), through the ONE author `upsertTripAdvisorRow`
     (`server/services/concierge-plan-read.service.ts`, never throws — §15b). A conflict never
     downgrades an already-`accepted`/`assigned` advisor. No schema change.
+    **RULING 11's WRITE GRANT EXCLUDES `booking_concierge` (decision-maker ratified Sep 20, 2026 —
+    ledger `2026-09-20-plan-work-grant-concierge-exclusion`).** `booking_concierge` still
+    classifies `plan_work`, but its plan access is the READ grant above, never checkout WRITE; the
+    platform's reserved account is refused outright at the one author, for every caller.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

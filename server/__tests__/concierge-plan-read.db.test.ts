@@ -25,6 +25,7 @@ import { grantConciergePlanRead, CONCIERGE_READ_GRANT_MESSAGE } from "../service
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "../utils/trip-advisor";
 import { getPlatformConciergeUserId, invalidatePlatformConciergeCache } from "../services/platform-concierge.service";
 import { storage } from "../storage";
+import { upsertTripAdvisorRow } from "../services/booking-actions.service";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const travelerId = `cpr-${RUN}-trav`;
@@ -353,4 +354,27 @@ test("G7b: a failed claim grant leaves the claim's own result unchanged (§15b)"
 test("G8: check-advisor-row-author.cjs still passes — this lane added no second insert site", () => {
   // Throws (non-zero exit) on failure; a clean run is the assertion.
   execFileSync("node", ["scripts/check-advisor-row-author.cjs"], { stdio: "pipe" });
+});
+
+test("G9: upsertTripAdvisorRow — the ONE author — refuses the platform concierge account outright (ledger 2026-09-20-plan-work-grant-concierge-exclusion)", async (t) => {
+  invalidatePlatformConciergeCache();
+  const platformUserId = await getPlatformConciergeUserId();
+  if (!platformUserId) {
+    t.skip("migration 313 has not seeded the platform concierge account on this database");
+    return;
+  }
+  const tripId = await makeTrip();
+  await assert.rejects(
+    () =>
+      upsertTripAdvisorRow({
+        tripId,
+        localExpertId: platformUserId,
+        status: "pending",
+        message: "should never land",
+      }),
+    /platform concierge account is a pool marker, never an advisor/,
+    "the one author refuses the platform account for EVERY caller, not just the two grant rails",
+  );
+  const row = await advisorRow(tripId, platformUserId);
+  assert.equal(row, null, "DB FACT: the refusal wrote nothing");
 });
