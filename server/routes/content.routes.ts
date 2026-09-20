@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getTripRole } from "../utils/trip-role";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "../seeds/lib/demo-seed-gate";
 import { getUserId, requireDbAdmin } from "../utils/auth";
 import { isCustomVenueOwner, scopeTripFilter } from '../utils/custom-venue-owner';
 import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
@@ -8285,6 +8286,16 @@ export async function seedDatabase() {
       authProvider: "email",
     });
     console.log("Admin account created: admin@traveloure.test");
+  }
+
+  // DEMO/FICTIONAL content below this line — the "dummy user" + help-guide demo trips — is
+  // gated by the ONE shared predicate (server/seeds/lib/demo-seed-gate.ts, §18 rule 1), never a
+  // per-call-site NODE_ENV check. Ledger `2026-09-20-dummy-seeder-gated-preview-widened`;
+  // CLAUDE.md §13 (fictional content must never seed in production). The platform-admin ensure
+  // ABOVE this line is NOT demo content and stays ungated.
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("seedDatabase help-guide demo"));
+    return;
   }
 
   const existingTrips = await storage.getHelpGuideTrips();

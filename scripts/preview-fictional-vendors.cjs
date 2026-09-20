@@ -41,6 +41,20 @@
  * all), so this second list is informational, not itself a finding of
  * fictional content.
  *
+ * A THIRD signal (ledger `2026-09-20-dummy-seeder-gated-preview-widened`):
+ * `provider_services` rows owned by the LEGACY `seedDatabase()` dummy
+ * account (`users.email = 'admin@traveloure.com'`,
+ * `server/routes/content.routes.ts` — now gated behind `demoSeedsAllowed()`,
+ * but a row it wrote on a PAST, ungated boot is unaffected by that gate
+ * going in), OR whose `provider_services.id` is not UUID-shaped (a
+ * hand-entered `ps-*` batch this sweep also found — a row an operator typed
+ * in rather than one any seeder minted). THESE ARE HAND-ENTERED-CONTENT
+ * SIGNALS, NOT THE FICTIONAL-SEEDER MARKER the first section reports: a row
+ * owned by that account, or carrying a non-UUID id, is not necessarily
+ * fictional, so it is reported informationally — like the
+ * `created_via='seed'` counts above — and does not affect this script's
+ * exit code.
+ *
  * EXIT CODES. 0 = no `*.traveloure.test`-domain provider_services row found —
  *                 clean as far as this check can tell.
  *             1 = at least one found. Read the output before launch; this is
@@ -64,6 +78,11 @@
  *   - It says nothing about how a matched row got there (this ungated boot
  *     path vs. a manual `tsx server/seeds/phase-d-kyoto-vendors.seed.ts` run
  *     vs. something else) — only that it exists now.
+ *   - THE THIRD SECTION (`admin@traveloure.com` / non-UUID `id`) matches on
+ *     exactly those two conditions. A hand-entered row under a DIFFERENT
+ *     owner account, or one whose id happens to be UUID-shaped by
+ *     coincidence, is invisible to it — same stated limit as the first
+ *     section's domain match, one signal over.
  *
  * USAGE
  * -----
@@ -104,6 +123,22 @@ const CREATED_VIA_SEED_COUNT_SQL = `
   ORDER BY approval_status, status;
 `;
 
+// THIRD signal (ledger 2026-09-20-dummy-seeder-gated-preview-widened): hand-entered rows, not
+// the fictional-seeder marker — see the module header's WHAT IT REPORTS / NEGATIVE SPACE.
+const HAND_ENTERED_DEMO_ROWS_SQL = `
+  SELECT
+    ps.id                AS service_id,
+    ps.service_name       AS service_name,
+    ps.status             AS status,
+    ps.approval_status    AS approval_status,
+    u.email               AS user_email
+  FROM provider_services ps
+  JOIN users u ON u.id = ps.user_id
+  WHERE u.email = 'admin@traveloure.com'
+     OR ps.id !~ '^[0-9a-f-]{36}$'
+  ORDER BY ps.created_at ASC;
+`;
+
 function formatRow(r) {
   const contact = [r.user_email, r.form_email, r.form_website].filter(Boolean).join(" / ");
   return (
@@ -112,6 +147,10 @@ function formatRow(r) {
     `      business: ${r.business_name ?? "<none>"}  contact: ${contact || "<none>"}\n` +
     `      created_via=${r.created_via ?? "<null>"}  created_at=${r.created_at ?? "<null>"}`
   );
+}
+
+function formatHandEnteredRow(r) {
+  return `  ${r.service_id} · "${r.service_name}" · status=${r.status} · approval_status=${r.approval_status} · owner=${r.user_email}`;
 }
 
 async function main() {
@@ -127,12 +166,14 @@ async function main() {
   const client = new Client({ connectionString: url });
   let vendorRows;
   let seedCounts;
+  let handEnteredRows;
   try {
     await client.connect();
     // Belt and braces: this session may not write, whatever a future edit above says.
     await client.query("SET TRANSACTION READ ONLY");
     vendorRows = (await client.query(TRAVELOURE_TEST_DOMAIN_SQL)).rows;
     seedCounts = (await client.query(CREATED_VIA_SEED_COUNT_SQL)).rows;
+    handEnteredRows = (await client.query(HAND_ENTERED_DEMO_ROWS_SQL)).rows;
   } catch (err) {
     console.error(`[fictional-vendors] query failed: ${err.message}`);
     process.exit(2);
@@ -143,7 +184,13 @@ async function main() {
   const ok = vendorRows.length === 0;
 
   if (json) {
-    console.log(JSON.stringify({ travelourreTestDomainRows: vendorRows, createdViaSeedCounts: seedCounts, ok }, null, 2));
+    console.log(
+      JSON.stringify(
+        { travelourreTestDomainRows: vendorRows, createdViaSeedCounts: seedCounts, handEnteredDemoRows: handEnteredRows, ok },
+        null,
+        2,
+      ),
+    );
     process.exit(ok ? 0 : 1);
   }
 
@@ -176,6 +223,16 @@ async function main() {
   );
   for (const r of seedCounts) {
     console.log(`  [${r.approval_status}/${r.status}] ${r.n}`);
+  }
+
+  console.log(
+    `\nInformational — hand-entered demo signal (ledger 2026-09-20-dummy-seeder-gated-preview-widened): ` +
+      `provider_services rows owned by the legacy 'admin@traveloure.com' dummy account, or whose id is ` +
+      `not UUID-shaped. NOT the fictional-seeder marker above — see this file's NEGATIVE SPACE section. ` +
+      `${handEnteredRows.length === 0 ? "none found." : `${handEnteredRows.length} found:`}`,
+  );
+  for (const r of handEnteredRows) {
+    console.log(formatHandEnteredRow(r));
   }
 
   process.exit(ok ? 0 : 1);
