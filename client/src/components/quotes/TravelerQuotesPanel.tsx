@@ -311,30 +311,40 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
                 </div>
               )}
               {quoteIsAcceptable(q) && (
-                <div className="flex gap-2 pt-1">
-                  <Button
-                    size="sm"
-                    onClick={() => accept.mutate(q.id)}
-                    disabled={accept.isPending || decline.isPending}
-                    data-testid={`button-accept-quote-${q.id}`}
-                  >
-                    {accept.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4 mr-2" />
-                    )}
-                    Accept this price
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => decline.mutate(q.id)}
-                    disabled={accept.isPending || decline.isPending}
-                    data-testid={`button-decline-quote-${q.id}`}
-                  >
-                    <XCircle className="w-4 h-4 mr-2" />
-                    Decline
-                  </Button>
+                <div className="flex flex-col gap-2 pt-1">
+                  {/* Ledger `2026-09-20-quote-fee-preaccept`: disclosed BEFORE the traveler
+                      accepts, not one screen later at the payment sheet — the server's own
+                      READ-ONLY list-time figure (§13/§14: no client-computed amount). */}
+                  {quoteTravelerFeeLine(q.travelerServiceFee) && (
+                    <p className="text-xs text-muted-foreground" data-testid={`quote-accept-fee-${q.id}`}>
+                      {quoteTravelerFeeLine(q.travelerServiceFee)}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => accept.mutate(q.id)}
+                      disabled={accept.isPending || decline.isPending}
+                      data-testid={`button-accept-quote-${q.id}`}
+                    >
+                      {accept.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                      )}
+                      Accept this price
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => decline.mutate(q.id)}
+                      disabled={accept.isPending || decline.isPending}
+                      data-testid={`button-decline-quote-${q.id}`}
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Decline
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>

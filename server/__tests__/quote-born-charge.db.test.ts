@@ -59,6 +59,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import Stripe from "stripe";
 import { sql } from "drizzle-orm";
 import { quoteCheckoutBodySchema } from "@shared/service-quotes";
 import { TRAVELER_CHARGE_SNAPSHOT_KEY } from "@shared/booking-details-admission";
@@ -66,7 +67,9 @@ import { TRAVELER_CHARGE_SNAPSHOT_KEY } from "@shared/booking-details-admission"
 // Dynamic imports, deliberately AFTER the env guard above: a static `import` declaration hoists
 // above every statement in ESM, so the dummy key would be set too late.
 const { db } = await import("../db");
-const { acceptQuote, issueQuote, requestQuote } = await import("../services/service-quotes.service");
+const { acceptQuote, issueQuote, requestQuote, listQuotesForTraveler } = await import(
+  "../services/service-quotes.service"
+);
 const { claimQuoteBornBooking, resolveQuoteCharge, QUOTE_CHARGE_FROM_STATUSES } = await import(
   "../services/quote-charge.service"
 );
@@ -226,6 +229,11 @@ after(async () => {
     for (const b of bookings.rows as any[]) {
       await db.execute(sql`DELETE FROM item_transition_log WHERE booking_id = ${b.id}`).catch(() => {});
       await db.execute(sql`DELETE FROM content_registry WHERE content_id = ${b.id}`).catch(() => {});
+      // Q15: the refund parity proof writes real `fee_ledger`/`refunds` audit rows (the ledger
+      // outlives its booking by design — `refunds.booking_id` is ON DELETE SET NULL — so they are
+      // not cleaned up by the service_bookings delete below and must be swept here).
+      await db.execute(sql`DELETE FROM fee_ledger WHERE booking_id = ${b.id}`).catch(() => {});
+      await db.execute(sql`DELETE FROM refunds WHERE booking_id = ${b.id}`).catch(() => {});
     }
     await db.execute(sql`DELETE FROM service_quotes WHERE service_id = ${sid}`).catch(() => {});
     await db.execute(sql`DELETE FROM service_bookings WHERE service_id = ${sid}`).catch(() => {});
@@ -671,4 +679,185 @@ test("Q14 · the fee is resolved from the fee_bands ROW — editing the band cha
     // suites that run after this one.
     await db.execute(sql`UPDATE fee_bands SET default_rate = ${band.rate} WHERE band_key = ${TRAVELER_SERVICE_FEE_BAND}`);
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// Q15–Q16 — ledger `2026-09-20-quote-fee-preaccept`: the fee is disclosed BEFORE accept (on the
+// list read the accept card renders), and a FULL refund of a quote-born booking is proven to drive
+// the SAME whole-row rail the cart uses and to treat the fee the same way.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("Q15 · REFUND PARITY: the SAME whole-row rail the cart uses refunds quote + fee, reversing the fee leg exactly as the cart does — and a Trip-Pass-covered booking refunds the quote alone", async () => {
+  const { stripePaymentService } = await import("../services/stripe-payment.service");
+  const { recordTravelerServiceFeeLedger } = await import("../services/fee-ledger.service");
+
+  // Stub `Stripe.refunds.create` on the shared prototype — `traveler-fee-refund.db.test.ts`'s own
+  // technique (every `new Stripe()` shares the prototype, so no network call happens) — and run the
+  // REAL `refundServiceBooking`: the same function `POST /api/bookings/refund` calls for ANY
+  // `service_bookings` row, cart-born or quote-born alike. There is no quote-born branch in it.
+  const probe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+  const refundsProto = Object.getPrototypeOf(probe.refunds);
+  const originalCreate = refundsProto.create;
+  let lastRefundAmountCents = 0;
+  refundsProto.create = async (...args: any[]) => {
+    lastRefundAmountCents = args?.[0]?.amount ?? 0;
+    return { id: `re_qc_${RUN}_${crypto.randomUUID().slice(0, 6)}`, status: "succeeded", amount: lastRefundAmountCents };
+  };
+
+  try {
+    // ── (a) NOT covered: a real fee rides the charge, and a FULL refund gives it ALL back ────────
+    const { bookingId } = await acceptedQuoteBooking({ amountCents: 40000 }); // $400, deposits off
+    const p = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "resolve");
+    assert.equal(p.travelerServiceFee.waived, false, "fixture must actually bill a fee to prove parity");
+    assert.ok(p.travelerServiceFee.charged > 0);
+    await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, travelerServiceFee: p.travelerServiceFee });
+    const pi1 = `pi_qc_${RUN}_q15a`;
+    await markStripeAttempt([bookingId], `pi-${p.idempotencyKey}`);
+    await stampAuthorization([bookingId], pi1);
+    await promotePaidCheckout({ paymentIntentId: pi1, actor: "webhook", metadataBookingIds: [bookingId] });
+    assert.equal((await bookingRow(bookingId)).status, "confirmed");
+    // The +traveler_service_fee ledger row `authorizeAndPromote` writes for EVERY checkout
+    // (payments.routes.ts's own call, at line ~690) — the exact function, not a re-implementation —
+    // so the reversal below has a real original row to link against, exactly as a cart row would.
+    await recordTravelerServiceFeeLedger({ bookingIds: [bookingId], actor: "test-q15" });
+
+    const row = await bookingRow(bookingId);
+    const fee = p.travelerServiceFee.charged;
+
+    const result: any = await stripePaymentService.refundServiceBooking(bookingId, "requested_by_customer");
+    // §14: no `amountOverride` ⇒ a FULL refund. `travelerChargeForRow` (the refund's own ceiling)
+    // deliberately EXCLUDES the fee — it lives in `booking_details.travelerServiceFee.charged`, not
+    // `total_amount`/`platform_fee` — and `refundServiceBooking` adds it back SEPARATELY, so the
+    // refund the traveler actually receives is the quote amount PLUS the fee: the ceiling includes
+    // the fee even though the ceiling-DERIVATION function does not carry it as a term.
+    const expectedTotal = Math.round((parseFloat(row.total_amount) + fee) * 100) / 100;
+    assert.equal(result.amount, expectedTotal, "the refund amount is the quote amount PLUS the fee");
+    assert.equal(result.feeRefund, fee, "a full refund makes the traveler whole on the fee too — the SAME 100% rule a cart row's full refund takes (feeRefundPercent defaults to 100 when no amountOverride is given)");
+    assert.equal(
+      lastRefundAmountCents,
+      Math.round(expectedTotal * 100),
+      "Stripe was asked for the fee-inclusive total — byte-identical to a cart row's own full refund",
+    );
+
+    // THE `traveler_service_fee` LEDGER LEG IS REVERSED, exactly the way the cart rail reverses it:
+    // `stripe-payment.service.ts`'s `recordIssuedRefund` calls the SAME `recordTravelerServiceFeeReversal`
+    // for any bookingId, with no branch for a quote-born row — proven in `traveler-fee-refund.db.test.ts`
+    // test 2 for a cart-origin booking, and reproduced here for a quote-origin one.
+    const ledgerRows = (
+      await db.execute(sql`SELECT fee_type, amount, borne_by, reverses_ledger_id FROM fee_ledger WHERE booking_id = ${bookingId}`)
+    ).rows as any[];
+    const reversal = ledgerRows.find((r) => r.fee_type === "reversal");
+    assert.ok(reversal, "a `reversal` fee_ledger row was written — the fee leg IS reversed on a full refund");
+    assert.equal(Number(reversal.amount), -fee, "reversal amount is −fee, in full");
+    assert.equal(reversal.borne_by, "traveler", "the fee is given back to the traveler");
+    assert.ok(reversal.reverses_ledger_id, "linked to the original +traveler_service_fee row");
+
+    // ── (b) Trip-Pass covered: billed NO fee, so the full refund gives back the quote ALONE ──────
+    const tripId = `qc-${RUN}-trip-q15`;
+    createdTripIds.push(tripId);
+    await db.execute(sql`
+      INSERT INTO trips (id, user_id, title, start_date, end_date, destination)
+      VALUES (${tripId}, ${ids.traveler}, ${`QC trip q15 ${RUN}`}, '2030-02-01', '2030-02-05', 'Kyoto, Japan')
+    `);
+    await db.execute(sql`
+      INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source_payment_id, allowances_snapshot)
+      VALUES (${`qc-${RUN}-tp-q15`}, ${tripId}, 'trip_pass', 'active', ${`pi_qc_tp_q15_${RUN}`}, '{}'::jsonb)
+    `);
+    const covered = await acceptedQuoteBooking({ amountCents: 25000, tripId }); // $250, covered
+    const cp = plan(await resolveQuoteCharge({ bookingId: covered.bookingId, actorUserId: ids.traveler }), "resolve covered");
+    assert.equal(cp.travelerServiceFee.waived, true, "fixture must be Trip-Pass covered");
+    assert.equal(cp.travelerServiceFee.charged, 0);
+    await claimQuoteBornBooking({
+      bookingId: covered.bookingId,
+      actorUserId: ids.traveler,
+      travelerServiceFee: cp.travelerServiceFee,
+    });
+    const pi2 = `pi_qc_${RUN}_q15b`;
+    await markStripeAttempt([covered.bookingId], `pi-${cp.idempotencyKey}`);
+    await stampAuthorization([covered.bookingId], pi2);
+    await promotePaidCheckout({ paymentIntentId: pi2, actor: "webhook", metadataBookingIds: [covered.bookingId] });
+    // The net-zero (+X / −X) pair still writes for a covered line (fee-ledger.service.ts's own
+    // header) — proving the REFUND writes no THIRD row (a reversal) on top of that pair.
+    await recordTravelerServiceFeeLedger({ bookingIds: [covered.bookingId], actor: "test-q15" });
+
+    const coveredRow = await bookingRow(covered.bookingId);
+    const coveredResult: any = await stripePaymentService.refundServiceBooking(covered.bookingId, "requested_by_customer");
+    assert.equal(coveredResult.feeRefund, 0, "no fee was billed, so a full refund refunds none");
+    assert.equal(coveredResult.amount, parseFloat(coveredRow.total_amount), "the refund is the quote amount ALONE");
+    assert.equal(lastRefundAmountCents, Math.round(parseFloat(coveredRow.total_amount) * 100));
+    const coveredLedgerRows = (
+      await db.execute(sql`SELECT fee_type FROM fee_ledger WHERE booking_id = ${covered.bookingId}`)
+    ).rows as any[];
+    assert.equal(
+      coveredLedgerRows.filter((r) => r.fee_type === "reversal").length,
+      0,
+      "no reversal row for a Trip-Pass-covered booking — there was nothing to reverse (the same gate a cart-origin waived booking hits, traveler-fee-refund.db.test.ts test 3)",
+    );
+  } finally {
+    refundsProto.create = originalCreate;
+  }
+});
+
+test("Q16 · the LIST-TIME fee figure equals the CHARGE-TIME snapshot for the same quote, both covered and uncovered", async () => {
+  // ── Uncovered ──────────────────────────────────────────────────────────────────────────────
+  const { bookingId, quoteId } = await acceptedQuoteBooking({ amountCents: 60000 }); // $600
+  const before = await listQuotesForTraveler(ids.traveler);
+  const listed = before.find((q: any) => q.id === quoteId);
+  assert.ok(listed, "the accepted quote must appear on the traveler's own list");
+  assert.ok(listed!.travelerServiceFee, "an ISSUED (amountCents-bearing) quote carries the list-time fee disclosure");
+  assert.equal(listed!.travelerServiceFee!.waived, false);
+  assert.ok(listed!.travelerServiceFee!.charged > 0);
+
+  const p = plan(await resolveQuoteCharge({ bookingId, actorUserId: ids.traveler }), "resolve");
+  await claimQuoteBornBooking({ bookingId, actorUserId: ids.traveler, travelerServiceFee: p.travelerServiceFee });
+  const chargeTime = (await bookingRow(bookingId)).booking_details.travelerServiceFee;
+
+  assert.equal(listed!.travelerServiceFee!.charged, chargeTime.charged, "list charged === charge-time charged");
+  assert.equal(listed!.travelerServiceFee!.wouldHaveBeen, chargeTime.wouldHaveBeen);
+  assert.equal(listed!.travelerServiceFee!.rate, chargeTime.rate);
+  assert.equal(listed!.travelerServiceFee!.bandKey, chargeTime.bandKey);
+  assert.equal(listed!.travelerServiceFee!.waived, chargeTime.waived);
+  assert.equal(listed!.travelerServiceFee!.waiverBasis, chargeTime.waiverBasis);
+
+  // ── Trip-Pass covered ──────────────────────────────────────────────────────────────────────
+  const tripId = `qc-${RUN}-trip-q16`;
+  createdTripIds.push(tripId);
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, title, start_date, end_date, destination)
+    VALUES (${tripId}, ${ids.traveler}, ${`QC trip q16 ${RUN}`}, '2030-03-01', '2030-03-05', 'Kyoto, Japan')
+  `);
+  await db.execute(sql`
+    INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source_payment_id, allowances_snapshot)
+    VALUES (${`qc-${RUN}-tp-q16`}, ${tripId}, 'trip_pass', 'active', ${`pi_qc_tp_q16_${RUN}`}, '{}'::jsonb)
+  `);
+  const covered = await acceptedQuoteBooking({ amountCents: 30000, tripId });
+  const beforeCovered = await listQuotesForTraveler(ids.traveler);
+  const listedCovered = beforeCovered.find((q: any) => q.id === covered.quoteId);
+  assert.ok(listedCovered?.travelerServiceFee);
+  assert.equal(listedCovered!.travelerServiceFee!.waived, true, "the list read resolves the SAME Trip Pass coverage the charge arm does");
+  assert.equal(listedCovered!.travelerServiceFee!.charged, 0);
+  assert.ok(listedCovered!.travelerServiceFee!.wouldHaveBeen > 0, "wouldHaveBeen states the real band-priced amount even on a waived list row");
+
+  const cp = plan(await resolveQuoteCharge({ bookingId: covered.bookingId, actorUserId: ids.traveler }), "resolve covered");
+  await claimQuoteBornBooking({
+    bookingId: covered.bookingId,
+    actorUserId: ids.traveler,
+    travelerServiceFee: cp.travelerServiceFee,
+  });
+  const chargeTimeCovered = (await bookingRow(covered.bookingId)).booking_details.travelerServiceFee;
+  assert.equal(listedCovered!.travelerServiceFee!.charged, chargeTimeCovered.charged);
+  assert.equal(listedCovered!.travelerServiceFee!.wouldHaveBeen, chargeTimeCovered.wouldHaveBeen);
+  assert.equal(listedCovered!.travelerServiceFee!.waived, chargeTimeCovered.waived);
+  assert.equal(listedCovered!.travelerServiceFee!.waiverBasis, chargeTimeCovered.waiverBasis);
+
+  // ── A `requested` (not yet quoted) row carries NO fee figure — nothing to fee yet (§13) ──────
+  const requestedOnly = await requestQuote({
+    serviceId: await makeQuoteListing(),
+    travelerId: ids.traveler,
+  });
+  assert.equal(requestedOnly.ok, true);
+  const listAfterRequest = await listQuotesForTraveler(ids.traveler);
+  const requestedRow = listAfterRequest.find((q: any) => q.id === (requestedOnly as any).quote.id);
+  assert.ok(requestedRow);
+  assert.equal(requestedRow!.travelerServiceFee, undefined, "no amount yet ⇒ no fee figure, never a $0 guess");
 });
