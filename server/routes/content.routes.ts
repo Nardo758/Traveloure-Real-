@@ -8272,27 +8272,41 @@ async function hashPassword(password: string): Promise<string> {
 }
 
 export async function seedDatabase() {
-  // Always ensure the platform admin account exists
-  const adminCheck = await getAdminUserByEmail("admin@traveloure.test");
-  if (!adminCheck) {
-    const hashedPassword = await hashPassword("AdminPass123!");
-    await insertUser({
-      email: "admin@traveloure.test",
-      password: hashedPassword,
-      firstName: "Admin",
-      lastName: "Traveloure",
-      role: "admin",
-      emailVerified: new Date(),
-      authProvider: "email",
-    });
-    console.log("Admin account created: admin@traveloure.test");
+  // The admin@traveloure.test "always ensure" account is DEMO/TEST content — a
+  // fixed, publicly-known password (`AdminPass123!`) on a reserved `*.traveloure.test`
+  // domain — and is gated by the SAME shared predicate as everything below it
+  // (§18 rule 1). Ledger `2026-09-20-admin-test-account-not-in-prod`: prod's own
+  // `purgeE2EAccountsFromProd` (server/seeds/e2e-test-accounts.seed.ts, called from
+  // server/index.ts) deletes every `@traveloure.test` account on every prod boot by
+  // rule, so creating this one unconditionally was a create/purge loop that left a
+  // known-password admin account live for ~2 minutes per boot (observed 2026-09-20
+  // 20:12→20:14Z). Do NOT change the purge — this only stops the re-creation.
+  if (demoSeedsAllowed()) {
+    const adminCheck = await getAdminUserByEmail("admin@traveloure.test");
+    if (!adminCheck) {
+      const hashedPassword = await hashPassword("AdminPass123!");
+      await insertUser({
+        email: "admin@traveloure.test",
+        password: hashedPassword,
+        firstName: "Admin",
+        lastName: "Traveloure",
+        role: "admin",
+        emailVerified: new Date(),
+        authProvider: "email",
+      });
+      console.log("Admin account created: admin@traveloure.test");
+    }
+  } else {
+    console.log(demoSeedSkipMessage("seedDatabase admin@traveloure.test ensure"));
   }
 
   // DEMO/FICTIONAL content below this line — the "dummy user" + help-guide demo trips — is
   // gated by the ONE shared predicate (server/seeds/lib/demo-seed-gate.ts, §18 rule 1), never a
   // per-call-site NODE_ENV check. Ledger `2026-09-20-dummy-seeder-gated-preview-widened`;
   // CLAUDE.md §13 (fictional content must never seed in production). The platform-admin ensure
-  // ABOVE this line is NOT demo content and stays ungated.
+  // ABOVE this line is ALSO gated by the same predicate as of ledger
+  // `2026-09-20-admin-test-account-not-in-prod` — it is a separate `if`, not merged into this
+  // one, because it is checked and logged first and independently of the help-guide branch.
   if (!demoSeedsAllowed()) {
     console.log(demoSeedSkipMessage("seedDatabase help-guide demo"));
     return;
