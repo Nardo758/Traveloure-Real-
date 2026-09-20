@@ -1396,9 +1396,13 @@ jobs:
       # with the number stated; Q4 that the accept claim's own WHERE clause refuses an expired
       # quote; Q5 that an expired quote is re-quoted as a NEW row; Q6 that a double accept mints
       # exactly ONE booking priced off the quote (§14/§15); Q7 that the listing's deposit config
-      # applies unchanged and the snapshot says deposit_balance (D-31); Q8 the V-22 $0-hole pin.
-      - name: Service quotes — request, issue, expiry, re-quote, accept, deposit, V-22
-        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/service-quotes.db.test.ts
+      # applies unchanged and the snapshot says deposit_balance (D-31); Q8 the V-22 $0-hole pin;
+      # D32/D33 (ledger 2026-09-20-quote-listing-goes-live) that a custom_quote listing can now
+      # reach active+approved through the REAL create/approve pipeline. listing-price-gate.test.ts
+      # rides the same job (no DB import of its own — pure predicate + a static wiring pin over
+      # server/routes.ts) since it proves the other half of the same fix.
+      - name: Service quotes — request, issue, expiry, re-quote, accept, deposit, V-22, D32/D33
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/service-quotes.db.test.ts server/__tests__/listing-price-gate.test.ts
 
   quote-born-charge:
     name: quote-born-charge (LD 49's charge lane; ledger 2026-09-18-quote-born-charge)

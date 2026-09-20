@@ -1819,6 +1819,10 @@ This document captures architectural decisions to maintain consistency across co
     `2026-09-20-quote-fee-preaccept`)**, a READ-ONLY list-time figure via the same shared resolver
     (the charge-time snapshot stays the record); a FULL refund is proven to carry the fee back
     through the identical whole-row rail and ledger reversal the cart uses.
+    **A QUOTE-APPROVE LISTING CAN NOW GO LIVE (ledger `2026-09-20-quote-listing-goes-live`).** The
+    price-required publish gate (`server/routes.ts`, both create/update rails) refused every
+    `custom_quote` listing unconditionally; `listingPriceGate` exempts it (price authority is the
+    quote, never the listing), and `ServiceForm.tsx` can now select the priceType at all.
 
 50. **A PARTIALLY FULFILLED BUNDLE SETTLES ONCE BY ITS PURCHASE-TIME COMPONENT ALLOCATION (decision-maker
     ruling, Sep 16, 2026 — ledger `2026-09-16-bundle-partial-settlement`; build lane dispatched the same

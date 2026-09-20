@@ -309,6 +309,7 @@ import {
 // not go LIVE if `resolveOfferingCommerceContract` cannot say how it is sold. Scoped to
 // transitions INTO active — rows already active are untouched by ruling.
 import { checkOfferingActivationGate } from "./services/offering-activation-gate.service";
+import { listingPriceGate } from "./services/listing-price-gate";
 // Migration 292 / ledger `2026-09-12-listing-names-its-expert-offering`: the ONE admission of
 // `provider_services.expert_offering_type_key` off a request body (§19 allowlist), shared by the
 // two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
@@ -3865,17 +3866,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      // EX-2 publish gate: a listing cannot go LIVE without a positive price. Runs AFTER the
-      // package_tiers recompute above (so a tiers listing is judged on its derived scalar) and
-      // only on status:"active" — a draft with price "0" (ServiceForm's price-not-set default)
-      // still saves. Negative prices never get this far (schema-level floor). Same
-      // draft-exempt shape as the meeting-point gate above.
+      // EX-2 publish gate: a listing cannot go LIVE without a positive price — UNLESS its price
+      // authority is the quote, not the listing (ledger `2026-09-20-quote-listing-goes-live`, §18
+      // rule 1: the ONE predicate `listingPriceGate` is shared with the PATCH rail below, never
+      // restated). Runs AFTER the package_tiers recompute above (so a tiers listing is judged on its
+      // derived scalar) and only on status:"active" — a draft with price "0" (ServiceForm's
+      // price-not-set default) still saves. Negative prices never get this far (schema-level floor).
+      // Same draft-exempt shape as the meeting-point gate above.
       if (input.status === "active") {
-        const effPrice = Number((input as any).price);
-        if (!Number.isFinite(effPrice) || effPrice <= 0) {
+        const priceGate = listingPriceGate({ priceType: (input as any).priceType, price: (input as any).price });
+        if (!priceGate.ok) {
           return res.status(400).json({
             message: "Set a price greater than zero before publishing. Save as draft to finish later.",
-            code: "PRICE_REQUIRED",
+            code: priceGate.code,
           });
         }
       }
@@ -4180,15 +4183,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // EX-2 publish gate (docs/testing/EXPERT_UX_WALKTHROUGH.md): activating a listing requires a
       // positive price — resolved from the patch or the existing row, same shape as the
-      // meeting-point gate above. Negative prices never reach here (schema-level floor survives
+      // meeting-point gate above — UNLESS its price authority is the quote, not the listing (ledger
+      // `2026-09-20-quote-listing-goes-live`; ONE predicate, `listingPriceGate`, shared with CREATE
+      // above, §18 rule 1). Negative prices never reach here (schema-level floor survives
       // .partial()); this closes the remaining hole where a stored "0" (price-not-set draft) is
       // flipped straight to active.
       if (input.status === "active") {
-        const effPrice = Number((input as any).price ?? ownedService.price);
-        if (!Number.isFinite(effPrice) || effPrice <= 0) {
+        const priceGate = listingPriceGate({
+          priceType: (input as any).priceType ?? ownedService.priceType,
+          price: (input as any).price ?? ownedService.price,
+        });
+        if (!priceGate.ok) {
           return res.status(400).json({
             message: "Set a price greater than zero before publishing. Save as draft to finish later.",
-            code: "PRICE_REQUIRED",
+            code: priceGate.code,
           });
         }
       }

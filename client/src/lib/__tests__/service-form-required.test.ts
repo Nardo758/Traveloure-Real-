@@ -130,6 +130,14 @@ test("P2: a package-tiers listing is judged on its LOWEST POSITIVE TIER, as the 
   assert.deepEqual(labels(empty), ["A package tier with a price above zero"]);
 });
 
+test("P2b (ledger 2026-09-20-quote-listing-goes-live): a Custom quote listing needs no price at all — its price authority is the quote it issues (Locked Decision 49), not this field", () => {
+  const quoteListing = completeProvider({ priceType: "Custom quote", basePrice: 0 });
+  assert.deepEqual(missingRequiredForFinal(quoteListing), []);
+  // effectivePriceScalar still reads null (no price was set) — the ROW is simply not applicable
+  // for this priceType, mirroring `listingPriceGate`'s server-side exemption exactly.
+  assert.equal(effectivePriceScalar(quoteListing), null);
+});
+
 test("P3: a REQUIRED category field binds, by its own label", () => {
   const transport = completeProvider({
     categoryFields: [
