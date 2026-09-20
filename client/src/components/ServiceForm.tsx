@@ -75,6 +75,15 @@ import {
   DESCRIPTION_CHECKLIST_MIN,
   type ChecklistRow,
 } from "@/lib/service-form-required";
+// Ledger `2026-09-20-quote-listing-goes-live` (§18 rule 1): the display↔wire price-type mappers
+// are the ONE implementation, extracted so `node:test` can pin the round trip without importing
+// this whole component — see the module header.
+import {
+  mapPriceTypeFromBackend,
+  mapPriceTypeToBackend,
+  mapDefaultPriceTypeHint,
+  type ServicePriceTypeDisplay,
+} from "@/lib/service-price-type";
 // WAVE 2 / A1 (S1+S3): the flow's SHAPE, as data. Method-first — the step list is built from the
 // delivery method, and one module says which step holds which section (see its header for the
 // unreachability invariant a branching wizard has to keep).
@@ -166,7 +175,7 @@ interface ServiceFormData {
   subcategoryId: string;
   description: string;
   basePrice: number;
-  priceType: "Fixed" | "Range" | "Per-person" | "Hourly" | "Package tiers" | "Per-event";
+  priceType: ServicePriceTypeDisplay;
   pricingTiers: PricingTier[];
   guestMin: number;
   guestMax: number;
@@ -424,39 +433,8 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
   };
 }
 
-function mapPriceTypeFromBackend(raw: string | null | undefined): ServiceFormData["priceType"] {
-  switch (raw) {
-    case "hourly":        return "Hourly";
-    case "package_tiers": return "Package tiers";
-    case "per_event":     return "Per-event";
-    case "range":         return "Range";
-    case "per_person":    return "Per-person";
-    default:              return "Fixed";
-  }
-}
-
-function mapPriceTypeToBackend(display: ServiceFormData["priceType"]): string {
-  switch (display) {
-    case "Hourly":         return "hourly";
-    case "Package tiers":  return "package_tiers";
-    case "Per-event":      return "per_event";
-    case "Range":          return "range";
-    case "Per-person":     return "per_person";
-    default:               return "fixed";
-  }
-}
-
-function mapDefaultPriceTypeHint(hint: string): ServiceFormData["priceType"] | null {
-  switch (hint) {
-    case "hourly":         return "Hourly";
-    case "package_tiers":  return "Package tiers";
-    case "per_event":      return "Per-event";
-    case "range":          return "Range";
-    case "per_person":     return "Per-person";
-    case "fixed":          return "Fixed";
-    default:               return null;
-  }
-}
+// mapPriceTypeFromBackend / mapPriceTypeToBackend / mapDefaultPriceTypeHint now live in
+// "@/lib/service-price-type" (imported above) — extracted, not copied (§18 rule 1).
 
 function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData {
   // Parse guest range from priceBasedOn if per_event (e.g. "per_event_10_100")
@@ -1372,7 +1350,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       }
 
       // Compute price scalar and priceBasedOn from the selected pricing model
-      let priceScalar = String(formData.basePrice);
+      let priceScalar: string | null = String(formData.basePrice);
       let pricingTiersPayload: PricingTier[] = [];
       let priceBasedOn: string | null = null;
 
@@ -1386,6 +1364,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         } else {
           priceBasedOn = "per_event";
         }
+      } else if (formData.priceType === "Custom quote") {
+        // LD 49 / `listingPriceGate`: price authority is the `service_quotes` row a request gets
+        // issued, never a number on the listing — a listing price is neither required nor
+        // meaningful here, so none is sent (never a fabricated "0" — §13).
+        priceScalar = null;
       }
 
       const payload: Record<string, any> = {
@@ -1395,6 +1378,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         description: formData.description,
         price: priceScalar,
         priceType: mapPriceTypeToBackend(formData.priceType),
+        // `resolveOfferingCommerceContract`'s §11 contradiction check refuses a custom-quote
+        // listing whose booking mode resolves to `instant` (the quote must exist before any
+        // commitment). This form exposes no booking-mode control, and an account-level
+        // "instant booking" default would otherwise resolve one silently — so a custom-quote
+        // listing states its own mode explicitly (`listing_declared` provenance) rather than
+        // inherit whatever the account happens to carry.
+        ...(formData.priceType === "Custom quote" ? { bookingMode: "request" } : {}),
         pricingTiers: pricingTiersPayload,
         priceBasedOn,
         deliveryTimeframe: formData.duration,
@@ -3296,12 +3286,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <Label htmlFor={formData.priceType === "Package tiers" ? "priceType" : "basePrice"}>
                 {formData.priceType === "Package tiers"
                   ? "Price (from your tiers) *"
+                  : formData.priceType === "Custom quote"
+                  ? "Pricing"
                   : formData.priceType === "Range"
                   ? "Starting price ($) *"
                   : "Price ($) *"}
               </Label>
               <div className="mt-2 flex gap-2">
-                {formData.priceType !== "Package tiers" && (
+                {formData.priceType !== "Package tiers" && formData.priceType !== "Custom quote" && (
                   <div className="relative flex-1 min-w-0">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">$</span>
                     <Input
@@ -3340,9 +3332,18 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     <SelectItem value="Hourly">per hour</SelectItem>
                     <SelectItem value="Package tiers">package tiers</SelectItem>
                     <SelectItem value="Per-event">per event (flat fee)</SelectItem>
+                    <SelectItem value="Custom quote">custom quote</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              {/* LD 49: a custom-quote listing's price authority is the quote it issues per
+                  request, never a number on the listing — so no price input renders here at all
+                  (§13: showing one would claim a price nobody set). */}
+              {formData.priceType === "Custom quote" && (
+                <p className="mt-2 text-xs text-muted-foreground" data-testid="text-custom-quote-note">
+                  You will quote each request; no listing price is shown.
+                </p>
+              )}
             </div>
 
             {/* Package tiers — dynamic tier builder */}
