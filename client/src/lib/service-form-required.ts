@@ -187,8 +187,12 @@ function buildRequiredItems(input: ServiceFormRequiredInput): RequiredItem[] {
       id: "price",
       section: "identity",
       // FP-2: the price asterisk finally binds. Mirrors PRICE_REQUIRED, provider-only (see header).
+      // Ledger `2026-09-20-quote-listing-goes-live`: `listingPriceGate` exempts `custom_quote`
+      // from PRICE_REQUIRED (its price authority is the quote it issues, not a listing field —
+      // Locked Decision 49), so this row is not applicable to one either — the asterisk set stays
+      // equal to the enforced set.
       label: input.priceType === "Package tiers" ? "A package tier with a price above zero" : "Price",
-      applicable: input.role === "provider",
+      applicable: input.role === "provider" && input.priceType !== "Custom quote",
       done: effectivePriceScalar(input) != null,
     },
     {

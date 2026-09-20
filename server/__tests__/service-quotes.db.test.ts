@@ -26,6 +26,17 @@
  *   Q9  withdraw (owner) and decline (traveler) are terminal and DIFFERENT facts; a declined quote
  *       cannot be accepted and is named `quote_declined`, a withdrawn one `quote_withdrawn`.
  *
+ *   D32/D33 (ledger `2026-09-20-quote-listing-goes-live`) — a quote-approve listing can now REACH
+ *       `active`+`approved` and take a real request. Before this fix, `server/routes.ts`'s POST/PATCH
+ *       `/api/provider/services` publish gate refused `400 PRICE_REQUIRED` for EVERY `custom_quote`
+ *       listing (price authority is the quote, never the listing — Locked Decision 49), so the row
+ *       this fixture file seeds directly by SQL (`makeQuoteListing`) could never actually be BUILT
+ *       by a seller through the app: creation via `storage.createProviderService` (born `submitted`,
+ *       F2), admin approval (`storage.approveProviderServiceListing`, goLive for a verified owner)
+ *       and `requestQuote` are each real, unmocked calls. `listingPriceGate` — the fix itself — is
+ *       pinned directly (D32b/D33b) and its wiring into both `routes.ts` call sites is pinned
+ *       statically in `listing-price-gate.test.ts` (no server boot needed for either).
+ *
  * NO FEE LITERALS (§8): Q6's expected split is computed from the same `resolveServiceOwnerShareRate`
  * the mint delegates to. NO DAY LITERALS in assertions: every window is read off the config
  * accessors. DISPOSABLE DB ONLY — every row this file writes it deletes in after(). No Stripe key,
@@ -60,6 +71,8 @@ import {
 } from "../config/quote-validity.config";
 import { resolveServiceOwnerShareRate } from "../services/commission";
 import { resolveDepositPlan } from "../services/deposit.service";
+import { storage } from "../storage";
+import { listingPriceGate } from "../services/listing-price-gate";
 import { centsToAmount, quoteLifecycle, SERVICE_QUOTE_STATUSES } from "@shared/service-quotes";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -559,4 +572,88 @@ test("Q9 · withdraw (owner) and decline (traveler) are terminal and DIFFERENT f
   assert.equal(centsToAmount(9900), "99.00");
   assert.equal(centsToAmount(5), "0.05");
   assert.equal(await bookingCountFor(serviceId), 0, "neither answer mints anything");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// D32/D33 · ledger `2026-09-20-quote-listing-goes-live` — the price gate no longer strands a
+// custom-quote listing before it ever reaches `active`.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("D32a · a real submitted→approved custom_quote listing (built through storage, never seeded active) can take a request", async () => {
+  const id = `sq-${RUN}-d32a-${crypto.randomUUID().slice(0, 6)}`;
+  // Built the way a create actually leaves a row: no `approvalStatus` override (F2 clamps it to
+  // "submitted"), price NULL, priceType "custom_quote", bookingMode "request" (the ONE combination
+  // `resolveOfferingCommerceContract` requires for P5 — an `instant` mode would be refused as
+  // `instant_commitment_with_custom_quote`, a separate, already-guarded rule this test does not
+  // re-prove). `status: "active"` is sent explicitly, mirroring the exact shape the PRICE_REQUIRED
+  // gate used to refuse unconditionally — this fixture proves what happens on the FAR side of that
+  // gate; `listing-price-gate.test.ts` proves the gate itself and its wiring.
+  const created = await storage.createProviderService({
+    userId: ids.provider,
+    serviceName: `D32a quote listing ${RUN}`,
+    description: "fixture",
+    price: null,
+    priceType: "custom_quote",
+    bookingMode: "request",
+    deliveryMethod: "in_person",
+    categoryId,
+    status: "active",
+  } as any);
+  createdServiceIds.push(created.id);
+  assert.equal(created.approvalStatus, "submitted", "F2: a create can never be born approved");
+  assert.equal(created.price, null, "a custom_quote listing's price authority is the quote — never a stored number");
+
+  // Admin approval, for a VERIFIED owner (goLive=true) — the real writer both admin.routes.ts and
+  // the auto-activation sweep call. NOTE (confusing but real): `ProviderServiceListing.status` is
+  // mapped from `provider_services.approval_status` (`mapProviderServiceToListing`, storage.ts),
+  // and `.isActive` reads the raw `status` column — asserted below in the DTO's own vocabulary,
+  // then cross-checked against the raw row so the READ side of this fixture cannot mask a bug.
+  const approved = await storage.approveProviderServiceListing(created.id, ids.other, true);
+  assert.ok(approved, "approval must return the updated row");
+  assert.equal(approved!.status, "approved", "DTO .status is approvalStatus");
+  assert.equal(approved!.isActive, true, "DTO .isActive reads the raw status column");
+  const rawAfterApprove = await db.execute(sql`SELECT status, approval_status FROM provider_services WHERE id = ${created.id}`);
+  assert.equal((rawAfterApprove.rows[0] as any).status, "active");
+  assert.equal((rawAfterApprove.rows[0] as any).approval_status, "approved");
+
+  // Before this fix, no custom_quote listing could ever reach this state through the app at all —
+  // every request against it answered `listing_not_found` because `status`/`approvalStatus` could
+  // never both be true. Now the real `requestQuote` succeeds against a REAL pipeline-built row.
+  const req = ok(await requestQuote({ serviceId: created.id, travelerId: ids.traveler }), "request against D32a listing");
+  assert.equal(req.quote.status, "requested");
+  assert.equal(req.quote.serviceId, created.id);
+});
+
+test("D32b · listingPriceGate itself: custom_quote passes with a NULL price (the defect's exact shape) — pure pin, no DB", () => {
+  assert.deepEqual(listingPriceGate({ priceType: "custom_quote", price: null }), { ok: true });
+});
+
+test("D33 · D33b: a FIXED-price listing with price=null still gets PRICE_REQUIRED — the gate is unchanged for every non-quote shape", async () => {
+  // D33b — the predicate directly: unaffected by this fix.
+  assert.deepEqual(listingPriceGate({ priceType: "fixed", price: null }), { ok: false, code: "PRICE_REQUIRED" });
+  assert.deepEqual(listingPriceGate({ priceType: undefined, price: null }), { ok: false, code: "PRICE_REQUIRED" });
+
+  // D33 — end to end: a fixed-price listing born with no price still cannot be admin-approved into
+  // a state `requestQuote` would even consider requestable (it is not `custom_quote`, so
+  // `buildListingBuyAction`'s booking_request landing never applies to it) — recorded here as the
+  // negative twin of D32a, on a listing that reaches active+approved but is priceless.
+  const id = `sq-${RUN}-d33-${crypto.randomUUID().slice(0, 6)}`;
+  const created = await storage.createProviderService({
+    userId: ids.provider,
+    serviceName: `D33 fixed listing ${RUN}`,
+    description: "fixture",
+    price: null,
+    priceType: "fixed",
+    deliveryMethod: "in_person",
+    categoryId,
+    status: "draft",
+  } as any);
+  createdServiceIds.push(created.id);
+  assert.equal(created.approvalStatus, "submitted");
+  assert.equal(created.price, null);
+  // The listing-level PRICE_REQUIRED gate lives in routes.ts, ahead of storage; this fixture
+  // instead pins that the SAME row, judged by the predicate the route calls, is refused —
+  // the row this test builds is exactly the shape that gate would see on a publish attempt.
+  const gate = listingPriceGate({ priceType: created.priceType, price: created.price });
+  assert.deepEqual(gate, { ok: false, code: "PRICE_REQUIRED" });
 });

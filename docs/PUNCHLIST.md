@@ -499,3 +499,19 @@ from the provider's payout.
   pointers, not **[verified]** facts, per this file's own evidence discipline (§0). Until the audit
   is committed, Lane P and Lane C (design §12, items 1–2) cannot start from it, and any prose citing
   BP-3/BP-5/BP-6 should be read as unverified until the file lands.
+
+## 7 · Open — dead column found in passing
+
+- **`provider_services.form_status` [verified, ledger `2026-09-20-quote-listing-goes-live`].** Declared in
+  `shared/schema.ts` (`varchar("form_status", {length:50}).default("pending")`, comment: "For approval
+  workflow") and rides every raw-row spread `POST`/`PATCH /api/provider/services` return (and the two
+  duplicate-service routes' `omitFields` projection, which does not name it either). Grepping `server/`
+  finds **no writer anywhere** — `createProviderService`/`updateProviderService` never set it, no admin
+  route touches it — and **no reader that branches on it**; `approvalStatus` is the column every publish
+  gate, admin-approve route and public-read filter actually uses. It is a dead-but-live-looking column in
+  exactly the shape `2026-09-04-taxonomy-reconcile`'s guard class exists to catch one table over (a column
+  that LOOKS load-bearing because it is declared and defaulted, but has no author). Not fixed here — found
+  incidentally while building the D32a fixture for `2026-09-20-quote-listing-goes-live`, which reads the raw
+  row `storage.createProviderService` returns. Owner: unassigned. Options once picked up: drop the column
+  (migration) if truly unused, or find the intended reader and wire it — either needs a decision first, per
+  this file's "propose in this file first" rule.
