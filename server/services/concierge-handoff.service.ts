@@ -14,6 +14,15 @@
  * is the ONE place that gap closes; both promotion paths call it (see the annotations at each call
  * site — a second copy of this decision is the derivation-drift class §18 rule 1 names).
  *
+ * THE HAND-OFF ALSO GRANTS THE LISTING OWNER READ ACCESS TO THE PLAN (decision-maker ruling
+ * 2026-09-20, ledger `2026-09-20-concierge-plan-read`). Once a real listing owner (never the
+ * platform's own reserved account — see `isPlatformConciergeUserId` below) is actually stamped
+ * onto a created request, `grantConciergePlanRead` (`concierge-plan-read.service.ts`) puts a
+ * READ-ONLY (`pending`) `trip_expert_advisors` row under them through the ONE author
+ * `upsertTripAdvisorRow` — the concierge reads the slip LIVE (Locked Decision 32's intent) through
+ * the same `isTripAdvisor` predicate every other trip-read route uses, and may not write an item
+ * (`pending` never grants §12 WRITE access). Never throws into this function's own result (§15b).
+ *
  * THE PLAN IS RESOLVED TWO WAYS, RECORDED (ledger `2026-09-20-handoff-booking-trip-basis`). The
  * cart rail (`payments.routes.ts` ~1997) stamps `bookingDetails.itineraryItemId` only when the cart
  * line came from a plan item, but stamps `service_bookings.trip_id` from `tripId || item.tripId`
@@ -73,6 +82,7 @@ import { resolveBookingConciergeItems } from "./booking-concierge.service";
 import { resolveAffiliateProductBookingReference } from "./affiliate-product-resolution.service";
 import { buildAttributedAffiliateUrl } from "./affiliate-attribution.service";
 import { isPlatformConciergeUserId } from "./platform-concierge.service";
+import { grantConciergePlanRead } from "./concierge-plan-read.service";
 import crypto from "crypto";
 
 export type ConciergeHandoffReason = "not_concierge" | "no_plan_link" | "no_partner_product";
@@ -121,13 +131,21 @@ const NO_PLAN_LINK_RESULT: ConciergeHandoffResult = {
  * anticipate) is exactly what §15b's "never throws into the money path" promise must survive, and
  * the test that proves it (H5) injects the failure here rather than trying to provoke a real one.
  * Every field defaults to the real storage call; nothing about production wiring changes.
+ *
+ * `grantConciergePlanRead` joins this seam for the SAME reason (ledger
+ * `2026-09-20-concierge-plan-read`, G7): a failed READ grant must not touch this function's
+ * result either, and the module itself already never throws — the seam exists so a test can prove
+ * the CALLER's result is unchanged by a failure, rather than only proving the grant function
+ * itself swallows one.
  */
 export interface ConciergeHandoffDeps {
   createAffiliateBookingRequestIdempotent: typeof storage.createAffiliateBookingRequestIdempotent;
+  grantConciergePlanRead: typeof grantConciergePlanRead;
 }
 
 const defaultDeps: ConciergeHandoffDeps = {
   createAffiliateBookingRequestIdempotent: (data) => storage.createAffiliateBookingRequestIdempotent(data),
+  grantConciergePlanRead: (input) => grantConciergePlanRead(input),
 };
 
 /**
@@ -283,6 +301,31 @@ export async function createHandoffRequestsForBooking(
       // A conflict (created === undefined) means a prior call already handed this item off —
       // exactly the retry case §15's statement-is-the-guard exists for. Not counted as skipped:
       // it was not passed over, it was already done.
+    }
+
+    // THE HAND-OFF HALF OF THE READ GRANT (decision-maker ruling 2026-09-20, ledger
+    // `2026-09-20-concierge-plan-read`). Fires only once a real listing owner was actually
+    // STAMPED onto a created request — `handoffExpertId` is null for the platform's own reserved
+    // listing (lane F) and `requestIds` is empty when nothing was handed off (H4's "no partner
+    // product" case has no request to stamp), and in either case there is nothing to grant read
+    // access FOR (§13). The real implementation never throws (its own §15b posture), but this call
+    // is ALSO locally guarded — defense in depth, so a future/injected implementation that DOES
+    // throw still cannot cost the requests this call already created their place in the returned
+    // result (G7a, `concierge-plan-read.db.test.ts`): the outer try/catch below exists for a
+    // failure earlier in this function, not to double as this call's safety net.
+    if (handoffExpertId && requestIds.length > 0) {
+      try {
+        await deps.grantConciergePlanRead({
+          tripId,
+          expertUserId: handoffExpertId,
+          requestId: requestIds[0],
+        });
+      } catch (err) {
+        logger.error(
+          { err, bookingId, tripId, expertUserId: handoffExpertId },
+          "[concierge-handoff] plan-read grant threw — hand-off result stands (§15b)",
+        );
+      }
     }
 
     return {

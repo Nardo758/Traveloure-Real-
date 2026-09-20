@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { readBookingRequestClaim } from "@/lib/booking-agent-claim";
+import { VerifyRequestButton } from "@/components/booking-agent/VerifyRequestButton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 // LD 47 (ledger `2026-09-17-surfaces-acceptance-completion`): the seller's declared-completion
@@ -465,6 +466,9 @@ interface AffiliateBookingRequest {
   price?: string | number | null;
   status: string;
   createdAt: string;
+  // The AI booking copilot's verification leg rides this full-row select automatically
+  // (ledger `2026-09-20-concierge-plan-read` gives it a control on THIS queue too).
+  verification?: unknown;
 }
 
 function AgentBookingRequestsSection() {
@@ -576,6 +580,18 @@ function AgentBookingRequestsSection() {
                     </Button>
                   ) : r.status === "pending" ? (
                     <div className="flex items-center gap-2 flex-wrap">
+                      {/* AI booking-copilot verification leg — mounted only on requests the
+                          viewer has CLAIMED (ledger `2026-09-20-concierge-plan-read`; the route's
+                          own authorization is unchanged — expert/admin, no per-row ownership
+                          check — this is a render choice, not a widened grant). ONE
+                          implementation shared with the Workstation (§18 rule 1). */}
+                      {claim.state === "claimed_by_you" && (
+                        <VerifyRequestButton
+                          requestId={r.id}
+                          hasVerification={!!r.verification}
+                          invalidateQueryKeys={[["/api/affiliate-booking-requests/expert"]]}
+                        />
+                      )}
                       <Input
                         placeholder="Partner reference (optional)"
                         className="h-8 text-sm max-w-xs"

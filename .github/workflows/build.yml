@@ -2222,6 +2222,53 @@ jobs:
       - name: the hand-off — checkout of a Booking Concierge line (H1-H6)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/concierge-handoff.db.test.ts
 
+  concierge-plan-read:
+    name: concierge-plan-read (ledger 2026-09-20-concierge-plan-read)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # THE BOOKING CONCIERGE READS THE PLAN IT WORKS (decision-maker ruling 2026-09-20). G1 a
+      # real listing owner is granted a `pending` `trip_expert_advisors` row at HAND-OFF and the
+      # §12 read predicate admits it; G2 the platform's own reserved concierge listing grants
+      # NOTHING (Locked Decision 51 lane F — it never "works" a plan); G3 a WINNING pooled CLAIM
+      # that names a trip grants the same; G4 a claim with no trip grants nothing (§13); G5 a
+      # CONFLICT NEVER DOWNGRADES — an advisor already `accepted` keeps that status and their
+      # existing message; G6 the grant is READ-ONLY — `pending` never clears the §12 WRITE gate;
+      # G7a/G7b an injected grant failure leaves the hand-off's/claim's own result unchanged
+      # (§15b); G8 `check-advisor-row-author.cjs` still passes — the ONE author is unchanged.
+      - name: the booking concierge reads the plan it works (G1-G8)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/concierge-plan-read.db.test.ts
+
   linked-item-purchase-write:
     name: linked-item-purchase-write (ledger 2026-09-19-linked-item-purchase-write)
     runs-on: ubuntu-latest

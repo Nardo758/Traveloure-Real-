@@ -18,6 +18,7 @@ import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/exper
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
 import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
+import { VerifyRequestButton } from "@/components/booking-agent/VerifyRequestButton";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { APIProvider, Map, InfoWindow, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
 import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
@@ -3121,40 +3122,6 @@ export default function ExpertWorkspace() {
     },
   });
 
-  // AI booking copilot — verification leg. Tracks which request card is mid-verify so only that
-  // row's button shows a spinner (the mutation object itself is shared across all rows).
-  const [verifyingBookingId, setVerifyingBookingId] = useState<string | null>(null);
-  const verifyBookingMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiRequest("POST", `/api/affiliate-booking-requests/${id}/verify`, {});
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: [partnerBookingRequestsUrl] });
-      if (data?.available === false) {
-        const reason =
-          data.reason === "verification_unavailable"
-            ? "AI verification isn't configured right now."
-            : data.reason === "partner_page_unreachable"
-              ? "Couldn't reach the partner's page to verify it."
-              : "Couldn't verify this request right now.";
-        toast({ title: "Not verified", description: reason, variant: "destructive" });
-      } else {
-        toast({ title: "Verified", description: "The AI checked the partner page — review the result below." });
-      }
-    },
-    onError: (err: any) => {
-      const message = String(err?.message ?? "");
-      const description = message.startsWith("429:")
-        ? "Please wait a bit before re-verifying this request."
-        : message.startsWith("409:")
-          ? "A verification is already in progress for this request."
-          : "Couldn't verify this request right now.";
-      toast({ title: "Verification failed", description, variant: "destructive" });
-    },
-    onSettled: () => setVerifyingBookingId(null),
-  });
-
   const energyCalcRef = useRef(false);
   const energyRecalcInFlight = useRef(false);
   const triggerEnergyRecalc = useCallback(() => {
@@ -5394,19 +5361,15 @@ export default function ExpertWorkspace() {
                               {req.status !== "confirmed" && req.status !== "failed" && (
                                 <>
                                   <VerificationPanel verification={req.verification} testId={`verification-panel-${req.id}`} />
-                                  <button
-                                    onClick={() => { setVerifyingBookingId(req.id); verifyBookingMutation.mutate(req.id); }}
-                                    disabled={verifyingBookingId === req.id && verifyBookingMutation.isPending}
-                                    data-testid={`button-verify-${req.id}`}
-                                    style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "6px 0", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", background: CARD, color: BRAND, border: `1px solid ${BRAND}`, marginBottom: 8, opacity: verifyingBookingId === req.id && verifyBookingMutation.isPending ? 0.7 : 1 }}
-                                  >
-                                    {verifyingBookingId === req.id && verifyBookingMutation.isPending ? (
-                                      <Loader2 style={{ width: 11, height: 11, animation: "spin 1s linear infinite" }} />
-                                    ) : (
-                                      <Sparkles style={{ width: 11, height: 11 }} />
-                                    )}
-                                    {req.verification ? "Re-verify with AI" : "Verify with AI"}
-                                  </button>
+                                  {/* ONE implementation, shared with the pooled agent inbox (ledger
+                                      `2026-09-20-concierge-plan-read`, §18 rule 1) — see
+                                      client/src/components/booking-agent/VerifyRequestButton.tsx. */}
+                                  <VerifyRequestButton
+                                    requestId={req.id}
+                                    hasVerification={!!req.verification}
+                                    invalidateQueryKeys={[[partnerBookingRequestsUrl]]}
+                                    className="w-full justify-center mb-2"
+                                  />
                                 </>
                               )}
                               {req.status !== "confirmed" && req.status !== "failed" && (
