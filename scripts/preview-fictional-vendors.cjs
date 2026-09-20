@@ -41,16 +41,24 @@
  * all), so this second list is informational, not itself a finding of
  * fictional content.
  *
- * A THIRD signal (ledger `2026-09-20-dummy-seeder-gated-preview-widened`):
+ * A THIRD signal (ledger `2026-09-20-dummy-seeder-gated-preview-widened`,
+ * widened by `2026-09-20-california-demo-seed-gated`):
  * `provider_services` rows owned by the LEGACY `seedDatabase()` dummy
  * account (`users.email = 'admin@traveloure.com'`,
  * `server/routes/content.routes.ts` — now gated behind `demoSeedsAllowed()`,
  * but a row it wrote on a PAST, ungated boot is unaffected by that gate
  * going in), OR whose `provider_services.id` is not UUID-shaped (a
  * hand-entered `ps-*` batch this sweep also found — a row an operator typed
- * in rather than one any seeder minted). THESE ARE HAND-ENTERED-CONTENT
+ * in rather than one any seeder minted), OR owned by the `scripts/seed-
+ * california-full.ts` fictional provider — user id
+ * `43352454-f6c0-46ff-a97a-2c027b67671f` ("Maria Santos"/"California Coastal
+ * Experiences") OR any owner whose `service_provider_forms.email` resolves
+ * to `@californiacoastal.com`, the marker that hand-run seeder writes and
+ * which is now gated (see `server/seeds/lib/demo-seed-gate.ts`) but, exactly
+ * like the other two markers in this section, unaffected for rows a PAST,
+ * ungated run already wrote. THESE ARE HAND-ENTERED-OR-HAND-RUN-CONTENT
  * SIGNALS, NOT THE FICTIONAL-SEEDER MARKER the first section reports: a row
- * owned by that account, or carrying a non-UUID id, is not necessarily
+ * owned by any of these, or carrying a non-UUID id, is not necessarily
  * fictional, so it is reported informationally — like the
  * `created_via='seed'` counts above — and does not affect this script's
  * exit code.
@@ -78,11 +86,13 @@
  *   - It says nothing about how a matched row got there (this ungated boot
  *     path vs. a manual `tsx server/seeds/phase-d-kyoto-vendors.seed.ts` run
  *     vs. something else) — only that it exists now.
- *   - THE THIRD SECTION (`admin@traveloure.com` / non-UUID `id`) matches on
- *     exactly those two conditions. A hand-entered row under a DIFFERENT
- *     owner account, or one whose id happens to be UUID-shaped by
- *     coincidence, is invisible to it — same stated limit as the first
- *     section's domain match, one signal over.
+ *   - THE THIRD SECTION (`admin@traveloure.com` / non-UUID `id` / the
+ *     `seed-california-full.ts` owner id or `@californiacoastal.com` form
+ *     email) matches on exactly those named conditions. A hand-entered or
+ *     hand-run-fictional row under a DIFFERENT owner account or contact
+ *     domain, or one whose id happens to be UUID-shaped by coincidence, is
+ *     invisible to it — same stated limit as the first section's domain
+ *     match, one signal over.
  *
  * USAGE
  * -----
@@ -123,8 +133,10 @@ const CREATED_VIA_SEED_COUNT_SQL = `
   ORDER BY approval_status, status;
 `;
 
-// THIRD signal (ledger 2026-09-20-dummy-seeder-gated-preview-widened): hand-entered rows, not
+// THIRD signal (ledger 2026-09-20-dummy-seeder-gated-preview-widened, widened by
+// 2026-09-20-california-demo-seed-gated): hand-entered / hand-run-fictional rows, not
 // the fictional-seeder marker — see the module header's WHAT IT REPORTS / NEGATIVE SPACE.
+const CALIFORNIA_DEMO_OWNER_ID = "43352454-f6c0-46ff-a97a-2c027b67671f"; // "Maria Santos"
 const HAND_ENTERED_DEMO_ROWS_SQL = `
   SELECT
     ps.id                AS service_id,
@@ -134,8 +146,11 @@ const HAND_ENTERED_DEMO_ROWS_SQL = `
     u.email               AS user_email
   FROM provider_services ps
   JOIN users u ON u.id = ps.user_id
+  LEFT JOIN service_provider_forms spf ON spf.user_id = ps.user_id
   WHERE u.email = 'admin@traveloure.com'
      OR ps.id !~ '^[0-9a-f-]{36}$'
+     OR ps.user_id = '${CALIFORNIA_DEMO_OWNER_ID}'
+     OR spf.email ILIKE '%@californiacoastal.com'
   ORDER BY ps.created_at ASC;
 `;
 
@@ -226,9 +241,11 @@ async function main() {
   }
 
   console.log(
-    `\nInformational — hand-entered demo signal (ledger 2026-09-20-dummy-seeder-gated-preview-widened): ` +
-      `provider_services rows owned by the legacy 'admin@traveloure.com' dummy account, or whose id is ` +
-      `not UUID-shaped. NOT the fictional-seeder marker above — see this file's NEGATIVE SPACE section. ` +
+    `\nInformational — hand-entered/hand-run demo signal (ledger 2026-09-20-dummy-seeder-gated-preview-widened, ` +
+      `widened by 2026-09-20-california-demo-seed-gated): provider_services rows owned by the legacy ` +
+      `'admin@traveloure.com' dummy account, whose id is not UUID-shaped, owned by the seed-california-full.ts ` +
+      `fictional provider (user ${CALIFORNIA_DEMO_OWNER_ID}), or whose provider-form contact resolves to ` +
+      `@californiacoastal.com. NOT the fictional-seeder marker above — see this file's NEGATIVE SPACE section. ` +
       `${handEnteredRows.length === 0 ? "none found." : `${handEnteredRows.length} found:`}`,
   );
   for (const r of handEnteredRows) {

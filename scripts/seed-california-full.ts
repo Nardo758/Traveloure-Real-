@@ -1,6 +1,17 @@
 /**
  * seed-california-full.ts
  *
+ * DEMO/FICTIONAL CONTENT — CLAUDE.md §13: this seeds a fictional provider
+ * ("California Coastal Experiences", owner "Maria Santos") and three fictional,
+ * publicly-bookable `provider_services` rows onto a real trip. A fictional
+ * "approved" listing in production is a lie a traveler can pay for, so this
+ * script MUST NEVER write to a production database (ledger
+ * `2026-09-20-california-demo-seed-gated`; see
+ * `server/seeds/lib/demo-seed-gate.ts`). This is a hand-run script, so it sits
+ * outside `demo-seeders-gated.test.ts`'s `server/index.ts` boot-path scan by
+ * construction, and needs its own refusal, checked first in `run()` below,
+ * before any DB write.
+ *
  * Seeds the California Coastal Road Trip with full demo data:
  * - Trip status upgrade (draft → planning)
  * - Expert advisor assignment (Maria Santos, accepted)
@@ -13,6 +24,7 @@
 
 import { pool, db } from "../server/db";
 import { sql } from "drizzle-orm";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "../server/seeds/lib/demo-seed-gate";
 
 const TRIP_ID = "eb5f3e68-8689-4c07-89c4-b07f53bbb87c";
 const OWNER_ID = "40904180";
@@ -20,6 +32,14 @@ const EXPERT_ID = "43352454-f6c0-46ff-a97a-2c027b67671f"; // Maria Santos
 const EXPERT_NAME = "Maria Santos";
 
 async function run() {
+  // Refusal FIRST, before any DB write (CLAUDE.md §13; same predicate as every
+  // other demo seeder — server/seeds/lib/demo-seed-gate.ts, §18 rule 1: one
+  // implementation of "what counts as production", never a second copy).
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("seed-california-full"));
+    process.exit(1);
+  }
+
   console.log("🌴 Seeding California trip with full demo data...\n");
 
   // ──────────────────────────────────────────────────────────────────

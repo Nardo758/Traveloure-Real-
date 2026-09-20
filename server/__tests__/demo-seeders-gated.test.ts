@@ -54,6 +54,14 @@
  *           admin@traveloure.test" block (now `if (demoSeedsAllowed())`) and the
  *           pre-existing help-guide/`admin@traveloure.com` dummy-user block
  *           (the early-return `if (!demoSeedsAllowed()) return;` guard).
+ *   SCF1  — ledger `2026-09-20-california-demo-seed-gated`: `scripts/seed-
+ *           california-full.ts` is a hand-run script (never imported by
+ *           server/index.ts), so it too sits outside D1's scanned file set by
+ *           construction — the exact "manual seed script" gap the negative
+ *           space below used to name as unfixed debt. A targeted static pin
+ *           proves its own refusal (the same `if (!demoSeedsAllowed())` second
+ *           layer S1/S1b prove for the boot-path seeders) runs before its
+ *           first `db.execute` call.
  *
  * STATED NEGATIVE SPACE (§18d):
  *   - The DEMO/FICTIONAL file-set derivation (see `candidateSeedFiles` /
@@ -69,7 +77,10 @@
  *     manual `tsx server/seeds/<file>.seed.ts` / `npm run seed:*` script) is
  *     out of this test's scope — it was never part of the boot-time defect —
  *     though several of those are recorded, ungated, in the PR/ledger as
- *     found-but-not-fixed debt.
+ *     found-but-not-fixed debt. `scripts/seed-california-full.ts` was one of
+ *     these; it is now closed by its own targeted static pin, SCF1 below,
+ *     rather than by widening D1's file set (D1 stays scoped to server/seeds/
+ *     and server/seed*.ts, per the bullet above).
  *   - The gating parser (`isCallGated`) recognizes exactly the
  *     `if (demoSeedsAllowed())` shape this lane's fix uses (an exact,
  *     trimmed-condition match, walking outward through any number of
@@ -91,6 +102,7 @@ const SEEDS_DIR = path.join(SERVER_DIR, "seeds");
 const INDEX_TS = path.join(SERVER_DIR, "index.ts");
 const PHASE_D_FILE = path.join(SEEDS_DIR, "phase-d-kyoto-vendors.seed.ts");
 const CONTENT_ROUTES_FILE = path.join(SERVER_DIR, "routes", "content.routes.ts");
+const SEED_CALIFORNIA_FULL_FILE = path.join(ROOT, "scripts", "seed-california-full.ts");
 
 // ─── The predicate under test: name pattern OR content pattern (§13 markers) ──
 const NAME_MARKER = /demo|mock|fictional/i;
@@ -558,6 +570,25 @@ test("S1b: seed-expert-services.ts's two demo functions carry the same second-la
       `${name} must refuse on its own when demoSeedsAllowed() is false`,
     );
   }
+});
+
+test("SCF1: scripts/seed-california-full.ts refuses (demoSeedsAllowed()) before its first db.execute call", () => {
+  const src = fs.readFileSync(SEED_CALIFORNIA_FULL_FILE, "utf8");
+  assert.match(
+    src,
+    /import\s*\{\s*demoSeedsAllowed\s*,\s*demoSeedSkipMessage\s*\}\s*from\s*["']\.\.\/server\/seeds\/lib\/demo-seed-gate["']/,
+    "seed-california-full.ts must import the shared demo-seed gate, not a second copy of the predicate",
+  );
+  const fnBody = findFunctionBody(src, "run");
+  assert.ok(fnBody, "run must still be an async function this parser can find");
+  const guardIndex = fnBody!.search(/if\s*\(\s*!\s*demoSeedsAllowed\(\)\s*\)/);
+  assert.ok(guardIndex >= 0, "run() must refuse on its own when demoSeedsAllowed() is false");
+  const execIndex = fnBody!.indexOf("db.execute(sql");
+  assert.ok(execIndex > 0, "expected a db.execute(sql`...`) call in run()");
+  assert.ok(
+    execIndex > guardIndex,
+    "the refusal must precede every DB write in run() — a gate placed after a write is not a gate",
+  );
 });
 
 // ═══ CR — content.routes.ts's seedDatabase(), out of D1's scanned scope (§18d) ═══
