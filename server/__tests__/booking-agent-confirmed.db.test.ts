@@ -36,6 +36,12 @@
  *       it reads or writes anything.
  *   D8  NO BACKFILL. A legacy row already at `confirmed` keeps its value and its (absent)
  *       reference — a row confirmed under the old rule was confirmed under it.
+ *   D9  A ROW BORN `received` (ledger `2026-09-20-handoff-born-received` — the server-side
+ *       concierge hand-off's ruled birth value) records a purchase and confirms exactly as one
+ *       born legacy `pending`: `PURCHASE_CLAIMABLE_FROM_STATUSES` is DERIVED from the ruled set
+ *       minus `confirmed`/`purchased_by_*`, so `received` was already admitted with no widening,
+ *       and the partner-report writer's `status IS DISTINCT FROM 'confirmed'` guard reads no
+ *       particular prior value at all.
  *
  * NEGATIVE SPACE, STATED — the load-bearing half. **No HTTP is exercised here.** The writes and
  * the decisions run against real Postgres; the Express rail is a thin adapter proven by source
@@ -421,5 +427,40 @@ describe("D-10 — `confirmed` needs partner evidence", () => {
       (f) => /affiliate[a-z0-9_-]*confirm|confirmation[-_]?ref|partner[-_]?evidence|d10/i.test(f) && f.endsWith(".sql"),
     );
     assert.deepEqual(d10, [], "D-10 adds no migration");
+  });
+
+  // ── D9 ──────────────────────────────────────────────────────────────────────────────────────
+  it("D9 — a request born `received` purchases and confirms exactly as one born legacy `pending`", async () => {
+    // The purchase half (D2/D3's proof, replayed over the ruled birth value).
+    const id = await newRequest("received");
+    const purchased = await storage.recordAffiliateBookingPurchase(id, "purchased_by_human", {
+      confirmationRef: "RCV-1001",
+    });
+    assert.ok(purchased, "a `received` row must be claimable by a purchase press");
+    assert.equal(purchased!.status, "purchased_by_human");
+    assert.equal(purchased!.confirmationRef, "RCV-1001");
+
+    const second = await storage.recordAffiliateBookingPurchase(id, "purchased_by_human", {
+      confirmationRef: "SHOULD-NOT-LAND",
+    });
+    assert.equal(second, undefined, "a second press must still be a zero-row no-op");
+
+    // The confirmation half (D5's proof, replayed from a row that started `received`).
+    const outcome = await confirmFromPartnerReport(id, {
+      partner: "travelpayouts",
+      partnerReferenceId: "tp-action-received-01",
+    });
+    assert.equal(outcome.confirmed, true);
+    assert.equal(outcome.previousStatus, "purchased_by_human");
+    const row = await readRow(id);
+    assert.equal(row.status, "confirmed");
+    assert.equal(row.confirmation_ref, "RCV-1001", "the agent's own reference is untouched by the partner's report");
+
+    // Directly, and without ever leaving `received`: the partner may confirm straight off it.
+    const direct = await newRequest("received");
+    const directOutcome = await confirmFromPartnerReport(direct, { partner: "travelpayouts" });
+    assert.equal(directOutcome.confirmed, true);
+    assert.equal(directOutcome.previousStatus, "received");
+    assert.equal((await readRow(direct)).status, "confirmed");
   });
 });

@@ -163,7 +163,7 @@ test("H1: one request per partner item, both FKs set, expert_id = the listing ow
   assert.equal(rows[0].service_booking_id, bookingId);
   assert.equal(rows[0].expert_id, expertId, "the ASSUMPTION: a paid hand-off is stamped to the listing owner, not the pool");
   assert.equal(rows[0].trip_id, tripId);
-  assert.equal(rows[0].status, "pending", "the legacy birth value the ONE reader maps to the ruled `received`");
+  assert.equal(rows[0].status, "received", "ledger `2026-09-20-handoff-born-received`: this server rail births the ruled value, not the legacy one the traveler-initiated create route still writes");
 });
 
 test("H2: a second promotion creates none — the partial UNIQUE + ON CONFLICT DO NOTHING guard", async () => {

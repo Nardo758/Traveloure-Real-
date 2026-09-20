@@ -1452,6 +1452,10 @@ This document captures architectural decisions to maintain consistency across co
     `received` would invent a fact about work nobody did; readers map the legacy four explicitly and
     say so. Statuses a HUMAN may set are allowlisted; `researching` and `purchased_by_api` are
     **server-written only** — a human may not type themselves into a machine state.
+    **A SERVER-SIDE BIRTH SITE BORN AFTER THIS VOCABULARY BIRTHS `received`, NOT LEGACY `pending`
+    (ledger `2026-09-20-handoff-born-received`):** the booking-concierge hand-off does; the
+    traveler-initiated create route (`content.routes.ts`) stays on `pending` by its own standing,
+    cited exception, unchanged.
     **(f) COST AND HONESTY.** Every copilot model call writes `ai_cost_tracking` through the
     EXISTING `trackAnthropicResponse` — and because that table is one of the two objects this file
     already names as a **deploy-push casualty** (created by `025b_ai_cost_tracking.sql`, absent from

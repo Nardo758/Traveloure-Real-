@@ -59,6 +59,11 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { readBookingRequestClaim } from "@/lib/booking-agent-claim";
+// Ledger `2026-09-20-handoff-born-received`: a pooled row can now be born `received` (the ruled
+// value) as well as the legacy `pending` — this reader is the ONE place that already maps both to
+// the same reading (§18 rule 1), so the queue's rank and its action controls read through it
+// rather than restating a second `=== "pending"` literal.
+import { readBookingAgentStatus } from "@/lib/booking-agent-status";
 import { VerifyRequestButton } from "@/components/booking-agent/VerifyRequestButton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -518,7 +523,10 @@ function AgentBookingRequestsSection() {
   });
 
   const sorted = [...(requests ?? [])].sort((a, b) => {
-    const rank = (r: AffiliateBookingRequest) => (r.status === "pending" ? 0 : 1);
+    // `received` (ruled) and legacy `pending` are the SAME actionable stage today — neither the
+    // researching nor the ready_to_buy transition is built yet — so both rank first through the
+    // ONE reader rather than a second literal (§18 rule 1).
+    const rank = (r: AffiliateBookingRequest) => (readBookingAgentStatus(r).stage === "received" ? 0 : 1);
     return rank(a) - rank(b);
   });
 
@@ -578,7 +586,7 @@ function AgentBookingRequestsSection() {
                     >
                       Claim
                     </Button>
-                  ) : r.status === "pending" ? (
+                  ) : readBookingAgentStatus(r).stage === "received" ? (
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* AI booking-copilot verification leg — mounted only on requests the
                           viewer has CLAIMED (ledger `2026-09-20-concierge-plan-read`; the route's

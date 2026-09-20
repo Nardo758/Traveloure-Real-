@@ -290,7 +290,17 @@ export async function createHandoffRequestsForBooking(
         expertNotes: null,
         confirmationRef: null,
         price: null,
-        status: "pending", // legacy DB value; the ONE reader maps it to the ruled `received` (LD 44 (e))
+        // THE RULED BIRTH VALUE (ledger `2026-09-20-handoff-born-received`, CLAUDE.md LD 44 (e)).
+        // This hand-off is a server-side rail with no legacy-`pending` writer to mirror in spirit —
+        // it was born Sep 18, 2026, well after the vocabulary landed — so it births the ruled
+        // `received` rather than the legacy value the traveler-initiated create route still writes
+        // (that route's own `pending` is a DELIBERATE, cited exception — see
+        // `server/routes/content.routes.ts` ~7625). Every predicate a request this rail creates can
+        // reach (claim, purchase, the partner-confirmation from-state, the pooled inbox) already
+        // reads `received` the same way it reads `pending` — through the vocabulary module's own
+        // derived sets, or through the ONE reader's explicit legacy map — so this is a birth-value
+        // change only, never a second vocabulary.
+        status: "received",
       } as InsertAffiliateBookingRequest & { itineraryItemId: string; serviceBookingId: string };
 
       const created = await deps.createAffiliateBookingRequestIdempotent(insertData);

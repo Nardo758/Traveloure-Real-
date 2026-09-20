@@ -45,6 +45,10 @@
  *   C10 NO BACKFILL, AND A CLAIM WRITES NO STATUS. A legacy row carrying an auto-assigned
  *       `expert_id` and `status='assigned'` keeps both; a fresh claim leaves `status` alone, so a
  *       claim can never write a value outside LD 44 (e)'s human-settable allowlist.
+ *   C11 A ROW BORN `received` CLAIMS EXACTLY AS ONE BORN `pending` (ledger
+ *       `2026-09-20-handoff-born-received`). The claim decision reads no status at all
+ *       (`expert_id IS NULL` is its whole predicate), so the server-born concierge hand-off's
+ *       ruled birth value changes nothing about winning, losing or retrying a claim.
  *
  * NEGATIVE SPACE, STATED — this is the load-bearing half. **No HTTP is exercised here.** The proofs
  * run the claim DECISION (`claimBookingRequest`) and the WRITE (`storage.claimAffiliateBookingRequest`)
@@ -96,7 +100,7 @@ let adminId = "";
 let plainUserId = "";
 const createdRequestIds: string[] = [];
 
-async function newUnclaimedRequest(): Promise<string> {
+async function newUnclaimedRequest(status: string = "pending"): Promise<string> {
   const row = await storage.createAffiliateBookingRequest({
     userId: travelerId,
     expertId: null,
@@ -111,7 +115,7 @@ async function newUnclaimedRequest(): Promise<string> {
     expertNotes: null,
     confirmationRef: null,
     price: null,
-    status: "pending",
+    status,
   } as any);
   createdRequestIds.push(row.id);
   return row.id;
@@ -382,5 +386,27 @@ describe("booking-agent claim — auto-assignment retired, the pool is claimed",
       false,
       "`assigned` is not a status a human rail may write — which is why the claim writes none",
     );
+  });
+
+  // ── C11 ─────────────────────────────────────────────────────────────────────────────────────
+  it("C11 — a request born `received` (ledger `2026-09-20-handoff-born-received`) claims exactly as a legacy `pending` one", async () => {
+    const id = await newUnclaimedRequest("received");
+    assert.equal((await readRow(id)).status, "received");
+
+    const claimed = await claimBookingRequest({ requestId: id, actorUserId: agentAId });
+    assert.equal(claimed.ok, true);
+    assert.equal((claimed as { alreadyYours: boolean }).alreadyYours, false);
+    const row = await readRow(id);
+    assert.equal(row.expert_id, agentAId);
+    assert.equal(row.status, "received", "a claim writes no status regardless of the birth value");
+
+    // A second agent is refused exactly as they would be against a `pending` row.
+    const refused = await claimBookingRequest({ requestId: id, actorUserId: agentBId });
+    assert.equal((refused as { reason: string }).reason, "already_claimed");
+
+    // The holder's own retry is idempotent, exactly as C3 proves for `pending`.
+    const retry = await claimBookingRequest({ requestId: id, actorUserId: agentAId });
+    assert.equal(retry.ok, true);
+    assert.equal((retry as { alreadyYours: boolean }).alreadyYours, true);
   });
 });

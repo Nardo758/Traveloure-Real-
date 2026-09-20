@@ -13,6 +13,11 @@
  *   A6  an unknown string is refused, and the refusal names WHY rather than listing the set.
  *   A7  the ONE reader maps the legacy four explicitly and never invents a ruled state.
  *   A8  D-10: `confirmed` is not human-settable, and its refusal names the partner rule.
+ *   A9  ledger `2026-09-20-handoff-born-received`: no `server/` birth site of an
+ *       `affiliate_booking_requests` row writes the legacy `status: "pending"` any more EXCEPT the
+ *       two named, cited ones — `content.routes.ts`'s traveler-initiated create rails, which carry
+ *       their own explicit citation of why this lane left them alone. A NEW birth site is refused
+ *       by this pin until it either births the ruled `received` or earns its own citation.
  *
  * REPAIRED, NOT WEAKENED (2026-09-15, punchlist D-10 option A, ledger
  * `2026-09-15-d10-confirmed-needs-partner-evidence`): A5 and A7 asserted the PREVIOUS rule, under
@@ -23,6 +28,8 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import {
   HUMAN_PURCHASE_BOOKING_AGENT_STATUSES,
   HUMAN_SETTABLE_BOOKING_AGENT_STATUSES,
@@ -167,5 +174,87 @@ describe("LD 44 (e) booking-agent status vocabulary", () => {
     for (const from of ["pending", "assigned", "received", "researching", "ready_to_buy", "flagged", "unavailable", "failed"]) {
       assert.equal(PURCHASE_CLAIMABLE_FROM_STATUSES.includes(from), true, from);
     }
+  });
+
+  it("A9: ledger `2026-09-20-handoff-born-received` — no NEW server birth site writes the legacy `pending`", () => {
+    const ROOT = path.resolve(import.meta.dirname, "..", "..");
+    const serverFiles: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) serverFiles.push(full);
+      }
+    };
+    walk(path.join(ROOT, "server"));
+
+    // A birth site is a CALL to either creator of an `affiliate_booking_requests` row — never
+    // the interface/class declarations in storage.ts, which take no object literal and so never
+    // match the trailing `(` `{` this predicate requires. The window straddles the call because
+    // this codebase writes the literal BOTH ways: inline (`status: "pending"` in the object) and
+    // as a local `const status = "pending"` a few lines before the call (shorthand `status,` in
+    // the object) — the same two shapes D1's sibling pin (`booking-agent-confirmed.db.test.ts`)
+    // states as its own predicate's stated cost.
+    const CALL = /(?:storage\.|deps\.)?createAffiliateBookingRequest(?:Idempotent)?\s*\(\s*\{?/g;
+    const pendingBirthFiles = new Set<string>();
+    for (const file of serverFiles) {
+      const raw = fs.readFileSync(file, "utf8");
+      const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+      let m: RegExpExecArray | null;
+      const callRe = new RegExp(CALL.source, "g");
+      while ((m = callRe.exec(stripped))) {
+        const windowStart = Math.max(0, m.index - 400);
+        const windowEnd = Math.min(stripped.length, m.index + 1200);
+        const window = stripped.slice(windowStart, windowEnd);
+        if (/status\s*[:=]\s*"pending"/.test(window)) {
+          pendingBirthFiles.add(path.relative(ROOT, file));
+        }
+      }
+    }
+
+    assert.deepEqual(
+      Array.from(pendingBirthFiles).sort(),
+      ["server/routes/content.routes.ts"],
+      "a server-side affiliate_booking_requests birth site writes the legacy `pending` outside the ONE cited exception — either move it to `received` or add its own citation and widen this pin",
+    );
+
+    // The exception is CITED, not silent (§13). Both of `content.routes.ts`'s two
+    // traveler-initiated create rails carry the reasoning: the primary rail states it in full
+    // (checked as a substring so a reflow of the comment's line breaks cannot break the pin —
+    // §18 rule 1's own "repair this pin, never delete it" posture), and the `/from-catalog`
+    // twin deliberately does NOT restate it — it points back to "the rail above" instead, which
+    // is the derivation-drift class §18 rule 1 forbids duplicating.
+    const routesNormalized = fs
+      .readFileSync(path.join(ROOT, "server/routes/content.routes.ts"), "utf8")
+      .replace(/^\s*\/\/\s?/gm, "")
+      .replace(/\/\*|\*\//g, "")
+      .replace(/\s+/g, " ");
+    assert.match(
+      routesNormalized,
+      /vocabulary move LD 44 \(e\) phase 0 deliberately did not make/,
+      "the primary create rail must still carry its citation for staying on `pending`",
+    );
+    assert.match(
+      routesNormalized,
+      /Same retirement as the rail above/,
+      "the /from-catalog twin must still point back to the primary rail's citation rather than duplicate it",
+    );
+
+    // And the concierge hand-off — the server rail this ledger row is actually about — carries
+    // neither the literal nor the citation: it births the ruled value outright.
+    const handoffStripped = fs
+      .readFileSync(path.join(ROOT, "server/services/concierge-handoff.service.ts"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    assert.doesNotMatch(
+      handoffStripped,
+      /status:\s*"pending"/,
+      "the hand-off must not birth the legacy value",
+    );
+    assert.match(
+      handoffStripped,
+      /status:\s*"received"/,
+      "the hand-off must birth the ruled value",
+    );
   });
 });
