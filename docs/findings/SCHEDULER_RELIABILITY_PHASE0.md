@@ -263,3 +263,33 @@ does not make GitHub Actions dispatch the `*/15 * * * *` schedule reliably in th
 reliable external trigger independent of GitHub's own scheduler (hitting the `workflow_dispatch` API
 on a cadence, on the pattern the original Autoscale in-process-timer finding above already flags as
 best-effort) remains a separate, unbuilt, recorded decision.
+
+## 2026-09-20 — a dispatched run can still land on a cold instance; the post script now warms + retries
+
+Ledger `2026-09-20-jobs-cron-single-schedule` (above) closed the multi-schedule dispatch gap: every
+DISPATCHED run now posts every due bucket. It did not close a separate, older gap: a dispatched run
+can itself land on a **scaled-to-zero Autoscale instance**, inside the few-second window between
+`node dist/index.cjs` starting and `registerRoutes()` mounting `/internal`. GitHub Actions run
+**35486145870** (2026-09-20T03:16:42Z) got HTTP 404 from `POST /internal/jobs/booking-expiry`
+although the deployed sha (`32b0d6e`, built 2026-09-18) demonstrably carried the route (born
+`868909a38`, 2026-09-15) — the deployment log shows the instance cold-starting at 03:16:39–41
+(healthchecks 500, `node dist/index.cjs` at 03:16:40) with the request landing at 03:16:42, one to
+three seconds later. During that window a request to `/internal/*` falls through
+`server/static.ts`'s pre-bind catch-all (which exempts `/api` and `/internal` from the SPA fallback,
+per L3, but has nothing else mounted yet) into Express's own plain default 404 — not the JSON 404
+the real `notFoundHandler` produces once routes exist. On Autoscale a cold instance is the ORDINARY
+case for a four-hourly (or rarer) job, so this was a recurring false alarm, not a one-off.
+
+**Fix (ledger `2026-09-20-jobs-cron-cold-start-retry`):** `scripts/ci/post-internal-jobs.sh` now (a)
+polls `GET $BASE_URL/api/ready` — the same endpoint `app-routes-gate.yml`'s own readiness wait uses
+— until it reports `ready:true`, up to `WARMUP_MAX_SECONDS` (default 120s), before posting anything;
+and (b) retries a 404 or 503 route response up to `POST_RETRIES` times (default 3) with 5s/10s/20s
+backoff. 401 and 500 are never retried, and neither is a 200 that fails the JSON/`ok:true` checks —
+the three-check health contract itself is unchanged. A route still answering 404/503 after the retry
+budget is reported as a genuine failure exactly as before (L3 preserved): the fix tells a cold
+instance apart from a dead route by the retry budget's outcome, not by weakening what counts as
+healthy.
+
+**Left open, named, not taken here:** this makes a *cold but otherwise healthy* instance pass once it
+finishes booting. It does not, and cannot, make Replit Autoscale keep an instance warm in the first
+place — that remains an operator concern (`docs/MARKET_LAUNCH_CHECKLIST.md` item 8).

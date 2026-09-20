@@ -54,6 +54,22 @@ name: Scheduled jobs (jobs-cron)
 # non-GitHub cron hitting the workflow_dispatch API, on the pattern the Autoscale in-process-timer
 # note already flags as best-effort) is a separate, unbuilt, recorded decision — see ledger
 # 2026-09-20-jobs-cron-single-schedule and docs/MARKET_LAUNCH_CHECKLIST.md.
+#
+# COLD-START WARM-UP + BOUNDED RETRY (ledger 2026-09-20-jobs-cron-cold-start-retry). A DISPATCHED
+# run landing on a scaled-to-zero Autoscale instance can hit it inside the few-second window between
+# `node dist/index.cjs` starting and `registerRoutes()` mounting `/internal` — run 35486145870
+# (2026-09-20T03:16:42Z) got a plain HTTP 404 from POST /internal/jobs/booking-expiry this way,
+# although the deployed sha demonstrably carried the route. post-internal-jobs.sh now (a) polls
+# `GET $BASE_URL/api/ready` until it reports `ready:true` before posting anything, and (b) retries a
+# 404 or 503 route response (never 401, never 500, never a 200 that fails the health contract) up to
+# a few times with backoff. Both are bounded, so a genuinely dead/misconfigured route still reports
+# red — see the script's own header comment for the full contract and its stated negative space.
+# Env knobs the script reads (left at their defaults below; only set them here to override):
+#   READY_PATH          — the readiness path polled before the first POST (default /api/ready).
+#   WARMUP_MAX_SECONDS   — how long to wait for readiness before failing (default 120).
+#   POST_RETRIES         — how many times a 404/503 route response is retried (default 3).
+# `timeout-minutes` below is sized for the worst case: every step's warm-up poll timing out plus
+# every route in it exhausting its retries.
 
 on:
   schedule:
@@ -77,7 +93,7 @@ jobs:
   post-due-buckets:
     name: Post every cadence bucket due this run
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
