@@ -122,6 +122,10 @@ These are judgment calls the automation deliberately does not make.
    `provider_services` row whose owning user or provider-form contact resolves to the reserved
    `*.traveloure.test` domain) before announcing a launch, and treat any hit as a decision-maker
    data question, not something to delete unilaterally.
+8. **Scheduled MONEY/INTEGRITY jobs are actually running.** GitHub schedule dispatch is best-effort;
+   verify `/internal/jobs/health` shows no stale jobs before launch, or add an external trigger
+   (ledger `2026-09-20-jobs-cron-single-schedule`) — a launch is a bad time to discover a cron never
+   fired.
 
 ## Explicitly NOT per-market
 

@@ -6,10 +6,31 @@ name: Scheduled jobs (jobs-cron)
 # (§15 atomic conditionals / dedupe keys / DB-guarded mints), so a cron pass racing a warm
 # in-process timer no-ops via overlap dedup.
 #
-# ONE JOB PER CADENCE BUCKET (not steps): every cron entry below fires the whole workflow, and each
-# job is gated to its own schedule with `if: github.event.schedule == …`, so a failure in one
-# bucket surfaces on its own and never hides another. Reuses the INTERNAL_JOB_SECRET already
-# configured for occasion-drafts-daily.yml.
+# ONE SCHEDULE, EVERY RUN POSTS EVERY BUCKET THAT IS DUE (ledger 2026-09-20-jobs-cron-single-schedule).
+# This workflow used to declare FIVE cron schedules and gate each bucket with
+# `if: github.event.schedule == '<that cron>'`. GitHub dispatches a multi-schedule workflow's
+# matching schedule LATE and UNEVENLY under load: run 35487463992 (2026-09-20T03:46Z) was fired
+# for the six-hourly cron only — the 15-minute, hourly, four-hourly and daily buckets were ALL
+# `skipped` that run — and production's /internal/jobs/health reported six stale MONEY/INTEGRITY
+# jobs (checkout-sweep, itinerary-generation-sweep, email-outbox, earnings-release,
+# booking-auto-completion, score-neighborhood-claims) although INTERNAL_JOB_SECRET was correct and
+# every endpoint answered 200. The `github.event.schedule` gate was trusting GitHub to fire the
+# RIGHT cron line every time; it doesn't.
+#
+# The fix: ONE `*/15 * * * *` schedule. Every dispatched run computes, from wall-clock UTC, which
+# cadence buckets are DUE and posts all of them in ONE job — so any run that lands, whenever it
+# lands, covers every bucket that should have fired by then. This is deliberately more permissive
+# than "exactly once": the hourly bucket is posted on EVERY run (up to 4x/hour) and the
+# four-/six-hourly/daily buckets are posted at ANY minute within their due hour, not gated to a
+# specific minute — a late or resumed-after-a-gap run still posts what's overdue. OVER-POSTING IS
+# SAFE: `runBackgroundJob` skips an overlapping pass (answers `200 {skipped:true}` — §17 rule 2)
+# and every job here is idempotent by design (§15 atomic conditionals / dedupe keys / DB-guarded
+# mints), so the only cost of a bucket firing more than strictly necessary is one extra HTTP round
+# trip per bucket per 15-minute run.
+#
+# Each bucket is its own STEP (not a separate job) so a failure in one bucket is visible on its own
+# in the run log without blocking any other bucket: every POST step below runs unless the workflow
+# itself was cancelled (`!cancelled()`), regardless of whether an earlier bucket step failed.
 #
 # HEALTH CONTRACT (lane: internal-jobs-hardening, L2): every bucket runs the SAME script,
 # scripts/ci/post-internal-jobs.sh, which passes a route only on HTTP 200 + JSON content-type +
@@ -18,21 +39,29 @@ name: Scheduled jobs (jobs-cron)
 # green forever (§9). Five inline copies of that curl loop is how the check drifts, hence one
 # script.
 #
+# GUARDED (§18d): scripts/check-jobs-cron-roster.cjs pins that this file carries exactly ONE cron
+# schedule and that every server/routes/internal.routes.ts JOB_CADENCE route this workflow is
+# responsible for is posted by some ROUTES line here — run in scheduler-jobs-gate.yml.
+#
 # NOTE: occasion-drafts has its own workflow (occasion-drafts-daily.yml) and is intentionally not
-# duplicated here. Partnerize's report-poll is intentionally NOT included — held for Lane 4's 404
-# triage; only Travelpayouts' poll is wired.
+# duplicated here — its JOB_CADENCE bucket (`occasion-drafts-daily`) is out of this workflow's and
+# the roster guard's scope. Partnerize's report-poll is intentionally NOT included — held for
+# Lane 4's 404 triage; only Travelpayouts' poll is wired.
+#
+# NEGATIVE SPACE, stated because it is the load-bearing half of this fix: this workflow (and its
+# guard) make every DISPATCHED run cover every due bucket — they do not, and cannot, make GitHub
+# Actions dispatch the schedule reliably in the first place. A reliable *external* trigger (e.g. a
+# non-GitHub cron hitting the workflow_dispatch API, on the pattern the Autoscale in-process-timer
+# note already flags as best-effort) is a separate, unbuilt, recorded decision — see ledger
+# 2026-09-20-jobs-cron-single-schedule and docs/MARKET_LAUNCH_CHECKLIST.md.
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # backstops: latency-sensitive 5-min jobs, 15-min cold-instance ceiling
-    - cron: "0 * * * *"      # hourly: MONEY jobs (earnings release, booking auto-completion)
-    - cron: "0 */4 * * *"    # four-hourly: booking expiry
-    - cron: "0 */6 * * *"    # six-hourly: Travelpayouts commission reconcile
-    - cron: "0 9 * * *"      # daily: reconciliation drift detector, availability materialization
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       bucket:
-        description: Cadence bucket to run on manual dispatch
+        description: Cadence bucket to FORCE on manual dispatch (ignores the due-by-clock computation)
         required: true
         default: hourly
         type: choice
@@ -45,66 +74,91 @@ env:
   BASE_URL: https://www.traveloure.com
 
 jobs:
-  backstops:
-    name: 15-min backstops (checkout-sweep, itinerary-generation-sweep, email-outbox)
-    if: github.event.schedule == '*/15 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'backstops')
+  post-due-buckets:
+    name: Post every cadence bucket due this run
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: POST the backstop runners
+
+      - name: Compute due buckets
+        id: due
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_BUCKET: ${{ github.event.inputs.bucket }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "Manual dispatch — forcing bucket: $DISPATCH_BUCKET (every other bucket skipped this run)"
+            for b in backstops hourly four-hourly six-hourly daily; do
+              key="due_${b//-/_}"
+              if [[ "$b" == "$DISPATCH_BUCKET" ]]; then
+                echo "${key}=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "${key}=false" >> "$GITHUB_OUTPUT"
+              fi
+            done
+            exit 0
+          fi
+
+          # Scheduled (or a bucket-less manual) run: compute due-by-wall-clock, UTC.
+          hour="$(date -u +%H)"
+          hour=$((10#$hour))  # force base-10 so a leading zero (e.g. 09) isn't read as octal
+
+          # backstops/hourly: due on EVERY run — see the file header for why over-posting is safe
+          # and why this is deliberately more permissive than "once per cadence".
+          due_backstops=true
+          due_hourly=true
+
+          # four-/six-hourly/daily: due for the WHOLE matching UTC hour, at any minute within it —
+          # never gated to a specific minute, so a late-delivered or resumed-after-a-gap run still
+          # posts what's overdue instead of silently missing its one narrow window.
+          due_four_hourly=false
+          if (( hour % 4 == 0 )); then due_four_hourly=true; fi
+          due_six_hourly=false
+          if (( hour % 6 == 0 )); then due_six_hourly=true; fi
+          due_daily=false
+          if (( hour == 9 )); then due_daily=true; fi
+
+          echo "due_backstops=$due_backstops" >> "$GITHUB_OUTPUT"
+          echo "due_hourly=$due_hourly" >> "$GITHUB_OUTPUT"
+          echo "due_four_hourly=$due_four_hourly" >> "$GITHUB_OUTPUT"
+          echo "due_six_hourly=$due_six_hourly" >> "$GITHUB_OUTPUT"
+          echo "due_daily=$due_daily" >> "$GITHUB_OUTPUT"
+
+          echo "Due this run (UTC hour=$hour): backstops=$due_backstops hourly=$due_hourly four_hourly=$due_four_hourly six_hourly=$due_six_hourly daily=$due_daily"
+
+      - name: POST the backstop runners (checkout-sweep, itinerary-generation-sweep, email-outbox)
+        if: ${{ !cancelled() && steps.due.outputs.due_backstops == 'true' }}
         env:
           INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
           ROUTES: "checkout-sweep itinerary-generation-sweep email-outbox"
         run: ./scripts/ci/post-internal-jobs.sh
 
-  hourly:
-    name: Hourly MONEY + integrity jobs (earnings-release, booking-auto-completion, score-neighborhood-claims)
-    if: github.event.schedule == '0 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'hourly')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - name: POST the hourly money runners
+      - name: POST the hourly MONEY + integrity runners (earnings-release, booking-auto-completion, score-neighborhood-claims)
+        if: ${{ !cancelled() && steps.due.outputs.due_hourly == 'true' }}
         env:
           INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
           ROUTES: "earnings-release booking-auto-completion score-neighborhood-claims"
         run: ./scripts/ci/post-internal-jobs.sh
 
-  four-hourly:
-    name: Four-hourly integrity (booking-expiry)
-    if: github.event.schedule == '0 */4 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'four-hourly')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - name: POST the four-hourly runner
+      - name: POST the four-hourly runner (booking-expiry)
+        if: ${{ !cancelled() && steps.due.outputs.due_four_hourly == 'true' }}
         env:
           INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
           ROUTES: "booking-expiry"
         run: ./scripts/ci/post-internal-jobs.sh
 
-  six-hourly:
-    name: Six-hourly reconcile (travelpayouts-report-poll)
-    if: github.event.schedule == '0 */6 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'six-hourly')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - name: POST the six-hourly runner
+      - name: POST the six-hourly runner (travelpayouts-report-poll)
+        if: ${{ !cancelled() && steps.due.outputs.due_six_hourly == 'true' }}
         env:
           INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
           ROUTES: "travelpayouts-report-poll"
         run: ./scripts/ci/post-internal-jobs.sh
 
-  daily:
-    name: Daily jobs (stripe-reconciliation, availability-materialization)
-    if: github.event.schedule == '0 9 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.bucket == 'daily')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: POST the daily runners
+      - name: POST the daily runners (stripe-reconciliation, availability-materialization)
+        if: ${{ !cancelled() && steps.due.outputs.due_daily == 'true' }}
         env:
           INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
           ROUTES: "stripe-reconciliation availability-materialization"
