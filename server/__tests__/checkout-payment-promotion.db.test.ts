@@ -70,6 +70,12 @@ import {
   PLAN_WORK_GRANT_STATUS,
 } from "../services/plan-work-access.service";
 import { composeOfferingContractSnapshot } from "../services/offering-contract-snapshot";
+// N24/N25 (ledger `2026-09-20-plan-work-grant-concierge-exclusion`): the two named skips read
+// back as DB facts, on the N23 fixture shapes — never a second harness for the same rail.
+import {
+  getPlatformConciergeUserId,
+  invalidatePlatformConciergeCache,
+} from "../services/platform-concierge.service";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -81,6 +87,9 @@ const ids = {
   expert: `promo-${RUN}-expert`,
   planWorkService: `promo-${RUN}-svc-plan`,
   consultService: `promo-${RUN}-svc-consult`,
+  // N24: a REAL `booking_concierge` listing — coordination tier, so `impactClassFor` still reads
+  // it as `plan_work`; the named skip is what stops the WRITE grant, not a reclassification.
+  conciergeService: `promo-${RUN}-svc-concierge`,
 };
 const createdBookingIds: string[] = [];
 const createdItemIds: string[] = [];
@@ -143,6 +152,10 @@ before(async () => {
     INSERT INTO provider_services (id, user_id, service_name, price, delivery_method, expert_offering_type_key)
     VALUES (${ids.consultService}, ${ids.expert}, 'Ask me anything', '40.00', 'call', 'ask_me_anything')
   `);
+  await db.execute(sql`
+    INSERT INTO provider_services (id, user_id, service_name, price, delivery_method, expert_offering_type_key)
+    VALUES (${ids.conciergeService}, ${ids.expert}, 'Booking Concierge fixture', '499.00', 'in_person', 'booking_concierge')
+  `);
 });
 
 after(async () => {
@@ -155,7 +168,7 @@ after(async () => {
   await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${ids.trip}`).catch(() => {});
   await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${ids.trip}`).catch(() => {});
   await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`).catch(() => {});
-  for (const svc of [ids.service, ids.planWorkService, ids.consultService]) {
+  for (const svc of [ids.service, ids.planWorkService, ids.consultService, ids.conciergeService]) {
     await db.execute(sql`DELETE FROM provider_services WHERE id = ${svc}`).catch(() => {});
   }
   await db.execute(sql`DELETE FROM users WHERE id = ${ids.expert}`).catch(() => {});
@@ -710,4 +723,62 @@ test("N23h: the CLAIM-step predicate classifies the live listings the checkout r
   assert.equal(await isPlanWorkListing(ids.consultService), false, "an advisory-tier listing is a consult");
   assert.equal(await isPlanWorkListing(ids.service), false, "a listing naming no catalog key has no class (§13)");
   assert.equal(await isPlanWorkListing(null), false, "no listing, no class");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// N24/N25 — ledger `2026-09-20-plan-work-grant-concierge-exclusion` (LD 51 addendum,
+// decision-maker ruling 2026-09-20). `booking_concierge` is `plan_work` by `impactClassFor` (it
+// sits in the coordination tier), but its plan access is READ, granted by the hand-off/claim rail
+// — never WRITE at checkout; and the platform's own reserved concierge account is never an
+// advisor at all. Both are DB facts read back exactly as N23's are: no advisor row, ever.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("N24: a booking_concierge purchase authorizes but grants NO write access — READ comes from hand-off/claim, not checkout", async () => {
+  await clearAdvisorRows();
+  const bookingId = await makeBooking({
+    paymentIntentId: null,
+    serviceId: ids.conciergeService,
+    providerId: ids.expert,
+    snapshot: fixtureSnapshot("booking_concierge", "in_person"),
+  });
+
+  assert.equal(
+    await stampAuthorization([bookingId], `pi_${RUN}_n24`),
+    true,
+    "the booking still authorizes — a skipped grant is not a failed checkout",
+  );
+  assert.deepEqual(
+    await allAdvisorRows(),
+    [],
+    "DB FACT: no advisor row for the listing owner — the named skip, not a change to impact-class.ts",
+  );
+});
+
+test("N25: a plan-work booking whose provider is the platform concierge account grants no row", async (t) => {
+  invalidatePlatformConciergeCache();
+  const platformUserId = await getPlatformConciergeUserId();
+  if (!platformUserId) {
+    t.skip("migration 313 has not seeded the platform concierge account on this database");
+    return;
+  }
+  await clearAdvisorRows();
+  // Reuses the ORDINARY plan-work listing (not booking_concierge) so this proves the SECOND named
+  // skip independently of the first — the platform account is refused whichever listing it names.
+  const bookingId = await makeBooking({
+    paymentIntentId: null,
+    serviceId: ids.planWorkService,
+    providerId: platformUserId,
+    snapshot: fixtureSnapshot("full_itinerary", "pdf"),
+  });
+
+  assert.equal(await stampAuthorization([bookingId], `pi_${RUN}_n25`), true);
+  const rows = await db.execute(sql`
+    SELECT local_expert_id, status FROM trip_expert_advisors
+    WHERE trip_id = ${ids.trip} AND local_expert_id = ${platformUserId}
+  `);
+  assert.deepEqual(
+    rows.rows,
+    [],
+    "DB FACT: the platform concierge account never becomes an advisor — a pool marker, never a person who agreed to write",
+  );
 });

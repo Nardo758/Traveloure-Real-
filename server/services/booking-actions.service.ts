@@ -14,6 +14,7 @@ import {
   type TripAdvisorRowStatus,
 } from "../utils/trip-advisor-status";
 import { parseActivityTimeToMinutes } from "../utils/itinerary-time";
+import { isPlatformConciergeUserId } from "./platform-concierge.service";
 import {
   EXPERT_REVIEW_EXPERT_SHARE_BAND,
   EXPERT_REVIEW_FLAT_BAND,
@@ -674,6 +675,17 @@ export async function assignExpertAdvisorToRequest(
  * @param tx  Optional drizzle transaction handle, so a caller already inside a transaction
  *            (`confirmLeadAssignmentTx`, the admin lead-confirm handler) writes the row INSIDE its
  *            own transaction rather than opening a second connection alongside it.
+ *
+ * REFUSAL (ledger `2026-09-20-plan-work-grant-concierge-exclusion`, LD 51 addendum): the
+ * platform's own reserved Booking Concierge account (`platform-concierge.service.ts`, migration
+ * 313) is a POOL MARKER, never an advisor — it names no person who agreed to write on anyone's
+ * plan. This is the ONE author, so this is the ONE place that can refuse it for every caller at
+ * once rather than trusting each of the six callers to check first (defense in depth beside the
+ * plan-work grant's own named skip in `plan-work-access.service.ts`). A caller that already
+ * savepoints this call (the plan-work grant, the concierge read grant) logs the failure and moves
+ * on per its own §15b posture; a caller that does not (the admin lead-confirm, the ready-made
+ * concierge-revision grant) surfaces a 500 for an attempt that must never succeed in the first
+ * place — there is no legitimate caller this refusal could break.
  */
 export interface UpsertTripAdvisorRowInput {
   tripId: string;
@@ -695,6 +707,11 @@ export type TripAdvisorRowExecutor =
 export async function upsertTripAdvisorRow(
   input: UpsertTripAdvisorRowInput,
 ): Promise<{ row: any; created: boolean }> {
+  if (await isPlatformConciergeUserId(input.localExpertId)) {
+    throw new Error(
+      "trip_expert_advisors: the platform concierge account is a pool marker, never an advisor (LD 51)",
+    );
+  }
   // The tx handle exposes the same query-builder surface as `db`; the cast keeps the union from
   // splitting the builder's call signatures without changing which connection runs the statement.
   const exec = (input.tx ?? db) as typeof db;
