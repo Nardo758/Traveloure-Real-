@@ -176,14 +176,29 @@ test.describe("Hamburger menu — behavioural tests (375px)", () => {
     await expect(menu).not.toBeVisible();
   });
 
-  test("Test 3 — Close by clicking outside menu area", async ({ page }) => {
-    await page.click('[data-testid="button-mobile-menu"]');
-    const menu = page.locator("nav .xl\\:hidden.border-t").first();
-    await expect(menu).toBeVisible();
-    // Click below the nav (outside menu)
-    await page.mouse.click(187, 600);
-    await expect(menu).not.toBeVisible();
-  });
+  // TEST 3 WAS "Close by clicking outside menu area" AND IS DELETED, NOT SKIPPED (decision-maker
+  // ratified 2026-09-21, ledger `2026-09-21-navbar-outside-click-spec`). It asserted behaviour
+  // that is UNREACHABLE BY CONSTRUCTION at this suite's own viewport, so it could only ever be
+  // flaky-looking noise — and it was: it failed all three in-run retries on PR #1031, a change
+  // that touches neither the navbar nor the home page this suite loads.
+  //
+  // THE GEOMETRY, which is why no coordinate could have fixed it. This describe block sets
+  // 375 × 812. The open panel is `max-h-[calc(100svh-60px)]` (`client/src/components/layout.tsx`)
+  // = 752px, and its content is a flat ~1,979px list (that file's own A7 note), so it always
+  // renders at the full cap. Nav bar ≈60px + panel 752px = 812px — `<nav>` covers the ENTIRE
+  // viewport while the menu is open.
+  //
+  // THE HANDLER, which is why "outside" is the wrong word for any of it. `layout.tsx`'s
+  // `onOutside` closes only when the click target is outside `navRef` — the whole `<nav>` — and
+  // the panel is a CHILD of nav. So neither the panel (y ≥ 60) nor the nav bar strip (y < 60) is
+  // "outside"; that same effect's comment says it outright: "A click INSIDE the panel is not
+  // 'outside'." There is no point on a mobile screen that closes the menu this way.
+  //
+  // COVERAGE IS NOT LOST: Test 2 closes via the X button and Test 4 via Escape, which are the two
+  // gestures the handler actually implements for this panel. A test for a third gesture that does
+  // not exist was asserting a product decision nobody made.
+  //
+  // Deleted rather than `test.skip`ed: a skipped test is a claim that the behaviour is coming.
 
   test("Test 4 — Close by pressing Escape", async ({ page }) => {
     await page.click('[data-testid="button-mobile-menu"]');
