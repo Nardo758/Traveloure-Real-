@@ -2386,6 +2386,18 @@ jobs:
       - name: platform concierge listing price is admin-editable (P1-P5)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/platform-concierge-price.db.test.ts
 
+      # 2026-09-21-membership-writer: Locked Decision 26 reserved `plan_memberships` as written by
+      # "the separate Plus-checkout lane from the Stripe subscription webhook". Until this lane the
+      # table had NO writer in server/ and subscription events fell through the webhook router to
+      # "Unhandled event type" — a Stripe subscription granted nothing. M2 is load-bearing: Stripe
+      # redelivers webhooks routinely, and without migration 316's partial unique index a
+      # redelivery inserts a SECOND row, after which getActiveMembership's "most-recent period
+      # wins" decides an entitlement by a race. M4 pins past_due/unpaid/incomplete -> lapsed (no
+      # grant on an unpaid period) and an unknown status failing SAFE. M6 pins that Trip Pass can
+      # never land in this table — LD 26 keeps it per-trip in trip_entitlements.
+      - name: plan_memberships writer is idempotent and honest (M1-M6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/membership-writer.db.test.ts
+
   one-trip-write-resolver:
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
     runs-on: ubuntu-latest

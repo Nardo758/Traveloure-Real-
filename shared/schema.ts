@@ -9167,6 +9167,24 @@ export const planMemberships = pgTable("plan_memberships", {
 }, (table) => [
   index("plan_memberships_user_idx").on(table.userId),
   index("plan_memberships_user_plan_idx").on(table.userId, table.planKey),
+  // Ledger `2026-09-21-membership-writer`, migration 316. THE IDEMPOTENCY KEY of the ONE
+  // membership writer: Stripe redelivers webhooks, and without a unique constraint a redelivery
+  // would insert a SECOND row for the same subscription, after which `getActiveMembership`'s
+  // "most-recent period wins" would silently pick between duplicates. §15 requires the STATEMENT
+  // to be the guard, so the writer is an `INSERT … ON CONFLICT (stripe_subscription_id) DO
+  // UPDATE` and this index is what makes that conflict target exist.
+  //
+  // PARTIAL (`WHERE stripe_subscription_id IS NOT NULL`) because `source` may be 'manual' or
+  // 'beta' — a hand-granted membership carries no subscription id, and several of those must be
+  // able to coexist. A plain UNIQUE would collapse every non-Stripe grant into one row.
+  //
+  // DECLARED HERE, not only in the migration: an index `shared/schema.ts` does not declare is
+  // DROPPED by the Replit deploy push and never recreated, because the migration is already
+  // stamped (CLAUDE.md's publish-trap rule, and the `sb_idempotency_key_idx` incident it cites).
+  // Same posture as `trip_entitlements`' two partial uniques.
+  uniqueIndex("plan_memberships_stripe_subscription_uniq")
+    .on(table.stripeSubscriptionId)
+    .where(sql`stripe_subscription_id IS NOT NULL`),
 ]);
 export type PlanMembership = typeof planMemberships.$inferSelect;
 
