@@ -1,3 +1,37 @@
+> [!WARNING]
+> **`npm run seed:beta` DOES NOT RUN, and this document is kept as a historical record.**
+>
+> Two independent reasons it cannot execute:
+>
+> 1. **It crashes on import.** `server/seeds/beta-launch-data.ts` uses the CommonJS
+>    `require.main === module` idiom, and this repo is ESM (`"type": "module"` in
+>    `package.json`), so any import of it dies with `ReferenceError: require is not defined in ES
+>    module scope` before a single row is written.
+> 2. **It is gated out of production** by `demoSeedsAllowed()` (ledger
+>    `2026-09-20-cli-demo-seeders-gated`). It mints 16 fictional "experts" on the REAL
+>    `traveloure.com` domain — which `scripts/preview-fictional-vendors.cjs` would not flag
+>    afterwards, since that tool keys on the reserved `*.traveloure.test` domain — plus fabricated
+>    reviews, bookings, and synthetic `pi_…` PaymentIntent ids that permanently pollute the
+>    `payment_provenance_unverified` drift signal.
+>
+> **To seed a dev/QA database instead:**
+>
+> ```bash
+> # 1. boot the app once (non-prod) — twenty seeders in server/index.ts populate the real
+>      catalogs plus the gated Kyoto demo vendors
+> npm run seed:e2e-accounts     # 2. the five *.traveloure.test accounts the E2E harness uses
+> npm run seed:dev-fixtures     # 3. verified seller + expert-owned booking-concierge listing
+> ```
+>
+> CI never used this seeder at all: `.github/actions/ci-db-setup` runs migrations → sessions table
+> → `scripts/seed-ci-test-users.ts`, and the suites build their own fixtures over HTTP.
+>
+> Retiring the files is **deferred**, not decided against — see `FOLLOWUPS.md`. Everything below
+> this line is left exactly as it was written.
+>
+> (Note also that the Quick Start below names an absolute path, `/home/leon/Traveloure-Platform`,
+> from the machine it was written on. That path is not this repository's location.)
+
 # 🚀 Traveloure Beta Seed Data - Execution Guide
 
 ## Quick Start (TL;DR)

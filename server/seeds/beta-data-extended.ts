@@ -10,6 +10,7 @@
  */
 
 import { db } from "../db";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "./lib/demo-seed-gate";
 import {
   users,
   providerServices,
@@ -24,6 +25,19 @@ import {
 
 // Helper to create realistic service offerings
 export async function seedExpertServices(experts: any[]) {
+  // Refusal FIRST, before any DB write (CLAUDE.md §13). This seeder mints 40+ fabricated
+  // provider_services rows for the fictional beta experts.
+  // CLI-only (reached via `npm run seed:beta` / run-beta-seed.ts, never from
+  // server/index.ts), so it sits outside demo-seeders-gated.test.ts's D1
+  // boot-path scan by construction and carries its own refusal as the second
+  // layer — the shape S1/S1b/SCF1 already pin elsewhere. Named as
+  // found-but-not-fixed debt by ledger `2026-09-19-demo-seeders-gated`; closed
+  // by `2026-09-20-cli-demo-seeders-gated`. One predicate, never a second copy
+  // of "what counts as production" (§18 rule 1).
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("beta-data-extended"));
+    return [];
+  }
   console.log("\n💼 Creating Expert Services...");
   
   const services = [

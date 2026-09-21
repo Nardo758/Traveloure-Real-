@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "./lib/demo-seed-gate";
 import {
   users,
   localExpertForms,
@@ -84,6 +85,21 @@ const AVATAR_URLS = [
 ];
 
 export async function seedBetaData() {
+  // Refusal FIRST, before any DB write (CLAUDE.md §13). This seeder mints 16 FICTIONAL
+  // "experts" on the REAL traveloure.com domain plus fabricated travelers,
+  // which scripts/preview-fictional-vendors.cjs (keyed on *.traveloure.test)
+  // would not even flag afterwards.
+  // CLI-only (reached via `npm run seed:beta` / run-beta-seed.ts, never from
+  // server/index.ts), so it sits outside demo-seeders-gated.test.ts's D1
+  // boot-path scan by construction and carries its own refusal as the second
+  // layer — the shape S1/S1b/SCF1 already pin elsewhere. Named as
+  // found-but-not-fixed debt by ledger `2026-09-19-demo-seeders-gated`; closed
+  // by `2026-09-20-cli-demo-seeders-gated`. One predicate, never a second copy
+  // of "what counts as production" (§18 rule 1).
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("beta-launch-data"));
+    return { experts: [], travelers: [], categories: [] };
+  }
   console.log("🚀 Starting Beta Launch Data Seeding...\n");
 
   // ===== 1. CREATE EXPERT USERS =====

@@ -19,8 +19,23 @@ import { db } from "../db";
 import { seedBetaData } from "./beta-launch-data";
 import { seedExpertServices } from "./beta-data-extended";
 import { seedReviewsAndBookings, seedInfluencerContent } from "./beta-reviews-bookings";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "./lib/demo-seed-gate";
 
 async function runBetaSeed() {
+  // Refusal FIRST, before any DB write (CLAUDE.md §13) — the FIRST of the two
+  // layers (§18 placement); each of the three seeder modules below refuses on
+  // its own as the second, so `tsx server/seeds/beta-launch-data.ts` is safe too.
+  // This orchestrator mints 16 fictional experts, fabricated travelers, 40+
+  // services, 70+ reviews, 45 bookings and influencer content: the largest
+  // instance of the class ledger `2026-09-19-demo-seeders-gated` recorded as
+  // found-but-not-fixed debt, closed by `2026-09-20-cli-demo-seeders-gated`.
+  // Same predicate as every other demo seeder (§18 rule 1), same exit-1 shape
+  // as scripts/seed-california-full.ts.
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("run-beta-seed"));
+    process.exit(1);
+  }
+
   console.log("╔════════════════════════════════════════════════════════╗");
   console.log("║   TRAVELOURE BETA LAUNCH - SEED DATA GENERATION       ║");
   console.log("╚════════════════════════════════════════════════════════╝\n");
