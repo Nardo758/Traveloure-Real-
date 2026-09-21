@@ -13,14 +13,17 @@
  *   P4  the writer names WHY it did nothing — never a silent no-op (§13).
  *   P5  a real expert's booking_concierge listing is NOT repriced by it.
  *
- * P5 is the one worth having. The writer is reached from the admin band editor, and a predicate
- * that matched on the offering key alone would reprice every expert's own Booking Concierge
- * listing from a platform panel — taking a seller's price out of their hands.
+ * P5 is the one worth having, and it BUILDS ITS OWN FIXTURE. Its first version looked one up and
+ * returned early when absent, which made it vacuous in CI (CI never runs `seed:dev-fixtures`), so
+ * it passed green while asserting nothing — caught by a read-only audit, not by the suite. A test
+ * that depends on a seeder having been run is green on the author's machine and silent where it
+ * matters.
  *
  * Run: DATABASE_URL=… npx tsx --test server/__tests__/platform-concierge-price.db.test.ts
  */
 import assert from "node:assert/strict";
 import test from "node:test";
+import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import {
@@ -80,21 +83,57 @@ test("P4: a refusal NAMES its reason — never a silent no-op (§13)", async () 
 });
 
 test("P5: an EXPERT's own booking_concierge listing is never repriced from the admin panel", async () => {
-  // A price set by a seller is theirs. The writer's predicate is owner + offering key, so an
-  // expert-owned row with the same offering key must be untouched by a platform band edit.
-  const r = await db.execute(sql`
-    SELECT ps.id, ps.price::text AS p
-      FROM provider_services ps
-     WHERE ps.expert_offering_type_key = 'booking_concierge'
-       AND ps.user_id <> COALESCE(
-             (SELECT setting_value FROM platform_settings
-               WHERE setting_key = 'platform_concierge_user_id'), '')
-     LIMIT 1`);
-  const expert = r.rows?.[0] as any;
-  if (!expert) return; // no expert-owned concierge listing on this database
-  const before = expert.p;
-  await syncPlatformConciergeListingPrice(99);
-  const after = await db.execute(sql`SELECT price::text AS p FROM provider_services WHERE id = ${expert.id}`);
-  assert.equal((after.rows?.[0] as any)?.p, before, "an expert's own price must not move");
-  await syncPlatformConciergeListingPrice(35); // restore the platform row
+  // THIS TEST BUILDS ITS OWN FIXTURE, and that is the point of the rewrite.
+  //
+  // The first version of P5 LOOKED UP an expert-owned booking_concierge listing and returned early
+  // when it found none. That made it VACUOUS exactly where it mattered: CI applies migrations and
+  // seeds `scripts/seed-ci-test-users.ts`, and never runs `npm run seed:dev-fixtures` — so no
+  // expert-owned concierge listing exists there and the assertion never ran. It passed green while
+  // proving nothing, which is the §18d failure class this repo keeps guards honest against, and it
+  // was caught by a read-only audit rather than by the suite itself.
+  //
+  // A test that depends on a seeder having been run is a test that is green on the author's
+  // machine and silent in CI. It now creates the row it needs, asserts, and cleans up — the same
+  // shape `platform-concierge-listing.db.test.ts` uses for its own $150 expert fixture.
+  if ((await listingPrice()) === null) return; // migration 313 genuinely absent — nothing to isolate
+
+  const runId = crypto.randomUUID().slice(0, 8);
+  const expertUserId = crypto.randomUUID();
+  const expertServiceId = crypto.randomUUID();
+  const EXPERT_PRICE = "120.00";
+
+  try {
+    await db.execute(sql`
+      INSERT INTO users (id, email, role)
+      VALUES (${expertUserId}, ${`pcp-${runId}-expert@test.local`}, 'expert')`);
+    await db.execute(sql`
+      INSERT INTO provider_services
+        (id, user_id, service_name, price, status, approval_status, delivery_method,
+         expert_offering_type_key)
+      VALUES
+        (${expertServiceId}, ${expertUserId}, ${`pcp-${runId} expert Booking Concierge`},
+         ${EXPERT_PRICE}, 'active', 'approved', 'in_person', 'booking_concierge')`);
+
+    // The admin moves the PLATFORM price. A writer matching on the offering key alone would take
+    // this seller's price with it.
+    const synced = await syncPlatformConciergeListingPrice(99);
+    assert.equal(synced.updated, true, "the platform listing must still reprice");
+    assert.equal(
+      synced.rowsUpdated,
+      1,
+      "exactly ONE row may move — if this is 2, the writer just repriced a seller's own listing",
+    );
+
+    const after = await db.execute(sql`
+      SELECT price::text AS p FROM provider_services WHERE id = ${expertServiceId}`);
+    assert.equal(
+      (after.rows?.[0] as any)?.p,
+      EXPERT_PRICE,
+      "an expert's own Booking Concierge price is theirs and must not move from the platform panel",
+    );
+  } finally {
+    await db.execute(sql`DELETE FROM provider_services WHERE id = ${expertServiceId}`);
+    await db.execute(sql`DELETE FROM users WHERE id = ${expertUserId}`);
+    await syncPlatformConciergeListingPrice(35); // restore the ruled price
+  }
 });
