@@ -710,3 +710,34 @@ DM Serif Display, per `client/src/index.css`'s `@import` and this dispatch's own
 `client/src`, trim the `<link>` to that set, and verify no page silently depended on an unused one
 (Japanese-locale fallback fonts included, per dispatch §5's stated gap on Japanese-locale text
 metrics).
+
+### FU — retire the `npm run seed:beta` family, once a real testing pass confirms `dev-fixtures` suffices
+
+Deferred deliberately on 2026-09-20 (decision-maker), not decided against. The retirement was
+prepared in full and reverted unlanded; the reasoning for waiting is that the family is **already
+harmless** — `2026-09-20-cli-demo-seeders-gated` gated it, and it independently crashes on import
+(`require.main` in an ESM repo) — so §18c's "no consumer + irreversible effect ⇒ DELETE, don't gate"
+has lost its urgency once the effect can no longer fire. Its replacement,
+`server/seeds/dev-fixtures.seed.ts` (`2026-09-20-dev-fixtures`), landed the same day and **has not
+yet been exercised in a real testing pass**; deleting the predecessor before the replacement has
+been used in anger is the mistake the replacement-first ordering existed to prevent.
+
+The four docs that pointed at `npm run seed:beta` as the way to seed a dev database now carry a
+RETIRED / DOES-NOT-RUN banner naming what to run instead, so the false instruction is gone even
+though the files remain.
+
+**Trigger:** a testing pass that confirms boot seeders + `seed:e2e-accounts` + `seed:dev-fixtures`
+cover what QA and manual browsing need. If it finds a gap, the beta content is the reference for
+what to build next — which is the whole reason it is still on disk.
+
+**Action when triggered:** delete `server/seeds/beta-launch-data.ts`, `beta-data-extended.ts`,
+`beta-reviews-bookings.ts`, `run-beta-seed.ts` and the `seed:beta` script; drop the five beta rows
+from `CLI_ONLY_DEMO_SEEDERS` in `server/__tests__/demo-seeders-gated.test.ts`; and handle the
+citation ripples — `shared/reconciliation-kinds.ts` and `server/jobs/stripeReconciliation.ts` name
+`beta-reviews-bookings.ts` as a live source of `payment_provenance_unverified` and must be amended
+to "file retired, **rows persist**" rather than deleted (deleting the script does not delete the
+rows it already wrote); `server/seeds/phase-4-kyoto-fill.seed.ts` hardcodes a demo-provider id whose
+only creator is `beta-launch-data.ts`; `server/seeds/e2e-test-accounts.seed.ts`'s header says "run
+after `npm run seed:beta`"; and `scripts/verify-selection-controls.ts` cites `beta-data-extended.ts`
+for fixture provenance (that gate uses INLINE copies, so it is unaffected — the note is provenance
+only). The four banners become full retirement notes.

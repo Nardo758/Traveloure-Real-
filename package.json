@@ -36,6 +36,7 @@
     "seed:earn-demo": "tsx server/seeds/earn-demo.seed.ts",
     "seed:landing-hero": "tsx server/seeds/landing-hero-demo.seed.ts",
     "seed:e2e-accounts": "tsx server/seeds/e2e-test-accounts.seed.ts",
+    "seed:dev-fixtures": "tsx server/seeds/dev-fixtures.seed.ts",
     "seed:california": "tsx scripts/seed-california-full.ts",
     "verify:california": "tsx scripts/verify-california.ts",
     "verify:selection-controls": "tsx scripts/verify-selection-controls.ts",

@@ -1,5 +1,7 @@
 /**
- * demo-seeders-gated.test.ts — ledger `2026-09-19-demo-seeders-gated`.
+ * demo-seeders-gated.test.ts — ledger `2026-09-19-demo-seeders-gated`,
+ * `2026-09-20-admin-test-account-not-in-prod`, `2026-09-20-california-demo-seed-gated`,
+ * `2026-09-20-cli-demo-seeders-gated`.
  *
  * `server/seeds/phase-d-kyoto-vendors.seed.ts` inserted nine FICTIONAL businesses
  * (contact fields on the reserved `*.traveloure.test` domain, fabricated phone
@@ -62,6 +64,18 @@
  *           proves its own refusal (the same `if (!demoSeedsAllowed())` second
  *           layer S1/S1b prove for the boot-path seeders) runs before its
  *           first `db.execute` call.
+ *   CLI1-2 — ledger `2026-09-20-cli-demo-seeders-gated`: the CLI-only demo
+ *           seeders under server/seeds/ that `2026-09-19-demo-seeders-gated`
+ *           recorded as found-but-not-fixed debt — phase-4-kyoto-fill (fabricated
+ *           services on a HARDCODED demo-provider id) and the four-file
+ *           `npm run seed:beta` family (16 fictional experts on the REAL
+ *           traveloure.com domain, 40+ services, 70+ reviews, 45 bookings,
+ *           influencer content). They live in `candidateSeedFiles()`'s file set
+ *           but server/index.ts never imports them, so D1 skips them by
+ *           construction; CLI1 pins each one's own refusal ahead of its first
+ *           data-creating call and CLI2 pins that it uses the SHARED predicate
+ *           rather than a second copy — the SCF1 approach (a targeted pin),
+ *           never a widening of D1's scope.
  *
  * STATED NEGATIVE SPACE (§18d):
  *   - The DEMO/FICTIONAL file-set derivation (see `candidateSeedFiles` /
@@ -75,12 +89,21 @@
  *   - D1 only checks modules server/index.ts actually IMPORTS AND CALLS. A
  *     demo/fictional seeder that is never wired into the boot path (e.g. a
  *     manual `tsx server/seeds/<file>.seed.ts` / `npm run seed:*` script) is
- *     out of this test's scope — it was never part of the boot-time defect —
- *     though several of those are recorded, ungated, in the PR/ledger as
- *     found-but-not-fixed debt. `scripts/seed-california-full.ts` was one of
- *     these; it is now closed by its own targeted static pin, SCF1 below,
- *     rather than by widening D1's file set (D1 stays scoped to server/seeds/
- *     and server/seed*.ts, per the bullet above).
+ *     out of this test's scope — it was never part of the boot-time defect.
+ *     `scripts/seed-california-full.ts` was one of these (closed by SCF1), and
+ *     the rest of that recorded debt is closed by CLI1/CLI2 over the
+ *     `CLI_ONLY_DEMO_SEEDERS` table — each by its own targeted static pin,
+ *     never by widening D1's file set (D1 stays scoped to server/seeds/ and
+ *     server/seed*.ts, per the bullet above). THAT TABLE IS HAND-MAINTAINED,
+ *     and that is this test's sharpest limit: a NEW CLI-only demo seeder is
+ *     invisible until somebody adds a row to it. It is hand-maintained on
+ *     purpose — a derivation would have to decide "is this file demo content?"
+ *     for files no boot path reaches, and `phase-4b-kyoto-city-intelligence
+ *     .seed.ts` is the case that shows why a keyword rule would get it wrong:
+ *     it seeds REAL editorial Kyoto city content and is deliberately NOT gated
+ *     (gating it would block market-launch content, §13 in the other
+ *     direction). Adding a seeder here is a human decision; absence from this
+ *     table is unchecked, not exonerated.
  *   - The gating parser (`isCallGated`) recognizes exactly the
  *     `if (demoSeedsAllowed())` shape this lane's fix uses (an exact,
  *     trimmed-condition match, walking outward through any number of
@@ -103,6 +126,32 @@ const INDEX_TS = path.join(SERVER_DIR, "index.ts");
 const PHASE_D_FILE = path.join(SEEDS_DIR, "phase-d-kyoto-vendors.seed.ts");
 const CONTENT_ROUTES_FILE = path.join(SERVER_DIR, "routes", "content.routes.ts");
 const SEED_CALIFORNIA_FULL_FILE = path.join(ROOT, "scripts", "seed-california-full.ts");
+
+/**
+ * CLI-only demo seeders (ledger `2026-09-20-cli-demo-seeders-gated`). Each lives
+ * under server/seeds/ — so it IS in `candidateSeedFiles()`'s file set — but is
+ * never imported by server/index.ts, so D1 (which only checks modules the boot
+ * path imports AND calls) skips it by construction. These are the seeders the
+ * `2026-09-19-demo-seeders-gated` row recorded as found-but-not-fixed debt.
+ * Each entry names the file, the function, and the FIRST DATA-CREATING
+ * expression the refusal must precede (a `db.insert(` for the seeders
+ * themselves; for the run-beta-seed orchestrator it is its first call into a
+ * seeder, which is the write it authorizes) — pinned the way SCF1 pins
+ * scripts/seed-california-full.ts, rather than by widening D1's scope.
+ */
+const CLI_ONLY_DEMO_SEEDERS: ReadonlyArray<{
+  file: string;
+  fn: string;
+  firstWrite: string;
+}> = [
+  { file: "dev-fixtures.seed.ts", fn: "seedDevFixtures", firstWrite: "db.insert(" },
+  { file: "phase-4-kyoto-fill.seed.ts", fn: "seedPhase4KyotoFill", firstWrite: "db.insert(" },
+  { file: "beta-launch-data.ts", fn: "seedBetaData", firstWrite: "db.insert(" },
+  { file: "beta-data-extended.ts", fn: "seedExpertServices", firstWrite: "db.insert(" },
+  { file: "beta-reviews-bookings.ts", fn: "seedReviewsAndBookings", firstWrite: "db.insert(" },
+  { file: "beta-reviews-bookings.ts", fn: "seedInfluencerContent", firstWrite: "db.insert(" },
+  { file: "run-beta-seed.ts", fn: "runBetaSeed", firstWrite: "seedBetaData(" },
+];
 
 // ─── The predicate under test: name pattern OR content pattern (§13 markers) ──
 const NAME_MARKER = /demo|mock|fictional/i;
@@ -589,6 +638,45 @@ test("SCF1: scripts/seed-california-full.ts refuses (demoSeedsAllowed()) before 
     execIndex > guardIndex,
     "the refusal must precede every DB write in run() — a gate placed after a write is not a gate",
   );
+});
+
+// ═══ CLI — manual-only demo seeders, out of D1's scanned scope (§18d) ════════
+test("CLI1: every CLI-only demo seeder refuses (demoSeedsAllowed()) before its first DB write", () => {
+  for (const { file, fn, firstWrite } of CLI_ONLY_DEMO_SEEDERS) {
+    const src = fs.readFileSync(path.join(SEEDS_DIR, file), "utf8");
+    const fnBody = findFunctionBody(src, fn);
+    assert.ok(fnBody, `${file}: ${fn} must still be an async function this parser can find`);
+    const guardIndex = fnBody!.search(/if\s*\(\s*!\s*demoSeedsAllowed\(\)\s*\)/);
+    assert.ok(
+      guardIndex >= 0,
+      `${file}: ${fn} must refuse on its own when demoSeedsAllowed() is false`,
+    );
+    const writeIndex = fnBody!.indexOf(firstWrite);
+    assert.ok(writeIndex > 0, `${file}: expected a ${firstWrite}…) call in ${fn}`);
+    assert.ok(
+      writeIndex > guardIndex,
+      `${file}: the refusal must precede every DB write in ${fn} — a gate placed after a write is not a gate`,
+    );
+  }
+});
+
+test("CLI2: every CLI-only demo seeder imports the SHARED gate, never a second copy of the predicate", () => {
+  const seen = new Set<string>();
+  for (const { file } of CLI_ONLY_DEMO_SEEDERS) {
+    if (seen.has(file)) continue;
+    seen.add(file);
+    const src = fs.readFileSync(path.join(SEEDS_DIR, file), "utf8");
+    assert.match(
+      src,
+      /import\s*\{[^}]*demoSeedsAllowed[^}]*\}\s*from\s*["']\.\/lib\/demo-seed-gate["']/,
+      `${file} must import demoSeedsAllowed from ./lib/demo-seed-gate (§18 rule 1: one implementation of "what counts as production")`,
+    );
+    assert.doesNotMatch(
+      src,
+      /process\.env\.NODE_ENV\s*===\s*["']production["']/,
+      `${file} must not carry its own second copy of the production check beside the shared gate`,
+    );
+  }
 });
 
 // ═══ CR — content.routes.ts's seedDatabase(), out of D1's scanned scope (§18d) ═══

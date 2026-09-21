@@ -18,6 +18,7 @@ import { db } from "../db";
 import { travelPulseHiddenGems, providerServices } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { resolveNeighborhoodCentroid } from "./lib/neighborhood-centroid";
+import { demoSeedsAllowed, demoSeedSkipMessage } from "./lib/demo-seed-gate";
 
 interface GemSeed {
   placeName: string;
@@ -225,6 +226,22 @@ export async function seedPhase4KyotoFill(): Promise<{
   servicesInserted: number;
   servicesSkipped: number;
 }> {
+  // Refusal FIRST, before any DB write (CLAUDE.md §13). This seeder attaches
+  // fabricated services ("Gion Walking Tour with Photographer", …) to a
+  // HARDCODED demo-provider id that exists only in a seeded dev database, so a
+  // production run either violates that FK or orphans fictional listings into
+  // the admin review queue. It is CLI-only (never imported by server/index.ts),
+  // which is why it sits outside demo-seeders-gated.test.ts's D1 boot-path scan
+  // by construction and needs its own refusal — the same second layer S1/SCF1
+  // pin for the boot-path seeders and for scripts/seed-california-full.ts.
+  // Named as found-but-not-fixed debt by ledger `2026-09-19-demo-seeders-gated`;
+  // closed by `2026-09-20-cli-demo-seeders-gated`. One predicate, never a second
+  // copy of "what counts as production" (§18 rule 1).
+  if (!demoSeedsAllowed()) {
+    console.log(demoSeedSkipMessage("phase-4-kyoto-fill"));
+    return { gemsInserted: 0, gemsSkipped: 0, servicesInserted: 0, servicesSkipped: 0 };
+  }
+
   let gemsInserted = 0;
   let gemsSkipped = 0;
   let servicesInserted = 0;
