@@ -29,7 +29,7 @@ The supply side (experts, providers) uses the platform weekly. Sold monthly. Pro
 |---|---|---|---|---|
 | **Plan it yourself** | slip, browse, `Book now`, ready-made trips, guest draft · **pay-per-use access to every AI action below — no membership needed** | free | — | default |
 | **Plan with AI** (pay per use) | optimization run (3 versions around an anchor) · AI Concierge task · available to free users, guests included after sign-in at the paid gate | run **$5.99** (trip/experience; event $19.99) · task **$2.99**, charged at confirm, nothing runs before | `optimization_fees` via `getFee` (see the 2026-08-27 correction above), `concierge:ai_task` | `Optimize this plan`; feed concierge panel; Finalize → Concierge |
-| **Trip Pass** | unlimited runs + AI tasks on one slip · one expert revision · traveler service fee waived on that trip's bookings | **$19 / trip** | `plans:trip_pass` | offered at the second paid AI action on a slip; pricing page |
+| **Trip Pass** | unlimited runs + AI tasks on one slip · ~~one expert revision~~ (**NOT ADVERTISED — see below**) · traveler service fee waived on that trip's bookings | **$19 / trip** | `plans:trip_pass` | offered at the second paid AI action on a slip; pricing page |
 | **Plan with a local** | a named expert takes the slip: review, re-route, endorse, book what needs a human | expert's price (`from $N`), platform commission by band | expert bands below | `Plan with {name}`; Finalize → Travel expert |
 | **Done for you** | event / complex trip coordinated end to end (planner + providers) | quoted; deposit + milestones; full commission | `concierge:done_for_you_deposit_pct` **20%** | Event Planners; Finalize → Booking agent |
 
@@ -138,6 +138,18 @@ Order: 1 → 2 → 5 → 3 → 4.
 - `2026-08-27-concierge-fees` — run $4.99, task $2.99, facilitation 5% cap $40, done-for-you deposit 20%. **Run price amended to $5.99 by `2026-09-02-optimizer-run-price`** (decision-maker ruled; `optimization_fees` migration 076 already priced it there and `/pricing` displayed it — the $4.99 was never applied). Task, facilitation and deposit unchanged.
 - `2026-09-02-memberships-checkout-start` — the memberships checkout lane (Stripe products for Trip Pass, Plus and Pro; subscription webhook writes `plan_memberships`) **starts 2026-10-01**. Plus sales still gate on `PLUS_SALES_ENABLED`; Pro bills from `beta_free_until` (2026-12-31).
 - `2026-08-27-anchor-and-pass` — per-use is the anchor, the pass is the value; the pass is offered at the second paid action with the fee-waiver saving shown; per-use prices are never raised to push the pass.
+- `2026-09-21-trip-pass-revision-claim` — Trip Pass's **one expert revision is no longer advertised**
+  on either traveler-facing surface (the pricing page's checklist and the `TripPassCard` upsell at the
+  paid gate). The INTENT above stands and is not withdrawn: the benefit is still what Trip Pass is meant
+  to include. What changed is that we stopped SELLING it before it exists. Locked Decision 41 (f) records
+  `expert_revision` as having no consumption or charge site anywhere — `consumeRevision` and
+  `coversAction(tripId, "expert_revision")` have zero production callers — and instructs that it not be
+  described as an enforced benefit until its lane lands. The two revision rails that DO exist belong to
+  other products (LD 46 artifact revisions on a service booking; the ready-made purchase's own INCLUDED
+  revision, already inside that listing's price). The allowance is still RECORDED at purchase
+  (`allowances_snapshot.revisionsRemaining`), so a pass sold today is honoured when the lane ships.
+  Re-advertising it is gated by `client/src/lib/__tests__/trip-pass-copy.test.ts`, whose T4 fails the day
+  a real consumption site appears — at which point the copy comes back.
 - `2026-08-27-trip-pass-19` — Trip Pass $19; Plus excludes a Trip Pass; Pro step-down is one band.
 - `2026-08-27-pro-beta-free` — Pro ships visible at $29/mo with `plans.pro_monthly.beta_free_until = 2026-12-31`; price struck through, "free during beta" on every Pro surface; entitlement granted to all approved experts/providers until the date, then to subscribers. One row changes at the date; nothing is built then.
 - `2026-08-27-pricing-nav` — **Corrected 2026-08-26 (build lane ruling):** the right-side utility cluster does not hold `Ways to Earn`, so a `Ways to Earn · Pricing · Sign In` right-cluster placement is not possible as written. Pricing ships as a plain, no-icon **main-nav leaf beside `Ways to Earn`** in `client/src/lib/nav-config.ts`'s `navGroupsConfig`, not a dropdown; same `/pricing` route as the footer link; the nav leaf and the page ship together in the `/pricing` build lane.

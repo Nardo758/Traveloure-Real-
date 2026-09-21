@@ -230,7 +230,19 @@ export default function PricingPage() {
       highlighted: true,
       checklist: [
         "Unlimited AI runs & tasks on that trip",
-        "One revision from a local expert",
+        // "One revision from a local expert" WAS HERE AND IS DELIBERATELY GONE (ledger
+        // `2026-09-21-trip-pass-revision-claim`). Locked Decision 41 (f) records `expert_revision`
+        // as an entitlement with NO consumption or charge site, and instructs: "until that lane
+        // lands, do not describe those two as enforced benefits." It was being described here, on
+        // the sales page of a product that charges TODAY — Trip Pass is not gated by
+        // PLUS_SALES_ENABLED the way Plus is. Nothing can deliver or record it: consumeRevision
+        // and coversAction(tripId, "expert_revision") have ZERO callers outside tests, and the two
+        // revision rails that DO exist are other products (LD 46 artifact revisions on a service
+        // booking; the ready-made purchase's own INCLUDED revision, already inside that listing's
+        // price — crediting it here would bill the same revision twice).
+        // THE ALLOWANCE IS STILL RECORDED, only no longer advertised: trip-pass.routes.ts keeps
+        // writing allowances_snapshot.revisionsRemaining, so a pass sold today is honoured if the
+        // lane lands. Do not re-add this line before it does — trip-pass-copy.test.ts fails if you do.
         "No service fee on that trip's bookings",
         "Usually pays for itself in one booking",
       ],
