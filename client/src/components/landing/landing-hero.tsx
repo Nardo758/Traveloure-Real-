@@ -27,22 +27,13 @@ import { getCityDiscoverHref } from "@/lib/city-discover-route";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
+import type { LandingHeroPayload } from "@shared/landing-hero";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 const HERO_GEM_FALLBACK = "/images/landing/hero-fushimi-inari.jpg";
 const HERO_SERVICE_FALLBACK = "/images/landing/hero-kyoto-temple.jpg";
 export const HERO_EXPERT_FALLBACK = "/images/landing/hero-generic-expert.jpg";
-const HERO_MARKET_FALLBACKS: Record<string, string> = {
-  bogotá: "/images/landing/hero-bogota.jpg",
-  bogota: "/images/landing/hero-bogota.jpg",
-  cartagena: "/images/moments/cartagena-girls-trip.jpg",
-  edinburgh: "/images/moments/edinburgh-golf.jpg",
-  goa: "/images/moments/goa-honeymoon.jpg",
-  jaipur: "/images/moments/jaipur-family.jpg",
-  mumbai: "/images/moments/mumbai-birthday.jpg",
-  porto: "/images/moments/porto-anniversary.jpg",
-};
 
 // Source of truth: docs/design/LANDING_SPEC.md §Typed-search titles (ruled: static
 // curated, market-spread, no UGC). Edit the spec first, then mirror here.
@@ -57,20 +48,7 @@ const TYPED_SEARCH_TITLES = [
   "Bogotá coffee farms in a day",
 ];
 
-interface LandingHeroData {
-  city: string | null;
-  trend: number | null;
-  crowd: string | null;
-  anchorExpert: {
-    name: string;
-    handle: string | null;
-    fromPriceCents: number | null;
-    imageUrl?: string;
-  } | null;
-  gem: { name: string; score: number | null; imageUrl?: string } | null;
-  service: { name: string; priceCents: number | null; imageUrl?: string } | null;
-  wanted: { title: string; neighborhood: string } | null;
-}
+type LandingHeroData = LandingHeroPayload;
 
 function centsToDollarsLabel(cents: number | null): string | null {
   if (cents === null || !Number.isFinite(cents)) return null;
@@ -129,16 +107,29 @@ function HeroTilePhoto({
         aria-hidden="true"
       />
       {(usesFallback || (remoteUrl && isReferencePhoto({ url: remoteUrl }))) && (
-        <ReferencePhotoChip className="left-2.5 top-2.5" testId={referenceTestId} />
+        <ReferencePhotoChip
+          className="left-2.5 top-2.5"
+          testId={referenceTestId}
+          label="Representative photo"
+        />
       )}
     </>
   );
 }
 
 export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
-  const [, navigate] = useLocation();
   const { data: hero } = useQuery<LandingHeroData>({ queryKey: ["/api/landing/hero"] });
+  return <LandingHeroContent hero={hero ?? null} onPlanTrip={onPlanTrip} />;
+}
 
+export function LandingHeroContent({
+  hero,
+  onPlanTrip,
+}: {
+  hero: LandingHeroData | null;
+  onPlanTrip: () => void;
+}) {
+  const [, navigate] = useLocation();
   // Typed search — rotation stops on hover AND the moment the input focuses.
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchHovered, setSearchHovered] = useState(false);
@@ -147,6 +138,13 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
     paused: searchFocused || searchHovered,
   });
   const currentTitle = TYPED_SEARCH_TITLES[titleIndex];
+  const wantedSlots = hero?.wanted ?? [];
+  const [wantedFocused, setWantedFocused] = useState(false);
+  const [wantedHovered, setWantedHovered] = useState(false);
+  const wantedIndex = useRotation(Math.max(wantedSlots.length, 1), {
+    paused: wantedSlots.length <= 1 || wantedFocused || wantedHovered,
+  });
+  const wanted = wantedSlots[wantedIndex] ?? null;
 
   const submitSearch = () => {
     const q = typedValue.trim() || currentTitle;
@@ -159,14 +157,10 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
   const anchor = hero?.anchorExpert ?? null;
   const gem = hero?.gem ?? null;
   const service = hero?.service ?? null;
-  const wanted = hero?.wanted ?? null;
   const anchorFrom = centsToDollarsLabel(anchor?.fromPriceCents ?? null);
   const servicePrice = centsToDollarsLabel(service?.priceCents ?? null);
   const anchorFirstName = anchor?.name?.split(" ")[0] ?? null;
   const marketNames = OPERATING_MARKETS.slice(0, 4);
-  const marketFallback = hero?.city
-    ? HERO_MARKET_FALLBACKS[hero.city.trim().toLowerCase()]
-    : undefined;
 
   const tickerParts = hero?.city
     ? [
@@ -272,7 +266,7 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
           </div>
         </div>
 
-        {/* Right: live ticker + bento. Tiles render ONLY when their leg exists. */}
+        {/* Right: live ticker + stable bento. Missing live legs become honest representative cards. */}
         <div>
           {tickerParts.length > 0 && (
             <div
@@ -289,7 +283,7 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
           )}
 
           <div className="grid grid-cols-2 gap-2.5" data-testid="hero-bento">
-            {anchor && (
+            {(anchor || hero?.city) && (
               <div
                 className="relative row-span-2 flex min-h-[310px] flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white"
                 style={{
@@ -299,7 +293,7 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                 data-testid="hero-tile-anchor"
               >
                 <HeroTilePhoto
-                  remoteUrl={anchor.imageUrl}
+                  remoteUrl={anchor?.imageUrl}
                   fallbackUrl={HERO_EXPERT_FALLBACK}
                   referenceTestId="hero-anchor-reference-photo"
                   overlay="linear-gradient(180deg,rgba(30,58,95,.12) 0%,rgba(13,33,55,.92) 100%)"
@@ -308,12 +302,12 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                   className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
                   style={{ fontFamily: EARN_MONO }}
                 >
-                  Local expert{hero?.city ? ` · ${hero.city}` : ""}
+                  {anchor ? `Local expert${hero?.city ? ` · ${hero.city}` : ""}` : "Representative destination"}
                 </span>
                 <b className="relative z-10 text-[20px] font-semibold leading-tight" style={{ fontFamily: FRAUNCES }}>
-                  {anchor.name}
+                  {anchor?.name ?? hero?.city}
                 </b>
-                {anchorFrom &&
+                {anchor && anchorFrom &&
                   (anchor.handle ? (
                     <Link
                       href={`/s/${anchor.handle}`}
@@ -331,10 +325,19 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                       Plan with {anchorFirstName} · from {anchorFrom}
                     </span>
                   ))}
+                {!anchor && hero?.city && (
+                  <Link
+                    href={getCityDiscoverHref(hero.city)}
+                    className="relative z-10 mt-2 inline-block self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 py-1.5 text-[12px] font-semibold text-white"
+                    data-testid="hero-anchor-browse"
+                  >
+                    Browse {hero.city}
+                  </Link>
+                )}
               </div>
             )}
 
-            {gem && (
+            {(gem || hero?.city) && (
               <div
                 className="relative flex min-h-[150px] flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white"
                 style={{
@@ -344,11 +347,11 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                 data-testid="hero-tile-gem"
               >
                 <HeroTilePhoto
-                  remoteUrl={gem.imageUrl}
-                  fallbackUrl={hero?.city?.toLowerCase() === "kyoto" ? HERO_GEM_FALLBACK : marketFallback}
+                  remoteUrl={gem?.imageUrl}
+                  fallbackUrl={HERO_GEM_FALLBACK}
                   referenceTestId="hero-gem-reference-photo"
                 />
-                {gem.score !== null && (
+                {gem?.score !== null && gem?.score !== undefined && (
                   <span
                     className="absolute z-10 right-2.5 top-2.5 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
                     style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}
@@ -360,15 +363,15 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                   className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
                   style={{ fontFamily: EARN_MONO }}
                 >
-                  Hidden gem
+                  {gem ? "Hidden gem" : "Representative destination"}
                 </span>
                 <b className="relative z-10 text-[14px] leading-tight" style={{ textShadow: "0 1px 8px rgba(0,0,0,.35)" }}>
-                  {gem.name}
+                  {gem?.name ?? hero?.city}
                 </b>
               </div>
             )}
 
-            {service && (
+            {(service || hero?.city) && (
               <div
                 className="relative flex min-h-[150px] flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white"
                 style={{
@@ -378,11 +381,11 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                 data-testid="hero-tile-service"
               >
                 <HeroTilePhoto
-                  remoteUrl={service.imageUrl}
-                  fallbackUrl={hero?.city?.toLowerCase() === "kyoto" ? HERO_SERVICE_FALLBACK : marketFallback}
+                  remoteUrl={service?.imageUrl}
+                  fallbackUrl={HERO_SERVICE_FALLBACK}
                   referenceTestId="hero-service-reference-photo"
                 />
-                {servicePrice && (
+                {service && servicePrice && (
                   <span
                     className="absolute z-10 right-2.5 top-2.5 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
                     style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}
@@ -394,10 +397,10 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                   className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
                   style={{ fontFamily: EARN_MONO }}
                 >
-                  Book on Traveloure
+                  {service ? "Book on Traveloure" : "Representative destination"}
                 </span>
                 <b className="relative z-10 text-[14px] leading-tight" style={{ textShadow: "0 1px 8px rgba(0,0,0,.35)" }}>
-                  {service.name}
+                  {service?.name ?? `Ways to explore ${hero?.city ?? ""}`}
                 </b>
               </div>
             )}
@@ -411,13 +414,17 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                   color: "var(--earn-ink)",
                 }}
                 data-testid="hero-tile-wanted"
+                onMouseEnter={() => setWantedHovered(true)}
+                onMouseLeave={() => setWantedHovered(false)}
+                onFocusCapture={() => setWantedFocused(true)}
+                onBlurCapture={() => setWantedFocused(false)}
               >
                 <span className="flex flex-col">
                   <span
                     className="text-[9px] font-medium uppercase tracking-[0.1em]"
                     style={{ fontFamily: EARN_MONO, color: "var(--earn-gold-ink, #8A6D1D)" }}
                   >
-                    Wanted in {wanted.neighborhood}
+                    Wanted in {wanted.city}
                   </span>
                   <b className="text-[13px]">{wanted.title}</b>
                 </span>
@@ -431,7 +438,7 @@ export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
                   }}
                   data-testid="hero-wanted-cta"
                 >
-                  Offer this
+                  Ways to earn
                 </Link>
               </div>
             )}

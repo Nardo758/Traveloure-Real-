@@ -1897,7 +1897,10 @@ export default function DiscoverLocationPage() {
   const uncoveredOfferings = (expertOfferingTypes ?? []).filter(
     (o) => !coveredOfferingIds.has(o.offering_type_key)
   );
-  // Fall back to the full list when slot data hasn't loaded yet (both arrays empty)
+  // Decorative discover slots retain their historical full-list fallback when both arrays are
+  // empty. This deliberately differs from the landing hero: that route can distinguish a gather
+  // that ran from unknown coverage and suppresses "Wanted" when coverage is unknown. Do not copy
+  // this fallback into server/services/landing-hero.compose.ts.
   const recruitmentPool = uncoveredOfferings.length > 0 ? uncoveredOfferings : (expertOfferingTypes ?? []);
 
   // Build raw wanted-slot data (no demand counts yet)

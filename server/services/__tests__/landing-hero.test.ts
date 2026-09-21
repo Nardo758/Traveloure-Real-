@@ -2,19 +2,19 @@
  * landing-hero.test.ts — pure unit proofs for the landing hero composers
  * (landing-build lane Phase 1; run: npx tsx --test server/services/__tests__/landing-hero.test.ts).
  *
- * The contract under test (docs/design/LANDING_SPEC.md): every leg is nullable and the
- * hero COLLAPSES HONESTLY — absent data yields null, never a fabricated name, price,
- * score or recruitment line. The wanted derivation MIRRORS discover-location.tsx:1881-1906
- * (uncovered pool, full-list fallback, slot 0) — these tests pin that mirror.
+ * The contract under test: live legs remain nullable, while the client may render clearly
+ * representative cards for absent inventory. Wanted needs are city-scoped and render only
+ * when coverage is known; unknown coverage never becomes a demand claim.
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   composeLandingHero,
-  deriveWantedSlot,
+  deriveWantedSlots,
   dollarsToCents,
   pickAnchorExpert,
 } from "../landing-hero.compose";
+import { resolveLandingHeroWanted } from "../landing-hero-wanted.service";
 
 describe("dollarsToCents", () => {
   test("decimal-dollars string converts to integer cents", () => {
@@ -49,27 +49,68 @@ describe("pickAnchorExpert", () => {
   });
 });
 
-describe("deriveWantedSlot (mirror of discover-location.tsx:1881)", () => {
+describe("deriveWantedSlots — city-scoped, known coverage only", () => {
   const types = [
     { offering_type_key: "kaiseki_host", display_name: "Evening kaiseki host" },
     { offering_type_key: "tea_guide", display_name: "Tea-district guide" },
   ];
-  test("uncovered offering pairs with the first neighborhood", () => {
-    const slot = deriveWantedSlot([{ name: "Gion" }], new Set(["tea_guide"]), types);
-    assert.deepEqual(slot, { title: "Evening kaiseki host", neighborhood: "Gion" });
+  test("unknown coverage omits the strip rather than turning uncertainty into Wanted", () => {
+    assert.equal(deriveWantedSlots("Kyoto", null, types), null);
   });
-  test("empty covered set falls back to the FULL list (the client's slot-data-not-loaded rule)", () => {
-    const slot = deriveWantedSlot([{ name: "Gion" }], new Set(), types);
-    assert.deepEqual(slot, { title: "Evening kaiseki host", neighborhood: "Gion" });
+  test("known empty coverage returns every real offering at city level", () => {
+    assert.deepEqual(deriveWantedSlots("Kyoto", new Set(), types), [
+      { title: "Evening kaiseki host", city: "Kyoto" },
+      { title: "Tea-district guide", city: "Kyoto" },
+    ]);
   });
-  test("everything covered also falls back to the full list — same as the client", () => {
-    const slot = deriveWantedSlot([{ name: "Gion" }], new Set(["kaiseki_host", "tea_guide"]), types);
-    assert.deepEqual(slot, { title: "Evening kaiseki host", neighborhood: "Gion" });
+  test("known partial coverage returns only uncovered real offerings", () => {
+    assert.deepEqual(deriveWantedSlots("Kyoto", new Set(["tea_guide"]), types), [
+      { title: "Evening kaiseki host", city: "Kyoto" },
+    ]);
   });
-  test("no neighborhoods or no offering types → null, never an invented line", () => {
-    assert.equal(deriveWantedSlot([], new Set(), types), null);
-    assert.equal(deriveWantedSlot([{ name: "Gion" }], new Set(), []), null);
-    assert.equal(deriveWantedSlot([{ name: "  " }], new Set(), types), null);
+  test("known full coverage and missing inputs return an empty list, never invented demand", () => {
+    assert.deepEqual(deriveWantedSlots("Kyoto", new Set(["kaiseki_host", "tea_guide"]), types), []);
+    assert.deepEqual(deriveWantedSlots("Kyoto", new Set(), []), []);
+    assert.deepEqual(deriveWantedSlots("  ", new Set(), types), []);
+  });
+});
+
+describe("resolveLandingHeroWanted — route coverage boundary", () => {
+  const types = [
+    { offering_type_key: "photo", display_name: "Event photographer" },
+    { offering_type_key: "guide", display_name: "Local guide" },
+  ];
+
+  test("a swallowed-query-style failure remains unknown and omits Wanted", async () => {
+    let received: Record<string, unknown> | null = null;
+    const wanted = await resolveLandingHeroWanted("Goa", types, async (opts) => {
+      received = opts;
+      throw new Error("coverage unavailable");
+    });
+    assert.equal(wanted, null);
+    assert.deepEqual(received, {
+      marketCity: "goa",
+      includePackages: true,
+      throwOnError: true,
+    });
+  });
+
+  test("an offering-catalog lookup failure remains unknown and skips coverage gathering", async () => {
+    let gathered = false;
+    const wanted = await resolveLandingHeroWanted("Goa", null, async () => {
+      gathered = true;
+      return [];
+    });
+    assert.equal(wanted, null);
+    assert.equal(gathered, false);
+  });
+
+  test("coverage is gathered at city scope with no neighborhood restriction", async () => {
+    const wanted = await resolveLandingHeroWanted("Goa", types, async (opts) => {
+      assert.ok(!("neighborhoodIds" in opts));
+      return [{ offeringId: "guide" }];
+    });
+    assert.deepEqual(wanted, [{ title: "Event photographer", city: "Goa" }]);
   });
 });
 
@@ -143,15 +184,15 @@ describe("composeLandingHero — honest collapse", () => {
     });
     assert.deepEqual(q.service, { name: "Custom quote tour", priceCents: null });
   });
-  test("anchor and wanted pass through untouched — no default names, no default prices", () => {
+  test("anchor and wanted list pass through untouched — no default names, prices, or neighborhoods", () => {
     const p = composeLandingHero({
       topCity: { cityName: "Kyoto", trendingScore: 92, crowdLevel: "high" },
       anchorExpert: { name: "Yuki Flowers", handle: "yuki-flowers", fromPriceCents: 24900 },
       gems: [], services: [],
-      wanted: { title: "Evening kaiseki host", neighborhood: "Gion" },
+      wanted: [{ title: "Evening kaiseki host", city: "Kyoto" }],
     });
     assert.equal(p.trend, 92);
     assert.deepEqual(p.anchorExpert, { name: "Yuki Flowers", handle: "yuki-flowers", fromPriceCents: 24900 });
-    assert.deepEqual(p.wanted, { title: "Evening kaiseki host", neighborhood: "Gion" });
+    assert.deepEqual(p.wanted, [{ title: "Evening kaiseki host", city: "Kyoto" }]);
   });
 });

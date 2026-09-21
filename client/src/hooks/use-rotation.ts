@@ -12,6 +12,20 @@
  */
 import { useEffect, useState } from "react";
 
+export const ROTATION_INTERVAL_MS = 8000;
+
+export function shouldAdvanceRotation(
+  count: number,
+  paused: boolean,
+  reducedMotion: boolean,
+): boolean {
+  return count > 1 && !paused && !reducedMotion;
+}
+
+export function nextRotationIndex(index: number, count: number): number {
+  return count > 0 ? (index + 1) % count : 0;
+}
+
 export function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState<boolean>(() =>
     typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -32,15 +46,15 @@ export function useRotation(
   count: number,
   opts?: { intervalMs?: number; paused?: boolean },
 ): number {
-  const intervalMs = opts?.intervalMs ?? 8000;
+  const intervalMs = opts?.intervalMs ?? ROTATION_INTERVAL_MS;
   const paused = opts?.paused ?? false;
   const reducedMotion = usePrefersReducedMotion();
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
-    if (reducedMotion || paused || count <= 1) return;
+    if (!shouldAdvanceRotation(count, paused, reducedMotion)) return;
     const id = window.setInterval(() => {
-      setIndex((i) => (i + 1) % count);
+      setIndex((i) => nextRotationIndex(i, count));
     }, intervalMs);
     return () => window.clearInterval(id);
   }, [count, intervalMs, paused, reducedMotion]);

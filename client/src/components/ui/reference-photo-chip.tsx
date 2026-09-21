@@ -18,9 +18,11 @@ const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 export function ReferencePhotoChip({
   className,
   testId,
+  label = "reference photo",
 }: {
   className?: string;
   testId?: string;
+  label?: string;
 }) {
   return (
     <span
@@ -33,7 +35,7 @@ export function ReferencePhotoChip({
       title="Stock reference image — replaced when a local's own photo is added"
       data-testid={testId}
     >
-      reference photo
+      {label}
     </span>
   );
 }
