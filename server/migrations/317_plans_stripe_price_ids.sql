@@ -1,0 +1,32 @@
+-- 317 — the Stripe Price ids the memberships checkout rail needs
+-- (ledger `2026-09-21-plan-stripe-price-ids`).
+--
+-- `plans` carried `price_cents` but nothing Stripe could subscribe a member to. A Stripe
+-- Checkout Session in `mode: 'subscription'` takes a PRICE ID, not an amount, so increment 1's
+-- ledger row recorded this as the concrete blocker on the checkout rail. This removes it.
+--
+-- TWO COLUMNS, ONE PER STRIPE MODE, and that is the point rather than an accident. A `price_…` id
+-- created in test mode does not exist in live mode and vice versa. With a single column, a
+-- database restored from production into dev would carry a LIVE price id that the dev `sk_test_`
+-- key cannot use — and the reverse in the other direction. Two columns let ONE row serve both
+-- environments, and make "which mode is this id for?" a fact rather than an assumption about
+-- which database you are looking at.
+--
+-- ADDITIVE, NULLABLE, NO DEFAULT, NO CHECK, NO BACKFILL — the publish-trap posture (migrations
+-- 181/195/273/275/276/277/279/…/315). The value set is app-enforced: the resolver in
+-- `server/services/plan-stripe-price.service.ts` picks by the ACTIVE key's mode and REFUSES when
+-- that mode's column is NULL. It never falls back to the other mode's id, because a plan that
+-- cannot be subscribed to in this environment must say so (§13) — a cross-mode id would at best
+-- be rejected by Stripe and at worst mask a misconfiguration.
+--
+-- `price_cents` is UNCHANGED and is not superseded: it is the DISPLAYED amount `/pricing` renders,
+-- it exists for `trip_pass` too (charged by PaymentIntent, not a subscription), and it is not a
+-- fee or a rate, so §8 is untouched.
+--
+-- DECLARED in `shared/schema.ts` in the same commit (deploy-push durability rule). Column-only,
+-- so `preflight-prod-constraints.cjs` needs no manifest entry; per §20's amendment a
+-- column-adding migration is the ONE case where the publish may legitimately offer
+-- `ADD COLUMN IF NOT EXISTS` SQL matching this file.
+
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS stripe_price_id_test varchar(255);
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS stripe_price_id_live varchar(255);

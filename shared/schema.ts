@@ -9117,6 +9117,23 @@ export const plans = pgTable("plans", {
   name: text("name").notNull(),
   priceCents: integer("price_cents").notNull(),
   interval: varchar("interval", { length: 20 }).notNull(),
+  // Ledger `2026-09-21-plan-stripe-price-ids`, migration 317. The Stripe Price the checkout rail
+  // subscribes a member to. TWO columns, one per Stripe MODE, because a price id is mode-scoped:
+  // a `price_…` created in test mode does not exist in live mode and vice versa. One column would
+  // mean a database restored from production into dev carries a LIVE price id that the dev
+  // (sk_test_) key cannot use — and the reverse in the other direction.
+  //
+  // `price_cents` above stays the DISPLAYED amount and is NOT replaced: it is what `/pricing`
+  // renders, it exists for all three plans including `trip_pass` (which is charged by
+  // PaymentIntent, not by a subscription), and nothing here is a fee or a rate (§8 untouched).
+  // Stripe remains the authority on what is actually charged for a subscription.
+  //
+  // Additive, NULLABLE, NO DEFAULT and NO CHECK (the publish-trap posture — migrations
+  // 181/195/…/315). NULL = NO PRICE CONFIGURED FOR THAT MODE, which the resolver reports by name
+  // and never papers over: a plan that cannot be subscribed to must say so rather than fall back
+  // to the other mode's id (§13).
+  stripePriceIdTest: varchar("stripe_price_id_test", { length: 255 }),
+  stripePriceIdLive: varchar("stripe_price_id_live", { length: 255 }),
   allowances: jsonb("allowances").notNull().default({}),
   active: boolean("active").notNull().default(true),
   effectiveFrom: date("effective_from").notNull(),

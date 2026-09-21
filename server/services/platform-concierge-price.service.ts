@@ -51,6 +51,11 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { getPlatformConciergeUserId } from "./platform-concierge.service";
+// K6 (`offering-activation-gate.test.ts`): the `booking_concierge` literal has exactly ONE home
+// under server/ — this constant. A second spelling is a second decision about which listings are
+// concierge listings, which is how the fee resolver and a writer start disagreeing about the same
+// row (§18 rule 1). This lane originally inlined the string and broke that gate.
+import { CONCIERGE_BOOKING_CONCERN } from "./commission";
 
 /** The band whose admin edit repoints the platform listing's price. */
 export const PLATFORM_CONCIERGE_PRICE_BAND_KEY = "platform_concierge_booking_listing_price";
@@ -96,7 +101,7 @@ export async function syncPlatformConciergeListingPrice(
     UPDATE provider_services
        SET price = ${priceUsd.toFixed(2)}, updated_at = NOW()
      WHERE user_id = ${platformUserId}
-       AND expert_offering_type_key = 'booking_concierge'
+       AND expert_offering_type_key = ${CONCIERGE_BOOKING_CONCERN}
   `);
 
   const rowsUpdated = result.rowCount ?? 0;
