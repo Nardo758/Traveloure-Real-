@@ -153,6 +153,17 @@ jobs:
       - name: Tavily pricing/wiring source pin
         run: npx tsx --test server/__tests__/api-usage-tavily-pricing.test.ts
 
+      # 2026-09-21-tavily-spend-breaker: R-T1-c's $150/month ceiling is now ENFORCED, not merely
+      # observable. ONE predicate (server/services/spend-guard.service.ts — no db import, injected
+      # reads, provable with no database) called from the ONE Tavily chokepoint. Pins: at/over the
+      # cap refuses and the SDK is never reached; a refusal writes NO api_usage_logs row (the meter
+      # this guard reads IS that table, so a logged refusal would ratchet the breaker shut on its
+      # own output — the load-bearing assertion); the refusal is a TYPED error so a caller can tell
+      # it from a failed call; an ABSENT cap is never read as a cap of $0; an UNREADABLE meter is
+      # never read as a spend of $0 and fails OPEN by ruling. Pure — injected meter/SDK/logger.
+      - name: Tavily spend breaker pin
+        run: npx tsx --test server/__tests__/spend-guard.test.ts
+
 
       # ── tsc baseline ratchet ──────────────────────────────────────────────────
       # The repo is NOT tsc-clean, so the gate is a CEILING, not zero. THE NUMBER

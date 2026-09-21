@@ -741,3 +741,30 @@ only creator is `beta-launch-data.ts`; `server/seeds/e2e-test-accounts.seed.ts`'
 after `npm run seed:beta`"; and `scripts/verify-selection-controls.ts` cites `beta-data-extended.ts`
 for fixture provenance (that gate uses INLINE copies, so it is unaffected — the note is provenance
 only). The four banners become full retirement notes.
+
+### FU — AI spend is under-counted, so no AI cost ceiling can honestly be enforced yet
+
+Found while building the Tavily breaker (ledger `2026-09-21-tavily-spend-breaker`). The lane was
+framed as enforcing "`TAVILY_MONTHLY_CAP_USD` and the AI budget, both unenforced numbers". The
+Tavily half is done. The AI half is **not a missing number — it is a missing meter**:
+
+- **No AI ceiling constant exists anywhere.** Setting one is the same decision-maker-only class as
+  R-T1-c's $150.
+- **20 files construct an `Anthropic` client and 12 of them log nothing.** `ai_cost_tracking`
+  therefore captures a minority of calls, and the AI meter is *known to read low*.
+
+A ceiling enforced against an under-counting meter would refuse work while reporting a spend figure
+that is false — a §13 falsehood with money attached, and worse than having no cap at all. So the
+breaker mechanism (`server/services/spend-guard.service.ts`) is deliberately wired to Tavily only.
+
+**Prerequisite, and it is the Tavily-shaped lane one provider over:** `2026-09-18-tavily-spend-logged`
+routed four Tavily call sites through ONE client that logs every call. Do the same for Anthropic —
+one client module every construction site uses, logging every call to `ai_cost_tracking` through the
+existing `trackAnthropicResponse`. Locked Decision 44 (f) already names that table as load-bearing
+for the copilot lane, which will multiply call volume through it.
+
+**Only then** is an AI ceiling worth setting, and at that point it is one more caller of the existing
+`resolveSpendAuthorization` — no new predicate (§18 rule 1).
+
+**Action:** consolidate the Anthropic clients first (its own lane); then the decision-maker sets the
+number; then wire it to the existing guard.
