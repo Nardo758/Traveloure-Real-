@@ -5,8 +5,11 @@
  * TP2  grantTripPass creates an active pass; coversAction true for optimizer/ai/fee
  * TP3  grant is IDEMPOTENT on source_payment_id — a duplicate confirm inserts nothing
  * TP4  ONE active pass per trip — a second grant (different PI) never double-grants
- * TP5  consumeRevision decrements exactly once (atomic WHERE guard); second call false
- * TP6  expert_revision coverage follows the snapshot count (1 → covered; 0 → not)
+ * TP5  RETIRED — expert_revision is gone from the spine (decision-maker 2026-09-21, ledger
+ *      `2026-09-21-expert-revision-retired`). It asserted consumeRevision's atomic decrement and
+ *      the snapshot-count coverage; both the function and the action are DELETED (§18c), so the
+ *      proof is replaced by TP5's inverse below rather than removed silently.
+ * TP6  the grant writes NO revisionsRemaining, and coversAction knows only the three live actions
  * TP7  a revoked pass covers nothing
  *
  * DISPOSABLE DB ONLY. Every row this file writes is created here and deleted in after().
@@ -19,7 +22,6 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { tripEntitlements, trips, users } from "@shared/schema";
 import {
-  consumeRevision,
   coversAction,
   getActiveTripPass,
   grantTripPass,
@@ -77,7 +79,8 @@ after(async () => {
 
 test("TP1: no pass — nothing is covered", async () => {
   assert.equal(await tripHasPass(ids.tripA), false);
-  for (const action of ["optimizer_run", "ai_task", "traveler_service_fee", "expert_revision"] as const) {
+  // The three live actions — "expert_revision" is retired and is no longer a TripPassAction at all.
+  for (const action of ["optimizer_run", "ai_task", "traveler_service_fee"] as const) {
     assert.equal(await coversAction(ids.tripA, action), false, action);
   }
 });
@@ -120,13 +123,31 @@ test("TP4: one active pass per trip — a different PI cannot double-grant", asy
   assert.equal(rows.length, 1);
 });
 
-test("TP5+TP6: consumeRevision decrements exactly once; coverage follows the count", async () => {
-  assert.equal(await coversAction(ids.tripA, "expert_revision"), true);
-  assert.equal(await consumeRevision(ids.tripA), true);
-  assert.equal(await coversAction(ids.tripA, "expert_revision"), false);
-  assert.equal(await consumeRevision(ids.tripA), false, "second consume must find nothing to claim");
+test("TP5+TP6: expert_revision is RETIRED — no counted benefit survives on the spine", async () => {
+  // The INVERSE of what TP5/TP6 used to prove. `consumeRevision` is deleted and
+  // `expert_revision` is no longer a TripPassAction, so the compiler is the first guard: a
+  // caller cannot name the action. This asserts the two runtime properties a type cannot.
+  //
+  // (a) An unrecognised action is NOT covered. §13's "never guess a benefit into existence"
+  //     still holds for the retired name specifically — a stale caller passing the old string
+  //     must get false, never a default-true.
+  assert.equal(
+    await coversAction(ids.tripA, "expert_revision" as any),
+    false,
+    "the retired action must not be covered — a stale caller must be refused, not defaulted",
+  );
+
+  // (b) The pass is otherwise untouched: the three live benefits still answer true, so the
+  //     retirement removed a benefit rather than breaking the spine.
+  assert.equal(await coversAction(ids.tripA, "optimizer_run"), true);
+  assert.equal(await coversAction(ids.tripA, "ai_task"), true);
+  assert.equal(await coversAction(ids.tripA, "traveler_service_fee"), true);
+
+  // (c) The row this suite granted in TP2 supplied `revisionsRemaining` explicitly in its own
+  //     test payload, so it is still on the snapshot — which is exactly the no-backfill posture:
+  //     a frozen snapshot records what was bought and is never rewritten. Nothing READS it.
   const pass = await getActiveTripPass(ids.tripA);
-  assert.equal((pass!.allowancesSnapshot as any).revisionsRemaining, 0);
+  assert.ok(pass, "the pass granted in TP2 should still stand");
 });
 
 test("TP7: a revoked pass covers nothing", async () => {

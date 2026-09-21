@@ -29,7 +29,7 @@ The supply side (experts, providers) uses the platform weekly. Sold monthly. Pro
 |---|---|---|---|---|
 | **Plan it yourself** | slip, browse, `Book now`, ready-made trips, guest draft · **pay-per-use access to every AI action below — no membership needed** | free | — | default |
 | **Plan with AI** (pay per use) | optimization run (3 versions around an anchor) · AI Concierge task · available to free users, guests included after sign-in at the paid gate | run **$5.99** (trip/experience; event $19.99) · task **$2.99**, charged at confirm, nothing runs before | `optimization_fees` via `getFee` (see the 2026-08-27 correction above), `concierge:ai_task` | `Optimize this plan`; feed concierge panel; Finalize → Concierge |
-| **Trip Pass** | unlimited runs + AI tasks on one slip · ~~one expert revision~~ (**NOT ADVERTISED — see below**) · traveler service fee waived on that trip's bookings | **$19 / trip** | `plans:trip_pass` | offered at the second paid AI action on a slip; pricing page |
+| **Trip Pass** | unlimited runs + AI tasks on one slip · ~~one expert revision~~ (**RETIRED — see below**) · traveler service fee waived on that trip's bookings | **$19 / trip** | `plans:trip_pass` | offered at the second paid AI action on a slip; pricing page |
 | **Plan with a local** | a named expert takes the slip: review, re-route, endorse, book what needs a human | expert's price (`from $N`), platform commission by band | expert bands below | `Plan with {name}`; Finalize → Travel expert |
 | **Done for you** | event / complex trip coordinated end to end (planner + providers) | quoted; deposit + milestones; full commission | `concierge:done_for_you_deposit_pct` **20%** | Event Planners; Finalize → Booking agent |
 
@@ -138,6 +138,18 @@ Order: 1 → 2 → 5 → 3 → 4.
 - `2026-08-27-concierge-fees` — run $4.99, task $2.99, facilitation 5% cap $40, done-for-you deposit 20%. **Run price amended to $5.99 by `2026-09-02-optimizer-run-price`** (decision-maker ruled; `optimization_fees` migration 076 already priced it there and `/pricing` displayed it — the $4.99 was never applied). Task, facilitation and deposit unchanged.
 - `2026-09-02-memberships-checkout-start` — the memberships checkout lane (Stripe products for Trip Pass, Plus and Pro; subscription webhook writes `plan_memberships`) **starts 2026-10-01**. Plus sales still gate on `PLUS_SALES_ENABLED`; Pro bills from `beta_free_until` (2026-12-31).
 - `2026-08-27-anchor-and-pass` — per-use is the anchor, the pass is the value; the pass is offered at the second paid action with the fee-waiver saving shown; per-use prices are never raised to push the pass.
+- `2026-09-21-expert-revision-retired` — **the Trip Pass "one expert revision" is RETIRED, and
+  the intent above is now WITHDRAWN rather than merely unadvertised.** The previous row (below)
+  stopped selling it; this one removes it. The reason is that the expert-revision PRODUCT was never
+  missing: Ruling 11 makes a `plan_work` listing purchase grant the SELLING EXPERT `accepted` WRITE
+  access on the buyer's plan at checkout, at the expert's OWN listing price, with the traveler
+  service fee waived on that trip like any other booking. Only the Trip Pass INCLUSION was unbuilt,
+  and it is refused: the expert sets the price, so including one means the platform paying an earner
+  at a platform-set rate — a P&L decision with a seller-consent half, neither ratified. `expert_revision`
+  and `consumeRevision` are deleted (§18c); `revisionsRemaining` is no longer written; no backfill.
+  **"AI + one local revision" (the paid bundle a few rows down) is UNAFFECTED** — that is a
+  traveler buying the expert's revision at the expert's price, which is exactly the product that
+  already works.
 - `2026-09-21-trip-pass-revision-claim` — Trip Pass's **one expert revision is no longer advertised**
   on either traveler-facing surface (the pricing page's checklist and the `TripPassCard` upsell at the
   paid gate). The INTENT above stands and is not withdrawn: the benefit is still what Trip Pass is meant

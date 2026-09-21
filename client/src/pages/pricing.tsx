@@ -235,8 +235,12 @@ export default function PricingPage() {
         // as an entitlement with NO consumption or charge site, and instructs: "until that lane
         // lands, do not describe those two as enforced benefits." It was being described here, on
         // the sales page of a product that charges TODAY — Trip Pass is not gated by
-        // PLUS_SALES_ENABLED the way Plus is. Nothing can deliver or record it: consumeRevision
-        // and coversAction(tripId, "expert_revision") have ZERO callers outside tests, and the two
+        // PLUS_SALES_ENABLED the way Plus is. UPDATE (ledger `2026-09-21-expert-revision-retired`):
+        // the entitlement is now RETIRED outright — `consumeRevision` is deleted and
+        // `expert_revision` is no longer a TripPassAction — because the revision PRODUCT already
+        // exists without it (Ruling 11 grants a `plan_work` buyer's expert WRITE access at
+        // checkout, at the EXPERT'S own price), and Trip Pass could only "include" that by paying
+        // an earner at a platform-set rate, which nobody ratified. The two
         // revision rails that DO exist are other products (LD 46 artifact revisions on a service
         // booking; the ready-made purchase's own INCLUDED revision, already inside that listing's
         // price — crediting it here would bill the same revision twice).

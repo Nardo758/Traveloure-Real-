@@ -140,10 +140,12 @@ export function TripPassCard({ tripId }: { tripId: string }) {
         <p className="text-[11px] leading-relaxed" style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}>
           <span data-testid="trip-pass-price" style={{ color: "var(--earn-teal-ink)" }}>{priceLabel}</span>
           {/* "· 1 expert revision" WAS HERE AND IS DELIBERATELY GONE (ledger
-              `2026-09-21-trip-pass-revision-claim`). LD 41 (f): `expert_revision` has no
-              consumption or charge site anywhere — consumeRevision and coversAction(tripId,
-              "expert_revision") have ZERO callers outside tests — and that ruling instructs that
-              it not be described as an enforced benefit until its lane lands. This card is the
+              `2026-09-21-trip-pass-revision-claim`, then `2026-09-21-expert-revision-retired`).
+              LD 41 (f) instructed that `expert_revision` not be described as an enforced benefit
+              until its lane landed; the lane has now been RATIFIED AS A RETIREMENT, so there is
+              no "until" left. The entitlement is deleted from the Trip Pass spine, because the
+              revision PRODUCT already works without it (Ruling 11 grants a `plan_work` buyer's
+              expert WRITE access on the plan at checkout, at the expert's own listing price). This card is the
               in-product upsell at the paid gate, so it was the sharper of the two claims: it sits
               directly above the button that charges. The three benefits left are the three the
               server actually enforces (optimizer_run, ai_task, traveler_service_fee). The pass

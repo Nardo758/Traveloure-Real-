@@ -143,24 +143,25 @@ router.post("/api/trips/:tripId/trip-pass/purchase/confirm", isAuthenticated, as
       return res.status(400).json({ message: "PaymentIntent does not match this purchase" });
     }
 
-    // FROZEN snapshot: the plans row's allowances at THIS moment plus the ruled
-    // one-revision benefit and the price actually captured. Later edits to the plans
-    // row never alter a sold pass.
+    // FROZEN snapshot: the plans row's allowances at THIS moment, plus the price actually
+    // captured. Later edits to the plans row never alter a sold pass. (The "ruled one-revision
+    // benefit" this comment used to name is retired — see the note in the object below.)
     const plan = await requirePlan(PLAN_KEYS.TRIP_PASS);
     const { entitlement, created } = await grantTripPass({
       tripId: trip!.id,
       sourcePaymentId: intent.id,
       allowancesSnapshot: {
         ...(plan.allowances as Record<string, unknown>),
-        // RECORDED, NOT ADVERTISED (ledger `2026-09-21-trip-pass-revision-claim`). The two
-        // traveler-facing surfaces stopped promising this benefit, because LD 41 (f) records
-        // `expert_revision` as having no consumption or charge site and instructs that it not be
-        // described as enforced until its lane lands. The WRITE deliberately stays: `coversAction`
-        // reads this key, `consumeRevision` decrements it atomically, and keeping it means a pass
-        // sold TODAY is honoured the day that lane ships. Deleting it would destroy the hook LD 41
-        // (f) reserves and would silently downgrade passes already sold. Do not read its presence
-        // here as a claim to the traveler — the claim is what a surface says, and no surface says it.
-        revisionsRemaining: 1,
+        // `revisionsRemaining: 1` WAS WRITTEN HERE AND IS DELIBERATELY GONE (decision-maker
+        // ratified 2026-09-21, ledger `2026-09-21-expert-revision-retired`). The Trip Pass
+        // `expert_revision` entitlement is RETIRED: `coversAction` no longer knows the action and
+        // `consumeRevision` is deleted, so this key had no reader left and writing it would be
+        // state nothing consumes (§18c). The expert-revision PRODUCT is unaffected and needs
+        // nothing from here — Ruling 11 grants a `plan_work` buyer's expert WRITE access at
+        // checkout, at the expert's own listing price.
+        // NO BACKFILL: passes sold before this carry `revisionsRemaining` in their frozen
+        // snapshot and keep it. The snapshot records what was bought; rewriting it would edit
+        // history (§13). It is simply read by nothing now.
         priceCentsPaid: intent.amount,
         planName: plan.name,
       },
