@@ -195,6 +195,11 @@ import {
 // CLAUDE.md Locked Decision 32 CORRECTION, §18 rule 1). The lead-confirm handler below calls it;
 // it never inserts the row itself.
 import { upsertTripAdvisorRow } from "../services/booking-actions.service";
+import {
+  syncPlatformConciergeListingPrice,
+  PLATFORM_CONCIERGE_PRICE_BAND_KEY,
+  type PlatformConciergePriceSyncResult,
+} from "../services/platform-concierge-price.service";
 
 const router = Router();
 
@@ -7222,6 +7227,32 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
           updated_at   = NOW()
         WHERE band_key = ${bandKey}
       `);
+
+      // ── The platform Booking Concierge listing's price is EDITABLE FROM THIS PANEL ──────
+      // Ledger `2026-09-21-platform-concierge-price-editable`. Migration 313 seeded this band AND
+      // a static `provider_services.price` from it, and nothing re-resolved the column — so before
+      // this hook an admin could change the band here, get a 200 and an audit row, and the live
+      // price would not move. That is a control that lies about setting a price, on a money
+      // surface (§13).
+      //
+      // The column stays the AUTHORITY (Locked Decision 51's `conciergeFeeAmt` reads the cart
+      // line's own `provider_services.price` at checkout; a second authority at the till is the
+      // drift class §18 rule 1 names). This propagates the admin's number into it through the ONE
+      // writer, and REPORTS rather than throws — the band write above is the operation the admin
+      // asked for and is already committed, so an ancillary effect may not fail it (§15b).
+      let listingPriceSync: PlatformConciergePriceSyncResult | undefined;
+      if (bandKey === PLATFORM_CONCIERGE_PRICE_BAND_KEY && defaultRate !== undefined) {
+        listingPriceSync = await syncPlatformConciergeListingPrice(nextDefault).catch((err: any) => {
+          console.error("[fee-bands] platform concierge listing reprice failed:", err?.message || err);
+          return { updated: false, rowsUpdated: 0, reason: "no_listing" as const };
+        });
+        if (!listingPriceSync.updated) {
+          console.error(
+            `[fee-bands] band ${bandKey} moved to ${nextDefault} but the platform listing did NOT ` +
+              `reprice (reason: ${listingPriceSync.reason}). The panel value and the live price now differ.`,
+          );
+        }
+      }
 
       // Audit-log every fee_bands edit. Critical: these rows drive live billing.
       await insertAccessAuditLog({

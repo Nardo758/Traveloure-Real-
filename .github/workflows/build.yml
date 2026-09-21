@@ -2374,6 +2374,18 @@ jobs:
       - name: the platform's own Booking Concierge listing (F1-F6)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/platform-concierge-listing.db.test.ts
 
+      # 2026-09-21-platform-concierge-price-editable: migration 313 seeded a fee_bands row AND a
+      # static provider_services.price from it, and nothing re-resolved the column — while
+      # fee_bands HAS a working admin editor. So an admin could change that band, get a 200 and an
+      # audit row, and the live price would not move: a control that appears to set a price and
+      # does not, on a money surface (§13). P1 pins migration 315's $35 on BOTH; P2 the ONE writer
+      # repoints the listing and touches exactly one row; P3 a negative/NaN price is refused and
+      # writes nothing (never a $0 listing); P4 a refusal NAMES its reason; P5 an EXPERT's own
+      # booking_concierge listing is never repriced from the platform panel — a seller's price
+      # stays theirs.
+      - name: platform concierge listing price is admin-editable (P1-P5)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/platform-concierge-price.db.test.ts
+
   one-trip-write-resolver:
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
     runs-on: ubuntu-latest
