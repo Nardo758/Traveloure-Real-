@@ -3,7 +3,6 @@ import {
   deriveWantedSlots,
   type HeroOfferingType,
 } from "./landing-hero.compose";
-import { gatherOfferingCandidates } from "./upsell-query.service";
 
 type GatherCoverage = (opts: {
   marketCity: string;
@@ -19,11 +18,18 @@ type GatherCoverage = (opts: {
 export async function resolveLandingHeroWanted(
   city: string,
   offeringTypes: HeroOfferingType[] | null,
-  gather: GatherCoverage = gatherOfferingCandidates,
+  gather?: GatherCoverage,
 ): Promise<LandingHeroWantedSlot[] | null> {
   if (offeringTypes === null) return null;
   try {
-    const rows = await gather({
+    // The default gather is resolved LAZILY so this module carries no STATIC edge to
+    // `server/db`. The composer's proof runs in `unit-suite-client-components`, a unit
+    // job with no DATABASE_URL, and a static import kills the runner at module load
+    // before a single assertion. An import that fails here is a failed gather like any
+    // other, so it takes the same honest answer below: unknown coverage, strip omitted.
+    const gatherCandidates =
+      gather ?? (await import("./upsell-query.service")).gatherOfferingCandidates;
+    const rows = await gatherCandidates({
       marketCity: city.toLowerCase(),
       includePackages: true,
       throwOnError: true,
