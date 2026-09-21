@@ -17,7 +17,7 @@
  *     Stripe dashboard, and — for Apple Pay — the one-time domain registration LD 43(e) records as
  *     an OPERATOR step. No test can assert an operator did that.
  *   • It scans `paymentIntents.create` only. `checkout.sessions.create` is a different rail whose
- *     method set is dashboard-configured; the two sites that use it are pinned below as
+ *     method set is dashboard-configured; A7 CENSUSES the sites that use it and pins each as
  *     deliberately unchanged so that decision stays visible, not so it is blessed.
  *   • It says nothing about AMOUNTS or IDEMPOTENCY. Those are §14/§15 and have their own suites;
  *     the A-block here only pins that this lane did not disturb the keys it walked past.
@@ -211,12 +211,28 @@ test("A6: §14 — this lane changed no amount, and none is body-sourced at the 
   }
 });
 
-test("A7: the two hosted Checkout Sessions stay card-pinned AND stay annotated as a live decision", () => {
+test("A7: EVERY hosted Checkout Session stays card-pinned AND annotated as a live decision", () => {
   // Not a PaymentIntent rail. Recorded rather than quietly skipped: a hosted session's method set
   // is dashboard-configured, and widening it also admits delayed-notification methods whose
   // `checkout.session.completed` can arrive unpaid — a webhook change this lane did not audit.
-  for (const [name, src] of [["transport", stripeSvc], ["expert-service", paymentSvc]] as const) {
-    assert.match(src, /LD 43 audit note/, `${name} Checkout Session lost its audit note`);
-    assert.match(src, /payment_method_types:\s*\[["']card["']\]/, `${name} Checkout Session changed unexpectedly`);
+  //
+  // A CENSUS, not a list of two named files. It was a list until the membership-checkout rail
+  // (ledger `2026-09-21-membership-checkout`) added a THIRD session site, at which point the old
+  // form was still green while no longer covering the set it claimed to — the shape §18d exists to
+  // refuse. Census form means a FOURTH site cannot arrive unpinned.
+  const sessionSites = serverSources(SERVER)
+    .filter((f) => readFileSync(f, "utf-8").includes("checkout.sessions.create"));
+
+  assert.ok(sessionSites.length >= 3, `expected at least 3 Checkout Session sites, found ${sessionSites.length}`);
+
+  for (const file of sessionSites) {
+    const src = readFileSync(file, "utf-8");
+    const where = relative(ROOT, file);
+    assert.match(src, /LD 43 audit note/, `${where}: Checkout Session lost its audit note`);
+    assert.match(
+      src,
+      /payment_method_types:\s*\[["']card["']\]/,
+      `${where}: Checkout Session changed unexpectedly`,
+    );
   }
 });

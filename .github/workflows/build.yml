@@ -2119,6 +2119,33 @@ jobs:
       - name: plan_memberships writer is idempotent and honest (M1-M6)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/membership-writer.db.test.ts
 
+      # 2026-09-21-membership-checkout (increment 2): the COLLECTING half. R1-R10 are PURE — no
+      # database, no network — and prove the rule migration 317's two columns exist for: a price id
+      # is MODE-SCOPED, mode comes from the KEY PREFIX, and there is NO CROSS-MODE FALLBACK. R3/R4
+      # are the load-bearing pair: a live key with only a test price must REFUSE, because that id
+      # does not exist in the account the key addresses and Stripe's "No such price" would arrive
+      # later and to the traveler instead of to the operator.
+      - name: plan price resolver — mode rules, no cross-mode fallback (R1-R10)
+        run: npx tsx --test server/services/__tests__/plan-price-resolver.test.ts
+
+      # C1-C6: the checkout rail's REFUSALS, which is what is worth proving — the rail grants
+      # nothing, so the success path has no entitlement to assert. C1 pins that PLUS_SALES_ENABLED
+      # (off by default, and the state today) refuses BEFORE any Stripe call; C2 that trip_pass is
+      # refused BY NAME (LD 26 keeps it per-trip); C5 that an existing member cannot start a SECOND
+      # checkout — the guard that actually prevents paying twice; C6 that NO path writes
+      # plan_memberships, because only the webhook records.
+      - name: membership checkout refuses and never records (C1-C6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/membership-checkout.db.test.ts
+
+      # S1-S5 read the SOURCE, because the success path needs a live Stripe key and would create a
+      # real subscription in a real account. S2 earns the file: increment 1's writer reads
+      # metadata.userId/planKey off the SUBSCRIPTION, and Stripe does NOT copy session metadata onto
+      # the subscription it creates — a rail that stamped only session-level metadata would write
+      # NOTHING, silently, for any member whose stripe_customer_id was not already stamped. No DB
+      # test can catch that, because no DB test reaches Stripe.
+      - name: membership checkout shape — subscription metadata contract (S1-S5)
+        run: npx tsx --test server/__tests__/membership-checkout-shape.test.ts
+
   one-trip-write-resolver:
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
     runs-on: ubuntu-latest
