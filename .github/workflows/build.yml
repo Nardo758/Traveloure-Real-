@@ -2146,6 +2146,12 @@ jobs:
       - name: membership checkout shape — subscription metadata contract (S1-S5)
         run: npx tsx --test server/__tests__/membership-checkout-shape.test.ts
 
+      # 2026-09-21-membership-purchase-surface (increment 3): every named server refusal gets its
+      # own traveler-facing sentence. M2 pins the honesty boundary: a missing operator-configured
+      # Stripe Price is never described as the traveler's card or details failing.
+      - name: membership purchase surface — refusal copy is distinct and honest (M1-M4)
+        run: npx tsx --test client/src/lib/__tests__/membership-checkout-copy.test.ts
+
   one-trip-write-resolver:
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
     runs-on: ubuntu-latest
