@@ -110,7 +110,16 @@ import { gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { bookings, adminNotifications } from "@shared/schema";
 import type { ReconciliationExceptionKind } from "@shared/schema";
+import type { ReconciliationRail } from "@shared/reconciliation-kinds";
 import { promotePaidCheckout } from "../services/checkout-claim.service";
+// Ledger `2026-09-21-membership-reconciliation`: §17's narrow exception, THIRD instance. The job
+// hands a drifted subscription to the ONE writer of `plan_memberships` and writes that table
+// through nothing of its own — and it IMPORTS the status mapping rather than re-deriving it, so the
+// detector and the writer can never disagree about what a row should say (§18 rule 1).
+import {
+  upsertStripeMembership,
+  mapStripeSubscriptionStatus,
+} from "../services/plan-membership-writer.service";
 // D-18 (ledger `2026-09-15-d18-announced-marker`): §17's ONE narrow exception, one rail over from
 // `promotePaidCheckout`. The job hands an unannounced delivery to the EXISTING shared sender — it
 // writes `ready_made_purchases.notified_at` through nothing of its own, ever.
@@ -205,7 +214,9 @@ const TERMINAL_STATUSES = ["expired", "failed", "payment_failed", "cancelled", "
 
 // ── Types ────────────────────────────────────────────────────────────────────────────────────
 
-export type ReconciliationRail = "cart" | "legacy" | "ready_made";
+// The rail vocabulary lives beside the kinds in `shared/reconciliation-kinds.ts` (§18 rule 1).
+// Re-exported so existing importers of this module are untouched.
+export type { ReconciliationRail } from "@shared/reconciliation-kinds";
 export type ReconciliationSeverity = "critical" | "warning";
 
 export interface ReconciliationException {
@@ -251,6 +262,21 @@ export interface ReconciliationResult {
    */
   checkedReadyMadePurchases: number;
   /**
+   * Stripe subscriptions examined this pass (ledger `2026-09-21-membership-reconciliation`).
+   * PERSISTED to `reconciliation_runs.checked_subscriptions` by `closeRun` on every terminal path
+   * — §17 rule 2, the same reasoning that gave the ready-made rail its column in migration 301.
+   * §13 on the column: NULLABLE, no default, no backfill, so NULL on a row means that pass never
+   * tallied this rail — never that it examined zero subscriptions.
+   */
+  checkedSubscriptions: number;
+  /**
+   * Subscription ids this pass handed to the EXISTING `upsertStripeMembership` and which now carry
+   * a converged membership row. §17's narrow exception, third instance (after `promotePaidCheckout`
+   * on the cart rail and `notifyBuyerOfReadyMadeDelivery` on the ready-made rail): the job writes
+   * `plan_memberships` through NOTHING of its own — the one writer owns it.
+   */
+  membershipHandOffs: string[];
+  /**
    * D-18 — purchase ids this pass handed BACK to the shared notifier and which now carry an
    * announcement (ledger `2026-09-15-d18-announced-marker`). The COUNT is now persisted too, on
    * `reconciliation_runs.ready_made_announce_hand_offs` (D-42, migration 301) — the same nullable,
@@ -280,6 +306,10 @@ export interface StripeReader {
   listPaymentIntents(createdGteUnix: number): Promise<Stripe.PaymentIntent[]>;
   listCharges(createdGteUnix: number): Promise<Stripe.Charge[]>;
   listRefunds(createdGteUnix: number): Promise<Stripe.Refund[]>;
+  /** Ledger `2026-09-21-membership-reconciliation`. On the SAME injectable interface as the other
+   *  three, which is what lets the membership rail's whole drift matrix be proven against a real
+   *  database with NO network and NO Stripe key. */
+  listSubscriptions(createdGteUnix: number): Promise<Stripe.Subscription[]>;
 }
 
 function defaultStripeReader(): StripeReader | null {
@@ -293,6 +323,14 @@ function defaultStripeReader(): StripeReader | null {
       (await stripe.charges.list({ created: { gte: from }, limit: STRIPE_PAGE_LIMIT })).data,
     listRefunds: async (from) =>
       (await stripe.refunds.list({ created: { gte: from }, limit: STRIPE_PAGE_LIMIT })).data,
+    listSubscriptions: async (from) =>
+      (await stripe.subscriptions.list({
+        created: { gte: from },
+        // `status: "all"` is deliberate: a cancelled subscription whose row still GRANTS is exactly
+        // the drift this rail exists to catch, and the default listing omits it.
+        status: "all",
+        limit: STRIPE_PAGE_LIMIT,
+      })).data,
   };
 }
 
@@ -401,6 +439,8 @@ export async function runStripeReconciliation(opts?: {
    *  rail over: operational scoping, and what lets the behavioural suite assert exact per-pass
    *  counts without a neighbouring row in the same database changing them. */
   onlyPurchaseIds?: string[];
+  /** Restrict the MEMBERSHIP scan to these subscription ids. Same purpose as the two above. */
+  onlySubscriptionIds?: string[];
   /** Skip the DB write of the run + exception rows. Never used in production; the promotion
    *  path is unaffected. */
   dryRun?: boolean;
@@ -425,6 +465,8 @@ export async function runStripeReconciliation(opts?: {
     checkedBookings: 0,
     checkedReadyMadePurchases: 0,
     readyMadeAnnounceHandOffs: [],
+    checkedSubscriptions: 0,
+    membershipHandOffs: [],
     ranAt,
     mismatches: [],
   };
@@ -438,10 +480,11 @@ export async function runStripeReconciliation(opts?: {
   }
 
   try {
-    const [paymentIntents, charges, refunds] = await Promise.all([
+    const [paymentIntents, charges, refunds, subscriptions] = await Promise.all([
       reader.listPaymentIntents(windowUnix),
       reader.listCharges(windowUnix),
       reader.listRefunds(windowUnix),
+      reader.listSubscriptions(windowUnix),
     ]);
     base.checkedPaymentIntents = paymentIntents.length;
     base.checkedCharges = charges.length;
@@ -474,6 +517,15 @@ export async function runStripeReconciliation(opts?: {
     });
     base.checkedReadyMadePurchases = readyMade.scannedPurchases;
     base.readyMadeAnnounceHandOffs = readyMade.announceHandOffs;
+
+    // ── MEMBERSHIP RAIL (ledger `2026-09-21-membership-reconciliation`) ─────────────────────
+    const membership = await scanMembershipRail({
+      subscriptions,
+      onlySubscriptionIds: opts?.onlySubscriptionIds,
+      exceptions,
+    });
+    base.checkedSubscriptions = membership.scannedSubscriptions;
+    base.membershipHandOffs = membership.handOffs;
 
     base.exceptions = exceptions;
     base.mismatches = exceptions.map((e) => ({
@@ -519,6 +571,10 @@ export async function runStripeReconciliation(opts?: {
           // D-18: a pass that re-drove an unannounced delivery DID something, and "clean" must not
           // be the only word for it (§17 rule 2's reasoning, one line down).
           readyMadeAnnounceHandOffs: base.readyMadeAnnounceHandOffs.length,
+          subscriptions: base.checkedSubscriptions,
+          // A pass that converged a membership DID something, and "clean" must not be the only
+          // word for it — the same reasoning D-18 applied one rail over.
+          membershipHandOffs: base.membershipHandOffs.length,
         },
         "[RECONCILIATION] clean pass — no drift (run RECORDED so silence is distinguishable from a dead job)",
       );
@@ -532,6 +588,156 @@ export async function runStripeReconciliation(opts?: {
     await closeRun(runId, base, String(err?.message ?? err));
     return base;
   }
+}
+
+// ── MEMBERSHIP RAIL (plan_memberships; ledger `2026-09-21-membership-reconciliation`) ────────
+//
+// THE HOLE THIS CLOSES. `plan_memberships` has exactly ONE writer — `upsertStripeMembership` —
+// driven ONLY by a signature-verified Stripe webhook. If that webhook is never delivered (retries
+// exhausted, an outage, a deploy window, a misconfigured endpoint) the member is CHARGED BY STRIPE,
+// holds NO entitlement, and until this rail existed NOTHING anywhere looked. §17's other three
+// rails scan bookings and know nothing about subscriptions.
+//
+// THE COMPARISON KEYS ON LINKAGE THAT ALREADY EXISTS (§17 rule 4). It matches a Stripe subscription
+// to `plan_memberships.stripe_subscription_id` and nothing else — no user resolution, no metadata
+// interpretation, no new marker. Adding a write to the audited path to make detection easier would
+// put the detector inside the thing it audits.
+//
+// §13 — A MANUAL OR BETA GRANT IS NEVER TOUCHED, AND THE REASON IS STRUCTURAL.
+// `plan_memberships.source` is one of {stripe, manual, beta}. A manual or beta grant is a
+// deliberate, legitimate row and must NEVER be reported as drift or disturbed.
+//
+// WHAT ACTUALLY PROTECTS IT is that this rail only ever acts on rows matched BY A SUBSCRIPTION ID
+// IT READ FROM STRIPE, and a manual grant has none — so it cannot appear in the `IN (…)` list
+// below whatever else changes. The `stripe_subscription_id IS NOT NULL` clause is therefore
+// REDUNDANT given that list, and is kept only to state the intent at the point of the read. It is
+// NOT the protection, and a test that "proves" it by deleting it proves nothing: verified by
+// regression — removing the clause leaves the whole suite green.
+//
+// §18 rule 1 — THE STATUS MAPPING IS NOT RE-DERIVED HERE. `mapStripeSubscriptionStatus` already
+// owns Stripe-status → {active,lapsed,cancelled}, including past_due/unpaid/incomplete → lapsed and
+// an unknown status failing SAFE to lapsed. It is IMPORTED. A second mapping in the detector would
+// let the job and the writer disagree about what a row should say, which is the one disagreement a
+// drift detector must not have.
+//
+// §17's NARROW EXCEPTION, THIRD INSTANCE — AND THE JOB STILL WRITES NOTHING OF ITS OWN.
+// "Detect, don't repair" carries one sanctioned move: handing a row to an EXISTING shared writer so
+// that writer's own logic arrives late. `promotePaidCheckout` is that move on the cart rail;
+// `notifyBuyerOfReadyMadeDelivery` is it on the ready-made rail (D-18). This is the same shape:
+// the job calls `upsertStripeMembership` — the ONE writer — and never touches `plan_memberships`
+// itself. It is safe by construction because that writer is a single atomic
+// `INSERT … ON CONFLICT (stripe_subscription_id) DO UPDATE` against migration 316's partial unique
+// index, so a hand-off cannot double-write and a retry converges. §17b already rules that this
+// job's authenticated read with the platform's OWN secret key is server-verified, so the
+// subscription it acts on is Stripe's word, not a client's.
+// Ratified 2026-09-21 by the decision-maker.
+//
+// THE ORDINARY CASE RECORDS NOTHING (the D-18 rule). When the hand-off converges the row there is
+// no drift left, and an exception would be a durable, append-only accusation about a fact the same
+// pass just fixed. ONLY a hand-off that could not resolve the membership is recorded — and the
+// recorded `details.reason` is the WRITER'S own named refusal (`no_user` / `no_plan_key`), never a
+// reason this job invented.
+//
+// STATED NEGATIVE SPACE (§18d) — READ THIS BEFORE TRUSTING A GREEN PASS:
+//   • THE WINDOW IS `created`, SO THIS CATCHES BIRTH DRIFT, NOT LATE STATUS DRIFT. A subscription
+//     created three days ago and cancelled yesterday is outside a 24h created-window, so its stale
+//     row is NOT seen by an ordinary daily pass. `status: "all"` widens WHAT is listed, not WHEN.
+//     Closing that needs a listing strategy this lane did not build (paging every live subscription
+//     daily is a different cost and a different decision).
+//   • IT PROVES NOTHING ABOUT DELIVERY. A converged row means the entitlement now exists; whether
+//     the member was ever told is not this rail's question and it does not pretend otherwise.
+//   • A SUBSCRIPTION STRIPE NEVER RETURNED IS NOT SEEN AT ALL. This rail cannot detect a membership
+//     row whose subscription has vanished from Stripe; it reads forward from Stripe, not back.
+async function scanMembershipRail(args: {
+  subscriptions: Stripe.Subscription[];
+  exceptions: ReconciliationException[];
+  /** Restrict to these subscription ids — operational scoping, and what lets the behavioural suite
+   *  assert exact per-pass counts without a neighbouring row changing them. */
+  onlySubscriptionIds?: string[];
+}): Promise<{ scannedSubscriptions: number; handOffs: string[] }> {
+  const { subscriptions, exceptions } = args;
+  const scope = args.onlySubscriptionIds ? new Set(args.onlySubscriptionIds) : null;
+  const inScope = (id: string) => !scope || scope.has(id);
+
+  const scanned = subscriptions.filter((s) => inScope(s.id));
+  const handOffs: string[] = [];
+  if (scanned.length === 0) return { scannedSubscriptions: 0, handOffs };
+
+  // ONE read of the rows these subscriptions should have. `stripe_subscription_id IS NOT NULL` is
+  // the §13 arm above: manual/beta grants are structurally out of scope.
+  // `IN (…)` built with `sql.join`, the pattern the cart and ready-made rails already use. A bound
+  // JS array with `= ANY($1)` reaches Postgres as a malformed array literal, which fails the whole
+  // pass rather than this rail — caught by N1/N4 before this shipped.
+  const ids = scanned.map((sub) => sub.id);
+  const rowsRes = await db.execute(sql`
+    SELECT stripe_subscription_id AS sub_id, status, plan_key, user_id
+      FROM plan_memberships
+     WHERE stripe_subscription_id IS NOT NULL
+       AND stripe_subscription_id IN (${sql.join(ids.map((v) => sql`${v}`), sql`, `)})`);
+  const byId = new Map<string, { status: string; planKey: string; userId: string }>();
+  for (const r of (rowsRes.rows ?? []) as any[]) {
+    byId.set(String(r.sub_id), {
+      status: String(r.status),
+      planKey: String(r.plan_key),
+      userId: String(r.user_id),
+    });
+  }
+
+  for (const sub of scanned) {
+    const expected = mapStripeSubscriptionStatus(sub.status);
+    const row = byId.get(sub.id);
+
+    // Nothing to reconcile: Stripe's own view and the row already agree.
+    if (row && row.status === expected) continue;
+
+    // A subscription that never granted anything and still does not is not drift. Stripe reports
+    // `incomplete`/`incomplete_expired` for an abandoned checkout, which maps to `lapsed`; with NO
+    // row at all that is the CORRECT state — the member was never charged into an entitlement, and
+    // inventing a `lapsed` row for every abandoned checkout would manufacture history (§13).
+    if (!row && expected !== "active") continue;
+
+    // §17's narrow exception: hand it to the ONE writer, which owns the table.
+    const outcome = await upsertStripeMembership({
+      subscriptionId: sub.id,
+      status: sub.status,
+      currentPeriodStart: (sub as any).current_period_start ?? null,
+      currentPeriodEnd: (sub as any).current_period_end ?? null,
+      metadataUserId: sub.metadata?.userId ?? null,
+      metadataPlanKey: sub.metadata?.planKey ?? null,
+      customerId: typeof sub.customer === "string" ? sub.customer : (sub.customer as any)?.id ?? null,
+    });
+
+    if (outcome.written) {
+      handOffs.push(sub.id);
+      continue; // converged by this pass — nothing left to accuse (the D-18 rule)
+    }
+
+    // The hand-off could NOT resolve the membership. THIS is the durable finding, and the reason is
+    // the writer's own word.
+    const kind = row ? "sub_status_drift" : "sub_active_no_membership";
+    exceptions.push({
+      rail: "membership",
+      kind,
+      severity: row ? "warning" : "critical",
+      // The drift FACT's identity, so a month of unfixed drift is ONE append-only row, not thirty.
+      dedupeKey: `membership:${kind}:${sub.id}`,
+      details: {
+        subscriptionId: sub.id,
+        stripeStatus: sub.status,
+        expectedStatus: expected,
+        recordedStatus: row?.status ?? null,
+        // The WRITER's named refusal — never a reason this job invented.
+        handOffRefusal: outcome.reason,
+        explanation: row
+          ? "Stripe reports a different subscription status than the membership row holds, and the " +
+            "one writer could not converge it. The recorded reason is the writer's own."
+          : "Stripe holds an ACTIVE subscription with no membership row, and the one writer could " +
+            "not resolve whose it is. The member may be billed and hold no entitlement.",
+      },
+    });
+  }
+
+  return { scannedSubscriptions: scanned.length, handOffs };
 }
 
 // ── CART RAIL ────────────────────────────────────────────────────────────────────────────────
@@ -1572,6 +1778,9 @@ async function closeRun(runId: string | null, result: ReconciliationResult, note
              number; NULL on a row means the pass predates the migration (§13). */
           checked_ready_made_purchases = ${result.checkedReadyMadePurchases},
           ready_made_announce_hand_offs = ${result.readyMadeAnnounceHandOffs.length},
+          /* Migration 318, same posture and same statement: written on every terminal path — clean,
+             skipped and failed alike (§17 rule 2). */
+          checked_subscriptions = ${result.checkedSubscriptions},
           exceptions_detected = ${result.exceptions.length},
           exceptions_new = ${result.newExceptions},
           promoted = ${result.promoted},

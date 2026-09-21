@@ -20,6 +20,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
+import type { ReconciliationRail } from "@shared/reconciliation-kinds";
 
 interface Mismatch {
   type: string;
@@ -62,7 +63,7 @@ interface DriftException {
   id: string;
   run_id: string;
   detected_at: string;
-  rail: "cart" | "legacy";
+  rail: ReconciliationRail;
   kind: string;
   severity: "critical" | "warning";
   booking_id: string | null;

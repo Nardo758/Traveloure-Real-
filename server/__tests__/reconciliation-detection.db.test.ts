@@ -360,6 +360,10 @@ function reader(view: {
     listPaymentIntents: async () => (view.paymentIntents ?? []) as any,
     listCharges: async () => (view.charges ?? []) as any,
     listRefunds: async () => (view.refunds ?? []) as any,
+    // Ledger `2026-09-21-membership-reconciliation` added a fourth rail to the SAME injectable
+    // seam. This suite predates it and asserts nothing about memberships, so it lists NO
+    // subscriptions — the membership rail then scans zero and changes none of these counts.
+    listSubscriptions: async () => [],
   };
 }
 
