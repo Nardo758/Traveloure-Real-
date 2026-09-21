@@ -292,57 +292,6 @@ jobs:
       # has ONE home and that no resolved fee moved.
       - name: Fee-band admin guards (V-4 cap, V-5 deactivation ruling, V-6 visibility)
         run: npx tsx --test server/__tests__/fee-band-admin-guards.test.ts
-
-  item-removed-logging-guard:
-    name: item-removed-logging-guard (R15 removal-signal coverage)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Fails if an itinerary_items hard-delete path lacks an item-removed:<kind> annotation, or a
-      # `logged` site has no same-transaction `item_removed` write. Node built-ins only — no npm ci
-      # needed. See ledger 2026-08-17-partner-demand-r15-transition-log. Predicate fixtures FIRST
-      # (§18d): a guard with a wrong predicate passes truthfully.
-      - name: Item-removed guard predicate self-test
-        run: node scripts/check-item-removed-logging.cjs --self-test
-      - name: Item-removed logging coverage guard
-        run: node scripts/check-item-removed-logging.cjs
-
-  itinerary-rebuild-guard:
-    name: itinerary-rebuild-guard (D-1 rebuild-delete money-safety coverage)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Fails if a trip-scoped itinerary_items rebuild-delete lacks `itineraryItemRebuildDeletable()`
-      # and no `// rebuild-guard-exempt:<reason>`. Closes the D-1 class (origin is never a money guard;
-      # a rebuild delete keys on routing_status + booking presence). Node built-ins only — no npm ci.
-      # See ledger 2026-08-31-rebuild-delete-money-guard. Predicate fixtures FIRST (§18d).
-      - name: Rebuild-guard predicate self-test
-        run: node scripts/check-itinerary-rebuild-guard.cjs --self-test
-      - name: Itinerary rebuild-delete coverage guard
-        run: node scripts/check-itinerary-rebuild-guard.cjs
-
-  traveler-fee-coverage:
-    name: traveler-fee-coverage (ruling 2026-09-02 — every charge path bills + ledgers the fee)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Fails if a known traveler-charging path stops resolving the fee via resolveTravelerServiceFee
-      # or stops writing it to fee_ledger via a shared writer. Node built-ins only — no npm ci.
-      # See ruling 2026-09-02-traveler-fee-applies-everywhere. Predicate fixtures FIRST (§18d).
-      - name: Traveler-fee coverage predicate self-test
-        run: node scripts/check-traveler-fee-coverage.cjs --self-test
-      - name: Traveler-fee coverage gate
-        run: node scripts/check-traveler-fee-coverage.cjs
-
   traveler-charge-composition:
     name: traveler-charge-composition (docs/ROADMAP.md §A A3 — the commission is never billed to the buyer)
     runs-on: ubuntu-latest
@@ -467,49 +416,6 @@ jobs:
         run: node scripts/check-claims-only-user-lookups.cjs --self-test
       - name: Claims-only session-user lookup guard
         run: node scripts/check-claims-only-user-lookups.cjs
-
-  unmounted-router-guard:
-    name: unmounted-router-guard (CLAUDE.md §9)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Fails if a server/routes/*.ts router is imported into routes.ts but never app.use()d
-      # (dead → 200-HTML). Node built-ins only — no npm ci needed. See §9.
-      - name: Unmounted-router guard
-        run: node scripts/check-unmounted-routers.cjs
-
-  trip-mint-owner-guard:
-    name: trip-mint-owner-guard (CLAUDE.md §13 L10)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Fails if a trips-INSERT site doesn't mint the owner's trip_collaborators row (or carry a
-      # trip-mint-owner-ok annotation for deliberate NULL-owner authoring builds). getTripRole
-      # resolves access by assignment only, so an owner-less mint locks the owner out of their own
-      # trip. Node built-ins only — no npm ci needed. See §13 L10.
-      - name: Trip-mint owner-access guard
-        run: node scripts/check-trip-mint-owner-access.cjs
-
-  fee-literal-guard:
-    name: fee-literal-guard (phase2-fee-gate — DECISIONS.md ruling 27)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # Grep gate: no optimize/coordination fee literals in LOGIC code (fee_bands seed /
-      # migrations / config rows excluded; `// fee-literal-ok: <reason>` exempts a line).
-      # Predicate fixtures FIRST (ruling 42/43) — this gate was blind to every SCREAMING_SNAKE fee
-      # constant for its whole life while reporting PASS.
-      - name: Fee-gate predicate self-test
-        run: bash scripts/phase2-fee-gate.sh --self-test
-      - name: Fee-literal grep (scripts/phase2-fee-gate.sh)
-        run: bash scripts/phase2-fee-gate.sh
-
   migration-chain-integrity:
     name: migration-chain-integrity (DECISIONS.md rulings 19, 27)
     runs-on: ubuntu-latest
@@ -1086,200 +992,6 @@ jobs:
       # decides no amount, rate or payout at all.
       - name: Affiliate sub_id attribution pin (MONEY_MAP F-5 live)
         run: npx tsx --test server/__tests__/affiliate-subid-attribution.test.ts
-
-  decision-guards-lint:
-    name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Every [guarded: name] ruling in docs/DECISIONS.md must name a guard that runs in CI
-      # (script-only = MISSING, ruling 27). deferred:<lane> tags warn until their lane merges.
-      - name: Ledger lint self-test
-        run: node scripts/check-decision-guards.cjs --self-test
-      - name: Ledger lint
-        run: node scripts/check-decision-guards.cjs
-
-  ledger-union-merge:
-    name: ledger-union-merge (.gitattributes union driver — Trailhead C1)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # docs/DECISIONS.md must carry `merge=union` in .gitattributes so parallel
-      # ledger appends auto-union instead of conflicting; the dup-slug lint in
-      # decision-guards-lint (above) is the safety net for the one bad merge that
-      # can produce (a duplicate id). Node built-ins + git. Predicate fixtures
-      # FIRST (§18d): the self-test exercises a real git union merge and the
-      # dup-slug lint before the config assertion is trusted.
-      - name: Ledger union-merge self-test
-        run: node scripts/check-ledger-union-merge.cjs --self-test
-      - name: Ledger union-merge config guard
-        run: node scripts/check-ledger-union-merge.cjs
-
-  matrix-lint:
-    name: matrix-lint (coverage matrix — DECISIONS.md ruling 21/27)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Every claim cell in docs/testing/coverage-matrix.md must name a test id (or a
-      # deferred:/n-a: marker); non-deferred ids must carry a `matrix-id:` annotation in a
-      # test file; merged deferred lanes may no longer tag a cell (ruling 21). Node built-ins
-      # only — no npm ci needed.
-      - name: Matrix lint self-test
-        run: node scripts/check-coverage-matrix.cjs --self-test
-      - name: Matrix lint
-        run: node scripts/check-coverage-matrix.cjs && echo "matrix-lint OK"
-
-  env-allowlist-guard:
-    name: env-allowlist-guard (dev/CI-only test accounts — DECISIONS.md ruling 27/33)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Asserts the prod-strict Stripe source + the P0 seed/purge gate posture still hold and
-      # that no deploy-targeting workflow seeds test accounts via ALLOW_TEST_ACCOUNTS=1. Node
-      # built-ins only — no npm ci needed.
-      - name: Env-allowlist guard self-test
-        run: node scripts/check-env-allowlist.cjs --self-test
-      - name: Env-allowlist guard
-        run: node scripts/check-env-allowlist.cjs
-
-  omit-schema-ratchet:
-    name: omit-schema-ratchet (PS18 — §19 allowlist conversion)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Ratchet guard (ruling 46 / CLAUDE.md §19): the number of .omit()-based (denylist)
-      # createInsertSchema(...) call sites across the two drizzle-kit schema entry points
-      # (shared/schema.ts, shared/guest-invites-schema.ts) only ever moves DOWN as the
-      # #PS18 omit→pick allowlist conversion proceeds. Mirrors the tsc-baseline ratchet
-      # above: over OR under the recorded OMIT_BASELINE both fail. Node built-ins only —
-      # no npm ci needed. Predicate fixtures FIRST (§18d).
-      - name: Omit-schema-ratchet predicate self-test
-        run: node scripts/check-omit-schema-ratchet.cjs --self-test
-      - name: Omit-schema-ratchet guard
-        run: node scripts/check-omit-schema-ratchet.cjs
-
-  demand-rollup-guard:
-    name: demand-rollup-guard (Partner Demand 2B / ledger 2026-08-18-partner-demand-2b)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Partner Demand 2B discipline gate over the demand-rollup MODULE (compute/service/job/config):
-      # no `providerServices.totalRevenue` read (Locked Decision 3), demand MATH confined to the L6
-      # compute home, and floor thresholds only in demand-floors.config.ts (never a bare literal).
-      # Node built-ins only — no npm ci needed. Predicate fixtures FIRST (§18d).
-      - name: Demand-rollup gate predicate self-test
-        run: node scripts/check-demand-rollup.cjs --self-test
-      - name: Demand-rollup discipline gate
-        run: node scripts/check-demand-rollup.cjs
-      # R26 coords cheap-fix regression pin (ledger 2026-08-18-partner-demand-coords-fix): the three
-      # producer-side copy-fixes stay intact. Node built-ins only. Predicate fixtures FIRST (§18d).
-      - name: Coords-preservation predicate self-test
-        run: node scripts/check-coords-preservation.cjs --self-test
-      - name: Coords-preservation guard
-        run: node scripts/check-coords-preservation.cjs
-
-  linkage-preservation-guard:
-    name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Fails if an itinerary-item write site (createItineraryItem / db.insert(itineraryItems) /
-      # bulkInsertItineraryItems) references a service-bearing source (cartItem, providerServiceId,
-      # variantItems, …) without writing providerServiceId onto the item — the H1/H5 class. Node
-      # built-ins only — no npm ci needed. See docs/E2E_ITEM_LIFECYCLE.md §3.
-      - name: Linkage-preservation guard
-        run: node scripts/check-linkage-preservation.cjs
-
-  artifact-deploy-guard:
-    name: artifact-deploy-guard (root Autoscale is the sole deploy target)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Production is built from the committed tree. A tracked .replit-artifact/
-      # directory can activate Replit's artifact static deployment override.
-      - name: Artifact deploy guard predicate self-test
-        run: node scripts/check-artifact-deploy-guard.cjs --self-test
-      - name: Artifact deploy override guard
-        run: node scripts/check-artifact-deploy-guard.cjs
-
-  duplicate-migration-prefix-guard:
-    name: duplicate-migration-prefix-guard (ledger 2026-08-16-ledger-ids — three-way collision history)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Fails if two server/migrations/*.sql filenames (or MIGRATION_FILES registry entries)
-      # share the exact same leading numeric prefix — migration numbers have collided three
-      # times because nothing checked for it. A letter-suffixed prefix (025b) is distinct from
-      # its bare form (025). Three pre-existing collisions (079/098/099) are grandfathered by
-      # an explicit allowlist in the script. Node built-ins only — no npm ci needed. Predicate
-      # fixtures FIRST (§18d).
-      - name: Duplicate-migration-prefix guard predicate self-test
-        run: node scripts/check-duplicate-migration-prefixes.cjs --self-test
-      - name: Duplicate-migration-prefix guard
-        run: node scripts/check-duplicate-migration-prefixes.cjs
-      # Ledger `2026-09-06-publish-preflight`. Lodged in THIS job because it is the other
-      # publish-hygiene guard that needs no `npm ci`, no DB and no build — the preflight is Node
-      # built-ins only, and it prints the migration registry's last entry, which is this job's
-      # subject matter. CI runs the SELF-TEST (the predicate, over committed fixtures) and then the
-      # script's ADVISORY path: CI checks out a detached HEAD at a PR head, so every one of the
-      # four publish conditions is legitimately false here and enforcing would fail every PR. The
-      # advisory run is the proof that the no-op branch really is a no-op — if someone ever makes
-      # the script enforce unconditionally, this job goes red instead of every publish going green.
-      # Strict mode runs only from `.replit`'s `[deployment] build` → `npm run build:prod`.
-      - name: Publish-preflight predicate self-test
-        run: node scripts/publish-preflight.cjs --self-test
-      - name: Publish-preflight is a no-op outside a deployment build
-        run: node scripts/publish-preflight.cjs
-
-  category-reachability-guard:
-    name: category-reachability-guard (ledger 2026-09-04-taxonomy-reconcile)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Three writers seed service_categories and the code assumes two. Migration 034 is the only
-      # one that assigns `category_key` — the join key every offering-driven reader uses (the
-      # provider offering picker's groups, /api/service-categories/provider-counts, the /earn role
-      # partition) — so a row a TS seeder invents without one is unreachable from all of them. That
-      # produced the `custom-other` dead end (repaired on disk by migrations 189 + 208) and the ten
-      # "services-*" bundle rows, whose slugs were ALREADY the bundle-key namespace in
-      # shared/constants/providerCategories.ts. R1 keyed-or-declared, R2 no bundle-key collision,
-      # R3 every offering's category_key resolves. Node built-ins only — no npm ci, no DB. Predicate
-      # fixtures FIRST (§18d).
-      - name: Category-reachability guard predicate self-test
-        run: node scripts/check-category-reachability.cjs --self-test
-      - name: Category-reachability guard
-        run: node scripts/check-category-reachability.cjs
-
   category-key-repair:
     name: category-key-repair (ledger 2026-09-06-category-key-repair — migration 289)
     runs-on: ubuntu-latest
@@ -2633,82 +2345,6 @@ jobs:
       # default-free, CHECK-free posture the deploy-push durability rule requires.
       - name: Reconciliation run tallies — the ready-made rail is durable (T1–T4)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/reconciliation-run-tallies.db.test.ts
-  roles-needed-reachability-guard:
-    name: roles-needed-reachability-guard (ledger 2026-09-04-roles-needed)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # `experience_types.roles_needed` names disciplines as `service_categories.category_key`
-      # values, and migration 034 is the SOLE assigner of that column. A key with no category behind
-      # it renders a hire prompt that resolves to NO PROVIDER — the same dead-path-that-looks-live
-      # shape the category-reachability guard above exists for, reached from the other direction.
-      # The DB deliberately carries no CHECK on this column (publish-trap posture), so this job and
-      # shared/__tests__/roles-needed.test.ts are the whole of the enforcement.
-      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
-      - name: Roles-needed guard predicate self-test
-        run: node scripts/check-roles-needed-reachability.cjs --self-test
-      - name: Roles-needed reachability guard
-        run: node scripts/check-roles-needed-reachability.cjs
-
-  earn-planner-keys-guard:
-    name: earn-planner-keys-guard (ledger 2026-09-04-earn-planner-roles)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # The /earn Event Planner track's EXPERT half is partitioned by an explicit key list
-      # (EVENT_PLANNER_OFFERING_KEYS) rather than by service_tier, because that column carries a
-      # DB CHECK over five values and the six planner rows had to land in the existing
-      # `coordination` tier. A list like that drifts both ways: a listed key nothing seeds never
-      # renders (and clamps to NULL at the migration-107 FK if a stale link carries it), and a
-      # seeded key nobody listed is filed under Trip Planner — silently, on the live page.
-      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
-      - name: Earn-planner-keys guard predicate self-test
-        run: node scripts/check-earn-planner-keys.cjs --self-test
-      - name: Earn-planner-keys guard
-        run: node scripts/check-earn-planner-keys.cjs
-
-  planning-entry-guard:
-    name: planning-entry-guard (ledger 2026-09-04-entry-unification)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # The existing route gates (app-routes, navbar-links, auth-routes, footer-links) prove a route
-      # RENDERS. None proves a browse surface offers a way to START A PLAN — which is exactly how
-      # the four marketplace routes stayed dead ends while rendering perfectly and resolving every
-      # link. Rendering is not reachability of the next step.
-      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
-      - name: Planning-entry guard predicate self-test
-        run: node scripts/check-planning-entry.cjs --self-test
-      - name: Planning-entry guard
-        run: node scripts/check-planning-entry.cjs
-
-  trip-route-shadows:
-    name: trip-route-shadows (ledger 2026-09-07-shadowed-trip-twins)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # tripsRoutes mounts LAST, so a method+path registered in both routes.ts and
-      # trips.routes.ts serves the inline copy and the router copy runs never — the class
-      # that once let stale twins win production traffic. The S4 sweep deleted the fourteen
-      # POST mutation twins; this guard pins both halves (no resurrection, no canonical
-      # removal). Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
-      - name: Trip-route-shadows guard predicate self-test
-        run: node scripts/check-trip-route-shadows.cjs --self-test
-      - name: Trip-route-shadows guard
-        run: node scripts/check-trip-route-shadows.cjs
-
   plan-entry-source-fields:
     name: plan-entry-source-fields (Locked Decision 42 D13 — 2026-09-05-doors-source-fields)
     runs-on: ubuntu-latest
@@ -2784,144 +2420,6 @@ jobs:
       # the ONE shared identity rule rather than a second copy of it.
       - name: Event mint de-duplication
         run: npx tsx --test client/src/lib/__tests__/event-mint-dedupe.test.ts
-
-  privileged-field-completeness-guard:
-    name: privileged-field-completeness-guard (CLAUDE.md §19 — 2026-08-29-privileged-field-completeness)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # §14 caught a client-set amount, §18 the rate, §19 verification — three privileged column
-      # families found ONE AT A TIME. This guard enumerates all six NAMED families up front
-      # (role/privilege, status/approval, fee/payout/rate, verification, payment-identity,
-      # plan/entitlement) against every insert schema that is actually reachable from a request
-      # body (not all 186 createInsertSchema(...) calls — most are internal-only), so the next
-      # family doesn't need its own incident before it gets a check. Intentional exposures are
-      # named in an explicit GRANDFATHERED_COLUMNS allowlist with a one-line reason each. Node
-      # built-ins only — no npm ci needed. Predicate fixtures FIRST (§18d).
-      - name: Privileged-field completeness guard predicate self-test
-        run: node scripts/check-privileged-field-completeness.cjs --self-test
-      - name: Privileged-field completeness guard
-        run: node scripts/check-privileged-field-completeness.cjs
-
-  advisor-row-author-guard:
-    name: advisor-row-author-guard (CLAUDE.md Locked Decision 32 — 2026-09-04-advisor-row-one-author)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # `trip_expert_advisors` was inserted from SIX production sites, each with its own idea of
-      # what a conflict means — one of which could DEMOTE an admin-confirmed advisor, two of which
-      # simply threw 23505. The UNIQUE (trip_id, local_expert_id) index was the only thing keeping
-      # them consistent, and it did that by throwing. Consolidating to one author is worth nothing
-      # if a seventh insert can land tomorrow; this is the thing that fails when it does. It catches
-      # INSERTS ONLY — updates are deliberately out of scope (see the script header's negative
-      # space). Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
-      - name: Advisor-row author guard predicate self-test
-        run: node scripts/check-advisor-row-author.cjs --self-test
-      - name: Advisor-row author guard
-        run: node scripts/check-advisor-row-author.cjs
-
-  query-userid-reads-guard:
-    name: query-userid-reads-guard (CLAUDE.md §14 — 2026-09-05-custom-venues-owner-scope)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # GET /api/custom-venues was unauthenticated and read `userId` off the QUERY STRING into a
-      # storage reader that treated it as an optional filter — so no userId meant no WHERE clause
-      # and the response was every custom venue on the table, private addresses included. Found on
-      # a production walkthrough, not by a test: nothing errors and the page renders perfectly
-      # either way. §14's existing guard (check-money-endpoints) watches BODY-sourced ids on MONEY
-      # routes; this is the same class arriving through the query string on a plain read. It knows
-      # SIX owner-id names and nothing else — the script header states the rest of its negative
-      # space. Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
-      - name: Query/param owner-id guard predicate self-test
-        run: node scripts/check-query-userid-reads.cjs --self-test
-      - name: Query/param owner-id guard
-        run: node scripts/check-query-userid-reads.cjs
-      # 2026-09-05-ld40-lane2-public-ids (CLAUDE.md Locked Decision 40): a PUBLIC payload names an
-      # earner by HANDLE, never by `users.id`. The storefront published `earner.id` under a comment
-      # saying it was fine because other surfaces published it too — circular, and exactly how the
-      # field spread. Two predicates: a users-shaped public projection allowlist may not name
-      # `id`/`userId` (users-shaped is COMPUTED from columns unique to `users`, so a list written
-      # before this guard is still checked), and a public route's `res.json` payload — or a
-      # `load*`/`build*` payload builder's return — may not carry an identity key. Sibling of
-      # check-query-userid-reads: that one watches what a route READS, this one what it RETURNS.
-      # Its exemptions PRINT on every run, so LD 40's remaining lane-2 debt stays loud (ruling 32).
-      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
-      - name: Public user-id guard predicate self-test
-        run: node scripts/check-public-user-id.cjs --self-test
-      - name: Public user-id guard
-        run: node scripts/check-public-user-id.cjs
-      # 2026-09-05-comparison-map-baseline-compare (LD 41): the review board's map gained "Your
-      # plan" as its first tab and a compare toggle that draws it beneath a focused proposal as a
-      # second sequence line. The map's honesty boundary already had a pure test; it was never
-      # wired into CI, so nothing held it. B1-B4 pin the pure rules — the baseline leads the tab
-      # order and keeps its own server-authored name without renumbering the proposals, the board
-      # still OPENS on a proposal, the compare toggle is OMITTED (not disabled) wherever there is
-      # nothing to compare, each series states its OWN "X of Y located" and the two are never
-      # summed, and zero located stops on EVERY drawn series means NO MAP rather than a
-      # city-centre fallback. B5 reads the shipped files, because a pure rule a call site can
-      # reach past is not a rule: the board hands over the same `userVariant` the baseline column
-      # renders, the ratified testids exist, BOTH renderers grew an optional second series rather
-      # than a compare-only fork (§18 rule 1), and the surface labels its connectors as sequence
-      # while deriving no distance or duration. B6-B7 pin the link BACK: the plancard names the
-      # board only when a comparison row exists (the key is OMITTED, never null-filled), the id
-      # comes off the same comparison row `lastOptimizedAt` already reads, and both the slip's
-      # "See what changed" and PlanCard's "AI Optimized" pill read that DTO field rather than
-      # fetching the user's comparisons to work out which board a plan came from.
-      - name: Proposal comparison map pin
-        run: npx tsx --test client/src/lib/__tests__/proposal-comparison-map.test.ts
-      # 2026-09-05-template-card-and-preview-door (LD 39/41, ratified LD 42 D8 + D12): the
-      # experience template stopped drawing a plan and stopped inventing dates. Both defects were
-      # invisible on happy-path data — the client-assembled `PlanCard` printed zeroes for days,
-      # activities, legs and time (counts nobody counted) and passed the CART TOTAL as the plan's
-      # budget, while the "Itinerary Preview" ribbon filled a missing start/end with TODAY and
-      # TODAY + 7 DAYS, so only a traveler who had NOT answered was given two dates they never
-      # gave. C1-C3 pin that the card is gone by import, by mount and by each fabricated prop's
-      # name, and that the page inherits Layout's ONE global Trip Strip rather than mounting a
-      # second copy; L1-L2 pin the replacement link and that /plans/:tripId is a real route;
-      # D1-D3 pin that no invented date survives in the file and that the surviving comparison
-      # rail refuses a missing date through the single calendar-day extraction; R1-R4 pin the
-      # hand-off — one handler behind all three renderings of the control, the slip when the page
-      # is bound and the ONE modal when it is not, quoting no fee and minting no comparison; S1
-      # pins the ratified door source shape (a blank passed as ABSENT, never as "").
-      - name: Experience-template plan door pin
-        run: npx tsx --test client/src/lib/__tests__/template-plan-door.test.ts
-      # 2026-09-05-slip-own-your-plan (CLAUDE.md Locked Decision 42 rows 1.6 / S1 / S2 / D16). The
-      # owner can finally add, edit, remove and reorder items on their own plan — through the four
-      # rails that already existed, with no new route under server/. Every rule here is invisible on
-      # happy-path data: D16 is a RENDER rule (a ✕ wrongly drawn for an advisor gives the plan a
-      # second, unruled edit surface), §14's rule is about a field that must NOT be sent, and the
-      # money rule is about a row that looks completely ordinary — a ✕ on a booked row severs the
-      # only plan-side link to a `service_bookings` row and NOTHING in this repo puts it back.
-      # T1-T2 pin the owner gate and the artboard's money rules (paid ⇒ no tools, booked ⇒ ↑ ✎ and
-      # no ✕, a not-yet-charged checkout row still the traveler's to remove); T3-T4 pin the bodies
-      # (the event link rides as an id AND as an explicit null, no money field is emitted, an
-      # untouched optional is OMITTED rather than "", a cleared one is null, and `expertNote` never
-      # rides — D4); T5 pins that reorder sends the DAY's full list swapped by GROUP neighbour, since
-      # a partial list would silently renumber rows nobody touched; T6 pins that a slot with no
-      # knowable day says so instead of filing the item on day 1; A1-A3 pin the shipped wiring.
-      - name: Slip own-your-plan pin
-        run: npx tsx --test client/src/lib/__tests__/slip-own-your-plan.test.ts
-      # The server half of the same ruling (review R14), and the half that actually refuses: a
-      # hidden button keeps nothing out. P1-P2 pin the ONE row-level "is this row money?" predicate
-      # and that everything it refuses a delete for is ALSO spared by the rebuild guard's WHERE
-      # clause — the two rails can never end up with one destroying what the other protects (§18
-      # rule 1) — while stating why the rebuild set is deliberately WIDER. R1-R3 pin the shipped
-      # 409 `item_booked`: read the real row first, refuse before the delete, role-blind, and no
-      # second copy of the predicate anywhere under server/. N1 pins that the item CRUD + reorder
-      # surface is still exactly the five paths that existed before this lane.
-      - name: Booked-item delete refusal pin
-        run: npx tsx --test server/__tests__/item-delete-booked-guard.test.ts
-
   slip-small-additions:
     name: slip-small-additions (CLAUDE.md Locked Decision 42 D18-D22 - 2026-09-06-slip-small-additions)
     runs-on: ubuntu-latest
@@ -3059,29 +2557,6 @@ jobs:
       # (a row holding "constructor" must be absent, not a function).
       - name: Item origin chip mapping
         run: npx tsx --test client/src/lib/__tests__/item-origin.test.ts
-
-  ai-draft-eligibility-guard:
-    name: ai-draft-eligibility-guard (CLAUDE.md Locked Decision 41 (b) — 2026-09-05-draft-only-on-empty)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      # Two free rails wrote a fresh AI plan onto an EXISTING trip and replaced what was there —
-      # a free re-optimize competing with the paid Optimize rail, over the traveler's own plan.
-      # The rule is now enforced in three handlers plus an in-transaction second layer, and that
-      # is worth nothing if a fourth writer lands tomorrow: nothing fails when one does, it simply
-      # works. This is the thing that fails. It is FILE-scoped, says nothing about ORDER or about
-      # the 409's shape, and is blind to a raw `DELETE FROM itinerary_items` that never names the
-      # rebuild guard — the script header states the rest of its negative space, and its
-      # EXEMPTIONS print on every run so filed debt never becomes a silent baseline (ruling 32).
-      # Node built-ins only — no npm ci, no DB. Predicate fixtures FIRST (§18d).
-      - name: AI-draft eligibility guard predicate self-test
-        run: node scripts/check-ai-draft-eligibility.cjs --self-test
-      - name: AI-draft eligibility guard
-        run: node scripts/check-ai-draft-eligibility.cjs
-
   console-grammar:
     name: console-grammar (CLAUDE.md Locked Decision 45 (7) — 2026-09-07-console-one-grammar)
     runs-on: ubuntu-latest
@@ -3663,3 +3138,222 @@ jobs:
   # .github/workflows/suite-server-tests.yml: it boots the production bundle with
   # ALLOW_TEST_ACCOUNTS=1, which `scripts/check-env-allowlist.cjs` (c) forbids in this
   # deploy-targeting file (ledger 2026-09-16-ci-main-red-repairs). Do not move it back.
+
+  # ---------------------------------------------------------------------------
+  # guard-batch — 2026-09-21-ci-latency-cancel-and-workers
+  #
+  # These 24 guards need neither `npm ci` nor postgres and run in EIGHT SECONDS
+  # TOTAL when timed serially. As 24 separate jobs they held 24 runner slots for
+  # 8 seconds of work, and that queueing — not the guards — was a measurable part
+  # of every PR's wall clock (jobs queued at 10:47:18 on #1026 were still queued
+  # at 10:53).
+  #
+  # EACH GUARD KEEPS ITS OWN NAMED STEP, so the GitHub UI still says WHICH guard
+  # failed and each one's documented negative space travels with it (§18d). What
+  # was traded is 24 CHECK names for 1; the guard names themselves are not lost.
+  #
+  # `if: ${{ !cancelled() }}` on every guard step means one failure does not hide
+  # the next twenty-three — all of them run and the job reports every failure at
+  # once — while a run cancelled by cancel-in-progress still stops immediately.
+  #
+  # THE THREE REQUIRED GUARDS ARE DELIBERATELY NOT HERE. test-file-reachability,
+  # money-endpoint-guard and claims-only-lookup-guard are branch-protection
+  # contexts in .github/branch-protection.json and MUST keep their own job names,
+  # or enforce-branch-protection.yml fails on the applied-vs-declared diff.
+  # ---------------------------------------------------------------------------
+  guard-batch:
+    name: guard-batch (24 grep/logic guards — each a named step)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # 
+      - name: item-removed-logging-guard · Item-removed guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-item-removed-logging.cjs --self-test
+      - name: item-removed-logging-guard · Item-removed logging coverage guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-item-removed-logging.cjs
+      # 
+      - name: itinerary-rebuild-guard · Rebuild-guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-itinerary-rebuild-guard.cjs --self-test
+      - name: itinerary-rebuild-guard · Itinerary rebuild-delete coverage guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-itinerary-rebuild-guard.cjs
+      # 
+      - name: traveler-fee-coverage · Traveler-fee coverage predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-traveler-fee-coverage.cjs --self-test
+      - name: traveler-fee-coverage · Traveler-fee coverage gate
+        if: ${{ !cancelled() }}
+        run: node scripts/check-traveler-fee-coverage.cjs
+      # 
+      - name: unmounted-router-guard · Unmounted-router guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-unmounted-routers.cjs
+      # 
+      - name: trip-mint-owner-guard · Trip-mint owner-access guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-trip-mint-owner-access.cjs
+      # 
+      - name: fee-literal-guard · Fee-gate predicate self-test
+        if: ${{ !cancelled() }}
+        run: bash scripts/phase2-fee-gate.sh --self-test
+      - name: fee-literal-guard · Fee-literal grep (scripts/phase2-fee-gate.sh)
+        if: ${{ !cancelled() }}
+        run: bash scripts/phase2-fee-gate.sh
+      # 
+      - name: decision-guards-lint · Ledger lint self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-decision-guards.cjs --self-test
+      - name: decision-guards-lint · Ledger lint
+        if: ${{ !cancelled() }}
+        run: node scripts/check-decision-guards.cjs
+      # 
+      - name: ledger-union-merge · Ledger union-merge self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-ledger-union-merge.cjs --self-test
+      - name: ledger-union-merge · Ledger union-merge config guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-ledger-union-merge.cjs
+      # 
+      - name: matrix-lint · Matrix lint self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-coverage-matrix.cjs --self-test
+      - name: matrix-lint · Matrix lint
+        if: ${{ !cancelled() }}
+        run: node scripts/check-coverage-matrix.cjs && echo "matrix-lint OK"
+      # 
+      - name: env-allowlist-guard · Env-allowlist guard self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-env-allowlist.cjs --self-test
+      - name: env-allowlist-guard · Env-allowlist guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-env-allowlist.cjs
+      # 
+      - name: omit-schema-ratchet · Omit-schema-ratchet predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-omit-schema-ratchet.cjs --self-test
+      - name: omit-schema-ratchet · Omit-schema-ratchet guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-omit-schema-ratchet.cjs
+      # 
+      - name: demand-rollup-guard · Demand-rollup gate predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-demand-rollup.cjs --self-test
+      - name: demand-rollup-guard · Demand-rollup discipline gate
+        if: ${{ !cancelled() }}
+        run: node scripts/check-demand-rollup.cjs
+      - name: demand-rollup-guard · Coords-preservation predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-coords-preservation.cjs --self-test
+      - name: demand-rollup-guard · Coords-preservation guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-coords-preservation.cjs
+      # 
+      - name: linkage-preservation-guard · Linkage-preservation guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-linkage-preservation.cjs
+      # 
+      - name: artifact-deploy-guard · Artifact deploy guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-artifact-deploy-guard.cjs --self-test
+      - name: artifact-deploy-guard · Artifact deploy override guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-artifact-deploy-guard.cjs
+      # 
+      - name: duplicate-migration-prefix-guard · Duplicate-migration-prefix guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-duplicate-migration-prefixes.cjs --self-test
+      - name: duplicate-migration-prefix-guard · Duplicate-migration-prefix guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-duplicate-migration-prefixes.cjs
+      - name: duplicate-migration-prefix-guard · Publish-preflight predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/publish-preflight.cjs --self-test
+      - name: duplicate-migration-prefix-guard · Publish-preflight is a no-op outside a deployment build
+        if: ${{ !cancelled() }}
+        run: node scripts/publish-preflight.cjs
+      # 
+      - name: category-reachability-guard · Category-reachability guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-category-reachability.cjs --self-test
+      - name: category-reachability-guard · Category-reachability guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-category-reachability.cjs
+      - name: roles-needed-reachability-guard · Roles-needed guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-roles-needed-reachability.cjs --self-test
+      - name: roles-needed-reachability-guard · Roles-needed reachability guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-roles-needed-reachability.cjs
+      # 
+      - name: earn-planner-keys-guard · Earn-planner-keys guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-earn-planner-keys.cjs --self-test
+      - name: earn-planner-keys-guard · Earn-planner-keys guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-earn-planner-keys.cjs
+      # 
+      - name: planning-entry-guard · Planning-entry guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-planning-entry.cjs --self-test
+      - name: planning-entry-guard · Planning-entry guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-planning-entry.cjs
+      # 
+      - name: trip-route-shadows · Trip-route-shadows guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-trip-route-shadows.cjs --self-test
+      - name: trip-route-shadows · Trip-route-shadows guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-trip-route-shadows.cjs
+      # 
+      - name: privileged-field-completeness-guard · Privileged-field completeness guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-privileged-field-completeness.cjs --self-test
+      - name: privileged-field-completeness-guard · Privileged-field completeness guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-privileged-field-completeness.cjs
+      # 
+      - name: advisor-row-author-guard · Advisor-row author guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-advisor-row-author.cjs --self-test
+      - name: advisor-row-author-guard · Advisor-row author guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-advisor-row-author.cjs
+      # 
+      - name: query-userid-reads-guard · Query/param owner-id guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-query-userid-reads.cjs --self-test
+      - name: query-userid-reads-guard · Query/param owner-id guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-query-userid-reads.cjs
+      - name: query-userid-reads-guard · Public user-id guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-public-user-id.cjs --self-test
+      - name: query-userid-reads-guard · Public user-id guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-public-user-id.cjs
+      - name: query-userid-reads-guard · Proposal comparison map pin
+        if: ${{ !cancelled() }}
+        run: npx tsx --test client/src/lib/__tests__/proposal-comparison-map.test.ts
+      - name: query-userid-reads-guard · Experience-template plan door pin
+        if: ${{ !cancelled() }}
+        run: npx tsx --test client/src/lib/__tests__/template-plan-door.test.ts
+      - name: query-userid-reads-guard · Slip own-your-plan pin
+        if: ${{ !cancelled() }}
+        run: npx tsx --test client/src/lib/__tests__/slip-own-your-plan.test.ts
+      - name: query-userid-reads-guard · Booked-item delete refusal pin
+        if: ${{ !cancelled() }}
+        run: npx tsx --test server/__tests__/item-delete-booked-guard.test.ts
+      # 
+      - name: ai-draft-eligibility-guard · AI-draft eligibility guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-ai-draft-eligibility.cjs --self-test
+      - name: ai-draft-eligibility-guard · AI-draft eligibility guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-ai-draft-eligibility.cjs
