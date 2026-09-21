@@ -152,6 +152,14 @@ router.post("/api/trips/:tripId/trip-pass/purchase/confirm", isAuthenticated, as
       sourcePaymentId: intent.id,
       allowancesSnapshot: {
         ...(plan.allowances as Record<string, unknown>),
+        // RECORDED, NOT ADVERTISED (ledger `2026-09-21-trip-pass-revision-claim`). The two
+        // traveler-facing surfaces stopped promising this benefit, because LD 41 (f) records
+        // `expert_revision` as having no consumption or charge site and instructs that it not be
+        // described as enforced until its lane lands. The WRITE deliberately stays: `coversAction`
+        // reads this key, `consumeRevision` decrements it atomically, and keeping it means a pass
+        // sold TODAY is honoured the day that lane ships. Deleting it would destroy the hook LD 41
+        // (f) reserves and would silently downgrade passes already sold. Do not read its presence
+        // here as a claim to the traveler — the claim is what a surface says, and no surface says it.
         revisionsRemaining: 1,
         priceCentsPaid: intent.amount,
         planName: plan.name,

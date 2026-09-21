@@ -459,6 +459,13 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/bundle-component-state-copy.test.ts
       - name: API refusal parse pin
         run: npx tsx --test client/src/lib/__tests__/api-refusal.test.ts
+      # Ledger `2026-09-21-trip-pass-revision-claim`: Trip Pass sold "one expert revision" on the
+      # pricing page and on the in-product upsell card while nothing could deliver or record one
+      # (LD 41 (f) — `expert_revision` has no consumption or charge site; consumeRevision has zero
+      # production callers). T1/T2 pin the claim's absence; T4 is the INVERSE and fails the day the
+      # revision product is built, so the copy and the code are revisited together.
+      - name: Trip Pass benefit-claim pin
+        run: npx tsx --test client/src/lib/__tests__/trip-pass-copy.test.ts
       # Ledger `2026-09-18-add-to-plan-lossless`: Discover's Add-to-plan body carries
       # `affiliateProductId` when `tracking.productId` is a non-empty string and omits the key
       # entirely otherwise — the server-side admission already existed, this is the client half.
