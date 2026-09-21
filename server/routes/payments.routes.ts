@@ -12,6 +12,9 @@ import { markItemPurchased } from "../services/item-routing.service";
 // below — this promotion path AND its recovery twin (`checkout-claim.service.ts`
 // `promotePaidCheckout`) both call the ONE implementation.
 import { createHandoffRequestsForBooking } from "../services/concierge-handoff.service";
+// Memberships increment 2 (ledger `2026-09-21-membership-checkout`): the ONE rail that starts a
+// recurring-plan subscription. Grants nothing — the webhook records the membership.
+import { startMembershipCheckout } from "../services/membership-checkout.service";
 // Ruling 38 (checkout atomicity): the claim → authorize → promote spine + the TTL reclaim.
 import {
   findPriorClaim,
@@ -3136,5 +3139,62 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
 // HTTP door, not the scoring logic, and it has real importers
 // (`server/routes/booking-actions.ts`, `server/services/content-matching.service.ts`).
 // Do not re-add `/api/leads/route`.
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/memberships/checkout — memberships increment 2
+// (ledger `2026-09-21-membership-checkout`)
+//
+// Starts a Stripe subscription Checkout Session for a recurring plan. Increment 1 landed the
+// RECORDING half first on purpose; this is the collecting half, and it GRANTS NOTHING — the
+// membership row is written later by the signature-verified webhook, through increment 1's one
+// atomic upsert.
+//
+// §19 — THE BODY IS A PICK-BASED ALLOWLIST AND IT ADMITS EXACTLY ONE FIELD. `.strict()` REFUSES
+// an unknown key rather than silently stripping it, so a request carrying `priceId`, `amount`,
+// `userId`, `interval` or `currency` is rejected outright instead of being quietly ignored — the
+// difference matters, because silent stripping is how a caller comes to believe it set something.
+// There is no denylist schema anywhere on this rail: nothing derived from `createInsertSchema`
+// reaches it, so a column added to `plans` later is not client-settable BY DEFAULT.
+//
+// §14 — the actor is `getUserId(req)`; no identity is read from the body. No amount is read from
+// anywhere at all: the Stripe Price is the authority on what is charged.
+//
+// While PLUS_SALES_ENABLED is off — the default, and the state today — this answers 403
+// `sales_disabled` before touching the database or Stripe.
+// ─────────────────────────────────────────────────────────────────────────────
+const membershipCheckoutBody = z
+  .object({ planKey: z.string().min(1).max(64) })
+  .strict();
+
+/** Refusal → HTTP status. A misconfiguration is OURS (500); the rest are the caller's or the gate's. */
+const MEMBERSHIP_CHECKOUT_STATUS: Record<string, number> = {
+  sales_disabled: 403,
+  plan_not_subscribable: 400,
+  plan_unavailable: 404,
+  already_member: 409,
+  price_not_configured: 500,
+  stripe_error: 502,
+};
+
+router.post("/api/memberships/checkout", isAuthenticated, async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+  const parsed = membershipCheckoutBody.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "planKey is required", reason: "invalid_body" });
+  }
+
+  const result = await startMembershipCheckout({ userId, planKey: parsed.data.planKey });
+
+  if (!result.ok) {
+    const status = MEMBERSHIP_CHECKOUT_STATUS[result.reason] ?? 400;
+    // `detail` is operator-facing and names the refusal; it carries no key material and no amount.
+    return res.status(status).json({ message: result.detail, reason: result.reason });
+  }
+
+  // The session id is returned for the client to correlate; the URL is where the member goes.
+  return res.json({ url: result.url, sessionId: result.sessionId });
+});
 
 export default router;
