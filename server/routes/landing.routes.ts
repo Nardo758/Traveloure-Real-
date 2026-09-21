@@ -36,7 +36,6 @@ import {
 import { getUserId } from "../utils/auth";
 import {
   composeLandingHero,
-  deriveWantedSlot,
   dollarsToCents,
   pickAnchorExpert,
   type HeroNeighborhood,
@@ -121,33 +120,18 @@ router.get("/api/landing/hero", async (_req, res) => {
     const picked = pickAnchorExpert(neighborhoods);
     const anchorExpert = picked ? await enrichAnchor(picked) : null;
 
-    // Wanted slot: covered set from the SAME gather step the discover upsell slot uses
-    // (candidates ∪ suppressed both count as "covered" client-side; the gather pool is
-    // their superset and the rule's stated intent — coverage the engine found at all).
-    // Best-effort: a gather failure yields an empty covered set, which the mirrored rule
-    // already treats as "slot data hasn't loaded" (full-list fallback), same as the client.
-    let covered = new Set<string>();
-    let offeringTypes: HeroOfferingType[] = [];
+    let offeringTypes: HeroOfferingType[] | null = null;
     try {
       const { getExpertOfferingTypes } = await import("../services/content-query.service");
       offeringTypes = ((await getExpertOfferingTypes(null)) ?? []).map((r: any) => ({
         offering_type_key: String(r.offering_type_key ?? r.offeringTypeKey ?? ""),
         display_name: String(r.display_name ?? r.displayName ?? ""),
       }));
-      const firstNbId = neighborhoods[0]?.id;
-      if (firstNbId !== undefined && firstNbId !== null) {
-        const { gatherOfferingCandidates } = await import("../services/upsell-query.service");
-        const raw = await gatherOfferingCandidates({
-          marketCity: top.cityName.toLowerCase(),
-          neighborhoodIds: [String(firstNbId)],
-          includePackages: true,
-        });
-        covered = new Set(raw.map((c: any) => String(c.offeringId)));
-      }
     } catch (e: any) {
       console.error("[landing-hero] wanted-slot inputs failed (leg stays honest):", e?.message);
     }
-    const wanted = deriveWantedSlot(neighborhoods, covered, offeringTypes);
+    const { resolveLandingHeroWanted } = await import("../services/landing-hero-wanted.service");
+    const wanted = await resolveLandingHeroWanted(top.cityName, offeringTypes);
 
     const payload = composeLandingHero({
       topCity: top,

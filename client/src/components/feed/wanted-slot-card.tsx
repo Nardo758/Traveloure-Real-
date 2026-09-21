@@ -2,7 +2,7 @@
  * Feed panel — Wanted / recruitment slot (extracted from discover-location.tsx
  * inline `WantedSlotCard` for the city-feed bento, Phase 2).
  *
- * Restyled per the bento dispatch: dashed border, GOLD eyebrow, a `Offer this`
+ * Restyled per the bento dispatch: dashed border, GOLD eyebrow, a `Ways to earn`
  * primary and an `Ask an expert` secondary. ADDITIVE — every behaviour and
  * testid the inline card carried is preserved verbatim:
  *   - wrapper testid `section-recruitment-${neighborhoodId}`
@@ -91,7 +91,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
           style={{ background: "var(--earn-gold-ink)" }}
           data-testid="link-wanted-apply"
         >
-          Offer this <ChevronRight className="h-3 w-3" />
+          Ways to earn <ChevronRight className="h-3 w-3" />
         </a>
         <button
           type="button"
