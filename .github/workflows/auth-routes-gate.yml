@@ -228,6 +228,9 @@ jobs:
         # Route source of truth: client/src/lib/role-routes-config.ts
         run: npx playwright test auth-routes --project=chromium
         env:
+          # Read-only route sweep: no clicks, no writes, no describe.serial,
+          # so the per-test pages are independent. Default stays 1 (config).
+          PW_WORKERS: '4'
           BASE_URL: http://localhost:5000
           CI: 'true'
           # Enable globalSetup (auth-state creation) — this workflow seeds the

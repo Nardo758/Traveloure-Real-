@@ -260,6 +260,9 @@ jobs:
         # (auth-gated ones redirect to "/" rather than rendering NotFound).
         run: npx playwright test navbar-links --project=chromium
         env:
+          # Read-only route sweep: no clicks, no writes, no describe.serial,
+          # so the per-test pages are independent. Default stays 1 (config).
+          PW_WORKERS: '4'
           BASE_URL: http://localhost:5000
           CI: 'true'
 
@@ -269,6 +272,9 @@ jobs:
         # (auth-gated ones redirect to "/" rather than rendering NotFound).
         run: npx playwright test footer-links --project=chromium
         env:
+          # Read-only route sweep: no clicks, no writes, no describe.serial,
+          # so the per-test pages are independent. Default stays 1 (config).
+          PW_WORKERS: '4'
           BASE_URL: http://localhost:5000
           CI: 'true'
 

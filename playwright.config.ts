@@ -33,8 +33,12 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  /* CI worker count is OPT-IN PER SUITE via PW_WORKERS, and the default is still 1.
+   * A suite that sets nothing keeps exactly today's serial behaviour -- only a
+   * workflow that has been READ and found free of shared mutable state raises it.
+   * `Number(undefined)` is NaN and `Number("")` is 0, so both fall through `||` to
+   * 1: an unset or empty value can never hand Playwright a zero worker count. */
+  workers: process.env.CI ? Number(process.env.PW_WORKERS) || 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
