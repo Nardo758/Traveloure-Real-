@@ -36,6 +36,18 @@
  * No DB CHECK over the column (migration-159/171 posture); this module is the source of truth.
  */
 
+/**
+ * The RAILS a drift fact can belong to. Here, beside the kinds, because this module is already the
+ * source of truth for the drift vocabulary and a rail is part of it.
+ *
+ * It lives in `shared/` rather than in the job because the ADMIN PAGE renders it, and that page had
+ * restated the union as `"cart" | "legacy"` — already stale before the membership rail existed,
+ * since it never gained `ready_made`. A restated vocabulary drifts the moment a rail is added
+ * (§18 rule 1); an imported one cannot.
+ */
+export const RECONCILIATION_RAILS = ["cart", "legacy", "ready_made", "membership"] as const;
+export type ReconciliationRail = (typeof RECONCILIATION_RAILS)[number];
+
 /** The canonical drift vocabulary — see the file header. */
 export const RECONCILIATION_EXCEPTION_KINDS = [
   // ── CART rail (service_bookings) ──────────────────────────────────────────────────────────
@@ -151,6 +163,19 @@ export const RECONCILIATION_EXCEPTION_KINDS = [
   // ── LEGACY rail (`bookings` — still live via /booking-demo and process-cart) ───────────────
   "stripe_charge_no_booking",
   "booking_no_stripe_charge",
+  // ── MEMBERSHIP rail (plan_memberships) — ledger `2026-09-21-membership-reconciliation` ────
+  /** Stripe holds a subscription whose status maps to ACTIVE, and NO `plan_memberships` row
+   *  carries that subscription id. The member is being billed and holds no entitlement.
+   *
+   *  `plan_memberships` has exactly ONE writer, driven ONLY by a signature-verified webhook, so
+   *  an undelivered webhook produced precisely this and nothing detected it until this rail.
+   *  Recorded only when the hand-off to that one writer could NOT resolve the row — the ordinary
+   *  case is fixed by the same pass and leaves no accusation behind (the D-18 shape). */
+  "sub_active_no_membership",
+  /** A membership row exists for the subscription, but the status Stripe reports maps to a
+   *  DIFFERENT status than the row holds — e.g. Stripe cancelled it and the row still grants.
+   *  Same hand-off, same recording rule: only an unconverged row is reported. */
+  "sub_status_drift",
 ] as const;
 export type ReconciliationExceptionKind = (typeof RECONCILIATION_EXCEPTION_KINDS)[number];
 
@@ -180,6 +205,9 @@ export const RECONCILIATION_KIND_LABELS: Record<ReconciliationExceptionKind, str
   // ── LEGACY rail ───────────────────────────────────────────────────────────────────────────
   stripe_charge_no_booking: "Legacy: Stripe charge — no matching booking",
   booking_no_stripe_charge: "Legacy: booking confirmed — no Stripe charge",
+  // ── MEMBERSHIP rail ───────────────────────────────────────────────────────────────────────
+  sub_active_no_membership: "Subscription active at Stripe — no membership recorded",
+  sub_status_drift: "Stripe subscription status ≠ the status the membership row holds",
 };
 
 /** Whether this build knows the kind — for a surface that wants to say so, never for a fallback.

@@ -37,8 +37,8 @@
  *               at all: it shows them read-only, and its "change" affordance comes back here
  *               through `open(source)` — the one opener — rather than editing a second copy.
  *   - local   → /experts (?destination= prefilled when known).
- *   - occasion→ /plus/occasions — offered ONLY when PLUS_SALES_ENABLED (public flag on
- *               /api/pricing); hidden, never teased, when off.
+ *   - occasion→ the shared Plus membership checkout client rail — offered ONLY when
+ *               PLUS_SALES_ENABLED (public flag on /api/pricing); hidden, never teased, when off.
  * Returning users with an active trip still get "Continue {trip name}", which goes to the
  * PLANNING surface (/plans/:tripId), never the details card.
  *
@@ -55,11 +55,13 @@ import {
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { updateTripContext, useTripContext } from "@/lib/trip-context";
 import { mintTripSlip } from "@/lib/trip-slip";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
+import { startMembershipCheckout } from "@/lib/membership-checkout";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 import { PlanModal, type CommittedPlan, type PlanMintOutcome } from "@/components/trip/plan-modal";
 
@@ -213,6 +215,7 @@ const DEFAULT_BRANCHES: PlanningBranch[] = ["myself", "ai", "local"];
 export function PlanningProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const { openSignInModal } = useSignInModal();
+  const { toast } = useToast();
   const [tripCtx] = useTripContext();
   const [, setLocation] = useLocation();
 
@@ -326,9 +329,18 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         setLocation(dest ? `/experts?destination=${encodeURIComponent(dest)}` : "/experts");
         return;
       }
-      setLocation("/plus/occasions");
+      void startMembershipCheckout({
+        planKey: "plus_annual",
+        onSignInRequired: () =>
+          openSignInModal({
+            title: "Sign in to join Plus",
+            description: "Sign in to continue to secure checkout.",
+            returnTo: "/pricing",
+          }),
+        onNotice: (notice) => toast(notice),
+      });
     },
-    [setLocation, source],
+    [setLocation, source, openSignInModal, toast],
   );
 
   const continueHref = tripCtx.tripId

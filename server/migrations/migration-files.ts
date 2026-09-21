@@ -1802,4 +1802,9 @@ export const MIGRATION_FILES = [
   // Additive, nullable, NO DEFAULT/CHECK/backfill; DECLARED in `shared/schema.ts`. Column-only,
   // so this IS §20's one approvable publish prompt (ADD COLUMN IF NOT EXISTS matching this file).
   "317_plans_stripe_price_ids.sql",
+  // 2026-09-21-membership-reconciliation: the MEMBERSHIP rail's per-pass tally on
+  // `reconciliation_runs` (§17 rule 2 — every rail's work is durably recorded). NULLABLE, NO
+  // DEFAULT, NO CHECK, NO BACKFILL, on the migration-301 precedent: NULL = that pass never tallied
+  // this rail, never "it examined zero". Column-only, so it IS §20's one approvable publish prompt.
+  "318_reconciliation_runs_checked_subscriptions.sql",
 ] as const;

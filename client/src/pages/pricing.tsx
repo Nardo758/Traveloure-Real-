@@ -10,9 +10,10 @@
  * Structure (per docs/design/PRICING_PAGE_SPEC.md):
  *   band header -> four-column ladder (Yourself / AI / Trip Pass / Local)
  *   -> Plus band -> Pro band.
- * No purchase flow ships in this lane — CTAs route to the relevant surface
- * (planner, /experts) or a stub toast for the not-yet-buildable ones.
+ * Plus uses the shared membership-checkout client rail when sales are enabled. Other CTAs route
+ * to their relevant surface (planner, /experts) or retain their not-yet-buildable stub.
  */
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import {
@@ -32,6 +33,10 @@ import { usePlanning } from "@/contexts/PlanningContext";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
+import {
+  startMembershipCheckout,
+  type MembershipCheckoutNotice,
+} from "@/lib/membership-checkout";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -71,9 +76,14 @@ function pct(n: number): string {
 export default function PricingPage() {
   const { openSignInModal } = useSignInModal();
   const { open: openPlanning } = usePlanning();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const membershipReturn = new URLSearchParams(window.location.search).get("membership");
+  const [membershipConfirmation, setMembershipConfirmation] = useState<
+    "idle" | "checking" | "confirmed" | "pending"
+  >(membershipReturn === "success" ? "checking" : "idle");
+  const [plusCheckoutPending, setPlusCheckoutPending] = useState(false);
 
   const { data: pricing, isLoading, isError } = useQuery<PricingBundle>({
     queryKey: ["/api/pricing"],
@@ -81,6 +91,74 @@ export default function PricingPage() {
 
   const stub = (label: string) =>
     toast({ title: `${label} — coming soon`, description: "This purchase flow isn't live yet." });
+
+  const beginPlusCheckout = async () => {
+    setPlusCheckoutPending(true);
+    await startMembershipCheckout({
+      planKey: "plus_annual",
+      onSignInRequired: () =>
+        openSignInModal({
+          title: "Sign in to join Plus",
+          description: "Sign in to continue to secure checkout.",
+          returnTo: "/pricing",
+        }),
+      onNotice: (notice: MembershipCheckoutNotice) => toast(notice),
+    });
+    setPlusCheckoutPending(false);
+  };
+
+  useEffect(() => {
+    if (membershipReturn !== "success" || authLoading) return;
+    if (!user) {
+      openSignInModal({
+        title: "Sign in to confirm Plus",
+        description: "Sign in so we can confirm your membership.",
+        returnTo: "/pricing?membership=success",
+      });
+      return;
+    }
+
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+    setMembershipConfirmation("checking");
+
+    const checkMembership = async () => {
+      attempts += 1;
+      try {
+        const response = await fetch("/api/plus/config", { credentials: "include" });
+        if (response.status === 401) {
+          openSignInModal({
+            title: "Sign in to confirm Plus",
+            description: "Sign in so we can confirm your membership.",
+            returnTo: "/pricing?membership=success",
+          });
+          return;
+        }
+        if (response.ok) {
+          const config = await response.json() as { isPlus?: boolean };
+          if (config.isPlus === true) {
+            if (!stopped) setMembershipConfirmation("confirmed");
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("[membership-checkout] Membership confirmation check failed", error);
+      }
+
+      if (attempts >= 8) {
+        if (!stopped) setMembershipConfirmation("pending");
+        return;
+      }
+      timer = setTimeout(checkMembership, 1_500);
+    };
+
+    void checkMembership();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [membershipReturn, authLoading, user, openSignInModal]);
 
   if (isLoading) {
     return (
@@ -196,6 +274,27 @@ export default function PricingPage() {
         title="Pricing | Traveloure"
         description="Plan it yourself for free, pay per use with AI, get a Trip Pass for unlimited runs, or hand it to a local expert. Transparent pricing, no membership required."
       />
+
+      {membershipReturn === "cancelled" && (
+        <div
+          className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-center text-sm text-amber-900"
+          data-testid="banner-membership-cancelled"
+        >
+          Plus checkout was cancelled. No membership change was made.
+        </div>
+      )}
+      {membershipReturn === "success" && (
+        <div
+          className="border-b border-[color:var(--earn-teal)] bg-[var(--earn-teal-wash)] px-6 py-3 text-center text-sm text-[color:var(--earn-teal-ink)]"
+          data-testid="banner-membership-confirmation"
+        >
+          {membershipConfirmation === "confirmed"
+            ? "Your Plus membership is confirmed. You can now set up your occasions."
+            : membershipConfirmation === "pending"
+              ? "Your payment went through. Your Plus membership is still being confirmed; we'll email you when it is ready."
+              : "Your payment went through. We’re confirming your Plus membership now…"}
+        </div>
+      )}
 
       {/* Band header */}
       <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-[26px]">
@@ -361,11 +460,14 @@ export default function PricingPage() {
             </ul>
             {pricing.plusSalesEnabled ? (
               <button
-                onClick={() => stub("Plus")}
+                onClick={() => void beginPlusCheckout()}
+                disabled={plusCheckoutPending}
                 data-testid="button-join-plus"
-                className="mt-5 rounded-lg py-2.5 px-5 text-sm font-semibold bg-[var(--earn-coral-ink)] text-white hover:opacity-90 transition-colors"
+                className="mt-5 rounded-lg py-2.5 px-5 text-sm font-semibold bg-[var(--earn-coral-ink)] text-white hover:opacity-90 transition-colors disabled:opacity-60"
               >
-                Join Plus · {dollars(pricing.plusAnnual.priceCents)}/year
+                {plusCheckoutPending
+                  ? "Opening checkout…"
+                  : `Join Plus · ${dollars(pricing.plusAnnual.priceCents)}/year`}
               </button>
             ) : (
               <button

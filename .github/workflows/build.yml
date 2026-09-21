@@ -2146,6 +2146,25 @@ jobs:
       - name: membership checkout shape — subscription metadata contract (S1-S5)
         run: npx tsx --test server/__tests__/membership-checkout-shape.test.ts
 
+      # 2026-09-21-membership-purchase-surface (increment 3): every named server refusal gets its
+      # own traveler-facing sentence. M2 pins the honesty boundary: a missing operator-configured
+      # Stripe Price is never described as the traveler's card or details failing.
+      - name: membership purchase surface — refusal copy is distinct and honest (M1-M4)
+        run: npx tsx --test client/src/lib/__tests__/membership-checkout-copy.test.ts
+
+      # 2026-09-21-membership-reconciliation (increment 3): the FOURTH reconciliation rail.
+      # plan_memberships has ONE writer, driven ONLY by a signature-verified webhook, so an
+      # undelivered webhook left a member CHARGED with no entitlement and nothing looked — §17's
+      # other three rails scan bookings and know nothing about subscriptions. N1 proves §17's
+      # narrow exception (third instance, after promotePaidCheckout and
+      # notifyBuyerOfReadyMadeDelivery) CONVERGES the row through that one writer and records NO
+      # accusation about a fact the same pass fixed; N2 proves an unresolvable owner writes NOTHING
+      # and records the WRITER's own refusal; N3 is the case that would otherwise keep granting
+      # Plus after cancellation; N5 is the arm most likely to cry wolf — a MANUAL grant is never
+      # touched or reported; N7 pins §17 rule 2's durable tally (migration 318).
+      - name: membership reconciliation rail — detect and converge (N1-N8)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/membership-reconciliation.db.test.ts
+
   one-trip-write-resolver:
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
     runs-on: ubuntu-latest

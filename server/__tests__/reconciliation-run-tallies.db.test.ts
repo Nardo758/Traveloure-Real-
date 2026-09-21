@@ -203,6 +203,10 @@ function reader(paymentIntents: any[]): StripeReader {
     listPaymentIntents: async () => paymentIntents as any,
     listCharges: async () => [],
     listRefunds: async () => [],
+    // Ledger `2026-09-21-membership-reconciliation` added a fourth rail to the SAME injectable
+    // seam. This suite predates it and asserts nothing about memberships, so it lists NO
+    // subscriptions — the membership rail then scans zero and changes none of these counts.
+    listSubscriptions: async () => [],
   };
 }
 

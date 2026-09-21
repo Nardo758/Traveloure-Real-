@@ -8546,6 +8546,15 @@ export const reconciliationRuns = pgTable(
      */
     checkedReadyMadePurchases: integer("checked_ready_made_purchases"),
     readyMadeAnnounceHandOffs: integer("ready_made_announce_hand_offs"),
+    // Ledger `2026-09-21-membership-reconciliation`, migration 318. The MEMBERSHIP rail's per-pass
+    // tally, on the `checked_ready_made_purchases` precedent (D-42, migration 301) and for the same
+    // §17 rule 2 reason: every per-rail tally a pass computes is written onto the run row, or a
+    // scheduled pass leaves no durable record of that rail's work.
+    //
+    // NULLABLE with NO DEFAULT, deliberately. NULL means THIS PASS NEVER TALLIED THIS RAIL — which
+    // is the only honest reading for every run that predates the migration. A `0` default would
+    // claim those passes examined zero subscriptions, a different and false statement (§13).
+    checkedSubscriptions: integer("checked_subscriptions"),
     /** Every drift found this pass, including ones already on record from an earlier pass. */
     exceptionsDetected: integer("exceptions_detected").notNull().default(0),
     /** Rows this pass actually inserted (detected minus already-recorded). */
