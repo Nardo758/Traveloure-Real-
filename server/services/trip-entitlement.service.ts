@@ -7,17 +7,37 @@
  *
  * Coverage semantics (ruling): an ACTIVE pass on a trip grants
  *   - optimizer_run          unlimited (no per-run charge)
- *   - ai_task                unlimited (NO-OP TODAY: no charge surface exists — the
- *                            concierge:ai_task band is display-only on /api/pricing;
- *                            this key is the hook for when that surface is built)
+ *   - ai_task                unlimited. NO LONGER A NO-OP: this comment used to say "no charge
+ *                            surface exists", which stopped being true when the AI proposal APPLY
+ *                            became the charge point (ledger `2026-09-15-d20-d21-proposal-charge`,
+ *                            migration 300). `resolveProposalApplyAuthorization` reads this action
+ *                            FIRST, so a covered plan applies with `charge_basis='trip_pass'`,
+ *                            takes no claim and creates no PaymentIntent.
  *   - traveler_service_fee   waived via the EXISTING rails-waiver mechanism
  *                            (resolveTravelerServiceFee({waived:true}), basis 'trip_pass')
- *   - expert_revision        ONE, recorded in allowances_snapshot.revisionsRemaining and
- *                            claimable via consumeRevision — UNENFORCED today (Phase 0.3:
- *                            no generalized revision action exists; filed for the
- *                            expert-flow lane). consumeRevision is the future hook.
  *
- * allowances_snapshot is FROZEN at purchase (plans-row allowances + revisionsRemaining).
+ * EXPERT REVISION IS RETIRED FROM THIS SPINE (decision-maker ratified 2026-09-21, ledger
+ * `2026-09-21-expert-revision-retired`). It used to be listed here as a fourth benefit — ONE
+ * revision recorded in `allowances_snapshot.revisionsRemaining` and claimable via
+ * `consumeRevision` — and it was never enforced, because there was nothing to enforce it against.
+ *
+ * WHAT THE INVESTIGATION FOUND, and it is why this is a deletion and not a build: the expert
+ * revision PRODUCT already exists and needs nothing from here. Ruling 11 (`plan-work-access.service.ts`)
+ * makes a `plan_work` listing purchase grant the SELLING EXPERT `accepted` — a §12 WRITE status —
+ * on the buyer's plan, inside the authorization transaction, idempotently. A traveler paying their
+ * expert for a round of changes is that, at the expert's OWN listing price, through the one
+ * checkout, with the traveler service fee waived by `traveler_service_fee` like any other booking.
+ *
+ * WHY TRIP PASS CANNOT "INCLUDE" ONE: the expert sets the price, so an inclusion would mean the
+ * platform paying an earner for work at a platform-set rate — a P&L decision with a seller-consent
+ * half, neither of which anyone had ratified. §18c's rule applied: a hook with no consumer and no
+ * ratified funder is DELETED, not left sitting as a future maybe. Re-introducing it is a new money
+ * decision, not a re-wiring of this file.
+ *
+ * allowances_snapshot is FROZEN at purchase, from the plans row's own allowances. It no longer
+ * carries `revisionsRemaining` (see above). Passes SOLD BEFORE 2026-09-21 still carry it and are
+ * NOT rewritten — the snapshot is frozen by design and a backfill would edit what a traveler
+ * actually bought (§13). It is simply read by nothing.
  * source_payment_id is payment identity (§19a): only grantTripPass writes it, only from a
  * Stripe-verified PaymentIntent id — never from a request body.
  *
@@ -36,8 +56,7 @@ import { PLAN_KEYS } from "./plans.service";
 export type TripPassAction =
   | "optimizer_run"
   | "ai_task"
-  | "traveler_service_fee"
-  | "expert_revision";
+  | "traveler_service_fee";
 
 export type TripPassSource = "stripe" | "manual" | "beta";
 const TRIP_PASS_SOURCES = new Set<TripPassSource>(["stripe", "manual", "beta"]);
@@ -74,40 +93,12 @@ export async function coversAction(tripId: string, action: TripPassAction): Prom
     case "optimizer_run":
     case "ai_task":
     case "traveler_service_fee":
-      // Unconditional benefits of an active pass (ruling; unlimited, no counters).
+      // Unconditional benefits of an active pass (ruling; unlimited, no counters). These three are
+      // now the WHOLE set — `expert_revision` was the only counted one and it is retired (header).
       return true;
-    case "expert_revision": {
-      const snap = (pass.allowancesSnapshot ?? {}) as Record<string, unknown>;
-      const remaining = Number(snap.revisionsRemaining ?? 0);
-      return Number.isFinite(remaining) && remaining > 0;
-    }
     default:
       return false;
   }
-}
-
-/**
- * Atomically claims one revision from the snapshot (WHERE-guarded, so a double-click
- * claims once — the ready_made_purchases.revisionStatus pattern applied to a count).
- * UNENFORCED today: no charge point calls this; it exists so the expert-flow lane has
- * the hook and the count is provably decrement-once. Returns true when a revision was
- * consumed, false when none remained (or no active pass).
- */
-export async function consumeRevision(tripId: string): Promise<boolean> {
-  const result = await db.execute(sql`
-    UPDATE trip_entitlements
-    SET allowances_snapshot = jsonb_set(
-          allowances_snapshot,
-          '{revisionsRemaining}',
-          to_jsonb(((allowances_snapshot->>'revisionsRemaining')::int) - 1)
-        ),
-        updated_at = now()
-    WHERE trip_id = ${tripId}
-      AND plan_key = ${PLAN_KEYS.TRIP_PASS}
-      AND status = 'active'
-      AND COALESCE((allowances_snapshot->>'revisionsRemaining')::int, 0) > 0
-  `);
-  return ((result as any).rowCount ?? 0) > 0;
 }
 
 /**

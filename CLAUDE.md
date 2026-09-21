@@ -951,8 +951,31 @@ This document captures architectural decisions to maintain consistency across co
     takes no claim, creates no PaymentIntent and writes no ledger row, while an uncovered one is
     charged FLAT from the `concierge:ai_task` `fee_bands` row — ONCE per distinct proposal,
     idempotent on the proposal id (`ai-apply-<proposalId>`), the §15b claim on the proposal row
-    taken BEFORE the Stripe call. **`expert_revision` is still unenforced** and its owner is
-    unchanged; do not describe it as an enforced benefit.
+    taken BEFORE the Stripe call.
+    **`expert_revision` IS RETIRED, NOT PENDING (decision-maker ratified Sep 21, 2026 — ledger
+    `2026-09-21-expert-revision-retired`). THIS CLAUSE'S DEBT IS CLOSED BY DELETION.** This entry
+    recorded `expert_revision` as promised-but-unenforced and named the memberships-checkout lane
+    as its owner. That framing was wrong in one decisive way: **the expert-revision PRODUCT was
+    never missing.** Ruling 11 (`plan-work-access.service.ts`) already makes a `plan_work` listing
+    purchase grant the SELLING EXPERT `accepted` — a §12 WRITE status — on the buyer's plan, inside
+    the authorization transaction and idempotently. A traveler paying their expert for a round of
+    changes is that: the expert's OWN listing price, through the one checkout, with the traveler
+    service fee waived by `traveler_service_fee` like any other booking on that trip. Nothing about
+    it needs the Trip Pass spine.
+    What was unbuilt was only the Trip Pass **INCLUSION** — and it is refused, because **the expert
+    sets the price**, so "Trip Pass includes one expert revision" can only mean the platform paying
+    an earner at a platform-set rate. That is a P&L decision with a seller-consent half, and
+    neither was ever ratified. **§18c applied:** `consumeRevision` and the `expert_revision`
+    `TripPassAction` are DELETED, and `trip-pass.routes.ts` stops writing
+    `allowances_snapshot.revisionsRemaining` — a hook with no consumer and no ratified funder is
+    deleted, never left as a future maybe. **Trip Pass now sells three benefits and enforces
+    exactly three** (`optimizer_run`, `ai_task`, `traveler_service_fee`); the two traveler-facing
+    surfaces stopped advertising the fourth in ledger `2026-09-21-trip-pass-revision-claim`.
+    **§13 — NO BACKFILL:** passes sold earlier still carry `revisionsRemaining` in their FROZEN
+    snapshot and are not rewritten; the snapshot records what was bought, and nothing reads the key
+    now. **Re-introducing a Trip-Pass-funded revision is a NEW MONEY DECISION, not a re-wiring** —
+    guarded by `client/src/lib/__tests__/trip-pass-copy.test.ts` T4/T5, which fail if the action or
+    the hook returns.
 42. **THE SLIP IS THE ONE PLANNING SURFACE; SEVENTEEN RULINGS ON HOW EVERY FINISH, DOOR, MINT AND
     EXPERT TOUCH LANDS THERE (decision-maker ratified Sep 5, 2026, evening — ledger
     `2026-09-05-slip-one-surface-seventeen`).** (Locked Decision NUMBERS are this file's own frozen series and are unrelated to ledger ids, which are date-slugs per ruling 25.) Rulings 32, 33 and 39 each named one half of the

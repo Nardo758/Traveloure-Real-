@@ -12,12 +12,17 @@
  * benefits." Two surfaces described it, on a $19 product that — unlike Plus — is not gated by
  * PLUS_SALES_ENABLED and sells today.
  *
- * WHY THIS FILE SCANS SERVER SOURCE TOO. A copy pin alone would be half a guard: it would keep
- * the claim off the page forever, including after someone legitimately BUILDS the revision
- * product, at which point the honest copy is the copy this lane removed. T4 is the inverse —
- * it fails the moment `consumeRevision` gains a production caller, and its message says to put
- * the line back. The guard is therefore about the AGREEMENT between what is sold and what is
- * enforced, in both directions, rather than about one wording.
+ * WHY THIS FILE SCANS SERVER SOURCE TOO. A copy pin alone would be half a guard. T4 and T5 hold
+ * the server side: the Trip Pass `expert_revision` entitlement is RETIRED (decision-maker
+ * ratified 2026-09-21, ledger `2026-09-21-expert-revision-retired`), so they fail if either the
+ * action or its `consumeRevision` hook returns. That is not a bureaucratic pin — re-introducing
+ * a Trip-Pass-funded revision means the platform paying an earner at a platform-set rate, which
+ * is a money decision, and it should fail a test rather than land as a rewire.
+ *
+ * THE PRODUCT IS NOT WHAT WAS RETIRED, and the distinction is the whole point: a traveler paying
+ * their expert for a round of changes already works today, needs nothing from the Trip Pass
+ * spine, and is unaffected by every assertion here. Ruling 11 grants a `plan_work` buyer's
+ * expert `accepted` WRITE access on the plan at checkout, at the expert's own listing price.
  *
  * NEGATIVE SPACE (§18d) — read before trusting a green run:
  *   • These are SOURCE scans. They prove what the files say, not what renders. A benefit line
@@ -83,30 +88,43 @@ test("T3: the three benefits that ARE enforced are still named on both surfaces"
   assert.match(CARD, /unlimited optimizer runs \+ AI tasks · service fee waived/);
 });
 
-test("T4: INVERSE — consumeRevision still has no production caller; if it gains one, restore the copy", () => {
-  // Counted across the two files that would host a real consumption site. The definition itself
-  // lives in trip-entitlement.service.ts, so that file is expected to contain the name.
-  const productionCallSites = [GRANT, PRICING, CARD].filter((src) =>
-    /consumeRevision\s*\(/.test(codeOnly(src)),
+test("T4: the entitlement itself is RETIRED — not merely unwired", () => {
+  // THIS ASSERTION CHANGED MEANING, deliberately (decision-maker ratified 2026-09-21, ledger
+  // `2026-09-21-expert-revision-retired`). It used to say "consumeRevision has no production
+  // caller yet", which framed the benefit as pending. It is not pending: the investigation that
+  // followed found the expert-revision PRODUCT already exists — Ruling 11
+  // (`plan-work-access.service.ts`) grants a `plan_work` buyer's expert `accepted` WRITE access
+  // on the plan at checkout, at the EXPERT'S OWN listing price. Trip Pass could only "include"
+  // that by paying an earner at a platform-set rate, which is an unratified money decision. So
+  // §18c was applied and the hook was DELETED rather than left as a future maybe.
+  // CODE ONLY — the header legitimately NAMES `consumeRevision` while explaining why it was
+  // deleted, so scanning raw source fails against correct code. Same trap the module docstring
+  // above describes; an assertion about code must read code.
+  assert.doesNotMatch(
+    codeOnly(ENTITLEMENT),
+    /consumeRevision/,
+    "consumeRevision is back. It was deleted as a hook with no consumer and no ratified funder; " +
+      "re-adding it means the Trip-Pass-funded revision was ratified, which is a money decision.",
   );
-  assert.equal(
-    productionCallSites.length,
-    0,
-    "consumeRevision now has a caller — the expert-revision product may have been built. If so, " +
-      "this test and the removed copy lines should be revisited TOGETHER: the benefit becomes " +
-      "sellable again the moment something can spend it.",
+  assert.doesNotMatch(
+    codeOnly(ENTITLEMENT),
+    /"expert_revision"/,
+    "expert_revision is a TripPassAction again — see above, that is a money decision, not a rewire.",
   );
-  // And the entitlement service still describes it as the unenforced hook.
-  assert.match(ENTITLEMENT, /UNENFORCED today/, "trip-entitlement.service.ts no longer calls expert_revision unenforced");
+  // And the retirement is EXPLAINED where a reader will look, not merely absent.
+  assert.match(ENTITLEMENT, /RETIRED FROM THIS SPINE/);
 });
 
-test("T5: the allowance is still RECORDED at grant — we stopped advertising, not recording", () => {
-  // Deleting the snapshot key would destroy the hook LD 41 (f) reserves AND silently downgrade
-  // every pass already sold. Keeping it means a pass bought today is honoured if the lane lands.
-  assert.match(
+test("T5: the grant no longer WRITES the retired allowance, and nothing was backfilled", () => {
+  // The inverse of this file's original T5, which pinned that `revisionsRemaining: 1` was still
+  // written. With the entitlement retired, writing it would be state nothing consumes (§18c).
+  assert.doesNotMatch(
     codeOnly(GRANT),
-    /revisionsRemaining:\s*1/,
-    "trip-pass.routes.ts stopped recording revisionsRemaining — a pass sold today would then " +
-      "carry no allowance to honour when the expert-revision lane ships.",
+    /revisionsRemaining/,
+    "trip-pass.routes.ts is writing revisionsRemaining again — nothing reads it since the " +
+      "entitlement was retired.",
   );
+  // §13 — the NO-BACKFILL half is stated where the write used to be, so a later reader knows
+  // that passes sold earlier still carry the key and that this is deliberate, not a leftover.
+  assert.match(GRANT, /NO BACKFILL/);
 });
