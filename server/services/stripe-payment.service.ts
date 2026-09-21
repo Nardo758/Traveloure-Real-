@@ -33,6 +33,7 @@ import { logger } from '../infrastructure/logger';
 import { deriveClaimedSlotIds, deriveClaimedSlotUnits } from './checkout-claim.service';
 import { travelerChargeForRow } from './traveler-charge';
 import { getStripeSecretKey } from '../utils/stripe-key';
+import { upsertStripeMembership } from "./plan-membership-writer.service";
 
 export const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -663,6 +664,45 @@ class StripePaymentService {
             await handleStripePaymentSuccess(session.id);
           }
           break;
+
+        // ── Subscription lifecycle -> plan_memberships (2026-09-21-membership-writer) ──────
+        // These three fell through to "Unhandled" before this lane, so a Stripe subscription
+        // granted no entitlement at all. Only a SIGNATURE-VERIFIED delivery reaches here, which
+        // is why the writer trusts it (§15c: Stripe's word, never a client's).
+        //
+        // `.deleted` is handled by the SAME writer rather than a second path: Stripe sends the
+        // subscription object with `status: "canceled"`, which the writer's explicit mapping turns
+        // into `cancelled`. A separate "delete the row" path would be a second author of this
+        // table and would also destroy the record of a membership that really existed (§18 rule 1).
+        case 'customer.subscription.created':
+        case 'customer.subscription.updated':
+        case 'customer.subscription.deleted': {
+          const sub = event.data.object as any;
+          const result = await upsertStripeMembership({
+            subscriptionId: sub?.id,
+            status: sub?.status,
+            currentPeriodStart: sub?.current_period_start ?? null,
+            currentPeriodEnd: sub?.current_period_end ?? null,
+            metadataUserId: sub?.metadata?.userId ?? null,
+            metadataPlanKey: sub?.metadata?.planKey ?? null,
+            customerId: typeof sub?.customer === 'string' ? sub.customer : sub?.customer?.id ?? null,
+          });
+          if (!result.written) {
+            // §13: a refused write is NAMED, never silent. An unresolvable user or plan key means
+            // a real Stripe subscription exists with no entitlement behind it — someone is paying
+            // for nothing, and that must be visible in the logs rather than inferred later.
+            console.error(
+              `[stripe-webhook] subscription ${sub?.id} did NOT record a membership ` +
+                `(reason: ${result.reason}, event: ${event.type}). A paying subscriber may have no entitlement.`,
+            );
+          } else {
+            console.log(
+              `[stripe-webhook] membership recorded: user=${result.userId} plan=${result.planKey} ` +
+                `status=${result.status} (${event.type})`,
+            );
+          }
+          break;
+        }
 
         default:
           console.log(`Unhandled event type: ${event.type}`);

@@ -1789,4 +1789,17 @@ export const MIGRATION_FILES = [
   // no DEFAULT change, so `preflight-prod-constraints.cjs` needs no manifest entry. This is the
   // LAST migration that sets this price: every later change is an admin-panel edit.
   "315_platform_concierge_price_35.sql",
+  // 2026-09-21-membership-writer: a PARTIAL UNIQUE index on
+  // `plan_memberships.stripe_subscription_id` — the conflict target that lets the ONE membership
+  // writer be an atomic `INSERT … ON CONFLICT` (§15: the statement is the guard) instead of a
+  // check-then-insert that a Stripe webhook redelivery would race. DECLARED in `shared/schema.ts`
+  // in the same commit (deploy-push durability). No CHECK, so no `preflight-prod-constraints.cjs`
+  // manifest entry; it IS an index, so the deploy push may offer CREATE INDEX — decline it (§20).
+  "316_plan_memberships_subscription_uniq.sql",
+  // 2026-09-21-plan-stripe-price-ids: `plans.stripe_price_id_test` / `stripe_price_id_live` —
+  // the Price a Stripe subscription Checkout Session needs. TWO columns because a price id is
+  // MODE-scoped; one column would put a live id in a dev database restored from production.
+  // Additive, nullable, NO DEFAULT/CHECK/backfill; DECLARED in `shared/schema.ts`. Column-only,
+  // so this IS §20's one approvable publish prompt (ADD COLUMN IF NOT EXISTS matching this file).
+  "317_plans_stripe_price_ids.sql",
 ] as const;

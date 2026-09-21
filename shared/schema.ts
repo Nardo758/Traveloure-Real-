@@ -9117,6 +9117,23 @@ export const plans = pgTable("plans", {
   name: text("name").notNull(),
   priceCents: integer("price_cents").notNull(),
   interval: varchar("interval", { length: 20 }).notNull(),
+  // Ledger `2026-09-21-plan-stripe-price-ids`, migration 317. The Stripe Price the checkout rail
+  // subscribes a member to. TWO columns, one per Stripe MODE, because a price id is mode-scoped:
+  // a `price_…` created in test mode does not exist in live mode and vice versa. One column would
+  // mean a database restored from production into dev carries a LIVE price id that the dev
+  // (sk_test_) key cannot use — and the reverse in the other direction.
+  //
+  // `price_cents` above stays the DISPLAYED amount and is NOT replaced: it is what `/pricing`
+  // renders, it exists for all three plans including `trip_pass` (which is charged by
+  // PaymentIntent, not by a subscription), and nothing here is a fee or a rate (§8 untouched).
+  // Stripe remains the authority on what is actually charged for a subscription.
+  //
+  // Additive, NULLABLE, NO DEFAULT and NO CHECK (the publish-trap posture — migrations
+  // 181/195/…/315). NULL = NO PRICE CONFIGURED FOR THAT MODE, which the resolver reports by name
+  // and never papers over: a plan that cannot be subscribed to must say so rather than fall back
+  // to the other mode's id (§13).
+  stripePriceIdTest: varchar("stripe_price_id_test", { length: 255 }),
+  stripePriceIdLive: varchar("stripe_price_id_live", { length: 255 }),
   allowances: jsonb("allowances").notNull().default({}),
   active: boolean("active").notNull().default(true),
   effectiveFrom: date("effective_from").notNull(),
@@ -9167,6 +9184,24 @@ export const planMemberships = pgTable("plan_memberships", {
 }, (table) => [
   index("plan_memberships_user_idx").on(table.userId),
   index("plan_memberships_user_plan_idx").on(table.userId, table.planKey),
+  // Ledger `2026-09-21-membership-writer`, migration 316. THE IDEMPOTENCY KEY of the ONE
+  // membership writer: Stripe redelivers webhooks, and without a unique constraint a redelivery
+  // would insert a SECOND row for the same subscription, after which `getActiveMembership`'s
+  // "most-recent period wins" would silently pick between duplicates. §15 requires the STATEMENT
+  // to be the guard, so the writer is an `INSERT … ON CONFLICT (stripe_subscription_id) DO
+  // UPDATE` and this index is what makes that conflict target exist.
+  //
+  // PARTIAL (`WHERE stripe_subscription_id IS NOT NULL`) because `source` may be 'manual' or
+  // 'beta' — a hand-granted membership carries no subscription id, and several of those must be
+  // able to coexist. A plain UNIQUE would collapse every non-Stripe grant into one row.
+  //
+  // DECLARED HERE, not only in the migration: an index `shared/schema.ts` does not declare is
+  // DROPPED by the Replit deploy push and never recreated, because the migration is already
+  // stamped (CLAUDE.md's publish-trap rule, and the `sb_idempotency_key_idx` incident it cites).
+  // Same posture as `trip_entitlements`' two partial uniques.
+  uniqueIndex("plan_memberships_stripe_subscription_uniq")
+    .on(table.stripeSubscriptionId)
+    .where(sql`stripe_subscription_id IS NOT NULL`),
 ]);
 export type PlanMembership = typeof planMemberships.$inferSelect;
 

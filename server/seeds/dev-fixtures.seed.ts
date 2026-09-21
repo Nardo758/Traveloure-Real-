@@ -88,15 +88,18 @@ import { db } from "../db";
 import { users, providerServices, serviceProviderForms, serviceQuotes } from "@shared/schema";
 import { SERVICE_QUOTE_CURRENCY } from "@shared/service-quotes";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./lib/demo-seed-gate";
+import { CONCIERGE_BOOKING_CONCERN } from "../services/commission";
 
 /** Owned by e2e-test-accounts.seed.ts — resolved here, never created here. */
 const VERIFIED_SELLER_EMAIL = "kyoto-photography@traveloure.test";
 const CONCIERGE_EXPERT_EMAIL = "kyoto-food@traveloure.test";
 
 /** The offering key migration 065 creates; `shared/expert-offerings.ts` maps it to the
- *  `coordination` tier. Named here so the listing is found by the SAME key the
- *  booking-concierge service reads, never by a title match. */
-const CONCIERGE_OFFERING_KEY = "booking_concierge";
+ *  `coordination` tier. IMPORTED, never re-spelled: K6 in `offering-activation-gate.test.ts`
+ *  asserts the `booking_concierge` literal has exactly ONE home under server/, because a second
+ *  spelling is a second decision about which listings are concierge listings. This seeder
+ *  originally inlined it and broke that gate. */
+const CONCIERGE_OFFERING_KEY = CONCIERGE_BOOKING_CONCERN;
 const CONCIERGE_SERVICE_NAME = "Kyoto Booking Concierge (dev fixture)";
 
 /** The traveler the E2E harness signs in as — also owned by e2e-test-accounts.seed.ts. */
