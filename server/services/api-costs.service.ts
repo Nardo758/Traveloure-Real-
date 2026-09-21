@@ -96,11 +96,16 @@ export interface TavilySpendStatus {
 }
 
 /**
- * READ-ONLY month-to-date Tavily spend beside its ratified hard cap
- * (`TAVILY_MONTHLY_CAP_USD`, `server/config/trailhead.config.ts`, R-T1-c). This makes the number
- * OBSERVABLE — it does not enforce the cap. Enforcing it (refusing further Tavily calls once
- * month-to-date spend reaches the cap) is a separate, unruled decision and is deliberately not
- * built here (ledger `2026-09-18-tavily-spend-logged`).
+ * Month-to-date Tavily spend beside its ratified hard cap (`TAVILY_MONTHLY_CAP_USD`,
+ * `server/config/trailhead.config.ts`, R-T1-c).
+ *
+ * THIS FUNCTION STILL ONLY READS — but it is no longer only observable. Ledger
+ * `2026-09-21-tavily-spend-breaker` made the ceiling ENFORCED: `server/services/tavily-client.ts`
+ * feeds this figure to `resolveSpendAuthorization` before every Tavily call and refuses the call
+ * once it reaches the cap. The enforcement lives there and the decision lives in
+ * `server/services/spend-guard.service.ts`; this remains the one METER, and a meter that also
+ * enforced would be the second authority §18 rule 1 names. (The paragraph this replaces said
+ * enforcement was "a separate, unruled decision" — true until the decision-maker ruled it.)
  */
 export async function getTavilyMonthToDateUsd(): Promise<TavilySpendStatus> {
   const summary = await getApiCostsSummary("this_month");

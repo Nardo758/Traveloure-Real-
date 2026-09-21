@@ -35,8 +35,10 @@ import { tavily as createTavilySdkClient, type TavilyClient as TavilySdkClient }
 import {
   TAVILY_PRICE_PER_SEARCH_USD,
   TAVILY_PRICE_PER_EXTRACT_USD,
+  TAVILY_MONTHLY_CAP_USD,
 } from "../config/trailhead.config";
 import { apiUsageService, type ApiUsageLogParams } from "./api-usage.service";
+import { resolveSpendAuthorization, SpendCapExceededError } from "./spend-guard.service";
 
 export type TavilyEndpoint = "search" | "extract";
 
@@ -73,6 +75,47 @@ export interface TavilyClientDeps {
   logger?: TavilyUsageLogger;
   /** Injected clock (tests) — used only to measure `responseTimeMs`. Defaults to `Date.now`. */
   now?: () => number;
+  /**
+   * Injected month-to-date spend reader (tests). Defaults to the cached reader below, which wraps
+   * `getTavilyMonthToDateUsd()`. Returning `null` means THE METER COULD NOT BE READ, which the
+   * guard answers by authorizing with `meter_unavailable` — see spend-guard.service.ts's stated
+   * fail-open posture.
+   */
+  readMonthToDateUsd?: () => Promise<number | null>;
+  /** Injected ceiling (tests). Defaults to the ratified `TAVILY_MONTHLY_CAP_USD` (R-T1-c). */
+  capUsd?: number | null;
+}
+
+/**
+ * The meter is CACHED, because the guard runs on every Tavily call and the underlying read is a
+ * grouped aggregate over `api_usage_logs`. A per-call aggregate would make the cost guard itself
+ * the expensive thing. The window is deliberately short — the overshoot it permits is bounded by
+ * (calls in that window x per-call price), i.e. fractions of a cent, against saving one aggregate
+ * per call. It is NOT a correctness mechanism: the guard is already non-atomic by construction
+ * (spend-guard.service.ts's stated negative space), and this only widens that same window.
+ */
+const METER_CACHE_MS = 60_000;
+let meterCache: { atMs: number; usd: number | null } | null = null;
+
+/** Exported for tests ONLY — a cached meter across test cases would leak state between them. */
+export function __resetTavilyMeterCacheForTests(): void {
+  meterCache = null;
+}
+
+async function readCachedMonthToDateUsd(nowMs: number): Promise<number | null> {
+  if (meterCache && nowMs - meterCache.atMs < METER_CACHE_MS) return meterCache.usd;
+  try {
+    const { getTavilyMonthToDateUsd } = await import("./api-costs.service");
+    const { monthToDateUsd } = await getTavilyMonthToDateUsd();
+    meterCache = { atMs: nowMs, usd: monthToDateUsd };
+    return monthToDateUsd;
+  } catch (err: any) {
+    // A FAILED READ IS NOT A SPEND OF ZERO (§13). `null` tells the guard the meter is unreadable,
+    // which it answers with `meter_unavailable` rather than with "you have spent nothing".
+    console.error("[tavily-client] Tavily spend meter unreadable:", err?.message || err);
+    meterCache = { atMs: nowMs, usd: null };
+    return null;
+  }
 }
 
 async function logTavilyCall(
@@ -109,7 +152,36 @@ function wrapClient(sdk: TavilySdkClient, deps: TavilyClientDeps): TavilyLogging
   const logger: TavilyUsageLogger = deps.logger ?? apiUsageService;
   const now = deps.now ?? Date.now;
 
+  const readMeter = deps.readMonthToDateUsd ?? readCachedMonthToDateUsd.bind(null, now());
+  const capUsd = deps.capUsd === undefined ? TAVILY_MONTHLY_CAP_USD : deps.capUsd;
+
   async function call(endpoint: TavilyEndpoint, run: () => Promise<any>): Promise<any> {
+    // ── THE BREAKER, and note WHERE it sits ──────────────────────────────────
+    // Before `run()`, and before the `start` clock: a refused call is not a slow call. It is also
+    // deliberately OUTSIDE the try/catch below, so a refusal NEVER reaches `logTavilyCall`.
+    // Logging a blocked call to `api_usage_logs` would be wrong twice over: no Tavily credit was
+    // spent, so the row would be a §13 falsehood — and because the meter this guard reads IS that
+    // table, every refusal would inflate the very number that caused it, ratcheting the breaker
+    // shut on its own output.
+    const authorization = resolveSpendAuthorization({
+      provider: "tavily",
+      monthToDateUsd: await readMeter(),
+      capUsd,
+    });
+    if (!authorization.authorized) {
+      console.error(
+        `[tavily-client] REFUSED ${endpoint} — month-to-date $${authorization.monthToDateUsd.toFixed(3)} ` +
+          `of $${authorization.capUsd.toFixed(2)} (R-T1-c). No call made, nothing charged.`,
+      );
+      throw new SpendCapExceededError("tavily", authorization.monthToDateUsd, authorization.capUsd);
+    }
+    if (authorization.basis === "meter_unavailable") {
+      // Loud by design — "the meter is broken" must never read as "we are under the cap".
+      console.error(
+        `[tavily-client] Spend meter unreadable; allowing ${endpoint} (fail-open, see spend-guard.service.ts).`,
+      );
+    }
+
     const start = now();
     try {
       const result = await run();
