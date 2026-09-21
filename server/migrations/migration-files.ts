@@ -1783,4 +1783,10 @@ export const MIGRATION_FILES = [
   // commit (deploy-push durability rule). No CHECK added or changed, so
   // `preflight-prod-constraints.cjs` needs no new manifest entry.
   "314_service_quotes_plan_link.sql",
+  // 2026-09-21-platform-concierge-price-editable: DATA ONLY — the platform Booking Concierge
+  // listing's price becomes $35 (decision-maker, 2026-09-21) and the fee_bands row's description
+  // is corrected to say the admin panel now repoints the listing. No ALTER, no CHECK, no index,
+  // no DEFAULT change, so `preflight-prod-constraints.cjs` needs no manifest entry. This is the
+  // LAST migration that sets this price: every later change is an admin-panel edit.
+  "315_platform_concierge_price_35.sql",
 ] as const;
