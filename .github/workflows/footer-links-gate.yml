@@ -26,6 +26,15 @@ permissions:
   contents: read
   pull-requests: write
 
+# Cancel superseded PR runs. A new push to a PR makes the previous run's jobs
+# dead work that still holds runner slots, so the new run queues behind its own
+# predecessor. cancel-in-progress is scoped to `pull_request` ONLY: a push to
+# main must keep its run, because a cancelled main run leaves a merged commit
+# with no green record.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   footer-links-smoke:
     name: footer-links-smoke (Playwright DOM gate)
@@ -133,6 +142,9 @@ jobs:
         # (auth-gated ones redirect to "/" rather than rendering NotFound).
         run: npx playwright test footer-links --project=chromium
         env:
+          # Read-only route sweep: no clicks, no writes, no describe.serial,
+          # so the per-test pages are independent. Default stays 1 (config).
+          PW_WORKERS: '4'
           BASE_URL: http://localhost:5000
           CI: 'true'
 
