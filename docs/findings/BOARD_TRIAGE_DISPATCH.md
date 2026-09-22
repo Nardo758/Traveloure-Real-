@@ -9,7 +9,7 @@ evidence is committed at `docs/findings/board-staleness-pass.tsv` and
 
 **What changed in the evidence since v1.** G1 (money, 73), G9 (security, 45) and G13 (booking
 integrity, 20) were promoted to tier A — every row in all three carries `file:line`. Repo-wide
-tier A is **166/564**. The closure list therefore grew from **34 to 59**.
+tier A is **166/564**. The closure list therefore grew from **34 to 59**, and **#1359 was added on 2026-09-22** when re-verification showed my BUILD verdict wrong — **60**.
 
 **This dispatch is Replit's half only.** 68 tier-A code items and 6 decisions are NOT here —
 they are listed at the end under "Not yours" so nobody works them twice.
@@ -25,7 +25,7 @@ they are listed at the end under "Not yours" so nobody works them twice.
 
 ---
 
-## Batch A — Close 59. No code, no branch, no PR.
+## Batch A — Close 60. No code, no branch, no PR.
 
 Paste each row's `basis` column from `board-staleness-pass.tsv` into the close comment.
 
@@ -33,7 +33,7 @@ Paste each row's `basis` column from `board-staleness-pass.tsv` into the close c
 #153 #216 #217 #303 #320 #321 #351 #354 #378 #435 #484 #487 #528 #567 #579 #584 #585 #755 #776
 #777 #789 #800 #844 #846 #871 #872 #873 #874 #875 #876 #877 #1178 #1182 #1190 #1269 #1271 #1316
 #1317 #1327 #1344 #1388 #1391 #1397 #1398 #1399 #1461 #1468 #1471 #1472 #1474 #1475 #1546 #1557
-#1558 #1562 #1581 #1582 #1724 #1764
+#1558 #1562 #1581 #1582 #1724 #1764 #1359
 ```
 
 **Nine need a sentence, because the board is wrong rather than merely stale:**
@@ -49,6 +49,7 @@ Paste each row's `basis` column from `board-staleness-pass.tsv` into the close c
 | #1344 | Already idempotent — `storage.ts:3539-3546` decrements only on the FIRST transition to cancelled/refunded. |
 | #1581 | **Overstated.** Not a double-pay: an atomic conditional (`booking.service.ts:856`, zero-row abort `:870`) plus a unique index (`shared/schema.ts:7010`, migration 203) both hold. Re-file the leftover as a one-line symmetry fix — that INSERT lacks the `ON CONFLICT DO NOTHING` its sibling has at `:917`. |
 | #354 | Fixed — and `trip-selection.ts:28` says the regression was **re-found as #972, which is not on this board**. Add #972 when you close this. |
+| #1359 | **ADDED 2026-09-22 — my earlier BUILD verdict was wrong, this is CLOSE-DONE.** The "Editing a live listing" panel exists (`ServiceForm.tsx:2285-2330`), renders only for an approved listing, and reads both lanes from `@shared/edit-split` — the module the PATCH handler itself imports, so §23's constraint (READ the server's list, never restate it) holds by construction. Close it; the safety net it was missing landed alongside this correction. |
 
 ## Batch B — Verify then close: 34. No code.
 
