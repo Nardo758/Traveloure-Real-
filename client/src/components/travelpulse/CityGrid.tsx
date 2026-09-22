@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { useTripQueue, QueuedCity } from "@/contexts/TripQueueContext";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { usePlanning } from "@/contexts/PlanningContext";
 
 interface TravelPulseCity {
   id: string;
@@ -110,6 +111,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
   const { addCity, removeCity, isInQueue } = useTripQueue();
   const { toast } = useToast();
   const { user, isAuthenticated } = useAuth();
+  const { open: openPlanning } = usePlanning();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const priceChange = parseFloat(city.priceChange || "0");
@@ -124,7 +126,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
 
   const handlePlanNow = () => {
     setDialogOpen(false);
-    navigate(`/quick-start?destination=${encodeURIComponent(city.cityName)}&country=${encodeURIComponent(city.country)}`);
+    openPlanning({ city: city.cityName, country: city.country });
   };
 
   const handleSelectTrip = (tripId: string) => {

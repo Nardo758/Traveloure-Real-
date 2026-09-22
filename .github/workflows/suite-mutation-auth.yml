@@ -127,4 +127,6 @@ jobs:
         run: npx tsx scripts/generate-mutation-auth-manifest.ts --self-test
       - name: Generated mutation-auth manifest is current (rail set, not bytes)
         run: npm run check:mutation-auth
+      - name: Generated mutation-auth coverage is current
+        run: npm run check:mutation-auth-coverage
 

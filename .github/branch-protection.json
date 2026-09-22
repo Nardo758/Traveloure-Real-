@@ -13,6 +13,9 @@
       "app-routes-smoke (Playwright DOM gate)",
       "auth-routes-smoke (Playwright DOM gate)",
       "verify-selection-controls (logic gate)",
+      "verify-service-offering-types (HTTP count gate)",
+      "earn-page-smoke (Playwright DOM gate)",
+      "ci-db-setup-lint (no inline migration steps)",
       "relevance-dominance (pure unit)"
     ]
   }
