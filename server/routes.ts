@@ -764,6 +764,31 @@ export async function registerRoutes(
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
+      // #1434 — account STATUS, checked after the role so a non-admin's answer is unchanged.
+      // This guard is the ONLY gate on 15 of the 248 /api/admin/* routes (six of them
+      // mutations: POST /api/admin/markets, its refresh-geography sibling, the three
+      // demand-onepager writes and PATCH /api/admin/service-requests/:id) — every other admin
+      // route also carries `isAuthenticated`, which has refused a deleted or suspended account
+      // since it was written. Both siblings that answer this same question already do it:
+      // `isAuthenticated` (replitAuth.ts) refuses deleted AND suspended, and `requireAdminLocal`
+      // (admin.routes.ts) refuses suspended with a comment saying exactly why — "Routes that skip
+      // isAuthenticated and use only requireAdminLocal would otherwise let a suspended admin's
+      // stale session reach handler logic." That reasoning is true of the blanket guard too; it
+      // was the one of the three that never got the check (§18 rule 1 — one question, one answer).
+      // Not theoretical: the suspend handler's session purge is deliberately NON-FATAL
+      // (admin.routes.ts, "session purge failed (non-fatal)"), so a surviving session is a state
+      // the code already admits can happen.
+      if (user.isDeleted) {
+        req.logout(() => {});
+        return res.status(403).json({ message: "This account has been deleted" });
+      }
+      if (user.isSuspended) {
+        req.logout(() => {});
+        return res.status(403).json({
+          message: "Your account has been suspended. Please contact support.",
+          reason: user.suspensionReason ?? undefined,
+        });
+      }
       return next();
     } catch (err) {
       console.error("adminApiGuard error:", err);

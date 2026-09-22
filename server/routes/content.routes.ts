@@ -5637,6 +5637,24 @@ router.post("/api/travelpulse/seed", isAuthenticated, async (req, res) => {
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
+    // #1434 — this copy is the ONLY admin gate in the codebase that is the SOLE gate on
+    // routes OUTSIDE the `/api/admin/*` prefix: the four `/api/travelpulse/ai/*` routes
+    // below (three of them writes) carry neither `isAuthenticated` nor the §2 blanket
+    // `adminApiGuard`, so without these two lines a deleted or suspended admin session
+    // reaches them. Every other `requireAdmin` in the repo sits behind one or the other.
+    // Same check, same order and same wording as `adminApiGuard` and `requireAdminLocal`
+    // — one question, one answer (§18 rule 1).
+    if (user.isDeleted) {
+      req.logout(() => {});
+      return res.status(403).json({ message: "This account has been deleted" });
+    }
+    if (user.isSuspended) {
+      req.logout(() => {});
+      return res.status(403).json({
+        message: "Your account has been suspended. Please contact support.",
+        reason: user.suspensionReason ?? undefined,
+      });
+    }
     next();
   };
 

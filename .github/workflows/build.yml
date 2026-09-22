@@ -803,6 +803,18 @@ jobs:
       # was invented to hide this route behind.
       - name: Vendors read-scope pin
         run: npx tsx --test server/__tests__/vendors-read-scope.test.ts
+      # board #1434: three middlewares answer "may this session act?" and gave three different
+      # answers - isAuthenticated refused deleted AND suspended, requireAdminLocal refused
+      # suspended only, and the §2 blanket adminApiGuard refused neither. That is only reachable
+      # where a gate is the SOLE gate, and it is: 15 of the 248 /api/admin routes ride the blanket
+      # guard alone (six of them mutations), 13 of admin.routes.ts's 16 requireAdminLocal routes
+      # carry no isAuthenticated, and the four /api/travelpulse/ai/* routes sit outside the blanket
+      # prefix entirely behind a requireAdmin copy of their own. A source assertion rather than an
+      # HTTP one BECAUSE the defect was divergence between copies: A3 walks every admin-gated route
+      # and fails the one whose gate checks no account status, which an HTTP test of any single
+      # route would not. Stated blind spot: it proves the check is PRESENT, not that it is correct.
+      - name: Admin-gate account-status pin (#1434)
+        run: npx tsx --test server/__tests__/admin-gate-account-status.test.ts
       # 2026-09-05-experts-public-projection: the same class again, on the widest surface of the
       # three. `storage.getExpertsWithProfiles` spread the whole `users` row and removed THREE
       # names from it, and its callers — GET /api/experts, /api/experts/counts, /api/experts/:id —
