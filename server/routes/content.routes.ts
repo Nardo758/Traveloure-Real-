@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { zodErrorBody } from "../utils/zod-error-body";
 import { getTripRole } from "../utils/trip-role";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "../seeds/lib/demo-seed-gate";
 import { getUserId, requireDbAdmin } from "../utils/auth";
@@ -977,7 +978,7 @@ router.post("/api/service-categories", isAuthenticated, async (req, res) => {
       res.status(201).json(category);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to create category" });
     }
@@ -1003,7 +1004,7 @@ router.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
       res.status(201).json(subcategory);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to create subcategory" });
     }
@@ -1076,7 +1077,7 @@ router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
       res.status(201).json(venue);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       console.error("Error creating custom venue:", err);
       res.status(500).json({ message: "Failed to create custom venue" });
@@ -1113,7 +1114,7 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to update custom venue" });
     }
@@ -1979,7 +1980,7 @@ router.post("/api/user-experiences/:id/items", isAuthenticated, async (req, res)
       res.status(201).json(item);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to add experience item" });
     }
@@ -2002,7 +2003,7 @@ router.patch("/api/user-experience-items/:id", isAuthenticated, async (req, res)
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to update experience item" });
     }
@@ -2044,7 +2045,7 @@ router.post("/api/faqs", isAuthenticated, async (req, res) => {
       res.status(201).json(faq);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to create FAQ" });
     }
@@ -2066,7 +2067,7 @@ router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to update FAQ" });
     }
@@ -3197,7 +3198,7 @@ router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res
       res.status(201).json(review);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       if (err instanceof Error && err.message === "REVIEW_ALREADY_EXISTS") {
         return res.status(409).json({ message: "This booking has already been reviewed" });
@@ -7161,7 +7162,7 @@ router.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
       res.json(participant);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
+        return res.status(400).json(zodErrorBody(error));
       }
       res.status(500).json({ message: "Failed to update participant" });
     }

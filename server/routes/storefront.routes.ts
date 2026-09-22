@@ -22,6 +22,7 @@
  * Phase 0.5): additionally gate on identity/KYB verification status before any marketing push.
  */
 import { Router } from "express";
+import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId, getDbRole } from "../utils/auth";
 import { sanitizeInput } from "../utils/sanitize";
 import { z } from "zod";
@@ -1285,7 +1286,7 @@ router.patch("/api/me/notification-email", isAuthenticated, async (req: any, res
     const userId = getUserId(req)!;
     const parsed = notificationEmailSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid input" });
+      return res.status(400).json(zodErrorBody(parsed.error, "Invalid input"));
     }
     const { notificationEmail } = parsed.data;
     await db

@@ -22,6 +22,7 @@
  * switches the clients and deletes the deprecated inputs.
  */
 import { Router } from "express";
+import { zodErrorBody } from "../utils/zod-error-body";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
@@ -68,7 +69,7 @@ router.post("/api/conversations/start", isAuthenticated, async (req, res) => {
 
     const parsed = contactStartBodySchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid request" });
+      return res.status(400).json(zodErrorBody(parsed.error, "Invalid request"));
     }
     const body = parsed.data;
 
@@ -158,7 +159,7 @@ router.get("/api/admin/conversations", async (req, res) => {
   try {
     const parsed = adminQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid query" });
+      return res.status(400).json(zodErrorBody(parsed.error, "Invalid query"));
     }
     const { contextKind, contextId, limit } = parsed.data;
     const rows = await listAdminConversationsForContext(

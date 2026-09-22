@@ -12,6 +12,7 @@
  * score, a dimension, or an internal status to a non-admin.
  */
 import { Router } from "express";
+import { zodErrorBody } from "../utils/zod-error-body";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
@@ -159,7 +160,7 @@ const manualEntrySchema = z
 router.post("/api/admin/neighborhood-claims/manual-entry", isAuthenticated, requireAdmin, async (req, res) => {
   try {
     const parsed = manualEntrySchema.safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid body" });
+    if (!parsed.success) return res.status(400).json(zodErrorBody(parsed.error, "Invalid body"));
     const adminId = (req as any).adminId as string;
     const created = await createClaim({ expertId: parsed.data.expertId, neighborhoodId: parsed.data.neighborhoodId, actorType: "ops", actorId: adminId });
     if (!created.ok) return sendFailure(res, created);
