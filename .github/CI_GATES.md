@@ -47,6 +47,7 @@ enforcement. Promote to Tier 1 as each gets a passing run.
 | `verify-neighborhoods (logic gate, no DB)` | `neighborhoods-gate.yml` | Phase 8.3 neighborhood logic (16 assertions, pure script) |
 | `e2e-selection-controls (DOM gate)` | `selection-controls-gate.yml` | Full DOM render/narrow/parity/tab-isolation for selection controls |
 | `lockfile-purity (no replit.local)` | `selection-controls-gate.yml` **or** `neighborhoods-gate.yml` | package-lock.json must not contain Replit firewall URLs |
+| `footer-links-smoke (Playwright DOM gate)` | `footer-links-gate.yml` | Every configured footer link resolves without rendering the NotFound page |
 
 > **lockfile-purity note:** This job name exists in both `selection-controls-gate.yml` and
 > `neighborhoods-gate.yml`. GitHub tracks status contexts per-workflow/job combination, so
