@@ -1,10 +1,9 @@
-export interface FeverCommissions {
-  configured: boolean;
-  thisMonth: number;
-  lastMonth: number;
-  total: number;
-  currency: string;
-}
+import {
+  parseAffiliateAmount,
+  type AffiliateCommissionReport,
+} from "./affiliate-commission-report";
+
+export interface FeverCommissions extends AffiliateCommissionReport {}
 
 interface ImpactReportRow {
   Revenue?: string | number;
@@ -56,7 +55,7 @@ async function fetchImpactCommissions(
   authToken: string,
   start: string,
   end: string
-): Promise<number> {
+): Promise<number | null> {
   try {
     const url = new URL(
       `https://api.impact.com/Mediapartners/${accountSid}/Reports/adv_performance`
@@ -76,20 +75,30 @@ async function fetchImpactCommissions(
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       console.warn(`[FeverCommissions] Impact API ${res.status}: ${text.slice(0, 200)}`);
-      return 0;
+      return null;
     }
 
     const data = await res.json();
-    const rows: ImpactReportRow[] = data?.Rows || data?.rows || [];
+    const rows = data?.Rows ?? data?.rows;
+    if (!Array.isArray(rows)) return null;
 
-    return rows.reduce((sum, row) => {
-      const val = row.Commissions ?? row.Revenue ?? row.Amount ?? 0;
-      const n = typeof val === "number" ? val : parseFloat(String(val));
-      return sum + (isNaN(n) ? 0 : n);
+    // A readable row with no commission field genuinely reports zero. Only a transport
+    // failure or a wholly unparseable payload is unknown.
+    let invalidAmount = false;
+    const total = (rows as ImpactReportRow[]).reduce((sum, row) => {
+      const val = row.Commissions ?? row.Revenue ?? row.Amount;
+      if (val === undefined || val === null) return sum;
+      const n = parseAffiliateAmount(val);
+      if (n === null) {
+        invalidAmount = true;
+        return sum;
+      }
+      return sum + n;
     }, 0);
+    return invalidAmount ? null : total;
   } catch (err: any) {
     console.warn(`[FeverCommissions] Fetch error:`, err?.message || err);
-    return 0;
+    return null;
   }
 }
 
@@ -110,7 +119,7 @@ export async function getFeverCommissions(period: string): Promise<FeverCommissi
   ]);
 
   const selectedRange = getDateRange(period);
-  let total: number;
+  let total: number | null;
   if (period === "this_month") total = thisMonth;
   else if (period === "last_month") total = lastMonth;
   else {

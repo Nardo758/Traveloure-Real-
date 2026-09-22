@@ -4798,12 +4798,14 @@ router.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
         { getViatorCommissions },
         { getFeverCommissions },
         { getBookingComCommissions },
+        { summarizeAffiliateRevenue },
         { getApiCostsSummary, getTavilyMonthToDateUsd },
       ] = await Promise.all([
         import("../services/travelpayouts/statistics.service"),
         import("../services/viator-commissions.service"),
         import("../services/fever-commissions.service"),
         import("../services/booking-com-commissions.service"),
+        import("../services/affiliate-commission-report"),
         import("../services/api-costs.service"),
       ]);
 
@@ -4882,11 +4884,12 @@ router.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
         );
       } catch (_) { /* ignore — fallback to raw totals */ }
 
-      const rawAffiliateRevenue =
-        (travelpayouts.total || 0) +
-        (viator.total || 0) +
-        (fever.total || 0) +
-        (bookingCom.total || 0);
+      const rawAffiliateRevenue = summarizeAffiliateRevenue([
+        { name: "Travelpayouts", report: travelpayouts },
+        { name: "Viator", report: viator },
+        { name: "Fever", report: fever },
+        { name: "Booking.com", report: bookingCom },
+      ]);
 
       // Always use confirmed (matched) totals; raw affiliate numbers are for context only.
       // If reconciliation has never run, confirmed will be 0 — that is the correct conservative figure.
@@ -4909,6 +4912,7 @@ router.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
         viator,
         fever,
         bookingCom,
+        affiliateRevenue: rawAffiliateRevenue,
         apiCosts: { ...apiCosts, tavilyCap: tavilySpend },
       });
     } catch (error: any) {
@@ -4943,6 +4947,7 @@ router.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res
         { getViatorCommissions },
         { getFeverCommissions },
         { getBookingComCommissions },
+        { formatAffiliateAmount, summarizeAffiliateRevenue },
         { getApiCostsSummary },
         { revenueTrackingService },
       ] = await Promise.all([
@@ -4950,6 +4955,7 @@ router.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res
         import("../services/viator-commissions.service"),
         import("../services/fever-commissions.service"),
         import("../services/booking-com-commissions.service"),
+        import("../services/affiliate-commission-report"),
         import("../services/api-costs.service"),
         import("../services/revenue-tracking.service"),
       ]);
@@ -4986,8 +4992,13 @@ router.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res
       ]);
 
       const stripeTotal = stripePeriodSummary.totalPlatformFee;
-      const totalAffiliateRevenue = (travelpayouts.total || 0) + (viator.total || 0) + (fever.total || 0) + (bookingCom.total || 0);
-      const totalNetRevenue = stripeTotal + totalAffiliateRevenue - apiCosts.totalCostDollars;
+      const affiliateRevenue = summarizeAffiliateRevenue([
+        { name: "Travelpayouts", report: travelpayouts },
+        { name: "Viator", report: viator },
+        { name: "Fever", report: fever },
+        { name: "Booking.com", report: bookingCom },
+      ]);
+      const totalNetRevenue = stripeTotal + affiliateRevenue.total - apiCosts.totalCostDollars;
 
       const periodLabel = period === "last_month" ? "Last Month" : period === "last_90_days" ? "Last 90 Days" : "This Month";
       const exportedAt = now.toISOString();
@@ -5007,9 +5018,13 @@ router.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res
         addRow("Stream", "This Month (USD)", "Last Month (USD)", "Period Total (USD)");
         addRow("Stripe (Platform Fees)", fmt(stripe?.platform?.thisMonth || 0), fmt(stripe?.platform?.lastMonth || 0), fmt(stripeTotal));
         addRow("Travelpayouts", fmt(travelpayouts.thisMonth || 0), fmt(travelpayouts.lastMonth || 0), fmt(travelpayouts.total || 0));
-        addRow("Viator", fmt(viator.thisMonth || 0), fmt(viator.lastMonth || 0), fmt(viator.total || 0));
-        addRow("Fever", fmt(fever.thisMonth || 0), fmt(fever.lastMonth || 0), fmt(fever.total || 0));
-        addRow("Booking.com", fmt(bookingCom.thisMonth || 0), fmt(bookingCom.lastMonth || 0), fmt(bookingCom.total || 0));
+        addRow("Viator", formatAffiliateAmount(viator.thisMonth), formatAffiliateAmount(viator.lastMonth), formatAffiliateAmount(viator.total));
+        addRow("Fever", formatAffiliateAmount(fever.thisMonth), formatAffiliateAmount(fever.lastMonth), formatAffiliateAmount(fever.total));
+        addRow("Booking.com", formatAffiliateAmount(bookingCom.thisMonth), formatAffiliateAmount(bookingCom.lastMonth), formatAffiliateAmount(bookingCom.total));
+        if (affiliateRevenue.partial) {
+          addRow("AFFILIATE REVENUE (PARTIAL)", "", "", fmt(affiliateRevenue.total));
+          addRow("Unreadable partners", "", "", affiliateRevenue.unknownPartners.join(", "));
+        }
         addRow("API Costs (deducted)", "", "", `-${fmt(apiCosts.totalCostDollars)}`);
         addRow("NET REVENUE", "", "", fmt(totalNetRevenue));
 
@@ -5076,7 +5091,13 @@ router.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res
       doc.moveDown(0.5);
 
       // Net Revenue highlight
-      doc.fontSize(13).fillColor(COL_GREEN).font("Helvetica-Bold").text(`Net Revenue: $${fmt(totalNetRevenue)} USD`);
+      doc.fontSize(13).fillColor(COL_GREEN).font("Helvetica-Bold").text(
+        `Net Revenue${affiliateRevenue.partial ? " (partial affiliate data)" : ""}: $${fmt(totalNetRevenue)} USD`,
+      );
+      if (affiliateRevenue.partial) {
+        doc.fontSize(9).fillColor(COL_GRAY).font("Helvetica")
+          .text(`Unreadable affiliate partners: ${affiliateRevenue.unknownPartners.join(", ")}`);
+      }
       doc.moveDown(1);
 
       // Helper: draw a simple table
@@ -5125,9 +5146,9 @@ router.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res
         [
           ["Stripe (Platform Fees)", `$${fmt(stripe?.platform?.thisMonth || 0)}`, `$${fmt(stripe?.platform?.lastMonth || 0)}`, `$${fmt(stripeTotal)}`],
           ["Travelpayouts", `$${fmt(travelpayouts.thisMonth || 0)}`, `$${fmt(travelpayouts.lastMonth || 0)}`, `$${fmt(travelpayouts.total || 0)}`],
-          ["Viator", `$${fmt(viator.thisMonth || 0)}`, `$${fmt(viator.lastMonth || 0)}`, `$${fmt(viator.total || 0)}`],
-          ["Fever", `$${fmt(fever.thisMonth || 0)}`, `$${fmt(fever.lastMonth || 0)}`, `$${fmt(fever.total || 0)}`],
-          ["Booking.com", `$${fmt(bookingCom.thisMonth || 0)}`, `$${fmt(bookingCom.lastMonth || 0)}`, `$${fmt(bookingCom.total || 0)}`],
+          ["Viator", formatAffiliateAmount(viator.thisMonth), formatAffiliateAmount(viator.lastMonth), formatAffiliateAmount(viator.total)],
+          ["Fever", formatAffiliateAmount(fever.thisMonth), formatAffiliateAmount(fever.lastMonth), formatAffiliateAmount(fever.total)],
+          ["Booking.com", formatAffiliateAmount(bookingCom.thisMonth), formatAffiliateAmount(bookingCom.lastMonth), formatAffiliateAmount(bookingCom.total)],
           ["API Costs (deducted)", "", "", `-$${fmt(apiCosts.totalCostDollars)}`],
           ["NET REVENUE", "", "", `$${fmt(totalNetRevenue)}`],
         ],

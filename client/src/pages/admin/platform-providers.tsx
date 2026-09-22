@@ -175,8 +175,8 @@ interface ApiCostsSummary {
 
 interface AffiliateStream {
   configured: boolean;
-  thisMonth: number;
-  total: number;
+  thisMonth: number | null;
+  total: number | null;
   currency: string;
 }
 
@@ -184,6 +184,11 @@ interface UnifiedRevenue {
   viator: AffiliateStream;
   fever: AffiliateStream;
   bookingCom: AffiliateStream;
+  affiliateRevenue: {
+    total: number;
+    partial: boolean;
+    unknownPartners: string[];
+  };
   apiCosts: ApiCostsSummary;
 }
 
@@ -191,7 +196,8 @@ interface IntegrationStatus {
   providers: Record<string, { configured: boolean }>;
 }
 
-function money(n: number): string {
+function money(n: number | null): string {
+  if (n === null) return "Unknown";
   return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
@@ -305,7 +311,7 @@ export default function AdminPlatformProviders() {
         configured,
         requests: null as number | null,
         costDollars: 0,
-        revenueDollars: stream?.thisMonth ?? 0,
+        revenueDollars: stream ? stream.thisMonth : 0,
       };
     }
     return {
@@ -324,7 +330,7 @@ export default function AdminPlatformProviders() {
   const connectedCount = resolved.filter((p) => !p.decommissioned && p.configured === true).length;
   const notConnectedCount = resolved.filter((p) => !p.decommissioned && p.configured === false).length;
   const totalCost = resolved.reduce((sum, p) => sum + p.costDollars, 0);
-  const totalRevenue = resolved.reduce((sum, p) => sum + (p.revenueDollars ?? 0), 0);
+  const totalRevenue = unified?.affiliateRevenue.total ?? 0;
 
   return (
     <AdminLayout>
@@ -357,7 +363,15 @@ export default function AdminPlatformProviders() {
             { label: "Connected", value: isLoading ? "…" : connectedCount, icon: CheckCircle, color: "text-green-600", bg: "bg-green-50" },
             { label: "Not connected", value: isLoading ? "…" : notConnectedCount, icon: XCircle, color: "text-gray-500", bg: "bg-gray-50" },
             { label: "API cost (MTD)", value: isLoading ? "…" : money(totalCost), icon: DollarSign, color: "text-blue-600", bg: "bg-blue-50" },
-            { label: "Affiliate revenue (MTD)", value: isLoading ? "…" : money(totalRevenue), icon: TrendingUp, color: "text-violet-600", bg: "bg-violet-50" },
+            {
+              label: unified?.affiliateRevenue.partial
+                ? `Affiliate revenue (partial; missing ${unified.affiliateRevenue.unknownPartners.join(", ")})`
+                : "Affiliate revenue (MTD)",
+              value: isLoading ? "…" : money(totalRevenue),
+              icon: TrendingUp,
+              color: "text-violet-600",
+              bg: "bg-violet-50",
+            },
           ].map((s) => (
             <Card key={s.label}>
               <CardContent className="p-4 flex items-center gap-3">
@@ -445,12 +459,12 @@ export default function AdminPlatformProviders() {
                                 <span className="text-xs font-semibold text-gray-700">{money(p.costDollars)}</span>
                               </div>
                             )}
-                            {p.revenueDollars !== null && (
+                            {p.source === "affiliate-commission" && (
                               <div className="flex items-center gap-1.5">
                                 <TrendingUp className="w-3.5 h-3.5 text-green-500" />
                                 <span className="text-xs text-gray-500">Revenue (MTD):</span>
                                 <span className="text-xs font-semibold text-green-700">
-                                  {p.revenueDollars > 0 ? money(p.revenueDollars) : "$0.00"}
+                                  {money(p.revenueDollars)}
                                 </span>
                               </div>
                             )}
