@@ -1,10 +1,9 @@
-export interface ViatorCommissions {
-  configured: boolean;
-  thisMonth: number;
-  lastMonth: number;
-  total: number;
-  currency: string;
-}
+import {
+  parseAffiliateAmount,
+  type AffiliateCommissionReport,
+} from "./affiliate-commission-report";
+
+export interface ViatorCommissions extends AffiliateCommissionReport {}
 
 function getDateRange(period: string): { startDate: string; endDate: string } {
   const now = new Date();
@@ -52,7 +51,7 @@ async function fetchViatorCommissions(
   apiKey: string,
   startDate: string,
   endDate: string
-): Promise<number> {
+): Promise<number | null> {
   try {
     const url = new URL("https://api.viator.com/partner/v1/affiliate/reporting");
     url.searchParams.set("startDate", startDate);
@@ -71,28 +70,38 @@ async function fetchViatorCommissions(
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       console.warn(`[ViatorCommissions] API ${res.status}: ${text.slice(0, 200)}`);
-      return 0;
+      return null;
     }
 
     const data = await res.json();
     if (Array.isArray(data?.commissions)) {
-      return data.commissions.reduce((sum: number, row: any) => {
-        const val = row.totalCommission ?? row.commission ?? row.amount ?? 0;
-        const n = typeof val === "number" ? val : parseFloat(String(val));
-        return sum + (isNaN(n) ? 0 : n);
+      // A readable row with no commission field genuinely reports zero. Only a transport
+      // failure or a wholly unparseable payload is unknown.
+      let invalidAmount = false;
+      const total = data.commissions.reduce((sum: number, row: any) => {
+        const val = row.totalCommission ?? row.commission ?? row.amount;
+        if (val === undefined || val === null) return sum;
+        const n = parseAffiliateAmount(val);
+        if (n === null) {
+          invalidAmount = true;
+          return sum;
+        }
+        return sum + n;
       }, 0);
+      return invalidAmount ? null : total;
     }
 
     const val =
       data?.totalCommission ??
       data?.commission ??
       data?.totalEarnings ??
-      data?.earnings ??
-      0;
-    return typeof val === "number" ? val : parseFloat(String(val)) || 0;
+      data?.earnings;
+    // A readable object with no recognized total is incomplete, so its amount is unknown.
+    if (val === undefined || val === null) return null;
+    return parseAffiliateAmount(val);
   } catch (err: any) {
     console.warn(`[ViatorCommissions] Fetch error:`, err?.message || err);
-    return 0;
+    return null;
   }
 }
 
@@ -111,7 +120,7 @@ export async function getViatorCommissions(period: string): Promise<ViatorCommis
     fetchViatorCommissions(apiKey, lastRange.startDate, lastRange.endDate),
   ]);
 
-  let total: number;
+  let total: number | null;
   if (period === "this_month") {
     total = thisMonth;
   } else if (period === "last_month") {

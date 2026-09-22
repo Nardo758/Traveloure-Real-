@@ -64,9 +64,9 @@ import {
 
 interface StreamData {
   configured: boolean;
-  thisMonth: number;
-  lastMonth: number;
-  total: number;
+  thisMonth: number | null;
+  lastMonth: number | null;
+  total: number | null;
   currency: string;
   growthPercent?: number;
 }
@@ -104,6 +104,11 @@ interface UnifiedRevenue {
   viator: StreamData;
   fever: StreamData;
   bookingCom: StreamData;
+  affiliateRevenue: {
+    total: number;
+    partial: boolean;
+    unknownPartners: string[];
+  };
   apiCosts: ApiCosts;
 }
 
@@ -192,7 +197,8 @@ function periodToDateRange(period: string): { startDate: string; endDate: string
   };
 }
 
-function formatCurrency(amount: number, decimals = 2): string {
+function formatCurrency(amount: number | null, decimals = 2): string {
+  if (amount === null) return "Unknown";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -235,7 +241,8 @@ function getSourceColor(sourceType: string): string {
   return colors[sourceType] || "bg-gray-500";
 }
 
-function MoMBadge({ thisMonth, lastMonth }: { thisMonth: number; lastMonth: number }) {
+function MoMBadge({ thisMonth, lastMonth }: { thisMonth: number | null; lastMonth: number | null }) {
+  if (thisMonth === null || lastMonth === null) return null;
   if (lastMonth === 0) return null;
   const pct = ((thisMonth - lastMonth) / lastMonth) * 100;
   const up = pct >= 0;
@@ -275,6 +282,14 @@ function StreamCard({
                   className="text-xs text-gray-400 border-gray-300 py-0"
                 >
                   Not connected
+                </Badge>
+              )}
+              {data.configured && data.total === null && (
+                <Badge
+                  variant="outline"
+                  className="text-xs text-amber-700 border-amber-300 py-0"
+                >
+                  Report unavailable
                 </Badge>
               )}
             </div>
@@ -459,19 +474,20 @@ export default function AdminRevenue() {
                 <p className="text-xs text-muted-foreground mt-2">
                   Stripe + all affiliate commissions − API costs · {periodLabel}
                 </p>
+                {unified?.affiliateRevenue.partial && (
+                  <p className="text-xs text-amber-700 mt-1" data-testid="text-affiliate-revenue-partial">
+                    Unreadable affiliate partners: {unified.affiliateRevenue.unknownPartners.join(", ")}
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-2 text-sm">
                 <div className="flex items-center gap-2 text-green-600">
                   <TrendingUp className="w-4 h-4" />
                   <span>
                     {formatCurrency(
-                      (unified?.stripe.total ?? 0) +
-                        (unified?.travelpayouts.total ?? 0) +
-                        (unified?.viator.total ?? 0) +
-                        (unified?.fever.total ?? 0) +
-                        (unified?.bookingCom.total ?? 0)
+                      (unified?.stripe.total ?? 0) + (unified?.affiliateRevenue.total ?? 0)
                     )}{" "}
-                    gross revenue
+                    gross revenue{unified?.affiliateRevenue.partial ? " (partial)" : ""}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-red-500">
@@ -606,18 +622,18 @@ export default function AdminRevenue() {
                       },
                       {
                         name: "Viator",
-                        "This Period": unified?.viator.total ?? 0,
-                        "Last Month": unified?.viator.lastMonth ?? 0,
+                        "This Period": unified?.viator.total,
+                        "Last Month": unified?.viator.lastMonth,
                       },
                       {
                         name: "Fever",
-                        "This Period": unified?.fever.total ?? 0,
-                        "Last Month": unified?.fever.lastMonth ?? 0,
+                        "This Period": unified?.fever.total,
+                        "Last Month": unified?.fever.lastMonth,
                       },
                       {
                         name: "Booking.com",
-                        "This Period": unified?.bookingCom.total ?? 0,
-                        "Last Month": unified?.bookingCom.lastMonth ?? 0,
+                        "This Period": unified?.bookingCom.total,
+                        "Last Month": unified?.bookingCom.lastMonth,
                       },
                     ]}
                     margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
