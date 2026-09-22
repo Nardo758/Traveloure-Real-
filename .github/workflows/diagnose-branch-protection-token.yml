@@ -1,0 +1,92 @@
+name: Diagnose Branch Protection Token
+
+# Manual-only operator check for the exact repository secret name
+# `BRANCH_PROTECTION_PAT`. The token must authenticate as Nardo758, be scoped
+# to Nardo758/Traveloure-Real-, and grant repository Administration: Read and
+# write. This workflow performs read-only API checks and never patches branch
+# protection.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-branch-protection-token:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify BRANCH_PROTECTION_PAT is configured
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::Repository secret BRANCH_PROTECTION_PAT is missing or empty."
+            echo "Create or update the repository secret using this exact name: BRANCH_PROTECTION_PAT"
+            exit 1
+          fi
+
+          echo "BRANCH_PROTECTION_PAT is configured."
+
+      - name: Verify token identity
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT }}
+        run: |
+          set -euo pipefail
+
+          login="$(gh api user --jq '.login')"
+          if [ "$login" != "Nardo758" ]; then
+            echo "::error::BRANCH_PROTECTION_PAT authenticates as '$login', not 'Nardo758'."
+            exit 1
+          fi
+
+          echo "Authenticated login: $login"
+
+      - name: Verify repository access
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          repo_full_name="$(gh api "repos/$REPO" --jq '.full_name')"
+          echo "Repository access confirmed: $repo_full_name"
+
+      - name: Verify branch-protection administration access
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          error_file="$(mktemp)"
+          trap 'rm -f "$response_file" "$error_file"' EXIT
+
+          if ! gh api "repos/$REPO/branches/main/protection" >"$response_file" 2>"$error_file"; then
+            echo "::error::Read-only branch-protection request failed for repos/$REPO/branches/main/protection."
+            echo "The token likely lacks repository Administration: Read and write for $REPO."
+            echo "Use the exact repository secret name BRANCH_PROTECTION_PAT and verify the fine-grained token permissions."
+            if [ -s "$error_file" ]; then
+              echo
+              echo "GitHub CLI error:"
+              cat "$error_file"
+            fi
+            exit 1
+          fi
+
+          python - <<'PY' "$response_file"
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as fh:
+              payload = json.load(fh)
+
+          contexts = ((payload.get("required_status_checks") or {}).get("contexts") or [])
+          branch_name = payload.get("name", "main")
+          print(f"Protected branch read confirmed: {branch_name}")
+          print(f"Required status contexts: {len(contexts)}")
+          PY
