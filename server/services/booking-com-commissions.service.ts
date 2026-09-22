@@ -94,6 +94,7 @@ async function fetchBookingComCommissions(
     }
 
     const val = data?.commission ?? data?.total_commission ?? data?.revenue;
+    // A readable object with no recognized total is incomplete, so its amount is unknown.
     if (val === undefined || val === null) return null;
     return parseAffiliateAmount(val);
   } catch (err: any) {

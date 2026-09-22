@@ -80,6 +80,7 @@ async function fetchImpactCommissions(
 
     const data = await res.json();
     const rows = data?.Rows ?? data?.rows;
+    // A readable object with no report-row array is incomplete, so its amount is unknown.
     if (!Array.isArray(rows)) return null;
 
     // A readable row with no commission field genuinely reports zero. Only a transport
