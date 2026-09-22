@@ -217,6 +217,11 @@ const REQUIRED_SOURCE_FIELDS = [
     forbid: ["experienceType"],
     why: "the concierge door holds the destination and the type the intent form just asked for",
   },
+  {
+    file: "client/src/components/travelpulse/CityGrid.tsx",
+    require: ["city", "country"],
+    why: "CityGrid's Plan now door holds the selected city's name and country (Locked Decision 42 D14)",
+  },
 ];
 
 /** Does this source offer one of the two ruled entry shapes? */
@@ -523,6 +528,7 @@ function selfTest() {
   // listed door: `sbd(src)` gives every one of them the same source.
   const sbd = (src) => Object.fromEntries(SERVICES_BROWSE_DOORS.map((d) => [d.file, src]));
   const CONCIERGE = "client/src/pages/concierge/index.tsx";
+  const CITY_GRID = "client/src/components/travelpulse/CityGrid.tsx";
   const doorConcierge =
     'const { open: openPlanModal } = usePlanning();\n' +
     'openPlanModal({ ...(s.destination ? { destination: s.destination } : {}), ...(occasion ? { experienceSlug: occasion.slug } : {}), onFinish: h });';
@@ -570,6 +576,8 @@ function selfTest() {
     ["D13 · the concierge door passing destination + a resolved slug passes", () => req(CONCIERGE, doorConcierge).length === 0],
     ["D13 · the concierge door passing NOTHING fails", () => req(CONCIERGE, doorConciergeBare).some((e) => e.includes("does not pass `destination`"))],
     ["D13 · the concierge door forwarding the form's eventType as experienceType FAILS", () => req(CONCIERGE, doorConciergeWrongVocab).some((e) => e.includes("ruled NOT to pass"))],
+    ["D14 · CityGrid passes its selected city and country", () => req(CITY_GRID, 'const { open: openPlanning } = usePlanning();\nopenPlanning({ city: city.cityName, country: city.country });').length === 0],
+    ["D14 · CityGrid missing country FAILS", () => req(CITY_GRID, 'const { open: openPlanning } = usePlanning();\nopenPlanning({ city: city.cityName });').some((e) => e.includes("does not pass `country`"))],
     // Ledger `2026-09-07-doors-pass-tripid` (L22): a browse door hands its context over on a URL,
     // and must do it through the ONE builder.
     ["D13 · a browse door using the builder passes", () => checkServicesBrowseDoors(sbd("navigate(buildServicesBrowseHref({ categoryKey: c.categoryKey, tripId }));")).length === 0],

@@ -1171,6 +1171,9 @@ This document captures architectural decisions to maintain consistency across co
     in its own shapes, and ruling 33 left exactly one. Same ruling: **CityGrid's "Plan now" opens
     the modal with `{ city, country }` pre-filled** — the grid holds both, so under D13 it passes
     both, and a traveler who clicked a specific city is never asked which city.
+    **Executed 2026-09-21:** the registered `/quick-start` route remains as a compatibility
+    redirect to `/destinations`, while CityGrid opens the one planning modal directly and the
+    planning-entry guard pins both required fields.
 
     **D15 — A PLAN STARTED FROM A LISTING ENDS BACK AT THAT LISTING.** `PlanningSource` gains
     **return-to context** — `returnTo: { kind: 'service' | 'expert', id/handle }` — so a plan
