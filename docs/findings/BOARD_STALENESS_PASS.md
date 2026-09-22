@@ -1,12 +1,12 @@
 # Staleness pass — 564 Replit board tasks
 Run 2026-09-22 against `Nardo758/Traveloure-Real-` @ `65076ea`. Read-only against the codebase; this file and its `.tsv` are the only additions.
 
-**G1 (money, 73) and G9 (security, 45) are FULLY tier A** — every row in both groups carries `file:line` evidence. The remaining groups are unchanged from the first pass.
+**G1 (money, 73), G9 (security, 45) and G13 (booking integrity, 20) are FULLY tier A** — every row in all three carries `file:line` evidence. The remaining groups are unchanged from the first pass.
 ## Method and its limits
 Three evidence tiers. **Every row states which tier it rests on — a tier-C row is routed, not adjudicated.**
-- **A — verified (148):** opened the code; basis carries `file:line`.
-- **B — probed (50):** targeted identifier grep over 2,232 source files. `built+tested` = feature area present AND matched by a file under `__tests__`/`e2e`/`.github`. `none` = no implementation under the probed identifiers (low confidence, not proof of absence).
-- **C — routed (366):** not individually probed. Classified by governance rule only.
+- **A — verified (166):** opened the code; basis carries `file:line`.
+- **B — probed (42):** targeted identifier grep over 2,232 source files. `built+tested` = feature area present AND matched by a file under `__tests__`/`e2e`/`.github`. `none` = no implementation under the probed identifiers (low confidence, not proof of absence).
+- **C — routed (356):** not individually probed. Classified by governance rule only.
 
 **What this pass cannot see** (no `node_modules`, no production DB, no browser in this container): anything needing `tsc` with dependencies, prod schema/ledger state, or rendered UI. Those are marked `NEEDS-RUNTIME`.
 
@@ -16,16 +16,16 @@ Generic keyword scoring was tried and **discarded**: `server/routes.ts` and `ser
 
 | Verdict | Count | Meaning |
 |---|---:|---|
-| BUILD | 332 | Ordinary work, or no implementation found. |
+| BUILD | 320 | Ordinary work, or no implementation found. |
 | TEST-PROGRAM | 73 | Verification task, not product work. |
-| CLOSE-DONE | 46 | Built and evidenced. Close. |
-| OPEN-VALID | 29 |  |
-| VERIFY-THEN-CLOSE | 24 | Area built AND test-covered; owner confirms then closes. |
-| LIKELY-DONE | 12 |  |
-| PARTIAL | 10 |  |
-| VERIFY | 10 | Area built, no test coverage found. |
+| CLOSE-DONE | 48 | Built and evidenced. Close. |
+| OPEN-VALID | 39 |  |
+| VERIFY-THEN-CLOSE | 21 | Area built AND test-covered; owner confirms then closes. |
+| PARTIAL | 13 |  |
+| LIKELY-DONE | 13 |  |
+| VERIFY | 8 | Area built, no test coverage found. |
+| RULE-FIRST | 7 | A decision, not a build. PUNCHLIST §1. |
 | CLOSE-CONFLICT | 6 | Would regress or targets a ruled-dead surface. Close with pointer. |
-| RULE-FIRST | 6 | A decision, not a build. PUNCHLIST §1. |
 | LANE-BRIEF | 3 | Program-sized; fold into an existing lane. |
 | NEEDS-RUNTIME | 3 | Needs prod DB / deps to settle. |
 | CLOSE-DUPLICATE | 2 | Same as another task. |
@@ -49,7 +49,7 @@ Generic keyword scoring was tried and **discarded**: `server/routes.ts` and `ser
 
 `LANE-BRIEF(*)` = touches an artifact CLAUDE.md governs (§8 fee_bands, §14 server-derived amount/identity, §18 rates, §19 allowlist, publish-trap schema rules). **114 tasks. None of them can be executed as a standalone ticket** — each needs a lane brief per `docs/OPERATING_PROCEDURE.md`.
 
-## Close now — no work required (55)
+## Close now — no work required (57)
 These are settled: built, superseded, duplicated, or aimed at a surface a Locked Decision retires.
 
 | # | Grp | Title | Basis |
@@ -108,9 +108,11 @@ These are settled: built, superseded, duplicated, or aimed at a surface a Locked
 | 1764 | G11 | Stop publishing when the approved revision changes | scripts/publish-preflight.cjs |
 | 435 | G12 | Standardize city-name capitalization | cited in ledger DECISIONS.md:725 |
 | 528 | G13 | Extend double-confirmation protection to service bookings | server/utils/booking-from-states.ts + expectedFromStatuses atomic conditional (§18b); ledger DECISIONS.md:339 |
+| 1546 | G13 | Show attestation blockers in amber | service-attestations-card.tsx:101 already renders blockers on an amber border/background with an AlertTriangle. |
 | 1562 | G13 | Prevent duplicate bookings under concurrency | unique service_bookings_idempotency_key_idx shared/schema.ts:1803 + §15 claim-then-call |
+| 1724 | G13 | Prevent duplicate ready-made confirmations | ready-made-purchase.service.ts:132 states the pass is idempotent so a re-entrant recovery credits the author exactly once. |
 
-## Rule first — not buildable as written (12)
+## Rule first — not buildable as written (13)
 
 | # | Grp | Title | Basis |
 |---|---|---|---|
@@ -126,8 +128,9 @@ These are settled: built, superseded, duplicated, or aimed at a surface a Locked
 | 632 | G10 | Stamp removed migration 075 in production | 075 already deleted and removed from migration-files.ts (registry L116-121). Prod stamping is an operator action. |
 | 1258 | G10 | Verify undeclared tables against production | Guard exists (check-undeclared-tables.cjs); 'verify against production' needs the prod DB. |
 | 525 | G11 | Verify migrations on a fresh production database | Requires a fresh production-shaped DB. |
+| 215 | G13 | Add schedule checks beyond dinner gaps | The dinner/meal check exists - advisor-fundamentals.service.ts:57 FOOD_RE covers dinner/lunch/breakfast/brunch/cafe. Adding checks means amending the RATIFIED fundamentals checklist (LD 21: deterministic, §13-honest, a check with insufficient data is omitted with a reason). That is a ruling, not a ticket. |
 
-## Verify then close — area built and test-covered (24)
+## Verify then close — area built and test-covered (21)
 Probe found the feature area present AND covered by a test/CI file. Highest-yield batch: one owner pass should close most of these.
 
 | # | Grp | Title | Basis |
@@ -153,11 +156,8 @@ Probe found the feature area present AND covered by a test/CI file. Highest-yiel
 | 808 | G11 | Catch broken Wouter location calls | Feature area present and test/gate-covered (183 files, 8 test/CI). |
 | 827 | G11 | Catch /discover mobile regressions | Feature area present and test/gate-covered (1 files, 1 test/CI). |
 | 1248 | G11 | Keep hydration test resets out of production | Feature area present and test/gate-covered (6 files, 1 test/CI). |
-| 215 | G13 | Add schedule checks beyond dinner gaps | Feature area present and test/gate-covered (4 files, 1 test/CI). |
-| 1179 | G13 | Batch stale and stuck booking admin lists | Feature area present and test/gate-covered (10 files, 3 test/CI). |
-| 1430 | G13 | Block duplicate Decline dialogs | Feature area present and test/gate-covered (3 files, 1 test/CI). |
 
-## Verify — area built, no test coverage found (10)
+## Verify — area built, no test coverage found (8)
 
 | # | Grp | Title | Basis |
 |---|---|---|---|
@@ -169,10 +169,8 @@ Probe found the feature area present AND covered by a test/CI file. Highest-yiel
 | 290 | G10 | Fix the unified-result-card syntax error | Feature area present, no test/gate coverage found (3 files). |
 | 762 | G11 | Test broken shared itinerary links | Feature area present, no test/gate coverage found (1 files). |
 | 1416 | G11 | Run WebKit smoke tests in CI | Feature area present, no test/gate coverage found (2 files). |
-| 667 | G13 | Prevent services disappearing during category changes | Feature area present, no test/gate coverage found (1 files). |
-| 1563 | G13 | Make content-registration failure non-fatal | Feature area present, no test/gate coverage found (1 files). |
 
-## No implementation found under probed identifiers (16)
+## No implementation found under probed identifiers (13)
 Low confidence (absence of a name is not absence of a feature), but these are the strongest genuinely-open candidates.
 
 | # | Grp | Title | Basis |
@@ -190,21 +188,24 @@ Low confidence (absence of a name is not absence of a feature), but these are th
 | 1292 | G11 | Seed a paid confirmed booking for completion tests | No implementation found under probed identifiers. |
 | 1405 | G11 | Detect iOS keyboard-covered checkout fields | No implementation found under probed identifiers. |
 | 1526 | G11 | Catch broken listing submission | No implementation found under probed identifiers. |
-| 1238 | G13 | Verify skip-modal rebooking | No implementation found under probed identifiers. |
-| 1273 | G13 | Rebalance workload when experts stop accepting handoffs | No implementation found under probed identifiers. |
-| 1429 | G13 | Hide Accept after booking acceptance | No implementation found under probed identifiers. |
 
-## Findings from the G1/G9 tier-A promotion
+## A defect found off the board: one NUL byte blinds a CI guard
 
-The six worth acting on regardless of board hygiene:
+`server/services/demand-rollup.compute.ts` contains a single NUL byte at offset 7184 (line 161): `const SEP = "\x00"` is written as a **raw byte** rather than an escape. The file is otherwise valid UTF-8 and the code is correct — but `grep` classifies the whole file as binary and **silently skips it**.
+
+Demonstrated: searching for `computeSlipFunnel` returns the call sites in `demand-rollup.service.ts` and NOT the definition; grep prints `binary file matches` instead.
+
+**Scope, stated precisely.** Node-based guards read with `fs.readFileSync` and are unaffected (`check-money-endpoints.cjs`, `check-public-user-id.cjs`). **Shell/grep guards are blind to it** — including `scripts/phase2-fee-gate.sh`, the §8 fee-literal gate, whose `ROOTS=(server client shared)` (`:16`) puts this file squarely in scope. That is an UNSTATED blind spot in a guard §18d already documents as having shipped one invisible blind spot before.
+
+**Fix is one character:** `"\u0000"` instead of the raw byte. Identical behaviour, file becomes text, guards see it.
+
+## G13 findings (booking integrity)
 
 | # | Finding |
 |---|---|
-| #1255 | §13 violation: `booking-com-commissions.service.ts` returns `0` on non-OK status (`:76`), fetch error (`:92`) and missing field (`:82`,`:88`). "Unknown" rendered as "zero commission". |
-| #861 | `isEarlyAdopterProvider` (`commission.ts:521`) returns the BETA rate when the setting is missing (`:522`) or invalid (`:524`) — exiting beta by removing the setting silently reverts every provider. Needs a ruling on which way it fails. |
-| #1347 | `totalRevenue` has only increment writes (`storage.ts:3737`, `affiliate.service.ts:396`), no decrement — while `bookingsCount` DOES decrement (`storage.ts:3544`). A refunded booking leaves revenue permanently inflated. |
-| #350 → #857 | `handlePaymentFailed` keys on `bookingIds` (`stripe-payment.service.ts:926`); an optimizer PI carries `type="optimization_fee"`+`userId` and no `bookingIds` (`optimization.routes.ts:554`), so its failures are unhandled — which is why #857's credits can strand. |
-| #1431/#1432 | `requireOwnership` (`ownershipGuard.ts:18`) has ZERO live call sites; its only mention is a comment at `trips.routes.ts:371` saying it cannot be used. §18c delete-or-adopt. |
-| #504 | EA access to another person's client data writes no audit row (`ea-rbac.ts`, `ea.routes.ts`). |
-
-**Three board rows were corrected rather than actioned:** #1581 overstates a double-pay that two layers already prevent; #1348 asks for a guarantee `storage.ts:3535-3538` explicitly declines in a comment; #1182 is already satisfied (`not in ('complete','active')`). #354 is fixed and its regression is tracked as **#972 — which is not on this board**.
+| #1429 | The Accept/Decline block (`expert/inbox.tsx:213+`) is not gated on `booking.status` — only disabled during the in-flight call, so Accept renders beside a StatusBadge already showing the booking accepted. |
+| #1563 | `storage.ts:1573` (and `:1655`) `await this.registerContent(...)` is unguarded, so a content-registration failure aborts trip creation. §15b and LD 30(b) both govern: an ancillary effect may not break the operation that authorizes it. |
+| #1725 | `local_expert_forms` has only a `referral_code` UNIQUE (migration 000:5053) — nothing stops two concurrent applications from the same applicant. |
+| #1179 | Three separate admin endpoints (`admin.routes.ts:426`, `:469`, `:506`) where the task asks for one batched call. |
+| #1273 | `lead-routing.service.ts` scores on destination/specialty/availability/response rate but carries no workload or accepting-handoffs signal, so it cannot rebalance away from an expert who stopped taking work. |
+| #1547 | The attestation blocker Fix affordance has no `href`/`navigate` — the links go nowhere. |

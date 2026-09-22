@@ -483,26 +483,26 @@ id	group	title	verdict	routing_class	confidence	basis
 1638	G12	Make admin and partner controls screen-reader accessible	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
 1639	G12	Bring important text to WCAG AA contrast	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
 1734	G12	Catch offering-header regressions	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
-215	G13	Add schedule checks beyond dinner gaps	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (4 files, 1 test/CI).
-527	G13	Prevent duplicate activity bookings	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+215	G13	Add schedule checks beyond dinner gaps	RULE-FIRST	BUILD	A verified	The dinner/meal check exists - advisor-fundamentals.service.ts:57 FOOD_RE covers dinner/lunch/breakfast/brunch/cafe. Adding checks means amending the RATIFIED fundamentals checklist (LD 21: deterministic, §13-honest, a check with insufficient data is omitted with a reason). That is a ruling, not a ticket.
+527	G13	Prevent duplicate activity bookings	PARTIAL	BUILD	A verified	booking.service.ts:1074 already prevents duplicate PENDING requests for the same target. Whether that covers the activity-booking case specifically is the open half.
 528	G13	Extend double-confirmation protection to service bookings	CLOSE-DONE	BUILD	A verified	server/utils/booking-from-states.ts + expectedFromStatuses atomic conditional (§18b); ledger DECISIONS.md:339
-667	G13	Prevent services disappearing during category changes	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (1 files).
-1179	G13	Batch stale and stuck booking admin lists	VERIFY-THEN-CLOSE	LANE-BRIEF(security)	B probe(built+tested)	Feature area present and test/gate-covered (10 files, 3 test/CI).
-1238	G13	Verify skip-modal rebooking	BUILD	TEST-PROGRAM	B probe(none)	No implementation found under probed identifiers.
-1272	G13	Verify destination-based expert auto-assignment	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
-1273	G13	Rebalance workload when experts stop accepting handoffs	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
-1280	G13	Roll back assignment diary rows atomically	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
-1363	G13	Show decline reasons on cancelled bookings	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
-1364	G13	Show decline reasons in expert booking history	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
-1378	G13	Support typed reasons when declining	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
-1429	G13	Hide Accept after booking acceptance	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
-1430	G13	Block duplicate Decline dialogs	VERIFY-THEN-CLOSE	LANE-BRIEF(security)	B probe(built+tested)	Feature area present and test/gate-covered (3 files, 1 test/CI).
-1546	G13	Show attestation blockers in amber	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
-1547	G13	Make blocker Fix links navigate correctly	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+667	G13	Prevent services disappearing during category changes	OPEN-VALID	BUILD	A verified	routes.ts:339 maps service-category to booking_fee_configs, but no guard prevents a category change from orphaning a live listing from its feeds.
+1179	G13	Batch stale and stuck booking admin lists	OPEN-VALID	LANE-BRIEF(security)	A verified	CONFIRMED: three separate admin endpoints exist - /api/admin/bookings/stale-pending (admin.routes.ts:426), /balance-overdue (:469) and /stuck-pending (:506). Batching them is exactly the open ask.
+1238	G13	Verify skip-modal rebooking	OPEN-VALID	TEST-PROGRAM	A verified	No skip-modal rebooking path found on the traveler booking surfaces.
+1272	G13	Verify destination-based expert auto-assignment	TEST-PROGRAM	TEST-PROGRAM	A verified	lead-routing.service.ts:3 scores experts on destination match, specialty, availability and response rate. Rail exists; the ask is the proof. NOTE: auto-assignment was RETIRED for affiliate booking requests (ledger 2026-09-08-assignment-is-claimed) - that retirement does NOT apply here, the scoring service stays live.
+1273	G13	Rebalance workload when experts stop accepting handoffs	OPEN-VALID	BUILD	A verified	No workload, capacity or accepting-handoffs signal in lead-routing.service.ts - the scorer cannot rebalance away from an expert who stopped accepting.
+1280	G13	Roll back assignment diary rows atomically	LIKELY-DONE	BUILD	A verified	LD 32's one-author lane covers it: upsertTripAdvisorRow takes an optional drizzle tx handle so a caller already inside a transaction writes the row inside it, which is the atomic rollback this asks for. Confirm confirmLeadAssignmentTx passes its tx, then close.
+1363	G13	Show decline reasons on cancelled bookings	PARTIAL	BUILD	A verified	The reason IS stored (routes.ts:7294 `declineReason: reason ?? null`). The traveler-facing display on cancelled bookings is the open half.
+1364	G13	Show decline reasons in expert booking history	OPEN-VALID	BUILD	A verified	expert/bookings.tsx carries no declineReason reference - not shown in expert booking history.
+1378	G13	Support typed reasons when declining	OPEN-VALID	BUILD	A verified	Decline reasons are FREE TEXT today (expert/inbox.tsx:133 declineDialog holds a `reason` string). "Typed reasons" means a structured set, which does not exist.
+1429	G13	Hide Accept after booking acceptance	OPEN-VALID	BUILD	A verified	CONFIRMED: the Accept/Decline button block (expert/inbox.tsx:213+) is NOT gated on booking.status - only `disabled={statusMutation.isPending}` during the in-flight call. A StatusBadge renders the status beside a still-live Accept button.
+1430	G13	Block duplicate Decline dialogs	PARTIAL	LANE-BRIEF(security)	A verified	A duplicate DIALOG is structurally impossible (one state object, expert/inbox.tsx:133/:162). But the submit guard is only `if (!declineDialog.bookingId) return` (:171) with no isPending check, so a double-click can fire the mutation twice. Reshape to "block duplicate decline SUBMITS".
+1546	G13	Show attestation blockers in amber	CLOSE-DONE	BUILD	A verified	service-attestations-card.tsx:101 already renders blockers on an amber border/background with an AlertTriangle.
+1547	G13	Make blocker Fix links navigate correctly	OPEN-VALID	BUILD	A verified	Same component has no href/navigate on the Fix affordance - the links do not go anywhere.
 1562	G13	Prevent duplicate bookings under concurrency	CLOSE-DONE	BUILD	A verified	unique service_bookings_idempotency_key_idx shared/schema.ts:1803 + §15 claim-then-call
-1563	G13	Make content-registration failure non-fatal	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (1 files).
-1724	G13	Prevent duplicate ready-made confirmations	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
-1725	G13	Prevent concurrent duplicate expert applications	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1563	G13	Make content-registration failure non-fatal	OPEN-VALID	BUILD	A verified	CONFIRMED and governed: storage.ts:1573 (and :1655) `await this.registerContent({...})` is unguarded, so a registration failure throws and aborts trip creation. §15b's rule - an ancillary effect may not break the operation that authorizes it - and LD 30(b)'s "a failed drain NEVER fails the trip mint" are the governing precedents.
+1724	G13	Prevent duplicate ready-made confirmations	CLOSE-DONE	BUILD	A verified	ready-made-purchase.service.ts:132 states the pass is idempotent so a re-entrant recovery credits the author exactly once.
+1725	G13	Prevent concurrent duplicate expert applications	OPEN-VALID	BUILD	A verified	local_expert_forms carries only a referral_code UNIQUE constraint (migration 000:5053). No uniqueness on the applicant, so two concurrent submissions both insert.
 283	G14	Show demand-refresh status	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
 285	G14	Show cache hit/miss metrics	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
 287	G14	Show demand-signal trends	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
