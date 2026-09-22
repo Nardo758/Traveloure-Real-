@@ -634,6 +634,31 @@ class StripePaymentService {
    * Handle Stripe webhook events
    */
   async handleWebhook(event: Stripe.Event) {
+    // Every signature-verified Stripe delivery gets one durable event record, including
+    // PaymentIntents owned by rails that do not create a row in `payment_intents`.
+    // The event id is Stripe's idempotency key; concurrent/redelivered events converge.
+    if (event.id) {
+      await db.execute(sql`
+        INSERT INTO webhook_events (stripe_event_id, event_type, processed, raw_payload)
+        VALUES (${event.id}, ${event.type}, FALSE, ${JSON.stringify(event)}::jsonb)
+        ON CONFLICT (stripe_event_id) DO NOTHING
+      `);
+      const claim = await db.execute(sql`
+        UPDATE webhook_events
+        SET error = 'processing', processed_at = NOW()
+        WHERE stripe_event_id = ${event.id}
+          AND processed = FALSE
+          AND (
+            error IS DISTINCT FROM 'processing'
+            OR processed_at < NOW() - INTERVAL '5 minutes'
+          )
+        RETURNING id
+      `);
+      if (claim.rows.length === 0) {
+        return { received: true };
+      }
+    }
+
     try {
       switch (event.type) {
         case 'payment_intent.succeeded':
@@ -708,9 +733,25 @@ class StripePaymentService {
           console.log(`Unhandled event type: ${event.type}`);
       }
 
+      if (event.id) {
+        await db.execute(sql`
+          UPDATE webhook_events
+          SET processed = TRUE, processed_at = NOW(), error = NULL
+          WHERE stripe_event_id = ${event.id}
+        `);
+      }
       return { received: true };
     } catch (error: any) {
       console.error('Webhook handling error:', error);
+      if (event.id) {
+        await db.execute(sql`
+          UPDATE webhook_events
+          SET processed = FALSE, processed_at = NOW(), error = ${error?.message ?? String(error)}
+          WHERE stripe_event_id = ${event.id}
+        `).catch((recordError) => {
+          console.error('Failed to record webhook handling error:', recordError);
+        });
+      }
       throw error;
     }
   }
@@ -922,6 +963,33 @@ class StripePaymentService {
   /**
    * Handle failed payment
    */
+  private logNonCartTerminalPayment(
+    paymentIntent: Stripe.PaymentIntent,
+    terminalStatus: 'failed' | 'canceled',
+  ) {
+    const type = paymentIntent.metadata?.type;
+    switch (type) {
+      case 'optimization_fee':
+      case 'trip_pass_purchase':
+      case 'ready_made_purchase':
+      case 'coordination_fee':
+      case 'expert_service':
+      case 'ai_task_fee':
+      case 'booking_request':
+      case 'transport_booking':
+        logger.warn(
+          { paymentIntentId: paymentIntent.id, type, terminalStatus },
+          '[webhook] non-cart payment terminal event recorded; owning rail has no terminal-state mutation in this lane',
+        );
+        return;
+      default:
+        logger.warn(
+          { paymentIntentId: paymentIntent.id, type: type ?? 'untyped', terminalStatus },
+          '[webhook] untyped payment terminal event recorded; no bookingIds or owned rail mutation',
+        );
+    }
+  }
+
   private async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
     const { bookingIds } = paymentIntent.metadata;
 
@@ -930,8 +998,13 @@ class StripePaymentService {
       UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
 
+    if (!bookingIds) {
+      this.logNonCartTerminalPayment(paymentIntent, 'failed');
+      return;
+    }
+
     // Update bookings
-    const bookingIdList = bookingIds.split(',');
+    const bookingIdList = bookingIds.split(',').map((id) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
       await db.execute(sql`
         UPDATE bookings SET
@@ -955,8 +1028,13 @@ class StripePaymentService {
       UPDATE payment_intents SET status = 'canceled' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
 
+    if (!bookingIds) {
+      this.logNonCartTerminalPayment(paymentIntent, 'canceled');
+      return;
+    }
+
     // Update bookings
-    const bookingIdList = bookingIds.split(',');
+    const bookingIdList = bookingIds.split(',').map((id) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
       await db.execute(sql`
         UPDATE bookings SET
