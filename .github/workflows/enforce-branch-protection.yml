@@ -50,7 +50,6 @@ jobs:
           set -euo pipefail
 
           BRANCH=$(jq -r '.branch' .github/branch-protection.json)
-          STRICT=$(jq -r '.required_status_checks.strict' .github/branch-protection.json)
           # Build a JSON array of the required context strings
           CONTEXTS=$(jq '.required_status_checks.contexts' .github/branch-protection.json)
 
@@ -59,11 +58,14 @@ jobs:
 
           # PATCH only the required_status_checks sub-resource so we do not
           # overwrite other protection settings (review requirements, etc.).
-          gh api \
-            --method PATCH \
-            "repos/$REPO/branches/$BRANCH/protection/required_status_checks" \
-            --field "strict=$STRICT" \
-            --raw-field "contexts=$(echo "$CONTEXTS" | jq -c .)"
+          # Send the body as JSON via --input so contexts is a real array;
+          # -f/--raw-field would send it as a string and the API returns 422.
+          jq '{strict: .required_status_checks.strict, contexts: .required_status_checks.contexts}' \
+            .github/branch-protection.json \
+          | gh api \
+              --method PATCH \
+              "repos/$REPO/branches/$BRANCH/protection/required_status_checks" \
+              --input -
 
           echo "✓ Branch protection updated successfully."
 
