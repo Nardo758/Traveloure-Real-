@@ -885,6 +885,17 @@ class BookingService {
         //    Any column/side-effect change to storage.createProviderEarning must be mirrored here.
         if (providerPayoutAmt > 0) {
           const earningId = crypto.randomUUID();
+          // ON CONFLICT DO NOTHING targets the partial unique index
+          // provider_earnings_booking_mint_uniq (migration 203):
+          //   UNIQUE (source_id) WHERE source_type = 'booking' AND amount >= 0
+          // This INSERT's own values match that predicate exactly (source_type 'booking',
+          // amount > 0 by the guard above), so WITHOUT this clause a duplicate raises 23505
+          // rather than no-opping — and because the raise happens inside this transaction it
+          // rolls back the booking confirm at step 1 too, stranding a booking Stripe has
+          // already charged in 'pending_payment'. A silent skip is the safe failure here: the
+          // earning already exists, so nothing is owed a second time. Mirrors the
+          // platform_revenue sibling below and the convention migration 203 established for
+          // the completion mint. MONEY_MAP F-4 comment above still applies.
           await tx.execute(sql`
             INSERT INTO provider_earnings (
               id, provider_id, type, amount, currency,
@@ -896,6 +907,8 @@ class BookingService {
               ${`Earnings from booking ${bookingId}${booking.title ? ' - ' + booking.title : ''}`},
               'held', ${earningsAvailableAt}, NOW()
             )
+            ON CONFLICT (source_id) WHERE source_type = 'booking' AND amount >= 0
+            DO NOTHING
           `);
         }
 
