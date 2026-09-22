@@ -1,15 +1,50 @@
-# Production receives ONE Stripe event, and several documented invariants have fewer enforcement layers than they claim
+# The Stripe webhook delivery gap — Stage 1 CLOSED, Stage 2 still open
 
-**As of 2026-09-22.** Established by a live-mode Stripe inventory run from the Replit workspace,
-cross-checked against the code in this repository at `b959e85`. **Nothing here is a code defect
-introduced by a lane — it is a configuration gap, and its consequence is that code which is
-correct has never executed in production.**
+**Originally written 2026-09-22 from a live-mode Stripe inventory, against code at `b959e85`.
+AMENDED the same day: Stage 1 landed while this brief was in review, so its original headline —
+"production receives one Stripe event" — is no longer true and is corrected below. Read every
+sentence here as a claim about a DATE, not about now** (the lesson CLAUDE.md's Lockfile-purity
+section already records about "VERIFIED WORKING" prose).
+
+**Nothing here is a code defect introduced by a lane.** It is a configuration gap; its consequence
+was that correct code had never executed in production.
+
+---
+
+## STAGE 1 — LANDED AND PROVEN END TO END (2026-09-22)
+
+The platform endpoint now exists and is enabled:
+
+- Endpoint `we_1UIbtDJZ5fFY5Q8LhomT6nVq` → `https://traveloure.com/api/bookings/webhooks/stripe`
+- Live mode, Connect false, secret `STRIPE_WEBHOOK_SECRET` configured and republished
+- Subscribed to exactly four types: `checkout.session.completed`,
+  `customer.subscription.created`, `customer.subscription.updated`,
+  `customer.subscription.deleted`
+- No change to the Connect endpoint
+
+Proven by a REAL live Checkout, not a fabricated dashboard event — which is the stronger test,
+because it exercised the actual Checkout → webhook → signature path rather than a simulation of
+it. Event `evt_1UIcxLJZ5fFY5Q8LhHkh4pIa`, HTTP 200 on first attempt in 53 ms, signature verified,
+exactly one `webhook_events` row written, `processed = false` as designed for this rail (the row's
+EXISTENCE is the signal — §18 rule 1 left the Connect rail as the only author of that column),
+no handler errors, and zero unintended writes across bookings, service bookings, payment intents,
+purchases, tips, proposals, credits, refunds and reconciliation records. The $1.00 charge was
+refunded (`re_3UIcxHJZ5fFY5Q8L0ToVKNVH`) and the temporary product and price archived.
+
+**The damage question was answered before any of this, and the answer was the good one.** All 80
+live Checkout Sessions across all time were scanned: **zero** paid `expert_service`, **zero** paid
+`transport_booking`. The hosted-checkout rails had never been used. This was a TRAP, not observed
+damage — and that is a finding in its own right, not an absence of one.
+
+So of the 14 event types the two handlers carry, production now delivers **five**. The section
+below is preserved as written because the reasoning still holds for the nine that remain.
 
 ---
 
 ## The fact
 
-Live-mode Stripe has **one** enabled webhook endpoint:
+**As originally found (superseded for the platform endpoint by Stage 1 above).** Live-mode Stripe
+had **one** enabled webhook endpoint:
 
 | Endpoint | URL | Subscribed events |
 |---|---|---|
@@ -22,17 +57,19 @@ The two route paths are confirmed in code: `app.use("/api/bookings", bookingsRou
 (`server/routes.ts:1094`) plus `router.post('/webhooks/stripe', …)`
 (`server/routes/bookings.ts:535`) resolves to `/api/bookings/webhooks/stripe`.
 
-Between them the two handlers carry **14** event types. Production delivers **one**.
+Between them the two handlers carried **14** event types. Production delivered **one**. After
+Stage 1 it delivers five.
 
-**Never delivered:** `payment_intent.succeeded`, `payment_intent.payment_failed`,
+**Still never delivered, and this is the live remainder:** `payment_intent.succeeded`, `payment_intent.payment_failed`,
 `payment_intent.canceled`, `payment_intent.requires_action`, `charge.refunded`,
 `charge.dispute.created`, `charge.dispute.closed`, `transfer.created`, `transfer.paid`,
-`checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`,
-`customer.subscription.deleted`.
+`customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
+— **the last four of these are now DELIVERED by Stage 1**; the `payment_intent.*` family,
+`charge.refunded`, `charge.dispute.*` and `transfer.*` are not.
 
 ---
 
-## 1. Two hosted-checkout rails have NO completion path
+## 1. Two hosted-checkout rails had NO completion path — **CLOSED by Stage 1**
 
 This is the part with live money on it. Both rails complete **only** through
 `checkout.session.completed`, and each completion handler has **exactly one caller** — the
@@ -52,14 +89,20 @@ exists anywhere in the platform to say so. The only record is in Stripe.
 (metadata.type === 'transport_booking') → `handleStripePaymentSuccess`"*. The signal does not
 arrive.
 
-**NOT ESTABLISHED, and it is the difference between damage and a trap:** whether either rail has
-actually taken a payment in production. That is a Stripe-side query, not a code question — it is
-step 1 of the dispatch that accompanies this brief. **Do not describe this as money lost until
-that query has been run**, and do not describe it as harmless until it has either.
+**ESTABLISHED 2026-09-22, and the answer was the good one:** all 80 live Checkout Sessions across
+all time were scanned — zero paid `expert_service`, zero paid `transport_booking`. Neither rail had
+ever been used, so this was a trap rather than observed damage. Stage 1 subscribed
+`checkout.session.completed` and both handlers now have their signal.
+
+**WHAT THAT DOES NOT MEAN:** neither handler has yet run against a REAL paid session of its own
+type — the Stage 1 proof used a synthetic no-op whose `metadata.type` matched neither branch, which
+is exactly why it was safe. The first genuine `expert_service` or `transport_booking` purchase will
+be the first execution of that code in production. Worth watching deliberately rather than
+assuming.
 
 ---
 
-## 2. §15c's recovery layer 2 has never existed in production
+## 2. §15c's recovery layer 2 STILL does not exist — **this is now the headline gap**
 
 CLAUDE.md §15c is titled *"ONE payment promotion, TWO callers"* — the webhook and the client
 fallback. The webhook caller does not fire.
@@ -77,7 +120,23 @@ reconciliation job are `SERVER_VERIFIED_ACTORS` (§17b). One of those two has ne
 
 **§15c is not wrong as written — it describes the code, and the code is correct.** It describes a
 layer that configuration never switched on. The redundancy §15c exists to provide is one layer
-thinner than the document implies, and has been for as long as the endpoint has been unregistered.
+thinner than the document implies, and remains so after Stage 1: `payment_intent.*` was
+deliberately excluded, because turning it on starts running `promotePaidCheckout` and the
+revenue/earnings mint against live cart rows for the first time, and that deserves its own staged
+change with monitoring rather than riding along with a zero-volume one.
+
+**A FRESH DATA POINT FROM THE STAGE 1 TEST ITSELF:** that $1.00 charge and its refund emitted
+`payment_intent.succeeded` and `charge.refunded` at Stripe, and **nothing received either** — no
+endpoint subscribes to them. The gap was observable in real time, in the same minute the Stage 1
+success was being confirmed.
+
+**Event ownership for Stage 2, read off the `case` arms — an inventory, not a recommendation:**
+`payment_intent.succeeded` belongs on the **Connect endpoint alone**, whose arm calls the same
+`handlePaymentSucceeded` the platform arm does AND adds revenue tracking plus the earnings mint —
+a strict superset, so subscribing both merely runs the shared handler twice. `payment_intent.
+payment_failed` wants **both**, because there the arms are complementary rather than overlapping:
+the platform updates `payment_intents` and the legacy `bookings`, while Connect flips
+`service_bookings` to `failed` and emails the traveler.
 
 ---
 
@@ -87,11 +146,16 @@ thinner than the document implies, and has been for as long as the endpoint has 
 - **Disputes** — `charge.dispute.created` / `.closed` drive the admin dispute alerts in
   `processStripeWebhookEvent`. The Connect endpoint does not subscribe to them.
 - **Payout tracking** — `transfer.created` / `transfer.paid`, same endpoint, same reason.
-- **Subscriptions** — `customer.subscription.*`. Locked Decision 26 states that `plan_memberships`
-  is *"WRITTEN later by the separate Plus-checkout lane from the Stripe subscription webhook"*.
-  That lane is not built and `PLUS_SALES_ENABLED` is off, so nothing is broken today — but it is
-  specified against a signal that is not wired, and whoever builds it will otherwise discover this
-  at the end rather than the beginning.
+- **Subscriptions** — `customer.subscription.*`. **DELIVERED as of Stage 1.**
+  **CORRECTION to this brief's first draft, which said the lane "is not built":** it is. Ledger
+  `2026-09-21-membership-writer` landed `plan-membership-writer.service.ts`, migration 316 and all
+  three subscription arms, and `membership-checkout.service.ts` plus migration 317's Stripe price-id
+  columns show the checkout rail in flight. That ledger row states its own reasoning — *"THE WRITER
+  COMES BEFORE THE CHECKOUT RAIL, DELIBERATELY: a checkout that can charge for a subscription the
+  platform cannot record is strictly worse than no checkout"* — and that precaution was being
+  silently defeated by configuration, since the writer could never fire. Stage 1 included these three
+  types for that reason, at zero risk: `plan_memberships` is empty and no subscription exists yet, so
+  there was no volume to disturb and the path is proven before it matters.
 
 ---
 
