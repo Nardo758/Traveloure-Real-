@@ -203,7 +203,7 @@ Demonstrated: searching for `computeSlipFunnel` returns the call sites in `deman
 
 | # | Finding |
 |---|---|
-| #1429 | The Accept/Decline block (`expert/inbox.tsx:213+`) is not gated on `booking.status` — only disabled during the in-flight call, so Accept renders beside a StatusBadge already showing the booking accepted. |
+| #1429 | ~~The Accept/Decline block is not gated on `booking.status`.~~ **RETRACTED — false positive, corrected while building.** The list is already filtered: `expert/inbox.tsx:180` `const pending = (bookings ?? []).filter((b) => b.status === "pending")`, and the map renders `pending` alone, so Accept cannot render beside a non-pending badge. The original read stopped at the button's `disabled` prop and never checked what the list held. |
 | #1563 | `storage.ts:1573` (and `:1655`) `await this.registerContent(...)` is unguarded, so a content-registration failure aborts trip creation. §15b and LD 30(b) both govern: an ancillary effect may not break the operation that authorizes it. |
 | #1725 | `local_expert_forms` has only a `referral_code` UNIQUE (migration 000:5053) — nothing stops two concurrent applications from the same applicant. |
 | #1179 | Three separate admin endpoints (`admin.routes.ts:426`, `:469`, `:506`) where the task asks for one batched call. |

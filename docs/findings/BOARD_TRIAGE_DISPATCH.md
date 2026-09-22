@@ -67,7 +67,7 @@ named in `basis`, confirm, close. **Promote to a lane brief only where the gap i
   "lane brief required" flag and are blocked from direct execution. A one-line ticket on one of
   these is how the `revenueShareRate` hole got written.
 
-## Batch D — Operator / production. Only 4, and only Replit can do them.
+## Batch D — Operator / production. Six, and only Replit can do them.
 
 | # | Action |
 |---|---|
@@ -75,10 +75,12 @@ named in `basis`, confirm, close. **Promote to a lane brief only where the gap i
 | #632 | Stamp migration 075 on production. It is already off disk and out of `migration-files.ts` (registry comment L116-121); only the prod ledger row is missing. |
 | #1258 | Run `scripts/check-undeclared-tables.cjs` against the **production** database. The guard exists; it has never been run against prod from a checkout that cannot reach it. |
 | #525 | Verify the migration chain on a fresh production-shaped DB. |
+| #1725 | **Read-only, and it UNBLOCKS a checkout lane.** Run `SELECT user_id, count(*) FROM local_expert_forms GROUP BY 1 HAVING count(*) > 1;` against production and report the rows. The fix is a UNIQUE index, but a violated UNIQUE fails the publish and offers the destructive copy-dev-over-prod option, so the duplicates must be known before the migration is written. Report the count — do not delete anything. |
+| R-7 | **Read-only.** `provider_services.service_type` carries a second, category-shaped vocabulary beside the declared six. Report `SELECT service_type, count(*) FROM provider_services GROUP BY 1 ORDER BY 2 DESC;` from production so the real value set is known before anything is declared or constrained. Punchlist row, not a board id. |
 
-**§20 applies to all four.** The ONLY approvable publish prompt is an `ADD COLUMN IF NOT EXISTS`
-matching a registered, unstamped migration. None of these four adds a column, so **any** SQL
-prompt they raise is a decline-and-stop. Never accept "copy development database to production"
+**§20 applies to all six.** The ONLY approvable publish prompt is an `ADD COLUMN IF NOT EXISTS`
+matching a registered, unstamped migration. None of these six adds a column — the last two are
+`SELECT`s and write nothing — so **any** SQL prompt they raise is a decline-and-stop. Never accept "copy development database to production"
 under any wording.
 
 ## Batch E — Cap the board.
@@ -93,8 +95,7 @@ this dispatch gets written a third time.
 
 - **68 tier-A code items** are being done in the Claude Code checkout, where the `file:line`
   evidence was produced. Highest-value among them: #1563 (an unguarded `registerContent` await can
-  abort trip creation — §15b), #1429 (Accept renders beside a status badge already reading
-  accepted), #1347 (`total_revenue` only ever increments while `bookings_count` decrements),
+  abort trip creation — §15b), #1347 (`total_revenue` only ever increments while `bookings_count` decrements),
   #350/#857 (optimizer PaymentIntent failures unhandled), #1255 (a §13 zero-fill on commissions),
   #1725 (no uniqueness on expert applications).
 - **8 decisions** belong to the decision-maker in `docs/PUNCHLIST.md` §1, not to any agent:

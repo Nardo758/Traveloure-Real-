@@ -68,12 +68,12 @@ reads 291/589 rather than 0/589.
 | Lane | Task | State |
 |---|---|---|
 | 1 | **#1563** unguarded `registerContent` aborts a created trip | **DONE** (`b95ae69`) |
-| 2 | **#1347** move `admin-query.service.ts:1448-1455` onto the realized SUM/COUNT | SPECIFIED by the ruling above, not built |
-| 3 | **#350 → #857** optimizer PaymentIntent failures unhandled (`handlePaymentFailed` keys on `bookingIds`, which an optimizer PI does not carry) | Needs a lane brief — money rail |
-| 4 | **#1255** §13 zero-fill: commission fetcher returns 0 on error and on a missing field | Needs a lane brief — money rail |
-| 5 | **#1429** Accept renders beside a status badge already reading accepted | Ready |
-| 6 | **#1725** no uniqueness on expert applications | Schema — publish-trap rules apply |
-| 7 | **#1184 #302** two consolidations (three sanitizers; ad-hoc ZodError handling) | Ready, §18 rule 1 |
+| 2 | **#1347** move the three revenue readers onto the realized SUM/COUNT | **DONE** (PR #1035). All three `admin-query.service.ts` readers now aggregate over `service_bookings` against the shared `BENCHMARK_REVENUE_STATUSES`; `total_revenue` has no reader left outside the `storage.ts` that writes it. |
+| 3 | **#350 → #857** optimizer PaymentIntent failures unhandled (`handlePaymentFailed` keys on `bookingIds`, which an optimizer PI does not carry) | **BRIEFED** — `docs/briefs/PAYMENT_FAILED_NON_CART_INTENTS.md`. Blocked on ONE decision-maker ruling (what a held credit owes a traveler whose optimizer charge failed). |
+| 4 | **#1255** §13 zero-fill: commission fetcher returns 0 on error and on a missing field | **BRIEFED** — `docs/briefs/AFFILIATE_COMMISSION_UNKNOWN_VS_ZERO.md`. Blocked on ONE decision-maker ruling (how a partial total is presented once unknown stops being 0). |
+| 5 | ~~**#1429**~~ | **RETRACTED — false positive.** `expert/inbox.tsx:180` already filters the list to `pending`. No lane. |
+| 6 | **#1725** no uniqueness on expert applications | **BLOCKED on an operator step.** A UNIQUE index is the fix, but the deploy-push rule means a violated UNIQUE fails the publish and offers the destructive copy-dev-over-prod option, so production must be checked for existing duplicates FIRST (`SELECT user_id, count(*) FROM local_expert_forms GROUP BY 1 HAVING count(*) > 1`). That query is Replit's — it needs the production database. |
+| 7 | **#302** ad-hoc ZodError handling across 58 handlers | Ready, §18 rule 1 — needs a refactor shape chosen first. **#1184 is RETRACTED:** the three sanitizers do different jobs and `text-sanitizer.ts:10-43` says the divergence is intentional; consolidating would reintroduce board #1317's defect. |
 | — | remaining ~58 tier-A rows | Scheduled after the above |
 
 **Already fixed, on no register:** the NUL-byte guard blind spot (`demand-rollup.compute.ts:161`,
