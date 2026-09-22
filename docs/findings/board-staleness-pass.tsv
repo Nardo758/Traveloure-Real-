@@ -1,0 +1,565 @@
+id	group	title	verdict	routing_class	confidence	basis
+143	G1	Wire up STRIPE_CONNECT_WEBHOOK_SECRET in environment so the new webhook is verified in production	NEEDS-RUNTIME(operator)	BUILD	A verified	Code side wired: webhooks.routes.ts:564 reads the secret, :42 constructEvent verifies; validate-env.ts:77 requires it. What remains is setting the var in prod.
+148	G1	Apply period filtering to expert and provider earnings stats on the revenue dashboard	OPEN-VALID	LANE-BRIEF(money §8/§14/§18/§19)	A verified	CONFIRMED: expert/provider earnings come from /api/admin/revenue/dashboard (admin.routes.ts:4685); revenue.tsx:352-353 queries it with NO period param while every sibling query carries period/startDate/endDate.
+151	G1	Let admins filter the revenue export by source type (Stripe, Viator, etc.)	OPEN-VALID	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Export URL carries period only - revenue.tsx:412 and :426 (`?period=${period}&format=csv|pdf`). sourceType exists in the model (revenue.tsx:122,160) but is not a filter param.
+153	G1	Schedule automatic nightly reconciliation so admins don't have to trigger it manually	CLOSE-DONE	BUILD	A verified	Registered daily bucket: internal.routes.ts:177 {job:"stripe-reconciliation",bucket:"daily"}; posted by scripts/ci/post-internal-jobs.sh:306; external cron jobs-cron.yml:65. In-process timer also at server/index.ts:797.
+154	G1	Show which AI agent or advisor triggered each affiliate booking in the attribution report	OPEN-VALID	BUILD	A verified	No agent/advisor attribution column in affiliate-reconciliation.service.ts; only the honest "0.00" agent-booking note at :342/:562.
+216	G1	Update default commission rate in the database for existing services	CLOSE-CONFLICT	LANE-BRIEF(money §8/§14/§18/§19)	A verified	§18/MI-1 deliberately REMOVED the stamped per-service rate; charge path resolves from fee_bands. Writing a default re-opens the closed override.
+217	G1	Prevent bad commission rates from being saved in the first place	CLOSE-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	revenueShareRate .omit() shared/schema.ts:2918 + storage strip storage.ts:2515 (§18 MI-1, two layers)
+320	G1	Protect tip payouts from silent rate drift by routing them through the central fee resolver	CLOSE-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Tips route through the central resolver: commission.ts:276 `if (opts.category === "tip") return TIP_HANDLING_BAND` + fee-band-requirements.ts:93.
+321	G1	Add an admin screen to view and edit all commission rates in one place	CLOSE-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	client/src/pages/admin/fee-bands.tsx — generic band editor (band_key/rate_type/max_amount, PATCH /api/admin/fee-bands)
+350	G1	Add a Stripe webhook to handle optimization payment failures and refunds	OPEN-VALID	LANE-BRIEF(money §8/§14/§18/§19)	A verified	The webhook case exists (stripe-payment.service.ts:643 -> handlePaymentFailed) but the handler destructures `bookingIds` (:926) and loops it (:934). An optimizer PI carries metadata.type="optimization_fee"+userId (optimization.routes.ts:554,559) and NO bookingIds, so it falls through unhandled.
+351	G1	Show optimization fee pricing on the Pricing page so users know the cost upfront	CLOSE-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	pricing.tsx:54 + :205 render optimizerRunDisplay.priceCents on the Pricing page.
+383	G1	Let admins see which upsell suggestions are driving the most cart adds	OPEN-VALID	BUILD	A verified	No upsell cart-add analytics surface found in admin routes or the revenue page.
+411	G1	Let wedding and corporate vendors receive real bookings and payments	OPEN-VALID+RULE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Only template/content references (anchor-suggestion.service.ts:123, content-gap-taxonomy.ts:63). Enabling vendor bookings/payments touches the money rail - needs a lane brief.
+418	G1	Show a summary of add-on click performance in the admin revenue dashboard	OPEN-VALID	LANE-BRIEF(money §8/§14/§18/§19)	A verified	No add-on click performance aggregation found.
+493	G1	Track insurance fees per booking so reports show real per-transaction amounts	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	A verified	No per-booking insurance amount found (0 hits insurance_fee_cents/insuranceAmount).
+494	G1	Show insurance tier status in the admin fee config summary cards	OPEN-VALID	LANE-BRIEF(money §8/§14/§18/§19)	A verified	No insurance tier status in admin/fee-bands.tsx or admin/revenue.tsx.
+495	G1	FEE-2 Phase 3: Per-market insurance rate overrides	RULE-FIRST	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Per-market insurance RATE is a fee decision (§8 no rate literals). PUNCHLIST §1 row before build.
+500	G1	Show converted prices on service cards in the browse catalog	OPEN-VALID	LANE-BRIEF(money §8/§14/§18/§19)	A verified	No currency conversion on marketplace card components.
+517	G1	Show a per-item fee breakdown in the checkout summary	PARTIAL	LANE-BRIEF(money §8/§14/§18/§19)	A verified	An ORDER-level breakdown exists (cart.tsx:786, :1077 FP-4 server-derived snapshot incl. conciergeFee). PER-ITEM breakdown does not.
+551	G1	Show pricing tiers on service booking cards and in the checkout flow	OPEN-VALID	LANE-BRIEF(money §8/§14/§18/§19)	A verified	pricingTiers exists only in the authoring form (ServiceForm.tsx:179,372,453). No booking-card or checkout render.
+553	G1	Validate and preview pricing tiers before saving a service	OPEN-VALID	LANE-BRIEF(money §8/§14/§18/§19)	A verified	No validation or preview of tiers before save; ServiceForm only plumbs the array.
+578	G1	Show the Booking Concierge fee on the booking detail and my-bookings pages	PARTIAL	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Rendered on BookingConfirmation.tsx:188. NOT on my-bookings.tsx (no conciergeFee reference).
+579	G1	Make the Booking Concierge fee amount configurable from the admin panel	CLOSE-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	fee_bands row expert_concierge_booking + cap (LD 51), editable via admin/fee-bands.tsx
+580	G1	Keep the cart fee preview accurate when a booking-concierge service is removed	LIKELY-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	cart.tsx carries a server-derived conciergeFee through the FP-4 snapshot (:1077,:1086); removal refetches the server preview. Confirm the refetch path then close.
+584	G1	Make sure the price shown in the cart always matches what gets charged at checkout	CLOSE-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	FP-4 mechanism: cart.tsx:1009 + :1077 snapshot the real server-derived breakdown, which is what makes preview and charge the same number.
+585	G1	Remove duplicate provider-role fee logic to keep pricing consistent	CLOSE-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	direct-charge-rate.service.ts:6-12 states it is the single authority on EVERY provider charge path, "not just the attributed one" - the duplicate provider-role path was removed.
+805	G1	Make sure the Add to existing trip path in the cart also lands on the right page	PARTIAL	BUILD	A verified	CityGrid.tsx:208 renders "Add to an existing trip"; the landing target was not traced. Needs one click-path check.
+846	G1	Prevent provider earnings from being counted twice if a booking confirmation is retried	CLOSE-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	server/__tests__/booking-confirm-payment-idempotency.test.ts cites #846; CI-wired (suite-server-tests.yml); not in orphan baseline
+856	G1	Confirm credit scoping works correctly end-to-end so travelers aren't over- or under-charged	TEST-PROGRAM	TEST-PROGRAM	A verified	Credit scoping is implemented (optimization-fee.service.ts:55-56,64,107 creditTowardCoordination). The task is coverage, not build.
+857	G1	Prevent a traveler's remaining credits from disappearing if a payment fails mid-flow	OPEN-VALID	LANE-BRIEF(money §8/§14/§18/§19)	A verified	RELATED TO #350: credits are only released on a handled failure, and an optimizer PaymentIntent failure is not handled at all (see #350). Fix #350 first.
+860	G1	Confirm provider checkout still charges the right commission after the routing change	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (14 files, 7 test/CI).
+861	G1	Prevent non-early-adopter providers from getting the beta rate when the platform exits beta	RULE-FIRST	LANE-BRIEF(money §8/§14/§18/§19)	A verified	CONFIRMED and inverted from the board's framing: isEarlyAdopterProvider (commission.ts:521) returns TRUE - the beta rate - when the setting is MISSING (:522) or the date invalid (:524). Exiting beta by removing the setting silently puts everyone back on the beta rate. Which way this fallback should fail is a money decision (§8/§18), not a ticket.
+874	G1	Prevent a refunded coordination fee from re-entering pending via the webhook path	CLOSE-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	server/__tests__/coordination-fee-refund-guard.test.ts cites #874; CI-wired
+875	G1	Confirm the coordination fee refund flow fully resets credits so they can be reused	CLOSE-DONE	TEST-PROGRAM	A verified	server/__tests__/coordination-refund-credit-release.test.ts cites #875; CI-wired
+876	G1	Confirm the refund flow can't leave Stripe and the database out of sync after a retry	CLOSE-DONE	TEST-PROGRAM	A verified	server/__tests__/refund-retry-convergence.test.ts cites #876; CI-wired
+877	G1	Let admins mark a ledger gap as reviewed so the warning doesn't stay red forever	CLOSE-DONE	BUILD	A verified	server/__tests__/coordination-ledger-gap-review.test.ts cites #877 + migration 169 + admin/concierge-requests.tsx:169; CI-wired
+878	G1	Export reversed/refunded coordination fees to CSV so finance can reconcile offline	VERIFY	LANE-BRIEF(money §8/§14/§18/§19)	B probe(built)	Feature area present, no test/gate coverage found (1 files).
+879	G1	Alert admins when a new refund/reversal lands so nothing slips through unnoticed	VERIFY	LANE-BRIEF(money §8/§14/§18/§19)	B probe(built)	Feature area present, no test/gate coverage found (1 files).
+1175	G1	Confirm currency conversion still works correctly after the FX rate change	TEST-PROGRAM	TEST-PROGRAM	A verified	Rail exists: fx-rate-refresh.service.ts:4 refreshes fx_rates daily from Frankfurter. The ask is coverage.
+1176	G1	Prevent currency conversion from breaking when the FX table hasn't been seeded yet	LIKELY-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	fx-rate-refresh.service.ts:27 names the fx_rates seed rows in migrations 217 and 220 - the unseeded case is covered by seeds.
+1182	G1	Make sure active Stripe status also stops payout reminders, not just complete	VERIFY	LANE-BRIEF(money §8/§14/§18/§19)	B probe(built)	Feature area present, no test/gate coverage found (1 files).
+1198	G1	Confirm the price display on browse cards handles non-USD currencies correctly	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (9 files, 2 test/CI).
+1241	G1	Confirm a completed payout always reduces the available balance to zero end-to-end	VERIFY	TEST-PROGRAM	B probe(built)	Feature area present, no test/gate coverage found (7 files).
+1242	G1	Alert admins when a payout is approved but doesn't cover all available earnings	VERIFY-THEN-CLOSE	LANE-BRIEF(money §8/§14/§18/§19)	B probe(built+tested)	Feature area present and test/gate-covered (21 files, 4 test/CI).
+1243	G1	Make sure a payout refund or reversal also restores the earnings back to available	LIKELY-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	storage.ts:6523 accounts for balance moved by reversal/dispute/concurrent payout. Confirm the restore-to-available leg then close.
+1255	G1	Confirm the Booking.com commission fetcher never silently shows $0	OPEN-VALID	TEST-PROGRAM	A verified	CONFIRMED §13 violation: booking-com-commissions.service.ts returns 0 on non-OK status (:76), on a fetch error (:92), and on a missing field (`?? 0` at :82,:88). "We do not know" is rendered as "zero commission". §13 requires an omitted value with a reason, never a zero-fill.
+1259	G1	Confirm reconciliation matching still works correctly at month boundaries with a test	LIKELY-DONE	TEST-PROGRAM	A verified	stripeReconciliation.ts:227 states the pass is idempotent across daily runs ("a month-long drift is ONE row, not thirty") - the month boundary is explicitly handled. Remaining ask is the test.
+1260	G1	Make Last 35 Days the default period for background reconciliation polls too	PARTIAL	BUILD	A verified	The period exists (affiliate-reconciliation.service.ts:75 `last_35_days`); making it the DEFAULT for background polls is the open half.
+1269	G1	Confirm provider earnings summary shows real figures end-to-end on the earnings page	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (12 files, 2 test/CI).
+1287	G1	Show the backfill audit and trigger button on the admin reconciliation page	OPEN-VALID	LANE-BRIEF(security)	A verified	admin/reconciliation.tsx has no backfill audit or trigger control.
+1288	G1	Make sure earnings never mint for a booking that was refunded outside our ledger	PARTIAL	LANE-BRIEF(money §8/§14/§18/§19)	A verified	storage.ts:170 governs release-vs-void/refund drift, but an out-of-ledger refund is the §17 detection case - confirm against reconciliation_exceptions before closing.
+1291	G1	Confirm the Dispute button blocks expert earnings release end-to-end	TEST-PROGRAM	TEST-PROGRAM	A verified	Enforced by from-state guards: booking-from-states.ts:88 records that a second flip on `disputed` changes nothing. The ask is the end-to-end proof.
+1294	G1	Confirm a mixed cart with a booking_concierge item doesn't bleed the concierge fee into the other item's payout	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (28 files, 11 test/CI).
+1295	G1	Confirm a deposit-plan cart stamps the correct deposit split for each item independently	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (27 files, 11 test/CI).
+1298	G1	Catch a travel-surcharge mismatch between the cart preview and what checkout actually charges	LIKELY-DONE	TEST-PROGRAM	A verified	traveler-charge.ts:47-48 - on a CLAIMED row total_amount already folds the surcharge in, so preview and charge read one number.
+1299	G1	Confirm each cart surface's breakdown is internally consistent	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (4 files, 1 test/CI).
+1305	G1	Confirm the pay button stays blocked during the concierge fee outage end-to-end	OPEN-VALID	TEST-PROGRAM	A verified	No fee-outage / unavailable state in booking-concierge.service.ts.
+1306	G1	Show the concierge fee outage notice on the cart page summary panel too	OPEN-VALID	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Same as #1305 - no outage notice exists to surface on the cart panel.
+1324	G1	Confirm the expert Money page escrow and breakdown figures are accurate end-to-end	UNVERIFIED	TEST-PROGRAM	A verified	client/src/pages/expert/money.tsx does not exist - the expert Money page is elsewhere; surface not located in this pass.
+1327	G1	Show admins which payout requests have been stuck in processing for too long	UPGRADE->LIKELY-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	payout.config.ts:40 - the admin queue surfaces `isStale`. Supersedes my earlier PARTIAL on this row.
+1328	G1	Confirm a stuck payout unblocks the earner automatically after 14 days	TEST-PROGRAM	TEST-PROGRAM	A verified	Threshold lives in payout.config.ts; the ask is the proof, not the build.
+1343	G1	Show booking count and revenue on the provider analytics page broken down by service	PARTIAL	LANE-BRIEF(money §8/§14/§18/§19)	A verified	provider/analytics.tsx:59 has byService but only under crossSell. Booking-count/revenue per service not rendered.
+1344	G1	Confirm booking counts on provider catalog cards stay accurate when a booking is cancelled	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (39 files, 9 test/CI).
+1347	G1	Confirm provider revenue totals roll back correctly when a completed booking is later refunded	PARTIAL	TEST-PROGRAM	A verified	totalRevenue is a denormalised column (storage.ts:3049) with the same recompute question as #1344/#1348.
+1348	G1	Prevent stale booking counts when the server restarts mid-cancellation	OPEN-VALID	BUILD	A verified	bookingsCount is a denormalised counter (storage.ts:3028,3071). No restart-safe recompute found.
+1349	G1	Confirm cleared earnings (available balance) also zero out after a cancellation	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (5 files, 2 test/CI).
+1350	G1	Confirm the full refund HTTP route keeps booking counts and earnings accurate end-to-end	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (30 files, 8 test/CI).
+1580	G1	Make sure the daily revenue summary is updated when a cart booking is confirmed	LIKELY-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	revenue-tracking.service.ts:6,254 maintain dailyRevenueSummary. NOTE the known divergence: booking.service.ts:906 states its raw revenue INSERT does NOT call updateDailyRevenueSummary ("pre-existing, out of scope for F-4") - that is the actual gap this task names.
+1581	G1	Protect the provider_earnings raw INSERT inside cart booking from retry-doubling risk	DOWNGRADE(board overstates)	BUILD	A verified	NOT a double-pay. Two layers already hold: (1) the confirm is a proper §15 atomic conditional - booking.service.ts:856 `UPDATE bookings ... WHERE id=? AND status='pending_payment' RETURNING id` with a zero-row abort at :870, so a second confirm never reaches the earnings write; (2) shared/schema.ts:7010 + migration 203:63 declare UNIQUE(source_id) WHERE source_type='booking' AND amount>=0, which the raw INSERT at :888 is covered by. REAL but minor gap: that INSERT has no ON CONFLICT while its platform_revenue sibling at :917 does, so a retry raises a unique violation instead of a silent no-op. Fix = add ON CONFLICT DO NOTHING for symmetry, not a money fix.
+1582	G1	Prevent template-purchase commission from being double-recorded on a payment retry	CLOSE-OBSOLETE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	template_purchases is the RETIRED expert_templates lane (historical rows only, ledger 2026-09-03-expert-templates-consumer-sunset). Work on a dead rail.
+1583	G1	Confirm a retried ready-made refund can't insert a duplicate revenue reversal entry	LIKELY-DONE	TEST-PROGRAM	A verified	ready-made-purchase.service.ts:206,723 handle the author-earning reversal explicitly and warn against double-reversing.
+1666	G1	Define repeat-booking attribution before applying any storefront fee benefit	RULE-FIRST	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Self-declared definition task ('define ... before applying'). PUNCHLIST §1.
+1686	G1	Restore provider fee bands before provider checkout is enabled	RULE-FIRST	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Gating precondition on provider checkout — money/sequencing decision.
+185	G2	Pre-load curated items with real seed data so the section isn't empty on fresh installs	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+186	G2	Let users book directly inside the app without leaving for an external partner site	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+189	G2	Let users filter experts by language on the server, not just in the browser	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+190	G2	Let users add more destinations to the expert filter dropdown	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+242	G2	Connect real bookability data so marketplace cards show correct booking badges	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+279	G2	Teach the feed to recognise more gem types so fewer gems go missing	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+288	G2	Wire no-results searches into the demand signal layer automatically	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+314	G2	Show review counts on the Expert profile page and marketplace listing	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+315	G2	Surface real review counts from the database on service and gem API responses	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+331	G2	Auto-suggest affinity tags when a provider creates a service	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+332	G2	Show affinity tag chips on marketplace service cards	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+334	G2	Show the Users also book strip on service and experience pages	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+335	G2	Automatically mark bookings as cross-sell attributed when the buyer arrived via a cross-sell chip	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+337	G2	Show bundle deals (hotel + transfer) for real matching services, not just placeholder data	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+338	G2	Add expert profile deep-link and real photo to ExpertPickAttribution badges	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+398	G2	Show real photos on experience browse cards too	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+399	G2	Add more cities to the destination photo library	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+410	G2	Show Kyoto wedding and corporate vendors in the city feed and search results	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+417	G2	Show live transfer options in the airport transfer add-on card	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+497	G2	Show review count accurately - exclude pending/removed reviews from totals	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+523	G2	Let experts endorse services so travelers see trusted picks	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+524	G2	Wire the upsell engine into the cart and discover surfaces	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+541	G2	Wire real-click navigation for UpsellSlot cards	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+610	G2	Export demand signal data to CSV so the team can share supply-gap reports	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+611	G2	Add a Request this service button to offering cards that aren't available yet	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+619	G2	Seed catalog services for party and event templates so filter chips actually narrow results	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+620	G2	Let admins edit filter chip labels and tag mappings without touching code	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+633	G2	Wire up the demand request form so travelers can submit service needs	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+634	G2	Use content impression data to improve the Discover feed quality loop	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+635	G2	Add season_tag values to offering types so seasonal recommendations work	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+668	G2	Stop the services marketplace showing a blank page when there are fewer than 8 entries	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+839	G2	Audit the expert detail page for other hardcoded guarantee claims	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+862	G2	Show the real provider name on marketplace service cards instead of a random placeholder	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1199	G2	Make sure Booking.com hotel booking requests are confirmed end-to-end without getting lost	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1200	G2	Show Booking.com hotel prices on the hotel search results cards	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+1204	G2	Confirm the Restaurant chip returns real results when OpenTable data is cached	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1233	G2	Add SerpAPI dining and attraction results to the Browse panel	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1313	G2	Confirm the discover city feed loads correctly on phones when the city has no feed items	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1325	G2	Sync the keyword search box to the URL so search results survive a page refresh	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1326	G2	Confirm deep-links to /discover-experiences load the correct results end-to-end	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1330	G2	Keep trip-package tab filters in the URL so they survive tab switches too	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1331	G2	Keep the current results page in the URL so users can share or return to it	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1332	G2	Confirm expert-package search relevance can't regress silently	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1333	G2	Prevent the GIN index expression drifting out of sync with the search query	BUILD	LANE-BRIEF(schema/publish-trap)	C routed	Routed by governance class; staleness not individually probed.
+1345	G2	Let users convert browse-cart picks into a booking request without leaving the page	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1346	G2	Confirm the browse-cart sheet shows a clear empty state when all items are removed	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1354	G2	Show provider rating on the service detail page so travelers see it before booking	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1355	G2	Confirm the provider rating appears correctly on browse cards end-to-end	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1358	G2	Confirm provider name shows correctly on browse cards when no first/last name is set	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1384	G2	Confirm destination matching still works after any future edit to the browse search route	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1385	G2	Prevent a partial city name from matching unrelated destinations on browse	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1491	G2	Seed availability for the bench provider so the month grid always has real content	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1500	G2	Confirm all 8 crowd markets return zero gap-days after the season calendar migration	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1501	G2	Calibrate the new Kyoto autumn-shoulder and Porto October multipliers against BestTime.app	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1535	G2	Show the pickup toggle on the service listing detail page so travelers know before booking	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1536	G2	Confirm the Logistics step pickup toggle round-trips correctly when editing a service	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1537	G2	Show the cover photo on the provider's listing detail page and catalog card	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1657	G2	Make sure event planners appear in the marketplace when the market has approved listings	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1658	G2	Reconcile expert ratings so profile and review totals tell the same story	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1659	G2	Remove malformed marketplace fixture text before it reaches public cards	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1665	G2	Make expert and storefront ratings agree before showing review totals	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1720	G2	Keep every creator available while an admin narrows the vendor directory	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+1735	G2	Keep unclassified affiliate content from showing a booking action outside trip plans	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+167	G3	Show local expert knowledge nuggets when the AI builds an itinerary	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+225	G3	Let experts customize the auto-generated anchors before they're saved	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+226	G3	Show a clear success message when anchors are auto-generated on workspace entry	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+227	G3	Make sure presets don't re-generate if an expert manually deletes all anchors	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+228	G3	Show a visual indicator while energy is recalculating after adding an item	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+229	G3	Fully migrate itinerary and shared-view pages to use the unified PlanCard	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (178 files, 47 test/CI).
+230	G3	Wire booking-source data from transport-booking-options API into PlanCard transport legs	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+231	G3	Populate expertNote on itinerary activities so Expert Notes map pins appear	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+291	G3	Fully unify the expert shared-view into PlanCard so the expert edit mode also uses one renderer	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (1 files).
+292	G3	Fix the same Maps null-island bug on the itinerary comparison page	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+293	G3	Fix Maps links on the server-side itinerary share navigator when activities have no coordinates	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+300	G3	Stop showing duplicate events when the TravelPulse city view and destination calendar cover the same city	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+352	G3	Show In plan state on browse catalog cards across the whole site	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (33 files, 9 test/CI).
+356	G3	Let users pick which day of their trip to schedule each saved item	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (3 files).
+357	G3	Let users convert discover saves into a trip directly from the Discover page	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
+358	G3	Show a From Discover label on itinerary items that came from cart saves	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+367	G3	Let users click the AI Optimized banner to jump straight to the optimization details	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (4 files, 1 test/CI).
+372	G3	Add tooltips to other plan card chips for consistency	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+373	G3	Show a Re-optimize nudge banner inside the itinerary tab when optimization is stale	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (1 files).
+374	G3	Let the 30-day staleness threshold be configurable without a code deploy	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+379	G3	Keep the optimization comparison fresh after the optimizer finishes	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (6 files).
+382	G3	Show upsell suggestions as a persistent sidebar panel on the comparison page	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
+384	G3	Personalize suggestions using past booking history, not just trip profile	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+485	G3	Build a UI for inviting friends and experts to collaborate on a trip	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (32 files, 11 test/CI).
+486	G3	Let friends suggest activity changes instead of being silently blocked	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (23 files, 5 test/CI).
+761	G3	Prevent the shared trip page from crashing on invalid or deleted share tokens	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+763	G3	Prevent itinerary page from getting stuck loading if data fails to arrive	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+764	G3	Stop the shared itinerary view from looping on a broken share link	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+844	G3	Make sure the itinerary-comparison flow cannot silently fail again if a route is added but not mounted	CLOSE-DONE	BUILD	A verified	scripts/check-unmounted-routers.cjs — LD 9 names it the arbiter of dark-route claims
+872	G3	Prevent itinerary booking from silently failing when no activities were generated	CLOSE-CONFLICT	BUILD	A verified	LD 42 D14 RETIRES /quick-start. Still live client/src/App.tsx:604 (1124-line page). Real work is DELETION.
+873	G3	Make sure the quick-start itinerary flow completes checkout end-to-end without errors	CLOSE-CONFLICT	LANE-BRIEF(money §8/§14/§18/§19)	A verified	LD 42 D14 RETIRES /quick-start — see #872.
+1188	G3	Keep events and transfers in the cart after a page refresh	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1189	G3	Confirm events and transfers flow into the trip comparison builder correctly	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1236	G3	Show a pending badge on itinerary items after an expert starts a booking	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1237	G3	Confirm the Booking Brief pending status update reaches the database and survives a reload	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1375	G3	Prevent switchTripContextPreservingId from silently losing origin on a destination change	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1422	G3	Confirm the day-picker dropdown on a Places card sends the item to the correct day	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1663	G3	Catch landing CTA and planning-flow regressions before the redesign ships	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1664	G3	Confirm every landing experience link opens meaningful planning content	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1670	G3	Show travelers their full trip plan count, not just items ready for checkout	VERIFY-THEN-CLOSE	LANE-BRIEF(money §8/§14/§18/§19)	B probe(built+tested)	Feature area present and test/gate-covered (73 files, 24 test/CI).
+1671	G3	Make provider-service Book now flows route through the trip plan, not straight to cart	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (16 files, 3 test/CI).
+159	G4	Let providers upload photos when creating or editing a service	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+160	G4	Add a category dropdown to the service form instead of a free-text field	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+168	G4	Show the knowledge nugget count on each local expert's public profile	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+169	G4	Let admins browse and filter nuggets across all local experts	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+214	G4	Add the missing In Review and Notes stages to the workspace	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+219	G4	Show the routing queue count as a badge on the admin dashboard	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+222	G4	Show constraint badge count on workspace trip cards	BUILD	LANE-BRIEF(schema/publish-trap)	C routed	Routed by governance class; staleness not individually probed.
+235	G4	Let admins see which leads have already been confirmed in routing history	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+319	G4	Show assigned neighborhood on service edit so providers can see and correct it	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+333	G4	Add a bulk-tagging tool so admins can tag many services at once	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+336	G4	Let experts claim ownership of gem cards they curated	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+390	G4	Apply the console theme to shared provider components	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+397	G4	Filter the Local Experts page by role so Trip Planners have their own view	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+427	G4	Remember search filters and destination when navigating back to Experts	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+428	G4	Show expert counts on the Experts and Services nav dropdown	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+429	G4	Let users filter experts by rating and response time	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+452	G4	Show the role callout on the expert onboarding checklist	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+453	G4	Seed at least one generic template so new experts always see the Templates page	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+498	G4	Let providers respond to reviews from their dashboard	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+502	G4	Add an EA invitation flow	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+503	G4	Scope EA client access so each EA only sees their own clients' bookings	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+537	G4	Show auto-cancelled bookings on the admin dashboard with a status badge	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+540	G4	Seed the platform's expert service tiers	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+549	G4	Let providers check their verification status and request a review	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+550	G4	Seed service categories with background-check and insurance flags	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+552	G4	Let providers duplicate or bulk-edit their services	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+673	G4	Prevent the loading spinner from hanging forever on /earn	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+674	G4	Verify /earn error and empty states across all role tabs	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+679	G4	Prevent role-band chips from looking empty when the expert API is unavailable	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+741	G4	Catch blank EA trip cards when dates are missing	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+748	G4	Let EAs sort or filter executives by upcoming birthdays or milestones	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+749	G4	Prevent EA events and gifts pages from showing stale placeholder counts	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+755	G4	Let EAs manage important dates directly from the dashboard	CLOSE-DONE	BUILD	A verified	cited in ledger DECISIONS.md:496
+758	G4	Apply the same date picker to the anniversary field in EA onboarding	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+759	G4	Prevent important dates from being saved without a label and date	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+847	G4	Show live booking notification count badge on the provider dashboard	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+850	G4	Make coordination stage visible on admin concierge requests	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+863	G4	Prevent provider names from showing as Provider when names are absent	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+880	G4	Make sure experts see fresh templates when they switch expert type	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+884	G4	Block rejected applicants from creating services	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+888	G4	Prevent unapproved experts from re-submitting a rejected service	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+891	G4	Show pending applicants a clear status page	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+892	G4	Confirm the expert application gate works end-to-end	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+898	G4	Show a what changed summary when rejected applicants resubmit	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+899	G4	Prevent rejected provider applicants from submitting duplicate applications	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+907	G4	Prevent admins from confirming rejection with an empty reason	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+918	G4	Show remaining rejection-feedback characters to admins	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+924	G4	Let rejected providers track their resubmission	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1261	G4	Let experts create and send contracts directly from their console	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1270	G4	Confirm advancing workspace status works end-to-end	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1278	G4	Confirm the workspace history panel displays transitions correctly	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1279	G4	Show workspace history on routing-queue details	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1357	G4	Apply provider-name fallback to service details	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1359	G4	Warn approved listings which edits will trigger re-review	BUILD	BUILD	A verified	CLAUDE.md LD 23 defect S-1. Only admin/service-approvals.tsx reads pendingChanges. CONSTRAINT: UI must READ the server's field-split list, never restate it.
+1360	G4	Confirm staged identity changes apply after approval	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1362	G4	Confirm activate/pause works end-to-end for approved services	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1367	G4	Confirm short descriptions persist during service editing	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1368	G4	Confirm short descriptions appear on service details	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1380	G4	Let experts open the full Viator listing page	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1381	G4	Confirm Viator details display in the workspace	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1389	G4	Prevent EA gifts and events pages from crashing on empty data	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1421	G4	Prevent AI short-description generation from overwriting typed copy	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1425	G4	Confirm short-description regeneration works end-to-end	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1439	G4	Prevent admin mutations from getting stuck without feedback	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+1462	G4	Add Message Moderation to the admin sidebar	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+1473	G4	Let admins export role-change audits to CSV	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+1522	G4	Confirm bundle Edit and Delete still work	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1523	G4	Remove the Proposed design badge from Bundle Builder	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1534	G4	Confirm Save and finish later works without a serviceId	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1538	G4	Let providers replace cover photos during service editing	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1539	G4	Preserve cover-photo previews after wizard reloads	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1544	G4	Prevent route-frame publishing while an image loads	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1553	G4	Catch seating round-trip regressions	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1554	G4	Show Seating for remote/async services where applicable	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1557	G4	Confirm mid-flow redirect guard without a draft ID	CLOSE-DUPLICATE	TEST-PROGRAM	A verified	Identical title to #1558.
+1558	G4	Confirm mid-flow redirect guard without a draft ID (duplicate of 1557)	CLOSE-DUPLICATE	TEST-PROGRAM	A verified	Identical title to #1557.
+1559	G4	Catch Scheduling-step regressions	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1700	G4	Confirm admins can see populated role-change history	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+172	G5	Show neighbourhood chips on expert listing cards	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+174	G5	Show neighbourhood coverage on expert public profiles	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+175	G5	Let travellers filter experts by neighbourhood	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+177	G5	Search neighbourhood names in the main search bar	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+194	G5	Show a friendly error when adding too many neighbourhoods	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+195	G5	Show popular neighbourhood chips as quick filters	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+196	G5	Let neighbourhood chips immediately filter the expert grid	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+240	G5	Add neighborhood tags to hidden gems and activities	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+269	G5	Auto-assign neighborhood slugs to gems with coordinates	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+273	G5	Fill in neighborhood descriptions	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+274	G5	Give each neighborhood container a unique icon	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+316	G5	Show a neighborhood-filtered view from Explore	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+318	G5	Extend neighborhood backfill to hidden gems	BUILD	LANE-BRIEF(schema/publish-trap)	C routed	Routed by governance class; staleness not individually probed.
+325	G5	Show fallback map pins for gems without exact coordinates	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+326	G5	Add a map legend and neighborhood boundaries	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+412	G5	Add Kyoto-specific neighborhoods to Paris and Tokyo feeds	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+438	G5	Store photo-credit information on gem records	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+441	G5	Schedule nightly gem-photo refreshes	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+443	G5	Show how many gems lack photos before backfill	BUILD	LANE-BRIEF(schema/publish-trap)	C routed	Routed by governance class; staleness not individually probed.
+1187	G5	Give GET /api/geocode the same database fallback as POST	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1267	G5	Confirm neighbourhood filtering end-to-end	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1268	G5	Prefill browse filters from neighbourhood chip clicks	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1276	G5	Confirm location feeds for Barcelona, Bali, New York, Rome, and London	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1277	G5	Extend seed coverage to Sydney, Bangkok, Dubai, Cape Town, and Marrakech	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1420	G5	Confirm Google Places results clear when the query is erased	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1423	G5	Show an error toast when adding a Place fails	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1428	G5	Apply destination normalization to Fever events	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1693	G5	Catch service-only neighbourhoods before they disappear	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+152	G6	Add a weekly revenue report emailed to admins	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+218	G6	Notify experts when assigned a trip	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+234	G6	Email experts when admins confirm workspace assignments	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+275	G6	Notify users when partner bookings succeed or fail	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+349	G6	Confirm AI optimization payments by email	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+483	G6	Add live email previews	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+496	G6	Email admins when reviews are flagged	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+534	G6	Email booking confirmation codes	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+535	G6	Notify users by email when payments fail	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+538	G6	Email when the scheduler auto-cancels bookings	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+548	G6	Notify providers about background-check decisions	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+612	G6	Let travelers unsubscribe from availability alerts	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+613	G6	Notify travelers when services become active	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+614	G6	Send a weekly waiting-list digest	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+622	G6	Email weekly Discover funnel reports	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+754	G6	Notify EAs about imminent client dates	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+845	G6	Ensure booking notifications reach providers	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+848	G6	Notify travelers when coordinators advance stages	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+903	G6	Email applicants when rejection feedback changes	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+904	G6	Add clear CTAs to rejection-feedback notifications	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+905	G6	Guard against duplicate approval emails	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+906	G6	Include custom rejection reasons in emails	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+923	G6	Email experts when rejection feedback changes	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+925	G6	Notify rejected providers about resubmission decisions	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1183	G6	Prevent script payloads from reaching chat emails	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1185	G6	Prevent injected service markup from reaching emails	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1228	G6	Keep booking alerts working after Resend key rotation	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1229	G6	Confirm booking-alert opt-out persists	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1230	G6	Apply opt-out to assigned-trip notifications	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1289	G6	Confirm auto-complete notifications end-to-end	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1290	G6	Suppress auto-complete notices for deleted accounts	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1300	G6	Confirm invite versus assignment wording	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1301	G6	Confirm traveler notification after expert acceptance	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1302	G6	Show an in-app Your expert joined banner	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1303	G6	Fire notifications through the legacy confirm alias	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1304	G6	Surface failed expert notifications	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1341	G6	Ensure booking-request notifications reach the correct expert	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1342	G6	Deep-link notifications directly to bookings	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1365	G6	Expose notification-email settings	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1366	G6	Prevent alerts to unverified email addresses	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1369	G6	Include decline reasons in traveler emails	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1370	G6	Email travelers when providers cancel paid bookings	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1371	G6	Validate notification email addresses end-to-end	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1426	G6	Confirm test email delivery to third-party addresses	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1438	G6	Time out test emails when the server hangs	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1463	G6	Notify admins about new abuse reports	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1527	G6	Notify admins when listings are submitted for review	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1564	G6	Retry provider booking alerts when Resend is down	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1565	G6	Expose failed booking emails for admin retry	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+1566	G6	Alert on dead confirmation emails within one day	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+155	G7	Persist partner report data for API outages	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+299	G7	Show Fever events in the global calendar	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+317	G7	Pull live events into location feeds	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+396	G7	Add a Plan your event landing-page entry	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1191	G7	Show cached Events data during slow Fever calls	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1192	G7	Confirm uncached Events results end-to-end	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1195	G7	Extend Events to remaining group occasions	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1196	G7	Prevent duplicate transport tabs on event templates	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1376	G7	Automatically clear Viator outage notices	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1377	G7	Show missing-key notices on all Viator endpoints	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1392	G7	Keep partner diagnostics accurate during partial outages	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1393	G7	Persist historical partner diagnostics	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+284	G8	Extend shared caching to hotels, activities, and flights	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+400	G8	Show a cached-deals refresh hint	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+401	G8	Warm the deals cache at startup	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+518	G8	Invalidate fee-preview cache when carts change	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+930	G8	Confirm reminder scheduling after restarts	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+934	G8	Protect reminder cooldown performance as notifications grow	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1186	G8	Monitor daily FX fallback refreshes	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1190	G8	Bound the Fever cache size	CLOSE-DONE	BUILD	A verified	server/services/fever.service.ts:725 cites #1190
+1202	G8	Prevent stale loading indicators during tab switches	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1281	G8	Prevent uncached destinations from getting stuck on city detection	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1282	G8	Remove obsolete Amadeus literals	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1283	G8	Remove misleading zero hotel-refresh metrics	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1329	G8	Verify cleanup of expired hotel and activity cache rows	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1334	G8	Add manual cache refresh controls	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1335	G8	Show per-key Travelpayouts cache details	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1383	G8	Confirm repeated Places searches use cache	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1387	G8	Confirm Booking.com fetch-on-miss uses city tokens	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1427	G8	Confirm normalized Kyoto cache parity	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+298	G9	Add a uniqueness constraint for destination events	BUILD	LANE-BRIEF(schema/publish-trap)	A verified	destination_events exists, no unique index. Must clear preflight-prod-unique-indexes.cjs AND be declared in shared/schema.ts (publish-trap).
+302	G9	Standardize route request validation and errors	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (1 files).
+354	G9	Preserve guest carts during sign-in	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+378	G9	Replace the expired Stripe live key in development	CLOSE-CONFLICT	LANE-BRIEF(money §8/§14/§18/§19)	A verified	A live key in dev IS the defect; runtime-health.service.ts:264 asserts sk_test_ in non-prod. Reshape to 'use a test key'.
+484	G9	Rate-limit forgot-password requests	CLOSE-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	cited in ledger + provider-console-gate.yml
+487	G9	Apply collaborator role checks to all write endpoints	CLOSE-CONFLICT	LANE-BRIEF(security)	A verified	V-29 DELETED getTripWriteRole/canMutateTrip; one resolver authorizeTripLogistics(requireWriteAccess) answers. Pinned by one-trip-write-resolver.db.test.ts:366.
+504	G9	Audit EA data access	VERIFY-THEN-CLOSE	LANE-BRIEF(security)	B probe(built+tested)	Feature area present and test/gate-covered (90 files, 26 test/CI).
+703	G9	Preserve gated deep links through sign-in	LIKELY-DONE	BUILD	A verified	SignInModal.tsx:150 sanitizes returnTo at redirect time (guards a crafted "/\evil.com").
+704	G9	Extend sign-in interception to social OAuth	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+867	G9	Fix email-auth experts on remaining legacy auth routes	VERIFY-THEN-CLOSE	LANE-BRIEF(security)	B probe(built+tested)	Feature area present and test/gate-covered (23 files, 10 test/CI).
+919	G9	Enforce rejection-reason length across endpoints	PARTIAL	BUILD	A verified	Length enforced at admin.routes.ts:1147 (reason.slice(0,2000)) but not proven "across endpoints" - the ask is the other rails.
+1177	G9	Audit auth gates across privileged route files	LANE-BRIEF	LANE-BRIEF(security)	A verified	Overlaps the mutation-auth program (#1679) + docs/security/tier2-development-audit-2026-08-20.md. Fold in, don't run a second audit.
+1178	G9	Catch missing auth guards on payment routes	CLOSE-DONE	TEST-PROGRAM	A verified	scripts/check-money-endpoints.cjs exists AND is a required context ("money-endpoint-guard (CLAUDE.md §14)").
+1271	G9	Enforce the shared auth-helper convention	CLOSE-DONE	LANE-BRIEF(security)	A verified	Shared helper server/utils/auth.ts getUserId; convention enforced by the required context "claims-only-lookup-guard (session-user extraction)".
+1309	G9	Sanitize expert bios and headlines	PARTIAL	BUILD	A verified	bio IS sanitized at the profile rail (auth/routes.ts:30, with firstName/lastName/specialties at :28-32). No "headline" field found there - confirm the field name before closing.
+1310	G9	Verify sanitized public expert fields	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1311	G9	Clean existing unsafe reviews, venues, and EA records	PARTIAL	BUILD	A verified	EA records sanitized (ea.routes.ts:102-103,166). Reviews/venues not proven on this pass.
+1312	G9	Verify sanitized review and venue text in emails and exports	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1316	G9	Clean stored provider-service HTML	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (2 files, 1 test/CI).
+1317	G9	Prevent double-escaped trip text	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (3 files, 1 test/CI).
+1318	G9	Verify natural special-character rendering	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1388	G9	Block non-EAs from EA pages and APIs	CLOSE-DONE	LANE-BRIEF(security)	A verified	server/middleware/ea-rbac.ts isEA — applies to every /api/ea/* route
+1390	G9	Enforce suspension through Instagram OAuth	OPEN-VALID	LANE-BRIEF(security)	A verified	CONFIRMED: suspension is enforced in three passport strategies - emailAuth.ts:234, facebookAuth.ts:143, replitAuth.ts:152/:243 - and there is NO instagramAuth.ts. Instagram is a route rail (server/routes/instagram.ts:92, isAuthenticated only) with no suspension check. Severity depends on whether that rail can mint a session or only links an account; check that before sizing.
+1391	G9	Enforce suspension through Facebook login	CLOSE-DONE	LANE-BRIEF(security)	A verified	facebookAuth.ts:143 refuses a suspended account at the strategy.
+1394	G9	Sanitize knowledge-proof answers	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (16 files, 5 test/CI).
+1395	G9	Prevent suspended admins from self-restoring	LIKELY-DONE	BUILD	A verified	admin.routes.ts:283-288 explicitly guards against a suspended admin's stale session reaching handler logic.
+1399	G9	Sanitize provider applications	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (3 files, 2 test/CI).
+1400	G9	Clean historical expert applications	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1401	G9	Preserve Stripe details for admins	LIKELY-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Role-aware projector sanitizeUserForRole (routes.ts:175) + expert-read-scope.ts:16-17, which names stripeCustomerId/stripeAccountId explicitly.
+1402	G9	Hide Stripe fields from providers	LIKELY-DONE	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Same projector - #1401 and #1402 are two halves of one lane.
+1431	G9	Extend booking IDOR guards to PUT and DELETE	OPEN-RESHAPE	LANE-BRIEF(security)	A verified	STRUCTURAL FINDING: requireOwnership (server/middleware/ownershipGuard.ts:18) has ZERO live call sites - its only mention anywhere is a comment at trips.routes.ts:371 saying it cannot be used there. Ownership is enforced inline instead. So "extend the guard to PUT/DELETE" is the wrong shape; verify booking PUT/DELETE through the mutation-auth resource-ownership probes, and treat the unused middleware as an §18c delete-or-adopt decision.
+1432	G9	Prevent cross-traveler booking access	OPEN-RESHAPE	LANE-BRIEF(security)	A verified	Same as #1431 - belongs to the mutation-auth program, not to this middleware.
+1434	G9	Block suspended users on routes reading req.user directly	BUILD	LANE-BRIEF(security)	A verified	Suspension enforced only in auth strategies (replitAuth/emailAuth/facebookAuth); no suspension middleware. Mid-session bypass plausible.
+1435	G9	Block suspended users on WebSocket and SSE	BUILD	LANE-BRIEF(security)	A verified	server/websocket.ts has an auth test, no suspension check found.
+1461	G9	Enforce user blocking through WebSockets	CLOSE-DONE	LANE-BRIEF(security)	A verified	websocket.ts:198 - block enforcement via createChat's sentinel when a block row exists.
+1468	G9	Confirm ADMIN_EMAIL bootstrap	CLOSE-DONE	TEST-PROGRAM	A verified	server/index.ts:904 bootstraps the admin account from ADMIN_EMAIL.
+1469	G9	Surface missing ADMIN_EMAIL in production	OPEN-VALID	BUILD	A verified	No ADMIN_EMAIL surfacing in runtime-health.service.ts - a missing value stays silent in production.
+1471	G9	Preserve role changes when audit insertion fails	CLOSE-DONE	LANE-BRIEF(security)	A verified	role-transition.ts:21 - the audit write runs INSIDE the role/audit transaction so no caller can bypass it.
+1472	G9	Verify role-change audit records	CLOSE-DONE	TEST-PROGRAM	A verified	server/__tests__/role-audit-atomicity.db.test.ts (A1 asserts oldRole/newRole), accessAuditLogs action="role_change".
+1474	G9	Audit application approval and rejection role changes	CLOSE-DONE	LANE-BRIEF(security)	A verified	role-transition.ts:8 covers the approval/rejection handlers explicitly.
+1475	G9	Prevent silent audit loss during database pressure	CLOSE-DONE	LANE-BRIEF(security)	A verified	Same lane: role-audit-atomicity.db.test.ts is real-DB with failure injection.
+1545	G9	Verify Instagram OAuth callbacks for providers	TEST-PROGRAM	TEST-PROGRAM	A verified	The callback exists (routes/instagram.ts:92, isAuthenticated). "Verify for providers" is coverage.
+1677	G9	Prevent cross-user payment-record changes	LANE-BRIEF	LANE-BRIEF(money §8/§14/§18/§19)	A verified	Same program as #1678/#1679 — one lane, not three tickets.
+1678	G9	Prevent cross-account traveler, expert, and provider changes	LANE-BRIEF	LANE-BRIEF(security)	A verified	Same program as #1677/#1679.
+1679	G9	Require authorization proof on every remaining mutation route	RULE-FIRST	LANE-BRIEF(security)	A verified	Not a task: a program over 588 mutation endpoints. generated/security/mutation-auth-coverage.md stale (2026-08-26, hash mismatch, reads 0/588); check:mutation-auth-coverage wired into NO workflow. Regenerate before sizing.
+289	G10	Index service demand signals	VERIFY	LANE-BRIEF(schema/publish-trap)	B probe(built)	Feature area present, no test/gate coverage found (6 files).
+290	G10	Fix the unified-result-card syntax error	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (3 files).
+301	G10	Fix legacy route-helper and service TypeScript errors	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (4 files, 1 test/CI).
+303	G10	Clear the 174-error TypeScript baseline	CLOSE-CONFLICT	BUILD	A verified	Stale number + obsolete framing: build.yml:238 holds TSC_BASELINE 129, ratcheting 199->129 down-only. 174 never appears in that history.
+489	G10	Move startup seeds out of routes.ts	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+515	G10	Stop destination calendar seed errors at startup	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+526	G10	Fix migration-runner TypeScript errors	BUILD	LANE-BRIEF(schema/publish-trap)	C routed	Routed by governance class; staleness not individually probed.
+632	G10	Stamp removed migration 075 in production	NEEDS-RUNTIME	LANE-BRIEF(schema/publish-trap)	A verified	075 already deleted and removed from migration-files.ts (registry L116-121). Prod stamping is an operator action.
+843	G10	Remove duplicate inline route implementations	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (16 files, 3 test/CI).
+1184	G10	Consolidate duplicate HTML sanitizers	BUILD	BUILD	A verified	Three sanitizers coexist: text-sanitizer.ts, data-sanitizer.ts, ai-error-sanitizer.ts — §18 rule 1.
+1258	G10	Verify undeclared tables against production	NEEDS-RUNTIME	TEST-PROGRAM	A verified	Guard exists (check-undeclared-tables.cjs); 'verify against production' needs the prod DB.
+1397	G10	Detect partial non-unique index drift before publishing	CLOSE-DONE	TEST-PROGRAM	A verified	scripts/preflight-prod-unique-indexes.cjs
+1398	G10	Find schema declarations missing migration-added columns	CLOSE-DONE	LANE-BRIEF(schema/publish-trap)	A verified	scripts/check-undeclared-tables.cjs + preview-ai-cost-tracking-shape.cjs
+1412	G10	Block unqualified responsive grid classes	BUILD	LANE-BRIEF(security)	A verified	No guard found for unqualified responsive grid classes.
+286	G11	Add cache regression tests	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (13 files, 10 test/CI).
+322	G11	Add commission-rate regression tests	VERIFY-THEN-CLOSE	LANE-BRIEF(money §8/§14/§18/§19)	B probe(built+tested)	Feature area present and test/gate-covered (2 files, 2 test/CI).
+490	G11	Add automated route coverage	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (13 files, 9 test/CI).
+525	G11	Verify migrations on a fresh production database	NEEDS-RUNTIME	TEST-PROGRAM	A verified	Requires a fresh production-shaped DB.
+567	G11	Catch migration-chain gaps	CLOSE-DONE	TEST-PROGRAM	A verified	migration-files.ts is canonical for runtime AND the chain-integrity test (CLAUDE.md)
+678	G11	Cover /earn error banners in smoke tests	BUILD	TEST-PROGRAM	B probe(none)	No implementation found under probed identifiers.
+712	G11	Catch stale navigation and footer links	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (10 files, 7 test/CI).
+713	G11	Require the footer-link gate	BUILD	BUILD	A verified	footer-links-gate.yml exists, NOT in branch-protection.json's 10 contexts. One-file edit.
+714	G11	Check static-page links	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
+715	G11	Check navbar links	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (6 files, 4 test/CI).
+742	G11	Keep EA route smoke lists synchronized	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
+743	G11	Share build cache across CI workflows	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (21 files, 21 test/CI).
+750	G11	Seed EA gifts and events for CI	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (3 files, 2 test/CI).
+762	G11	Test broken shared itinerary links	VERIFY	TEST-PROGRAM	B probe(built)	Feature area present, no test/gate coverage found (1 files).
+776	G11	Block merges with broken app routes	CLOSE-DONE	LANE-BRIEF(security)	A verified	'app-routes-smoke' already a required context in .github/branch-protection.json
+777	G11	Block broken auth-gated routes	CLOSE-DONE	LANE-BRIEF(security)	A verified	'auth-routes-smoke' already a required context in .github/branch-protection.json
+782	G11	Validate the CI-user seed script	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+786	G11	Require remaining Tier 2 checks	BUILD	BUILD	A verified	Same one-file edit as #713/#787/#790 (10 required contexts vs 51 workflows).
+787	G11	Require the neighborhood gate	BUILD	BUILD	A verified	neighborhoods-gate.yml exists, not required.
+788	G11	Parallelize auth-route checks	BUILD	LANE-BRIEF(security)	B probe(none)	No implementation found under probed identifiers.
+789	G11	Require the bundle-build check	CLOSE-DONE	BUILD	A verified	'build (vite + esbuild bundle)' already a required context
+790	G11	Require remaining Tier 1 gates	BUILD	BUILD	A verified	Same one-file edit as #713/#786/#787.
+791	G11	Share setup cache across gate workflows	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
+800	G11	Detect workflows that fail to initialize Postgres	CLOSE-DONE	TEST-PROGRAM	A verified	.github/workflows/ci-db-setup-lint.yml
+804	G11	Catch broken cart redirects	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (5 files, 3 test/CI).
+806	G11	Catch broken navbar navigation	BUILD	TEST-PROGRAM	B probe(none)	No implementation found under probed identifiers.
+807	G11	Catch broken React navigation calls	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (84 files, 6 test/CI).
+808	G11	Catch broken Wouter location calls	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (183 files, 8 test/CI).
+824	G11	Catch broken fee-config redirects	BUILD	TEST-PROGRAM	B probe(none)	No implementation found under probed identifiers.
+825	G11	Verify parameterized redirects	BUILD	TEST-PROGRAM	B probe(none)	No implementation found under probed identifiers.
+827	G11	Catch /discover mobile regressions	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (1 files, 1 test/CI).
+870	G11	Run the AI price guard automatically	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+871	G11	Detect server tests that silently don't run	CLOSE-DONE	TEST-PROGRAM	A verified	scripts/check-test-files-wired.cjs (§18d) + 'test-file-reachability' required context
+1248	G11	Keep hydration test resets out of production	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (6 files, 1 test/CI).
+1292	G11	Seed a paid confirmed booking for completion tests	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
+1405	G11	Detect iOS keyboard-covered checkout fields	BUILD	TEST-PROGRAM	B probe(none)	No implementation found under probed identifiers.
+1416	G11	Run WebKit smoke tests in CI	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (2 files).
+1490	G11	Detect console-mockup drift	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1526	G11	Catch broken listing submission	BUILD	TEST-PROGRAM	B probe(none)	No implementation found under probed identifiers.
+1764	G11	Stop publishing when the approved revision changes	CLOSE-DONE	BUILD	A verified	scripts/publish-preflight.cjs
+147	G12	Align stream-card labels with selected periods	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+241	G12	Make Explore Spine chips scroll correctly on mobile	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+278	G12	Show empty-filter messages	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+282	G12	Fix unified-results display	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+435	G12	Standardize city-name capitalization	CLOSE-DONE	BUILD	A verified	cited in ledger DECISIONS.md:725
+437	G12	Show Unsplash photographer names	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+442	G12	Show placeholder gem images	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+542	G12	Isolate checkout UpsellSlot failures	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+606	G12	Remove the expert-offerings loading flash	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+756	G12	Preserve executive-card scroll position	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+757	G12	Keep executive cards open after closing edit dialogs	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+881	G12	Prevent service-template application CTA flashing	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1286	G12	Keep the banner sandbox synchronized	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1406	G12	Preserve pinch-to-zoom	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1417	G12	Verify mobile WebKit checkout	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1424	G12	Verify tablet admin stat panels	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1443	G12	Add imagery to experience-template chips	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1495	G12	Replace the footer logo placeholder	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1618	G12	Catch review-page dark-mode regressions	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1638	G12	Make admin and partner controls screen-reader accessible	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+1639	G12	Bring important text to WCAG AA contrast	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1734	G12	Catch offering-header regressions	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+215	G13	Add schedule checks beyond dinner gaps	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (4 files, 1 test/CI).
+527	G13	Prevent duplicate activity bookings	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+528	G13	Extend double-confirmation protection to service bookings	CLOSE-DONE	BUILD	A verified	server/utils/booking-from-states.ts + expectedFromStatuses atomic conditional (§18b); ledger DECISIONS.md:339
+667	G13	Prevent services disappearing during category changes	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (1 files).
+1179	G13	Batch stale and stuck booking admin lists	VERIFY-THEN-CLOSE	LANE-BRIEF(security)	B probe(built+tested)	Feature area present and test/gate-covered (10 files, 3 test/CI).
+1238	G13	Verify skip-modal rebooking	BUILD	TEST-PROGRAM	B probe(none)	No implementation found under probed identifiers.
+1272	G13	Verify destination-based expert auto-assignment	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1273	G13	Rebalance workload when experts stop accepting handoffs	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
+1280	G13	Roll back assignment diary rows atomically	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1363	G13	Show decline reasons on cancelled bookings	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1364	G13	Show decline reasons in expert booking history	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1378	G13	Support typed reasons when declining	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1429	G13	Hide Accept after booking acceptance	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
+1430	G13	Block duplicate Decline dialogs	VERIFY-THEN-CLOSE	LANE-BRIEF(security)	B probe(built+tested)	Feature area present and test/gate-covered (3 files, 1 test/CI).
+1546	G13	Show attestation blockers in amber	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1547	G13	Make blocker Fix links navigate correctly	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1562	G13	Prevent duplicate bookings under concurrency	CLOSE-DONE	BUILD	A verified	unique service_bookings_idempotency_key_idx shared/schema.ts:1803 + §15 claim-then-call
+1563	G13	Make content-registration failure non-fatal	VERIFY	BUILD	B probe(built)	Feature area present, no test/gate coverage found (1 files).
+1724	G13	Prevent duplicate ready-made confirmations	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1725	G13	Prevent concurrent duplicate expert applications	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+283	G14	Show demand-refresh status	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+285	G14	Show cache hit/miss metrics	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+287	G14	Show demand-signal trends	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+516	G14	Log migration startup health	BUILD	LANE-BRIEF(schema/publish-trap)	C routed	Routed by governance class; staleness not individually probed.
+539	G14	Log auto-cancellation runs permanently	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+621	G14	Show Discover-card impressions	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+623	G14	Measure Discover-card viewing time	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+664	G14	Warn on slow expert-listing and AI-chat queries	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+665	G14	Configure slow-query thresholds per endpoint	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1171	G14	Alert on missed dispute audits	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1172	G14	Extend audit warnings to other admin status changes	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+1173	G14	Surface funnel-event errors	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1174	G14	Alert on coordination rollback failures	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1274	G14	Align daily admin metrics with local timezone	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+1275	G14	Align monthly revenue filters with admin timezone	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+1284	G14	Verify Instagram retry banners	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1319	G14	Verify date-filtered CSV exports	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1320	G14	Apply date ranges to analytics overview metrics	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1407	G14	Detect broken Resend keys	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1576	G14	Verify idle health checks after the memory fix	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1714	G14	Detect scheduler pool pressure	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1715	G14	Show recent scheduler failures	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+197	G15	Auto-refresh stale visa data	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+198	G15	Show visa-data confidence	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+206	G15	Show visa details on provider booking cards	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+207	G15	Show traveler document completion to experts	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+208	G15	Let travelers upload checklist documents	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+276	G15	Show partner booking requests	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+294	G15	Let users choose their Maps app	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+323	G15	Track recruitment CTA clicks	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+324	G15	Show expert recruitment in the main feed	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+327	G15	Persist Map/List preferences	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+328	G15	Group saved places by city	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+329	G15	Share or export saved places	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+330	G15	Add save controls to search and Discover	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+353	G15	Remove saved items from Discover	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+355	G15	Add a mini-cart hover preview	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+499	G15	Persist preferred currency	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+501	G15	Auto-detect local currency	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+533	G15	Show confirmation codes after payment	BUILD	LANE-BRIEF(money §8/§14/§18/§19)	C routed	Routed by governance class; staleness not individually probed.
+536	G15	Show booking confirmation codes in-app	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+840	G15	Add a support-contact page	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+849	G15	Let travelers accept or reject proposed stage changes	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+864	G15	Suppress concierge sign-in prompts for authenticated users	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+865	G15	Prevent concierge-request account hijacking	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+866	G15	Preserve concierge requests through OAuth sign-in	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+1240	G15	Save notes silently during browser navigation	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1244	G15	Show traveler-note save timestamps	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1245	G15	Verify expert-note timestamps after reload	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1246	G15	Preserve guest trip planning through sign-in	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1247	G15	Restore trip context on fresh tabs	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1263	G15	Add direct page navigation to admin Users	BUILD	LANE-BRIEF(security)	C routed	Routed by governance class; staleness not individually probed.
+1264	G15	Verify preference and storefront saves	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
+1293	G15	Explain booking-confirmation wait times	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1336	G15	Persist browse carts across refreshes	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1338	G15	Carry browse-cart items into expert contact	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1353	G15	Load guest client details without a userId	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1356	G15	Remove invalid Guest-row links	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1374	G15	Preserve guest-invite origin through sign-in	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
+1640	G15	Verify traveler reviews after booking completion	TEST-PROGRAM	TEST-PROGRAM	C routed	Routed by governance class; staleness not individually probed.
