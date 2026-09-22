@@ -60,8 +60,26 @@ Batches A–E are `docs/findings/BOARD_TRIAGE_DISPATCH.md` (v2). F–H are below
   protect a cosmetic counter, risks the effects that matter. One admin widget
   (`admin-query.service.ts:1448-1455`) still reads them; that is the whole remaining fix.
 
-**Still yours: #215 #411 #495 #1666 #1679 #1686.** #1679 is a sizing decision now that coverage
-reads 291/589 rather than 0/589.
+**Still yours: #215 #411 #495 #1666 #1679 #1686.**
+
+**#1679 is now sized, and it is two decisions, not one.** The refreshed artifact
+(`generated/security/mutation-auth-coverage.md`, fresh evidence, five suites passing) reads
+**291/589 tested, 298 remaining**, and the remainder is not one pile:
+
+| Category | Tested | Remaining |
+|---|---|---|
+| admin | 143/148 | **5** |
+| payments | 14/31 | **17** |
+| user-data | 134/200 | **66** |
+| other | 0/210 | **210** |
+
+The first three are **88 endpoints in the risk-bearing categories** — bounded, and the kind of gap
+§14/§19 exist for. The fourth is **210 routes with no authorization assertion at all**, and the
+honest reading is that many are public or system routes where *no authorization* is the correct
+answer, not a gap. So the decision is: **(a)** close the 88, and **(b)** rule whether `other` needs
+assertions at all, or whether the report should say out loud that the category is
+deliberately-unasserted rather than carrying a `0/210` that reads as failure. Pricing (a) alone is a
+much smaller commitment than the board's "every mutation route" phrasing implies.
 
 ## F — Code lanes, risk order
 
