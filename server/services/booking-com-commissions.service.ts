@@ -1,10 +1,9 @@
-export interface BookingComCommissions {
-  configured: boolean;
-  thisMonth: number;
-  lastMonth: number;
-  total: number;
-  currency: string;
-}
+import {
+  parseAffiliateAmount,
+  type AffiliateCommissionReport,
+} from "./affiliate-commission-report";
+
+export interface BookingComCommissions extends AffiliateCommissionReport {}
 
 function getDateRange(period: string): { startDate: string; endDate: string } {
   const now = new Date();
@@ -53,7 +52,7 @@ async function fetchBookingComCommissions(
   apiKey: string,
   startDate: string,
   endDate: string
-): Promise<number> {
+): Promise<number | null> {
   try {
     const url = new URL("https://distribution-xml.booking.com/json/reporting.stats");
     url.searchParams.set("affiliate_id", affiliateId);
@@ -73,23 +72,34 @@ async function fetchBookingComCommissions(
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       console.warn(`[BookingComCommissions] API ${res.status}: ${text.slice(0, 200)}`);
-      return 0;
+      return null;
     }
 
     const data = await res.json();
     if (Array.isArray(data)) {
-      return data.reduce((sum: number, row: any) => {
-        const val = row.commission ?? row.commissions ?? row.revenue ?? 0;
-        const n = typeof val === "number" ? val : parseFloat(String(val));
-        return sum + (isNaN(n) ? 0 : n);
+      // A readable row with no commission field genuinely reports zero. Only a transport
+      // failure or a wholly unparseable payload is unknown.
+      let invalidAmount = false;
+      const total = data.reduce((sum: number, row: any) => {
+        const val = row.commission ?? row.commissions ?? row.revenue;
+        if (val === undefined || val === null) return sum;
+        const n = parseAffiliateAmount(val);
+        if (n === null) {
+          invalidAmount = true;
+          return sum;
+        }
+        return sum + n;
       }, 0);
+      return invalidAmount ? null : total;
     }
 
-    const val = data?.commission ?? data?.total_commission ?? data?.revenue ?? 0;
-    return typeof val === "number" ? val : parseFloat(String(val)) || 0;
+    const val = data?.commission ?? data?.total_commission ?? data?.revenue;
+    // A readable object with no recognized total is incomplete, so its amount is unknown.
+    if (val === undefined || val === null) return null;
+    return parseAffiliateAmount(val);
   } catch (err: any) {
     console.warn(`[BookingComCommissions] Fetch error:`, err?.message || err);
-    return 0;
+    return null;
   }
 }
 
@@ -109,7 +119,7 @@ export async function getBookingComCommissions(period: string): Promise<BookingC
     fetchBookingComCommissions(affiliateId, apiKey, lastRange.startDate, lastRange.endDate),
   ]);
 
-  let total: number;
+  let total: number | null;
   if (period === "this_month") {
     total = thisMonth;
   } else if (period === "last_month") {
