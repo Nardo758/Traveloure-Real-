@@ -1,10 +1,10 @@
 ---
-name: Stripe Stage 2 subscription hold
-description: Decision boundary and activation order for the remaining live Stripe webhook events.
+name: Stripe Stage 2 activation
+description: Ruling, ownership split, and observation requirement for live Stripe recovery events.
 ---
 
-Do not change live Stripe webhook subscriptions without an explicit human ruling. The remaining events activate production handlers that have not yet run at live cart volume, including checkout promotion, revenue tracking, and earnings minting.
+Stage 2 was explicitly approved and activated in three verified windows. Dispute and transfer events belong on the Connect arm; refunds, canceled, and requires-action events belong on the Platform arm; payment failure is subscribed on both because the handlers are complementary; payment success is Connect-only because that handler is the strict superset.
 
-**Why:** Stage 1 covered zero-history hosted Checkout and subscription events. Stage 2 includes events emitted by every cart payment, so enabling them is a real money-path change even though the handlers are designed to be idempotent.
+**Why:** These events provide the server-side recovery layer when a client closes before its fallback completes. Success must not be subscribed on both rails because that would run the shared handler twice. The money-path handlers had not previously run at live cart volume.
 
-**How to apply:** If approved, activate and verify in stages: low-volume Connect dispute and transfer events first; platform refunds and platform-only canceled/requires-action events next; payment-intent success and failure events last under active monitoring. Do not subscribe both rails to succeeded when Connect is the strict superset.
+**How to apply:** Preserve the ownership split and reconcile every delivery during the first full day after activation. Verify the first live success promotes checkout state, records revenue, and mints earnings exactly once. Do not change subscriptions in response to an anomaly without a separate ruling.
