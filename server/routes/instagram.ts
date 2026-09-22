@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { users } from "@shared/schema";
@@ -507,7 +507,12 @@ function parseSignedRequest(signedRequest: string): Record<string, unknown> | nu
   const sig = Buffer.from(toBase64(encodedSig), "base64");
   const expected = createHmac("sha256", secret).update(payload).digest();
 
-  if (!sig.equals(expected)) return null;
+  // Constant-time compare. `Buffer.equals` short-circuits on the first differing byte, which
+  // leaks how much of a forged signature was correct — the standard side channel on an HMAC
+  // check an attacker can retry. `timingSafeEqual` THROWS on a length mismatch rather than
+  // returning false, so the length is checked first (and a wrong length is not a secret:
+  // SHA-256 digests are always 32 bytes).
+  if (sig.length !== expected.length || !timingSafeEqual(sig, expected)) return null;
 
   try {
     return JSON.parse(Buffer.from(toBase64(payload), "base64").toString("utf8"));
