@@ -231,7 +231,7 @@ export function toContractBoardRows(
 
 /**
  * An amount for display, with its currency CODE when one was recorded and bare when none was.
- * Deliberately a code ("USD 4500.00") and not a symbol: a symbol has to be looked up from the
+ * Deliberately a code ("USD <amount>") and not a symbol: a symbol has to be looked up from the
  * code, and a wrong symbol is a wrong claim about the money. `undefined` in ⇒ `undefined` out —
  * the caller omits the line rather than printing a placeholder.
  */
