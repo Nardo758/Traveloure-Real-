@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -173,7 +174,7 @@ router.post("/", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const validation = sendMessageSchema.safeParse(req.body);
     if (!validation.success) {
-      return res.status(400).json({ message: validation.error.errors[0]?.message });
+      return res.status(400).json(zodErrorBody(validation.error));
     }
     const { recipientId, conversationId, message, attachment } = validation.data;
 
@@ -357,7 +358,7 @@ router.post("/report/message/:messageId", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const validation = reportSchema.safeParse(req.body);
     if (!validation.success) {
-      return res.status(400).json({ message: validation.error.errors[0]?.message });
+      return res.status(400).json(zodErrorBody(validation.error));
     }
     const { reason, details } = validation.data;
     const { messageId } = req.params;
@@ -381,7 +382,7 @@ router.post("/report/user/:targetUserId", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const validation = reportSchema.safeParse(req.body);
     if (!validation.success) {
-      return res.status(400).json({ message: validation.error.errors[0]?.message });
+      return res.status(400).json(zodErrorBody(validation.error));
     }
     const { reason, details } = validation.data;
     const { targetUserId } = req.params;

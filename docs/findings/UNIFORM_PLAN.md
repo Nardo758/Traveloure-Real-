@@ -60,7 +60,17 @@ Batches A–E are `docs/findings/BOARD_TRIAGE_DISPATCH.md` (v2). F–H are below
   protect a cosmetic counter, risks the effects that matter. One admin widget
   (`admin-query.service.ts:1448-1455`) still reads them; that is the whole remaining fix.
 
-**Still yours: #215 #411 #495 #1666 #1679 #1686.**
+**Still yours: #215 #411 #495 #1666 #1679 #1686 — plus ONE filed 2026-09-22.**
+
+**"credit" names three unrelated things** (`docs/briefs/CREDIT_VOCABULARY_QUESTION.md`). The
+RETIRED platform-credit balance (410 Gone, tables dormant), the LIVE `coordination_fee_credits`
+obligation (money already paid for an optimize run, applied once against a later coordination
+fee) and Trip Pass allowances (which the CODE never calls credits — only the board does, in
+#857's title). Filed because the collision produced a wrong conclusion about money in
+conversation: that connecting payment methods removes the need for "the credits system" is
+TRUE of the first and FALSE of the other two, and acting on it would have deleted the record
+that stops a traveler being charged twice. Recommendation inside; it is a rename either way
+and changes nothing about what is charged or owed.
 
 **#1679 is now sized, and it is two decisions, not one.** The refreshed artifact
 (`generated/security/mutation-auth-coverage.md`, fresh evidence, five suites passing) reads

@@ -1,4 +1,5 @@
 import type { Express, RequestHandler } from "express";
+import { zodErrorBody } from "./utils/zod-error-body";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { getUserId, getDbRole } from "./utils/auth";
@@ -1443,7 +1444,7 @@ export async function registerRoutes(
       res.status(201).json(trip);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       // FOUND, NOT FIXED (punchlist R-9): this re-throw is the MECHANISM the guest branch's
       // TypeError rode out on — there is no Express error-handling middleware in this app and
@@ -1515,7 +1516,7 @@ export async function registerRoutes(
       res.json(updatedTrip);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       throw err;
     }
@@ -2297,7 +2298,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.status(201).json(chat);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       // Block enforcement: storage.createChat throws a sentinel when a block exists in
       // either direction. Return a deterministic 403 so the client can surface a clear
@@ -2427,7 +2428,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.status(201).json(vendor);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       console.error("Error creating vendor:", err);
       res.status(500).json({ message: "Failed to create vendor" });
@@ -2541,7 +2542,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       console.error("Error creating expert application:", err);
       res.status(500).json({ message: "Failed to submit application" });
@@ -2607,7 +2608,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.status(201).json(pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS));
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to submit application" });
     }
@@ -2705,7 +2706,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       if ((err as any)?.code === "23505" || (err as any)?.cause?.code === "23505") {
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -2774,7 +2775,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.status(201).json(form);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       if ((err as any)?.code === "23505" || (err as any)?.cause?.code === "23505") {
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -4020,7 +4021,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       if (err instanceof ServiceLocationError) {
         return res.status(400).json({ message: err.message, code: "INVALID_LOCATION_POINT" });
@@ -4464,7 +4465,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       );
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       if (err instanceof ServiceLocationError) {
         return res.status(400).json({ message: err.message, code: "INVALID_LOCATION_POINT" });
@@ -7009,7 +7010,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.status(201).json(booking);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       console.error("Error creating booking:", err);
       res.status(500).json({ message: "Failed to create booking" });
@@ -9311,7 +9312,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // are settable by no client anywhere (`insertItineraryItemSchema` omits all three).
       const parsed = convertCartToItinerarySchema.safeParse(req.body ?? {});
       if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "Invalid request body" });
+        return res.status(400).json(zodErrorBody(parsed.error, "Invalid request body"));
       }
       const { tripId, newTripName, destination, cartItemIds } = parsed.data;
 
@@ -11988,7 +11989,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.status(201).json(participant);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
+        return res.status(400).json(zodErrorBody(error));
       }
       res.status(500).json({ message: "Failed to create participant" });
     }

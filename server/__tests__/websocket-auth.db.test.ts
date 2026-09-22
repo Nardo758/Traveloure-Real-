@@ -324,3 +324,102 @@ test("T3 — MT-2: a notifications row lands for the recipient after a delivered
   assert.equal(n.type, "message_received");
   assert.equal(n.data?.clientId, ids.userA, "notification payload carries the true (session-resolved) sender for deep-linking");
 });
+
+/**
+ * #1435 — A SUSPENDED USER MAY NOT HOLD A SOCKET.
+ *
+ * Suspension has two enforcement layers and neither reached this one. The admin suspend handler
+ * purges the user's `sessions` rows — which stops the NEXT handshake but cannot touch a socket
+ * already open, because that socket holds no session reference once established. And
+ * `isAuthenticated`'s per-request DB check is HTTP middleware that never runs on a WebSocket. So a
+ * suspended user kept messaging until they chose to disconnect.
+ *
+ * T4 covers the new handshake refusal; T5 covers the live socket, which is the half the session
+ * purge structurally cannot do. Both use userA's REAL session row — the suspension is applied to
+ * the `users` row only, exactly as the admin handler does it, leaving the session intact so the
+ * test proves the ACCOUNT check rather than accidentally proving the session purge.
+ */
+test("T4 — a suspended user cannot open a socket, even with a valid session", async () => {
+  // Count BEFORE, never assert zero: T2 and T3 run first and legitimately write chat rows, so a
+  // bare `= 0` here would be asserting their absence rather than this connection's silence.
+  const before = await db.execute(sql`
+    SELECT count(*)::int AS n FROM user_and_expert_chats
+    WHERE sender_id IN (${ids.userA}, ${ids.userB}) OR receiver_id IN (${ids.userA}, ${ids.userB})
+  `);
+  const beforeCount = (before.rows[0] as any).n as number;
+
+  await db.execute(sql`UPDATE users SET is_suspended = true WHERE id = ${ids.userA}`);
+  try {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers: { Cookie: sessionCookieHeader(sid, process.env.SESSION_SECRET!) },
+    });
+
+    const events: any[] = [];
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("timed out waiting for close")), 5000);
+      ws.on("message", (data) => events.push(JSON.parse(data.toString())));
+      ws.on("close", (code) => { clearTimeout(timer); resolve(code); });
+      ws.on("open", () => {
+        // Sent while the account lookup is still in flight. `authPending` stays true across that
+        // await, so this frame buffers and must be DISCARDED rather than replayed on refusal.
+        try {
+          ws.send(JSON.stringify({
+            type: "chat", senderId: ids.userA, recipientId: ids.userB,
+            content: "should never be written — suspended",
+          }));
+        } catch { /* socket may already be closing */ }
+      });
+      ws.on("error", () => { /* close event still fires */ });
+    });
+
+    assert.equal(closeCode, 1008, "a suspended user's socket must close 1008");
+    assert.ok(
+      events.some((e) => e.type === "error" && e.error === "account_suspended"),
+      "the refusal must NAME suspension — not the generic 'unauthenticated', which would be a §13 lie",
+    );
+
+    const after = await db.execute(sql`
+      SELECT count(*)::int AS n FROM user_and_expert_chats
+      WHERE sender_id IN (${ids.userA}, ${ids.userB}) OR receiver_id IN (${ids.userA}, ${ids.userB})
+    `);
+    assert.equal(
+      (after.rows[0] as any).n,
+      beforeCount,
+      "a mid-check frame must be discarded, never replayed — the row count must not move",
+    );
+  } finally {
+    await db.execute(sql`UPDATE users SET is_suspended = false WHERE id = ${ids.userA}`);
+  }
+});
+
+test("T5 — an ALREADY-OPEN socket is closed by disconnectUser (what the session purge cannot do)", async () => {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+    headers: { Cookie: sessionCookieHeader(sid, process.env.SESSION_SECRET!) },
+  });
+
+  // Establish the connection FIRST — before any suspension exists, exactly as a real session would.
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timed out waiting for open")), 5000);
+    ws.on("open", () => { clearTimeout(timer); resolve(); });
+    ws.on("error", (err) => { clearTimeout(timer); reject(err); });
+  });
+  // Let the async account check complete so the socket is actually registered in `clients`.
+  await new Promise((r) => setTimeout(r, 400));
+
+  const { disconnectUser, getConnectedUsers } = await import("../websocket");
+  assert.ok(getConnectedUsers().includes(ids.userA), "fixture: the socket must be connected first");
+
+  const closeCode = await new Promise<number>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timed out waiting for close")), 5000);
+    ws.on("close", (code) => { clearTimeout(timer); resolve(code); });
+    // This is the call the suspend handler makes.
+    const closed = disconnectUser(ids.userA);
+    assert.equal(closed, true, "disconnectUser must report that it closed a live socket");
+  });
+
+  assert.equal(closeCode, 1008, "the live socket must be closed with 1008");
+  assert.ok(!getConnectedUsers().includes(ids.userA), "and must be removed from the clients map");
+
+  // §13: a second call has nothing to close and must SAY so rather than claim success.
+  assert.equal(disconnectUser(ids.userA), false, "a second disconnect reports no socket, not success");
+});

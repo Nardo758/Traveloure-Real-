@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
@@ -69,7 +70,7 @@ router.post("/api/service-requests", isAuthenticated, serviceRequestLimiter, asy
     res.status(201).json(created);
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid input" });
+      return res.status(400).json(zodErrorBody(err, "Invalid input"));
     }
     console.error("Error creating service request:", err);
     res.status(500).json({ message: "Failed to submit request" });

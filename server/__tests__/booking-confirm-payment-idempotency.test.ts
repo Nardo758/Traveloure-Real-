@@ -124,3 +124,56 @@ test("#846 — concurrent double-confirm (Promise.all) writes earnings/revenue e
     await cleanup(bookingId, travelerId, providerId);
   }
 });
+
+/**
+ * #1581 — the earnings INSERT no-ops on a pre-existing row instead of aborting the confirm.
+ *
+ * The two tests above prove the §15 atomic conditional at step 1: a SECOND confirm never reaches
+ * the INSERTs. This one covers the case that guard does NOT cover — a provider_earnings row that
+ * already carries this booking's identity when the FIRST confirm runs.
+ *
+ * That row matches `provider_earnings_booking_mint_uniq` (migration 203:
+ * `UNIQUE (source_id) WHERE source_type = 'booking' AND amount >= 0`) exactly, and so does the
+ * INSERT inside `confirmBookingPayment`. Without `ON CONFLICT DO NOTHING` the INSERT raises 23505;
+ * because it runs inside the same `db.transaction` as the step-1 confirm, that rollback strands a
+ * booking Stripe has ALREADY charged in `pending_payment`, with no earning and no revenue row.
+ *
+ * The sibling `platform_revenue` INSERT three statements down has carried this clause since
+ * migration 203. This asserts the earnings INSERT now matches it: the confirm SUCCEEDS, the
+ * booking reaches `confirmed`, and the pre-existing earning is neither duplicated nor overwritten.
+ *
+ * REGRESSION VALUE: deleting the `ON CONFLICT ... DO NOTHING` clause from
+ * `server/services/booking.service.ts` fails this test with a 23505 unique violation.
+ */
+test("#1581 — a pre-existing earnings row makes the confirm no-op, never abort", async () => {
+  const travelerId = await createUser("traveler");
+  const providerId = await createUser("provider");
+  const bookingId = await createPendingBooking(travelerId, providerId);
+  const piId = `pi_test_${crypto.randomUUID().slice(0, 8)}`;
+
+  try {
+    // Pre-seed the exact row identity the confirm's INSERT would write, with a DIFFERENT amount so
+    // a silent overwrite would be visible as well as a duplicate.
+    const preExistingId = crypto.randomUUID();
+    await db.insert(providerEarnings).values({
+      id: preExistingId, providerId, type: "service_booking", amount: "77.77", currency: "USD",
+      sourceType: "booking", sourceId: bookingId, description: "pre-existing", status: "held",
+    } as any);
+
+    await bookingService.confirmBookingPayment(bookingId, piId, travelerId);
+
+    const earnRows = await db.select().from(providerEarnings).where(eq(providerEarnings.sourceId, bookingId));
+    assert.equal(earnRows.length, 1, "the pre-existing earning is not duplicated by the confirm");
+    assert.equal(earnRows[0].id, preExistingId, "the pre-existing row survives — the INSERT skipped, it did not replace");
+    assert.equal(String(earnRows[0].amount), "77.77", "the pre-existing amount is untouched");
+
+    // The whole point: the confirm COMMITTED rather than rolling back on the unique violation.
+    const bookingRows = await db.select().from(bookings).where(eq(bookings.id, bookingId));
+    assert.equal(bookingRows[0].status, "confirmed", "the booking confirm committed — it was not rolled back by the INSERT");
+
+    const revRows = await db.select().from(platformRevenue).where(eq(platformRevenue.sourceId, bookingId));
+    assert.equal(revRows.length, 1, "the revenue row still lands — the transaction was not aborted");
+  } finally {
+    await cleanup(bookingId, travelerId, providerId);
+  }
+});

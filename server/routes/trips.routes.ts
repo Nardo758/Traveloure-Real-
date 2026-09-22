@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
 import { authorizeTripLogistics, authorizeTripOwnerTier } from '../utils/trip-logistics-auth';
 import { createRateLimiter } from "../infrastructure/rate-limiter";
@@ -558,7 +559,7 @@ router.post(api.trips.create.path, async (req, res) => {
       res.status(201).json(trip);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       throw err;
     }
@@ -588,7 +589,7 @@ router.patch(api.trips.update.path, async (req, res) => {
       res.json(updatedTrip);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       throw err;
     }
@@ -691,7 +692,7 @@ router.post(api.chats.create.path, isAuthenticated, async (req, res) => {
       res.status(201).json(chat);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       throw err;
     }
@@ -1676,7 +1677,7 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
       res.status(201).json(anchor);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       throw err;
     }
@@ -1703,7 +1704,7 @@ router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
       res.json(updated);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
+        return res.status(400).json(zodErrorBody(error));
       }
       res.status(500).json({ message: "Failed to update anchor", error: error.message });
     }
@@ -1763,7 +1764,7 @@ router.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, re
       res.status(201).json(boundary);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       throw err;
     }

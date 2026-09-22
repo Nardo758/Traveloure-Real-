@@ -9,6 +9,7 @@ with a 400, so the delivery is retried and fails identically on every retry.
 | Step | Evidence |
 |---|---|
 | 1 | `handlePaymentFailed` destructures `const { bookingIds } = paymentIntent.metadata` (`stripe-payment.service.ts:926`) and calls `bookingIds.split(',')` (`:934`) with **no guard**. |
+| 1b | **CORRECTED 2026-09-22 — it is TWO handlers, not one.** `handlePaymentCanceled` carries the IDENTICAL unguarded pair (`:951`, `:959`) and is wired to `payment_intent.canceled` at `:647`. This brief originally named only the failure path. `handlePaymentSucceeded` is NOT affected — it already guards (`if (!bookingIds) { log; return; }`, `:846`), which is the shape both others need; `handleRequiresAction` (`:978`) only LOGS `bookingIds` and never splits, so it is safe. |
 | 2 | `metadata.bookingIds` is written only by the CART checkout path. An optimizer PI carries `metadata.type="optimization_fee"` + `userId` (`optimization.routes.ts:554`, `:559`) and no `bookingIds`. So the destructure yields `undefined` and `.split` raises a **TypeError**. |
 | 3 | `handleWebhook` catches, logs `Webhook handling error:` and **rethrows** (`stripe-payment.service.ts`, end of the method). |
 | 4 | The route catches and answers **HTTP 400** (`server/routes/bookings.ts:571-575`). |
@@ -17,7 +18,9 @@ Stripe treats a non-2xx as a failed delivery and redelivers with backoff, so eac
 same TypeError. The event is never acknowledged and the failure is never recorded.
 
 **Blast radius is every PaymentIntent that is not a cart checkout:** the optimizer run, Trip Pass,
-the ready-made purchase, the coordination fee, the expert-service session and the balance payment.
+the ready-made purchase, the coordination fee, the expert-service session and the balance payment
+— **times two events**, since `payment_intent.canceled` fires on an abandoned or cancelled PI and
+takes the same unguarded path. An abandoned Trip Pass checkout is the commonest way to hit it.
 
 **#857 is the same defect seen from the traveler's side.** The board files it as "a traveler's
 remaining credits disappear if a payment fails mid-flow" — credits are only released on a *handled*
@@ -34,8 +37,9 @@ nothing did the same for the failure path.
 
 ## Build
 
-1. **Guard the destructure first.** `bookingIds` absent must not throw. This alone stops the retry
-   storm and is the smallest safe change in the lane.
+1. **Guard the destructure first, in BOTH handlers.** `bookingIds` absent must not throw. Copy the
+   shape `handlePaymentSucceeded` already uses at `:846` rather than inventing a second one
+   (§18 rule 1). This alone stops the retry storm and is the smallest safe change in the lane.
 2. **Answer Stripe 2xx once the event is understood.** A 400 is correct for a signature failure and
    wrong for "this PI is not mine" — retrying cannot change the outcome.
 3. **Route by `metadata.type`, the way the success path routes by rail.** A cart PI keeps its

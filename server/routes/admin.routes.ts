@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
 import { assertReadyMadeComplete } from "./ready-made.routes";
 import { resolveConciergeTierView } from "../utils/concierge-tier-filter";
@@ -2739,7 +2740,7 @@ router.patch("/api/admin/expert-applications/:id/rejection-reason", isAuthentica
     const schema = z.object({ rejectionMessage: z.string().trim().min(1, "rejectionMessage must be a non-empty string").max(2000, "rejectionMessage must be 2000 characters or fewer") });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: parsed.error.errors[0].message });
+      return res.status(400).json(zodErrorBody(parsed.error));
     }
     const { rejectionMessage } = parsed.data;
     const updated = await storage.updateLocalExpertFormRejectionMessage(req.params.id, rejectionMessage);
@@ -3034,7 +3035,7 @@ router.patch("/api/admin/provider-applications/:id/rejection-reason", isAuthenti
     const schema = z.object({ rejectionMessage: z.string().trim().min(1, "rejectionMessage must be a non-empty string").max(2000, "rejectionMessage must be 2000 characters or fewer") });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: parsed.error.errors[0].message });
+      return res.status(400).json(zodErrorBody(parsed.error));
     }
     const { rejectionMessage } = parsed.data;
     const updated = await storage.updateServiceProviderFormRejectionMessage(req.params.id, rejectionMessage);
@@ -3100,7 +3101,7 @@ router.post("/api/admin/service-templates", isAuthenticated, async (req, res) =>
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to create template" });
     }
@@ -3122,7 +3123,7 @@ router.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, re
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to update template" });
     }
@@ -3296,7 +3297,7 @@ router.post("/api/admin/categories", isAuthenticated, async (req, res) => {
       res.status(201).json(category);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to create category" });
     }
@@ -3415,7 +3416,7 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to update category" });
     }
@@ -3449,7 +3450,7 @@ router.post("/api/admin/categories/:categoryId/subcategories", isAuthenticated, 
       res.status(201).json(subcategory);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to create subcategory" });
     }
@@ -3471,7 +3472,7 @@ router.patch("/api/admin/subcategories/:id", isAuthenticated, async (req, res) =
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json(zodErrorBody(err));
       }
       res.status(500).json({ message: "Failed to update subcategory" });
     }
@@ -8684,12 +8685,34 @@ router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) =
       .returning();
 
     // Destroy all active sessions for this user so the suspension takes effect immediately.
+    // All three login paths serialize `claims.sub` — email login (emailAuth.ts:250), email
+    // register (:148) and Facebook (facebookAuth.ts:147) — so this selector reaches every
+    // session, not only Replit-issued ones.
     try {
       await db.execute(
         sql`DELETE FROM sessions WHERE sess->'passport'->'user'->'claims'->>'sub' = ${id}`
       );
     } catch (sessErr) {
       console.warn("[admin/suspend] session purge failed (non-fatal):", (sessErr as any)?.message);
+    }
+
+    // #1435 — the purge above CANNOT reach an already-open WebSocket. That socket authenticated
+    // before the suspension existed and holds no session reference afterwards, so deleting the
+    // session row stops the next handshake and leaves a live one messaging indefinitely. Closing
+    // it is a separate act and belongs here, next to the purge, for the same reason the purge is
+    // here: suspension is the action whose whole point is to take effect immediately.
+    // Non-fatal like the purge — a suspension must not fail because a socket could not be closed.
+    try {
+      const { disconnectUser } = await import("../websocket");
+      const closed = disconnectUser(id);
+      // §13: "closed a socket" and "there was none open" are different facts, so the log says which.
+      console.log(
+        closed
+          ? `[admin/suspend] closed live WebSocket for ${id}`
+          : `[admin/suspend] no live WebSocket for ${id}`
+      );
+    } catch (wsErr) {
+      console.warn("[admin/suspend] WebSocket disconnect failed (non-fatal):", (wsErr as any)?.message);
     }
 
     await insertAccessAuditLog({
