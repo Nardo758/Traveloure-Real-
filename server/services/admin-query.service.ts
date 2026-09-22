@@ -15,7 +15,7 @@ import {
 // §18 rule 1) — this file calls it and never inserts the row itself, which is why the table is
 // no longer imported here.
 import { upsertTripAdvisorRow } from "./booking-actions.service";
-import { BENCHMARK_REVENUE_STATUSES } from "../routes/demand.routes";
+import { BENCHMARK_REVENUE_STATUSES } from "../utils/realized-revenue-statuses";
 import {
   eq, and, or, like, sql, desc, count, inArray, isNotNull, asc,
 } from "drizzle-orm";
@@ -302,7 +302,7 @@ export async function getProviderServicesForUser(userId: string) {
     // has no decrement path and so stays inflated after a refund. Realized aggregate, one imported
     // status list (§18 rule 1), 0 reported honestly for a listing with no realized bookings (§13).
     bookingsCount: sql<number>`count(${serviceBookings.id})::int`,
-    totalRevenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
+    totalRevenue: sql<string>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
     averageRating: providerServices.averageRating,
     reviewCount: providerServices.reviewCount,
     location: providerServices.location,
@@ -593,7 +593,7 @@ export async function getTopProvidersByBookings(limit = 10) {
     userId: providerServices.userId,
     serviceName: providerServices.serviceName,
     bookingsCount: sql<number>`count(${serviceBookings.id})::int`,
-    totalRevenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
+    totalRevenue: sql<string>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
     averageRating: providerServices.averageRating,
   }).from(providerServices)
     .leftJoin(
@@ -1483,7 +1483,7 @@ export async function getProviderMarketReport() {
     db.select({
       serviceName: providerServices.serviceName,
       bookings: sql<number>`count(${serviceBookings.id})::int`,
-      revenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
+      revenue: sql<string>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
       rating: providerServices.averageRating,
     }).from(providerServices)
       .leftJoin(
