@@ -69,3 +69,4 @@
 - [Moment media association](moment-media-association.md) — expert photos need an explicit exact Moment key; never infer an occasion from city alone.
 - [Secret refresh boundaries](secret-refresh-boundaries.md) — secure-form secret updates do not refresh existing workspace shell environments; validate through a republish or newly injected runtime.
 - [Platform Stripe webhook verified](platform-stripe-webhook-verified.md) — live bookings webhook passed signature verification, durable insert, no-op isolation, and first-attempt 200.
+- [Stripe Stage 2 subscription hold](stripe-stage2-subscription-hold.md) — dark payment/refund/Connect events require a human ruling and staged activation; never enable them opportunistically.
