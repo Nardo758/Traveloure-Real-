@@ -68,7 +68,7 @@ named in `basis`, confirm, close. **Promote to a lane brief only where the gap i
   "lane brief required" flag and are blocked from direct execution. A one-line ticket on one of
   these is how the `revenueShareRate` hole got written.
 
-## Batch D — Operator / production. Eight, and only Replit can do them.
+## Batch D — Operator / production. Nine, and only Replit can do them.
 
 | # | Action |
 |---|---|
@@ -79,10 +79,11 @@ named in `basis`, confirm, close. **Promote to a lane brief only where the gap i
 | #1725 | **Read-only, and it UNBLOCKS a checkout lane.** Run `SELECT user_id, count(*) FROM local_expert_forms GROUP BY 1 HAVING count(*) > 1;` against production and report the rows. The fix is a UNIQUE index, but a violated UNIQUE fails the publish and offers the destructive copy-dev-over-prod option, so the duplicates must be known before the migration is written. Report the count — do not delete anything. |
 | §7 | **Read-only, and it SIZES a live defect.** `provider_services.form_status` is filtered `= 'approved'` by three queries in `recommendation.service.ts` while NOTHING in the repository writes the column. Report `SELECT form_status, approval_status, count(*) FROM provider_services GROUP BY 1, 2 ORDER BY 3 DESC;` from production. It decides whether the blast radius is every listing or only those created since some historical backfill — the brief (`docs/briefs/FORM_STATUS_FILTERS_EXCLUDE_EVERY_REAL_LISTING.md`) deliberately claims no row count without it. |
 | **PAT** | **HIGHEST-VALUE OPERATOR STEP ON THIS LIST, and it unblocks three board tasks.** `enforce-branch-protection.yml` has **403'd on every run since at least 2026-08-30** — including run 853, right after #1034 merged — because `BRANCH_PROTECTION_PAT` is absent and the `GITHUB_TOKEN` fallback cannot update branch protection. **So `.github/branch-protection.json` is a declaration that no automation applies.** Create a repo-scoped PAT with the `administration` scope, store it as the repo secret `BRANCH_PROTECTION_PAT`, re-run the workflow via `workflow_dispatch`, and confirm it goes green — that will be the first time the applied and declared sets are reconciled by machine rather than assumed equal. It unblocks #713/#786/#787, whose green baselines are already measured. Brief: `docs/briefs/BRANCH_PROTECTION_ENFORCER_IS_DEAD.md`. **This writes no SQL and touches no database.** |
+| #298 | **Read-only, and it unblocks a schema lane.** `destination_events` has no unique index and four writers with three different dedupe identities. Before one can be written, report BOTH from production: `SELECT source_type, source_id, count(*) FROM destination_events WHERE source_id IS NOT NULL GROUP BY 1,2 HAVING count(*) > 1;` and `SELECT country, city, title, specific_date, count(*) FROM destination_events WHERE source_id IS NULL GROUP BY 1,2,3,4 HAVING count(*) > 1;` Duplicates are likely rather than hypothetical, since three of the four writers dedupe loosely or not at all, and the counts decide whether this needs a dedupe migration before the index. Brief: `docs/briefs/DESTINATION_EVENTS_IDENTITY.md`. **Report the rows — delete nothing.** |
 | R-7 | **Read-only.** `provider_services.service_type` carries a second, category-shaped vocabulary beside the declared six. Report `SELECT service_type, count(*) FROM provider_services GROUP BY 1 ORDER BY 2 DESC;` from production so the real value set is known before anything is declared or constrained. Punchlist row, not a board id. |
 
-**§20 applies to all eight.** The ONLY approvable publish prompt is an `ADD COLUMN IF NOT EXISTS`
-matching a registered, unstamped migration. None of these eight adds a column — three are
+**§20 applies to all nine.** The ONLY approvable publish prompt is an `ADD COLUMN IF NOT EXISTS`
+matching a registered, unstamped migration. None of these nine adds a column — four are
 `SELECT`s and one is a repository secret, all writing nothing to any database — so **any** SQL prompt they raise is a decline-and-stop. Never accept "copy development database to production"
 under any wording.
 
