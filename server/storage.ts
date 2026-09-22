@@ -1569,16 +1569,28 @@ export class DatabaseStorage implements IStorage {
         .onConflictDoNothing();
     }
 
-    // Auto-register in content tracking system
-    await this.registerContent({
-      trackingNumber,
-      contentType: 'trip',
-      contentId: newTrip.id,
-      ownerId: newTrip.userId || undefined,
-      title: newTrip.title || 'Untitled Trip',
-      status: newTrip.status === 'draft' ? 'draft' : 'published',
-      metadata: { destination: newTrip.destination, eventType: newTrip.eventType },
-    });
+    // Auto-register in content tracking system. ANCILLARY, and therefore GUARDED (§15b: an
+    // ancillary effect may not break the operation that authorizes it). The pen drain three lines
+    // below already takes exactly this posture for this same mint (ledger `2026-09-04-plan-mint`
+    // (b) — "it never throws and never fails the mint"); this call sat directly above that comment
+    // without honouring it, so a content-registry failure destroyed a trip the traveler had
+    // successfully created. A missing registry row is re-creatable; the trip is not.
+    try {
+      await this.registerContent({
+        trackingNumber,
+        contentType: 'trip',
+        contentId: newTrip.id,
+        ownerId: newTrip.userId || undefined,
+        title: newTrip.title || 'Untitled Trip',
+        status: newTrip.status === 'draft' ? 'draft' : 'published',
+        metadata: { destination: newTrip.destination, eventType: newTrip.eventType },
+      });
+    } catch (err) {
+      logger.error(
+        { tripId: newTrip.id, trackingNumber, err },
+        "[content-registry] trip registration failed — the trip is KEPT (§15b: an ancillary effect never fails the mint that authorizes it).",
+      );
+    }
 
     // Ledger `2026-09-04-plan-mint` (b): the plan now exists, so the pre-trip holding pen can be
     // promoted into real event rows. ONE implementation for every mint site; it never throws and
@@ -1651,15 +1663,24 @@ export class DatabaseStorage implements IStorage {
     const trackingNumber = await this.generateTrackingNumber('TRV');
     const [newItinerary] = await db.insert(generatedItineraries).values({ ...itinerary, trackingNumber }).returning();
     
-    // Auto-register in content tracking system
-    await this.registerContent({
-      trackingNumber,
-      contentType: 'itinerary',
-      contentId: newItinerary.id,
-      title: `Itinerary for Trip ${itinerary.tripId}`,
-      status: newItinerary.status === 'pending' ? 'draft' : 'published',
-      metadata: { tripId: itinerary.tripId },
-    });
+    // Auto-register in content tracking system — GUARDED for the same reason as the trip mint
+    // above (§15b). The itinerary row is already committed by the time this runs, so throwing here
+    // would surface a failure for work that actually succeeded.
+    try {
+      await this.registerContent({
+        trackingNumber,
+        contentType: 'itinerary',
+        contentId: newItinerary.id,
+        title: `Itinerary for Trip ${itinerary.tripId}`,
+        status: newItinerary.status === 'pending' ? 'draft' : 'published',
+        metadata: { tripId: itinerary.tripId },
+      });
+    } catch (err) {
+      logger.error(
+        { itineraryId: newItinerary.id, tripId: itinerary.tripId, trackingNumber, err },
+        "[content-registry] itinerary registration failed — the itinerary is KEPT (§15b).",
+      );
+    }
     
     return newItinerary;
   }
