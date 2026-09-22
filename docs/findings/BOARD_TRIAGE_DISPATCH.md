@@ -67,7 +67,7 @@ named in `basis`, confirm, close. **Promote to a lane brief only where the gap i
   "lane brief required" flag and are blocked from direct execution. A one-line ticket on one of
   these is how the `revenueShareRate` hole got written.
 
-## Batch D — Operator / production. Six, and only Replit can do them.
+## Batch D — Operator / production. Seven, and only Replit can do them.
 
 | # | Action |
 |---|---|
@@ -76,10 +76,11 @@ named in `basis`, confirm, close. **Promote to a lane brief only where the gap i
 | #1258 | Run `scripts/check-undeclared-tables.cjs` against the **production** database. The guard exists; it has never been run against prod from a checkout that cannot reach it. |
 | #525 | Verify the migration chain on a fresh production-shaped DB. |
 | #1725 | **Read-only, and it UNBLOCKS a checkout lane.** Run `SELECT user_id, count(*) FROM local_expert_forms GROUP BY 1 HAVING count(*) > 1;` against production and report the rows. The fix is a UNIQUE index, but a violated UNIQUE fails the publish and offers the destructive copy-dev-over-prod option, so the duplicates must be known before the migration is written. Report the count — do not delete anything. |
+| §7 | **Read-only, and it SIZES a live defect.** `provider_services.form_status` is filtered `= 'approved'` by three queries in `recommendation.service.ts` while NOTHING in the repository writes the column. Report `SELECT form_status, approval_status, count(*) FROM provider_services GROUP BY 1, 2 ORDER BY 3 DESC;` from production. It decides whether the blast radius is every listing or only those created since some historical backfill — the brief (`docs/briefs/FORM_STATUS_FILTERS_EXCLUDE_EVERY_REAL_LISTING.md`) deliberately claims no row count without it. |
 | R-7 | **Read-only.** `provider_services.service_type` carries a second, category-shaped vocabulary beside the declared six. Report `SELECT service_type, count(*) FROM provider_services GROUP BY 1 ORDER BY 2 DESC;` from production so the real value set is known before anything is declared or constrained. Punchlist row, not a board id. |
 
-**§20 applies to all six.** The ONLY approvable publish prompt is an `ADD COLUMN IF NOT EXISTS`
-matching a registered, unstamped migration. None of these six adds a column — the last two are
+**§20 applies to all seven.** The ONLY approvable publish prompt is an `ADD COLUMN IF NOT EXISTS`
+matching a registered, unstamped migration. None of these seven adds a column — the last three are
 `SELECT`s and write nothing — so **any** SQL prompt they raise is a decline-and-stop. Never accept "copy development database to production"
 under any wording.
 
