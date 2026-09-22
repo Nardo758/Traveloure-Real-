@@ -28,18 +28,18 @@ Counting these once instead of five times is the whole point of one register.
 | D | Operator steps against production | Replit | 4 |
 | E | WIP cap | Replit | — |
 | F | Tier-A code fixes | Checkout | 68 |
-| G | Punchlist open rows | Checkout + decision-maker | 8 |
+| G | Punchlist open rows | Checkout + decision-maker | 8 → **3** |
 | H | Decisions | Decision-maker | 8 → **6** |
 
 Batches A–E are `docs/findings/BOARD_TRIAGE_DISPATCH.md` (v2). F–H are below.
 
-## G — Punchlist rows still open, folded in
+## G — Punchlist rows, folded in — **five of eight close on verification**
 
 | Row | What it is | Owner |
 |---|---|---|
 | ~~**V-25 (a)**~~ | **CLOSED — verified 2026-09-22, no lane.** Both halves are done. The writer (`storage.ts:4917`) takes `expectedFromStatuses`, appends history as a SQL expression (no read-modify-write) and stamps `COALESCE(completed_at, NOW())` per §18b(a). The route (`routes.ts:10398`) passes `[fromStatus]` from BOTH arms through the one call site, treats its own pre-check as the error message only, and answers **409** on a lost race rather than `success: true`. |
 | **V-36** | The wrong-role audit's 40-rail exclusion list, hand-copied into the coverage generator. Merges with board #1677/#1678/#1679. | Checkout |
-| **V-22, V-30, V-31** | Named open in `PUNCHLIST.md` §0; their rows are struck-with-pointer in §2/§3, so re-read §0 before scheduling. | Checkout |
+| ~~**V-22, V-29, V-30, V-31**~~ | **ALL CLOSED — verified 2026-09-22, no lane.** §0's summary sentence is the stale part, not the rows: V-22 closed 2026-09-16 (`2026-09-15-d28-d31-service-quotes`, D-30's second half — the quote handler now answers `PRICELESS_LISTING_REFUSAL` before the birth), and V-29/V-30/V-31 all closed 2026-09-15 (`-v29-one-trip-write-resolver`, `-test-guard-prose-echo`, `-v31-loginas-verifies`). This is why the row said "re-read §0 first" — the answer is that §0 itself needs the correction. |
 | **R-7** | `provider_services.service_type` carries a second, category-shaped vocabulary beside the declared six. **Needs the production database** — so it is Replit's, not the checkout's. | **Replit** |
 | **§6** | The Concierge Booking custody design's companion audit is not committed. | Decision-maker |
 | **§7** | **SUPERSEDED — and the correction is the finding.** `form_status` is NOT dead: it has **three live filters** (`recommendation.service.ts:716, :1066, :1402`) gating `= 'approved'` on a column with **zero writers** outside `server/seeds/`, so they match seeded rows and exclude every real listing — including on the live unauthenticated `GET /api/recommendations/user`. The canonical column is `approval_status`, and the SAME FILE already uses it at `:803`. Brief: `docs/briefs/FORM_STATUS_FILTERS_EXCLUDE_EVERY_REAL_LISTING.md`; one decision inside (whether the gate also carries `status = 'active'`). | Checkout + decision-maker |
