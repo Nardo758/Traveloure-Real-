@@ -428,7 +428,7 @@ id	group	title	verdict	routing_class	confidence	basis
 567	G11	Catch migration-chain gaps	CLOSE-DONE	TEST-PROGRAM	A verified	migration-files.ts is canonical for runtime AND the chain-integrity test (CLAUDE.md)
 678	G11	Cover /earn error banners in smoke tests	BUILD	TEST-PROGRAM	B probe(none)	No implementation found under probed identifiers.
 712	G11	Catch stale navigation and footer links	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (10 files, 7 test/CI).
-713	G11	Require the footer-link gate	BUILD	BUILD	A verified	footer-links-gate.yml exists, NOT in branch-protection.json's 10 contexts. One-file edit.
+713	G11	Require the footer-link gate	BLOCKED(operator precondition)	BUILD	A verified	RECLASSIFIED 2026-09-22 from BUILD. The one-file edit is a NO-OP: enforce-branch-protection.yml 403s on every run (missing BRANCH_PROTECTION_PAT), so branch-protection.json is not applied by automation. Green baseline MEASURED and sufficient (footer-links-gate 23/23 green, zero failures), so the promotion is correct and blocked only on the operator step. Brief: docs/briefs/BRANCH_PROTECTION_ENFORCER_IS_DEAD.md
 714	G11	Check static-page links	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
 715	G11	Check navbar links	VERIFY-THEN-CLOSE	BUILD	B probe(built+tested)	Feature area present and test/gate-covered (6 files, 4 test/CI).
 742	G11	Keep EA route smoke lists synchronized	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
@@ -438,11 +438,11 @@ id	group	title	verdict	routing_class	confidence	basis
 776	G11	Block merges with broken app routes	CLOSE-DONE	LANE-BRIEF(security)	A verified	'app-routes-smoke' already a required context in .github/branch-protection.json
 777	G11	Block broken auth-gated routes	CLOSE-DONE	LANE-BRIEF(security)	A verified	'auth-routes-smoke' already a required context in .github/branch-protection.json
 782	G11	Validate the CI-user seed script	BUILD	BUILD	C routed	Routed by governance class; staleness not individually probed.
-786	G11	Require remaining Tier 2 checks	BUILD	BUILD	A verified	Same one-file edit as #713/#787/#790 (10 required contexts vs 51 workflows).
-787	G11	Require the neighborhood gate	BUILD	BUILD	A verified	neighborhoods-gate.yml exists, not required.
+786	G11	Require remaining Tier 2 checks	BLOCKED(operator precondition)	BUILD	A verified	RECLASSIFIED 2026-09-22 from BUILD - same root cause as #713. Baseline MEASURED: selection-controls-gate 22/22 green, zero failures. NOTE the doc's own caveat: lockfile-purity exists as a job in TWO workflows, so requiring the context once may cover only one - decide deliberately. Brief: docs/briefs/BRANCH_PROTECTION_ENFORCER_IS_DEAD.md
+787	G11	Require the neighborhood gate	BLOCKED(operator precondition)	BUILD	A verified	RECLASSIFIED 2026-09-22 from BUILD - same root cause as #713. Baseline MEASURED: neighborhoods-gate 23/23 green, zero failures. Brief: docs/briefs/BRANCH_PROTECTION_ENFORCER_IS_DEAD.md
 788	G11	Parallelize auth-route checks	BUILD	LANE-BRIEF(security)	B probe(none)	No implementation found under probed identifiers.
 789	G11	Require the bundle-build check	CLOSE-DONE	BUILD	A verified	'build (vite + esbuild bundle)' already a required context
-790	G11	Require remaining Tier 1 gates	BUILD	BUILD	A verified	Same one-file edit as #713/#786/#787.
+790	G11	Require remaining Tier 1 gates	CLOSE-DONE	BUILD	A verified	CORRECTED 2026-09-22: already satisfied IN THE FILE by PR #1034 - CI_GATES.md declares 13 Tier-1 contexts and branch-protection.json lists exactly those 13, zero drift either direction. The basis note's '10 required contexts' predates that merge. BUT SEE docs/briefs/BRANCH_PROTECTION_ENFORCER_IS_DEAD.md: the enforcer that applies the file has 403'd on EVERY run since at least 2026-08-30, so the file is a declaration, not an enforcement.
 791	G11	Share setup cache across gate workflows	BUILD	BUILD	B probe(none)	No implementation found under probed identifiers.
 800	G11	Detect workflows that fail to initialize Postgres	CLOSE-DONE	TEST-PROGRAM	A verified	.github/workflows/ci-db-setup-lint.yml
 804	G11	Catch broken cart redirects	VERIFY-THEN-CLOSE	TEST-PROGRAM	B probe(built+tested)	Feature area present and test/gate-covered (5 files, 3 test/CI).

@@ -25,7 +25,7 @@ Counting these once instead of five times is the whole point of one register.
 | A | Close (59) | Replit | 59 |
 | B | Verify then close | Replit | 34 |
 | C | Re-file coverage tasks / flag governed | Replit | 112 + 114 |
-| D | Operator steps against production | Replit | 4 |
+| D | Operator steps against production | Replit | 4 → **8** (incl. the `BRANCH_PROTECTION_PAT` step, which unblocks three board tasks) |
 | E | WIP cap | Replit | — |
 | F | Tier-A code fixes | Checkout | 68 |
 | G | Punchlist open rows | Checkout + decision-maker | 8 → **3** |

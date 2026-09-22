@@ -69,6 +69,31 @@ enforcement. Promote to Tier 1 as each gets a passing run.
 
 ## How to configure branch protection
 
+> ### ⚠️ PREREQUISITE — `BRANCH_PROTECTION_PAT`, and it is currently MISSING
+>
+> `.github/branch-protection.json` is applied to `main` by
+> `.github/workflows/enforce-branch-protection.yml`. Updating branch protection requires repo
+> **administration** rights, which a `GITHUB_TOKEN` cannot be granted, so that workflow
+> authenticates with the repository secret **`BRANCH_PROTECTION_PAT`** (a repo-scoped PAT carrying
+> the `administration` scope) and falls back to `GITHUB_TOKEN` only to make the failure legible.
+>
+> **As of 2026-09-22 that secret is absent, and the workflow has failed every run since at least
+> 2026-08-30** with `Resource not accessible by integration (HTTP 403)` — including the run right
+> after PR #1034 merged. **While that is true, editing `branch-protection.json` changes nothing
+> that is enforced:** the file is a declaration, not an enforcement, and any protection live on
+> `main` was applied by hand.
+>
+> It went unnoticed because the enforcer is deliberately **not** itself a required check, it runs
+> only on `main` pushes touching three paths, and — until this note — this document never mentioned
+> the secret, so its absence was on nobody's checklist.
+>
+> **Fix:** create the PAT, store it as `BRANCH_PROTECTION_PAT`, re-run the workflow via
+> `workflow_dispatch`, and confirm the applied set matches the declared one. Full write-up:
+> `docs/briefs/BRANCH_PROTECTION_ENFORCER_IS_DEAD.md`.
+>
+> Until then, steps 1–6 below (the manual UI route) are the ONLY way a gate actually becomes
+> required.
+
 1. Go to **GitHub → repository → Settings → Branches**
 2. Click **Edit** on the `main` branch protection rule (or create one)
 3. Check **"Require status checks to pass before merging"**
