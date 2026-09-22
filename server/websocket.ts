@@ -93,29 +93,80 @@ export function setupWebSocket(server: Server, sessionMiddleware: RequestHandler
     // `sessions` table and populates req.session; no HTTP response is ever sent
     // on this stub, so a no-op res is sufficient.
     sessionMiddleware(req as any, {} as any, () => {
-      authPending = false;
-      ws.off("message", bufferWhileAuthing);
-
       const sessionUser = (req as any).session?.passport?.user;
       // Replicate getUserId's exact precedence (claims?.sub ?? id) against the
       // session-stored passport user — serialize/deserialize are identity functions,
       // so req.session.passport.user IS the full user object getUserId expects.
       const userId = getUserId({ user: sessionUser } as any);
 
-      if (!userId) {
+      const refuse = (reason: string) => {
+        authPending = false;
+        ws.off("message", bufferWhileAuthing);
         try {
-          ws.send(JSON.stringify({ type: "error", error: "unauthenticated" }));
+          ws.send(JSON.stringify({ type: "error", error: reason }));
         } catch {
           // socket may already be closing; nothing to do
         }
-        ws.close(1008, "unauthenticated");
-        return; // `pending` is discarded here, unread — never processed.
+        ws.close(1008, reason);
+        // `pending` is discarded here, unread — never processed.
+      };
+
+      if (!userId) {
+        refuse("unauthenticated");
+        return;
       }
 
-      handleAuthenticatedConnection(ws, userId, peerIp);
-      for (const data of pending) {
-        ws.emit("message", data);
-      }
+      // #1435 — A SUSPENDED USER MAY NOT HOLD A SOCKET.
+      //
+      // Suspension has two enforcement layers and NEITHER reaches this one. The admin
+      // suspend handler purges the user's `sessions` rows, which stops the NEXT handshake
+      // but cannot touch a socket that is already open — once established, this connection
+      // holds no session reference at all. And `isAuthenticated`'s per-request DB check
+      // (replitAuth.ts) is HTTP-only middleware that never runs here. So without this check
+      // a suspended user kept messaging until they chose to disconnect — on the one surface
+      // where "stop immediately" is the entire point of the action.
+      //
+      // The check is the SAME question `isAuthenticated` asks, so it takes the same answers:
+      // suspended or deleted ⇒ refuse, and a DB error ⇒ REFUSE (fail-closed), never "let them
+      // in because the lookup failed". A second, laxer predicate here is the drift class
+      // §18 rule 1 names — this deliberately mirrors that middleware rather than inventing a
+      // WebSocket-specific rule.
+      //
+      // `authPending` STAYS TRUE across this await: messages that arrive while the lookup is
+      // in flight keep buffering into `pending` and are replayed only if the check passes, so
+      // a refused connection never processes a frame it received mid-check.
+      void (async () => {
+        let account: { isSuspended?: boolean | null; isDeleted?: boolean | null } | undefined;
+        try {
+          account = await storage.getUser(userId);
+        } catch (err) {
+          log(`account-status check failed for ${userId} — refusing socket (fail-closed): ${(err as any)?.message}`);
+          refuse("unavailable");
+          return;
+        }
+
+        if (!account) {
+          refuse("unauthenticated");
+          return;
+        }
+        if (account.isDeleted) {
+          refuse("account_deleted");
+          return;
+        }
+        if (account.isSuspended) {
+          log(`refused WebSocket for suspended user ${userId}`);
+          refuse("account_suspended");
+          return;
+        }
+
+        authPending = false;
+        ws.off("message", bufferWhileAuthing);
+
+        handleAuthenticatedConnection(ws, userId, peerIp);
+        for (const data of pending) {
+          ws.emit("message", data);
+        }
+      })();
     });
   });
 
@@ -261,4 +312,37 @@ export function broadcastToUser(userId: string, message: object) {
 
 export function getConnectedUsers(): string[] {
   return Array.from(clients.keys());
+}
+
+/**
+ * #1435 — close a user's live socket immediately.
+ *
+ * The handshake check above refuses a NEW connection from a suspended user, and the admin suspend
+ * handler purges their `sessions` rows so no new handshake can authenticate. Neither reaches a
+ * socket that is ALREADY OPEN: it holds no session reference, and the handshake ran before the
+ * suspension existed. This is the one call that can end it, so the suspend path calls it.
+ *
+ * Returns whether a socket was actually closed, so the caller can log the fact rather than assume
+ * it (§13 — "we closed a connection" and "there was none to close" are different outcomes).
+ * Deliberately NOT called on unsuspend: a reconnect is the user's own action.
+ */
+export function disconnectUser(userId: string, reason = "account_suspended"): boolean {
+  const client = clients.get(userId);
+  if (!client) return false;
+
+  try {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(JSON.stringify({ type: "error", error: reason }));
+    }
+  } catch {
+    // socket may already be closing; the close below is what matters
+  }
+  try {
+    client.ws.close(1008, reason);
+  } catch {
+    // already closed — the delete below still needs to happen
+  }
+  clients.delete(userId);
+  log(`closed live WebSocket for ${userId} (${reason})`);
+  return true;
 }

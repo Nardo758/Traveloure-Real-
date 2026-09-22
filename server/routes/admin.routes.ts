@@ -8685,12 +8685,34 @@ router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) =
       .returning();
 
     // Destroy all active sessions for this user so the suspension takes effect immediately.
+    // All three login paths serialize `claims.sub` — email login (emailAuth.ts:250), email
+    // register (:148) and Facebook (facebookAuth.ts:147) — so this selector reaches every
+    // session, not only Replit-issued ones.
     try {
       await db.execute(
         sql`DELETE FROM sessions WHERE sess->'passport'->'user'->'claims'->>'sub' = ${id}`
       );
     } catch (sessErr) {
       console.warn("[admin/suspend] session purge failed (non-fatal):", (sessErr as any)?.message);
+    }
+
+    // #1435 — the purge above CANNOT reach an already-open WebSocket. That socket authenticated
+    // before the suspension existed and holds no session reference afterwards, so deleting the
+    // session row stops the next handshake and leaves a live one messaging indefinitely. Closing
+    // it is a separate act and belongs here, next to the purge, for the same reason the purge is
+    // here: suspension is the action whose whole point is to take effect immediately.
+    // Non-fatal like the purge — a suspension must not fail because a socket could not be closed.
+    try {
+      const { disconnectUser } = await import("../websocket");
+      const closed = disconnectUser(id);
+      // §13: "closed a socket" and "there was none open" are different facts, so the log says which.
+      console.log(
+        closed
+          ? `[admin/suspend] closed live WebSocket for ${id}`
+          : `[admin/suspend] no live WebSocket for ${id}`
+      );
+    } catch (wsErr) {
+      console.warn("[admin/suspend] WebSocket disconnect failed (non-fatal):", (wsErr as any)?.message);
     }
 
     await insertAccessAuditLog({
