@@ -1171,6 +1171,9 @@ This document captures architectural decisions to maintain consistency across co
     in its own shapes, and ruling 33 left exactly one. Same ruling: **CityGrid's "Plan now" opens
     the modal with `{ city, country }` pre-filled** — the grid holds both, so under D13 it passes
     both, and a traveler who clicked a specific city is never asked which city.
+    **Executed 2026-09-21:** the registered `/quick-start` route remains as a compatibility
+    redirect to `/destinations`, while CityGrid opens the one planning modal directly and the
+    planning-entry guard pins both required fields.
 
     **D15 — A PLAN STARTED FROM A LISTING ENDS BACK AT THAT LISTING.** `PlanningSource` gains
     **return-to context** — `returnTo: { kind: 'service' | 'expert', id/handle }` — so a plan
@@ -2647,6 +2650,16 @@ All service creation routes converge on one destination: `POST /api/provider/ser
   lowercase spelling and npm resolves a case-collision in its favor; the same-key pin overwrites it at
   shell spawn). With the pin in force `npm config get registry` reports the real registry and pollution
   never forms. The layers below are defense-in-depth for the day a platform change outflanks it.
+  **THE PIN WAS SILENTLY ABSENT FROM 2026-08-16 TO 2026-09-22, AND THIS PARAGRAPH KEPT ASSERTING IT
+  (ledger `2026-09-22-replit-env-vars-restored`).** `e9511082b` — a commit whose subject is console
+  conformance screenshots — deleted the pin and its comment block from `.replit` as collateral, and
+  nothing noticed for five weeks because the failure is SILENT BY DESIGN: the `postinstall` scrub
+  catches pollution at the formation event, so the only observable difference is that pollution is
+  now SCRUBBED rather than PREVENTED. The pin is restored. **The lesson is about this file, not about
+  `.replit`: a "VERIFIED WORKING" claim in CLAUDE.md is a claim about a date, never about now.** No
+  guard reads `.replit`, so nothing could have contradicted the sentence — which is exactly the shape
+  §18d calls a predicate that cannot fail. Treat every prevention layer named here as
+  CHECKABLE-BUT-UNCHECKED, and check it rather than trusting the prose.
 - Guards, in order: the `postinstall` script scrubs immediately after EVERY install — at the formation
   event itself, regardless of who invoked the install (added Aug 11, 2026; this also covers commits made
   through hook-bypassing interfaces, e.g. Replit's Git pane); `scripts/post-merge.sh` scrubs right after

@@ -188,7 +188,6 @@ const BlogPage = lazy(() => import("@/pages/blog"));
 const PressPage = lazy(() => import("@/pages/press"));
 const HelpPage = lazy(() => import("@/pages/help"));
 const ExpertDetailPage = lazy(() => import("@/pages/expert-detail"));
-const QuickStartItinerary = lazy(() => import("@/pages/quick-start-itinerary"));
 const MyItineraryPage = lazy(() => import("@/pages/my-itinerary"));
 const ItineraryViewPage = lazy(() => import("@/pages/itinerary-view"));
 const SharedTripPage = lazy(() => import("@/pages/shared-trip"));
@@ -602,7 +601,7 @@ function Router() {
         <Layout><HiddenGemsPage /></Layout>
       </Route>
       <Route path="/quick-start">
-        {() => <Layout><ProtectedRoute component={QuickStartItinerary} /></Layout>}
+        <Redirect to="/destinations" />
       </Route>
       {/* /payment was a stale, orphaned checkout page (no in-app Link/setLocation targets
           it) that hard-crashed on the current object-shaped GET /api/cart response —
