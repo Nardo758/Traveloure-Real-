@@ -15,6 +15,7 @@ import {
 // §18 rule 1) — this file calls it and never inserts the row itself, which is why the table is
 // no longer imported here.
 import { upsertTripAdvisorRow } from "./booking-actions.service";
+import { BENCHMARK_REVENUE_STATUSES } from "../routes/demand.routes";
 import {
   eq, and, or, like, sql, desc, count, inArray, isNotNull, asc,
 } from "drizzle-orm";
@@ -296,15 +297,28 @@ export async function getProviderServicesForUser(userId: string) {
     deliveryMethod: providerServices.deliveryMethod,
     status: providerServices.status,
     isFeatured: providerServices.isFeatured,
-    bookingsCount: providerServices.bookingsCount,
-    totalRevenue: providerServices.totalRevenue,
+    // Same ruling as getProviderMarketReport below (`2026-09-22-denorm-counters-are-display-only`):
+    // an admin surface showing a provider's REVENUE may not read the `total_revenue` denorm, which
+    // has no decrement path and so stays inflated after a refund. Realized aggregate, one imported
+    // status list (§18 rule 1), 0 reported honestly for a listing with no realized bookings (§13).
+    bookingsCount: sql<number>`count(${serviceBookings.id})::int`,
+    totalRevenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
     averageRating: providerServices.averageRating,
     reviewCount: providerServices.reviewCount,
     location: providerServices.location,
     formStatus: providerServices.formStatus,
     categoryId: providerServices.categoryId,
-  }).from(providerServices).where(eq(providerServices.userId, userId))
-    .orderBy(sql`bookings_count desc`);
+  }).from(providerServices)
+    .leftJoin(
+      serviceBookings,
+      and(
+        eq(serviceBookings.serviceId, providerServices.id),
+        inArray(serviceBookings.status, BENCHMARK_REVENUE_STATUSES),
+      ),
+    )
+    .where(eq(providerServices.userId, userId))
+    .groupBy(providerServices.id)
+    .orderBy(desc(sql`count(${serviceBookings.id})`));
 }
 
 export async function getProviderUsersBulk(userIds: string[]) {
@@ -572,13 +586,26 @@ export async function getActiveServicesCount() {
 }
 
 export async function getTopProvidersByBookings(limit = 10) {
+  // Third and last revenue-bearing reader of the denorms (same ruling:
+  // `2026-09-22-denorm-counters-are-display-only`). Realized aggregate over `service_bookings`,
+  // the status list imported rather than re-listed (§18 rule 1), 0 reported honestly (§13).
   return db.select({
     userId: providerServices.userId,
     serviceName: providerServices.serviceName,
-    bookingsCount: providerServices.bookingsCount,
-    totalRevenue: providerServices.totalRevenue,
+    bookingsCount: sql<number>`count(${serviceBookings.id})::int`,
+    totalRevenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
     averageRating: providerServices.averageRating,
-  }).from(providerServices).orderBy(desc(providerServices.bookingsCount)).limit(limit);
+  }).from(providerServices)
+    .leftJoin(
+      serviceBookings,
+      and(
+        eq(serviceBookings.serviceId, providerServices.id),
+        inArray(serviceBookings.status, BENCHMARK_REVENUE_STATUSES),
+      ),
+    )
+    .groupBy(providerServices.id)
+    .orderBy(desc(sql`count(${serviceBookings.id})`))
+    .limit(limit);
 }
 
 // ─── Tourism Analytics ────────────────────────────────────────────────────────
@@ -1445,14 +1472,30 @@ export async function getProviderMarketReport() {
       .groupBy(serviceProviderForms.businessType)
       .orderBy(sql`count(*) desc`),
 
+    // §14 / Locked-Decision-3, ledger `2026-09-22-denorm-counters-are-display-only`: bookings and
+    // revenue are a REAL aggregate over `service_bookings`, never the `provider_services`
+    // bookings_count / total_revenue denorms. total_revenue has NO decrement path anywhere, so a
+    // refunded booking leaves it permanently inflated; bookings_count decrements but only outside
+    // the cancel transaction. This was the last reader of either column on an analytics surface —
+    // `getBenchmarkFacts` was moved off them by lane B5, proven by benchmark-facts-denorm.db.test.ts.
+    // The realized-status set is IMPORTED from that same path, never re-listed here (§18 rule 1).
+    // §13: a listing with no realized bookings reports 0 honestly, not a stale figure.
     db.select({
       serviceName: providerServices.serviceName,
-      bookings: providerServices.bookingsCount,
-      revenue: providerServices.totalRevenue,
+      bookings: sql<number>`count(${serviceBookings.id})::int`,
+      revenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
       rating: providerServices.averageRating,
     }).from(providerServices)
+      .leftJoin(
+        serviceBookings,
+        and(
+          eq(serviceBookings.serviceId, providerServices.id),
+          inArray(serviceBookings.status, BENCHMARK_REVENUE_STATUSES),
+        ),
+      )
       .where(eq(providerServices.status, "active"))
-      .orderBy(desc(providerServices.bookingsCount))
+      .groupBy(providerServices.id)
+      .orderBy(desc(sql`count(${serviceBookings.id})`))
       .limit(20),
   ]);
   return { marketByType, topServices };
