@@ -10545,7 +10545,13 @@ export const webhookEvents = pgTable("webhook_events", {
   rawPayload:    jsonb("raw_payload").notNull(),
   error:         text("error"),
   createdAt:     timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("idx_webhook_events_unprocessed")
+    .on(table.createdAt.desc().nullsFirst())
+    .where(sql`processed = false`),
+  index("idx_webhook_events_created_at")
+    .on(table.createdAt.desc().nullsFirst()),
+]);
 
 export const insertWebhookEventSchema = createInsertSchema(webhookEvents).omit({ id: true, createdAt: true });
 export type InsertWebhookEvent = z.infer<typeof insertWebhookEventSchema>;
