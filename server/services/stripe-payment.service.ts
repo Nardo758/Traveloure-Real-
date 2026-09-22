@@ -636,27 +636,39 @@ class StripePaymentService {
   async handleWebhook(event: Stripe.Event) {
     // Every signature-verified Stripe delivery gets one durable event record, including
     // PaymentIntents owned by rails that do not create a row in `payment_intents`.
-    // The event id is Stripe's idempotency key; concurrent/redelivered events converge.
+    // `stripe_event_id` is UNIQUE, so a redelivery or a concurrent delivery converges on
+    // one row. This is a RECORD, not a claim — see below.
+    //
+    // THIS RAIL DOES NOT OWN THE ROW'S STATE, AND MUST NOT START TO (§18 rule 1).
+    // `webhook_events` is shared by TWO signature-verified endpoints with two different
+    // secrets, and they overlap on `payment_intent.succeeded` and `payment_intent.payment_failed`:
+    //
+    //   server/routes/bookings.ts:568        STRIPE_WEBHOOK_SECRET          → handleWebhook (here)
+    //   server/routes/webhooks.routes.ts:597 STRIPE_CONNECT_WEBHOOK_SECRET  → processStripeWebhookEvent
+    //
+    // Stripe delivers ONE event object, with the same `evt_` id, to every endpoint subscribed
+    // to that type. `processStripeWebhookEvent` reads `processed` before doing its work and is
+    // the single author of this row's lifecycle (webhooks.routes.ts:108-129). If this rail also
+    // claimed the row or wrote `processed`, whichever endpoint arrived second would skip its
+    // ENTIRE switch — and the two do not do the same work. The Connect arm's revenue tracking
+    // and expert/provider earnings mint exist only there, so a lost race there loses real money
+    // silently: both endpoints answer 200, so Stripe never retries, and §17's daily
+    // reconciliation would only DETECT the missing revenue row a day later.
+    //
+    // Nothing is lost by recording rather than claiming. The retry storm this lane exists to
+    // stop is fixed at its root by the `!bookingIds` guards in handlePaymentFailed /
+    // handlePaymentCanceled below, and the handlers a claim would have guarded are already
+    // individually idempotent — `promotePaidCheckout` is a §15c atomic conditional and
+    // `recordRevenueEvent` is behind the migration-244 unique index.
+    //
+    // A per-rail claim needs a `handler` column and a (stripe_event_id, handler) UNIQUE —
+    // a migration plus a `shared/schema.ts` declaration. Do not re-add one without it.
     if (event.id) {
       await db.execute(sql`
         INSERT INTO webhook_events (stripe_event_id, event_type, processed, raw_payload)
         VALUES (${event.id}, ${event.type}, FALSE, ${JSON.stringify(event)}::jsonb)
         ON CONFLICT (stripe_event_id) DO NOTHING
       `);
-      const claim = await db.execute(sql`
-        UPDATE webhook_events
-        SET error = 'processing', processed_at = NOW()
-        WHERE stripe_event_id = ${event.id}
-          AND processed = FALSE
-          AND (
-            error IS DISTINCT FROM 'processing'
-            OR processed_at < NOW() - INTERVAL '5 minutes'
-          )
-        RETURNING id
-      `);
-      if (claim.rows.length === 0) {
-        return { received: true };
-      }
     }
 
     try {
@@ -733,25 +745,13 @@ class StripePaymentService {
           console.log(`Unhandled event type: ${event.type}`);
       }
 
-      if (event.id) {
-        await db.execute(sql`
-          UPDATE webhook_events
-          SET processed = TRUE, processed_at = NOW(), error = NULL
-          WHERE stripe_event_id = ${event.id}
-        `);
-      }
+      // No `processed`/`error` write here, deliberately — see the header comment. Marking the
+      // row processed would make the OTHER endpoint's dedupe skip its whole switch, and on the
+      // error path an unconditional `processed = FALSE` by `stripe_event_id` would flip a row
+      // that endpoint had already completed back to unprocessed.
       return { received: true };
     } catch (error: any) {
       console.error('Webhook handling error:', error);
-      if (event.id) {
-        await db.execute(sql`
-          UPDATE webhook_events
-          SET processed = FALSE, processed_at = NOW(), error = ${error?.message ?? String(error)}
-          WHERE stripe_event_id = ${event.id}
-        `).catch((recordError) => {
-          console.error('Failed to record webhook handling error:', recordError);
-        });
-      }
       throw error;
     }
   }

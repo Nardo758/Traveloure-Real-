@@ -56,46 +56,80 @@ for (const eventType of ["payment_intent.payment_failed", "payment_intent.cancel
         WHERE stripe_event_id = ${eventId}
       `);
       assert.equal(stored.rows.length, 1);
+      // `processed`/`error` belong to processStripeWebhookEvent (the Connect rail), which is the
+      // ONE author of this row's lifecycle. This rail RECORDS the delivery and writes no state,
+      // so the row it lands is `processed = FALSE, error = NULL`.
       assert.deepEqual(stored.rows[0], {
         event_type: eventType,
-        processed: true,
+        processed: false,
         error: null,
       });
     });
   }
 }
 
-test("a processed Stripe event id does not execute terminal business logic twice", async () => {
-  const eventId = `evt_${run}_dedup`;
-  const paymentIntentId = `pi_${run}_dedup`;
+// REPLACES an earlier assertion that a `processed` event id skipped this rail's business logic.
+// That claim was REMOVED deliberately: `webhook_events` is shared with the Connect endpoint
+// (webhooks.routes.ts, STRIPE_CONNECT_WEBHOOK_SECRET), Stripe delivers the SAME event id to both
+// endpoints for the types they both subscribe to, and skipping on `processed` meant whichever
+// endpoint arrived second silently skipped its ENTIRE switch — losing the Connect arm's revenue
+// tracking and earnings mint, which exist nowhere else. These two cases pin the shape that
+// replaced it.
+test("a row another rail already completed is neither skipped nor clobbered", async () => {
+  const eventId = `evt_${run}_foreign_completed`;
+  const paymentIntentId = `pi_${run}_foreign_completed`;
   createdEventIds.push(eventId);
   createdIntentIds.push(paymentIntentId);
   const event = {
     id: eventId,
     type: "payment_intent.payment_failed",
-    data: {
-      object: {
-        id: paymentIntentId,
-        metadata: { type: "optimization_fee" },
-      },
-    },
+    data: { object: { id: paymentIntentId, metadata: { type: "optimization_fee" } } },
   } as any;
 
   await db.execute(sql`
     INSERT INTO payment_intents (stripe_payment_intent_id, amount, currency, status, metadata)
     VALUES (${paymentIntentId}, '10.00', 'usd', 'processing', '{"type":"optimization_fee"}'::jsonb)
   `);
-  await stripePaymentService.handleWebhook(event);
+  // Stand in for the Connect rail having received the same event id first and finished with it.
   await db.execute(sql`
-    UPDATE payment_intents SET status = 'sentinel_after_first_delivery'
-    WHERE stripe_payment_intent_id = ${paymentIntentId}
+    INSERT INTO webhook_events (stripe_event_id, event_type, processed, processed_at, raw_payload)
+    VALUES (${eventId}, ${event.type}, TRUE, NOW(), '{}'::jsonb)
   `);
 
   assert.deepEqual(await stripePaymentService.handleWebhook(event), { received: true });
-  const stored = await db.execute(sql`
+
+  // (a) THIS rail still did its own work — the whole point. A claim on `processed` would have
+  //     returned early here and left the status at 'processing'.
+  const intent = await db.execute(sql`
     SELECT status FROM payment_intents WHERE stripe_payment_intent_id = ${paymentIntentId}
   `);
-  assert.equal((stored.rows[0] as { status: string }).status, "sentinel_after_first_delivery");
+  assert.equal((intent.rows[0] as { status: string }).status, "failed");
+
+  // (b) and it did not write over the other rail's completed state.
+  const stored = await db.execute(sql`
+    SELECT processed, error FROM webhook_events WHERE stripe_event_id = ${eventId}
+  `);
+  assert.deepEqual(stored.rows[0], { processed: true, error: null });
+});
+
+test("a redelivery to this rail converges on exactly one durable row", async () => {
+  const eventId = `evt_${run}_redelivery`;
+  const paymentIntentId = `pi_${run}_redelivery`;
+  createdEventIds.push(eventId);
+  createdIntentIds.push(paymentIntentId);
+  const event = {
+    id: eventId,
+    type: "payment_intent.payment_failed",
+    data: { object: { id: paymentIntentId, metadata: { type: "optimization_fee" } } },
+  } as any;
+
+  await stripePaymentService.handleWebhook(event);
+  assert.deepEqual(await stripePaymentService.handleWebhook(event), { received: true });
+
+  const stored = await db.execute(sql`
+    SELECT count(*)::int AS count FROM webhook_events WHERE stripe_event_id = ${eventId}
+  `);
+  assert.equal((stored.rows[0] as { count: number }).count, 1);
 });
 
 for (const eventType of ["payment_intent.payment_failed", "payment_intent.canceled"] as const) {
@@ -124,7 +158,7 @@ for (const eventType of ["payment_intent.payment_failed", "payment_intent.cancel
     const stored = await db.execute(sql`
       SELECT count(*)::int AS count
       FROM webhook_events
-      WHERE stripe_event_id = ${eventId} AND processed = TRUE
+      WHERE stripe_event_id = ${eventId}
     `);
     assert.equal((stored.rows[0] as { count: number }).count, 1);
     const booking = await db.execute(sql`
