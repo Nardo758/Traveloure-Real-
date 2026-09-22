@@ -11,7 +11,7 @@ evidence is committed at `docs/findings/board-staleness-pass.tsv` and
 integrity, 20) were promoted to tier A — every row in all three carries `file:line`. Repo-wide
 tier A is **166/564**. The closure list therefore grew from **34 to 59**.
 
-**This dispatch is Replit's half only.** 68 tier-A code items and 8 decisions are NOT here —
+**This dispatch is Replit's half only.** 68 tier-A code items and 6 decisions are NOT here —
 they are listed at the end under "Not yours" so nobody works them twice.
 
 **Constraints — unchanged from v1, they still bind:**
@@ -95,15 +95,28 @@ this dispatch gets written a third time.
 ## Not yours — so nobody works it twice
 
 - **68 tier-A code items** are being done in the Claude Code checkout, where the `file:line`
-  evidence was produced. Highest-value among them: #1563 (an unguarded `registerContent` await can
-  abort trip creation — §15b), #1347 (`total_revenue` only ever increments while `bookings_count` decrements),
-  #350/#857 (optimizer PaymentIntent failures unhandled), #1255 (a §13 zero-fill on commissions),
-  #1725 (no uniqueness on expert applications).
-- **8 decisions** belong to the decision-maker in `docs/PUNCHLIST.md` §1, not to any agent:
-  **#215 #411 #495 #861 #1348 #1666 #1679 #1686**. Two of those are urgent because the CODE
-  CONTRADICTS THE BOARD: **#861** — `commission.ts:521` returns the *beta rate* when its setting is
-  missing, so exiting beta by removing the setting silently reverts every provider; and **#1348** —
-  `storage.ts:3535-3538` explicitly declines the guarantee the task asks for, in a comment.
+  evidence was produced. **Two have LANDED (PR #1035, merged `f0184c0`) — do not re-file them:**
+  #1563 (an unguarded `registerContent` await could abort a trip that had already been created —
+  now guarded per §15b) and #1347 (`total_revenue` only ever incremented; all three admin readers
+  now aggregate realized money over `service_bookings`). **Still open here:** #350/#857 (optimizer
+  PaymentIntent failures unhandled — briefed, awaiting one ruling), #1255 (a §13 zero-fill on
+  commissions — briefed, awaiting one ruling), #302 (78 ZodError sites, seven response shapes),
+  #1725 (no uniqueness on expert applications — **blocked on Batch D's duplicate query above**).
+- **6 decisions** belong to the decision-maker in `docs/PUNCHLIST.md` §1, not to any agent:
+  **#215 #411 #495 #1666 #1679 #1686**. **#861 and #1348 were RULED under delegation on 2026-09-22**
+  (ledger `2026-09-22-early-adopter-gate-exit`, `2026-09-22-denorm-counters-are-display-only`) and
+  have left this list — the early-adopter gate KEEPS its fallback direction (returning the cheaper
+  band on an unknown is the safe failure for a fee; the real hole is that beta can be exited by
+  *deleting* the setting), and the denorm counters are display/ordering values, so making one
+  transactional is DECLINED. **#1679 is now sized** and is two questions, not one: coverage reads
+  291/589, and the 298 remaining split into **88** in risk-bearing categories (admin 5, payments 17,
+  user-data 66) and **210** `other` routes where "no authorization" is likely the correct answer
+  rather than a gap.
+- **One NEW live defect, briefed not fixed — `docs/briefs/FORM_STATUS_FILTERS_EXCLUDE_EVERY_REAL_LISTING.md`.**
+  `provider_services.form_status` is filtered `= 'approved'` by three queries in
+  `recommendation.service.ts` (`:716`, `:1066`, `:1402`) while **nothing in the repository writes
+  the column** — so they match seeded rows and exclude every real listing, including on the live
+  unauthenticated `GET /api/recommendations/user`. Batch D's §7 query sizes it. No board task covers it.
 - **Already fixed here, do not re-file:** the NUL-byte guard blind spot
   (`demand-rollup.compute.ts:161`, `vendor-contract-board.ts:138`) — one raw NUL per file made grep
   skip them entirely, blinding every shell guard including the fee-literal gate. No board task
