@@ -1,5 +1,5 @@
 /**
- * Runtime Health Layer (H1–H6)
+ * Runtime Health Layer (H1–H7)
  *
  * The existing QA checks (qa-verify.service.ts) are STATIC — greps and file-existence tests.
  * They pass while production is down or every third-party integration is dead, because they
@@ -476,6 +476,101 @@ export async function runH6SchedulerLiveness(): Promise<QAResults> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// H7 — Admin-notification reach (board #1469)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// `ADMIN_EMAIL` has three consumers and every one of them no-ops SILENTLY when it is unset —
+// a `console.warn`/`console.log` line in a job nobody is watching, which is the definition of
+// a signal that does not surface:
+//
+//   server/jobs/dailyAdminDigest.ts:65            ADMIN_EMAIL only  → digest not sent
+//   server/services/admin-digest-scheduler.service.ts:60  ADMIN_EMAIL only  → digest not sent
+//   server/jobs/nightlyQA.ts:229                  ADMIN_EMAIL *or* an admin user with an email
+//
+// THE THIRD ONE IS NOT THE SAME FACT AS THE OTHER TWO, and collapsing them would be the §13
+// lie this check exists to avoid: nightly QA falls back to every `role='admin'` row with a
+// non-empty email, so a missing `ADMIN_EMAIL` silences it only when there is ALSO no such
+// admin. "ADMIN_EMAIL is unset" and "nobody will be emailed" are different claims.
+//
+// SELF-REFERENCE, said out loud rather than papered over: this check is composed into the
+// report that nightly QA emails. If the nightly rail is the silenced one, this FAIL cannot be
+// delivered by the rail that would report it — it is readable only on
+// `GET /api/admin/qa/verify`. The detail says so when that is the case.
+//
+// The admin-user count is INJECTED rather than read here, so the evaluator stays pure and the
+// caller owns the DB failure mode. `null` means the count could not be read, and a null count
+// is reported as UNKNOWN — never as zero, which would claim the platform has no admins (§13).
+
+/** The three rails that go quiet, named by what actually silences each. */
+export const ADMIN_EMAIL_RAILS = {
+  dailyAdminDigest: "server/jobs/dailyAdminDigest.ts",
+  adminDigestScheduler: "server/services/admin-digest-scheduler.service.ts",
+  nightlyQaEmail: "server/jobs/nightlyQA.ts",
+} as const;
+
+export interface AdminNotificationReachReport {
+  adminEmailSet: boolean;
+  /** Admin accounts carrying a non-empty email — the exact set nightlyQA.ts builds. `null` = not read. */
+  adminUsersWithEmail: number | null;
+  /** Rails proven to be silenced right now. A rail whose state is unknown is NOT listed here. */
+  silencedRails: string[];
+  /** Rails whose state could not be determined (only ever the nightly one, and only on a null count). */
+  unknownRails: string[];
+}
+
+/** Pure — takes an env snapshot and an injected count so it is unit-testable with no DB. */
+export function evaluateAdminNotificationReach(
+  env: NodeJS.ProcessEnv,
+  adminUsersWithEmail: number | null,
+): AdminNotificationReachReport {
+  const adminEmailSet = !!env.ADMIN_EMAIL?.trim();
+  const silencedRails: string[] = [];
+  const unknownRails: string[] = [];
+
+  if (!adminEmailSet) {
+    silencedRails.push(ADMIN_EMAIL_RAILS.dailyAdminDigest, ADMIN_EMAIL_RAILS.adminDigestScheduler);
+    // The nightly rail has a fallback, so its state depends on the count.
+    if (adminUsersWithEmail === null) unknownRails.push(ADMIN_EMAIL_RAILS.nightlyQaEmail);
+    else if (adminUsersWithEmail === 0) silencedRails.push(ADMIN_EMAIL_RAILS.nightlyQaEmail);
+  }
+
+  return { adminEmailSet, adminUsersWithEmail, silencedRails, unknownRails };
+}
+
+export function runH7AdminNotificationReach(adminUsersWithEmail: number | null): QAResults {
+  const report = evaluateAdminNotificationReach(process.env, adminUsersWithEmail);
+  const prodStrict = isProdStrictEnv();
+  const envLabel = `NODE_ENV=${process.env.NODE_ENV || "undefined"}, ENVIRONMENT=${process.env.ENVIRONMENT || "undefined"}`;
+
+  const countLabel =
+    report.adminUsersWithEmail === null
+      ? "admin_users_with_email=unknown (count could not be read)"
+      : `admin_users_with_email=${report.adminUsersWithEmail}`;
+  const base = `ADMIN_EMAIL=${report.adminEmailSet ? "set" : "MISSING"}, ${countLabel} (${envLabel}, prod-strict=${prodStrict}).`;
+
+  if (report.silencedRails.length === 0 && report.unknownRails.length === 0) {
+    return { H7: { pass: true, detail: `OK: every admin-notification rail has a recipient. ${base}` } };
+  }
+
+  const parts: string[] = [];
+  if (report.silencedRails.length > 0) parts.push(`SILENT: ${report.silencedRails.join(", ")}`);
+  if (report.unknownRails.length > 0) parts.push(`UNKNOWN: ${report.unknownRails.join(", ")}`);
+  const selfNote = report.silencedRails.includes(ADMIN_EMAIL_RAILS.nightlyQaEmail)
+    ? " This FAIL is in the report nightly QA emails, and that rail is one of the silenced ones — read it on GET /api/admin/qa/verify."
+    : "";
+
+  // Outside a production-strict environment a missing ADMIN_EMAIL is ordinary, so it is
+  // REPORTED but does not fail. The detail states the same facts either way — only the flag
+  // is environment-sensitive.
+  return {
+    H7: {
+      pass: !prodStrict,
+      detail: `${prodStrict ? "FAIL" : "NOTE"}: ${parts.join("; ")}. ${base}${selfNote}`,
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Composed entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -503,5 +598,27 @@ export async function runRuntimeHealth(): Promise<QAResults> {
     h3 = { H3: { pass: false, detail: `H3 threw: ${err?.message ?? err}` } };
   }
 
-  return { ...h1, ...h2, ...h3, ...h4, ...h5, ...h6 };
+  // H7 reads a count from the DB; a failed read is reported as UNKNOWN, never as zero (§13).
+  let adminUsersWithEmail: number | null = null;
+  try {
+    const { db } = await import("../db");
+    const { users } = await import("@shared/schema");
+    const { and, eq, isNotNull, ne, sql } = await import("drizzle-orm");
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(users)
+      .where(and(eq(users.role, "admin"), isNotNull(users.email), ne(users.email, "")));
+    adminUsersWithEmail = row?.n ?? 0;
+  } catch (err: any) {
+    console.warn(`[runtime-health] H7: admin-user count unreadable (${err?.message ?? err}) — reporting UNKNOWN`);
+  }
+
+  let h7: QAResults;
+  try {
+    h7 = runH7AdminNotificationReach(adminUsersWithEmail);
+  } catch (err: any) {
+    h7 = { H7: { pass: false, detail: `H7 threw: ${err?.message ?? err}` } };
+  }
+
+  return { ...h1, ...h2, ...h3, ...h4, ...h5, ...h6, ...h7 };
 }

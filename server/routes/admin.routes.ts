@@ -287,6 +287,15 @@ const requireAdminLocal = async (req: any, res: any, next: any) => {
   // Replicate the same suspension gate that isAuthenticated enforces.  Routes that
   // skip isAuthenticated and use only requireAdminLocal would otherwise let a
   // suspended admin's stale session reach handler logic.
+  // #1434: the DELETED half of that same gate was missing here. `isAuthenticated`
+  // refuses both, this refused only suspension, and the blanket `adminApiGuard`
+  // refused neither — three gates, one question, three different answers. Thirteen
+  // of this file's sixteen `requireAdminLocal` routes carry no `isAuthenticated` in
+  // front of it, so for those this is the only place the check can happen.
+  if (user.isDeleted) {
+    req.logout(() => {});
+    return res.status(403).json({ message: "This account has been deleted" });
+  }
   if (user.isSuspended) {
     req.logout(() => {});
     return res.status(403).json({

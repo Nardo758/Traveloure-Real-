@@ -119,8 +119,16 @@ test("A3: the blanket admin guard is mounted before this router — what makes A
     "the blanket guard must be registered BEFORE contentRoutes, or the moved routes are unguarded",
   );
   // The guard's role must come from the DB, never a request-supplied or session-cached value (§2).
+  // Sliced over the GUARD'S OWN BODY — its declaration up to its registration — rather than a
+  // fixed byte window before `app.use`. The window was 2000 characters, which silently encoded
+  // "the guard is shorter than 2000 characters": board #1434 added an account-status check to it
+  // and pushed the DB read out of range, failing this assertion while the thing it asserts stayed
+  // true. A window that measures the guard cannot be broken by the guard growing, and it is also
+  // tighter — it can no longer be satisfied by unrelated code that happens to sit above.
+  const guardDeclAt = routes.indexOf("const adminApiGuard = async (req");
+  assert.ok(guardDeclAt > -1 && guardDeclAt < guardAt, "adminApiGuard must be declared before it is mounted");
   assert.match(
-    routes.slice(guardAt - 2000, guardAt),
+    routes.slice(guardDeclAt, guardAt),
     /db\s*\n?\s*\.select\(\)\s*\n?\s*\.from\(users\)|from\(users\)/,
     "adminApiGuard must read the role from the database",
   );
