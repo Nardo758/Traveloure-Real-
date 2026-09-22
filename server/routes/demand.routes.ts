@@ -377,13 +377,12 @@ async function getListingHealthSummary(userId: string): Promise<ListingHealthSum
   return { serviceCount: rows.length, passed: passedTotal, total: applicableTotal, topGaps };
 }
 
-// Money-realized booking statuses that count toward the earner's benchmark revenue/bookings.
-// Matches the reconciliation job's PAID_EQUIVALENT_STATUSES (server/jobs/stripeReconciliation.ts)
-// verbatim — the codebase's canonical "this is realized money" set — so no new scope is invented
-// here. A `payment_pending`/`pending`/`cancelled`/`refunded` row is NOT realized revenue (§15b),
-// so it is excluded; `deposit_paid` is likewise excluded because its full `totalAmount` is not yet
-// collected (only the deposit is), and counting the full amount would overstate revenue (§13).
-export const BENCHMARK_REVENUE_STATUSES = ["confirmed", "in_progress", "completed", "delivered", "disputed"];
+// The realized-money status set moved to a leaf module when a second reader appeared in the
+// services layer (ledger `2026-09-22-denorm-counters-are-display-only`): a service should not
+// import a route module for a shared constant. Re-exported so this module's public surface is
+// unchanged for existing importers.
+import { BENCHMARK_REVENUE_STATUSES } from "../utils/realized-revenue-statuses";
+export { BENCHMARK_REVENUE_STATUSES };
 
 interface BenchmarkFacts {
   activeServiceCount: number;
