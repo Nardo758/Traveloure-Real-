@@ -49,7 +49,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
-import { useRoute, useSearch, Link } from "wouter";
+import { useRoute, useSearch, Link, Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -115,7 +115,7 @@ interface StorefrontEarner {
   bio: string | null;
   profileImageUrl: string | null;
   role: string;
-  handle: string;
+  handle: string | null;
   averageRating: number | null;
   reviewCount: number;
   verified: boolean;
@@ -432,7 +432,10 @@ function StorefrontOfferingCard({
 export default function StorefrontPage() {
   const [, storefrontParams] = useRoute("/s/:handle");
   const [, legacyStorefrontParams] = useRoute("/p/:handle");
+  const [, legacyExpertParams] = useRoute("/experts/:id");
+  const [, legacyLocalExpertParams] = useRoute("/local-experts/:id");
   const handle = storefrontParams?.handle ?? legacyStorefrontParams?.handle ?? "";
+  const legacyId = legacyExpertParams?.id ?? legacyLocalExpertParams?.id ?? "";
   const { toast } = useToast();
   const { user } = useAuth();
   const askExpert = useAskExpert();
@@ -447,8 +450,21 @@ export default function StorefrontPage() {
   const [query, setQuery] = useState("");
 
   const { data, isLoading, isError } = useQuery<StorefrontData>({
-    queryKey: [`/api/storefront/${handle}`, { locale }],
-    enabled: handle.length > 0,
+    queryKey: [
+      legacyId ? `/api/storefront/by-id/${legacyId}` : `/api/storefront/${handle}`,
+      { locale },
+    ],
+    queryFn: async () => {
+      const endpoint = legacyId
+        ? `/api/storefront/by-id/${encodeURIComponent(legacyId)}`
+        : `/api/storefront/${encodeURIComponent(handle)}`;
+      const response = await fetch(`${endpoint}?locale=${encodeURIComponent(locale)}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Storefront not found");
+      return response.json();
+    },
+    enabled: Boolean(handle || legacyId),
     retry: false,
   });
 
@@ -458,12 +474,19 @@ export default function StorefrontPage() {
   // `2026-09-23-storefront-booking-panel`). Called before the early returns so hook order holds.
   const search = useSearch();
   const tripIdParam = new URLSearchParams(search).get("tripId")?.trim() || null;
-  const planContext = useStorefrontPlanContext(tripIdParam, handle);
+  const planContext = useStorefrontPlanContext(tripIdParam, data?.earner.handle ?? handle);
 
   function copyLink() {
-    const url = `${window.location.origin}/s/${handle}`;
+    const canonicalHandle = data?.earner.handle ?? handle;
+    const path = canonicalHandle ? `/s/${canonicalHandle}` : window.location.pathname;
+    const url = `${window.location.origin}${path}`;
     navigator.clipboard.writeText(url).then(() => {
-      toast({ title: "Link copied", description: "Share it anywhere — it books and pays." });
+      toast({
+        title: "Link copied",
+        description: canonicalHandle
+          ? "Share it anywhere — it books and pays."
+          : "Share this expert profile.",
+      });
     });
   }
 
@@ -543,6 +566,9 @@ export default function StorefrontPage() {
   }
 
   const { earner, away } = data;
+  if (legacyId && earner.handle) {
+    return <Redirect to={`/s/${earner.handle}${search ? `?${search}` : ""}`} />;
+  }
   // Hide the CTA when the signed-in visitor IS the earner — no message-myself button/band.
   // Locked Decision 40 (lane 3): compared by HANDLE, not by `users.id`. A storefront is keyed by
   // handle, and the signed-in user's own handle is on the session payload already, so this needs
@@ -812,7 +838,7 @@ export default function StorefrontPage() {
             <StorefrontBookingPanel
               earner={{
                 name: earner.name,
-                handle: earner.handle,
+                handle: earner.handle ?? "",
                 role: earner.role,
                 profileImageUrl: earner.profileImageUrl,
                 hasInsurance: earner.hasInsurance ?? null,
@@ -1127,7 +1153,7 @@ export default function StorefrontPage() {
       <StorefrontBookingBar
         earner={{
           name: earner.name,
-          handle: earner.handle,
+          handle: earner.handle ?? "",
           role: earner.role,
           profileImageUrl: earner.profileImageUrl,
           hasInsurance: earner.hasInsurance ?? null,

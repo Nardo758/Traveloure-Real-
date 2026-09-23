@@ -31,9 +31,9 @@ import { isOwnerIdentityVerified } from "../utils/earner-verification";
 import { isExpertHireable } from "../services/booking-actions.service";
 import fs from "fs";
 import path from "path";
-import { eq, and, sql, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, sql, inArray, isNotNull, desc } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations, travelPulseHiddenGems } from "@shared/schema";
+import { users, providerServices, readyMadeTrips, localExpertForms, serviceProviderForms, serviceReviews, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations, travelPulseHiddenGems } from "@shared/schema";
 import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
 // L23 (brief §11.5, ruling 9): the ONE author of a buy button, shipped on each card.
 import { buildListingBuyActions, resolveBuyerState } from "../services/buy-action-payload";
@@ -562,28 +562,61 @@ router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
  * — gets NO `buyAction` on its rows rather than a guest-shaped one, which would be a claim about
  * somebody the caller never saw (§13). Only the JSON read the SPA calls resolves a buyer.
  */
-export async function loadStorefront(handle: string, activeLocale?: string, buyer?: BuyActionBuyer) {
+type StorefrontOwner = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  bio: string | null;
+  profileImageUrl: string | null;
+  role: string | null;
+  handle: string | null;
+  createdAt: Date | null;
+  preferences: unknown;
+  vacationUntil: Date | null;
+  vacationMessage: string | null;
+};
+
+const storefrontOwnerFields = {
+  id: users.id,
+  firstName: users.firstName,
+  lastName: users.lastName,
+  bio: users.bio,
+  profileImageUrl: users.profileImageUrl,
+  role: users.role,
+  handle: users.handle,
+  createdAt: users.createdAt,
+  preferences: users.preferences,
+  vacationUntil: users.vacationUntil,
+  vacationMessage: users.vacationMessage,
+};
+
+async function findStorefrontOwnerByHandle(handle: string): Promise<StorefrontOwner | null> {
   const normalized = handle.trim().toLowerCase();
   if (!HANDLE_RE.test(normalized)) return null;
 
   const [owner] = await db
-    .select({
-      id: users.id,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      bio: users.bio,
-      profileImageUrl: users.profileImageUrl,
-      role: users.role,
-      handle: users.handle,
-      createdAt: users.createdAt,
-      preferences: users.preferences,
-      vacationUntil: users.vacationUntil,
-      vacationMessage: users.vacationMessage,
-    })
+    .select(storefrontOwnerFields)
     .from(users)
     .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
     .limit(1);
-  if (!owner) return null;
+  return owner ?? null;
+}
+
+async function findStorefrontOwnerById(id: string): Promise<StorefrontOwner | null> {
+  const [owner] = await db
+    .select(storefrontOwnerFields)
+    .from(users)
+    .where(and(eq(users.id, id), eq(users.isDeleted, false), eq(users.isSuspended, false)))
+    .limit(1);
+  return owner ?? null;
+}
+
+async function loadStorefrontFromOwner(
+  owner: StorefrontOwner,
+  activeLocale?: string,
+  buyer?: BuyActionBuyer,
+  enforcePublicGates = true,
+) {
   // The canonical storefront serves every public earner family. Inventory remains governed by
   // the existing approved/active predicates below, so role unification never widens what is
   // publishable; it only gives providers and experts one stable public URL.
@@ -593,7 +626,7 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
   // V.2/V.3 verification-flow sequencing lands; build-while-pending preserved (handle claim + the
   // owner's own console are never gated here — only this public read path). Default "false"
   // keeps today's behavior unchanged.
-  if (await isStorefrontVerificationRequired()) {
+  if (enforcePublicGates && (await isStorefrontVerificationRequired())) {
     const verified = await isOwnerIdentityVerified(owner.id);
     if (!verified) return null;
   }
@@ -665,12 +698,55 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
             responseTime: localExpertForms.responseTime,
             headline: localExpertForms.headline,
             formBio: localExpertForms.bio,
+            status: localExpertForms.status,
           })
           .from(localExpertForms)
           .where(eq(localExpertForms.userId, owner.id))
           .limit(1)
       : Promise.resolve([]),
   ]);
+
+  // The legacy no-handle profile existed only for approved expert applications. It may render
+  // without inventory, but pending, rejected, and missing-form profiles remain private.
+  if (!owner.handle && isExpertRole(owner.role) && expertProfile?.status !== "approved") return null;
+
+  // Approved review rows are the rating authority. Listing aggregates can be stale or fixture-
+  // written, so neither the profile nor cards may derive public review claims from them.
+  const approvedReviewRows = await db
+    .select({
+      id: serviceReviews.id,
+      serviceId: serviceReviews.serviceId,
+      rating: serviceReviews.rating,
+      reviewText: serviceReviews.reviewText,
+      responseText: serviceReviews.responseText,
+      providerReply: serviceReviews.providerReply,
+      isVerified: serviceReviews.isVerified,
+      createdAt: serviceReviews.createdAt,
+      serviceName: providerServices.serviceName,
+    })
+    .from(serviceReviews)
+    .leftJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
+    .where(
+      and(
+        eq(serviceReviews.providerId, owner.id),
+        eq(serviceReviews.status, "approved"),
+      ),
+    )
+    .orderBy(desc(serviceReviews.createdAt));
+  const publicServiceIds = new Set(services.map((service) => service.id));
+  const serviceReviewRows = approvedReviewRows.filter((review) =>
+    publicServiceIds.has(review.serviceId),
+  );
+  const reviews = serviceReviewRows.slice(0, 24).map((review) => ({
+    id: review.id,
+    rating: Number(review.rating),
+    comment: review.reviewText,
+    createdAt: review.createdAt,
+    serviceName: review.serviceName,
+    providerReply: review.providerReply ?? review.responseText,
+    isVerified: review.isVerified ?? false,
+  }));
+
   const ownerInstantBooking = ownerForm?.instantBooking ?? false;
   // L23 (brief §11.5, ruling 9 — register §A4): the ONE resolver authors each card's buy button and
   // its landing rule, computed here and shipped on the row; the storefront draws it and never
@@ -692,6 +768,8 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
     : null;
   let resolvedServices = services.map((s) => ({
     ...s,
+    averageRating: null as string | null,
+    reviewCount: 0,
     showPrice: s.showPrice ?? true,
     bookingMode: resolveBookingMode(s.bookingMode, ownerInstantBooking),
     buyAction: storefrontBuyActions?.get(s.id),
@@ -699,6 +777,21 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
     // approved translation exists — the client renders the honest one-line note (§13).
     shownInOriginal: false,
   }));
+  const serviceReviewFacts = new Map<string, { ratingTotal: number; count: number }>();
+  for (const review of serviceReviewRows) {
+    const facts = serviceReviewFacts.get(review.serviceId) ?? { ratingTotal: 0, count: 0 };
+    facts.ratingTotal += Number(review.rating);
+    facts.count += 1;
+    serviceReviewFacts.set(review.serviceId, facts);
+  }
+  resolvedServices = resolvedServices.map((service) => {
+    const facts = serviceReviewFacts.get(service.id);
+    return {
+      ...service,
+      averageRating: facts ? (facts.ratingTotal / facts.count).toFixed(2) : null,
+      reviewCount: facts?.count ?? 0,
+    };
+  });
 
   // Ruling 115/116 content overlay — the storefront card follows the same rules as the detail
   // page it links to: approved rows only (a draft/AI-draft is NEVER shown to a traveler), name
@@ -752,25 +845,18 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
 
   const total = services.length + readyMade.length;
   // No approved inventory → no public page (an unvetted earner is not publishable).
-  if (total === 0) return null;
+  if (enforcePublicGates && total === 0) return null;
 
-  // S7 — earner-level rating aggregate (§13-honest), same formula as
-  // storage.getExpertsWithProfiles: a review-count-WEIGHTED mean over the earner's
-  // own approved services (Lane 1, already fetched above — no extra query, no second
-  // parallel aggregate). Null when there are no reviews so the client renders "New",
-  // never a fabricated number.
-  let weightedSum = 0;
-  let totalReviews = 0;
-  for (const s of services) {
-    const rc = Number(s.reviewCount ?? 0);
-    const ar = s.averageRating != null ? Number(s.averageRating) : null;
-    if (rc > 0 && ar != null && !Number.isNaN(ar)) {
-      weightedSum += ar * rc;
-      totalReviews += rc;
-    }
-  }
+  const expertReviewCount = approvedReviewRows.length;
+  const serviceReviewCount = serviceReviewRows.length;
+  const expertRatingTotal = approvedReviewRows.reduce(
+    (sum, review) => sum + Number(review.rating),
+    0,
+  );
   const earnerAverageRating =
-    totalReviews > 0 ? Math.round((weightedSum / totalReviews) * 100) / 100 : null;
+    expertReviewCount > 0
+      ? Math.round((expertRatingTotal / expertReviewCount) * 100) / 100
+      : null;
 
   // Identity-hero fields (§13-honest, every value maps to a real row):
   //  - verified: the SAME identityVerificationStatus==='verified' signal already used for the
@@ -836,7 +922,9 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
       role: owner.role,
       handle: owner.handle,
       averageRating: earnerAverageRating,
-      reviewCount: totalReviews,
+      reviewCount: expertReviewCount,
+      expertReviewCount,
+      serviceReviewCount,
       verified,
       location,
       memberSince,
@@ -861,8 +949,20 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
     },
     services: resolvedServices,
     readyMade,
+    reviews,
     away,
   };
+}
+
+export async function loadStorefront(handle: string, activeLocale?: string, buyer?: BuyActionBuyer) {
+  const owner = await findStorefrontOwnerByHandle(handle);
+  return owner ? loadStorefrontFromOwner(owner, activeLocale, buyer) : null;
+}
+
+export async function loadStorefrontById(id: string, activeLocale?: string, buyer?: BuyActionBuyer) {
+  const owner = await findStorefrontOwnerById(id);
+  if (!owner) return null;
+  return loadStorefrontFromOwner(owner, activeLocale, buyer, Boolean(owner.handle));
 }
 
 // Deprecated compatibility loader for callers of /api/provider-storefront/:handle. The canonical
@@ -890,46 +990,9 @@ async function loadProviderStorefrontDirectory() {
       handle: users.handle,
       bio: users.bio,
       profileImageUrl: users.profileImageUrl,
-      serviceCount: sql<number>`count(${providerServices.id})::int`,
-      // Match the storefront's review-weighted rating calculation. Services without a rating
-      // do not affect either aggregate, avoiding an invented average for unrated inventory.
-      averageRating: sql<number | null>`
-        case
-          when coalesce(sum(
-            case
-              when ${providerServices.averageRating} is not null
-              then coalesce(${providerServices.reviewCount}, 0)
-              else 0
-            end
-          ), 0) > 0
-          then round(
-            sum(
-              case
-                when ${providerServices.averageRating} is not null
-                then ${providerServices.averageRating} * coalesce(${providerServices.reviewCount}, 0)
-                else 0
-              end
-            ) / sum(
-              case
-                when ${providerServices.averageRating} is not null
-                then coalesce(${providerServices.reviewCount}, 0)
-                else 0
-              end
-            ),
-            2
-          )
-          else null
-        end
-      `,
-      reviewCount: sql<number>`
-        coalesce(sum(
-          case
-            when ${providerServices.averageRating} is not null
-            then coalesce(${providerServices.reviewCount}, 0)
-            else 0
-          end
-        ), 0)::int
-      `,
+      serviceCount: sql<number>`count(distinct ${providerServices.id})::int`,
+      averageRating: sql<number | null>`round(avg(${serviceReviews.rating})::numeric, 2)`,
+      reviewCount: sql<number>`count(${serviceReviews.id})::int`,
     })
     .from(users)
     .innerJoin(
@@ -938,6 +1001,13 @@ async function loadProviderStorefrontDirectory() {
         eq(providerServices.userId, users.id),
         eq(providerServices.approvalStatus, "approved"),
         eq(providerServices.status, "active"),
+      ),
+    )
+    .leftJoin(
+      serviceReviews,
+      and(
+        eq(serviceReviews.serviceId, providerServices.id),
+        eq(serviceReviews.status, "approved"),
       ),
     )
     .where(
@@ -972,6 +1042,35 @@ async function loadProviderStorefrontDirectory() {
     location: await resolveEarnerLocation(row.id),
   })));
 }
+
+router.get(["/experts/:id", "/local-experts/:id"], async (req, res, next) => {
+  try {
+    const owner = await findStorefrontOwnerById(req.params.id);
+    if (owner?.handle) {
+      const query = req.originalUrl.includes("?")
+        ? req.originalUrl.slice(req.originalUrl.indexOf("?"))
+        : "";
+      return res.redirect(308, `/s/${owner.handle}${query}`);
+    }
+    return next();
+  } catch (error) {
+    console.error("[storefront/legacy-redirect] lookup failed:", error);
+    return next();
+  }
+});
+
+// public-user-id-ok: legacy compatibility lookup only; the response omits users.id.
+router.get("/api/storefront/by-id/:id", async (req, res) => {
+  try {
+    const rawLocale = typeof req.query.locale === "string" ? req.query.locale : undefined;
+    const data = await loadStorefrontById(req.params.id, rawLocale, await resolveBuyerState(req));
+    if (!data) return res.status(404).json({ message: "Storefront not found" });
+    return res.json(data);
+  } catch (error: any) {
+    console.error("[storefront/by-id] load failed:", error);
+    return res.status(500).json({ message: "Failed to load storefront" });
+  }
+});
 
 router.get("/api/storefront/:handle", async (req, res) => {
   try {
