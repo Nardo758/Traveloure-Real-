@@ -12,11 +12,13 @@ name: Enforce Branch Protection
 # `administration:` key in a workflow `permissions:` block (declaring one fails
 # workflow-file validation with zero jobs), and the installation token never
 # receives that right regardless of Settings → Actions → Workflow permissions.
-# So this workflow authenticates with a repo-scoped PAT that has the
-# `administration` scope, stored as the secret BRANCH_PROTECTION_PAT. The
-# GH_TOKEN expressions below fall back to secrets.GITHUB_TOKEN only so the
-# failure mode without the PAT is a clear 403 from the API call, not a
-# missing-env crash.
+# So this workflow authenticates with a repo-scoped PAT stored under the
+# exact repository secret name `BRANCH_PROTECTION_PAT`. A fine-grained token
+# for this workflow must be scoped to Nardo758/Traveloure-Real- and grant
+# repository Administration: Read and write. The GH_TOKEN expressions below
+# prefer BRANCH_PROTECTION_PAT and fall back to secrets.GITHUB_TOKEN only so
+# the failure mode without the PAT is a clear branch-protection API error
+# rather than a missing-env crash.
 #
 # Status context (for branch-protection required checks):
 #   This workflow APPLIES required checks; it does not itself need to be
@@ -42,8 +44,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check branch-protection token configuration
+        env:
+          BRANCH_PROTECTION_PAT: ${{ secrets.BRANCH_PROTECTION_PAT }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${BRANCH_PROTECTION_PAT:-}" ]; then
+            echo "::warning::Repository secret BRANCH_PROTECTION_PAT is missing or empty."
+            echo "::warning::Use the exact repository secret name BRANCH_PROTECTION_PAT. A secret stored under any other name (for example Nardo758) will not be read by this workflow."
+            echo "::warning::This job will fall back to GITHUB_TOKEN for legibility, but branch-protection PATCH/GET requests will still fail unless BRANCH_PROTECTION_PAT is configured with repository Administration: Read and write."
+          else
+            echo "BRANCH_PROTECTION_PAT is configured."
+          fi
+
       - name: Apply required status checks from branch-protection.json
         env:
+          # Exact secret name required: BRANCH_PROTECTION_PAT
           GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
@@ -71,6 +88,7 @@ jobs:
 
       - name: Verify applied contexts match declaration
         env:
+          # Exact secret name required: BRANCH_PROTECTION_PAT
           GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
