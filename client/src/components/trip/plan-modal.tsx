@@ -1378,7 +1378,10 @@ export function PlanModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto" data-testid="plan-modal">
+      <DialogContent
+        className="max-h-[90vh] w-[calc(100vw-2rem)] !max-w-none overflow-y-auto sm:w-[92vw] sm:!max-w-[1100px] xl:!max-w-[1200px]"
+        data-testid="plan-modal"
+      >
         <DialogHeader>
           <span
             className="text-[10.5px] font-medium uppercase tracking-[0.14em]"
@@ -1469,14 +1472,26 @@ export function PlanModal({
                   here is guessed on your behalf.
                 </p>
               ) : (
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                   {(occasions ?? []).map((t) => {
                     const picked = t.slug === occasionSlug;
                     return (
                       <button
                         key={t.slug}
                         type="button"
-                        onClick={() => setOccasionSlug(t.slug)}
+                        onClick={() => {
+                          setOccasionSlug(t.slug);
+                          const chosenSteps = resolvePlanSteps(
+                            source,
+                            t,
+                            {
+                              experienceSlug: ctx.experienceSlug,
+                              experienceType: ctx.experienceType,
+                            },
+                          ).visibleSteps;
+                          const nextAfterOccasion = nextPlanStep(chosenSteps, "occasion");
+                          if (nextAfterOccasion) goToStep(nextAfterOccasion);
+                        }}
                         aria-pressed={picked}
                         className="flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-colors"
                         style={{
@@ -2243,8 +2258,12 @@ export function PlanModal({
         )}
 
         <div
-          className="flex flex-wrap items-center justify-between gap-2 border-t pt-3"
-          style={{ borderColor: "var(--earn-border)" }}
+          className="sticky bottom-0 z-10 -mx-6 -mb-6 flex flex-wrap items-center justify-between gap-2 border-t px-6 pb-4 pt-3"
+          style={{
+            borderColor: "var(--earn-border)",
+            background: "var(--earn-card)",
+            boxShadow: "0 -12px 24px -20px rgba(15, 23, 42, 0.35)",
+          }}
         >
           <span className="text-[11px]" style={{ fontFamily: MONO, color: "var(--earn-faint)" }}>
             {/* The CTA-side note names what the finish will actually do. The event count shows
