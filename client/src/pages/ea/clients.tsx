@@ -1,4 +1,5 @@
 import { EALayout } from "@/components/ea-layout";
+import { eaClientLabel } from "@/lib/ea-client-label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,11 +57,11 @@ interface EaClient {
 }
 
 function initials(client: EaClient) {
-  const name = client.displayName || client.userEmail || client.clientEmail || "?";
-  return name.slice(0, 2).toUpperCase();
+  return eaClientLabel(client).primary.slice(0, 2).toUpperCase();
 }
 
 function ClientCard({ client, onDelete }: { client: EaClient; onDelete: (id: string) => void }) {
+  const label = eaClientLabel(client);
   const [open, setOpen] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -83,7 +84,7 @@ function ClientCard({ client, onDelete }: { client: EaClient; onDelete: (id: str
     mutationFn: () =>
       apiRequest("POST", `/api/ea/clients/${client.id}/push`, { title: pushTitle, message: pushMsg }).then((r) => r.json()),
     onSuccess: () => {
-      toast({ title: "Notification sent", description: `Message pushed to ${client.displayName || client.clientEmail || "client"}` });
+      toast({ title: "Notification sent", description: `Message pushed to ${label.primary}` });
       setPushTitle("");
       setPushMsg("");
       setPushOpen(false);
@@ -115,8 +116,8 @@ function ClientCard({ client, onDelete }: { client: EaClient; onDelete: (id: str
                   {initials(client)}
                 </div>
                 <div>
-                  <div className="font-semibold text-gray-900">{client.displayName || client.clientEmail || "Unknown Client"}</div>
-                  <div className="text-sm text-gray-500">{client.userEmail || client.clientEmail || ""}</div>
+                  <div className="font-semibold text-gray-900">{label.primary}</div>
+                  {label.secondary && <div className="text-sm text-gray-500">{label.secondary}</div>}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -179,7 +180,7 @@ function ClientCard({ client, onDelete }: { client: EaClient; onDelete: (id: str
                 </DialogTrigger>
                 <DialogContent className="max-w-lg">
                   <DialogHeader>
-                    <DialogTitle>Edit Client — {client.displayName || client.clientEmail || "Unknown Client"}</DialogTitle>
+                    <DialogTitle>Edit Client — {label.primary}</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-3 mt-2">
                     <div>
@@ -238,7 +239,7 @@ function ClientCard({ client, onDelete }: { client: EaClient; onDelete: (id: str
                   </DialogTrigger>
                   <DialogContent className="max-w-md">
                     <DialogHeader>
-                      <DialogTitle>Send Notification to {client.displayName || client.clientEmail || "Client"}</DialogTitle>
+                      <DialogTitle>Send Notification to {label.primary}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3 mt-2">
                       <div>

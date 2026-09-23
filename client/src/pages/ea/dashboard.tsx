@@ -18,6 +18,7 @@ import {
   Bell,
 } from "lucide-react";
 import { Link } from "wouter";
+import { eaClientLabel, type EaClientLabelInput } from "@/lib/ea-client-label";
 
 interface Client {
   id: string | number;
@@ -278,10 +279,7 @@ export default function EADashboard() {
                 {clients && clients.length > 0 ? (
                   <div className="space-y-3">
                     {clients.slice(0, 4).map((client) => {
-                      const name = client.displayName ||
-                        (client.firstName && client.lastName ? `${client.firstName} ${client.lastName}` : null) ||
-                        client.name ||
-                        "Client";
+                      const name = eaClientLabel(client as unknown as EaClientLabelInput).primary;
                       return (
                         <div key={String(client.id)} className="flex items-center gap-3 p-3 rounded-lg border border-[#E8E8E2]" data-testid={`client-row-${client.id}`}>
                           <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
