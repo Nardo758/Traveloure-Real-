@@ -1,3 +1,9 @@
+> **RULED 2026-09-23 — measure, do not ban a spelling.** The 375px assertion is now in
+> `playwright/tests/cosmetic-public-surfaces.spec.ts` (Lane E), covering `/`, `/services` and
+> `/discover/location/Kyoto` logged out. **If it stays green, #1412 closes as speculative** —
+> which is a result, not a failure to look. No guard over `grid-cols-*` spellings is built:
+> usage is not violation, and a guard on the class would miss overflow caused by anything else.
+
 # Lane brief — "unqualified responsive grid classes" needs a rule before it can have a guard (board #1412)
 
 **Status: NOT BUILDABLE AS FILED.** #1412 asks to *block* unqualified responsive grid classes.
