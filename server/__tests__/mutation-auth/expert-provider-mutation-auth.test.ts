@@ -19,9 +19,17 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 import { after, before, test } from "node:test";
 import { endpointKey } from "../../../scripts/mutation-auth/endpoint-key";
+import {
+  type BookingResourceFixture,
+  createBookingResourceFixture,
+  createLoginFixture as createSharedLoginFixture,
+  destroyBookingResourceFixture,
+  diagnosticBody,
+  fixtureRowStatus as readFixtureRowStatus,
+  liveAuditRefusalReason,
+} from "./booking-resource-fixture";
 import { eq, sql } from "drizzle-orm";
 import { users } from "@shared/models/auth";
 
@@ -42,7 +50,6 @@ const manifest = JSON.parse(fs.readFileSync(
   path.join(process.cwd(), "generated/security/mutation-auth-manifest.json"),
   "utf8",
 )) as MutationManifest;
-const scrypt = promisify(crypto.scrypt);
 
 // ONE spelling of the endpoint key (scripts/mutation-auth/endpoint-key.ts, §18 rule 1).
 const keyOf = endpointKey;
@@ -52,42 +59,6 @@ const concretePath = (template: string) => template.replace(
   /:([A-Za-z0-9_]+)/g,
   (_all, name: string) => encodeURIComponent(`${name}-mutation-auth-probe`),
 );
-
-type AuditSafetyConfig = {
-  nodeEnv?: string;
-  baseUrl: string;
-  databaseUrl?: string;
-  productionDatabaseUrl?: string;
-};
-
-/**
- * Returns the first reason a live audit must be refused.  This pure predicate
- * is called before importing the DB module or creating the fixture.
- */
-function liveAuditRefusalReason(config: AuditSafetyConfig): string | undefined {
-  if (config.nodeEnv === "production") {
-    return "NODE_ENV=production";
-  }
-
-  let hostname: string;
-  try {
-    hostname = new URL(config.baseUrl).hostname.toLowerCase();
-  } catch {
-    return `BASE_URL is invalid: ${config.baseUrl}`;
-  }
-  if (hostname !== "127.0.0.1" && hostname !== "localhost") {
-    return `BASE_URL is not loopback: ${config.baseUrl}`;
-  }
-
-  if (
-    config.databaseUrl &&
-    config.productionDatabaseUrl &&
-    config.databaseUrl === config.productionDatabaseUrl
-  ) {
-    return "DATABASE_URL equals PROD_DATABASE_URL";
-  }
-  return undefined;
-}
 
 /*
  * The role backstop's prefix set is READ OUT OF THE PRODUCTION ASSEMBLY, never
@@ -226,6 +197,7 @@ let auditDb: typeof import("../../db").db | undefined;
 // The RESOURCE_PROBES fixture: a disposable OWNER (stored role `service_provider`), one listing
 // they own, one booking on it where the ordinary user is the TRAVELER, and one `requested` quote
 // on it from that same traveler.  Created and deleted with the ordinary user.
+let fixture: BookingResourceFixture | undefined;
 let ownerUserId: string | undefined;
 let ownerCookie = "";
 let fixtureServiceId: string | undefined;
@@ -237,37 +209,16 @@ let readyMadeAuthorCookie = "";
 function emitEvidence(evidence: Record<string, unknown>): void {
   console.log(JSON.stringify({ audit: "expert-provider-wrong-role", ...evidence }));
 }
-async function hashPassword(password: string): Promise<string> {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const key = await scrypt(password, salt, 64) as Buffer;
-  return `${salt}:${key.toString("hex")}`;
-}
-async function diagnosticBody(response: Response): Promise<string> {
-  const body = await response.text();
-  return body.length <= 500 ? body : `${body.slice(0, 500)}…`;
-}
-async function createLoginFixture(input: { id: string; role: string; firstName: string }): Promise<string> {
-  const password = `MutationAuth-${crypto.randomBytes(12).toString("hex")}!`;
-  const email = `mutation-auth-${crypto.randomUUID()}@example.invalid`;
-  await auditDb!.insert(users).values({
-    id: input.id, email, password: await hashPassword(password),
-    firstName: input.firstName, lastName: "Authorization Audit", role: input.role, authProvider: "email",
-  });
-  const login = await fetch(`${BASE_URL}/api/auth/login`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }), redirect: "manual",
-  });
-  assert.equal(login.status, 200, `${input.role} fixture login failed: status=${login.status} response=${await diagnosticBody(login)}`);
-  const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
-  assert.ok(cookie, `${input.role} fixture login did not return a session cookie`);
-  return cookie;
-}
-async function fixtureRowStatus(table: "service_bookings" | "service_quotes", id: string): Promise<string | undefined> {
-  const result = table === "service_bookings"
-    ? await auditDb!.execute(sql`SELECT status FROM service_bookings WHERE id = ${id}`)
-    : await auditDb!.execute(sql`SELECT status FROM service_quotes WHERE id = ${id}`);
-  return (result.rows[0] as { status?: string } | undefined)?.status;
-}
+/**
+ * The shared fixture's helpers, bound to this suite's db handle and base URL
+ * (§18 rule 1 — ONE login path and ONE row reader, shared with the payments
+ * suite). Call sites below are unchanged.
+ */
+const createLoginFixture = (input: { id: string; role: string; firstName: string }) =>
+  createSharedLoginFixture(auditDb!, BASE_URL, input);
+const fixtureRowStatus = (table: "service_bookings" | "service_quotes", id: string) =>
+  readFixtureRowStatus(auditDb!, table, id);
+
 async function readyMadeTripRow(id: string): Promise<{ title?: string } | undefined> {
   const result = await auditDb!.execute(sql`SELECT title FROM trips WHERE id = ${id}`);
   return result.rows[0] as { title?: string } | undefined;
@@ -312,35 +263,24 @@ before(async () => {
   if (refusal) {
     throw new Error(`Refusing mutation authorization audit: ${refusal}`);
   }
-  auditDb = (await import("../../db")).db;
-  fixtureUserId = crypto.randomUUID();
-  sessionCookie = await createLoginFixture({ id: fixtureUserId, role: "user", firstName: "Mutation" });
+  // ONE builder for the owner + listing + booking + quote rows, shared with the
+  // payments suite (./booking-resource-fixture). It also creates a `stranger`
+  // principal this suite does not need: the rails here are OWNER-authorized, so
+  // the booking's own traveler is already the non-owner arm. The payment rails
+  // invert that, which is why the module exists.
+  fixture = await createBookingResourceFixture(BASE_URL);
+  auditDb = fixture.db;
+  fixtureUserId = fixture.travelerUserId;
+  sessionCookie = fixture.travelerCookie;
+  ownerUserId = fixture.ownerUserId;
+  ownerCookie = fixture.ownerCookie;
+  fixtureServiceId = fixture.serviceId;
+  fixtureBookingId = fixture.bookingId;
+  fixtureQuoteId = fixture.quoteId;
 
-  // The RESOURCE_PROBES fixture.  Raw rows on the same tables the handlers read (the
-  // `service-quotes` and `acceptance-rails` DB suites' shapes); nothing is charged, no Stripe
-  // id is planted (§19a), and the ordinary user above is the traveler on both rows.
-  ownerUserId = crypto.randomUUID();
-  ownerCookie = await createLoginFixture({ id: ownerUserId, role: "service_provider", firstName: "Owner" });
-  fixtureServiceId = `mutation-auth-svc-${crypto.randomUUID()}`;
-  fixtureBookingId = `mutation-auth-booking-${crypto.randomUUID()}`;
-  fixtureQuoteId = `mutation-auth-quote-${crypto.randomUUID()}`;
-  await auditDb.execute(sql`
-    INSERT INTO provider_services (id, user_id, service_name, description, price, price_type, booking_mode,
-                                   delivery_method, status, approval_status)
-    VALUES (${fixtureServiceId}, ${ownerUserId}, 'Mutation authorization audit listing', 'fixture', NULL,
-            'custom_quote', 'request', 'in_person', 'active', 'approved')
-  `);
-  await auditDb.execute(sql`
-    INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status,
-                                  total_amount, platform_fee, provider_earnings, confirmed_at)
-    VALUES (${fixtureBookingId}, ${fixtureServiceId}, ${fixtureUserId}, ${ownerUserId}, 'confirmed',
-            '100.00', '25.00', '75.00', NOW())
-  `);
-  await auditDb.execute(sql`
-    INSERT INTO service_quotes (id, service_id, traveler_id, position, status)
-    VALUES (${fixtureQuoteId}, ${fixtureServiceId}, ${fixtureUserId}, 1, 'requested')
-  `);
-
+  // The ready-made author is this suite's own fixture: a different resource
+  // (ready_made_trips + trips), so it stays here rather than joining the shared
+  // builder, which owns the booking/quote rows only.
   readyMadeAuthorId = crypto.randomUUID();
   readyMadeAuthorCookie = await createLoginFixture({
     id: readyMadeAuthorId,
@@ -350,24 +290,20 @@ before(async () => {
 });
 
 after(async () => {
-  if (!auditDb) return;
+  if (!auditDb || !fixture) return;
   const db = auditDb;
+  // This suite's OWN rows first (they reference the author), then the shared
+  // fixture's, whose destroyer owns its rows and its three principals.
   const cleanup: Array<() => Promise<unknown>> = [
     () => db.execute(sql`DELETE FROM ready_made_trips WHERE author_id = ${readyMadeAuthorId ?? ""}`),
     () => db.execute(sql`DELETE FROM trips WHERE author_id = ${readyMadeAuthorId ?? ""}`),
-    // Child rows first: the quote and the booking reference the listing and both users.
-    () => db.execute(sql`DELETE FROM service_quotes WHERE id = ${fixtureQuoteId ?? ""}`),
-    () => db.execute(sql`DELETE FROM content_registry WHERE content_id IN (${fixtureBookingId ?? ""}, ${fixtureServiceId ?? ""})`),
-    () => db.execute(sql`DELETE FROM service_bookings WHERE id = ${fixtureBookingId ?? ""}`),
-    () => db.execute(sql`DELETE FROM provider_services WHERE id = ${fixtureServiceId ?? ""}`),
     () => db.execute(sql`
       DELETE FROM sessions
-      WHERE sess->'passport'->'user'->'claims'->>'sub' IN (${fixtureUserId ?? ""}, ${ownerUserId ?? ""}, ${readyMadeAuthorId ?? ""})
-         OR sess->'passport'->'user'->>'id' IN (${fixtureUserId ?? ""}, ${ownerUserId ?? ""}, ${readyMadeAuthorId ?? ""})
+      WHERE sess->'passport'->'user'->'claims'->>'sub' = ${readyMadeAuthorId ?? ""}
+         OR sess->'passport'->'user'->>'id' = ${readyMadeAuthorId ?? ""}
     `),
     () => readyMadeAuthorId ? db.delete(users).where(eq(users.id, readyMadeAuthorId)) : Promise.resolve(),
-    () => ownerUserId ? db.delete(users).where(eq(users.id, ownerUserId)) : Promise.resolve(),
-    () => fixtureUserId ? db.delete(users).where(eq(users.id, fixtureUserId)) : Promise.resolve(),
+    () => destroyBookingResourceFixture(fixture!),
   ];
   let firstError: unknown;
   for (const step of cleanup) {
