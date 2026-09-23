@@ -6,12 +6,12 @@
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "fresh",
-    "timestamp": "2026-09-22T02:55:55.009Z"
+    "timestamp": "2026-09-23T00:47:42.062Z"
   },
   "totals": {
-    "tested": 291,
+    "tested": 299,
     "total": 589,
-    "remaining": 298,
+    "remaining": 290,
     "categories": {
       "payments": {
         "tested": 14,
@@ -22,7 +22,7 @@
         "total": 148
       },
       "user-data": {
-        "tested": 134,
+        "tested": 142,
         "total": 200
       },
       "other": {
@@ -771,8 +771,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/expert/ready-made/build/:id",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
     },
     {
       "method": "DELETE",
@@ -2759,8 +2759,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/expert/ready-made/:id",
-      "tested": false,
-      "reason": "Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed."
+      "tested": true,
+      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
     },
     {
       "method": "PATCH",
@@ -2779,8 +2779,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/expert/ready-made/build/:tripId",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
     },
     {
       "method": "PATCH",
@@ -7597,8 +7597,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/ready-made",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
     },
     {
       "method": "POST",
@@ -7617,8 +7617,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/ready-made/:id/build-review",
-      "tested": false,
-      "reason": "Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed."
+      "tested": true,
+      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
     },
     {
       "method": "POST",
@@ -7637,8 +7637,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/ready-made/:id/submit",
-      "tested": false,
-      "reason": "Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed."
+      "tested": true,
+      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
     },
     {
       "method": "POST",
@@ -7657,8 +7657,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/ready-made/:id/withdraw",
-      "tested": false,
-      "reason": "Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed."
+      "tested": true,
+      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
     },
     {
       "method": "POST",
@@ -7677,8 +7677,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/ready-made/from-trip/:tripId",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
     },
     {
       "method": "POST",
