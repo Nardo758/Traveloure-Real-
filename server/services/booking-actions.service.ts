@@ -599,6 +599,19 @@ export async function isExpertApproved(expertUserId: string): Promise<boolean> {
   return !!(result.rows && result.rows.length > 0);
 }
 
+/**
+ * CAN THIS ACCOUNT BE INVITED ONTO A PLAN? — an approved expert profile, and NOT the platform's
+ * reserved Booking Concierge account, which the one advisor-row author refuses for every caller
+ * (Locked Decision 51: it is a pool marker, never an advisor). ONE predicate, two callers (§18
+ * rule 1): the advisors rail's approval check, so an invite to that account is the ordinary 404
+ * rather than a thrown 500, and the storefront loader, so its booking panel never offers a share
+ * the server would refuse (ledger `2026-09-23-storefront-booking-panel`).
+ */
+export async function isExpertHireable(expertUserId: string): Promise<boolean> {
+  if (await isPlatformConciergeUserId(expertUserId)) return false;
+  return isExpertApproved(expertUserId);
+}
+
 export async function getTripDestination(tripId: string): Promise<string> {
   const result = await db.execute(sql`SELECT destination FROM trips WHERE id = ${tripId}`);
   return String((result.rows?.[0] as any)?.destination || "unknown");
