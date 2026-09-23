@@ -94,4 +94,50 @@ test.describe('/p/:handle — legacy redirect + extracted OfferingCard (lane C1)
       await expect(card).toHaveAttribute('href', /^\/services\//);
     }
   });
+
+  test('expert directory trip handoff reaches handled storefront service links without booking', async ({ page }) => {
+    const tripId = 'playwright-trip-handoff';
+    const forbiddenMutations: string[] = [];
+    page.on('request', (request) => {
+      if (
+        request.method() !== 'GET' &&
+        (
+          request.url().includes('/api/expert-booking-requests') ||
+          request.url().includes('/api/bookings')
+        )
+      ) {
+        forbiddenMutations.push(`${request.method()} ${request.url()}`);
+      }
+    });
+
+    await page.goto(`${BASE_URL}/experts?tripId=${tripId}`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30_000,
+    });
+
+    const handledExpert = page.getByTestId(/card-expert-/).filter({ hasText: 'Sofia Chen' });
+    await expect(handledExpert).toHaveCount(1);
+    await handledExpert.getByTestId('button-view-profile').click();
+
+    await expect(page).toHaveURL(new RegExp(`/s/sofia-chen\\?tripId=${tripId}$`));
+    await expect(page.getByTestId('storefront-page')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('link-back-to-plan-storefront')).toHaveAttribute(
+      'href',
+      `/plans/${tripId}`,
+    );
+    await expect(page.getByTestId('button-plan-entry-storefront')).toHaveCount(0);
+    await expect(page.getByText('Start a plan', { exact: false })).toHaveCount(0);
+
+    const serviceLinks = page.locator('[data-testid^="storefront-service-"]');
+    await expect(serviceLinks.first()).toBeVisible();
+    const serviceCount = await serviceLinks.count();
+    expect(serviceCount).toBeGreaterThan(0);
+    for (let index = 0; index < serviceCount; index += 1) {
+      await expect(serviceLinks.nth(index)).toHaveAttribute(
+        'href',
+        new RegExp(`^/services/[^?]+\\?tripId=${tripId}$`),
+      );
+    }
+    expect(forbiddenMutations).toEqual([]);
+  });
 });

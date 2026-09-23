@@ -371,7 +371,7 @@ export default function ExpertDetailPage() {
   // keep this page unchanged. Placed AFTER the loading/not-found returns above
   // so `expert` is guaranteed loaded here (no flash-redirect on undefined).
   if (typeof expert.handle === "string" && expert.handle.trim().length > 0) {
-    return <Redirect to={`/s/${expert.handle}`} />;
+    return <Redirect to={`/s/${expert.handle}${searchString ? `?${searchString}` : ""}`} />;
   }
 
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim();

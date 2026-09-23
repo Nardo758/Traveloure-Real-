@@ -24,6 +24,8 @@ const ownerIds: Record<string, string> = {};
 
 const createdEmails: string[] = [];
 const createdServiceIds: string[] = [];
+const createdBookingIds: string[] = [];
+const createdReviewIds: string[] = [];
 
 function api(path: string, init?: RequestInit) {
   return fetch(`${BASE_URL}${path}`, init);
@@ -79,6 +81,25 @@ async function createApprovedService(ownerId: string, label: string) {
     [id, ownerId, `${label} service`],
   );
   createdServiceIds.push(id);
+  return id;
+}
+
+async function createApprovedReview(ownerId: string, serviceId: string, rating: number) {
+  const bookingId = crypto.randomUUID();
+  const reviewId = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status, total_amount)
+     VALUES ($1, $2, $3, $3, 'completed', 100.00)`,
+    [bookingId, serviceId, ownerId],
+  );
+  await pool.query(
+    `INSERT INTO service_reviews
+       (id, booking_id, service_id, provider_id, traveler_id, rating, review_text, status)
+     VALUES ($1, $2, $3, $4, $4, $5, 'row-backed storefront review', 'approved')`,
+    [reviewId, bookingId, serviceId, ownerId, rating],
+  );
+  createdBookingIds.push(bookingId);
+  createdReviewIds.push(reviewId);
 }
 
 before(async () => {
@@ -99,9 +120,24 @@ before(async () => {
   const rejectedLegacyId = await createOwner("rejected-legacy", "local_expert", null);
   await createOwner("no-form-legacy", "local_expert", null);
 
-  await createApprovedService(expertId, "expert");
-  await createApprovedService(providerId, "provider");
+  const expertServiceId = await createApprovedService(expertId, "expert");
+  const providerServiceId = await createApprovedService(providerId, "provider");
   await createApprovedService(suspendedId, "suspended");
+  await pool.query(
+    `UPDATE provider_services SET average_rating = '4.70', review_count = 12
+     WHERE id = ANY($1)`,
+    [[expertServiceId, providerServiceId]],
+  );
+  await createApprovedReview(expertId, expertServiceId, 5);
+  const inactiveExpertServiceId = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO provider_services
+      (id, user_id, service_name, price, status, approval_status, delivery_method, average_rating, review_count)
+     VALUES ($1, $2, 'inactive historical service', '90.00', 'inactive', 'approved', 'pdf', '4.70', 12)`,
+    [inactiveExpertServiceId, expertId],
+  );
+  createdServiceIds.push(inactiveExpertServiceId);
+  await createApprovedReview(expertId, inactiveExpertServiceId, 4);
   await createExpertForm(
     approvedLegacyId,
     "approved-legacy",
@@ -118,6 +154,8 @@ before(async () => {
 
 after(async () => {
   try {
+    await pool.query(`DELETE FROM service_reviews WHERE id = ANY($1)`, [createdReviewIds]);
+    await pool.query(`DELETE FROM service_bookings WHERE id = ANY($1)`, [createdBookingIds]);
     await pool.query(`DELETE FROM provider_services WHERE id = ANY($1)`, [createdServiceIds]);
     await pool.query(`DELETE FROM users WHERE email = ANY($1)`, [createdEmails]);
   } finally {
@@ -129,9 +167,26 @@ test("canonical API serves approved expert inventory", async () => {
   const response = await api(`/api/storefront/${handles.expert}`);
   const responseText = await response.text();
   assert.equal(response.status, 200, responseText);
-  const body = JSON.parse(responseText) as { earner: { role: string }; services: unknown[] };
+  const body = JSON.parse(responseText) as {
+    earner: {
+      role: string;
+      averageRating: number | null;
+      reviewCount: number;
+      expertReviewCount: number;
+      serviceReviewCount: number;
+    };
+    services: Array<{ averageRating: string | null; reviewCount: number }>;
+    reviews: unknown[];
+  };
   assert.equal(body.earner.role, "local_expert");
   assert.equal(body.services.length, 1);
+  assert.equal(body.earner.averageRating, 4.5);
+  assert.equal(body.earner.reviewCount, 2);
+  assert.equal(body.earner.expertReviewCount, 2);
+  assert.equal(body.earner.serviceReviewCount, 1);
+  assert.equal(body.services[0].averageRating, "5.00");
+  assert.equal(body.services[0].reviewCount, 1);
+  assert.equal(body.reviews.length, 1);
 });
 
 test("canonical API serves provider services with empty expert-only lanes", async () => {
@@ -158,6 +213,23 @@ test("canonical API serves provider services with empty expert-only lanes", asyn
     "the retired expert_templates lane must leave NO response key (2026-09-03-expert-templates-consumer-sunset)",
   );
   assert.deepEqual(body.readyMade, []);
+});
+
+test("provider directory ignores denormalized listing review claims", async () => {
+  const response = await api("/api/provider-storefronts");
+  const responseText = await response.text();
+  assert.equal(response.status, 200, responseText);
+  const body = JSON.parse(responseText) as Array<{
+    handle: string;
+    serviceCount: number;
+    averageRating: number | null;
+    reviewCount: number;
+  }>;
+  const provider = body.find((row) => row.handle === handles.provider);
+  assert.ok(provider, "seeded provider must be present in directory");
+  assert.equal(provider.serviceCount, 1);
+  assert.equal(provider.averageRating, null);
+  assert.equal(provider.reviewCount, 0);
 });
 
 test("canonical API preserves no-inventory and suspended 404 gates", async () => {
@@ -197,6 +269,17 @@ test("handle-bearing legacy expert routes redirect permanently to the canonical 
     assert.equal(response.status, 308, `${path} must permanently redirect`);
     assert.equal(response.headers.get("location"), `/s/${handles.expert}`);
   }
+});
+
+test("legacy expert redirects preserve the trip handoff query", async () => {
+  const response = await api(`/experts/${ownerIds.expert}?tripId=trip-handoff-proof`, {
+    redirect: "manual",
+  });
+  assert.equal(response.status, 308);
+  assert.equal(
+    response.headers.get("location"),
+    `/s/${handles.expert}?tripId=trip-handoff-proof`,
+  );
 });
 
 test("approved no-handle experts keep the unified legacy profile and form bio", async () => {

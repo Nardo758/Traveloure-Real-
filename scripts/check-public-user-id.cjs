@@ -481,6 +481,19 @@ function scanRouteFile(text, relPath) {
   const violations = [];
   const exemptions = [];
   const lines = text.split("\n");
+  // A public route can consume the legacy users.id without publishing it (for example the
+  // LD 40 /experts/:id compatibility lookup). A standalone marker keeps that route-level debt
+  // visible even though there is no forbidden response property for the payload scanner to flag.
+  lines.forEach((raw, index) => {
+    if (!/^\s*\/\/\s*public-user-id-ok\s*:/.test(raw)) return;
+    const marker = OK_MARKER.exec(raw);
+    exemptions.push({
+      file: relPath,
+      line: index + 1,
+      what: "explicit public route lookup exemption",
+      reason: (marker?.[1] || "").trim() || "(no reason given)",
+    });
+  });
   const skipLines = queryLineSet(text);
   const lineOf = lineOffsets(text);
 
