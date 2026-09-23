@@ -60,16 +60,40 @@
  *   repository, which removes prose nouns (`against`, `local`, `dev`) but NOT
  *   a real root name such as `server`. It is a second filter, not the fix:
  *   the invocation-position rule above is what removes `server`.
- * - `TEST_ROOTS` IS `server`, `shared`, `client`, `playwright` — `e2e/` IS NOT
- *   SCANNED, so no `e2e/` spec is counted as reachable OR as an orphan (the
- *   ten `e2e/specs/*.spec.ts` files are invisible to this inventory). They do
- *   have a real, schedule-only CI reach through `playwright.e2e.config.ts`'s
- *   `testDir` (`npm run test:e2e:staging`), so adding the root would move both
- *   the numerator and the denominator. RULED 2026-09-15 (`2026-09-15-orphan-ratchet`):
- *   the root STAYS OUT and the limit stays STATED — widening the inventory is a
- *   decision about what it MEASURES, and the ratchet does not make it. An `e2e/`
- *   spec is therefore invisible to the ratchet as well: it can be added, wired or
- *   orphaned without this guard noticing either way.
+ * - `TEST_ROOTS` IS `server`, `shared`, `client`, `playwright`, `scripts`. TWO
+ *   ROOTS WITH TEST FILES ARE DELIBERATELY OUT, AND BOTH ARE NAMED HERE RATHER
+ *   THAN LEFT SILENT — an unscanned root is invisible in BOTH directions, so a
+ *   suite under it can be added, wired or orphaned without this guard noticing.
+ *
+ *   `scripts/` WAS SILENTLY OUT UNTIL 2026-09-23 and is now IN. It holds two
+ *   suites (`scripts/mutation-auth/extractor.test.ts`, `coverage.test.ts`) that
+ *   cover the mutation-auth manifest and coverage GENERATORS — and since
+ *   `suite-mutation-auth` became a required context, those generators gate
+ *   merges. `extractor.test.ts` had in fact been RED since the day it was
+ *   written (it asserted 587/578 against a graph that already said 597/588) and
+ *   nothing went amber, because it ran in no workflow AND lived outside this
+ *   scan. Both are now wired, so adding the root declares ZERO new orphans; it
+ *   moves numerator and denominator by the same 2. That is what made it safe to
+ *   widen here rather than as its own ruling.
+ *
+ *   `e2e/` STAYS OUT. Its ten `e2e/specs/*.spec.ts` files have a real,
+ *   schedule-only CI reach through `playwright.e2e.config.ts`'s `testDir`
+ *   (`npm run test:e2e:staging`), so adding the root would move both the
+ *   numerator and the denominator. RULED 2026-09-15 (`2026-09-15-orphan-ratchet`):
+ *   widening the inventory is a decision about what it MEASURES, and the ratchet
+ *   does not make it.
+ *
+ *   `artifacts/` STAYS OUT, on a DIFFERENT ground, and this is the bigger of the
+ *   two omissions: `artifacts/traveloure` is a separate private workspace
+ *   (`@workspace/traveloure`, `private: true`) carrying **29** test files — more
+ *   than `shared/` — and it is a design REFERENCE, not shipped code. Its own
+ *   `package.json` declares `dev`/`build`/`serve`/`typecheck` and NO `test`
+ *   script, no workflow names it, and the main app cites it only in comments.
+ *   Adding the root would declare 29 orphans in a prototype, and because the
+ *   ratchet refuses to baseline a new orphan, that would force wiring or
+ *   deleting 29 sandbox suites to get green. Bringing it in is a decision about
+ *   what this inventory is FOR, on the `e2e/` precedent — not a blind spot to be
+ *   closed by widening a constant.
  * - THE RATCHET DOES NOT MAKE A BASELINE ROW ACCEPTABLE. It catches exactly two
  *   things — a NEW unreachable test file, and a baseline row that has gone stale
  *   (wired, or deleted). It says nothing about the 233 rows it carries: each is
@@ -92,7 +116,7 @@ const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const WORKFLOW_DIR = path.join(ROOT, ".github", "workflows");
-const TEST_ROOTS = ["server", "shared", "client", "playwright"];
+const TEST_ROOTS = ["server", "shared", "client", "playwright", "scripts"];
 const BASELINE_PATH = path.join(ROOT, "scripts", "test-orphan-baseline.txt");
 const BASELINE_REL = "scripts/test-orphan-baseline.txt";
 const TEST_RE = /\.(?:test\.ts|test\.tsx|spec\.ts)$/;
