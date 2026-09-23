@@ -6,15 +6,15 @@
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "fresh",
-    "timestamp": "2026-09-23T00:47:42.062Z"
+    "timestamp": "2026-09-23T01:16:00.637Z"
   },
   "totals": {
-    "tested": 299,
+    "tested": 304,
     "total": 589,
-    "remaining": 290,
+    "remaining": 285,
     "categories": {
       "payments": {
-        "tested": 14,
+        "tested": 19,
         "total": 31
       },
       "admin": {
@@ -5777,8 +5777,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/confirm-completion",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-booking User A → User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate."
     },
     {
       "method": "POST",
@@ -5817,8 +5817,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/dispute",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-booking User A → User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate."
     },
     {
       "method": "POST",
@@ -5837,8 +5837,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/pay-balance",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-booking User A → User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate."
     },
     {
       "method": "POST",
@@ -5897,8 +5897,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/confirm-payment",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-booking User A → User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate."
     },
     {
       "method": "POST",
@@ -5957,8 +5957,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/refund",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-booking User A → User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate."
     },
     {
       "method": "POST",

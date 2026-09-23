@@ -19,6 +19,13 @@ export type PaymentMutationAuditRow = {
   reason: string;
 };
 
+const exercisedByPaymentsSuite =
+  "Exercised by server/__tests__/mutation-auth/payments-mutation-auth.test.ts: a REAL booking owned by "
+  + "another traveler is addressed as anonymous (401), as a stranger who is party to nothing, and as the "
+  + "listing owner -- both refused, with the row proven unchanged -- and then as that booking's own "
+  + "traveler, who passes the ownership gate. Exact refusal statuses are asserted; the post-gate status "
+  + "deliberately is not, because that is a state-machine question and this is an authorization audit.";
+
 const notYetSafelyMounted =
   "Untested: this repository has no isolated authenticated HTTP fixture that mounts the real " +
   "route with User A/User B sessions and a disposable DB transaction. Do not substitute a random-id 404.";
@@ -26,12 +33,12 @@ const notYetSafelyMounted =
 export const paymentMutationAuthorizationManifest: readonly PaymentMutationAuditRow[] = [
   // Checkout / booking payment rail.
   { method: "POST", path: "/api/checkout", source: "server/routes/payments.routes.ts", declaration: 'router.post("/api/checkout", isAuthenticated', ownership: "session", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/bookings/:id/pay-balance", source: "server/routes/payments.routes.ts", declaration: 'router.post("/api/bookings/:id/pay-balance", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
+  { method: "POST", path: "/api/bookings/:id/pay-balance", source: "server/routes/payments.routes.ts", declaration: 'router.post("/api/bookings/:id/pay-balance", isAuthenticated', ownership: "resource", state: "exercised", reason: exercisedByPaymentsSuite },
   { method: "POST", path: "/api/bookings/process-cart", source: "server/routes/bookings.ts", declaration: "router.post('/process-cart', isAuthenticated", ownership: "session", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/bookings/confirm-payment", source: "server/routes/bookings.ts", declaration: "router.post('/confirm-payment', isAuthenticated", ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/bookings/refund", source: "server/routes/bookings.ts", declaration: "router.post('/refund', isAuthenticated", ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/bookings/:id/confirm-completion", source: "server/routes/bookings.ts", declaration: "router.post('/:id/confirm-completion', isAuthenticated", ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/bookings/:id/dispute", source: "server/routes/bookings.ts", declaration: "router.post('/:id/dispute', isAuthenticated", ownership: "resource", state: "untested", reason: notYetSafelyMounted },
+  { method: "POST", path: "/api/bookings/confirm-payment", source: "server/routes/bookings.ts", declaration: "router.post('/confirm-payment', isAuthenticated", ownership: "resource", state: "exercised", reason: exercisedByPaymentsSuite },
+  { method: "POST", path: "/api/bookings/refund", source: "server/routes/bookings.ts", declaration: "router.post('/refund', isAuthenticated", ownership: "resource", state: "exercised", reason: exercisedByPaymentsSuite },
+  { method: "POST", path: "/api/bookings/:id/confirm-completion", source: "server/routes/bookings.ts", declaration: "router.post('/:id/confirm-completion', isAuthenticated", ownership: "resource", state: "exercised", reason: exercisedByPaymentsSuite },
+  { method: "POST", path: "/api/bookings/:id/dispute", source: "server/routes/bookings.ts", declaration: "router.post('/:id/dispute', isAuthenticated", ownership: "resource", state: "exercised", reason: exercisedByPaymentsSuite },
 
   // Per-user payment instruments and paid AI / expert services.
   { method: "POST", path: "/api/me/payment-methods/setup-intent", source: "server/routes/payment-methods.routes.ts", declaration: 'router.post("/api/me/payment-methods/setup-intent", isAuthenticated', ownership: "session", state: "untested", reason: notYetSafelyMounted },

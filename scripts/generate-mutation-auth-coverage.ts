@@ -90,6 +90,14 @@ function disposition(endpoint: Endpoint, contexts: Map<string, Set<string>>, evi
     return has("wrong-role")
       ? { tested: true, reason: "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success." }
       : { tested: false, reason: `Not run: ${evidenceState || "fresh ready-made author/non-author fixture evidence is absent"}.` };
+  // The payments suite's own context. Deliberately NO hardcoded key list: this
+  // generator's stated rule is that an endpoint is tested only when a passing,
+  // non-skipped suite NAMES that exact endpoint in its required context, so the
+  // evidence IS the list. A second copy of the probe set here would be the
+  // derivation-drift class CLAUDE.md §18 rule 1 names, and it would let coverage
+  // claim a rail the suite had quietly stopped probing.
+  if (has("payments-resource-owner"))
+    return { tested: true, reason: "Fresh real-booking User A \u2192 User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate." };
   if ((endpoint.risk === "payments" || endpoint.risk === "user-data") && endpoint.expectedBoundary === "signature")
     return has("unauthenticated")
       ? { tested: true, reason: "Fresh unsigned-request evidence for the payment/user-data signature boundary." }

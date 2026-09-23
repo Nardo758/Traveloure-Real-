@@ -37,3 +37,11 @@ journey-out/
 
 # Raw pasted dispatch prompts are session inputs, not repository assets.
 attached_assets/Pasted-*
+
+# scripts/run-mutation-auth-live-audit.ts writes one raw TAP log per suite here on
+# EVERY run. They are run output, not a deliverable: ~236K rewritten wholesale each
+# time, carrying verbatim probe request/response bodies and disposable-fixture
+# addresses. The tracked artifact is the DERIVED summary the runner writes beside
+# them — generated/security/mutation-auth-evidence.json — whose `log` field names a
+# LOCAL path, valid only for the run that produced it.
+generated/security/evidence-logs/

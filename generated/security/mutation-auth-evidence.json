@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/run-mutation-auth-live-audit.ts",
   "manifestSha256": "1e817f102bb76e96e3aea888e2f7b51fa1c6e86023cba366353fad569147f0f2",
-  "timestamp": "2026-09-23T00:47:42.062Z",
+  "timestamp": "2026-09-23T01:16:00.637Z",
   "passed": true,
   "suites": [
     {
@@ -506,6 +506,22 @@
         "POST /api/trips/:tripId/validate-schedule"
       ],
       "log": "generated/security/evidence-logs/resource-ownership.log"
+    },
+    {
+      "id": "payments-resource-ownership",
+      "context": "payments-resource-owner",
+      "command": "MUTATION_AUTH_AUDIT_OK=1 npx tsx --test server/__tests__/mutation-auth/payments-mutation-auth.test.ts",
+      "passed": true,
+      "skipped": false,
+      "exitStatus": 0,
+      "endpointKeys": [
+        "POST /api/bookings/:id/confirm-completion",
+        "POST /api/bookings/:id/dispute",
+        "POST /api/bookings/:id/pay-balance",
+        "POST /api/bookings/confirm-payment",
+        "POST /api/bookings/refund"
+      ],
+      "log": "generated/security/evidence-logs/payments-resource-ownership.log"
     },
     {
       "id": "optimization-confirm",

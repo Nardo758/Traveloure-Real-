@@ -4,17 +4,18 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 299/589**; remaining: **290**.
-- Admin: **143/148**; payments: **14/31**; user-data: **142/200**; other: **0/210**.
+- **Tested: 304/589**; remaining: **285**.
+- Admin: **143/148**; payments: **19/31**; user-data: **142/200**; other: **0/210**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **fresh**; manifest SHA-256: `1e817f102bb76e96e3aea888e2f7b51fa1c6e86023cba366353fad569147f0f2`; run timestamp: 2026-09-23T00:47:42.062Z.
+- Evidence state: **fresh**; manifest SHA-256: `1e817f102bb76e96e3aea888e2f7b51fa1c6e86023cba366353fad569147f0f2`; run timestamp: 2026-09-23T01:16:00.637Z.
 - `admin`: **passed**, 143 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 229 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 53 exact endpoint keys, context `wrong-role`.
 - `resource-ownership`: **passed**, 33 exact endpoint keys, context `resource-owner`.
+- `payments-resource-ownership`: **passed**, 5 exact endpoint keys, context `payments-resource-owner`.
 - `optimization-confirm`: **passed**, 1 exact endpoint keys, context `optimization-confirm`.
 - An endpoint is tested only when a passing, non-skipped suite in the fresh evidence artifact names that exact endpoint in its required context. Route classification alone never promotes coverage.
 - Totals are a strict endpoint union, not a sum of evidence dimensions. Endpoints with both unauthenticated and cross-owner evidence are counted once.
@@ -122,12 +123,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/auth/reset-password | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:375 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/auth/send-verification | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:451 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/auth/verify-email | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:489 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/bookings/:id/confirm-completion | payments | resource-owner | server/routes/bookings.ts:719 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
-| POST /api/bookings/:id/dispute | payments | resource-owner | server/routes/bookings.ts:797 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
-| POST /api/bookings/:id/pay-balance | payments | resource-owner | server/routes/payments.routes.ts:2221 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
 | POST /api/bookings/bulk-status | user-data | resource-owner | server/routes/bookings.ts:379 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
-| POST /api/bookings/confirm-payment | payments | resource-owner | server/routes/bookings.ts:254 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
-| POST /api/bookings/refund | payments | resource-owner | server/routes/bookings.ts:583 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
 | POST /api/budget/calculate-tip | other | session-self | server/routes/content.routes.ts:7241 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/budget/convert-currency | other | session-self | server/routes/content.routes.ts:7227 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/cache/checkout-verify | other | session-self | server/routes/content.routes.ts:3761 | Other-category endpoint is intentionally outside the strict tested set. |

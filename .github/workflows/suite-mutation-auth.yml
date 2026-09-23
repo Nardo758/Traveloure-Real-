@@ -107,11 +107,11 @@ jobs:
             echo "attempt $i/60: waiting... ($result)"; sleep 5
           done
           echo "::error::Server did not become ready within 5 minutes"; exit 1
-      # T-4. Six suites. The two static ones need no server; the four live ones
+      # T-4. Seven suites. The two static ones need no server; the five live ones
       # probe the running app as an UNAUTHENTICATED caller and as an
       # AUTHENTICATED ORDINARY USER, and assert the exact refusal status.
-      - name: server/__tests__/mutation-auth (all six suites)
-        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/mutation-auth/admin-mutation-auth.test.ts server/__tests__/mutation-auth/expert-provider-mutation-auth.test.ts server/__tests__/mutation-auth/mutation-auth.http.test.ts server/__tests__/mutation-auth/mutation-auth.inventory.test.ts server/__tests__/mutation-auth/non-admin-payments-user-data-mutation-auth.http.test.ts server/__tests__/mutation-auth/payment-mutation-auth.manifest.test.ts
+      - name: server/__tests__/mutation-auth (all seven suites)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/mutation-auth/admin-mutation-auth.test.ts server/__tests__/mutation-auth/expert-provider-mutation-auth.test.ts server/__tests__/mutation-auth/mutation-auth.http.test.ts server/__tests__/mutation-auth/mutation-auth.inventory.test.ts server/__tests__/mutation-auth/non-admin-payments-user-data-mutation-auth.http.test.ts server/__tests__/mutation-auth/payment-mutation-auth.manifest.test.ts server/__tests__/mutation-auth/payments-mutation-auth.test.ts
       # The generated manifest three of those suites read is a DERIVED
       # inventory, and it had drifted far enough to probe four retired
       # /api/expert/templates routes (ledger

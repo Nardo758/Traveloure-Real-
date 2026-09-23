@@ -15,6 +15,7 @@ const specifications = [
   { id: "highrisk-unauthenticated", context: "unauthenticated", file: "server/__tests__/mutation-auth/non-admin-payments-user-data-mutation-auth.http.test.ts", live: true },
   { id: "expert-provider-wrong-role", context: "wrong-role", file: "server/__tests__/mutation-auth/expert-provider-mutation-auth.test.ts", live: true },
   { id: "resource-ownership", context: "resource-owner", file: "server/__tests__/mutation-auth/mutation-auth.http.test.ts", live: true },
+  { id: "payments-resource-ownership", context: "payments-resource-owner", file: "server/__tests__/mutation-auth/payments-mutation-auth.test.ts", live: true },
   { id: "optimization-confirm", context: "optimization-confirm", file: "server/__tests__/optimization-confirm-ownership.test.ts", live: false },
 ] as const;
 
