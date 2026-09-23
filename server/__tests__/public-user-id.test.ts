@@ -54,7 +54,9 @@ test("R1 loadStorefront's earner payload carries the handle and no users.id", ()
 
 test("R2 the provider directory row is keyed by handle, not by users.id", () => {
   const src = read("server", "routes", "storefront.routes.ts");
-  const row = between(src, "return Promise.all(rows.map(async (row) => ({", "})));");
+  // The row mapper builds a block body since ledger `2026-09-23-provider-directory-card` (it joins
+  // the provider's form and listings first); the scope is still exactly the published row.
+  const row = between(src, "return Promise.all(rows.map(async (row) => {", "  }));");
   assert.ok(/handle: row\.handle/.test(row), "the directory row lost its handle");
   assert.ok(!/\bid: row\.id\b/.test(row), "the directory row still publishes users.id");
   // Every row here HAS a handle by construction, which is why handle can be the identity at all.

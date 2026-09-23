@@ -10,6 +10,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  formatListingPrice,
+  moreListingsCount,
+  providerCardTitle,
   formatServiceCountLabel,
   formatProviderRating,
   providerInitials,
@@ -63,4 +66,39 @@ test("matchesProviderSearch is case-insensitive across name and handle", () => {
   assert.equal(matchesProviderSearch("yuki", "Yuki Flowers", "yukiflowers"), true);
   assert.equal(matchesProviderSearch("FLOWERS", "Yuki Flowers", "yukiflowers"), true);
   assert.equal(matchesProviderSearch("zzz", "Yuki Flowers", "yukiflowers"), false);
+});
+
+// ── DIRECTORY CARD (ledger `2026-09-23-provider-directory-card`) ─────────────────────────
+
+test("C1: the business name heads the card; the person is 'Run by' only when different", () => {
+  assert.deepEqual(providerCardTitle({ name: "Satoshi Ono", businessName: "Kansai Business Language" }), {
+    title: "Kansai Business Language",
+    runBy: "Satoshi Ono",
+  });
+  assert.deepEqual(providerCardTitle({ name: "Kenji Nakamura", businessName: null }), { title: "Kenji Nakamura", runBy: null });
+  assert.deepEqual(providerCardTitle({ name: "Kenji Nakamura", businessName: "   " }), { title: "Kenji Nakamura", runBy: null });
+  assert.deepEqual(providerCardTitle({ name: "Porto Walks", businessName: "porto walks" }), { title: "porto walks", runBy: null });
+});
+
+test("C2: a listing price is shown only when it is a real positive price", () => {
+  assert.equal(formatListingPrice("680.00"), "$680");
+  assert.equal(formatListingPrice("2400"), "$2,400");
+  assert.equal(formatListingPrice("42.5"), "$42.50");
+  assert.equal(formatListingPrice(null), null, "a hidden price stays hidden");
+  assert.equal(formatListingPrice("0"), null, "never $0");
+  assert.equal(formatListingPrice("-5"), null);
+  assert.equal(formatListingPrice("abc"), null);
+});
+
+test("C3: '+N more' counts only the listings the card does not name", () => {
+  assert.equal(moreListingsCount(4, 3), 1);
+  assert.equal(moreListingsCount(3, 3), 0);
+  assert.equal(moreListingsCount(2, 3), 0, "never negative");
+  assert.equal(moreListingsCount(Number.NaN, 3), 0);
+});
+
+test("C4: search also finds the business name, its type and its listings", () => {
+  assert.equal(matchesProviderSearch("interpret", "Satoshi Ono", "kansai-bizlang", "Kansai Business Language", "Language", "Business Meeting Interpretation"), true);
+  assert.equal(matchesProviderSearch("kansai", "Satoshi Ono", "x", "Kansai Business Language"), true);
+  assert.equal(matchesProviderSearch("photo", "Satoshi Ono", "x", null, undefined), false, "a missing field matches nothing");
 });

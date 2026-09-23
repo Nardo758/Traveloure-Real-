@@ -44,6 +44,9 @@ import type { BuyActionBuyer } from "@shared/buy-action";
 import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isExpertRole, isProviderRole } from "@shared/roles";
 import { planTypeLabel, isCustomPlanType } from "@shared/ready-made-plan-types";
 import { transformDevHtml } from "../vite-dev-html";
+import { RECORD_BOOKING_STATUSES } from "@shared/booking-visibility";
+import { lowestListedPrice } from "@shared/listing-price";
+import { directoryCardListings, type DirectoryListingFacts } from "../services/provider-directory-listings";
 
 const router = Router();
 
@@ -978,9 +981,18 @@ async function loadProviderStorefront(handle: string, activeLocale?: string) {
   };
 }
 
-// Public provider directory for the Experts-page storefront tab. This deliberately aggregates
-// only the live service gate and never selects a service row, so listing copy, prices, and
-// provider verification data cannot enter the directory payload.
+// Public provider directory (/providers). Each row describes a BUSINESS: who runs it, what it
+// sells and whether anyone has booked it (ledger `2026-09-23-provider-directory-card`). Everything
+// on a row is already public on that provider's storefront — listing names and prices under the
+// same approved + active gate, the business name and type from the provider's own form, the
+// Stripe-derived business-verification flag the service page's badge already shows. What stays
+// server-side: `users.id` (LD 40), every booking COUNT (the card shows an order and at most one
+// "Most booked" tag, never a number) and the per-listing rating used only to break ties.
+function allInstant(modes: readonly string[]): boolean {
+  const bookable = modes.filter((mode) => mode !== "hidden");
+  return bookable.length > 0 && bookable.every((mode) => mode === "instant");
+}
+
 async function loadProviderStorefrontDirectory() {
   const rows = await db
     .select({
@@ -1016,6 +1028,11 @@ async function loadProviderStorefrontDirectory() {
         eq(users.isDeleted, false),
         eq(users.isSuspended, false),
         isNotNull(users.handle),
+        // No test-account filter here, deliberately: in production the boot purge
+        // (`purgeE2EAccountsFromProd`, server/index.ts) already demotes every `@traveloure.test`
+        // account to role `user` — which this role gate drops — and deletes it where it can. Dev,
+        // staging and CI keep them on purpose. A second copy of that decision here would be the
+        // drift §18 rule 1 names.
       ),
     )
     .groupBy(
@@ -1027,20 +1044,116 @@ async function loadProviderStorefrontDirectory() {
       users.profileImageUrl,
     );
 
+  const ownerIds = rows.map((row) => row.id);
+  const [forms, listingRows] = ownerIds.length === 0
+    ? [[], []]
+    : await Promise.all([
+        db
+          .select({
+            userId: serviceProviderForms.userId,
+            businessName: serviceProviderForms.businessName,
+            businessType: serviceProviderForms.businessType,
+            instantBooking: serviceProviderForms.instantBooking,
+            businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+          })
+          .from(serviceProviderForms)
+          .where(inArray(serviceProviderForms.userId, ownerIds)),
+        // The SAME approved + active gate as the storefront's own inventory read. Booking counts
+        // use `RECORD_BOOKING_STATUSES` — "what may be listed as a real booking" — so an unpaid
+        // claim, a cancellation or a refund never makes a listing look popular.
+        db
+          .select({
+            id: providerServices.id,
+            userId: providerServices.userId,
+            name: providerServices.serviceName,
+            price: providerServices.price,
+            showPrice: providerServices.showPrice,
+            priceType: providerServices.priceType,
+            pricingUnit: providerServices.pricingUnit,
+            bookingMode: providerServices.bookingMode,
+            createdAt: providerServices.createdAt,
+            // Correlated subqueries with EXPLICITLY qualified columns: drizzle renders a bare
+            // column reference inside a select-list `sql` fragment unqualified, and an unqualified
+            // `"id"` inside the subquery binds to the booking's own id — every count reads zero.
+            bookingCount: sql<number>`(
+              select count(*)::int from service_bookings sb
+              where sb.service_id = "provider_services"."id"
+                and sb.status in (${sql.join(RECORD_BOOKING_STATUSES.map((status) => sql`${status}`), sql`, `)})
+            )`,
+            averageRating: sql<number | null>`(
+              select avg(sr.rating)::float8 from service_reviews sr
+              where sr.service_id = "provider_services"."id"
+                and sr.status = 'approved'
+            )`,
+          })
+          .from(providerServices)
+          .where(
+            and(
+              inArray(providerServices.userId, ownerIds),
+              eq(providerServices.approvalStatus, "approved"),
+              eq(providerServices.status, "active"),
+            ),
+          ),
+      ]);
+
+  const formByOwner = new Map(forms.map((form) => [form.userId, form]));
+  const listingsByOwner = new Map<string, DirectoryListingFacts[]>();
+  const modesByOwner = new Map<string, string[]>();
+  for (const listing of listingRows) {
+    if (!listing.userId) continue;
+    // `resolveBookingMode` is THE one derivation of a listing's mode (C3), the same call the
+    // storefront card makes; a NULL listing inherits the account's instant-booking flag.
+    const modes = modesByOwner.get(listing.userId) ?? [];
+    modes.push(resolveBookingMode(listing.bookingMode, formByOwner.get(listing.userId)?.instantBooking ?? false));
+    modesByOwner.set(listing.userId, modes);
+    const bucket = listingsByOwner.get(listing.userId) ?? [];
+    bucket.push({
+      id: listing.id,
+      name: listing.name,
+      price: listing.price,
+      showPrice: listing.showPrice,
+      priceType: listing.priceType,
+      pricingUnit: listing.pricingUnit,
+      bookingCount: Number(listing.bookingCount ?? 0),
+      averageRating: listing.averageRating == null ? null : Number(listing.averageRating),
+      createdAt: listing.createdAt,
+    });
+    listingsByOwner.set(listing.userId, bucket);
+  }
+
   // NO `id` on a directory row (LD 40 lane 2). Every row here is a provider WITH a claimed handle
   // — the query's `isNotNull(users.handle)` makes that true by construction — so `handle` is the
   // row's public identity AND its stable client key. `row.id` stays a local join key for
   // `resolveEarnerLocation` below; it just never reaches the wire.
-  return Promise.all(rows.map(async (row) => ({
-    name: [row.firstName, row.lastName].filter(Boolean).join(" ") || "Traveloure provider",
-    handle: row.handle,
-    bio: row.bio ?? null,
-    profileImageUrl: row.profileImageUrl ?? null,
-    serviceCount: Number(row.serviceCount),
-    averageRating: row.averageRating == null ? null : Number(row.averageRating),
-    reviewCount: Number(row.reviewCount),
-    location: await resolveEarnerLocation(row.id),
-  })));
+  return Promise.all(rows.map(async (row) => {
+    const form = formByOwner.get(row.id);
+    const listings = listingsByOwner.get(row.id) ?? [];
+    const businessName = form?.businessName?.trim() || null;
+    const category = form?.businessType?.trim() || null;
+    return {
+      name: [row.firstName, row.lastName].filter(Boolean).join(" ") || "Traveloure provider",
+      handle: row.handle,
+      bio: row.bio ?? null,
+      profileImageUrl: row.profileImageUrl ?? null,
+      serviceCount: Number(row.serviceCount),
+      averageRating: row.averageRating == null ? null : Number(row.averageRating),
+      reviewCount: Number(row.reviewCount),
+      location: await resolveEarnerLocation(row.id),
+      // The provider's own declarations; NULL = not stated and the card says nothing (§13).
+      businessName,
+      category,
+      // "Instant booking" is a claim about the BUSINESS, so it is made only when every bookable
+      // listing confirms instantly; enquiry-only (`hidden`) listings say nothing either way, and a
+      // provider with no bookable listing makes no claim (§13).
+      instantBooking: allInstant(modesByOwner.get(row.id) ?? []),
+      // The same predicate the service page's "Verified business" badge reads
+      // (`loadPublicVerification` in server/routes.ts): Stripe-derived, never self-reported.
+      businessVerified: form?.businessVerificationStatus === "verified",
+      // Over EVERY listing, not only the three named below (`@shared/listing-price`, one rule).
+      fromPrice: lowestListedPrice(listings),
+      listings: directoryCardListings(listings),
+    };
+  }));
 }
 
 router.get(["/experts/:id", "/local-experts/:id"], async (req, res, next) => {
