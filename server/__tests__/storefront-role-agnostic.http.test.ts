@@ -157,6 +157,16 @@ before(async () => {
   await createBookings(cardsId, oftenCancelled, "refunded", 2);
   await createBookings(cardsId, unpaidClaims, "payment_pending", 4);
   await createBookings(cardsId, unpaidClaims, "completed", 1);
+  // A paused listing's review is still the business's review (board task #1665): the directory card
+  // and the storefront must both count it.
+  const pausedListingId = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO provider_services (id, user_id, service_name, price, status, approval_status, delivery_method)
+     VALUES ($1, $2, 'Paused listing', '30.00', 'inactive', 'approved', 'pdf')`,
+    [pausedListingId, cardsId],
+  );
+  createdServiceIds.push(pausedListingId);
+  await createApprovedReview(cardsId, pausedListingId, 3);
   const suspendedId = await createOwner("suspended", "service_provider", handles.suspended);
   const approvedLegacyId = await createOwner("approved-legacy", "local_expert", null);
   const pendingLegacyId = await createOwner("pending-legacy", "local_expert", null);
@@ -183,6 +193,9 @@ before(async () => {
   );
   createdServiceIds.push(inactiveExpertServiceId);
   await createApprovedReview(expertId, inactiveExpertServiceId, 4);
+  // A local_expert reaches /api/experts only with an APPROVED form (the storage security gate), so
+  // the rating-agreement test below can find the handled expert there.
+  await createExpertForm(expertId, "expert", "approved");
   await createExpertForm(
     approvedLegacyId,
     "approved-legacy",
@@ -337,6 +350,49 @@ test("provider storefront names its business, and business verification is a sep
   const expert = await fetchEarner(handles.expert);
   assert.equal(expert.businessName, null);
   assert.equal(expert.businessVerified, false);
+});
+
+test("one earner rating: the storefront, the /providers card and /experts agree (#1665)", async () => {
+  const storefrontRating = async (handle: string) => {
+    const response = await api(`/api/storefront/${handle}`);
+    const body = JSON.parse(await response.text()) as { earner: { averageRating: number | null; reviewCount: number } };
+    return { averageRating: body.earner.averageRating, reviewCount: body.earner.reviewCount };
+  };
+
+  // Expert: one review on a live listing (5) and one on an inactive listing (4), with the listing's
+  // denormalized columns claiming 4.70 from 12 reviews. The rule reads the review rows: 4.5 from 2.
+  const expertOnStorefront = await storefrontRating(handles.expert);
+  assert.deepEqual(expertOnStorefront, { averageRating: 4.5, reviewCount: 2 });
+  const expertsResponse = await api("/api/experts");
+  type ExpertRow = {
+    handle?: string | null;
+    averageRating: number | null;
+    reviewCount: number;
+    expertRating: number | null;
+    expertReviewCount: number;
+  };
+  const experts = JSON.parse(await expertsResponse.text()) as ExpertRow[];
+  const listed = experts.find((row) => row.handle === handles.expert);
+  assert.ok(listed, "the seeded expert must be on /api/experts");
+  assert.deepEqual({ averageRating: listed.averageRating, reviewCount: listed.reviewCount }, expertOnStorefront);
+  // The expert card reads expertRating/expertReviewCount — the same figure under the card's names.
+  assert.deepEqual(
+    { averageRating: listed.expertRating, reviewCount: listed.expertReviewCount },
+    expertOnStorefront,
+  );
+  const detail = JSON.parse(await (await api(`/api/experts/${ownerIds.expert}`)).text()) as ExpertRow;
+  assert.deepEqual(
+    { averageRating: detail.expertRating, reviewCount: detail.expertReviewCount },
+    expertOnStorefront,
+  );
+
+  // Provider: its only review is on a PAUSED listing. The card used to read live listings only.
+  const cardsOnStorefront = await storefrontRating(handles.cards);
+  assert.deepEqual(cardsOnStorefront, { averageRating: 3, reviewCount: 1 });
+  const directory = JSON.parse(await (await api("/api/provider-storefronts")).text()) as Array<{ handle: string; averageRating: number | null; reviewCount: number }>;
+  const card = directory.find((row) => row.handle === handles.cards);
+  assert.ok(card);
+  assert.deepEqual({ averageRating: card.averageRating, reviewCount: card.reviewCount }, cardsOnStorefront);
 });
 
 test("canonical API preserves no-inventory and suspended 404 gates", async () => {

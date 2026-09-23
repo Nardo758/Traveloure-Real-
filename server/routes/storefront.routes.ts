@@ -48,6 +48,7 @@ import { transformDevHtml } from "../vite-dev-html";
 import { RECORD_BOOKING_STATUSES } from "@shared/booking-visibility";
 import { lowestListedPrice } from "@shared/listing-price";
 import { directoryCardListings, type DirectoryListingFacts } from "../services/provider-directory-listings";
+import { loadEarnerRatings, summarizeApprovedRatings } from "../services/earner-rating.service";
 
 const router = Router();
 
@@ -852,16 +853,11 @@ async function loadStorefrontFromOwner(
   // No approved inventory → no public page (an unvetted earner is not publishable).
   if (enforcePublicGates && total === 0) return null;
 
-  const expertReviewCount = approvedReviewRows.length;
+  // The earner's rating is the ONE rule every surface uses (`earner-rating.service.ts`, board task
+  // #1665): the mean of all their approved review rows. The /providers card and /experts read it too.
+  const { averageRating: earnerAverageRating, reviewCount: expertReviewCount } =
+    summarizeApprovedRatings(approvedReviewRows.map((review) => review.rating));
   const serviceReviewCount = serviceReviewRows.length;
-  const expertRatingTotal = approvedReviewRows.reduce(
-    (sum, review) => sum + Number(review.rating),
-    0,
-  );
-  const earnerAverageRating =
-    expertReviewCount > 0
-      ? Math.round((expertRatingTotal / expertReviewCount) * 100) / 100
-      : null;
 
   // Identity-hero fields (§13-honest, every value maps to a real row):
   //  - verified: the SAME identityVerificationStatus==='verified' signal already used for the
@@ -1020,8 +1016,6 @@ async function loadProviderStorefrontDirectory() {
       bio: users.bio,
       profileImageUrl: users.profileImageUrl,
       serviceCount: sql<number>`count(distinct ${providerServices.id})::int`,
-      averageRating: sql<number | null>`round(avg(${serviceReviews.rating})::numeric, 2)`,
-      reviewCount: sql<number>`count(${serviceReviews.id})::int`,
     })
     .from(users)
     .innerJoin(
@@ -1030,13 +1024,6 @@ async function loadProviderStorefrontDirectory() {
         eq(providerServices.userId, users.id),
         eq(providerServices.approvalStatus, "approved"),
         eq(providerServices.status, "active"),
-      ),
-    )
-    .leftJoin(
-      serviceReviews,
-      and(
-        eq(serviceReviews.serviceId, providerServices.id),
-        eq(serviceReviews.status, "approved"),
       ),
     )
     .where(
@@ -1062,6 +1049,9 @@ async function loadProviderStorefrontDirectory() {
     );
 
   const ownerIds = rows.map((row) => row.id);
+  // The card's Rating is the ONE earner-rating rule (`earner-rating.service.ts`, board task #1665),
+  // the same figure the storefront it links to shows — not a second aggregate computed here.
+  const ratings = await loadEarnerRatings(ownerIds);
   const [forms, listingRows] = ownerIds.length === 0
     ? [[], []]
     : await Promise.all([
@@ -1153,8 +1143,8 @@ async function loadProviderStorefrontDirectory() {
       bio: row.bio ?? null,
       profileImageUrl: row.profileImageUrl ?? null,
       serviceCount: Number(row.serviceCount),
-      averageRating: row.averageRating == null ? null : Number(row.averageRating),
-      reviewCount: Number(row.reviewCount),
+      averageRating: ratings.get(row.id)?.averageRating ?? null,
+      reviewCount: ratings.get(row.id)?.reviewCount ?? 0,
       location: await resolveEarnerLocation(row.id),
       // The provider's own declarations; NULL = not stated and the card says nothing (§13).
       businessName,

@@ -5074,55 +5074,34 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const expertIds = Array.from(new Set(filtered.map((e: any) => String(e.id)).filter(Boolean)));
       if (expertIds.length > 0) {
-        const [serviceRows, ratingRows] = await Promise.all([
-          db
-            .select({
-              userId: providerServices.userId,
-              count: sql<number>`cast(count(*) as int)`,
-              bookings: sql<number>`cast(coalesce(sum(${providerServices.bookingsCount}), 0) as int)`,
-            })
-            .from(providerServices)
-            .where(
-              and(
-                inArray(providerServices.userId, expertIds),
-                eq(providerServices.approvalStatus, "approved"),
-                eq(providerServices.status, "active"),
-              ),
-            )
-            .groupBy(providerServices.userId),
-          // Roadmap 3.5: expert-level rating aggregate. Experts had NO rating source
-          // (service reviews are service-scoped), so cards honestly showed "New".
-          // service_reviews.provider_id IS the expert's user id for their own
-          // services, so an expert's rating = AVG/COUNT over their APPROVED reviews
-          // (the same moderation gate the service-level aggregate uses — pending/
-          // flagged/removed never count). Real aggregate, never fabricated (§13).
-          db
-            .select({
-              providerId: serviceReviews.providerId,
-              avg: sql<number>`cast(avg(${serviceReviews.rating}) as float)`,
-              count: sql<number>`cast(count(*) as int)`,
-            })
-            .from(serviceReviews)
-            .where(
-              and(
-                inArray(serviceReviews.providerId, expertIds),
-                eq(serviceReviews.status, "approved"),
-              ),
-            )
-            .groupBy(serviceReviews.providerId),
-        ]);
+        const serviceRows = await db
+          .select({
+            userId: providerServices.userId,
+            count: sql<number>`cast(count(*) as int)`,
+            bookings: sql<number>`cast(coalesce(sum(${providerServices.bookingsCount}), 0) as int)`,
+          })
+          .from(providerServices)
+          .where(
+            and(
+              inArray(providerServices.userId, expertIds),
+              eq(providerServices.approvalStatus, "approved"),
+              eq(providerServices.status, "active"),
+            ),
+          )
+          .groupBy(providerServices.userId);
         const svcMap = new Map(serviceRows.map((r) => [r.userId, r]));
-        const ratingMap = new Map(ratingRows.map((r) => [r.providerId, r]));
         filtered = filtered.map((e: any) => {
           const svc = svcMap.get(String(e.id));
-          const rat = ratingMap.get(String(e.id));
           return {
             ...e,
             servicesCount: svc?.count ?? 0,
             serviceBookings: svc?.bookings ?? 0,
-            // null (not 0) when there are no reviews → the card shows "New", never a fake score.
-            expertRating: rat && rat.count > 0 ? Number(rat.avg.toFixed(2)) : null,
-            expertReviewCount: rat?.count ?? 0,
+            // The expert-level rating is the ONE earner-rating rule (board task #1665,
+            // `earner-rating.service.ts`), already computed by `getExpertsWithProfiles` as
+            // averageRating/reviewCount — restated here under the names the card reads rather than
+            // re-queried, so /experts and /s/:handle cannot disagree. null → "New", never a score (§13).
+            expertRating: e.averageRating ?? null,
+            expertReviewCount: e.reviewCount ?? 0,
           };
         });
       }
@@ -5146,26 +5125,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!expert) {
       return res.status(404).json({ message: "Expert not found" });
     }
-    // Roadmap 3.5: attach the same real expert-level rating aggregate the list
-    // uses (APPROVED service reviews for this expert; null when none → "New").
-    try {
-      const [rat] = await db
-        .select({
-          avg: sql<number>`cast(avg(${serviceReviews.rating}) as float)`,
-          count: sql<number>`cast(count(*) as int)`,
-        })
-        .from(serviceReviews)
-        .where(
-          and(
-            eq(serviceReviews.providerId, req.params.id),
-            eq(serviceReviews.status, "approved"),
-          ),
-        );
-      (expert as any).expertRating = rat && rat.count > 0 ? Number(rat.avg.toFixed(2)) : null;
-      (expert as any).expertReviewCount = rat?.count ?? 0;
-    } catch (err) {
-      console.error("Error attaching expert rating:", err);
-    }
+    // The ONE earner-rating rule (board task #1665), already on the row from
+    // `getExpertsWithProfiles`, under the names the profile reads (same as the list route).
+    (expert as any).expertRating = expert.averageRating ?? null;
+    (expert as any).expertReviewCount = expert.reviewCount ?? 0;
     // SECOND LAYER — same projector as the list route and as storage (ledger
     // `2026-09-05-experts-public-projection`). This route `res.json`d the row verbatim, so it was
     // the widest of the three: the whole `users` row plus the whole `local_expert_forms` row for
