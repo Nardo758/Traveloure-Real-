@@ -66,7 +66,7 @@ const tripFixturePaths = [
   "DELETE /api/trips/:tripId/changes/:changeId", "POST /api/trips/:tripId/items/:itemId/route",
   "POST /api/trips/:tripId/finalize", "POST /api/trips/:tripId/reopen",
   "POST /api/trips/:tripId/transport-legs/generate", "PATCH /api/trips/:tripId/transport-legs/:legId",
-  "DELETE /api/trips/:tripId/transport-legs/:legId",
+  "DELETE /api/trips/:tripId/transport-legs/:legId", "POST /api/trips/:tripId/advisors",
 ];
 const resourceFixtureSet = new Set([
   "PATCH /api/trips/:id", "DELETE /api/trips/:id", ...tripFixturePaths,
@@ -113,7 +113,7 @@ function disposition(endpoint: Endpoint, contexts: Map<string, Set<string>>, evi
   if (endpoint.risk === "other")
     return { tested: false, reason: "Other-category endpoint is intentionally outside the strict tested set." };
   if (endpoint.expectedBoundary === "resource-owner")
-    return { tested: false, reason: "Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints." };
+    return { tested: false, reason: `Resource-owner endpoint is not one of the ${tripFixturePaths.length + 2} trip or two optimization real-fixture endpoints.` };
   if (endpoint.expectedBoundary === "signature")
     return { tested: false, reason: "Signature endpoint is outside the payments/user-data unsigned-request scope." };
   return { tested: false, reason: "Endpoint is outside the strict endpoint-level tested criteria." };

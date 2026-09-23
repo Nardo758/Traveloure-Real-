@@ -16,7 +16,7 @@ import { promisify } from "node:util";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { users } from "@shared/models/auth";
-import { itineraryItems, trips } from "@shared/schema";
+import { itineraryItems, tripExpertAdvisors, trips } from "@shared/schema";
 
 const enabled = process.env.MUTATION_AUTH_AUDIT_OK === "1";
 const BASE = process.env.BASE_URL ?? "http://127.0.0.1:5000";
@@ -231,6 +231,41 @@ test("optimization payment creation rejects User A for User B's real trip before
     externalCallsExpected: 0,
   })}`);
   assert.equal(response.status, 403, "cross-owner optimization payment must stop before Stripe");
+});
+
+// POST /api/trips/:tripId/advisors is NOT in the generic loop above, on purpose: that loop sends
+// an empty body, and this rail refuses an empty body at its address shape (exactly one of
+// `handle` / `localExpertId`) with a 400 before ownership is ever asked — a 400 there would prove
+// nothing about ownership. So each address kind is sent WELL-FORMED, naming an expert that does not
+// exist. That makes the status a discriminator: the service checks ownership BEFORE it resolves the
+// expert, so a 403 can only be the ownership refusal — skip ownership and the same body answers 404.
+// The side effect the rail exists to make is an advisor row on the plan, which the trip row would
+// not show, so that is asserted directly.
+test("trip advisor invitation rejects anonymous and User A on User B's real trip, by handle and by id", { skip: !enabled }, async () => {
+  const path = `/api/trips/${userBTripId}/advisors`;
+  const endpoint = "POST /api/trips/:tripId/advisors";
+  const advisorRows = async () =>
+    db.select({ id: tripExpertAdvisors.id }).from(tripExpertAdvisors).where(eq(tripExpertAdvisors.tripId, userBTripId));
+  for (const [address, body] of [
+    ["handle", { handle: `no-such-expert-${runId}`.slice(0, 30) }],
+    ["id", { localExpertId: `no-such-expert-${runId}` }],
+  ] as const) {
+    const anonymous = await request(path, { method: "POST", body });
+    assert.ok([401, 403].includes(anonymous.status), `${address} anonymous status was ${anonymous.status}`);
+
+    const crossOwner = await request(path, { method: "POST", cookie: userA.cookie, body });
+    await assertBTripUnchanged(`advisors by ${address} User A→User B`);
+    assert.deepEqual(await advisorRows(), [], `advisors by ${address}: an advisor row was written on User B's plan`);
+    console.log(`[mutation-auth evidence] ${JSON.stringify({ endpoint, method: "POST", path, actor: "User A", address, status: crossOwner.status, unchanged: true })}`);
+    assert.equal(crossOwner.status, 403, `advisors by ${address}: User A→User B must be refused by ownership before the expert is resolved; status=${crossOwner.status}`);
+
+    // The discriminator, proven rather than asserted: the OWNER sending the identical body passes
+    // ownership and is answered 404 for the unknown expert. So the body is well-formed, it reaches
+    // expert resolution, and User A's 403 above can only be the ownership refusal.
+    const owner = await request(path, { method: "POST", cookie: userB.cookie, body });
+    assert.equal(owner.status, 404, `advisors by ${address}: the owner must pass ownership and reach expert resolution; status=${owner.status}`);
+    assert.deepEqual(await advisorRows(), [], `advisors by ${address}: an unknown expert must not produce an advisor row`);
+  }
 });
 
 test("every selected trip-scoped User A → User B mutation is forbidden before validation", { skip: !enabled }, async () => {

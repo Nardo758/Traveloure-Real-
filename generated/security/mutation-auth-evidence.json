@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatedBy": "scripts/run-mutation-auth-live-audit.ts",
-  "manifestSha256": "1e817f102bb76e96e3aea888e2f7b51fa1c6e86023cba366353fad569147f0f2",
-  "timestamp": "2026-09-23T01:16:00.637Z",
+  "manifestSha256": "22017f9012f237e2d96800885201a3078102901986ed240d4a114605627f493a",
+  "timestamp": "2026-09-23T04:35:45.072Z",
   "passed": true,
   "suites": [
     {
@@ -481,6 +481,7 @@
         "PATCH /api/trips/:tripId/transport-legs/:legId",
         "POST /api/optimization-payments",
         "POST /api/trips/:tripId/activate-transport",
+        "POST /api/trips/:tripId/advisors",
         "POST /api/trips/:tripId/alerts",
         "POST /api/trips/:tripId/analytics/infer",
         "POST /api/trips/:tripId/anchor-suggestions",
