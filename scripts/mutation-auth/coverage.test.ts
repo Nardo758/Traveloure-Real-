@@ -21,7 +21,7 @@ test("coverage report has exact strict totals and a disposition for every unique
   assert.ok(coverage.endpoints.every((item: any) => typeof item.tested === "boolean" && item.reason));
   assert.equal(coverage.totals.tested, coverage.endpoints.filter((item: any) => item.tested).length);
   assert.equal(coverage.totals.remaining, manifestKeys.size - coverage.totals.tested);
-  assert.equal(coverage.endpoints.filter((item: any) => item.reason.startsWith("Explicitly excluded")).length, 30);
+  assert.equal(coverage.endpoints.filter((item: any) => item.reason.startsWith("Explicitly excluded")).length, 26);
 });
 
 function generateWithEvidence(evidence: unknown, missing = false) {
@@ -60,4 +60,25 @@ test("a skipped suite does not promote its endpoint keys", () => {
   });
   assert.equal(coverage.totals.tested, 0);
   assert.equal(coverage.endpoints.find((item: any) => item.key === "POST /api/admin/catalog/ingest").tested, false);
+});
+
+test("ready-made authoring is promoted only by fresh author/non-author fixture evidence", () => {
+  const manifest = fs.readFileSync(path.join(process.cwd(), "generated/security/mutation-auth-manifest.json"));
+  const manifestSha256 = crypto.createHash("sha256").update(manifest).digest("hex");
+  const endpoint = "POST /api/expert/ready-made/:id/submit";
+  const coverage = generateWithEvidence({
+    schemaVersion: 1,
+    manifestSha256,
+    timestamp: "2026-09-23T00:00:00.000Z",
+    suites: [{
+      id: "expert-provider-wrong-role",
+      context: "wrong-role",
+      passed: true,
+      skipped: false,
+      endpointKeys: [endpoint],
+    }],
+  });
+  const row = coverage.endpoints.find((item: any) => item.key === endpoint);
+  assert.equal(row.tested, true);
+  assert.match(row.reason, /ready-made author\/non-author fixture evidence/);
 });
