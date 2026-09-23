@@ -131,6 +131,20 @@ test("B6 the `local` finish reads the return address through the ONE earner-path
     /earnerProfilePath\(\{ handle: source\.returnTo\.handle \}\)/,
     "§18 rule 1 — a second `/s/${handle}` written here would drift from the one resolver",
   );
-  // The fallthrough is verbatim what it was: only a door that NAMED an expert is diverted.
-  assert.match(src, /\/experts\?destination=\$\{encodeURIComponent\(dest\)\}/);
+  // The fallthrough is DELEGATED, not re-assembled. It was an inline
+  // `/experts?destination=${encodeURIComponent(dest)}` until Locked Decision 42 **D5** (ledger
+  // `2026-09-23-local-finish-mints`), which made this branch mint a slip and forward its id — so
+  // the href now has two fields and a §13 drop rule, and that belongs in ONE builder
+  // (`buildExpertsBrowseHref`) rather than in a template literal here.
+  //
+  // THIS ASSERTION CHANGED BECAUSE THE RULING CHANGED, not because the code drifted from it: the
+  // clause it used to pin ("verbatim what it was") was true for D15's lane and is precisely what
+  // D5 supersedes. What it still pins is the part that did NOT change — only a door that NAMED an
+  // expert is diverted, and everything else reaches the browse through the one builder.
+  assert.match(src, /buildExpertsBrowseHref\(\{ destination: dest, tripId: plan\.tripId \}\)/);
+  assert.doesNotMatch(
+    src,
+    /`\/experts\?/,
+    "the experts href is built by buildExpertsBrowseHref, never assembled inline (§18 rule 1)",
+  );
 });

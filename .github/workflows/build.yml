@@ -2855,6 +2855,12 @@ jobs:
       # D15's return address is a HANDLE and never a `users.id` (Locked Decision 40).
       - name: Services-browse door pins
         run: npx tsx --test client/src/lib/__tests__/services-browse-doors.test.ts
+      # D5 (ledger `2026-09-23-local-finish-mints`): the local-expert finish MINTS and forwards the
+      # id. M2 fails if `local` leaves `BRANCHES_THAT_MINT` — the pre-D5 state, in which /experts
+      # got no tripId and the expert-detail CTA re-opened the planning modal. H2 is the §13 half:
+      # a blank id is DROPPED, never sent as `tripId=undefined`.
+      - name: local-expert finish mints (LD 42 D5)
+        run: npx tsx --test client/src/lib/__tests__/local-finish-mints.test.ts
 
   extraction-date-anchor:
     name: extraction-date-anchor (Console & AI Concierge brief F5 — 2026-09-07-extraction-date-anchor)

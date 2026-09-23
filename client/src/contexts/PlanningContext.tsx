@@ -62,10 +62,15 @@ import { mintTripSlip } from "@/lib/trip-slip";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
 import { startMembershipCheckout } from "@/lib/membership-checkout";
+import { buildExpertsBrowseHref } from "@/lib/experts-browse";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 import { PlanModal, type CommittedPlan, type PlanMintOutcome } from "@/components/trip/plan-modal";
 
 export type PlanningBranch = "myself" | "ai" | "local" | "occasion";
+// Which branches need a plan ROW before they run is `BRANCHES_THAT_MINT` in `@/lib/plan-steps` —
+// a LEAF module, deliberately, because this file imports `PlanModal` and the modal reads that
+// constant at runtime. Stating it here would be a circular value import; a type-only import back
+// into the leaf is erased and is not.
 
 export interface PlanningSource {
   /** City/destination context from the opener (ticker city, city page, trip re-plan). */
@@ -249,7 +254,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   /**
-   * THE ONE MINT DOOR, reached from the modal's "Build it myself" finish.
+   * THE ONE MINT DOOR, reached from the modal's finish for every branch in `BRANCHES_THAT_MINT`
+   * — "Build it myself" and, since Locked Decision 42 D5, "Get a local expert".
    *
    * The destination/date checks and the mint body both live in `@/lib/trip-slip` — `mintTripSlip`
    * is THE traveler-owned client mint door, shared with the template page's expert-request
@@ -258,10 +264,12 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
    * have exactly one author. `mintTripSlip` refuses before it calls the server, so a short answer
    * still costs no request.
    *
-   * The sign-in gate is checked HERE and before the mint, because it is the slip ROUTE's gate
-   * (/plans/:tripId is a ProtectedRoute) and it belongs to this branch, not to the modal. A guest
-   * gets the sign-in modal and a refusal carrying NO message — the screen has already changed
-   * hands, so the plan modal must not also print an error into a dialog it just closed.
+   * The sign-in gate is checked HERE and before the mint. For `myself` it is the slip ROUTE's gate
+   * (/plans/:tripId is a ProtectedRoute); for `local` the destination page is PUBLIC, but the gate
+   * still belongs here and D5 says so — the trip a request carries must be owned by the session
+   * user (Locked Decision 32 (b) verifies exactly that server-side), and a guest owns nothing. A
+   * guest gets the sign-in modal and a refusal carrying NO message — the screen has already
+   * changed hands, so the plan modal must not also print an error into a dialog it just closed.
    */
   const mintPlan = useCallback(
     async (basics: {
@@ -325,8 +333,19 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
             return;
           }
         }
+        /**
+         * D5: FORWARD THE TRIP. The finish has just minted one (`BRANCHES_THAT_MINT`), and
+         * `/experts` already reads `?tripId=` and carries it into each expert's detail page, where
+         * `POST /api/expert-booking-requests` REQUIRES it. Without it that CTA re-opens this modal
+         * — the traveler is returned to the step they just finished, which is the loop D5 exists to
+         * close (`docs/briefs/EXPERT_HANDOFF_IS_A_LOOP.md`).
+         *
+         * §13: the id is appended only when there IS one. A mint the traveler refused at the
+         * sign-in gate, or one that failed, leaves `plan.tripId` empty and this falls back to
+         * exactly the browse this branch has always shown rather than sending `tripId=undefined`.
+         */
         const dest = plan.destination || sourceDestination(source);
-        setLocation(dest ? `/experts?destination=${encodeURIComponent(dest)}` : "/experts");
+        setLocation(buildExpertsBrowseHref({ destination: dest, tripId: plan.tripId }));
         return;
       }
       void startMembershipCheckout({

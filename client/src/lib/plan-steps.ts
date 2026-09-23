@@ -53,6 +53,48 @@ import {
   type OccasionSwitchRow,
 } from "./occasion-switches";
 import { partyNoun } from "./plan-vocabulary";
+import type { PlanningBranch } from "@/contexts/PlanningContext";
+
+/**
+ * THE BRANCHES THAT NEED A PLAN ROW BEFORE THEY RUN — stated ONCE (§18 rule 1) and read by the
+ * modal's finish. A second `branch === "…"` test at the mint site is how one branch starts minting
+ * and another quietly stops.
+ *
+ * `myself` needs one because it navigates to `/plans/:tripId`, which cannot exist without a row.
+ * `local` needs one for a different and stronger reason: Locked Decision 42 D5, applying Locked
+ * Decision 32's precondition — NO EXPERT TOUCHPOINT EXISTS WITHOUT A SLIP. A traveler sent to
+ * `/experts` with no trip walks into exactly what 32 forbids: a lead that surfaces to nobody,
+ * because `POST /api/expert-booking-requests` REQUIRES a `tripId` and the expert-detail CTA
+ * re-opens this very modal without one (`docs/briefs/EXPERT_HANDOFF_IS_A_LOOP.md`).
+ *
+ * `ai` is absent deliberately — it opens the AI drawer on the committed plan and mints on its own
+ * rail. `occasion` is absent because it goes to Stripe checkout and plans nothing.
+ *
+ * It lives in THIS leaf module rather than beside `PlanningBranch`: `PlanningContext` imports
+ * `PlanModal`, so a runtime constant read by the modal and declared there would be a circular
+ * value import. The `import type` above is erased and carries no cycle.
+ */
+export const BRANCHES_THAT_MINT: readonly PlanningBranch[] = ["myself", "local"];
+
+/**
+ * OF THOSE, THE ONES THAT CANNOT RUN WITHOUT THE ROW.
+ *
+ * `myself` navigates to `/plans/:tripId`, a ProtectedRoute that cannot exist without a plan — so a
+ * refused mint must STOP the finish, and a guest is gated at sign-in before anything else happens.
+ *
+ * `local` is NOT required, and the distinction is the whole of D5's §13 clause. Its destination,
+ * `/experts`, is a PUBLIC browse that this branch has always shown. D5 puts the MINT behind the
+ * sign-in gate — "the SAME sign-in gate" `myself` uses, which exists because the SLIP ROUTE is
+ * protected — and says nothing about gating the browse. So a guest, or anyone whose mint failed,
+ * still reaches `/experts`; they simply arrive with no `tripId`, exactly as before D5, and the
+ * expert-detail CTA gates them at sign-in on its own as it always has.
+ *
+ * Turning a public browse into a sign-in wall would be a discovery regression nobody ruled, and
+ * `playwright/tests/planning-entry.spec.ts` ("local branch navigates to /experts") is the armed
+ * gate that says so — it runs as a GUEST and it caught exactly this when the distinction was
+ * missing.
+ */
+export const BRANCHES_THAT_REQUIRE_THE_MINT: readonly PlanningBranch[] = ["myself"];
 
 /** The five ratified steps, in flow order. `where` is step 2 — the artboard filename hides it. */
 export type PlanStepId = "occasion" | "where" | "when" | "who" | "events";

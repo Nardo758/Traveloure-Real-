@@ -70,6 +70,8 @@ import {
   showsHomeCityDayCaption,
   showsMainMoment,
   type PlanStepId,
+  BRANCHES_THAT_MINT,
+  BRANCHES_THAT_REQUIRE_THE_MINT,
 } from "@/lib/plan-steps";
 import { useAuth } from "@/hooks/use-auth";
 import type { PlanningBranch, PlanningSource } from "@/contexts/PlanningContext";
@@ -1155,8 +1157,12 @@ export function PlanModal({
   /**
    * THE FINISH. Commit first, then run the branch — so whichever surface the traveler lands on is
    * reading the plan they just described, not the one they had before they opened the modal.
-   * "Build it myself" is the only branch that needs a plan ROW, so it is the only one that mints,
-   * and it mints through the opener's one mint door (`mintTripSlip`), never a body built here.
+   *
+   * WHICH BRANCHES NEED A PLAN ROW IS NOT DECIDED HERE. It is `BRANCHES_THAT_MINT`, stated once
+   * beside `PlanningBranch` (§18 rule 1) — "Build it myself" and, since Locked Decision 42 D5,
+   * "Get a local expert". A `branch === "…"` test written here is how one branch starts minting
+   * and another quietly stops. Either way it mints through the opener's one mint door
+   * (`mintTripSlip`), never a body built here.
    */
   const finish = async (branch: PlanningBranch) => {
     if (saving) return;
@@ -1164,7 +1170,19 @@ export function PlanModal({
     setSaving(true);
     try {
       let bound: string | undefined;
-      if (branch === "myself" && !getTripContext().tripId && mintPlan) {
+      /**
+       * D5's §13 half. `mintPlan` opens the sign-in modal for a guest and takes the screen, so a
+       * branch whose destination is PUBLIC must not call it just to be refused — that would gate a
+       * browse the traveler could always reach. `myself` is required (its route is protected) and
+       * is attempted for everyone, guest included, because being gated there IS its behaviour.
+       */
+      const mintRequired = BRANCHES_THAT_REQUIRE_THE_MINT.includes(branch);
+      const shouldMint =
+        BRANCHES_THAT_MINT.includes(branch) &&
+        !getTripContext().tripId &&
+        !!mintPlan &&
+        (mintRequired || !!user);
+      if (shouldMint && mintPlan) {
         /**
          * THE MODAL IS THE AUTHOR OF THE EVENTS IT COLLECTED, so it takes its own pen off the
          * table before the mint (ledger `2026-09-06-event-mint-dedupe`, CLAUDE.md Locked
@@ -1190,9 +1208,13 @@ export function PlanModal({
         if (!outcome.ok) {
           // A refusal with no message means the opener already took the screen (sign-in).
           if (outcome.message) setFinishError(outcome.message);
-          return;
+          // Only a branch that CANNOT run without the row stops here. `local` falls through and
+          // reaches its public browse with no `tripId` — the pre-D5 behaviour, which D5's own §13
+          // clause preserves for exactly this case.
+          if (mintRequired) return;
+        } else {
+          bound = outcome.tripId;
         }
-        bound = outcome.tripId;
       }
       const tripId = await commitPlan(bound);
       onFinish?.(branch, committedPlan(tripId));
