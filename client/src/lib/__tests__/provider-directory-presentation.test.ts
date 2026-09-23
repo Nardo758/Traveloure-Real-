@@ -84,6 +84,10 @@ test("C2: a listing price is shown only when it is a real positive price", () =>
   assert.equal(formatListingPrice("680.00"), "$680");
   assert.equal(formatListingPrice("2400"), "$2,400");
   assert.equal(formatListingPrice("42.5"), "$42.50");
+  // The storefront's cards use this formatter too (ledger `2026-09-23-storefront-price-cents`):
+  // a sub-dollar price keeps its cents, and a half-dollar is never rounded up.
+  assert.equal(formatListingPrice("0.08"), "$0.08", "never rounds to $0");
+  assert.equal(formatListingPrice(49.5), "$49.50", "never rounds to $50");
   assert.equal(formatListingPrice(null), null, "a hidden price stays hidden");
   assert.equal(formatListingPrice("0"), null, "never $0");
   assert.equal(formatListingPrice("-5"), null);

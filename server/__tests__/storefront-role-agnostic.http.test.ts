@@ -162,6 +162,8 @@ before(async () => {
   const pendingLegacyId = await createOwner("pending-legacy", "local_expert", null);
   const rejectedLegacyId = await createOwner("rejected-legacy", "local_expert", null);
   await createOwner("no-form-legacy", "local_expert", null);
+  // A provider with no handle and no approved inventory: never publishable, by any address.
+  await createOwner("bare-provider-legacy", "service_provider", null);
 
   const expertServiceId = await createApprovedService(expertId, "expert");
   const providerServiceId = await createApprovedService(providerId, "provider");
@@ -406,4 +408,10 @@ test("pending, rejected, and missing-form no-handle experts remain private", asy
     const response = await api(`/api/storefront/by-id/${ownerIds[label]}`);
     assert.equal(response.status, 404, `${label} must not have a public legacy profile`);
   }
+});
+
+test("a handle-less provider with no approved inventory has no public page by id", async () => {
+  // The no-handle waiver is the legacy EXPERT profile's alone; a provider keeps the inventory gate.
+  const response = await api(`/api/storefront/by-id/${ownerIds["bare-provider-legacy"]}`);
+  assert.equal(response.status, 404, await response.text());
 });
