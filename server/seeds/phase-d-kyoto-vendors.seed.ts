@@ -34,10 +34,16 @@
 
 import { db } from "../db";
 import { users, serviceProviderForms, providerServices, serviceCategories } from "@shared/schema";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import * as crypto from "crypto";
 import { resolveNeighborhoodCentroid } from "./lib/neighborhood-centroid";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./lib/demo-seed-gate";
+
+// The quoted translation listing's copy (ledger `2026-09-23-kansai-translation-quoted`), stated once
+// for the definition below and for the one-time repair of an existing demo row.
+const TRANSLATION_DESCRIPTION =
+  "Professional certified translation of business documents: contracts, MOUs, technical manuals, financial reports, and marketing materials. Quoted per document by length (the standard rate unit is 400 Japanese characters, about 200 English words). Certification included. Typical turnaround 3–5 business days; express 24-hour service available.";
+
 
 // ─── Category placeholders (vendor arrays reference these at module load time) ─
 // Values are key names — the seed function resolves real IDs from the DB at runtime.
@@ -140,7 +146,8 @@ interface ServiceDef {
   description: string;
   serviceType: string;
   categoryId: string;
-  price: string;
+  /** `null` only for a `custom_quote` listing: its price is the quote, never the listing's. */
+  price: string | null;
   priceType: string;
   deliveryMethod: string;
   neighborhood: string;
@@ -640,11 +647,16 @@ const CORPORATE_VENDORS: VendorDef[] = [
       {
         serviceName: "Business Document Translation",
         shortDescription: "Certified Japanese–English business document translation.",
-        description: "Professional certified translation of business documents: contracts, MOUs, technical manuals, financial reports, and marketing materials. Rate per 400 Japanese characters (≈200 English words). Certification included. Typical turnaround 3–5 business days; express 24-hour service available.",
+        description: TRANSLATION_DESCRIPTION,
         serviceType: "specialty",
         categoryId: CAT.LANGUAGE_TRANSLATION,
-        price: "0.08",
-        priceType: "variable",
+        // Quoted, not listed (ledger `2026-09-23-kansai-translation-quoted`). Translation is priced
+        // by the document's length, and the listing columns carry no per-400-characters unit — so
+        // the former `price: "0.08"` rendered as a whole service costing eight cents. The honest
+        // shape is a custom quote (LD 49): the provider prices each document, and no number is
+        // invented here.
+        price: null,
+        priceType: "custom_quote",
         deliveryMethod: "async_messaging",
         neighborhood: "kawaramachi-sanjo",
         serviceImage: IMG.interpret,
@@ -720,6 +732,29 @@ const CORPORATE_VENDORS: VendorDef[] = [
 ];
 
 // ─── Seed function ────────────────────────────────────────────────────────
+
+/**
+ * One-time repair of the demo row this seeder used to insert as `price: "0.08"`
+ * (ledger `2026-09-23-kansai-translation-quoted`). The seeder is insert-only, so the corrected
+ * definition above reaches only a fresh database; this brings an existing demo database to the
+ * same shape. It is keyed on the exact stale value AND the seed provenance stamp, so a listing a
+ * person has since edited (or any non-seed row with the same name) is never touched, and a second
+ * run matches nothing. Demo-gated with the rest of this file — it never runs against production.
+ */
+async function repairTranslationQuote(): Promise<number> {
+  const repaired = await db
+    .update(providerServices)
+    .set({ price: null, priceType: "custom_quote", description: TRANSLATION_DESCRIPTION } as any)
+    .where(
+      and(
+        eq(providerServices.serviceName, "Business Document Translation"),
+        eq(providerServices.price, "0.08"),
+        eq(providerServices.createdVia, "seed"),
+      ),
+    )
+    .returning({ id: providerServices.id });
+  return repaired.length;
+}
 
 export async function seedPhaseDKyotoVendors(): Promise<{
   vendorsInserted: number;
@@ -845,6 +880,11 @@ export async function seedPhaseDKyotoVendors(): Promise<{
       });
       servicesInserted++;
     }
+  }
+
+  const quoteRepairs = await repairTranslationQuote();
+  if (quoteRepairs > 0) {
+    console.log(`[Phase D] Repaired ${quoteRepairs} "Business Document Translation" row(s) to a custom quote.`);
   }
 
   console.log(
