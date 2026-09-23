@@ -16,7 +16,8 @@
       "verify-service-offering-types (HTTP count gate)",
       "earn-page-smoke (Playwright DOM gate)",
       "ci-db-setup-lint (no inline migration steps)",
-      "relevance-dominance (pure unit)"
+      "relevance-dominance (pure unit)",
+      "suite-mutation-auth (server/__tests__/mutation-auth — live authorization probes, DB + app)"
     ]
   }
 }

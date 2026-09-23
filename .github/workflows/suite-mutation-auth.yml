@@ -123,6 +123,14 @@ jobs:
       # 513 line-only diffs and zero rail changes — a guard red on every merge. The
       # §18d fixtures run immediately before the guard (a line-only shift passes; a
       # new, removed or re-guarded rail fails).
+      # scripts/mutation-auth/*.test.ts ran in NO workflow until now, and
+      # `check-test-files-wired.cjs` does not scan `scripts/`, so `extractor.test.ts`
+      # sat red from the day it was written (587/578 asserted against a graph that
+      # already said 597/588) without anything going amber. Wired here, beside the
+      # generators it covers, because a mounted-graph count that nothing runs is not
+      # a drift detector. Needs no server and no database.
+      - name: scripts/mutation-auth generator + extractor tests
+        run: npx tsx --test scripts/mutation-auth/extractor.test.ts scripts/mutation-auth/coverage.test.ts
       - name: Manifest drift predicate self-test
         run: npx tsx scripts/generate-mutation-auth-manifest.ts --self-test
       - name: Generated mutation-auth manifest is current (rail set, not bytes)

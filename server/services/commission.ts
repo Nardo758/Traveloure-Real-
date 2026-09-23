@@ -242,11 +242,20 @@ export interface ResolveOptions {
   /** EXP-OVR.P2: when provided, the resolver checks for a per-expert override
    *  before falling back to the band lookup. */
   expertId?: string | null;
-  /** Early-adopter gate: pass the provider's userId for provider-source bookings.
-   *  Resolver compares users.created_at against early_adopter_cutoff_date in
-   *  platform_settings. Providers registered before the cutoff get beta_flat (10%);
-   *  those on/after get expert_standard (25%). Omitting this falls back to beta_flat
-   *  (safe for existing call-sites). */
+  /** The provider's userId on a provider-source line.
+   *
+   *  IT SELECTS NO BAND. This once fed an early-adopter gate that chose `beta_flat`
+   *  for providers registered before `early_adopter_cutoff_date`; ruling 49
+   *  (migration 178) deactivated that band and moved the founding-provider promise to
+   *  a premium-band grant through the entity-override mechanism, after which the gate
+   *  had no caller and its branch was argument-identical to its else. Both were
+   *  deleted (ledger `2026-09-23-early-adopter-gate-was-already-dead`).
+   *
+   *  The field is KEPT because it is part of the option shape the real charge path
+   *  passes (`payments.routes.ts` /api/checkout, via `resolveServiceOwnerShareRate`)
+   *  and it names WHO the provider line belongs to. Removing it is a caller-signature
+   *  change, not a cleanup, and it is not done here. Do not build a new band selection
+   *  on it without ratifying that selection first. */
   providerId?: string | null;
 }
 
@@ -514,29 +523,6 @@ async function getSetting(key: string): Promise<string | null> {
 }
 
 /**
- * Early-adopter gate: returns true if the provider registered before the
- * platform's early_adopter_cutoff_date. Safe fallback is true (beta rate)
- * so existing call-sites that omit providerId stay on beta_flat.
- */
-async function isEarlyAdopterProvider(providerId: string): Promise<boolean> {
-  try {
-    const cutoffStr = await getSetting("early_adopter_cutoff_date");
-    if (!cutoffStr) return true; // gate disabled → everyone is early adopter
-    const cutoff = new Date(cutoffStr);
-    if (isNaN(cutoff.getTime())) return true; // invalid date → safe fallback
-
-    const result = await db.execute(sql`
-      SELECT created_at FROM users WHERE id = ${providerId} LIMIT 1
-    `);
-    const row = result.rows?.[0] as { created_at: Date | string | null } | undefined;
-    if (!row?.created_at) return true; // unknown registration date → safe fallback
-    return new Date(row.created_at) < cutoff;
-  } catch {
-    return true; // DB error → safe fallback (never punish a provider for a DB issue)
-  }
-}
-
-/**
  * FEE-2 Phase 2: insurance config relocated from booking_fee_configs to platform_settings
  * (migration 124). booking_fee_configs is retained for its other 7 readers (transport
  * commission, startup seed, tip commission, etc.); only this read path was migrated.
@@ -593,14 +579,15 @@ export async function resolveCommissionRates(
   let source: ResolveOptions["source"];
   let revenueType: string | null | undefined;
   let expertId: string | null | undefined;
-  let providerId: string | null | undefined;
 
   if (typeof categoryOrOptions === "object" && categoryOrOptions !== null) {
     category = categoryOrOptions.category;
     source = categoryOrOptions.source;
     revenueType = categoryOrOptions.revenueType;
     expertId = categoryOrOptions.expertId;
-    providerId = categoryOrOptions.providerId;
+    // `categoryOrOptions.providerId` is deliberately NOT read: it selects no band
+    // (see its doc on ResolveOptions). Destructuring it into an unused local would
+    // read as a live input.
   } else {
     category = categoryOrOptions;
   }
@@ -661,40 +648,24 @@ export async function resolveCommissionRates(
   // The admin-set `default_commission_band_key` still wins when configured.
   const defaultBandKey = (await getSetting("default_commission_band_key")) ?? "expert_standard";
 
-  // Early-adopter gate for provider-source bookings.
-  // When a providerId is supplied, compare their registration date to
-  // early_adopter_cutoff_date in platform_settings (config-driven — no literal date here):
-  //   before cutoff  → beta_flat band (rates from fee_bands row)
-  //   on/after cutoff → expert_standard band (rates from fee_bands row)
-  // Omitting providerId (existing call-sites) always resolves to beta_flat — safe.
-  const isProviderLine = source === "provider" || category === "provider_commission_percent";
-  let bandKey: string;
-  if (isProviderLine && providerId) {
-    // RULING 49: `beta_flat` is DEACTIVATED — incoherent under structure C (a 10% take is worse for
-    // the provider than the commercial 0.06 and premium 0.04 bands), superseded by the four
-    // category-resolved provider bands (ruling 48). This branch previously selected it for
-    // early-adopter providers; with the band inactive that selection began THROWING at
-    // `getBand` — caught by verify-fee-config-parity, which is why this repoint ships with the
-    // deactivation rather than after it.
-    //
-    // Provider lines therefore fall through to `decideBandKey` like every other line. The
-    // authoritative category-band resolution for provider commission lives in the single resolver
-    // (`fee-resolution.service.ts` → `resolveProviderRate`, ruling 47); this legacy path keeps
-    // working for its existing callers until the charge paths are repointed onto that resolver
-    // (lane item 1C). The early-adopter cohort question is now a premium-band-for-life grant
-    // through the entity-override mechanism (ruling 49), not a band selection here.
-    bandKey = decideBandKey(
-      { source, category, categoryCommissionBand: null /* tiered lookup wires in 1C */ },
-      policy,
-      defaultBandKey,
-    );
-  } else {
-    bandKey = decideBandKey(
-      { source, category, categoryCommissionBand: null /* tiered lookup wires in a later phase */ },
-      policy,
-      defaultBandKey,
-    );
-  }
+  // THE EARLY-ADOPTER BAND SELECTION IS GONE, AND THIS IS THE RECORD OF WHY.
+  // Ruling 49 (migration 178) DEACTIVATED `beta_flat` — "Do not reactivate; a founding-provider
+  // promise is a premium-band grant via the D0 override mechanism, not this band" — and repointed
+  // the two `platform_settings` rows that named it. After that, `isEarlyAdopterProvider` had no
+  // caller and the `if (isProviderLine && providerId)` branch it fed called `decideBandKey` with
+  // arguments IDENTICAL to its own `else`, so the test selected nothing. Both are deleted here
+  // (§18c: no consumer ⇒ delete, don't gate) rather than left to read as a live money gate.
+  //
+  // Provider lines resolve the category band like every other line (ruling 48's model), with the
+  // admin-set `default_commission_band_key` as the last stop. The authoritative implementation is
+  // the single resolver (`fee-resolution.service.ts` → `resolveProviderRate`, ruling 47); this
+  // legacy path keeps working for its existing callers until the charge paths are repointed onto
+  // it (lane item 1C).
+  const bandKey = decideBandKey(
+    { source, category, categoryCommissionBand: null /* tiered lookup wires in 1C */ },
+    policy,
+    defaultBandKey,
+  );
 
   const band = await getBand(bandKey);
   // Only a PERCENT band expresses a splittable platform-take fraction. A FLAT
