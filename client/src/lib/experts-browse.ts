@@ -55,3 +55,21 @@ export function buildExpertsBrowseHref(target: ExpertsBrowseTarget): string {
   const query = params.toString();
   return query ? `${EXPERTS_BROWSE_PATH}?${query}` : EXPERTS_BROWSE_PATH;
 }
+
+/**
+ * THE WAY BACK TO ONE EARNER, CARRYING THE PLAN (Locked Decision 42 **D15**; ledger
+ * `2026-09-23-storefront-booking-panel`). A plan started from an expert's storefront ends back on
+ * that storefront, and the storefront's booking panel reads `?tripId=` to offer "Share my plan".
+ * Without the id the traveler came back to "Start a plan" for a plan they had just made — the same
+ * loop D5 closes for the browse, one page over.
+ *
+ * Same §13 rule as the builder above: the param is added only when there IS an id, and a path that
+ * already has a query gets `&`, never a second `?`. It says nothing about ownership — the page that
+ * reads it asks the server, which answers only the plan's owner.
+ */
+export function withPlanTripId(path: string, tripId: unknown): string {
+  const value = trimmed(tripId);
+  if (!value) return path;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}${EXPERTS_BROWSE_TRIP_PARAM}=${encodeURIComponent(value)}`;
+}

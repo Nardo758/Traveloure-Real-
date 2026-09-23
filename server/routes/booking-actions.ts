@@ -55,6 +55,7 @@ import {
   listTripExpertAdvisors,
   getExistingAdvisorRecord,
   isExpertApproved,
+  isExpertHireable,
   getTripDestination,
   getExpertQueuePosition,
   assignExpertAdvisor,
@@ -802,7 +803,9 @@ router.post('/trips/:tripId/advisors', isAuthenticated, async (req, res) => {
     const outcome = await hireAdvisorFromSlip(
       {
         verifyTripOwnership,
-        isExpertApproved,
+        // Approved AND not the platform's reserved concierge account (`isExpertHireable`), so an
+        // invite to that account is the ordinary 404 instead of the author's thrown refusal.
+        isExpertApproved: isExpertHireable,
         // The event->trip pairing is answered by the SHARED resolver every item write rail uses
         // (migration 277, Locked Decision 29). A second "does this event belong to this trip?"
         // written here is the derivation-drift class §18 rule 1 names — and it is exactly where a

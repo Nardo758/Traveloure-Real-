@@ -16,6 +16,7 @@ import { BRANCHES_THAT_MINT, BRANCHES_THAT_REQUIRE_THE_MINT } from "../plan-step
 import {
   EXPERTS_BROWSE_PATH,
   buildExpertsBrowseHref,
+  withPlanTripId,
 } from "../experts-browse";
 
 test("M1: `myself` still mints — D5 adds a branch, it does not move one", () => {
@@ -96,4 +97,19 @@ test("H4: values are encoded, so a comma or space cannot split the query", () =>
   const url = new URL(href, "https://example.invalid");
   assert.equal(url.searchParams.get("tripId"), "a b&c=d");
   assert.equal(url.searchParams.get("destination"), "Kyoto, Japan");
+});
+
+test("H5: D15 — the way back to the storefront carries the minted plan, and only a real one", () => {
+  // The storefront's booking panel reads `?tripId=` to offer "Share my plan"; arriving without it
+  // would hand the traveler "Start a plan" for the plan they just made.
+  assert.equal(withPlanTripId("/s/jaipur-local", "trip-9"), "/s/jaipur-local?tripId=trip-9");
+  assert.equal(withPlanTripId("/s/jaipur-local", "  "), "/s/jaipur-local", "a blank id is dropped, never sent");
+  assert.equal(withPlanTripId("/s/jaipur-local", undefined), "/s/jaipur-local");
+  assert.equal(withPlanTripId("/s/x?ref=a", "t 1"), "/s/x?ref=a&tripId=t%201", "an existing query gets &, and the id is encoded");
+});
+
+test("H6: PlanningContext's expert return uses withPlanTripId — the id cannot be dropped silently", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../../contexts/PlanningContext.tsx", import.meta.url), "utf8");
+  assert.ok(src.includes("setLocation(withPlanTripId(path, plan.tripId))"), "the expert return must carry the minted plan");
 });

@@ -62,7 +62,7 @@ import { mintTripSlip } from "@/lib/trip-slip";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
 import { startMembershipCheckout } from "@/lib/membership-checkout";
-import { buildExpertsBrowseHref } from "@/lib/experts-browse";
+import { buildExpertsBrowseHref, withPlanTripId } from "@/lib/experts-browse";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 import { PlanModal, type CommittedPlan, type PlanMintOutcome } from "@/components/trip/plan-modal";
 
@@ -326,10 +326,13 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         // §13: only the `expert` kind is read; a door that named nothing, or named a `service`
         // (whose finish D15 rules but this lane does not build), falls through to exactly the
         // browse this branch has always shown.
+        // The minted plan rides back with it (`withPlanTripId`): the storefront's booking panel
+        // reads `?tripId=` to offer "Share my plan", so arriving without it would hand the
+        // traveler "Start a plan" for the plan they just made.
         if (source?.returnTo?.kind === "expert") {
           const path = earnerProfilePath({ handle: source.returnTo.handle });
           if (path) {
-            setLocation(path);
+            setLocation(withPlanTripId(path, plan.tripId));
             return;
           }
         }

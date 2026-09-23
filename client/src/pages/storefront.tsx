@@ -49,7 +49,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
-import { useRoute, Link } from "wouter";
+import { useRoute, useSearch, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -66,6 +66,12 @@ import { priceUnitPhrase } from "@/lib/price-unit";
 import { isProviderRole } from "@shared/roles";
 import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 import {
+  StorefrontBookingBar,
+  StorefrontBookingPanel,
+  useStorefrontPlanContext,
+} from "@/components/storefront/StorefrontBookingPanel";
+import { responseTimeFigure } from "@/lib/storefront-booking-panel";
+import {
   Star,
   MapPin,
   Share2,
@@ -76,7 +82,6 @@ import {
   BadgeCheck,
   Search,
   Sparkles,
-  Check,
   X,
 } from "lucide-react";
 
@@ -88,6 +93,9 @@ const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 
 /** Hairline card — the one rounded/bordered rhythm every panel on this page uses. */
 const CARD_SHELL = "rounded-xl border border-[color:var(--earn-border)] bg-[var(--earn-card)]";
+/** Anchors the booking panel links to ("Choose a service", and the phone bar's "Start a plan"). */
+const SERVICES_ANCHOR_ID = "storefront-services";
+const PANEL_ANCHOR_ID = "storefront-booking";
 /** Small-caps mono eyebrow — coral TEXT (an eyebrow never counts against the coral BUTTON budget). */
 const EYEBROW = "text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]";
 
@@ -118,6 +126,12 @@ interface StorefrontEarner {
   /** Gems attributed to this earner (curated_by_expert_id — 2026-08-29-replit-gem-audit
    *  ruling 7). Rendered as "{N} gems shared" ONLY when > 0 (§13 — never a padded zero). */
   gemsSharedCount?: number;
+  /** The expert's own stated response time (raw); shown only through `responseTimeFigure`. */
+  responseTime?: string | null;
+  /** A provider form's self-declared insurance flag; "Insured" only when `true`. */
+  hasInsurance?: boolean | null;
+  /** Whether this earner can be invited onto a traveler's plan (server's `isExpertHireable`). */
+  acceptsPlanShares?: boolean;
 }
 
 interface StorefrontService {
@@ -141,6 +155,9 @@ interface StorefrontService {
   // no approved translation exists — the card shows the honest original and the lane renders
   // the one-line note below (§13; the detail page carries the full per-listing label).
   shownInOriginal?: boolean;
+  /** The listing's public terms, for the booking panel's "every listing agrees" lines. */
+  leadTimeHours?: number | null;
+  cancellationPolicyType?: string | null;
 }
 
 interface StorefrontReadyMade {
@@ -203,16 +220,33 @@ function RatingLine({ rating, count }: { rating: string | number | null; count: 
   );
 }
 
-function LaneHeader({ eyebrow, title, count }: { eyebrow: string; title: string; count: number }) {
+/**
+ * One heading per lane. It carries NO count: the header's figures already state how many offerings
+ * this earner has, and a third copy of the same number was one of the duplicates the storefront
+ * booking-panel lane removed (ledger `2026-09-23-storefront-booking-panel`).
+ */
+function LaneHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
   return (
-    <div className="mb-4 flex items-baseline justify-between gap-2">
-      <div>
-        <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>{eyebrow}</div>
-        <h2 className="mt-1 text-[24px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>{title}</h2>
-      </div>
-      <div className="text-[11px] tabular-nums uppercase tracking-[0.1em] text-[color:var(--earn-faint)]" style={{ fontFamily: EARN_MONO }}>
-        {count} available
-      </div>
+    <div className="mb-4">
+      <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>{eyebrow}</div>
+      <h2 className="mt-1 text-[24px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>{title}</h2>
+    </div>
+  );
+}
+
+/**
+ * One header figure — a serif number over a mono label (the "figures replace the meta line" design,
+ * option B). Each is rendered only when its value is real; the caller omits the rest (§13).
+ */
+function HeaderFigure({ value, label, testId }: { value: ReactNode; label: string; testId: string }) {
+  return (
+    <div className="flex flex-col gap-0.5" data-testid={testId}>
+      <strong className="text-[22px] font-semibold leading-none text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>
+        {value}
+      </strong>
+      <span className="text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
+        {label}
+      </span>
     </div>
   );
 }
@@ -251,11 +285,14 @@ function StorefrontOfferingCard({
   showPrice,
   bookingMode,
   meta,
+  showCategory = true,
 }: {
   href: string;
   testId: string;
   image: string | null;
   categoryLabel: string;
+  /** false when every offering on the page is the same kind — a "SERVICE" tag on every card says nothing. */
+  showCategory?: boolean;
   title: string;
   chips: string[];
   ratingSlot: ReactNode;
@@ -317,12 +354,12 @@ function StorefrontOfferingCard({
         {/* Scrim only under a real photo — a flat chip well needs no darkening, and darkening
             it would read as a second, dimmer surface colour. */}
         {image && <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />}
-        <span
+        {showCategory && <span
           className="absolute left-2.5 bottom-2.5 rounded-md border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-2 py-1 text-[9.5px] font-medium uppercase tracking-[0.1em] text-[color:var(--earn-muted)]"
           style={{ fontFamily: EARN_MONO }}
         >
           {categoryLabel}
-        </span>
+        </span>}
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-4">
         <div className="flex items-center justify-between gap-2">
@@ -409,6 +446,14 @@ export default function StorefrontPage() {
     retry: false,
   });
 
+  // `?tripId=` — the plan a traveler arrived with (the planner's expert finish appends it, and any
+  // plan page may link here with it). It is only a CLAIM until the owner-gated read answers: the
+  // hook resolves it to a plan the viewer owns, or to nothing (§13 — ledger
+  // `2026-09-23-storefront-booking-panel`). Called before the early returns so hook order holds.
+  const search = useSearch();
+  const tripIdParam = new URLSearchParams(search).get("tripId")?.trim() || null;
+  const planContext = useStorefrontPlanContext(tripIdParam, handle);
+
   function copyLink() {
     const url = `${window.location.origin}/s/${handle}`;
     navigator.clipboard.writeText(url).then(() => {
@@ -440,6 +485,10 @@ export default function StorefrontPage() {
   // told their visitor's filter was at fault, beside a Clear-filters button with nothing to clear
   // (the toolbar isn't even rendered in that case — availableCategories is ["All"] alone).
   const hasAnyOfferings = services.length + readyMade.length > 0;
+  // Tabs only when there is a real choice between KINDS: "All | Services" on a page that sells
+  // nothing but services offers a choice that changes nothing (ledger
+  // `2026-09-23-storefront-booking-panel`).
+  const showCategoryTabs = services.length > 0 && readyMade.length > 0;
   const availableCategories: OfferingCategory[] = [
     "All",
     ...(services.length > 0 ? (["Services"] as const) : []),
@@ -527,7 +576,22 @@ export default function StorefrontPage() {
       ? `${presentLaneNames.length} ways to plan — ${presentLaneNames.slice(0, -1).join(", ")}${presentLaneNames.length > 2 ? "," : ""} or ${presentLaneNames[presentLaneNames.length - 1]}.`
       : null;
 
-  const offeringsHeading = earner.location ? `Plans shaped around ${earner.location}` : `What ${firstName} offers`;
+  // Header figures (option B). The member-since year and the location used to appear twice — as
+  // header lines and again in a separate fact strip; each now appears once. Expert: offerings,
+  // gems shared (only when > 0, ruling 7), typical reply (only a readable promise), joined.
+  // Provider: services, joined. The rating stays on its own line above, so reviews are not a
+  // figure too. Every value real; the rest omitted (§13).
+  const replyFigure = isProviderRole(earner.role) ? null : responseTimeFigure(earner.responseTime);
+  const headerFigures: { value: ReactNode; label: string; testId: string }[] = [
+    isProviderRole(earner.role)
+      ? { value: services.length, label: services.length === 1 ? "Service" : "Services", testId: "fact-offerings" }
+      : { value: earner.offeringsCount, label: earner.offeringsCount === 1 ? "Offering" : "Offerings", testId: "fact-offerings" },
+    ...((earner.gemsSharedCount ?? 0) > 0
+      ? [{ value: earner.gemsSharedCount, label: earner.gemsSharedCount === 1 ? "Gem shared" : "Gems shared", testId: "fact-gems-shared" }]
+      : []),
+    ...(replyFigure ? [{ value: replyFigure, label: "Typical reply", testId: "fact-response-time" }] : []),
+    ...(memberSinceYear ? [{ value: memberSinceYear, label: "On Traveloure since", testId: "fact-member-since" }] : []),
+  ];
 
   function messageEarner() {
     askExpert({
@@ -560,7 +624,7 @@ export default function StorefrontPage() {
           link/QR recipient (guest included) can switch language — same one-selector rule as the
           Layout header (ruling 60 entry point (b)). */}
       <div className="border-b border-[color:var(--earn-border)] bg-[var(--earn-card)]">
-        <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-3">
+        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
           <Link href="/" className="flex items-center" data-testid="link-storefront-logo">
             <TraveloureLogo />
           </Link>
@@ -568,9 +632,13 @@ export default function StorefrontPage() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
-        {/* Identity hero card — cover + overlapping avatar + name/handle/verified/bio/proof line,
-            consolidated into one bordered card (continuity mock's `.psc-hero`). */}
+      <div className={`max-w-6xl mx-auto px-4 py-6 sm:py-10 ${isOwnStorefront ? "" : "pb-28 lg:pb-10"}`}>
+        {/* Identity hero card — cover + overlapping avatar + identity, the header FIGURES, and the
+            two header actions pinned to its bottom-right corner (ledger
+            `2026-09-23-storefront-booking-panel`, the approved mockup's option B). The separate
+            fact strip that used to follow is folded in here, minus the two figures the header
+            already said (the member-since line and the location). The bio is NOT repeated here:
+            it appears once, in About below. */}
         <div className="overflow-hidden rounded-2xl border border-[color:var(--earn-border)] bg-[var(--earn-card)]">
           {/* Cover band — earner-chosen (users.preferences.storefront.coverImageUrl), token wash
               fallback. Link-landing polish (mockup §08): shorter on mobile so a texted storefront
@@ -588,7 +656,7 @@ export default function StorefrontPage() {
             data-testid="storefront-cover"
           />
 
-          <div className="grid grid-cols-[72px_1fr] sm:grid-cols-[88px_1fr_auto] gap-x-4 gap-y-4 sm:gap-x-5 px-5 sm:px-7 pb-6">
+          <div className="grid grid-cols-[72px_1fr] sm:grid-cols-[88px_1fr_220px] gap-x-4 gap-y-4 sm:gap-x-5 px-5 sm:px-7 pb-6">
             {earner.profileImageUrl ? (
               <img
                 src={earner.profileImageUrl}
@@ -605,23 +673,8 @@ export default function StorefrontPage() {
             )}
 
             <div className="pt-3 sm:pt-4 min-w-0">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>{eyebrowLabel}</div>
-                  <h1 className="mt-1 text-[30px] sm:text-[34px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid="storefront-name">{earner.name}</h1>
-                </div>
-                {earner.verified && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shrink-0"
-                    style={{ borderWidth: 1, borderStyle: "solid", borderColor: "var(--earn-green-ink)", background: "var(--earn-teal-wash)", color: "var(--earn-green-ink)" }}
-                    data-testid="badge-storefront-verified"
-                    title="This earner's identity has been verified"
-                  >
-                    <ShieldCheck className="w-3 h-3" />
-                    {verifiedLabel}
-                  </span>
-                )}
-              </div>
+              <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>{eyebrowLabel}</div>
+              <h1 className="mt-1 text-[30px] sm:text-[34px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid="storefront-name">{earner.name}</h1>
 
               <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
                 <span>@{earner.handle}</span>
@@ -657,89 +710,121 @@ export default function StorefrontPage() {
                 </p>
               )}
 
-              {earner.bio && (
-                <p className="mt-2.5 text-sm leading-relaxed text-[color:var(--earn-ink)] max-w-2xl">{earner.bio}</p>
-              )}
+              {/* The rating line — a real score, or "New" when there are no reviews (§13). */}
+              <div className="mt-3 text-[11px]" data-testid="storefront-earner-rating">
+                <RatingLine rating={earner.averageRating} count={earner.reviewCount} />
+              </div>
 
-              {/* Proof line — rating + member-since, both real fields (§13: no fabricated stats). */}
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
-                <span data-testid="storefront-earner-rating">
-                  <RatingLine rating={earner.averageRating} count={earner.reviewCount} />
-                </span>
-                {memberSinceYear && (
-                  <span className="inline-flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5" />
-                    On Traveloure since {memberSinceYear}
+              {/* Header figures — every value real, each omitted when there is nothing true to show. */}
+              {/* Two per row on a phone (no dividers — a wrapped divider would float); one row with
+                  hairline dividers from `sm:` up. */}
+              <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:flex sm:flex-wrap sm:items-stretch sm:gap-x-5" data-testid="storefront-facts">
+                {headerFigures.map((f, i) => (
+                  <div key={f.testId} className="flex items-stretch sm:gap-5">
+                    {i > 0 && <div className="hidden sm:block w-px self-stretch bg-[color:var(--earn-border)]" aria-hidden="true" />}
+                    <HeaderFigure value={f.value} label={f.label} testId={f.testId} />
+                  </div>
+                ))}
+              </div>
+              {planWaysNote && (
+                <div className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-[color:var(--earn-muted)] max-w-md" style={{ fontFamily: EARN_MONO }} data-testid="storefront-plan-ways-note">
+                  <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-[color:var(--earn-teal-ink)]" />
+                  <span>{planWaysNote}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Right column: the verified badge at the top, the two actions pinned to the bottom so
+                they line up with the figures. On a phone they stack full-width under the identity. */}
+            <div className="col-span-2 sm:col-span-1 flex flex-col justify-between gap-4 sm:pt-4">
+              <div className="flex sm:justify-end">
+                {earner.verified && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shrink-0"
+                    style={{ borderWidth: 1, borderStyle: "solid", borderColor: "var(--earn-green-ink)", background: "var(--earn-teal-wash)", color: "var(--earn-green-ink)" }}
+                    data-testid="badge-storefront-verified"
+                    title="This earner's identity has been verified"
+                  >
+                    <ShieldCheck className="w-3 h-3" />
+                    {verifiedLabel}
                   </span>
                 )}
               </div>
-            </div>
-
-            {/* Message/Share actions — stacked full-width on mobile so a long "Message @handle"
-                label never gets squeezed into an equal-width flex-1 half (which wrapped its
-                text while "Share" stayed single-line, leaving the two buttons visibly
-                mismatched in height). From `sm:` up they sit side by side at their own
-                natural width in the grid's `auto` column. On your own storefront there was
-                previously no way back to editing from here — a lone "Share" button — so an
-                "Edit profile" action replaces "Message @you" instead.
-                `sm:items-start` is the restyle's one geometry change: as a grid item this
-                column stretched to the hero row's full height, so from `sm:` up the two
-                buttons rendered as tall blocks. It is `sm:`-scoped, so the mobile
-                flex-col/full-width stacking above is untouched. */}
-            <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:pt-4 col-span-2 sm:col-span-1">
-              {isOwnStorefront ? (
-                <Link href={isProviderRole(earner.role) ? "/provider/settings?tab=profile" : "/expert/settings?tab=profile"} className="w-full sm:w-auto">
+              <div className="flex flex-col gap-2">
+                {isOwnStorefront ? (
+                  <Link href={isProviderRole(earner.role) ? "/provider/settings?tab=profile" : "/expert/settings?tab=profile"} className="w-full">
+                    <Button
+                      variant="outline"
+                      className="w-full border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
+                      data-testid="button-edit-storefront"
+                    >
+                      Edit profile
+                    </Button>
+                  </Link>
+                ) : (
                   <Button
-                    variant="outline"
-                    className="w-full sm:w-auto border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
-                    data-testid="button-edit-storefront"
+                    className="w-full text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                    onClick={messageEarner}
+                    data-testid="button-message-storefront"
                   >
-                    Edit profile
+                    <MessageCircle className="w-4 h-4 mr-1.5 shrink-0" />
+                    Start a conversation
                   </Button>
-                </Link>
-              ) : (
+                )}
+                {/* "Share page", not "Share": the booking panel's "Share my plan" is a different act
+                    (it puts this expert on the traveler's plan), and two buttons both called
+                    "Share" would not say which is which. */}
                 <Button
-                  className="w-full sm:w-auto text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
-                  onClick={messageEarner}
-                  data-testid="button-message-storefront"
-                >
-                  <MessageCircle className="w-4 h-4 mr-1.5 shrink-0" />
-                  <span className="truncate">Message @{earner.handle}</span>
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
-                onClick={copyLink}
-                data-testid="button-share-storefront"
-              >
-                <Share2 className="w-4 h-4 mr-1.5 shrink-0" />
-                Share
-              </Button>
-              {/* Plan entry (ledger `2026-09-04-entry-unification`; Locked Decision 42 D13, ledger
-                  `2026-09-05-doors-source-fields`). A traveler who lands on an earner's storefront
-                  from search had no way to start a plan from here at all — only "Message" and
-                  "Share". Hidden on your OWN storefront: an earner looking at their own shop is not
-                  a traveler door.
-
-                  BARE, DELIBERATELY (§13) — this is the D13 clause that says a door passes only what
-                  is TRUE. `earner.location` LOOKS like a city and is not reliably one:
-                  `resolveEarnerLocation` (server/routes/storefront.routes.ts) prefers the
-                  admin-managed neighbourhood assignment and returns "<neighbourhood>, <city>",
-                  falling back to a form's city/country. Forwarding it as `city` would put a
-                  neighbourhood into the modal's destination field and present it as the traveler's
-                  stated destination. Nothing else on this page names a city, so nothing is passed.
-                  WHAT IT DOES PASS (lane L22, ledger `2026-09-07-doors-pass-tripid`; Locked
-                  Decision 42 **D15**): the RETURN ADDRESS. A plan started from this earner ends
-                  back at this earner rather than in a `/experts` browse for the person whose page
-                  the traveler was already standing on. Addressed by HANDLE (Locked Decision 40 —
-                  `users.id` is internal and is never a public address), and §13 holds: an earner
-                  row with no claimed handle passes NOTHING and the finish keeps the browse it has
-                  always shown. */}
-              {!isOwnStorefront && (
-                <PlanEntryCta
                   variant="outline"
-                  className="w-full sm:w-auto border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
+                  className="w-full border-[color:var(--earn-border)] bg-[var(--earn-card)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
+                  onClick={copyLink}
+                  data-testid="button-share-storefront"
+                >
+                  <Share2 className="w-4 h-4 mr-1.5 shrink-0" />
+                  Share page
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Body: the page's content on the left, the booking panel on the right (sticky on a wide
+            screen). The panel comes FIRST in the DOM so a phone shows it straight under the
+            header; the grid places it in the right column from `lg:` up. */}
+        {/* The owner sees no panel on their own page, so their content takes the full width. */}
+        <div className={`mt-6 grid grid-cols-1 gap-6 items-start ${isOwnStorefront ? "" : "lg:grid-cols-[minmax(0,1fr)_360px]"}`}>
+          <div id={PANEL_ANCHOR_ID} className="lg:col-start-2 lg:row-start-1 lg:sticky lg:top-6">
+            <StorefrontBookingPanel
+              earner={{
+                name: earner.name,
+                handle: earner.handle,
+                role: earner.role,
+                profileImageUrl: earner.profileImageUrl,
+                hasInsurance: earner.hasInsurance ?? null,
+              }}
+              isProvider={isProviderRole(earner.role)}
+              isOwnStorefront={isOwnStorefront}
+              acceptsPlanShares={earner.acceptsPlanShares === true}
+              services={services}
+              away={away}
+              plan={planContext}
+              servicesAnchorId={SERVICES_ANCHOR_ID}
+              planEntry={
+                /* Plan entry (ledger `2026-09-04-entry-unification`; Locked Decision 42 D13, ledger
+                   `2026-09-05-doors-source-fields`), now the expert panel's start action. Rendered
+                   HERE so the planning-entry guard keeps finding this door on this page. Hidden on
+                   your OWN storefront (the panel is not drawn there at all).
+
+                   BARE of a city, DELIBERATELY (§13) — `earner.location` LOOKS like a city and is
+                   not reliably one: `resolveEarnerLocation` prefers the admin-managed neighbourhood
+                   assignment and returns "<neighbourhood>, <city>". Forwarding it as `city` would
+                   put a neighbourhood into the modal's destination field.
+                   WHAT IT DOES PASS (lane L22, ledger `2026-09-07-doors-pass-tripid`; Locked
+                   Decision 42 **D15**): the RETURN ADDRESS, by HANDLE (Locked Decision 40). The
+                   planner's expert finish now brings the traveler back here WITH the new plan's id
+                   (`withPlanTripId`), which is what turns this panel into "Share my plan". */
+                <PlanEntryCta
+                  className="w-full text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
                   source={
                     earner.handle
                       ? { returnTo: { kind: "expert", handle: String(earner.handle) } }
@@ -747,63 +832,18 @@ export default function StorefrontPage() {
                   }
                   testId="button-plan-entry-storefront"
                 />
-              )}
-            </div>
+              }
+            />
           </div>
-        </div>
 
-        {/* Fact strip — every number real: sum of the three lanes, real review count, real join
-            year, real area of expertise (the earner's own location), and an honest multi-lane
-            note (rendered only when there genuinely is more than one lane). */}
-        <div
-          className={`mt-6 flex flex-wrap items-center gap-x-8 gap-y-4 px-6 py-4 ${CARD_SHELL}`}
-          style={{ fontFamily: EARN_MONO }}
-          data-testid="storefront-facts"
-        >
-          <div>
-            <div className="text-xl font-semibold tabular-nums text-[color:var(--earn-ink)]" data-testid="fact-offerings">{earner.offeringsCount}</div>
-            <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]">Offerings</div>
-          </div>
-          <div className="border-l border-[color:var(--earn-border)] pl-8">
-            <div className="text-xl font-semibold tabular-nums text-[color:var(--earn-ink)]" data-testid="fact-reviews">{earner.reviewCount}</div>
-            <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]">Reviews</div>
-          </div>
-          {/* Ruling 7: renders ONLY when the earner has attributed gems — no zero tile. */}
-          {(earner.gemsSharedCount ?? 0) > 0 && (
-            <div className="border-l border-[color:var(--earn-border)] pl-8">
-              <div className="text-xl font-semibold tabular-nums text-[color:var(--earn-ink)]" data-testid="fact-gems-shared">{earner.gemsSharedCount}</div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]">
-                {earner.gemsSharedCount === 1 ? "Gem shared" : "Gems shared"}
-              </div>
-            </div>
-          )}
-          {memberSinceYear && (
-            <div className="border-l border-[color:var(--earn-border)] pl-8">
-              <div className="text-xl font-semibold tabular-nums text-[color:var(--earn-ink)]" data-testid="fact-member-since">{memberSinceYear}</div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]">On Traveloure since</div>
-            </div>
-          )}
-          {earner.location && (
-            <div className="border-l border-[color:var(--earn-border)] pl-8">
-              <div className="text-xl font-semibold text-[color:var(--earn-ink)]" data-testid="fact-location">{earner.location}</div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]">Area of expertise</div>
-            </div>
-          )}
-          {planWaysNote && (
-            <div className="flex items-start gap-2 text-[11px] leading-relaxed text-[color:var(--earn-muted)] sm:ml-auto max-w-sm" data-testid="storefront-plan-ways-note">
-              <Sparkles className="w-4 h-4 mt-0.5 shrink-0 text-[color:var(--earn-teal-ink)]" />
-              <span>{planWaysNote}</span>
-            </div>
-          )}
-        </div>
-
+          <div className="lg:col-start-1 lg:row-start-1 min-w-0">
         {/* About — the bio promoted into its own labeled section below the hero, above
             Offerings, so a trust-scanning visitor can find "who is this person" without
             hunting through the hero card. The hero keeps its own bio line as the one-line
             hook; this is the fuller story (same text today — same-treatment across
             expert-detail.tsx and this page). Honest-omit: renders nothing when empty. */}
         {earner.bio && (
-          <section className={`mt-6 px-6 py-5 ${CARD_SHELL}`} data-testid="storefront-about">
+          <section className={`px-6 py-5 ${CARD_SHELL}`} data-testid="storefront-about">
             <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>
               About
             </div>
@@ -814,20 +854,14 @@ export default function StorefrontPage() {
         {/* Offerings — category tabs + search over the three real lanes. Default state (category
             "All", empty search) is the exact pre-rebuild render: nothing here changes what
             offering-card.spec.ts already proves. */}
-        <section className="mt-10 sm:mt-14">
-          <div className="mb-4 flex items-end justify-between gap-3">
-            <div>
-              <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>Choose your starting point</div>
-              <h2 className="mt-1 text-[24px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>{offeringsHeading}</h2>
-            </div>
-            <p className="text-[11px] uppercase tracking-[0.1em] text-[color:var(--earn-faint)]" style={{ fontFamily: EARN_MONO }} data-testid="storefront-offering-count">
-              {visibleTotal} offering{visibleTotal === 1 ? "" : "s"}
-            </p>
-          </div>
-
-          {availableCategories.length > 1 && (
+        {/* Offerings. ONE heading per lane (below) — the outer "Choose your starting point" heading
+            and its offering count repeated the lane heading and the header figure (ledger
+            `2026-09-23-storefront-booking-panel`). The tabs + search still appear only when the
+            earner genuinely sells more than one kind of offering. */}
+        <section className="mt-8">
+          {(showCategoryTabs || services.length + readyMade.length > 1) && (
             <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex gap-1 overflow-x-auto rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] p-1" role="tablist" aria-label="Offering categories">
+              {showCategoryTabs ? <div className="flex gap-1 overflow-x-auto rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-chip)] p-1" role="tablist" aria-label="Offering categories">
                 {availableCategories.map((c) => (
                   <button
                     key={c}
@@ -846,7 +880,7 @@ export default function StorefrontPage() {
                     {c}
                   </button>
                 ))}
-              </div>
+              </div> : <span aria-hidden="true" />}
               <label className="flex items-center gap-2 rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-card)] px-3 py-1.5 text-sm text-[color:var(--earn-muted)] min-w-[200px]">
                 <Search className="w-4 h-4 shrink-0" />
                 <input
@@ -894,8 +928,8 @@ export default function StorefrontPage() {
 
           {/* Lane 1: services — book directly */}
           {visibleServices.length > 0 && (
-            <div className="mb-10 sm:mb-12" data-testid="storefront-lane-services">
-              <LaneHeader eyebrow="Book directly" title="Services" count={visibleServices.length} />
+            <div className="mb-10 sm:mb-12 scroll-mt-6" id={SERVICES_ANCHOR_ID} data-testid="storefront-lane-services">
+              <LaneHeader eyebrow="Book directly" title="Services" />
               {/* Ruling 116 (§13): when any card falls back to its original language under the
                   viewer's locale, say so once — never a silent mix. */}
               {visibleServices.some((s) => s.shownInOriginal) && (
@@ -922,10 +956,13 @@ export default function StorefrontPage() {
                   return (
                     <StorefrontOfferingCard
                       key={s.id}
-                      href={`/services/${s.id}`}
+                      // A plan the viewer OWNS (resolved by the panel's hook, never the raw query
+                      // param) rides along, so the listing's "Add to plan" targets that plan.
+                      href={`/services/${s.id}${planContext.ownedTrip ? `?tripId=${encodeURIComponent(planContext.ownedTrip.id)}` : ""}`}
                       testId={`storefront-service-${s.id}`}
                       image={s.serviceImage}
                       categoryLabel="Service"
+                      showCategory={readyMade.length > 0}
                       title={s.serviceName}
                       chips={chips}
                       ratingSlot={<RatingLine rating={s.averageRating} count={s.reviewCount} />}
@@ -946,11 +983,7 @@ export default function StorefrontPage() {
               2026-09-03-expert-templates-consumer-sunset). */}
           {visibleReadyMade.length > 0 && (
             <div className="mb-10 sm:mb-12" data-testid="storefront-lane-readymade">
-              <LaneHeader
-                eyebrow="Start from a finished plan"
-                title="Ready-Made Trips"
-                count={visibleReadyMade.length}
-              />
+              <LaneHeader eyebrow="Start from a finished plan" title="Ready-Made Trips" />
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {visibleReadyMade.map((r) => {
                   const chips = [
@@ -964,6 +997,7 @@ export default function StorefrontPage() {
                       testId={`storefront-readymade-${r.id}`}
                       image={r.heroImageUrl}
                       categoryLabel="Editable trip"
+                      showCategory={services.length > 0}
                       meta="Editable trip · clones into your planner"
                       title={r.title}
                       chips={chips}
@@ -1019,6 +1053,9 @@ export default function StorefrontPage() {
           </div>
         )}
 
+          </div>
+        </div>
+
         {/* Trust strip — three real, general platform facts (no response-time/fabricated stats). */}
         <div
           className="mt-8 mb-10 grid gap-5 sm:grid-cols-3 border-t border-[color:var(--earn-border)] pt-6 text-sm"
@@ -1053,6 +1090,26 @@ export default function StorefrontPage() {
           </div>
         </div>
       </div>
+
+      {/* The phone layout's pinned bar — the panel's price and its one action (hidden from `lg:`). */}
+      <StorefrontBookingBar
+        earner={{
+          name: earner.name,
+          handle: earner.handle,
+          role: earner.role,
+          profileImageUrl: earner.profileImageUrl,
+          hasInsurance: earner.hasInsurance ?? null,
+        }}
+        isProvider={isProviderRole(earner.role)}
+        isOwnStorefront={isOwnStorefront}
+        acceptsPlanShares={earner.acceptsPlanShares === true}
+        services={services}
+        away={away}
+        plan={planContext}
+        servicesAnchorId={SERVICES_ANCHOR_ID}
+        panelAnchorId={PANEL_ANCHOR_ID}
+        planEntry={null}
+      />
     </div>
   );
 }

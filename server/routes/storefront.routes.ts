@@ -28,6 +28,7 @@ import { sanitizeInput } from "../utils/sanitize";
 import { z } from "zod";
 import { HANDLE_RE, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from "@shared/handle";
 import { isOwnerIdentityVerified } from "../utils/earner-verification";
+import { isExpertHireable } from "../services/booking-actions.service";
 import fs from "fs";
 import path from "path";
 import { eq, and, sql, inArray, isNotNull } from "drizzle-orm";
@@ -622,6 +623,12 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
       // Ruling 115: the listing's declared source language (NULL = en) — drives the per-card
       // translation overlay below.
       sourceLocale: providerServices.sourceLocale,
+      // Storefront booking panel (ledger `2026-09-23-storefront-booking-panel`): the panel states a
+      // lead time or a cancellation policy ONLY when every listing agrees, so it needs each row's
+      // own answer. Both are the listing's public terms (the detail page already shows them); NULL
+      // = not declared, and the panel then says nothing (§13).
+      leadTimeHours: providerServices.leadTimeHours,
+      cancellationPolicyType: providerServices.cancellationPolicyType,
     })
     .from(providerServices)
     .where(
@@ -639,7 +646,7 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
   // showPrice defaults true at the column, so it is already concrete (NULL only on a would-be
   // legacy row the DEFAULT covers; coalesce for safety).
   const [ownerForm] = await db
-    .select({ instantBooking: serviceProviderForms.instantBooking })
+    .select({ instantBooking: serviceProviderForms.instantBooking, hasInsurance: serviceProviderForms.hasInsurance })
     .from(serviceProviderForms)
     .where(eq(serviceProviderForms.userId, owner.id))
     .limit(1);
@@ -755,7 +762,7 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
   //  - memberSince: users.createdAt, verbatim.
   //  - coverImageUrl: the earner's own storefront.coverImageUrl preference (see PATCH
   //    /api/me/storefront); null renders the gradient fallback.
-  const [verified, location, gemsSharedRows] = await Promise.all([
+  const [verified, location, gemsSharedRows, expertFormRows, acceptsPlanShares] = await Promise.all([
     isOwnerIdentityVerified(owner.id),
     resolveEarnerLocation(owner.id),
     // "{N} gems shared" (2026-08-29-replit-gem-audit ruling 7): gems ATTRIBUTED
@@ -767,6 +774,20 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.curatedByExpertId, owner.id)),
+    // The expert's own stated response time (`local_expert_forms.response_time`), for the header's
+    // "Typical reply" figure. Read only for an expert owner; the client formats it with the one
+    // formatter and omits anything that is not a readable promise (§13).
+    isExpertRole(owner.role)
+      ? db
+          .select({ responseTime: localExpertForms.responseTime })
+          .from(localExpertForms)
+          .where(eq(localExpertForms.userId, owner.id))
+          .limit(1)
+      : Promise.resolve([] as { responseTime: string | null }[]),
+    // Whether the booking panel may offer "Share my plan": the SAME predicate the advisors rail
+    // answers with (`isExpertHireable` — an approved expert profile, not the platform's reserved
+    // concierge account). A panel that offered a share the server refuses would be a dead button.
+    isExpertRole(owner.role) ? isExpertHireable(owner.id) : Promise.resolve(false),
   ]);
   const gemsSharedCount = gemsSharedRows[0]?.count ?? 0;
   const coverImageUrl = ((owner.preferences as any)?.storefront?.coverImageUrl as string | undefined) ?? null;
@@ -813,6 +834,13 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
       // Ruling 7: attributed gems only; the client renders "{N} gems shared"
       // solely when > 0.
       gemsSharedCount,
+      // Storefront booking panel (ledger `2026-09-23-storefront-booking-panel`). Both are the
+      // earner's OWN declarations, verbatim; NULL = not stated, and the page says nothing.
+      // `hasInsurance` is a provider form's self-declared flag — rendered as "Insured" only when
+      // `true`, never as "Not insured" (§13: absence of a declaration is not a denial).
+      responseTime: expertFormRows[0]?.responseTime ?? null,
+      hasInsurance: isProviderRole(owner.role) ? ownerForm?.hasInsurance ?? null : null,
+      acceptsPlanShares,
     },
     services: resolvedServices,
     readyMade,
