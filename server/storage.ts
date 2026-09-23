@@ -231,6 +231,8 @@ export interface TripMintOptions {
   datesChosenByTraveler?: boolean;
 }
 
+import type { FormStatusWriteResult } from "./utils/form-status-transition";
+
 export interface IStorage {
   // Trips
   getTrips(userId?: string, status?: string): Promise<TripListItem[]>;
@@ -308,7 +310,7 @@ export interface IStorage {
 
   updateLocalExpertForm(id: string, form: Partial<InsertLocalExpertForm> & { status?: string; rejectionMessage?: string | null }): Promise<LocalExpertForm | undefined>;
 
-  updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined>;
+  updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<(LocalExpertForm & FormStatusWriteResult) | undefined>;
 
   updateLocalExpertFormRejectionMessage(id: string, rejectionMessage: string): Promise<LocalExpertForm | undefined>;
 
@@ -334,7 +336,7 @@ export interface IStorage {
 
   createServiceProviderForm(form: InsertServiceProviderForm & { userId: string }): Promise<ServiceProviderForm>;
 
-  updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined>;
+  updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<(ServiceProviderForm & FormStatusWriteResult) | undefined>;
 
   updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined>;
   // Ruling 85: owner-gated (by userId, never a body id) set/update/clear of the account-level
@@ -1943,11 +1945,23 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined> {
-    const [updated] = await db.update(localExpertForms)
-      .set({ status, rejectionMessage })
-      .where(eq(localExpertForms.id, id))
-      .returning();
+  async updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<(LocalExpertForm & FormStatusWriteResult) | undefined> {
+    // The row is LOCKED while its prior status is read, so two concurrent saves of the same status
+    // are serialized and exactly one of them reports that it ENTERED that status (board #905,
+    // ledger `2026-09-23-phase2-messages`). Callers send the one-time approval/rejection messages
+    // only on entry — a re-save must not re-send them.
+    const updated = await db.transaction(async (tx) => {
+      const [prior] = await tx.select({ status: localExpertForms.status })
+        .from(localExpertForms)
+        .where(eq(localExpertForms.id, id))
+        .for("update");
+      if (!prior) return undefined;
+      const [row] = await tx.update(localExpertForms)
+        .set({ status, rejectionMessage })
+        .where(eq(localExpertForms.id, id))
+        .returning();
+      return row ? { ...row, priorStatus: prior.status ?? null } : undefined;
+    });
     // expert_neighborhoods is NO LONGER written here (ruling 2026-08-29-neighborhood-claims;
     // Phase 0 D1 ratified). Approval used to name-match the free-text `neighborhoods` chips into
     // rows — platform assignment, not an expert's claim. Rows are now born only by claim
@@ -2127,12 +2141,21 @@ export class DatabaseStorage implements IStorage {
     return newForm;
   }
 
-  async updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined> {
-    const [updated] = await db.update(serviceProviderForms)
-      .set({ status, rejectionMessage })
-      .where(eq(serviceProviderForms.id, id))
-      .returning();
-    return updated;
+  async updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<(ServiceProviderForm & FormStatusWriteResult) | undefined> {
+    // Same shape as updateLocalExpertFormStatus: the prior status is read under the row lock, so
+    // the caller can tell a real transition from a re-save (board #905).
+    return db.transaction(async (tx) => {
+      const [prior] = await tx.select({ status: serviceProviderForms.status })
+        .from(serviceProviderForms)
+        .where(eq(serviceProviderForms.id, id))
+        .for("update");
+      if (!prior) return undefined;
+      const [row] = await tx.update(serviceProviderForms)
+        .set({ status, rejectionMessage })
+        .where(eq(serviceProviderForms.id, id))
+        .returning();
+      return row ? { ...row, priorStatus: prior.status ?? null } : undefined;
+    });
   }
 
   async updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined> {

@@ -44,7 +44,9 @@ import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 import {
+  buildBookingAlertEmailPayload,
   buildBookingConfirmationEmailPayload,
+  type BookingAlertParams,
   type BookingConfirmationParams,
   type SendEmailParams,
   type SendEmailResult,
@@ -356,6 +358,88 @@ export async function enqueueBookingConfirmationEmail(
     html:      payload.html,
     text:      payload.text,
     metadata:  { bookingId: params.bookingId, confirmationCode: params.confirmationCode },
+  });
+}
+
+// ── Dead-letter summary (admin digest) ────────────────────────────────────────
+
+export interface DeadEmailRow {
+  id: number;
+  emailType: string;
+  toEmail: string;
+  subject: string;
+  attemptCount: number;
+  lastError: string | null;
+  deadAt: string;
+}
+
+export interface DeadEmailSummary {
+  /** Every row currently `dead` — they stay dead until an admin retries them. */
+  total: number;
+  /** Of those, how many went dead in the last 24 hours. */
+  newInLast24h: number;
+  /** The most recent dead rows, newest first, capped at `limit`. */
+  rows: DeadEmailRow[];
+}
+
+/**
+ * What the daily admin digest reports about emails that exhausted their retries (board task
+ * #1566, ledger `2026-09-23-phase2-messages`). Until now a dead row produced one log line and
+ * nothing else; nothing in the digest said a traveler's confirmation had never arrived.
+ *
+ * It lists every row CURRENTLY dead rather than only the last day's, so a row keeps appearing in
+ * each digest until someone retries it, and a restart that shifts the digest's clock can never
+ * make one slip through unreported.
+ */
+export async function loadDeadEmailSummary(limit = 25): Promise<DeadEmailSummary> {
+  const counts = await db.execute(sql`
+    SELECT count(*)::int AS total,
+           count(*) FILTER (WHERE updated_at >= NOW() - INTERVAL '24 hours')::int AS new_in_last_24h
+      FROM email_outbox
+     WHERE status = 'dead'
+  `);
+  const rows = await db.execute(sql`
+    SELECT id, email_type, to_email, subject, attempt_count, last_error, updated_at
+      FROM email_outbox
+     WHERE status = 'dead'
+     ORDER BY updated_at DESC, id DESC
+     LIMIT ${limit}
+  `);
+  const c = (counts.rows[0] ?? {}) as { total?: number; new_in_last_24h?: number };
+  return {
+    total: Number(c.total ?? 0),
+    newInLast24h: Number(c.new_in_last_24h ?? 0),
+    rows: (rows.rows as any[]).map((r) => ({
+      id: Number(r.id),
+      emailType: String(r.email_type),
+      toEmail: String(r.to_email),
+      subject: String(r.subject),
+      attemptCount: Number(r.attempt_count),
+      lastError: r.last_error ?? null,
+      deadAt: new Date(r.updated_at).toISOString(),
+    })),
+  };
+}
+
+// ── Provider booking alert ────────────────────────────────────────────────────
+
+/**
+ * Enqueue a provider's "new booking request" alert through the outbox (board task #1564, ledger
+ * `2026-09-23-phase2-messages`), so a Resend outage retries it on the normal schedule and a row
+ * that exhausts its attempts goes `dead` where the admin can see it — instead of being lost in a
+ * log line. Because it goes through `sendEmail`, it also honours the platform email kill switch.
+ *
+ * Never throws. Enqueued is not delivered: callers must not report it as received.
+ */
+export async function enqueueBookingAlertEmail(params: BookingAlertParams): Promise<number | null> {
+  const payload = buildBookingAlertEmailPayload(params);
+  return enqueueEmail({
+    emailType: "provider_booking_alert",
+    to:        params.providerEmail,
+    subject:   payload.subject,
+    html:      payload.html,
+    text:      payload.text,
+    metadata:  { bookingId: params.bookingId },
   });
 }
 

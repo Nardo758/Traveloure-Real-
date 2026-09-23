@@ -513,7 +513,7 @@ export async function sendBookingConfirmationEmail(params: BookingConfirmationPa
   }
 }
 
-interface BookingAlertParams {
+export interface BookingAlertParams {
   providerEmail: string;
   providerName: string;
   bookingId: string;
@@ -522,16 +522,13 @@ interface BookingAlertParams {
   amount: string;
 }
 
-export async function sendBookingAlertEmail(params: BookingAlertParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.log(
-      "[email] RESEND_API_KEY not set — skipping booking alert email for booking",
-      params.bookingId
-    );
-    return;
-  }
-
+/**
+ * The provider's "new booking request" email, as a payload (board task #1564, ledger
+ * `2026-09-23-phase2-messages`). Pure. It is SENT only through the retrying outbox
+ * (`enqueueBookingAlertEmail` in email-outbox.service.ts): the old direct Resend send had no retry
+ * and no record, so a Resend outage silently lost the alert. The direct sender is deleted (§18c).
+ */
+export function buildBookingAlertEmailPayload(params: BookingAlertParams): { subject: string; html: string; text: string } {
   // C5: /expert/bookings retired — new booking requests land on Inbox's Queue tab.
   const bookingsUrl = `${getAppBaseUrl()}/expert/inbox`;
 
@@ -585,17 +582,11 @@ export async function sendBookingAlertEmail(params: BookingAlertParams): Promise
     `View your bookings: ${bookingsUrl}`,
   ].join("\n");
 
-  await client.emails.send({
-    from: getFromAddress(),
-    to: params.providerEmail,
+  return {
     subject: `New booking request: ${stripCrLf(params.serviceName)}`,
-    text,
     html,
-  });
-
-  console.log(
-    `[email] Booking alert sent to ${params.providerEmail} for booking ${params.bookingId}`
-  );
+    text,
+  };
 }
 
 interface PasswordResetParams {
@@ -1011,6 +1002,52 @@ interface AdminDigestParams {
   expertsWithoutPayout: DigestExpert[];
   missedWebhooks?: MissedWebhook[];
   reconciliationMismatches?: ReconciliationMismatch[];
+  /** Emails that exhausted their retries (board #1566). Absent or total 0 ⇒ the section is omitted. */
+  deadEmails?: DigestDeadEmails;
+}
+
+export interface DigestDeadEmails {
+  total: number;
+  newInLast24h: number;
+  rows: { id: number; emailType: string; toEmail: string; subject: string; attemptCount: number; lastError: string | null; deadAt: string }[];
+}
+
+/**
+ * The digest's "undelivered emails" section (board task #1566, ledger `2026-09-23-phase2-messages`).
+ * Pure, so it can be proven without sending. Empty string when nothing is dead. There is no admin
+ * page for the outbox yet, so the section names the retry endpoint rather than a screen that does
+ * not exist (§13).
+ */
+export function buildDeadEmailDigestSection(dead: DigestDeadEmails | undefined): string {
+  if (!dead || dead.total === 0) return "";
+  const rows = dead.rows
+    .map(
+      (d) => `<tr style="background:#FEF2F2">
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${escHtml(d.emailType)}</td>
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${escHtml(d.toEmail)}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:13px">${escHtml(d.subject)}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:12px">${escHtml(d.lastError ?? "")}</td>
+          <td style="padding:8px 12px;color:#6B7280;font-size:12px;font-family:monospace">#${d.id}</td>
+        </tr>`,
+    )
+    .join("");
+  const more = dead.total > dead.rows.length ? `<p style="color:#6B7280;font-size:12px">Showing the ${dead.rows.length} most recent of ${dead.total}.</p>` : "";
+  return `
+  <h3 style="color:#B91C1C;margin-top:24px">✉ Undelivered Emails (${dead.total}${dead.newInLast24h > 0 ? `, ${dead.newInLast24h} new today` : ""})</h3>
+  <p style="color:#6B7280;font-size:13px">These emails failed every retry and were never delivered — the recipient does not have them. Each stays listed here until it is retried with <code>POST /api/admin/email-outbox/&lt;id&gt;/retry</code>.</p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead>
+      <tr style="background:#FEE2E2">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#B91C1C">Type</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#B91C1C">To</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#B91C1C">Subject</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#B91C1C">Last error</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#B91C1C">Id</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  ${more}`;
 }
 
 export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<void> {
@@ -1150,6 +1187,8 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
   </a>
   ` : ""}
 
+  ${buildDeadEmailDigestSection(params.deadEmails)}
+
   <p style="color:#9CA3AF;font-size:11px;margin-top:40px;border-top:1px solid #F3F4F6;padding-top:16px">
     Traveloure Admin Digest · Auto-generated daily · <a href="${baseUrl}/admin/dashboard" style="color:#FF385C">Open Dashboard</a>
   </p>
@@ -1157,10 +1196,11 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
 
   const missedCount = (params.missedWebhooks ?? []).length;
   const reconCount = (params.reconciliationMismatches ?? []).length;
+  const deadCount = params.deadEmails?.total ?? 0;
   await client.emails.send({
     from: getFromAddress(),
     to: params.toEmail,
-    subject: `[Traveloure Admin] Daily Digest — ${params.unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}`,
+    subject: `[Traveloure Admin] Daily Digest — ${params.unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}${deadCount > 0 ? `, ${deadCount} undelivered emails` : ""}`,
     html,
   });
 

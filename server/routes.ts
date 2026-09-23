@@ -2084,9 +2084,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           // Send email alert to the provider (skipped when they have opted out)
           const provider = await storage.getUser(providerId);
           if (provider?.email && provider.emailBookingAlerts !== false) {
-            const { sendBookingAlertEmail } = await import("./services/email.service");
+            const { enqueueBookingAlertEmail } = await import("./services/email-outbox.service");
             const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
-            await sendBookingAlertEmail({
+            // Through the retrying outbox (board #1564) — never throws, retried on a Resend outage.
+            await enqueueBookingAlertEmail({
               providerEmail: provider.notificationEmail || provider.email,
               providerName,
               bookingId: booking.id,
@@ -10745,18 +10746,34 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       } catch (inner) {
         // Roll back so a retry starts clean: release the claimed credit and return the state to unpaid.
-        // Best-effort rollback — if either step fails, log but still re-throw the original error
-        // so the outer handler can surface it; a partial rollback is better than a silent hang.
-        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch((rollbackErr) => {
-          console.warn("[coordination/payment] Could not release claimed credit during rollback:", rollbackErr);
-        });
+        // Best-effort rollback, still re-throwing the original error. A step that FAILS strands state
+        // a human must repair — a credit the traveler cannot use again, or a claim stuck `pending`
+        // that answers every retry with 409 — so it raises an ops alert (admin notifications list +
+        // the daily digest), never just a log line (board #1174, ledger `2026-09-23-phase2-messages`).
+        const { raiseOpsAlert } = await import("./services/ops-alert.service");
+        const alertContext = { coordinationId, userId, claimedCreditCents, originalError: inner instanceof Error ? inner.message : String(inner) };
+        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch((rollbackErr) =>
+          raiseOpsAlert({
+            type: "coordination_rollback_failed",
+            reason: "release_credit",
+            message: `Coordination ${coordinationId}: releasing a claimed $${(claimedCreditCents / 100).toFixed(2)} credit failed after the fee payment could not be created. The credit is still marked used — release it by hand.`,
+            metadata: alertContext,
+            error: rollbackErr,
+          }),
+        );
         await db
           .update(coordinationStates)
           .set({ feePaymentStatus: "unpaid" })
           .where(and(eq(coordinationStates.id, coordinationId), eq(coordinationStates.feePaymentStatus, "pending")))
-          .catch((rollbackErr) => {
-            console.warn("[coordination/payment] Could not reset feePaymentStatus to 'unpaid' during rollback:", rollbackErr);
-          });
+          .catch((rollbackErr) =>
+            raiseOpsAlert({
+              type: "coordination_rollback_failed",
+              reason: "reset_status",
+              message: `Coordination ${coordinationId}: resetting the fee status to 'unpaid' failed after the fee payment could not be created. It is stuck 'pending', so every retry is refused — reset it by hand.`,
+              metadata: alertContext,
+              error: rollbackErr,
+            }),
+          );
         throw inner;
       }
     } catch (error: any) {
