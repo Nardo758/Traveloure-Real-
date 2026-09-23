@@ -34,10 +34,15 @@
 
 import { db } from "../db";
 import { users, serviceProviderForms, providerServices, serviceCategories } from "@shared/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import * as crypto from "crypto";
 import { resolveNeighborhoodCentroid } from "./lib/neighborhood-centroid";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./lib/demo-seed-gate";
+
+// The seeded owner of the translation listing. A reserved `.test` address only this seeder creates
+// (production's boot purge removes every `@traveloure.test` account), so it identifies a demo row
+// that predates the `created_via` provenance stamp.
+const KANSAI_BIZLANG_EMAIL = "kyoto-interpreter@traveloure.test";
 
 // The quoted translation listing's copy (ledger `2026-09-23-kansai-translation-quoted`), stated once
 // for the definition below and for the one-time repair of an existing demo row.
@@ -602,7 +607,7 @@ const CORPORATE_VENDORS: VendorDef[] = [
   },
 
   {
-    email: "kyoto-interpreter@traveloure.test",
+    email: KANSAI_BIZLANG_EMAIL,
     firstName: "Satoshi",
     lastName: "Ono",
     businessName: "Kansai Business Language",
@@ -749,7 +754,20 @@ async function repairTranslationQuote(): Promise<number> {
       and(
         eq(providerServices.serviceName, "Business Document Translation"),
         eq(providerServices.price, "0.08"),
-        eq(providerServices.createdVia, "seed"),
+        // Seed provenance, in one of two forms: the `created_via` stamp, or — for a row seeded
+        // before that stamp existed (its `created_via` is NULL, as on the Replit dev database) —
+        // ownership by the seeder's own reserved account. A row a person created or re-stamped
+        // matches neither, and a row whose price was edited never matches `0.08`.
+        or(
+          eq(providerServices.createdVia, "seed"),
+          and(
+            isNull(providerServices.createdVia),
+            inArray(
+              providerServices.userId,
+              db.select({ id: users.id }).from(users).where(eq(users.email, KANSAI_BIZLANG_EMAIL)),
+            ),
+          ),
+        ),
       ),
     )
     .returning({ id: providerServices.id });
