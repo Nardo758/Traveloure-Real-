@@ -1,6 +1,7 @@
 import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { HANDLE_MAX_LENGTH } from "./handle";
 import { relations, sql } from "drizzle-orm";
 import { users } from "./models/auth";
 import { withoutServerAuthoredBookingDetails } from "./booking-details-admission";
@@ -6184,10 +6185,29 @@ export const itineraryItemAffiliateLinkSchema = createInsertSchema(itineraryItem
 export const tripAdvisorHireSchema = createInsertSchema(tripExpertAdvisors)
   .pick({ localExpertId: true, message: true })
   .extend({
-    localExpertId: z.string().min(1, "localExpertId is required"),
+    /**
+     * The chosen expert's USER id — the LEGACY address. `HireExpertDialog` sends it, and it is the
+     * named Locked Decision 40 debt ("`POST /api/trips/:tripId/advisors` takes a client-supplied
+     * `localExpertId`"). Kept working so no caller breaks; not to be adopted by a new one.
+     */
+    localExpertId: z.string().min(1).nullish(),
+    /**
+     * The chosen expert's storefront HANDLE — the Locked Decision 40 address, and the one a
+     * storefront holds. Resolved to the account SERVER-SIDE by the same live-earner predicate the
+     * contact rail uses (`resolveEarnerByHandle`), so a client never has to learn a `users.id` to
+     * share its plan. The length bound is `HANDLE_MAX_LENGTH`, stated ONCE in `./handle` — a
+     * restated literal here would drift from the regex that actually decides (§18 rule 1).
+     */
+    handle: z.string().trim().min(1).max(HANDLE_MAX_LENGTH).nullish(),
     message: z.string().max(2000).nullish(),
     userExperienceId: z.string().min(1).nullish(),
-  });
+  })
+  // EXACTLY ONE address (§19 — an allowlist names what may arrive, and "both" is not a request
+  // this rail can honour honestly: it would have to guess which one the traveler meant).
+  .refine(
+    (body) => [body.localExpertId, body.handle].filter((v) => typeof v === "string" && v.trim().length > 0).length === 1,
+    { message: "Choose one expert: send a handle or a localExpertId, not both and not neither." },
+  );
 export type TripAdvisorHire = z.infer<typeof tripAdvisorHireSchema>;
 
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });

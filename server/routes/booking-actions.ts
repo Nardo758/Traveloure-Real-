@@ -24,7 +24,8 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 // Aliased: this router already uses `itineraryItems` as a local variable name in more than one
 // handler, and shadowing the table import would be a silent footgun.
 import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, tripItemComments, userExperiences, users, PLAN_APPROVAL_STATUSES, tripAdvisorHireSchema } from '@shared/schema';
-import { hireAdvisorFromSlip, type HireAdvisorEventResolution } from '../services/hire-advisor.service';
+import { hireAdvisorFromSlip, EXPERT_ADDRESS_REQUIRED_MESSAGE, type HireAdvisorEventResolution } from '../services/hire-advisor.service';
+import { resolveEarnerByHandle } from '../services/contact-rails.service';
 import { resolveItemEventLink } from '../services/item-event-link.service';
 import { getExpertSplitRates } from '../services/commission';
 import { resolveDirectProviderRate, pickOwnerShareRate } from '../services/direct-charge-rate.service';
@@ -794,7 +795,7 @@ router.post('/trips/:tripId/advisors', isAuthenticated, async (req, res) => {
 
     const parsed = tripAdvisorHireSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: 'localExpertId is required' });
+      return res.status(400).json({ error: EXPERT_ADDRESS_REQUIRED_MESSAGE });
     }
     const { tripId } = req.params;
 
@@ -818,11 +819,15 @@ router.post('/trips/:tripId/advisors', isAuthenticated, async (req, res) => {
           return { ok: true, title: row?.title ?? null };
         },
         ensureTripAdvisorRow,
+        // The ONE statement of which account a public handle names (§18 rule 1) — the same function
+        // the contact rail calls. The service resolves it only AFTER the ownership check.
+        resolveExpertHandle: async (handle) => (await resolveEarnerByHandle(handle))?.id ?? null,
       },
       {
         tripId,
         userId,
-        localExpertId: parsed.data.localExpertId,
+        localExpertId: parsed.data.localExpertId ?? null,
+        handle: parsed.data.handle ?? null,
         message: parsed.data.message ?? null,
         userExperienceId: parsed.data.userExperienceId ?? null,
       },
@@ -843,7 +848,11 @@ router.post('/trips/:tripId/advisors', isAuthenticated, async (req, res) => {
       // Always `pending` — the invitation is sent, nothing is accepted. The traveler-facing copy
       // says "awaiting <name>" and never promises a response time we do not have (§13).
       status: outcome.status,
-      expertUserId: outcome.expertUserId,
+      // LOCKED DECISION 40: a request addressed by HANDLE gets no `users.id` back — the caller named
+      // the expert publicly, so it has no use for their internal id and must not be handed one.
+      // The legacy id-addressed path keeps its shape so `HireExpertDialog` is unchanged (it types
+      // the field but does not read it; removing it there is LD 40 lane 2's follow-up).
+      ...(outcome.addressedBy === 'id' ? { expertUserId: outcome.expertUserId } : {}),
       eventTitle: outcome.eventTitle,
     });
   } catch (error: any) {

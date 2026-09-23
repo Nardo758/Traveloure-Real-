@@ -37,8 +37,17 @@
 export interface HireAdvisorInput {
   tripId: string;
   userId: string;
-  /** The chosen expert's USER id (`trip_expert_advisors.local_expert_id`). */
-  localExpertId: string;
+  /**
+   * The chosen expert's USER id (`trip_expert_advisors.local_expert_id`) — the LEGACY address,
+   * sent by `HireExpertDialog`. Locked Decision 40 names it as debt; no new caller may adopt it.
+   */
+  localExpertId?: string | null;
+  /**
+   * The chosen expert's storefront HANDLE — the Locked Decision 40 address. Resolved server-side
+   * AFTER the ownership check (see the ladder below), so a non-owner learns nothing about which
+   * handles exist. Exactly one of `handle` / `localExpertId`.
+   */
+  handle?: string | null;
   /** The traveler's own words, optional. */
   message?: string | null;
   /** The event the traveler was looking at, optional. Verified, never persisted as a link. */
@@ -55,6 +64,12 @@ export interface HireAdvisorDeps {
   verifyTripOwnership(tripId: string, userId: string): Promise<boolean>;
   /** `booking-actions.service.ts::isExpertApproved` — an approved `local_expert_forms` row. */
   isExpertApproved(expertUserId: string): Promise<boolean>;
+  /**
+   * `contact-rails.service.ts::resolveEarnerByHandle` — the ONE statement of which account a public
+   * handle names (§18 rule 1). Returns the account's user id, or `null` for a handle that names no
+   * live earner. It says nothing about EXPERT approval; `isExpertApproved` still decides that.
+   */
+  resolveExpertHandle(handle: string): Promise<string | null>;
   /** Wraps the shared `resolveItemEventLink` (item-event-link.service.ts) plus the title read. */
   resolveEventOnTrip(tripId: string, eventId: string): Promise<HireAdvisorEventResolution>;
   /** `booking-actions.service.ts::ensureTripAdvisorRow` — the ONE author of the row. */
@@ -67,6 +82,13 @@ export type HireAdvisorOutcome =
       /** Always `pending`: the expert must accept (Locked Decision 12). Never derived from input. */
       status: "pending";
       expertUserId: string;
+      /**
+       * HOW the traveler named the expert. The route reads this to decide what it may RETURN: a
+       * handle-addressed request gets no `users.id` back (Locked Decision 40 — the response to a
+       * rail a storefront calls carries no user id), while the legacy id path keeps its shape so
+       * its one existing caller is unchanged.
+       */
+      addressedBy: "handle" | "id";
       /** The verified event's title, when one was named and the row has a title. Never invented. */
       eventTitle: string | null;
       /** Exactly what was written to `trip_expert_advisors.message`. */
@@ -78,6 +100,8 @@ export type HireAdvisorOutcome =
 export const NOT_YOUR_PLAN_MESSAGE = "You can only hire an expert for a plan you own.";
 /** A nonexistent expert and an unapproved one get the SAME message: the directory is not a probe. */
 export const EXPERT_NOT_AVAILABLE_MESSAGE = "That expert is not available to hire.";
+/** Both addresses, or neither: the request is malformed, and guessing which was meant would be a lie. */
+export const EXPERT_ADDRESS_REQUIRED_MESSAGE = "Choose one expert: send a handle or a localExpertId, not both and not neither.";
 
 /**
  * THE NOTE THE EXPERT READS — the only place the chosen event survives.
@@ -103,9 +127,12 @@ export function composeAdvisorNote(
 /**
  * Run the hire ladder. Order is load-bearing:
  *
- *   1. OWNERSHIP first (403). A non-owner must not be able to learn, from the difference between
- *      a 404 and a 400, which expert ids exist or which events sit on someone else's plan.
- *   2. THE EXPERT (404). Approved-and-existing are one answer on purpose.
+ *   0. THE ADDRESS SHAPE (400) — exactly one of `handle` / `localExpertId`.
+ *   1. OWNERSHIP (403), before any lookup that could disclose whether an expert exists. A
+ *      non-owner must not be able to learn, from the difference between a 404 and a 400, which
+ *      expert ids or handles exist, or which events sit on someone else's plan.
+ *   2. THE EXPERT (404). A handle is resolved HERE, never earlier. Unknown, not-an-expert and
+ *      unapproved are one answer on purpose.
  *   3. THE EVENT (400), only when one was named — absent is a perfectly ordinary hire from a plan
  *      with no events at all.
  *   4. Only then the write, through the ONE author.
@@ -114,11 +141,26 @@ export async function hireAdvisorFromSlip(
   deps: HireAdvisorDeps,
   input: HireAdvisorInput,
 ): Promise<HireAdvisorOutcome> {
+  // 0. THE ADDRESS SHAPE (400). Checked first because it is about the REQUEST and discloses nothing
+  //    about anyone's data — the same place a schema parse failure already answers. The route's
+  //    `tripAdvisorHireSchema` refuses this too; stating it here keeps the refusal testable.
+  const handle = typeof input.handle === "string" ? input.handle.trim() : "";
+  const legacyId = typeof input.localExpertId === "string" ? input.localExpertId.trim() : "";
+  if ((handle ? 1 : 0) + (legacyId ? 1 : 0) !== 1) {
+    return { ok: false, httpStatus: 400, message: EXPERT_ADDRESS_REQUIRED_MESSAGE };
+  }
+
   if (!(await deps.verifyTripOwnership(input.tripId, input.userId))) {
     return { ok: false, httpStatus: 403, message: NOT_YOUR_PLAN_MESSAGE };
   }
 
-  if (!(await deps.isExpertApproved(input.localExpertId))) {
+  // 2. THE EXPERT (404). The handle is resolved only NOW, after ownership: resolving it first would
+  //    let a non-owner tell an unknown handle (404) from a real one on someone else's plan (403).
+  //    An unknown handle, a live earner who is not an approved expert (a provider, say), and an
+  //    unapproved expert are all the same answer — the directory is not a probe.
+  const addressedBy: "handle" | "id" = handle ? "handle" : "id";
+  const expertUserId = handle ? await deps.resolveExpertHandle(handle) : legacyId;
+  if (!expertUserId || !(await deps.isExpertApproved(expertUserId))) {
     return { ok: false, httpStatus: 404, message: EXPERT_NOT_AVAILABLE_MESSAGE };
   }
 
@@ -134,7 +176,7 @@ export async function hireAdvisorFromSlip(
   }
 
   const note = composeAdvisorNote(input.message, eventTitle);
-  await deps.ensureTripAdvisorRow(input.tripId, input.localExpertId, note);
+  await deps.ensureTripAdvisorRow(input.tripId, expertUserId, note);
 
-  return { ok: true, status: "pending", expertUserId: input.localExpertId, eventTitle, note };
+  return { ok: true, status: "pending", expertUserId, addressedBy, eventTitle, note };
 }

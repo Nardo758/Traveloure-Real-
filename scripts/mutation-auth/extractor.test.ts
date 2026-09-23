@@ -65,8 +65,11 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   assert.equal(manifest.rawRegistrationCount, 598);
   assert.equal(manifest.uniqueMethodNormalizedPathCount, 589);
   assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 148, "user-data": 200, other: 210 });
+  // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
+  // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
+  // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 148, "session-self": 304, "resource-owner": 93,
+    "admin-role": 148, "session-self": 303, "resource-owner": 94,
     signature: 6, "public-or-system": 38, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
