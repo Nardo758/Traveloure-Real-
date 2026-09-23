@@ -68,6 +68,11 @@ test.describe('/p/:handle — legacy redirect + extracted OfferingCard (lane C1)
     const cards = lane.locator('[data-testid^="storefront-service-"]');
     const count = await cards.count();
     expect(count).toBeGreaterThanOrEqual(EXPECTED_SERVICES.length);
+    const storefrontResponse = await page.request.get(`${BASE_URL}/api/storefront/${HANDLE}`);
+    expect(storefrontResponse.ok()).toBeTruthy();
+    const storefront = await storefrontResponse.json() as {
+      services: Array<{ serviceName: string; buyAction?: { primary?: { label?: string } } }>;
+    };
 
     // Each expected seeded service renders as a card with title + price + CTA.
     for (const name of EXPECTED_SERVICES) {
@@ -80,9 +85,10 @@ test.describe('/p/:handle — legacy redirect + extracted OfferingCard (lane C1)
       // Price affordance — a "$<n>" or a "Custom quote" (both real card outputs).
       await expect(card).toContainText(/\$\d|Custom quote/);
 
-      // Book affordance — the CTA span the card renders ("View & book →" for a
-      // bookable interpretation service).
-      await expect(card).toContainText(/View & book →|Check dates →|View listing →/);
+      // The card repeats the server-authored buy-action label rather than deriving its own.
+      const service = storefront.services.find((candidate) => candidate.serviceName === name);
+      expect(service?.buyAction?.primary?.label).toBeTruthy();
+      await expect(card).toContainText(`${service!.buyAction!.primary!.label} →`);
 
       // The card is a link into the service detail page (the OfferingCard <Link href>).
       await expect(card).toHaveAttribute('href', /^\/services\//);

@@ -83,9 +83,9 @@
  * Run: `npx tsx server/seeds/dev-fixtures.seed.ts`
  */
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, serviceProviderForms, serviceQuotes } from "@shared/schema";
+import { users, providerServices, serviceProviderForms, serviceQuotes, localExpertForms } from "@shared/schema";
 import { SERVICE_QUOTE_CURRENCY } from "@shared/service-quotes";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./lib/demo-seed-gate";
 import { CONCIERGE_BOOKING_CONCERN } from "../services/commission";
@@ -104,6 +104,8 @@ const CONCIERGE_SERVICE_NAME = "Kyoto Booking Concierge (dev fixture)";
 
 /** The traveler the E2E harness signs in as — also owned by e2e-test-accounts.seed.ts. */
 const QUOTE_TRAVELER_EMAIL = "test-traveler-kyoto@traveloure.test";
+const SOFIA_CHEN_EMAIL = "sofia.chen@traveloure.test";
+const SOFIA_CHEN_HANDLE = "sofia-chen";
 /** A `custom_quote` listing: its price authority is the QUOTE, never the listing (LD 49). */
 const QUOTE_SERVICE_NAME = "Kyoto Private Photo Session — by quote (dev fixture)";
 
@@ -138,6 +140,145 @@ export async function seedDevFixtures(): Promise<FixtureResult> {
   let conciergeListingId: string | null = null;
   let quoteListingId: string | null = null;
   let quotesCreated = 0;
+
+  // ── Sofia Chen storefront parity ──────────────────────────────────────────
+  // This account is provisioned by the development database setup, not created
+  // here. Keep the write idempotent and deliberately do not touch verification
+  // fields: the storefront must remain honest about Sofia's pending identity.
+  const sofiaId = await resolveUserId(SOFIA_CHEN_EMAIL);
+  if (sofiaId) {
+    const [handleOwner] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.handle, SOFIA_CHEN_HANDLE))
+      .limit(1);
+    if (handleOwner && handleOwner.id !== sofiaId) {
+      throw new Error(`[dev-fixtures] Cannot assign @${SOFIA_CHEN_HANDLE}: the handle belongs to another account`);
+    }
+    await db
+      .update(users)
+      .set({
+        handle: SOFIA_CHEN_HANDLE,
+        bio: "California native and road-trip expert. 12+ years guiding travelers through the Golden State — from PCH scenic drives to hidden wine-country gems and Big Sur coastal hikes.",
+        profileImageUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200",
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, sofiaId));
+
+    const sofiaForm = {
+      firstName: "Sofia",
+      lastName: "Chen",
+      email: SOFIA_CHEN_EMAIL,
+      country: "United States",
+      city: "Los Angeles",
+      destinations: ["California", "Pacific Coast Highway", "Big Sur", "Napa Valley", "San Francisco"],
+      specialties: ["Road Trips", "Photography", "Wine Country", "Coastal Adventures", "Nature & Wildlife"],
+      languages: ["English", "Mandarin"],
+      yearsOfExperience: "12+ years",
+      bio: "California native and road-trip expert. 12+ years guiding travelers through the Golden State — from PCH scenic drives to hidden wine-country gems and Big Sur coastal hikes.",
+      responseTime: "under_2_hours",
+      status: "approved",
+    };
+    const [existingSofiaForm] = await db
+      .select({ id: localExpertForms.id })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.userId, sofiaId))
+      .limit(1);
+    if (existingSofiaForm) {
+      await db.update(localExpertForms).set(sofiaForm).where(eq(localExpertForms.id, existingSofiaForm.id));
+    } else {
+      await db.insert(localExpertForms).values({
+        id: "dev-sofia-expert-form",
+        userId: sofiaId,
+        ...sofiaForm,
+      });
+    }
+
+    const sofiaServices = [
+      {
+        name: "Private Sunset Photo Session — Big Sur",
+        city: "Big Sur, California",
+        location: "Big Sur, CA",
+        image: "https://images.unsplash.com/photo-1500534623283-312aade485b7?w=800",
+        shortDescription: "Golden-hour photography at Bixby Bridge & McWay Falls",
+        description: "Capture stunning memories along the Big Sur coast during the golden hour. Professional photographer guides you to the most photogenic spots at Bixby Bridge, McWay Falls, and Pfeiffer Beach. You'll receive 50+ edited high-resolution photos within 48 hours.",
+        deliveryTimeframe: "48 hours for edited photos",
+        price: "350.00",
+      },
+      {
+        name: "SF North Beach Food Walk",
+        city: "San Francisco, California",
+        location: "San Francisco, CA",
+        image: "https://images.unsplash.com/photo-1552566626-52f8b828?w=800",
+        shortDescription: "3-hour culinary walking tour through Little Italy & Chinatown",
+        description: "Taste your way through San Francisco's most flavorful neighborhoods. Start in North Beach (Little Italy) with fresh pasta and espresso, wind through Chinatown for dim sum and hand-pulled noodles, and finish with artisan chocolate in the Financial District. 8 tastings total — enough for a full meal.",
+        deliveryTimeframe: "3 hours, daily at 11am",
+        price: "120.00",
+      },
+      {
+        name: "Santa Ynez Wine Country Experience",
+        city: "Santa Ynez, California",
+        location: "Santa Ynez, CA",
+        image: "https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=800",
+        shortDescription: "Private guided tour of 4 boutique wineries with lunch",
+        description: "Explore the Santa Ynez Valley wine country with a local sommelier guide. Visit 4 hand-picked boutique wineries away from the tourist crowds, enjoy a farm-to-table lunch at a vineyard estate, and learn about Central Coast varietals from passionate winemakers.",
+        deliveryTimeframe: "full day, 10am–5pm",
+        price: "275.00",
+      },
+    ];
+    for (let index = 0; index < sofiaServices.length; index += 1) {
+      const service = sofiaServices[index];
+      const fixtureId = `dev-sofia-service-${index + 1}`;
+      const serviceName = service.name;
+      const serviceValues = {
+        serviceName,
+        shortDescription: service.shortDescription,
+        description: service.description,
+        serviceType: "experience",
+        price: service.price,
+        priceType: "fixed",
+        deliveryMethod: "in_person",
+        deliveryTimeframe: service.deliveryTimeframe,
+        location: service.location,
+        city: service.city,
+        serviceImage: service.image,
+        // Sofia has no approved service_reviews fixture. Keep denormalized aggregates empty so
+        // the public page never claims reviews that do not exist.
+        averageRating: null,
+        reviewCount: 0,
+        bookingMode: "request",
+        showPrice: true,
+        status: "active",
+        approvalStatus: "approved",
+        formStatus: "approved",
+        createdVia: "seed",
+      } as const;
+      const [existing] = await db
+        .select({ id: providerServices.id })
+        .from(providerServices)
+        .where(
+          and(
+            eq(providerServices.userId, sofiaId),
+            or(eq(providerServices.id, fixtureId), eq(providerServices.serviceName, serviceName)),
+          ),
+        )
+        .limit(1);
+      if (!existing) {
+        await db.insert(providerServices).values({
+          id: fixtureId,
+          userId: sofiaId,
+          ...serviceValues,
+        });
+      }
+      await db
+        .update(providerServices)
+        .set(serviceValues)
+        .where(eq(providerServices.id, existing?.id ?? fixtureId));
+    }
+    console.log(`  = Sofia Chen storefront parity: @${SOFIA_CHEN_HANDLE}, profile and three services repaired`);
+  } else {
+    skipped.push("sofia-storefront:account-absent");
+  }
 
   // ── F1: the seller reads as VERIFIED ───────────────────────────────────────
   // `loadPublicVerification` (server/routes.ts) derives the badge from the

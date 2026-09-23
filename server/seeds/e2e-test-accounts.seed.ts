@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * E2E Test Account Seed
- * Creates the 5 test accounts that the E2E harness expects.
+ * Creates the test accounts that the E2E harness expects.
  * Also seeds one upcoming Kyoto trip for the traveler account so
  * tests that navigate /my-trips → trip-details can find a card.
  * Run after `npm run seed:beta` or on a fresh DB before E2E.
@@ -35,6 +35,7 @@ const E2E_ACCOUNTS = [
   { email: "kyoto-photography@traveloure.test", firstName: "Kenji", lastName: "Nakamura", role: "service_provider" as const },
   { email: "test-ea@traveloure.test", firstName: "Executive", lastName: "Assistant", role: "executive_assistant" as const },
   { email: "test-admin@traveloure.test", firstName: "Admin", lastName: "User", role: "admin" as const },
+  { email: "sofia.chen@traveloure.test", firstName: "Sofia", lastName: "Chen", role: "travel_expert" as const },
 ];
 
 /**
@@ -65,6 +66,7 @@ const E2E_ACCOUNTS = [
  */
 const FIXTURE_LOGIN_BACKFILL: Array<{ email: string; handle: string }> = [
   { email: "kyoto-interpreter@traveloure.test", handle: "kansai-bizlang" },
+  { email: "sofia.chen@traveloure.test", handle: "sofia-chen" },
 ];
 
 async function seedE2EAccounts() {
