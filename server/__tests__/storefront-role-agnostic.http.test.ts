@@ -18,6 +18,7 @@ const handles = {
   expert: `sru${RUN}expert`,
   provider: `sru${RUN}provider`,
   empty: `sru${RUN}empty`,
+  cards: `sru${RUN}cards`,
   suspended: `sru${RUN}suspended`,
 };
 const ownerIds: Record<string, string> = {};
@@ -84,6 +85,30 @@ async function createApprovedService(ownerId: string, label: string) {
   return id;
 }
 
+async function createListing(ownerId: string, name: string, price: string, showPrice = true) {
+  const id = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO provider_services
+      (id, user_id, service_name, price, show_price, status, approval_status, delivery_method)
+     VALUES ($1, $2, $3, $4, $5, 'active', 'approved', 'pdf')`,
+    [id, ownerId, name, price, showPrice],
+  );
+  createdServiceIds.push(id);
+  return id;
+}
+
+async function createBookings(ownerId: string, serviceId: string, status: string, n: number) {
+  for (let i = 0; i < n; i++) {
+    const id = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status, total_amount)
+       VALUES ($1, $2, $3, $3, $4, 50.00)`,
+      [id, serviceId, ownerId, status],
+    );
+    createdBookingIds.push(id);
+  }
+}
+
 async function createApprovedReview(ownerId: string, serviceId: string, rating: number) {
   const bookingId = crypto.randomUUID();
   const reviewId = crypto.randomUUID();
@@ -114,6 +139,24 @@ before(async () => {
   const expertId = await createOwner("expert", "local_expert", handles.expert);
   const providerId = await createOwner("provider", "service_provider", handles.provider);
   await createOwner("empty", "service_provider", handles.empty);
+  const cardsId = await createOwner("cards", "service_provider", handles.cards);
+  await pool.query(
+    `INSERT INTO service_provider_forms
+       (id, user_id, business_name, name, email, mobile, country, address, business_type,
+        instant_booking, business_verification_status, status)
+     VALUES ($1, $2, 'Cards Test Business', 'Storefront cards', $3, '+1 555 0100', 'Japan',
+        'Kyoto', 'Food & Drink', true, 'verified', 'approved')`,
+    [crypto.randomUUID(), cardsId, `storefront-role-${RUN}-cards@traveloure.test`],
+  );
+  const twiceConfirmed = await createListing(cardsId, "Twice confirmed", "70.00");
+  const oftenCancelled = await createListing(cardsId, "Often cancelled", "55.00");
+  const unpaidClaims = await createListing(cardsId, "Unpaid claims then one done", "45.00");
+  await createListing(cardsId, "Hidden price", "20.00", false);
+  await createBookings(cardsId, twiceConfirmed, "confirmed", 2);
+  await createBookings(cardsId, oftenCancelled, "cancelled", 5);
+  await createBookings(cardsId, oftenCancelled, "refunded", 2);
+  await createBookings(cardsId, unpaidClaims, "payment_pending", 4);
+  await createBookings(cardsId, unpaidClaims, "completed", 1);
   const suspendedId = await createOwner("suspended", "service_provider", handles.suspended);
   const approvedLegacyId = await createOwner("approved-legacy", "local_expert", null);
   const pendingLegacyId = await createOwner("pending-legacy", "local_expert", null);
@@ -230,6 +273,44 @@ test("provider directory ignores denormalized listing review claims", async () =
   assert.equal(provider.serviceCount, 1);
   assert.equal(provider.averageRating, null);
   assert.equal(provider.reviewCount, 0);
+});
+
+test("provider directory card: real bookings order the listings, and no count leaves the server", async () => {
+  const response = await api("/api/provider-storefronts");
+  const responseText = await response.text();
+  assert.equal(response.status, 200, responseText);
+  const body = JSON.parse(responseText) as Array<Record<string, unknown>>;
+  const card = body.find((row) => row.handle === handles.cards) as
+    | {
+        businessName: string | null;
+        category: string | null;
+        instantBooking: boolean;
+        businessVerified: boolean;
+        fromPrice: number | null;
+        serviceCount: number;
+        listings: Array<Record<string, unknown>>;
+      }
+    | undefined;
+  assert.ok(card, "the seeded business must be in the directory");
+  assert.equal(card.businessName, "Cards Test Business");
+  assert.equal(card.category, "Food & Drink");
+  assert.equal(card.instantBooking, true, "every listing inherits the account's instant booking");
+  assert.equal(card.businessVerified, true);
+  assert.equal(card.serviceCount, 4);
+  // The hidden $20 is never the From price; $45 is the lowest SHOWN price.
+  assert.equal(card.fromPrice, 45);
+  // 2 confirmed beat 1 completed; 4 unpaid claims, 5 cancellations and 2 refunds count for
+  // nothing, so "Often cancelled" ties the unbooked "Hidden price" at zero and the NEWER one wins.
+  assert.deepEqual(
+    card.listings.map((l) => l.name),
+    ["Twice confirmed", "Unpaid claims then one done", "Hidden price"],
+  );
+  assert.equal(card.listings[2].price, null, "a hidden price is never published");
+  assert.deepEqual(card.listings.map((l) => l.mostBooked), [true, false, false]);
+  for (const listing of card.listings) {
+    assert.deepEqual(Object.keys(listing).sort(), ["id", "mostBooked", "name", "price", "priceType", "pricingUnit"], "no count or rating rides a listing");
+  }
+  assert.equal("id" in card, false, "no users.id on a directory row (LD 40)");
 });
 
 test("canonical API preserves no-inventory and suspended 404 gates", async () => {

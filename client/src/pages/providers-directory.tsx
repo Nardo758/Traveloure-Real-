@@ -5,8 +5,10 @@
  * linking into its own storefront (/s/:handle) where its actual bookable listings live.
  * Data source is GET /api/provider-storefronts (server/routes/storefront.routes.ts,
  * loadProviderStorefrontDirectory) — a real, server-aggregated row per approved provider
- * with a handle. That endpoint carries no category/location/specialty facet, so the only
- * filter this page can honestly offer is name/handle search (§13) — no invented filters.
+ * with a handle. Each card describes the BUSINESS (ledger `2026-09-23-provider-directory-card`):
+ * its name and type, who runs it, up to three listings ordered by real bookings with at most one
+ * "Most booked" tag (never a count), and the From / Rating / Services figures. Search is text over
+ * what the card shows; there is no market facet to filter on, so none is offered (§13).
  *
  * Earn-grammar surface (SPEC §3.11): ShoppingBag band + FIND HELP rail + honest total (the
  * endpoint has no market facet, so no per-market count is claimed — §13) + the experts-card
@@ -16,17 +18,22 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Star, Store } from "lucide-react";
+import { MapPin, MessageCircle, Search, ShieldCheck, Star, Store, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SEOHead } from "@/components/seo-head";
 import {
   type ProviderStorefrontListing,
-  formatServiceCountLabel,
+  formatListingPrice,
   formatProviderRating,
-  providerInitials,
   matchesProviderSearch,
+  moreListingsCount,
+  providerCardTitle,
+  providerInitials,
 } from "@/lib/provider-directory-presentation";
+import { priceUnitSuffix } from "@/lib/price-unit";
+import { useAskExpert } from "@/lib/use-ask-expert";
 // One-source nav-icon map (ruling 2026-08-25-nav-icons) — the masthead tile (ShoppingBag)
 // reads it, never a restated glyph.
 import { NAV_LEAF_ICONS } from "@/components/layout";
@@ -48,62 +55,171 @@ const FIND_HELP_RAIL: Array<
 ];
 
 function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
+  const askExpert = useAskExpert();
   const rating = formatProviderRating(provider.averageRating, provider.reviewCount);
-  const initials = providerInitials(provider.name);
+  const { title, runBy } = providerCardTitle(provider);
+  const initials = providerInitials(title);
+  const listings = provider.listings ?? [];
+  const more = moreListingsCount(provider.serviceCount, listings.length);
+  const fromPrice = provider.fromPrice != null ? formatListingPrice(provider.fromPrice) : null;
+  const storefrontHref = `/s/${provider.handle}`;
+
+  function message() {
+    // Locked Decision 40: the HANDLE is the address; the server resolves the recipient.
+    askExpert({
+      handle: provider.handle,
+      returnTo: "/providers",
+      fallbackName: title,
+      fallbackAvatar: provider.profileImageUrl ?? undefined,
+    });
+  }
 
   return (
-    <Link
-      href={`/s/${provider.handle}`}
+    <article
       data-testid={`card-provider-${provider.handle}`}
-      className="group flex flex-col rounded-xl border bg-[var(--earn-card)] p-5 text-left transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="flex flex-col gap-3.5 rounded-xl border border-[color:var(--earn-border)] bg-[var(--earn-card)] p-5 transition-shadow hover:shadow-md"
     >
       <div className="flex items-center gap-3">
         {provider.profileImageUrl ? (
-          <img
-            src={provider.profileImageUrl}
-            alt={provider.name}
-            className="h-14 w-14 shrink-0 rounded-full object-cover"
-          />
+          <img src={provider.profileImageUrl} alt="" className="h-[52px] w-[52px] shrink-0 rounded-full object-cover" />
         ) : (
           <div
-            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/60 to-primary text-lg font-bold text-white"
+            className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-[var(--earn-chip)] text-[19px] font-semibold text-[color:var(--earn-navy)]"
+            style={{ fontFamily: FRAUNCES }}
             aria-hidden="true"
           >
             {initials}
           </div>
         )}
         <div className="min-w-0">
-          <h3 className="truncate font-bold text-[color:var(--earn-ink)]" data-testid={`text-provider-name-${provider.handle}`}>
-            {provider.name}
+          <h3 className="text-[18px] font-semibold leading-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>
+            <Link
+              href={storefrontHref}
+              className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+              data-testid={`text-provider-name-${provider.handle}`}
+            >
+              {title}
+            </Link>
           </h3>
-          <p className="truncate text-xs text-[color:var(--earn-muted)]">@{provider.handle}</p>
+          <p className="truncate text-[11px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
+            {runBy ? `Run by ${runBy} · ` : ""}@{provider.handle}
+          </p>
         </div>
       </div>
 
-      {provider.bio && (
-        <p className="mt-3 line-clamp-2 text-sm text-[color:var(--earn-muted)]">{provider.bio}</p>
+      {(provider.category || provider.location || provider.instantBooking || provider.businessVerified) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {provider.category && (
+            <span className="rounded-full border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-2.5 py-0.5 text-[11.5px] font-semibold text-[color:var(--earn-ink)]" data-testid={`chip-provider-category-${provider.handle}`}>
+              {provider.category}
+            </span>
+          )}
+          {provider.location && (
+            <span className="inline-flex items-center gap-1 text-xs text-[color:var(--earn-muted)]">
+              <MapPin className="h-3 w-3" aria-hidden="true" />
+              {provider.location}
+            </span>
+          )}
+          {provider.instantBooking && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--earn-teal-wash)] px-2.5 py-0.5 text-[11.5px] text-[color:var(--earn-teal-ink)]" data-testid={`chip-provider-instant-${provider.handle}`}>
+              <Zap className="h-3 w-3" aria-hidden="true" />
+              Instant booking
+            </span>
+          )}
+          {provider.businessVerified && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[color:var(--earn-green-ink)]" data-testid={`chip-provider-verified-${provider.handle}`}>
+              <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+              Verified business
+            </span>
+          )}
+        </div>
       )}
 
-      <div className="mt-auto flex items-center justify-between gap-2 pt-4 text-sm">
-        <span className="tabular-nums text-[color:var(--earn-muted)]" data-testid={`text-provider-service-count-${provider.handle}`}>
-          {formatServiceCountLabel(provider.serviceCount)}
-        </span>
-        {rating.kind === "rated" ? (
-          <span className="flex items-center gap-1 text-[color:var(--earn-muted)]" data-testid={`text-provider-rating-${provider.handle}`}>
-            <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-            <span className="tabular-nums">{rating.ratingLabel}</span>
-            <span className="tabular-nums">{rating.reviewCountLabel}</span>
-          </span>
-        ) : (
-          <span
-            className="rounded-full border px-2 py-0.5 text-xs font-medium text-[color:var(--earn-muted)]"
-            data-testid={`badge-provider-new-${provider.handle}`}
-          >
-            New
-          </span>
+      {listings.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-[10px] border border-[color:var(--earn-border)] bg-[var(--earn-ground)] px-3.5 py-3">
+          <p className="text-[10px] uppercase tracking-[0.08em] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
+            What you can book
+          </p>
+          <ul className="flex flex-col gap-1.5" data-testid={`list-provider-listings-${provider.handle}`}>
+            {listings.map((listing) => {
+              const amount = formatListingPrice(listing.price);
+              // A unit only ever follows a real amount (`price-unit.ts` §13).
+              const price = amount ? `${amount}${priceUnitSuffix(listing) ?? ""}` : null;
+              return (
+                <li key={listing.id} className="flex items-center justify-between gap-3 text-[13px] text-[color:var(--earn-ink)]">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Link href={`/services/${listing.id}`} className="truncate hover:underline" data-testid={`link-provider-listing-${listing.id}`}>
+                      {listing.name}
+                    </Link>
+                    {listing.mostBooked && (
+                      <span className="shrink-0 rounded-full bg-[var(--earn-coral-bg)] px-2 py-px text-[10.5px] font-bold text-[color:var(--earn-coral-ink)]" data-testid={`badge-most-booked-${listing.id}`}>
+                        Most booked
+                      </span>
+                    )}
+                  </span>
+                  {price && (
+                    <span className="shrink-0 tabular-nums text-xs text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
+                      {price}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+            {more > 0 && (
+              <li className="text-xs text-[color:var(--earn-muted)]">+{more} more</li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      <dl className="flex gap-3.5">
+        {fromPrice && (
+          <div className="flex flex-col-reverse gap-0.5">
+            <dt className="text-[9.5px] uppercase text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>From</dt>
+            <dd className="text-lg font-semibold text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid={`text-provider-from-${provider.handle}`}>{fromPrice}</dd>
+          </div>
         )}
+        <div className={`flex flex-col-reverse gap-0.5 ${fromPrice ? "border-l border-[color:var(--earn-border)] pl-3.5" : ""}`}>
+          <dt className="text-[9.5px] uppercase text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>Rating</dt>
+          {rating.kind === "rated" ? (
+            <dd className="flex items-center gap-1 text-lg font-semibold text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid={`text-provider-rating-${provider.handle}`}>
+              <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" aria-hidden="true" />
+              <span className="tabular-nums">{rating.ratingLabel}</span>
+              <span className="tabular-nums text-sm font-normal text-[color:var(--earn-muted)]">{rating.reviewCountLabel}</span>
+            </dd>
+          ) : (
+            <dd className="text-lg font-semibold text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid={`badge-provider-new-${provider.handle}`}>New</dd>
+          )}
+        </div>
+        <div className="flex flex-col-reverse gap-0.5 border-l border-[color:var(--earn-border)] pl-3.5">
+          <dt className="text-[9.5px] uppercase text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>Services</dt>
+          <dd className="text-lg font-semibold tabular-nums text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid={`text-provider-service-count-${provider.handle}`}>
+            {Math.max(0, Math.trunc(provider.serviceCount || 0))}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="mt-auto grid grid-cols-2 gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={message}
+          className="min-h-[42px] border-[color:var(--earn-border)] bg-[var(--earn-card)] font-bold text-[color:var(--earn-navy)] hover:bg-[var(--earn-chip)]"
+          data-testid={`button-message-provider-${provider.handle}`}
+        >
+          <MessageCircle className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+          Message
+        </Button>
+        <Button
+          asChild
+          className="min-h-[42px] bg-[color:var(--earn-coral-ink)] font-bold text-white hover:bg-[color:var(--earn-coral-ink)]/90"
+        >
+          <Link href={storefrontHref} data-testid={`link-provider-storefront-${provider.handle}`}>
+            View storefront
+          </Link>
+        </Button>
       </div>
-    </Link>
+    </article>
   );
 }
 
@@ -140,7 +256,14 @@ export default function ProvidersDirectoryPage() {
   });
 
   const filtered = (providers ?? []).filter((p) =>
-    matchesProviderSearch(searchQuery, p.name, p.handle),
+    matchesProviderSearch(
+      searchQuery,
+      p.name,
+      p.handle,
+      p.businessName,
+      p.category,
+      ...(p.listings ?? []).map((l) => l.name),
+    ),
   );
   const providerTotal = (providers ?? []).length;
 

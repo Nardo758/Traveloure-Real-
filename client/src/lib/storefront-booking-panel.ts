@@ -29,20 +29,10 @@ export interface PanelService {
 }
 
 /**
- * The lowest price a traveler can actually see on this storefront, or `null`.
- * A hidden price, a missing price and a non-positive price are all "not a price" — the panel
- * never prints "$0" and never reveals a price the owner chose to hide.
+ * The lowest price a traveler can actually see on this storefront, or `null`. The rule lives in
+ * `@shared/listing-price` because the provider directory card states the same "From" figure.
  */
-export function lowestListedPrice(services: readonly PanelService[]): number | null {
-  let lowest: number | null = null;
-  for (const s of services) {
-    if (s.showPrice === false || s.price == null) continue;
-    const n = Number(s.price);
-    if (!Number.isFinite(n) || n <= 0) continue;
-    if (lowest === null || n < lowest) lowest = n;
-  }
-  return lowest;
-}
+export { lowestListedPrice } from "@shared/listing-price";
 
 /** "$85", "$120", "$42.50" — whole dollars stay whole. */
 export function formatPanelPrice(amount: number): string {
