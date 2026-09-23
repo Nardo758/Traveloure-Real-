@@ -22,24 +22,25 @@ export async function searchAgoda(params: AgodaSearchParams): Promise<CatalogIte
 
   const affiliateBase = `https://www.travelpayouts.com/hotels/agoda?marker=${getTravelpayoutsMarker()}&currency=USD&city=${encodeURIComponent(city)}`;
 
+  // §13 (board #1200, ledger `2026-09-23-phase2-honesty`): this card is a search entry point, not a quote — no price or rating was fetched, so none is shown.
   const tiers = [
-    { stars: 5, label: "Luxury 5★", priceFrom: 150, priceLabel: "from $150/night" },
-    { stars: 4, label: "Superior 4★", priceFrom: 80, priceLabel: "from $80/night" },
-    { stars: 3, label: "Comfortable 3★", priceFrom: 45, priceLabel: "from $45/night" },
-    { stars: 2, label: "Budget 2★", priceFrom: 25, priceLabel: "from $25/night" },
+    { stars: 5, label: "5-star" },
+    { stars: 4, label: "4-star" },
+    { stars: 3, label: "3-star" },
+    { stars: 2, label: "2-star" },
   ];
 
-  return tiers.slice(0, params.limit || 4).map((t, i): CatalogItem => ({
+  return tiers.slice(0, params.limit || 4).map((t): CatalogItem => ({
     id: `agoda-${city.toLowerCase().replace(/\s+/g, "-")}-${t.stars}star`,
     type: "hotel",
     provider: "agoda",
     externalId: `agoda-${t.stars}`,
-    title: `${t.label} Hotels in ${city}`,
-    description: `${t.priceLabel} · Book on Agoda via Travelpayouts · Best price guarantee`,
+    title: `${t.label} hotels in ${city}`,
+    description: `Search ${t.label} hotels in ${city} on Agoda. Prices and availability are shown by Agoda for your dates.`,
     imageUrl: null,
-    price: t.priceFrom,
+    price: null,
     currency: "USD",
-    rating: t.stars >= 4 ? 9.0 - i * 0.3 : 8.0 - i * 0.2,
+    rating: null,
     reviewCount: null,
     destination: params.destination,
     location: null,

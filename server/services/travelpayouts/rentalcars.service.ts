@@ -12,11 +12,11 @@ export interface RentalcarsSearchParams {
 }
 
 const CAR_CLASSES = [
-  { cls: "Economy", icon: "🚗", label: "Economy Cars", pricePerDay: 25, seats: 5, desc: "Compact & affordable · Great for city drives" },
-  { cls: "Compact", icon: "🚙", label: "Compact Cars", pricePerDay: 35, seats: 5, desc: "Balance of comfort & economy" },
-  { cls: "SUV", icon: "🛻", label: "SUVs & 4WDs", pricePerDay: 65, seats: 7, desc: "Space for the whole family · Off-road ready" },
-  { cls: "Luxury", icon: "🏎️", label: "Luxury & Premium", pricePerDay: 95, seats: 5, desc: "Top brands · Full extras included" },
-  { cls: "Van", icon: "🚐", label: "Vans & Minibuses", pricePerDay: 75, seats: 9, desc: "Group travel · Extra cargo room" },
+  { cls: "Economy", icon: "🚗", label: "Economy Cars", seats: 5, desc: "Compact & affordable · Great for city drives" },
+  { cls: "Compact", icon: "🚙", label: "Compact Cars", seats: 5, desc: "Balance of comfort & economy" },
+  { cls: "SUV", icon: "🛻", label: "SUVs & 4WDs", seats: 7, desc: "Space for the whole family · Off-road ready" },
+  { cls: "Luxury", icon: "🏎️", label: "Luxury & Premium", seats: 5, desc: "Top brands · Full extras included" },
+  { cls: "Van", icon: "🚐", label: "Vans & Minibuses", seats: 9, desc: "Group travel · Extra cargo room" },
 ];
 
 export async function searchRentalcars(params: RentalcarsSearchParams): Promise<CatalogItem[]> {
@@ -39,11 +39,12 @@ export async function searchRentalcars(params: RentalcarsSearchParams): Promise<
     provider: "rentalcars",
     externalId: `rentalcars-${c.cls}`,
     title: `${c.icon} ${c.label} — ${city}`,
-    description: `${c.desc} · ${c.seats} seats · ${days} day${days > 1 ? "s" : ""} · Free cancellation`,
+    description: `${c.desc} · ${days} day${days > 1 ? "s" : ""} · Prices shown by Rentalcars for your dates`,
     imageUrl: null,
-    price: c.pricePerDay * days,
+    // §13 (board #1200, ledger `2026-09-23-phase2-honesty`): this card is a search entry point, not a quote — no price or rating was fetched, so none is shown.
+    price: null,
     currency: params.currency || "USD",
-    rating: 4.5,
+    rating: null,
     reviewCount: null,
     destination: params.pickupLocation,
     location: null,

@@ -41,15 +41,20 @@ export async function searchBooking(params: BookingSearchParams): Promise<Catalo
   const guests = params.guests || 2;
   const currency = params.currency || "USD";
 
+  // These cards are SEARCH ENTRY POINTS into Booking.com — one per star class — not hotels with
+  // quotes. No price, rating or amenity was ever fetched for them, so none is shown (§13, board
+  // #1200, ledger `2026-09-23-phase2-honesty`): the old "from $200/night", the 9.2 ratings and the
+  // "Free cancellation / Breakfast options" lines were written here, not returned by any partner.
+  // Real rates appear on the partner's page for the traveler's own dates.
   const tiers = [
-    { stars: 5, label: "Luxury 5★", priceFrom: 200, desc: "Top-rated luxury properties · Free cancellation" },
-    { stars: 4, label: "Superior 4★", priceFrom: 100, desc: "Excellent rated hotels · Breakfast options available" },
-    { stars: 3, label: "Comfortable 3★", priceFrom: 55, desc: "Great value hotels · Central locations" },
-    { stars: 2, label: "Budget 2★", priceFrom: 30, desc: "Affordable stays · Essentials included" },
-    { stars: 0, label: "All Properties", priceFrom: 20, desc: "Apartments, hostels, guesthouses & more" },
+    { stars: 5, label: "5-star" },
+    { stars: 4, label: "4-star" },
+    { stars: 3, label: "3-star" },
+    { stars: 2, label: "2-star" },
+    { stars: 0, label: "All" },
   ];
 
-  return tiers.slice(0, params.limit || 5).map((t, i): CatalogItem => {
+  return tiers.slice(0, params.limit || 5).map((t): CatalogItem => {
     const bookingUrl = t.stars
       ? buildBookingUrl(city, checkIn, checkOut, guests, t.stars)
       : buildBookingUrl(city, checkIn, checkOut, guests);
@@ -60,18 +65,18 @@ export async function searchBooking(params: BookingSearchParams): Promise<Catalo
       type: "hotel",
       provider: "booking_com",
       externalId: `booking-${t.stars}`,
-      title: `${t.label} Hotels in ${city}`,
-      description: `${t.desc} · from ${currency} ${t.priceFrom}/night`,
+      title: t.stars ? `${t.label} hotels in ${city}` : `All places to stay in ${city}`,
+      description: `Search ${t.stars ? `${t.label} hotels` : "hotels, apartments and guesthouses"} in ${city} on Booking.com. Prices and availability are shown by Booking.com for your dates.`,
       imageUrl: null,
-      price: t.priceFrom,
+      price: null,
       currency,
-      rating: t.stars >= 4 ? 9.2 - i * 0.2 : t.stars === 3 ? 8.4 : 8.0,
+      rating: null,
       reviewCount: null,
       destination: params.destination,
       location: null,
       duration: null,
       categories: ["hotel", t.stars ? `${t.stars}-star` : "accommodation"],
-      tags: ["booking.com", t.stars ? `${t.stars}-star` : "all-types", "free-cancellation"],
+      tags: ["booking.com", t.stars ? `${t.stars}-star` : "all-types"],
       bookingUrl,
       affiliateUrl,
       source: "travelpayouts/booking",
