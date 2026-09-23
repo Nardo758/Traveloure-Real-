@@ -645,11 +645,32 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
   // instant-booking flag — read here ONCE from service_provider_forms, never duplicated per row.
   // showPrice defaults true at the column, so it is already concrete (NULL only on a would-be
   // legacy row the DEFAULT covers; coalesce for safety).
-  const [ownerForm] = await db
-    .select({ instantBooking: serviceProviderForms.instantBooking, hasInsurance: serviceProviderForms.hasInsurance })
-    .from(serviceProviderForms)
-    .where(eq(serviceProviderForms.userId, owner.id))
-    .limit(1);
+  const [[ownerForm], [expertProfile]] = await Promise.all([
+    db
+      .select({
+        instantBooking: serviceProviderForms.instantBooking,
+        hasInsurance: serviceProviderForms.hasInsurance,
+      })
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.userId, owner.id))
+      .limit(1),
+    isExpertRole(owner.role)
+      ? db
+          .select({
+            destinations: localExpertForms.destinations,
+            specialties: localExpertForms.specialties,
+            languages: localExpertForms.languages,
+            neighborhoods: localExpertForms.neighborhoods,
+            localSpecialties: localExpertForms.localSpecialties,
+            responseTime: localExpertForms.responseTime,
+            headline: localExpertForms.headline,
+            formBio: localExpertForms.bio,
+          })
+          .from(localExpertForms)
+          .where(eq(localExpertForms.userId, owner.id))
+          .limit(1)
+      : Promise.resolve([]),
+  ]);
   const ownerInstantBooking = ownerForm?.instantBooking ?? false;
   // L23 (brief §11.5, ruling 9 — register §A4): the ONE resolver authors each card's buy button and
   // its landing rule, computed here and shipped on the row; the storefront draws it and never
@@ -762,7 +783,7 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
   //  - memberSince: users.createdAt, verbatim.
   //  - coverImageUrl: the earner's own storefront.coverImageUrl preference (see PATCH
   //    /api/me/storefront); null renders the gradient fallback.
-  const [verified, location, gemsSharedRows, expertFormRows, acceptsPlanShares] = await Promise.all([
+  const [verified, location, gemsSharedRows, acceptsPlanShares] = await Promise.all([
     isOwnerIdentityVerified(owner.id),
     resolveEarnerLocation(owner.id),
     // "{N} gems shared" (2026-08-29-replit-gem-audit ruling 7): gems ATTRIBUTED
@@ -774,16 +795,6 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.curatedByExpertId, owner.id)),
-    // The expert's own stated response time (`local_expert_forms.response_time`), for the header's
-    // "Typical reply" figure. Read only for an expert owner; the client formats it with the one
-    // formatter and omits anything that is not a readable promise (§13).
-    isExpertRole(owner.role)
-      ? db
-          .select({ responseTime: localExpertForms.responseTime })
-          .from(localExpertForms)
-          .where(eq(localExpertForms.userId, owner.id))
-          .limit(1)
-      : Promise.resolve([] as { responseTime: string | null }[]),
     // Whether the booking panel may offer "Share my plan": the SAME predicate the advisors rail
     // answers with (`isExpertHireable` — an approved expert profile, not the platform's reserved
     // concierge account). A panel that offered a share the server refuses would be a dead button.
@@ -820,7 +831,7 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
       // which resolves the recipient server-side and returns no user id at all. Do not re-add an
       // id here — `scripts/check-public-user-id.cjs` fails if you do.
       name: [owner.firstName, owner.lastName].filter(Boolean).join(" ") || "Traveloure earner",
-      bio: owner.bio ?? null,
+      bio: owner.bio ?? expertProfile?.formBio ?? null,
       profileImageUrl: owner.profileImageUrl ?? null,
       role: owner.role,
       handle: owner.handle,
@@ -838,9 +849,15 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
       // earner's OWN declarations, verbatim; NULL = not stated, and the page says nothing.
       // `hasInsurance` is a provider form's self-declared flag — rendered as "Insured" only when
       // `true`, never as "Not insured" (§13: absence of a declaration is not a denial).
-      responseTime: expertFormRows[0]?.responseTime ?? null,
+      responseTime: expertProfile?.responseTime ?? null,
       hasInsurance: isProviderRole(owner.role) ? ownerForm?.hasInsurance ?? null : null,
       acceptsPlanShares,
+      specialties: Array.isArray(expertProfile?.specialties) ? expertProfile.specialties : [],
+      destinations: Array.isArray(expertProfile?.destinations) ? expertProfile.destinations : [],
+      languages: Array.isArray(expertProfile?.languages) ? expertProfile.languages : [],
+      neighborhoods: Array.isArray(expertProfile?.neighborhoods) ? expertProfile.neighborhoods : [],
+      localSpecialties: Array.isArray(expertProfile?.localSpecialties) ? expertProfile.localSpecialties : [],
+      headline: expertProfile?.headline ?? null,
     },
     services: resolvedServices,
     readyMade,

@@ -132,6 +132,12 @@ interface StorefrontEarner {
   hasInsurance?: boolean | null;
   /** Whether this earner can be invited onto a traveler's plan (server's `isExpertHireable`). */
   acceptsPlanShares?: boolean;
+  specialties?: string[];
+  destinations?: string[];
+  languages?: string[];
+  neighborhoods?: string[];
+  localSpecialties?: string[];
+  headline?: string | null;
 }
 
 interface StorefrontService {
@@ -564,6 +570,15 @@ export default function StorefrontPage() {
   const storefrontDescription = isProviderRole(earner.role)
     ? `${earner.bio ? `${earner.bio} ` : ""}${services.length} bookable service${services.length === 1 ? "" : "s"} from ${earner.name} on Traveloure. Secure checkout, verified reviews.`
     : earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`;
+  const aboutGroups = [
+    { label: "Specialties", values: Array.from(new Set(earner.specialties ?? [])) },
+    { label: "Destinations", values: Array.from(new Set(earner.destinations ?? [])) },
+    { label: "Languages", values: Array.from(new Set(earner.languages ?? [])) },
+    {
+      label: "Neighborhoods & local specialties",
+      values: Array.from(new Set([...(earner.neighborhoods ?? []), ...(earner.localSpecialties ?? [])])),
+    },
+  ].filter((group) => group.values.length > 0);
 
   // Honest "N ways to plan" note (continuity mock's summary callout): only rendered when the
   // earner genuinely sells across more than one lane — never implies three when there's one.
@@ -837,17 +852,34 @@ export default function StorefrontPage() {
           </div>
 
           <div className="lg:col-start-1 lg:row-start-1 min-w-0">
-        {/* About — the bio promoted into its own labeled section below the hero, above
-            Offerings, so a trust-scanning visitor can find "who is this person" without
-            hunting through the hero card. The hero keeps its own bio line as the one-line
-            hook; this is the fuller story (same text today — same-treatment across
-            expert-detail.tsx and this page). Honest-omit: renders nothing when empty. */}
-        {earner.bio && (
+        {/* Exactly one profile story: the bio and profile-backed chip groups live here rather
+            than repeating header figures or hero copy. Empty facts are honestly omitted. */}
+        {(earner.bio || aboutGroups.length > 0) && (
           <section className={`px-6 py-5 ${CARD_SHELL}`} data-testid="storefront-about">
             <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>
-              About
+              About {firstName}
             </div>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[color:var(--earn-ink)]">{earner.bio}</p>
+            {earner.bio && (
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[color:var(--earn-ink)]">{earner.bio}</p>
+            )}
+            {aboutGroups.length > 0 && (
+              <div className={`grid gap-5 ${earner.bio ? "mt-5 border-t border-[color:var(--earn-border)] pt-5" : "mt-4"} sm:grid-cols-2`}>
+                {aboutGroups.map((group) => (
+                  <div key={group.label}>
+                    <h3 className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--earn-faint)]" style={{ fontFamily: EARN_MONO }}>
+                      {group.label}
+                    </h3>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {group.values.map((value) => (
+                        <span key={value} className="rounded-full border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-2.5 py-1 text-xs text-[color:var(--earn-ink)]">
+                          {value}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
