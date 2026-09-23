@@ -1,3 +1,10 @@
+> **RULED 2026-09-23.** The identity is: an **AI-arm** event is
+> `(country, city, title, specific_date)`; a **partner** event is `(source_type, source_id)`.
+> Two partial unique indexes follow, and the four writers stop being check-then-insert.
+> **The production duplicate census runs BEFORE either index is written** — a violated UNIQUE
+> fails the publish and offers the destructive copy-dev-over-production option, so if duplicates
+> exist a dedupe migration comes first. The census is Batch D's read-only step.
+
 # Lane brief — `destination_events` has four writers and three different ideas of "the same event" (board #298)
 
 **Status: NOT BUILDABLE AS FILED.** #298 asks for "a uniqueness constraint". Before an index can be

@@ -713,7 +713,19 @@ class RecommendationService {
       .from(providerServices)
       .where(
         and(
-          eq(providerServices.formStatus, "approved"),
+          // WAS `formStatus`, which is the WRONG COLUMN for this gate and matched almost nothing.
+          // `provider_services.form_status` has no writer anywhere under `server/` except the seed
+          // files (`seeds/beta-data-extended.ts`); the real creation paths write NULL
+          // (`storage.ts:3067`, `:4034`). So this predicate matched SEEDED rows and excluded every
+          // genuine listing — on surfaces reached by the live, unauthenticated
+          // `GET /api/recommendations/user`.
+          //
+          // The gate itself is right and required: CLAUDE.md's F2 rule is that every PUBLIC
+          // provider_services surface filters `approval_status = 'approved'`. So this is a column
+          // substitution, NOT a deletion — dropping the predicate would have recommended
+          // unapproved listings. `approvalStatus` is the ratified vocabulary and this very file
+          // already uses it correctly one function over (see `approvedListings` below).
+          eq(providerServices.approvalStatus, "approved"),
           ilike(providerServices.location, `%${location}%`)
         )
       )
@@ -1063,7 +1075,7 @@ class RecommendationService {
         .from(providerServices)
         .where(
           and(
-            eq(providerServices.formStatus, "approved"),
+            eq(providerServices.approvalStatus, "approved"),
             ilike(providerServices.location, `%${city}%`),
             ilike(providerServices.serviceType, `%${signal.serviceType}%`)
           )
@@ -1399,7 +1411,7 @@ class RecommendationService {
         .from(providerServices)
         .where(
           and(
-            eq(providerServices.formStatus, "approved"),
+            eq(providerServices.approvalStatus, "approved"),
             ilike(providerServices.location, `%${cityName}%`)
           )
         )

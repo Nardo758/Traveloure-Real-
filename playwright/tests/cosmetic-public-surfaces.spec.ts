@@ -158,3 +158,64 @@ test.describe('Lane E — services card', () => {
     expect(body).not.toMatch(/\\u[0-9a-fA-F]{4}/);
   });
 });
+
+// ── Lane E — 375px horizontal overflow (board #1412) ─────────────────────────────────────────
+//
+// WHY THIS EXISTS AND WHAT IT REPLACES. #1412 asked for a guard that blocks unqualified
+// responsive grid classes. There are ~201 unprefixed multi-column `grid-cols-*` in `client/src`
+// (144 × -2, 27 × -3, 30 × -4) — and USAGE IS NOT VIOLATION: an unprefixed `grid-cols-2` is
+// usually fine at 375px. No ruling says which base widths are acceptable, the board row carried
+// no instance, and NOTHING in the repo checked content overflow at 375px at all (the only mobile
+// assertion was breakpoint-hamburger's C4, about the menu panel).
+//
+// So this measures the SYMPTOM instead of banning a SPELLING. A class that causes no overflow is
+// not a defect, and a defect caused by something other than a grid class would be missed entirely
+// by the guard as filed. If this finds nothing across these surfaces, #1412 closes as
+// speculative — and that is a real result, not a failure to look.
+//
+// STATED NEGATIVE SPACE: it covers the three public surfaces this file already visits, logged
+// out, at one width. It does not walk authenticated routes, other breakpoints, or any page behind
+// a filter or interaction. A surface absent from this list is unchecked, not exonerated.
+const OVERFLOW_ROUTES = ['/', '/services', '/discover/location/Kyoto'];
+const NARROW = { width: 375, height: 667 };   // iPhone SE/8 portrait, the narrowest mainstream
+
+test.describe('Lane E — no horizontal overflow at 375px', () => {
+  for (const route of OVERFLOW_ROUTES) {
+    test(`E1 ${route}: the page body does not scroll sideways at 375px`, async ({ page }) => {
+      await page.setViewportSize(NARROW);
+      await settle(page, route);
+
+      const overflow = await page.evaluate(() => {
+        const doc = document.documentElement;
+        // Allow 1px for sub-pixel layout rounding; anything more is a real sideways scroll.
+        const slack = 1;
+        if (doc.scrollWidth <= doc.clientWidth + slack) return null;
+
+        // Name the widest offending element so a failure is actionable rather than just red.
+        let worst: { tag: string; cls: string; right: number } | null = null;
+        for (const el of Array.from(document.body.querySelectorAll<HTMLElement>('*'))) {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) continue;
+          if (r.right <= doc.clientWidth + slack) continue;
+          if (!worst || r.right > worst.right) {
+            worst = {
+              tag: el.tagName.toLowerCase(),
+              cls: (el.className || '').toString().slice(0, 120),
+              right: Math.round(r.right),
+            };
+          }
+        }
+        return { scrollWidth: doc.scrollWidth, clientWidth: doc.clientWidth, worst };
+      });
+
+      expect(
+        overflow,
+        overflow
+          ? `page scrolls sideways at 375px (scrollWidth ${overflow.scrollWidth} > clientWidth ` +
+            `${overflow.clientWidth}); widest offender: ${overflow.worst?.tag} .` +
+            `${overflow.worst?.cls} reaching ${overflow.worst?.right}px`
+          : '',
+      ).toBeNull();
+    });
+  }
+});

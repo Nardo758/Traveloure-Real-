@@ -63,7 +63,29 @@ group uses it for an authorization or ownership decision:
 **Adding `isAuthenticated` to these is wrong** — it would break the guest and share-token branches
 those routes exist to serve. So this is not a mechanical fix.
 
-## The ruling this needs
+## RULED 2026-09-23 — option 2, reviewed and left as is
+
+The decision-maker took **option 2**: the 36 routes are recorded as REVIEWED, not missed, and no
+`resolveActingUserId` resolver is built.
+
+**The reasoning, so it can be re-argued rather than rediscovered.** All 36 make only *narrowing*
+decisions — ownership checks, possession tokens, share tokens — so the session user never widens
+what the caller may reach. A suspended traveler acting on their own trip is not the threat
+suspension exists to stop. Option 1 would have cost a database read on hot tracking paths, and
+excluding those paths reopens "which of the 36 count" as a per-route judgement, which is exactly
+the list §18d says must then state its own negative space.
+
+**ONE CARVE-OUT, NAMED:** `PATCH /api/transport-legs/:legId/mode` (`trips.routes.ts:2252`) is the
+only one of the 36 that MUTATES A PLAN. If a single route ever gets the resolver, it is that one.
+It is not built today because its share-token branch means the caller may legitimately be nobody.
+
+**What would reopen this:** a route in this set gaining a *widening* decision — anything where the
+session user grants reach rather than narrowing it — or `PATCH /api/transport-legs/:legId/mode`
+losing its share-token branch, which would make the plain resolver applicable at no cost.
+
+---
+
+## The ruling this needs (as originally put — kept for the record)
 
 Two shapes, and the choice is the decision-maker's:
 
