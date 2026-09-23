@@ -71,6 +71,7 @@ import {
   showsMainMoment,
   type PlanStepId,
   BRANCHES_THAT_MINT,
+  BRANCHES_THAT_REQUIRE_THE_MINT,
 } from "@/lib/plan-steps";
 import { useAuth } from "@/hooks/use-auth";
 import type { PlanningBranch, PlanningSource } from "@/contexts/PlanningContext";
@@ -1169,7 +1170,19 @@ export function PlanModal({
     setSaving(true);
     try {
       let bound: string | undefined;
-      if (BRANCHES_THAT_MINT.includes(branch) && !getTripContext().tripId && mintPlan) {
+      /**
+       * D5's §13 half. `mintPlan` opens the sign-in modal for a guest and takes the screen, so a
+       * branch whose destination is PUBLIC must not call it just to be refused — that would gate a
+       * browse the traveler could always reach. `myself` is required (its route is protected) and
+       * is attempted for everyone, guest included, because being gated there IS its behaviour.
+       */
+      const mintRequired = BRANCHES_THAT_REQUIRE_THE_MINT.includes(branch);
+      const shouldMint =
+        BRANCHES_THAT_MINT.includes(branch) &&
+        !getTripContext().tripId &&
+        !!mintPlan &&
+        (mintRequired || !!user);
+      if (shouldMint && mintPlan) {
         /**
          * THE MODAL IS THE AUTHOR OF THE EVENTS IT COLLECTED, so it takes its own pen off the
          * table before the mint (ledger `2026-09-06-event-mint-dedupe`, CLAUDE.md Locked
@@ -1195,9 +1208,13 @@ export function PlanModal({
         if (!outcome.ok) {
           // A refusal with no message means the opener already took the screen (sign-in).
           if (outcome.message) setFinishError(outcome.message);
-          return;
+          // Only a branch that CANNOT run without the row stops here. `local` falls through and
+          // reaches its public browse with no `tripId` — the pre-D5 behaviour, which D5's own §13
+          // clause preserves for exactly this case.
+          if (mintRequired) return;
+        } else {
+          bound = outcome.tripId;
         }
-        bound = outcome.tripId;
       }
       const tripId = await commitPlan(bound);
       onFinish?.(branch, committedPlan(tripId));

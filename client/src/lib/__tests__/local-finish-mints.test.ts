@@ -12,7 +12,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BRANCHES_THAT_MINT } from "../plan-steps";
+import { BRANCHES_THAT_MINT, BRANCHES_THAT_REQUIRE_THE_MINT } from "../plan-steps";
 import {
   EXPERTS_BROWSE_PATH,
   buildExpertsBrowseHref,
@@ -36,6 +36,29 @@ test("M3: `ai` and `occasion` do NOT mint here — they are not merely untested"
   assert.equal(BRANCHES_THAT_MINT.includes("ai"), false);
   assert.equal(BRANCHES_THAT_MINT.includes("occasion"), false);
   assert.equal(BRANCHES_THAT_MINT.length, 2);
+});
+
+test("M4: the mint is REQUIRED only for `myself` — `local`'s destination is a PUBLIC browse", () => {
+  // The regression this exists for was real and CI caught it: making `local` mint ALSO made it
+  // gate a guest at sign-in, because a refused mint stopped the finish before it navigated. That
+  // turned /experts — a page anyone could always reach — into a sign-in wall, which no ruling
+  // asked for. D5 puts the MINT behind the gate, not the browse.
+  assert.ok(BRANCHES_THAT_REQUIRE_THE_MINT.includes("myself"));
+  assert.equal(
+    BRANCHES_THAT_REQUIRE_THE_MINT.includes("local"),
+    false,
+    "a guest must still reach the public expert browse; they simply arrive with no tripId",
+  );
+  assert.equal(BRANCHES_THAT_REQUIRE_THE_MINT.length, 1);
+});
+
+test("M5: every required branch is also a minting branch — the sets cannot drift apart", () => {
+  for (const branch of BRANCHES_THAT_REQUIRE_THE_MINT) {
+    assert.ok(
+      BRANCHES_THAT_MINT.includes(branch),
+      `${branch} requires a mint it would never attempt`,
+    );
+  }
 });
 
 test("H1: both fields present — the browse is addressed by destination AND plan", () => {
