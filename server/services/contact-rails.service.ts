@@ -75,6 +75,36 @@ export interface PublicRecipientCard {
 }
 
 /**
+ * WHICH ACCOUNT A PUBLIC HANDLE NAMES — stated ONCE here, and called by every rail that is
+ * addressed by handle (§18 rule 1): the contact rail above and the plan-share rail
+ * (`POST /api/trips/:tripId/advisors`, `server/services/hire-advisor.service.ts`).
+ *
+ * A handle names an account only when that account is LIVE (not deleted, not suspended) and its
+ * role can EARN. A deleted or suspended earner, a traveler who somehow holds a handle, and a handle
+ * nobody has claimed are all the SAME answer — `null` — because being suspended is not something a
+ * public rail discloses, and the difference would let a caller probe account states by handle.
+ *
+ * STATED NEGATIVE SPACE: `server/routes/storefront.routes.ts` still carries its own copy of this
+ * predicate for the public storefront read. It was deliberately NOT repointed in the lane that
+ * extracted this function, because that file was being rebuilt by the storefront-unification lane
+ * at the same time; converging it is the follow-up, and until then the two must be kept in step
+ * by hand.
+ */
+export async function resolveEarnerByHandle(
+  handle: string,
+): Promise<{ id: string; handle: string } | null> {
+  const normalized = normalizeHandle(handle);
+  if (!normalized) return null;
+  const [owner] = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
+    .limit(1);
+  if (!owner || !isEarnerRole(owner.role)) return null;
+  return { id: owner.id, handle: normalized };
+}
+
+/**
  * Turn a validated address into a recipient. The body has already been proven by
  * `contactStartBodySchema` to carry EXACTLY ONE address kind (§19 allowlist, `.strict()`).
  */
@@ -85,18 +115,10 @@ export async function resolveContactTarget(
   const kind = addressKindOf(body);
 
   if (kind === "handle") {
-    const normalized = normalizeHandle(body.handle!);
-    // The SAME predicate the public storefront read uses: a handle owned by a live, non-suspended
-    // account whose role can earn. A deleted or suspended earner is `not_found`, identical to a
-    // handle nobody has claimed — being suspended is not something the rail discloses.
-    const [owner] = await db
-      .select({ id: users.id, role: users.role })
-      .from(users)
-      .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
-      .limit(1);
-    if (!owner || !isEarnerRole(owner.role)) return { ok: false, reason: "not_found" };
+    const owner = await resolveEarnerByHandle(body.handle!);
+    if (!owner) return { ok: false, reason: "not_found" };
     if (owner.id === sessionUserId) return { ok: false, reason: "self" };
-    return { ok: true, target: { recipientId: owner.id, context: { kind: "storefront", id: normalized } } };
+    return { ok: true, target: { recipientId: owner.id, context: { kind: "storefront", id: owner.handle } } };
   }
 
   if (kind === "serviceId") {
