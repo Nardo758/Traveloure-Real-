@@ -4,6 +4,7 @@ import { sanitizeStringFields, sanitizeText } from "../utils/text-sanitizer";
 import { z } from "zod";
 import { eq, desc } from "drizzle-orm";
 import { db } from "../db";
+import { updateUserPreferences } from "../services/user-preferences-writer";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isEA } from "../middleware/ea-rbac";
 import {
@@ -622,29 +623,22 @@ router.patch("/api/ea/preferences", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid preferences", errors: parsed.error.flatten() });
       }
 
-      const [row] = await db
-        .select({ preferences: users.preferences })
-        .from(users)
-        .where(eq(users.id, eaUserId))
-        .limit(1);
-      if (!row) return res.status(404).json({ message: "User not found" });
-
-      const current = (row.preferences as any) ?? {};
-      const currentEa = current.ea ?? {};
       const patch = parsed.data;
-      const nextEa = {
-        ...currentEa,
-        ...(patch.contact ? { contact: { ...currentEa.contact, ...patch.contact } } : {}),
-        ...(patch.notifications ? { notifications: { ...currentEa.notifications, ...patch.notifications } } : {}),
-        ...(patch.ai ? { ai: { ...currentEa.ai, ...patch.ai } } : {}),
-        ...(patch.display ? { display: { ...currentEa.display, ...patch.display } } : {}),
-        ...(patch.calendar ? { calendar: { ...currentEa.calendar, ...patch.calendar } } : {}),
-      };
-
-      await db
-        .update(users)
-        .set({ preferences: { ...current, ea: nextEa } })
-        .where(eq(users.id, eaUserId));
+      // The ONE locked writer (`user-preferences-writer.ts`): the merge runs on the value read
+      // under the row lock, so a concurrent save to another preferences key is never overwritten.
+      const nextEa = await updateUserPreferences(eaUserId, (current) => {
+        const currentEa = current.ea ?? {};
+        const merged = {
+          ...currentEa,
+          ...(patch.contact ? { contact: { ...currentEa.contact, ...patch.contact } } : {}),
+          ...(patch.notifications ? { notifications: { ...currentEa.notifications, ...patch.notifications } } : {}),
+          ...(patch.ai ? { ai: { ...currentEa.ai, ...patch.ai } } : {}),
+          ...(patch.display ? { display: { ...currentEa.display, ...patch.display } } : {}),
+          ...(patch.calendar ? { calendar: { ...currentEa.calendar, ...patch.calendar } } : {}),
+        };
+        return { preferences: { ...current, ea: merged }, result: merged };
+      });
+      if (!nextEa) return res.status(404).json({ message: "User not found" });
 
       res.json(nextEa);
     } catch (err) {

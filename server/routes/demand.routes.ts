@@ -18,6 +18,7 @@ import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { and, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
+import { updateUserPreferences } from "../services/user-preferences-writer";
 import { getUserId } from "../utils/auth";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimit } from "../middleware/rateLimiter";
@@ -938,15 +939,14 @@ router.post("/api/me/research-prefs", isAuthenticated, async (req, res) => {
     }
     const { layerId, visible, market } = parsed.data;
 
-    // (1) DURABLE — read-modify-write the jsonb, matching /api/me/preferences' own pattern.
-    const [me] = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).limit(1);
-    const current = ((me?.preferences as any) ?? {});
-    const settings = current.settings ?? {};
-    const researchLayers: Record<string, boolean> = { ...(settings.researchLayers ?? {}), [layerId]: visible };
-    await db
-      .update(users)
-      .set({ preferences: { ...current, settings: { ...settings, researchLayers } } })
-      .where(eq(users.id, userId));
+    // (1) DURABLE — through the ONE locked writer (`user-preferences-writer.ts`). This route
+    // shares the `settings` key with PATCH /api/me/preferences, so an unlocked read-modify-write
+    // here could erase a settings save made at the same moment (and vice versa).
+    const researchLayers = (await updateUserPreferences(userId, (current) => {
+      const settings = current.settings ?? {};
+      const layers: Record<string, boolean> = { ...(settings.researchLayers ?? {}), [layerId]: visible };
+      return { preferences: { ...current, settings: { ...settings, researchLayers: layers } }, result: layers };
+    })) ?? { [layerId]: visible };
 
     // (2) OBSERVABLE — fire-and-forget; isolated so a signal-write failure never fails the pref write (§13).
     logDemandSignal({ kind: "layer_toggled", market: market ?? null, context: { layerId, visible } });

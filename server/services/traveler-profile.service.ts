@@ -39,6 +39,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users } from "@shared/schema";
 import type { UserTransportPrefs } from "./transport-leg-calculator";
+import { updateUserPreferences } from "./user-preferences-writer";
 
 // ─── Vocabularies (single source — reused by the PATCH route's zod schema) ─────────────────────
 
@@ -370,24 +371,24 @@ export async function updateExplicitTravelerProfile(
   userId: string,
   patch: TravelerProfileExplicitPatch,
 ): Promise<TravelerProfileExplicit> {
-  const prefs = await readPreferences(userId);
-  const current = (prefs.travelerProfile as Record<string, any>) ?? {};
-  const currentExplicit = sanitizeExplicit(current.explicit);
-
-  const nextExplicitRaw: Record<string, any> = {
-    ...currentExplicit,
-    ...(patch.transportPreference !== undefined ? { transportPreference: patch.transportPreference } : {}),
-    ...(patch.pace !== undefined ? { pace: patch.pace } : {}),
-    ...(patch.budgetBand !== undefined ? { budgetBand: patch.budgetBand } : {}),
-    ...(patch.dietary !== undefined ? { dietary: patch.dietary } : {}),
-    ...(patch.mobility !== undefined ? { mobility: patch.mobility } : {}),
-    updatedAt: new Date().toISOString(),
-  };
-
-  await db
-    .update(users)
-    .set({ preferences: { ...prefs, travelerProfile: { ...current, explicit: nextExplicitRaw } } })
-    .where(eq(users.id, userId));
+  const updatedAt = new Date().toISOString();
+  // The ONE locked writer (`user-preferences-writer.ts`): read and merge under the row lock, so
+  // this save and a concurrent `recordDislikeFeedback` (same `travelerProfile` key) cannot erase
+  // each other. A missing user writes nothing and reads back as an empty profile, as before.
+  const nextExplicitRaw =
+    (await updateUserPreferences(userId, (prefs) => {
+      const current = (prefs.travelerProfile as Record<string, any>) ?? {};
+      const merged: Record<string, any> = {
+        ...sanitizeExplicit(current.explicit),
+        ...(patch.transportPreference !== undefined ? { transportPreference: patch.transportPreference } : {}),
+        ...(patch.pace !== undefined ? { pace: patch.pace } : {}),
+        ...(patch.budgetBand !== undefined ? { budgetBand: patch.budgetBand } : {}),
+        ...(patch.dietary !== undefined ? { dietary: patch.dietary } : {}),
+        ...(patch.mobility !== undefined ? { mobility: patch.mobility } : {}),
+        updatedAt,
+      };
+      return { preferences: { ...prefs, travelerProfile: { ...current, explicit: merged } }, result: merged };
+    })) ?? {};
 
   // Return the SANITIZED view (nulls/clears dropped) so the caller sees exactly what a
   // subsequent GET would — never an intermediate raw-with-nulls shape.
@@ -405,15 +406,13 @@ export async function recordDislikeFeedback(userId: string, chips: readonly stri
   const real = chips.filter((c): c is DislikeFeedbackChip => (DISLIKE_FEEDBACK_CHIPS as readonly string[]).includes(c));
   if (real.length === 0) return;
   try {
-    const prefs = await readPreferences(userId);
-    const current = (prefs.travelerProfile as Record<string, any>) ?? {};
-    const currentCounts = sanitizeDislikeCounts(current.derived?.dislikeThemeCounts);
-    const nextCounts = { ...currentCounts };
-    for (const chip of real) nextCounts[chip] = (nextCounts[chip] ?? 0) + 1;
-
-    await db
-      .update(users)
-      .set({
+    // The ONE locked writer: a counter incremented from an unlocked read loses increments when
+    // two regenerates overlap, and could erase a concurrent explicit-profile save.
+    await updateUserPreferences(userId, (prefs) => {
+      const current = (prefs.travelerProfile as Record<string, any>) ?? {};
+      const nextCounts = { ...sanitizeDislikeCounts(current.derived?.dislikeThemeCounts) };
+      for (const chip of real) nextCounts[chip] = (nextCounts[chip] ?? 0) + 1;
+      return {
         preferences: {
           ...prefs,
           travelerProfile: {
@@ -421,8 +420,9 @@ export async function recordDislikeFeedback(userId: string, chips: readonly stri
             derived: { ...(current.derived ?? {}), dislikeThemeCounts: nextCounts },
           },
         },
-      })
-      .where(eq(users.id, userId));
+        result: nextCounts,
+      };
+    });
   } catch (err) {
     console.warn("[traveler-profile] recordDislikeFeedback failed (non-critical):", (err as Error).message);
   }

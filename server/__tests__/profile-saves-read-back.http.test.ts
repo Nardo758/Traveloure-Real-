@@ -18,6 +18,8 @@
  *       read still returns its own values.
  *   S5  The refusals: an `http:` cover URL, an unknown key (the schemas are `.strict()`), an invalid
  *       travel style, and an anonymous caller — none of them writes anything.
+ *   S6  Saves fired to all three routes AT THE SAME MOMENT all survive — the lost-update race the
+ *       one locked writer closes (ledger `2026-09-23-preferences-one-writer`).
  *
  * Run against a disposable dev database only, with the app started:
  *   JOURNEY_DB_WRITES_OK=1 npx tsx --test server/__tests__/profile-saves-read-back.http.test.ts
@@ -205,4 +207,26 @@ test("S5: refused saves write nothing", async () => {
   assert.equal(anonymous.status, 401, "an anonymous caller cannot save");
 
   assert.deepEqual(await storedPreferences(), before, "no refused save may change the row");
+});
+
+test("S6: saves fired at the same moment to the three routes all survive (ledger 2026-09-23-preferences-one-writer)", async () => {
+  // Before the one locked writer, each route read the whole jsonb and wrote it back, so a save
+  // racing a save on ANOTHER route could revert it. Every round changes all three keys at once,
+  // then reads each back; any lost update shows up as a stale value.
+  for (let round = 0; round < 5; round++) {
+    const cover = `https://images.example.com/race-${round}.jpg`;
+    const style = round % 2 === 0 ? "Culture" : "Nature";
+    const timezone = round % 2 === 0 ? "Asia/Tokyo" : "Asia/Osaka";
+    const results = await Promise.all([
+      call("PATCH", "/api/me/storefront", { coverImageUrl: cover }),
+      call("PATCH", "/api/me/travel-preferences", { travelStyles: [style] }),
+      call("PATCH", "/api/me/preferences", { timezone }),
+    ]);
+    for (const r of results) assert.equal(r.status, 200, r.text);
+
+    const row = await storedPreferences();
+    assert.equal(row.preferences.storefront.coverImageUrl, cover, `round ${round}: the storefront save was lost`);
+    assert.deepEqual(row.preferences.travelPreferences.travelStyles, [style], `round ${round}: the travel save was lost`);
+    assert.equal(row.preferences.settings.timezone, timezone, `round ${round}: the settings save was lost`);
+  }
 });
