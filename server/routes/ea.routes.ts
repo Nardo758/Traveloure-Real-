@@ -104,7 +104,9 @@ router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
         eaUserId,
         clientUserId: null,
         clientEmail: email,
-        displayName: sanitizeText(displayName || email) as string,
+        // Only a name the EA typed. Never the email: a stored email would outrank the person's own
+        // account name once they accept (ledger `2026-09-23-ea-accepted-client-name`).
+        displayName: displayName?.trim() ? (sanitizeText(displayName.trim()) as string) : null,
         notes: sanitizeText(notes ?? null),
       });
 

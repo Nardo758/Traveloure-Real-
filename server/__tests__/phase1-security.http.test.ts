@@ -9,6 +9,9 @@
  *       account name leaks, and the EA cannot push to the person. Only that person, from their own
  *       session, can accept (someone else is refused); after accepting the EA sees their name, and
  *       the person can remove the EA again.
+ *   P2b A declined invitation is gone for both sides, and a name the EA typed is stored as typed
+ *       (ledger `2026-09-23-ea-accepted-client-name`: an untyped name is stored as NULL, never as
+ *       the email, so the accepted client's own name can show).
  *   P3  #1334 — `POST /api/cache/refresh` is admin-only.
  *   P4  #1545 — the Instagram callback refuses a `state` this session was not issued, before any
  *       token exchange, and the return path can never be pointed off-site.
@@ -20,6 +23,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
 import { bookingRequestWriteStanding } from "../services/booking-agent-claim.service";
+import { eaClientLabel } from "../../client/src/lib/ea-client-label";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -146,7 +150,7 @@ test("P2: adding an EA client is an invitation the person must accept", async ()
   const added = await call(ea, "POST", "/api/ea/clients", { email: invitee.email });
   assert.equal(added.status, 201, added.text);
   assert.equal(added.json.clientUserId, null, "no account is linked by typing an email");
-  assert.equal(added.json.displayName, invitee.email, "the name is what the EA typed, never the account's");
+  assert.equal(added.json.displayName, null, "no name typed ⇒ none stored — never the email, never the account's");
   const linkId = added.json.id as string;
 
   let roster = await call(ea, "GET", "/api/ea/clients");
@@ -169,12 +173,32 @@ test("P2: adding an EA client is an invitation the person must accept", async ()
   mine = roster.json.find((row: any) => row.id === linkId);
   assert.equal(mine.clientUserId, invitee.id);
   assert.equal(mine.userLastName, "invitee", "after acceptance the EA sees the account");
+  assert.deepEqual(
+    eaClientLabel(mine),
+    { primary: "Phase invitee", secondary: invitee.email },
+    "the roster names the accepted client by their account name, and shows the email once",
+  );
   assert.equal((await call(ea, "POST", `/api/ea/clients/${linkId}/push`, { title: "Hi", message: "Hello" })).status, 200);
 
   const revoked = await call(invitee, "DELETE", `/api/me/ea-links/${linkId}`);
   assert.equal(revoked.status, 200, revoked.text);
   roster = await call(ea, "GET", "/api/ea/clients");
   assert.equal(roster.json.some((row: any) => row.id === linkId), false, "the person can remove the EA");
+});
+
+test("P2b: a declined invitation disappears for both sides; a typed name is kept", async () => {
+  const { ea, invitee } = accounts;
+  const added = await call(ea, "POST", "/api/ea/clients", { email: invitee.email, displayName: "Board chair" });
+  assert.equal(added.status, 201, added.text);
+  assert.equal(added.json.displayName, "Board chair");
+  const linkId = added.json.id as string;
+
+  const declined = await call(invitee, "POST", `/api/me/ea-invitations/${linkId}/decline`);
+  assert.equal(declined.status, 200, declined.text);
+  const roster = await call(ea, "GET", "/api/ea/clients");
+  assert.equal(roster.json.some((row: any) => row.id === linkId), false, "the EA no longer sees it");
+  const mine = await call(invitee, "GET", "/api/me/ea-invitations");
+  assert.equal(mine.json.pending.some((row: any) => row.id === linkId), false, "nor does the invitee");
 });
 
 test("P3: a full cache refresh is admin-only", async () => {
