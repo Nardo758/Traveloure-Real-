@@ -3219,7 +3219,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # guard-batch — 2026-09-21-ci-latency-cancel-and-workers
   #
-  # These 24 guards need neither `npm ci` nor postgres and run in EIGHT SECONDS
+  # These 25 guards need neither `npm ci` nor postgres and run in EIGHT SECONDS
   # TOTAL when timed serially. As 24 separate jobs they held 24 runner slots for
   # 8 seconds of work, and that queueing — not the guards — was a measurable part
   # of every PR's wall clock (jobs queued at 10:47:18 on #1026 were still queued
@@ -3230,7 +3230,7 @@ jobs:
   # was traded is 24 CHECK names for 1; the guard names themselves are not lost.
   #
   # `if: ${{ !cancelled() }}` on every guard step means one failure does not hide
-  # the next twenty-three — all of them run and the job reports every failure at
+  # the next twenty-four — all of them run and the job reports every failure at
   # once — while a run cancelled by cancel-in-progress still stops immediately.
   #
   # THE THREE REQUIRED GUARDS ARE DELIBERATELY NOT HERE. test-file-reachability,
@@ -3239,7 +3239,7 @@ jobs:
   # or enforce-branch-protection.yml fails on the applied-vs-declared diff.
   # ---------------------------------------------------------------------------
   guard-batch:
-    name: guard-batch (24 grep/logic guards — each a named step)
+    name: guard-batch (25 grep/logic guards — each a named step)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -3402,6 +3402,13 @@ jobs:
       - name: advisor-row-author-guard · Advisor-row author guard
         if: ${{ !cancelled() }}
         run: node scripts/check-advisor-row-author.cjs
+      # 
+      - name: preferences-writer-guard · users.preferences one-writer guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-preferences-writer.cjs --self-test
+      - name: preferences-writer-guard · users.preferences one-writer guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-preferences-writer.cjs
       # 
       - name: query-userid-reads-guard · Query/param owner-id guard predicate self-test
         if: ${{ !cancelled() }}

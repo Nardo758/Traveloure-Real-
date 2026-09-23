@@ -49,6 +49,7 @@ import { RECORD_BOOKING_STATUSES } from "@shared/booking-visibility";
 import { lowestListedPrice } from "@shared/listing-price";
 import { directoryCardListings, type DirectoryListingFacts } from "../services/provider-directory-listings";
 import { loadEarnerRatings, summarizeApprovedRatings } from "../services/earner-rating.service";
+import { updateUserPreferences } from "../services/user-preferences-writer";
 
 const router = Router();
 
@@ -274,35 +275,31 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
       return res.status(400).json({ message: "Invalid preferences", errors: parsed.error.flatten() });
     }
 
-    const [me] = await db
-      .select({ preferences: users.preferences })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    if (!me) return res.status(401).json({ message: "Authentication required" });
-
-    const current = ((me.preferences as any) ?? {});
-    const currentSettings = current.settings ?? {};
     const patch = parsed.data;
-    const nextSettings = {
-      ...currentSettings,
-      ...(patch.language !== undefined ? { language: patch.language } : {}),
-      ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
-      ...(patch.showOnLeaderboard !== undefined ? { showOnLeaderboard: patch.showOnLeaderboard } : {}),
-      ...(patch.notifications
-        ? { notifications: { ...(currentSettings.notifications ?? {}), ...patch.notifications } }
-        : {}),
-    };
+    // The ONE locked writer (`user-preferences-writer.ts`): the merge runs on the value read
+    // under the row lock, so a concurrent save to another key can no longer be overwritten.
+    const nextSettings = await updateUserPreferences(userId, (current) => {
+      const currentSettings = current.settings ?? {};
+      const merged = {
+        ...currentSettings,
+        ...(patch.language !== undefined ? { language: patch.language } : {}),
+        ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
+        ...(patch.showOnLeaderboard !== undefined ? { showOnLeaderboard: patch.showOnLeaderboard } : {}),
+        ...(patch.notifications
+          ? { notifications: { ...(currentSettings.notifications ?? {}), ...patch.notifications } }
+          : {}),
+      };
+      return {
+        preferences: { ...current, settings: merged },
+        // Migration 225: emailBookingAlerts is a real column, not a JSONB key — written in the
+        // same statement (checked at every booking-alert send site).
+        columns: patch.emailBookingAlerts !== undefined ? { emailBookingAlerts: patch.emailBookingAlerts } : undefined,
+        result: merged,
+      };
+    });
+    if (!nextSettings) return res.status(401).json({ message: "Authentication required" });
 
-    // Migration 225: emailBookingAlerts is a real column, not a JSONB key — split it out
-    // of the settings merge and write it alongside (checked at every booking-alert send site).
-    const columnUpdate: Record<string, unknown> = { preferences: { ...current, settings: nextSettings } };
-    if (parsed.data.emailBookingAlerts !== undefined) {
-      columnUpdate.emailBookingAlerts = parsed.data.emailBookingAlerts;
-    }
-    await db.update(users).set(columnUpdate as any).where(eq(users.id, userId));
-
-    res.json({ ...nextSettings, ...(parsed.data.emailBookingAlerts !== undefined ? { emailBookingAlerts: parsed.data.emailBookingAlerts } : {}) });
+    res.json({ ...nextSettings, ...(patch.emailBookingAlerts !== undefined ? { emailBookingAlerts: patch.emailBookingAlerts } : {}) });
   } catch (err) {
     console.error("[me/preferences] write error:", err);
     res.status(500).json({ message: "Failed to save preferences" });
@@ -347,33 +344,26 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
       return res.status(400).json({ message: "Invalid storefront settings", errors: parsed.error.flatten() });
     }
 
-    const [me] = await db
-      .select({ preferences: users.preferences })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    if (!me) return res.status(401).json({ message: "Authentication required" });
-
-    const current = (me.preferences as any) ?? {};
-    const currentStorefront = current.storefront ?? {};
     const patch = parsed.data;
     // Defense-in-depth (stored XSS): React auto-escapes on render, but future non-React
     // rendering paths (emails, PDFs, exports) may not — sanitize before persisting.
     if (typeof patch.bio === "string") patch.bio = sanitizeInput(patch.bio);
-    const nextStorefront = {
-      ...currentStorefront,
-      ...(patch.coverImageUrl !== undefined ? { coverImageUrl: patch.coverImageUrl } : {}),
-    };
 
-    await db
-      .update(users)
-      .set({
-        preferences: { ...current, storefront: nextStorefront },
+    // The ONE locked writer (`user-preferences-writer.ts`) — see the settings route above.
+    const nextStorefront = await updateUserPreferences(userId, (current) => {
+      const merged = {
+        ...(current.storefront ?? {}),
+        ...(patch.coverImageUrl !== undefined ? { coverImageUrl: patch.coverImageUrl } : {}),
+      };
+      return {
+        preferences: { ...current, storefront: merged },
         // Ruling 112 Q9: bio rides the same patch — present+string sets, present+null clears,
         // absent leaves untouched (the coverImageUrl contract, one column over).
-        ...(patch.bio !== undefined ? { bio: patch.bio } : {}),
-      })
-      .where(eq(users.id, userId));
+        columns: patch.bio !== undefined ? { bio: patch.bio } : undefined,
+        result: merged,
+      };
+    });
+    if (!nextStorefront) return res.status(401).json({ message: "Authentication required" });
 
     res.json({ ...nextStorefront, ...(patch.bio !== undefined ? { bio: patch.bio } : {}) });
   } catch (err) {
@@ -431,26 +421,17 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
       return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
     }
 
-    const [me] = await db
-      .select({ preferences: users.preferences })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    if (!me) return res.status(401).json({ message: "Authentication required" });
-
-    const current = ((me.preferences as any) ?? {});
-    const currentTravel = current.travelPreferences ?? {};
     const patch = parsed.data;
-    const nextTravel = {
-      ...currentTravel,
-      ...(patch.travelStyles !== undefined ? { travelStyles: patch.travelStyles } : {}),
-      ...(patch.budgetPreference !== undefined ? { budgetPreference: patch.budgetPreference } : {}),
-    };
-
-    await db
-      .update(users)
-      .set({ preferences: { ...current, travelPreferences: nextTravel } })
-      .where(eq(users.id, userId));
+    // The ONE locked writer (`user-preferences-writer.ts`) — see the settings route above.
+    const nextTravel = await updateUserPreferences(userId, (current) => {
+      const merged: Record<string, any> = {
+        ...(current.travelPreferences ?? {}),
+        ...(patch.travelStyles !== undefined ? { travelStyles: patch.travelStyles } : {}),
+        ...(patch.budgetPreference !== undefined ? { budgetPreference: patch.budgetPreference } : {}),
+      };
+      return { preferences: { ...current, travelPreferences: merged }, result: merged };
+    });
+    if (!nextTravel) return res.status(401).json({ message: "Authentication required" });
 
     res.json({
       travelStyles: Array.isArray(nextTravel.travelStyles) ? nextTravel.travelStyles : [],
