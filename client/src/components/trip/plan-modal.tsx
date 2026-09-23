@@ -70,6 +70,7 @@ import {
   showsHomeCityDayCaption,
   showsMainMoment,
   type PlanStepId,
+  BRANCHES_THAT_MINT,
 } from "@/lib/plan-steps";
 import { useAuth } from "@/hooks/use-auth";
 import type { PlanningBranch, PlanningSource } from "@/contexts/PlanningContext";
@@ -1155,8 +1156,12 @@ export function PlanModal({
   /**
    * THE FINISH. Commit first, then run the branch — so whichever surface the traveler lands on is
    * reading the plan they just described, not the one they had before they opened the modal.
-   * "Build it myself" is the only branch that needs a plan ROW, so it is the only one that mints,
-   * and it mints through the opener's one mint door (`mintTripSlip`), never a body built here.
+   *
+   * WHICH BRANCHES NEED A PLAN ROW IS NOT DECIDED HERE. It is `BRANCHES_THAT_MINT`, stated once
+   * beside `PlanningBranch` (§18 rule 1) — "Build it myself" and, since Locked Decision 42 D5,
+   * "Get a local expert". A `branch === "…"` test written here is how one branch starts minting
+   * and another quietly stops. Either way it mints through the opener's one mint door
+   * (`mintTripSlip`), never a body built here.
    */
   const finish = async (branch: PlanningBranch) => {
     if (saving) return;
@@ -1164,7 +1169,7 @@ export function PlanModal({
     setSaving(true);
     try {
       let bound: string | undefined;
-      if (branch === "myself" && !getTripContext().tripId && mintPlan) {
+      if (BRANCHES_THAT_MINT.includes(branch) && !getTripContext().tripId && mintPlan) {
         /**
          * THE MODAL IS THE AUTHOR OF THE EVENTS IT COLLECTED, so it takes its own pen off the
          * table before the mint (ledger `2026-09-06-event-mint-dedupe`, CLAUDE.md Locked

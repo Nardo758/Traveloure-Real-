@@ -53,6 +53,28 @@ import {
   type OccasionSwitchRow,
 } from "./occasion-switches";
 import { partyNoun } from "./plan-vocabulary";
+import type { PlanningBranch } from "@/contexts/PlanningContext";
+
+/**
+ * THE BRANCHES THAT NEED A PLAN ROW BEFORE THEY RUN — stated ONCE (§18 rule 1) and read by the
+ * modal's finish. A second `branch === "…"` test at the mint site is how one branch starts minting
+ * and another quietly stops.
+ *
+ * `myself` needs one because it navigates to `/plans/:tripId`, which cannot exist without a row.
+ * `local` needs one for a different and stronger reason: Locked Decision 42 D5, applying Locked
+ * Decision 32's precondition — NO EXPERT TOUCHPOINT EXISTS WITHOUT A SLIP. A traveler sent to
+ * `/experts` with no trip walks into exactly what 32 forbids: a lead that surfaces to nobody,
+ * because `POST /api/expert-booking-requests` REQUIRES a `tripId` and the expert-detail CTA
+ * re-opens this very modal without one (`docs/briefs/EXPERT_HANDOFF_IS_A_LOOP.md`).
+ *
+ * `ai` is absent deliberately — it opens the AI drawer on the committed plan and mints on its own
+ * rail. `occasion` is absent because it goes to Stripe checkout and plans nothing.
+ *
+ * It lives in THIS leaf module rather than beside `PlanningBranch`: `PlanningContext` imports
+ * `PlanModal`, so a runtime constant read by the modal and declared there would be a circular
+ * value import. The `import type` above is erased and carries no cycle.
+ */
+export const BRANCHES_THAT_MINT: readonly PlanningBranch[] = ["myself", "local"];
 
 /** The five ratified steps, in flow order. `where` is step 2 — the artboard filename hides it. */
 export type PlanStepId = "occasion" | "where" | "when" | "who" | "events";

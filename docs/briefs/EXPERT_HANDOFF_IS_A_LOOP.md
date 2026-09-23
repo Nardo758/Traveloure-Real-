@@ -1,7 +1,25 @@
 # The "Get a local expert" hand-off is a loop, and the ruling that closes it was never built
 
 **Found 2026-09-23 by the decision-maker, from the plan modal's finish. Verified against `main` @ `5967595`.**
-**Status: FINDING + OPTIONS. Nothing here is built, and three of the four questions need a ruling.**
+**Status: BREAK 1 IS FIXED. Breaks 2–4 are RULED and unbuilt.**
+
+> **Amended 2026-09-23 — D5 has landed** (ledger `2026-09-23-local-finish-mints`). The `local`
+> finish now mints through `mintTripSlip` and forwards `tripId` to `/experts`, so the loop described
+> in **Break 1** is closed and **Break 2's** machinery is live. §13 holds: a mint the traveler
+> refused at the sign-in gate still yields exactly the browse this branch always showed.
+>
+> **The decision-maker ruled the three open questions on 2026-09-23:**
+> - **(b) Yes** — choosing an expert opens a thread automatically, on request. The `notes` are
+>   labelled as a request, never presented as words the traveler typed.
+> - **(c) Agreed — contact-first.** "Request help" must stop creating a `service_bookings` row
+>   against an arbitrary `services[0]`. **Note for the build:** `POST /api/expert-booking-requests`
+>   is shared by five callers, so this is a SEPARATE contact rail, not a change to that endpoint.
+> - **(d) A listing-less expert shows** a way to book them, to ask a question, or to send the
+>   traveler's Experience selections. `POST /api/conversations/start` already accepts `{handle}`
+>   for cold contact and `{tripId}` for the D22 advisor thread — both live, neither called from
+>   this surface.
+>
+> Breaks 2, 3 and 4 below are therefore **decided and awaiting build**, not open questions.
 
 ---
 
