@@ -49,7 +49,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
-import { useRoute, useSearch, Link } from "wouter";
+import { useRoute, useSearch, Link, Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -115,7 +115,7 @@ interface StorefrontEarner {
   bio: string | null;
   profileImageUrl: string | null;
   role: string;
-  handle: string;
+  handle: string | null;
   averageRating: number | null;
   reviewCount: number;
   verified: boolean;
@@ -132,6 +132,12 @@ interface StorefrontEarner {
   hasInsurance?: boolean | null;
   /** Whether this earner can be invited onto a traveler's plan (server's `isExpertHireable`). */
   acceptsPlanShares?: boolean;
+  specialties?: string[];
+  destinations?: string[];
+  languages?: string[];
+  neighborhoods?: string[];
+  localSpecialties?: string[];
+  headline?: string | null;
 }
 
 interface StorefrontService {
@@ -426,7 +432,10 @@ function StorefrontOfferingCard({
 export default function StorefrontPage() {
   const [, storefrontParams] = useRoute("/s/:handle");
   const [, legacyStorefrontParams] = useRoute("/p/:handle");
+  const [, legacyExpertParams] = useRoute("/experts/:id");
+  const [, legacyLocalExpertParams] = useRoute("/local-experts/:id");
   const handle = storefrontParams?.handle ?? legacyStorefrontParams?.handle ?? "";
+  const legacyId = legacyExpertParams?.id ?? legacyLocalExpertParams?.id ?? "";
   const { toast } = useToast();
   const { user } = useAuth();
   const askExpert = useAskExpert();
@@ -441,8 +450,21 @@ export default function StorefrontPage() {
   const [query, setQuery] = useState("");
 
   const { data, isLoading, isError } = useQuery<StorefrontData>({
-    queryKey: [`/api/storefront/${handle}`, { locale }],
-    enabled: handle.length > 0,
+    queryKey: [
+      legacyId ? `/api/storefront/by-id/${legacyId}` : `/api/storefront/${handle}`,
+      { locale },
+    ],
+    queryFn: async () => {
+      const endpoint = legacyId
+        ? `/api/storefront/by-id/${encodeURIComponent(legacyId)}`
+        : `/api/storefront/${encodeURIComponent(handle)}`;
+      const response = await fetch(`${endpoint}?locale=${encodeURIComponent(locale)}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Storefront not found");
+      return response.json();
+    },
+    enabled: Boolean(handle || legacyId),
     retry: false,
   });
 
@@ -452,12 +474,19 @@ export default function StorefrontPage() {
   // `2026-09-23-storefront-booking-panel`). Called before the early returns so hook order holds.
   const search = useSearch();
   const tripIdParam = new URLSearchParams(search).get("tripId")?.trim() || null;
-  const planContext = useStorefrontPlanContext(tripIdParam, handle);
+  const planContext = useStorefrontPlanContext(tripIdParam, data?.earner.handle ?? handle);
 
   function copyLink() {
-    const url = `${window.location.origin}/s/${handle}`;
+    const canonicalHandle = data?.earner.handle ?? handle;
+    const path = canonicalHandle ? `/s/${canonicalHandle}` : window.location.pathname;
+    const url = `${window.location.origin}${path}`;
     navigator.clipboard.writeText(url).then(() => {
-      toast({ title: "Link copied", description: "Share it anywhere — it books and pays." });
+      toast({
+        title: "Link copied",
+        description: canonicalHandle
+          ? "Share it anywhere — it books and pays."
+          : "Share this expert profile.",
+      });
     });
   }
 
@@ -537,6 +566,9 @@ export default function StorefrontPage() {
   }
 
   const { earner, away } = data;
+  if (legacyId && earner.handle) {
+    return <Redirect to={`/s/${earner.handle}${search ? `?${search}` : ""}`} />;
+  }
   // Hide the CTA when the signed-in visitor IS the earner — no message-myself button/band.
   // Locked Decision 40 (lane 3): compared by HANDLE, not by `users.id`. A storefront is keyed by
   // handle, and the signed-in user's own handle is on the session payload already, so this needs
@@ -564,6 +596,15 @@ export default function StorefrontPage() {
   const storefrontDescription = isProviderRole(earner.role)
     ? `${earner.bio ? `${earner.bio} ` : ""}${services.length} bookable service${services.length === 1 ? "" : "s"} from ${earner.name} on Traveloure. Secure checkout, verified reviews.`
     : earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`;
+  const aboutGroups = [
+    { label: "Specialties", values: Array.from(new Set(earner.specialties ?? [])) },
+    { label: "Destinations", values: Array.from(new Set(earner.destinations ?? [])) },
+    { label: "Languages", values: Array.from(new Set(earner.languages ?? [])) },
+    {
+      label: "Neighborhoods & local specialties",
+      values: Array.from(new Set([...(earner.neighborhoods ?? []), ...(earner.localSpecialties ?? [])])),
+    },
+  ].filter((group) => group.values.length > 0);
 
   // Honest "N ways to plan" note (continuity mock's summary callout): only rendered when the
   // earner genuinely sells across more than one lane — never implies three when there's one.
@@ -797,7 +838,7 @@ export default function StorefrontPage() {
             <StorefrontBookingPanel
               earner={{
                 name: earner.name,
-                handle: earner.handle,
+                handle: earner.handle ?? "",
                 role: earner.role,
                 profileImageUrl: earner.profileImageUrl,
                 hasInsurance: earner.hasInsurance ?? null,
@@ -837,17 +878,34 @@ export default function StorefrontPage() {
           </div>
 
           <div className="lg:col-start-1 lg:row-start-1 min-w-0">
-        {/* About — the bio promoted into its own labeled section below the hero, above
-            Offerings, so a trust-scanning visitor can find "who is this person" without
-            hunting through the hero card. The hero keeps its own bio line as the one-line
-            hook; this is the fuller story (same text today — same-treatment across
-            expert-detail.tsx and this page). Honest-omit: renders nothing when empty. */}
-        {earner.bio && (
+        {/* Exactly one profile story: the bio and profile-backed chip groups live here rather
+            than repeating header figures or hero copy. Empty facts are honestly omitted. */}
+        {(earner.bio || aboutGroups.length > 0) && (
           <section className={`px-6 py-5 ${CARD_SHELL}`} data-testid="storefront-about">
             <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>
-              About
+              About {firstName}
             </div>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[color:var(--earn-ink)]">{earner.bio}</p>
+            {earner.bio && (
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[color:var(--earn-ink)]">{earner.bio}</p>
+            )}
+            {aboutGroups.length > 0 && (
+              <div className={`grid gap-5 ${earner.bio ? "mt-5 border-t border-[color:var(--earn-border)] pt-5" : "mt-4"} sm:grid-cols-2`}>
+                {aboutGroups.map((group) => (
+                  <div key={group.label}>
+                    <h3 className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--earn-faint)]" style={{ fontFamily: EARN_MONO }}>
+                      {group.label}
+                    </h3>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {group.values.map((value) => (
+                        <span key={value} className="rounded-full border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-2.5 py-1 text-xs text-[color:var(--earn-ink)]">
+                          {value}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -1095,7 +1153,7 @@ export default function StorefrontPage() {
       <StorefrontBookingBar
         earner={{
           name: earner.name,
-          handle: earner.handle,
+          handle: earner.handle ?? "",
           role: earner.role,
           profileImageUrl: earner.profileImageUrl,
           hasInsurance: earner.hasInsurance ?? null,

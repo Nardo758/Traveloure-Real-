@@ -1378,7 +1378,11 @@ export function PlanModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto" data-testid="plan-modal">
+      <DialogContent
+        className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-[900px]"
+        data-testid="plan-modal"
+      >
+        <div className="-mx-1 min-h-0 space-y-4 overflow-y-auto px-1 pb-1">
         <DialogHeader>
           <span
             className="text-[10.5px] font-medium uppercase tracking-[0.14em]"
@@ -2241,6 +2245,8 @@ export function PlanModal({
             )}
           </div>
         )}
+
+        </div>
 
         <div
           className="flex flex-wrap items-center justify-between gap-2 border-t pt-3"

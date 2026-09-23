@@ -187,7 +187,6 @@ const CareersPage = lazy(() => import("@/pages/careers"));
 const BlogPage = lazy(() => import("@/pages/blog"));
 const PressPage = lazy(() => import("@/pages/press"));
 const HelpPage = lazy(() => import("@/pages/help"));
-const ExpertDetailPage = lazy(() => import("@/pages/expert-detail"));
 const MyItineraryPage = lazy(() => import("@/pages/my-itinerary"));
 const ItineraryViewPage = lazy(() => import("@/pages/itinerary-view"));
 const SharedTripPage = lazy(() => import("@/pages/shared-trip"));
@@ -404,7 +403,7 @@ function Router() {
       </Route>
       <Route path="/experts/:id">
         <PageErrorBoundary fallbackHeading="Expert Not Found">
-          <ExpertDetailPage />
+          <StorefrontPage />
         </PageErrorBoundary>
       </Route>
       {/* Marketplace Phase B2: public package detail + purchase (content-gated server-side) */}
@@ -431,7 +430,7 @@ function Router() {
       </Route>
       <Route path="/local-experts/:id">
         <PageErrorBoundary fallbackHeading="Expert Not Found">
-          <ExpertDetailPage />
+          <StorefrontPage />
         </PageErrorBoundary>
       </Route>
       {/* /service-providers retired as a standalone surface — providers now live on the
