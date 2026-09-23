@@ -32,3 +32,15 @@ export async function isOwnerIdentityVerified(userId: string): Promise<boolean> 
     .limit(1);
   return providerForm?.status === "verified";
 }
+
+/**
+ * "Is this BUSINESS verified?" — a provider form's `business_verification_status`, derived from the
+ * Stripe Connect account by the webhook (`webhooks.routes.ts`, Path D) and never self-reported
+ * (the storage writer strips it from client bodies). ONE predicate for every surface that says
+ * "Verified business": the service page's badge (`loadPublicVerification`), the /providers card and
+ * the storefront header (ledger `2026-09-23-storefront-business-identity`). A different claim from
+ * `isOwnerIdentityVerified`, which is about the PERSON.
+ */
+export function isBusinessVerificationStatus(status: string | null | undefined): boolean {
+  return status === "verified";
+}
