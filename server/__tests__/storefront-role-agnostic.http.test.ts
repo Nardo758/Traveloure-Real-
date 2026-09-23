@@ -313,6 +313,30 @@ test("provider directory card: real bookings order the listings, and no count le
   assert.equal("id" in card, false, "no users.id on a directory row (LD 40)");
 });
 
+test("provider storefront names its business, and business verification is a separate claim", async () => {
+  const fetchEarner = async (handle: string) => {
+    const response = await api(`/api/storefront/${handle}`);
+    const text = await response.text();
+    assert.equal(response.status, 200, text);
+    return (JSON.parse(text) as { earner: Record<string, unknown> }).earner;
+  };
+  const business = await fetchEarner(handles.cards);
+  assert.equal(business.businessName, "Cards Test Business");
+  assert.equal(business.businessType, "Food & Drink");
+  assert.equal(business.businessVerified, true, "Stripe-derived business verification, not the owner's ID check");
+
+  // A provider with no form states nothing: no invented name, type or verification (§13).
+  const bare = await fetchEarner(handles.provider);
+  assert.equal(bare.businessName, null);
+  assert.equal(bare.businessType, null);
+  assert.equal(bare.businessVerified, false);
+
+  // An expert storefront carries no business identity at all.
+  const expert = await fetchEarner(handles.expert);
+  assert.equal(expert.businessName, null);
+  assert.equal(expert.businessVerified, false);
+});
+
 test("canonical API preserves no-inventory and suspended 404 gates", async () => {
   for (const handle of [handles.empty, handles.suspended]) {
     const response = await api(`/api/storefront/${handle}`);

@@ -71,6 +71,7 @@ import {
   useStorefrontPlanContext,
 } from "@/components/storefront/StorefrontBookingPanel";
 import { responseTimeFigure } from "@/lib/storefront-booking-panel";
+import { providerCardTitle } from "@/lib/provider-directory-presentation";
 import {
   Star,
   MapPin,
@@ -132,6 +133,14 @@ interface StorefrontEarner {
   hasInsurance?: boolean | null;
   /** Whether this earner can be invited onto a traveler's plan (server's `isExpertHireable`). */
   acceptsPlanShares?: boolean;
+  /**
+   * The business behind a PROVIDER storefront (ledger `2026-09-23-storefront-business-identity`):
+   * its own name and type, and the Stripe-derived business verification. NULL/false on an expert
+   * storefront and wherever the provider stated none (§13).
+   */
+  businessName?: string | null;
+  businessType?: string | null;
+  businessVerified?: boolean;
   specialties?: string[];
   destinations?: string[];
   languages?: string[];
@@ -585,16 +594,27 @@ export default function StorefrontPage() {
     ? new Date(away.until).toLocaleDateString(undefined, { month: "short", day: "numeric" })
     : null;
   const memberSinceYear = earner.memberSince ? new Date(earner.memberSince).getFullYear() : null;
-  const initial = earner.name.charAt(0).toUpperCase() || "T";
-  const firstName = earner.name.split(" ")[0];
+  // A named business heads its own storefront, exactly as it heads its /providers card — ONE rule
+  // (`providerCardTitle`), so the card and the page it opens always say the same name.
+  const { title: displayName, runBy } = providerCardTitle({ name: earner.name, businessName: earner.businessName });
+  const initial = displayName.charAt(0).toUpperCase() || "T";
+  // How the page refers to the earner in running copy: a business by its name, a person by their
+  // first name ("About Kansai Business Language", "About Satoshi").
+  const firstName = earner.businessName ? displayName : earner.name.split(" ")[0];
   // §3.10 eyebrow: SERVICE PROVIDER STOREFRONT / LOCAL EXPERT STOREFRONT (uppercased in CSS).
   const eyebrowLabel = isProviderRole(earner.role) ? "Service provider storefront" : "Local expert storefront";
-  const verifiedLabel = isProviderRole(earner.role) ? "Verified business" : "Identity verified";
+  // Two different claims, never swapped (§13): "Verified business" only when the BUSINESS is
+  // verified (Stripe-derived `businessVerified`); "Identity verified" when only the person is.
+  const verifiedBadge = earner.businessVerified
+    ? { label: "Verified business", title: "This business has been verified" }
+    : earner.verified
+      ? { label: "Identity verified", title: "This earner's identity has been verified" }
+      : null;
   const storefrontTitle = isProviderRole(earner.role)
-    ? `${earner.name} — Book local services`
+    ? `${displayName} — Book local services`
     : `${earner.name} — Book local experiences`;
   const storefrontDescription = isProviderRole(earner.role)
-    ? `${earner.bio ? `${earner.bio} ` : ""}${services.length} bookable service${services.length === 1 ? "" : "s"} from ${earner.name} on Traveloure. Secure checkout, verified reviews.`
+    ? `${earner.bio ? `${earner.bio} ` : ""}${services.length} bookable service${services.length === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, verified reviews.`
     : earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`;
   const aboutGroups = [
     { label: "Specialties", values: Array.from(new Set(earner.specialties ?? [])) },
@@ -641,7 +661,7 @@ export default function StorefrontPage() {
       // is no longer read here — lane 2 removes it from `loadStorefront`'s payload.
       handle: earner.handle ?? handle,
       returnTo: `/s/${handle}`,
-      fallbackName: earner.name,
+      fallbackName: displayName,
       fallbackAvatar: earner.profileImageUrl ?? undefined,
     });
   }
@@ -701,7 +721,7 @@ export default function StorefrontPage() {
             {earner.profileImageUrl ? (
               <img
                 src={earner.profileImageUrl}
-                alt={earner.name}
+                alt={displayName}
                 className="-mt-9 sm:-mt-11 w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] rounded-full object-cover border-4 border-[color:var(--earn-card)] shrink-0"
               />
             ) : (
@@ -715,10 +735,22 @@ export default function StorefrontPage() {
 
             <div className="pt-3 sm:pt-4 min-w-0">
               <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>{eyebrowLabel}</div>
-              <h1 className="mt-1 text-[30px] sm:text-[34px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid="storefront-name">{earner.name}</h1>
+              <h1 className="mt-1 text-[30px] sm:text-[34px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid="storefront-name">{displayName}</h1>
 
               <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
+                {runBy && (
+                  <>
+                    <span data-testid="storefront-run-by">Run by {runBy}</span>
+                    <span className="text-[color:var(--earn-faint)]">·</span>
+                  </>
+                )}
                 <span>@{earner.handle}</span>
+                {earner.businessType && (
+                  <>
+                    <span className="text-[color:var(--earn-faint)]">·</span>
+                    <span data-testid="storefront-business-type">{earner.businessType}</span>
+                  </>
+                )}
                 {earner.location && (
                   <>
                     <span className="text-[color:var(--earn-faint)]">·</span>
@@ -779,15 +811,15 @@ export default function StorefrontPage() {
                 they line up with the figures. On a phone they stack full-width under the identity. */}
             <div className="col-span-2 sm:col-span-1 flex flex-col justify-between gap-4 sm:pt-4">
               <div className="flex sm:justify-end">
-                {earner.verified && (
+                {verifiedBadge && (
                   <span
                     className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shrink-0"
                     style={{ borderWidth: 1, borderStyle: "solid", borderColor: "var(--earn-green-ink)", background: "var(--earn-teal-wash)", color: "var(--earn-green-ink)" }}
                     data-testid="badge-storefront-verified"
-                    title="This earner's identity has been verified"
+                    title={verifiedBadge.title}
                   >
                     <ShieldCheck className="w-3 h-3" />
-                    {verifiedLabel}
+                    {verifiedBadge.label}
                   </span>
                 )}
               </div>
@@ -837,7 +869,7 @@ export default function StorefrontPage() {
           <div id={PANEL_ANCHOR_ID} className="lg:col-start-2 lg:row-start-1 lg:sticky lg:top-6">
             <StorefrontBookingPanel
               earner={{
-                name: earner.name,
+                name: displayName,
                 handle: earner.handle ?? "",
                 role: earner.role,
                 profileImageUrl: earner.profileImageUrl,
@@ -1083,7 +1115,7 @@ export default function StorefrontPage() {
         {!isOwnStorefront && (
           <div className={`mt-4 flex flex-wrap items-center gap-5 p-6 ${CARD_SHELL}`} data-testid="storefront-message-band">
             {earner.profileImageUrl ? (
-              <img src={earner.profileImageUrl} alt={earner.name} className="w-14 h-14 rounded-full object-cover shrink-0" />
+              <img src={earner.profileImageUrl} alt={displayName} className="w-14 h-14 rounded-full object-cover shrink-0" />
             ) : (
               <div
                 className="w-14 h-14 rounded-full shrink-0 flex items-center justify-center bg-[var(--earn-chip)] text-lg font-semibold text-[color:var(--earn-navy)]"
@@ -1152,7 +1184,7 @@ export default function StorefrontPage() {
       {/* The phone layout's pinned bar — the panel's price and its one action (hidden from `lg:`). */}
       <StorefrontBookingBar
         earner={{
-          name: earner.name,
+          name: displayName,
           handle: earner.handle ?? "",
           role: earner.role,
           profileImageUrl: earner.profileImageUrl,

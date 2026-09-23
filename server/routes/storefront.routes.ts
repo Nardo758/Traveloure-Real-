@@ -27,7 +27,7 @@ import { getUserId, getDbRole } from "../utils/auth";
 import { sanitizeInput } from "../utils/sanitize";
 import { z } from "zod";
 import { HANDLE_RE, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from "@shared/handle";
-import { isOwnerIdentityVerified } from "../utils/earner-verification";
+import { isBusinessVerificationStatus, isOwnerIdentityVerified } from "../utils/earner-verification";
 import { isExpertHireable } from "../services/booking-actions.service";
 import fs from "fs";
 import path from "path";
@@ -686,6 +686,9 @@ async function loadStorefrontFromOwner(
       .select({
         instantBooking: serviceProviderForms.instantBooking,
         hasInsurance: serviceProviderForms.hasInsurance,
+        businessName: serviceProviderForms.businessName,
+        businessType: serviceProviderForms.businessType,
+        businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
       })
       .from(serviceProviderForms)
       .where(eq(serviceProviderForms.userId, owner.id))
@@ -942,6 +945,15 @@ async function loadStorefrontFromOwner(
       // `true`, never as "Not insured" (§13: absence of a declaration is not a denial).
       responseTime: expertProfile?.responseTime ?? null,
       hasInsurance: isProviderRole(owner.role) ? ownerForm?.hasInsurance ?? null : null,
+      // The BUSINESS behind a provider storefront (ledger `2026-09-23-storefront-business-identity`),
+      // the same three facts the /providers card shows so the card and the page it opens agree.
+      // The provider's own form declarations, trimmed; NULL = not stated, and the page falls back
+      // to the person's name and shows no type (§13). An expert storefront carries none of them.
+      businessName: isProviderRole(owner.role) ? ownerForm?.businessName?.trim() || null : null,
+      businessType: isProviderRole(owner.role) ? ownerForm?.businessType?.trim() || null : null,
+      businessVerified: isProviderRole(owner.role)
+        ? isBusinessVerificationStatus(ownerForm?.businessVerificationStatus)
+        : false,
       acceptsPlanShares,
       specialties: Array.isArray(expertProfile?.specialties) ? expertProfile.specialties : [],
       destinations: Array.isArray(expertProfile?.destinations) ? expertProfile.destinations : [],
@@ -1146,9 +1158,9 @@ async function loadProviderStorefrontDirectory() {
       // listing confirms instantly; enquiry-only (`hidden`) listings say nothing either way, and a
       // provider with no bookable listing makes no claim (§13).
       instantBooking: allInstant(modesByOwner.get(row.id) ?? []),
-      // The same predicate the service page's "Verified business" badge reads
-      // (`loadPublicVerification` in server/routes.ts): Stripe-derived, never self-reported.
-      businessVerified: form?.businessVerificationStatus === "verified",
+      // The ONE business-verification predicate (`server/utils/earner-verification.ts`) the service
+      // page's badge and the storefront header read too: Stripe-derived, never self-reported.
+      businessVerified: isBusinessVerificationStatus(form?.businessVerificationStatus),
       // Over EVERY listing, not only the three named below (`@shared/listing-price`, one rule).
       fromPrice: lowestListedPrice(listings),
       listings: directoryCardListings(listings),
@@ -1234,11 +1246,14 @@ router.get("/s/:handle", async (req, res, next) => {
     const count = data.services.length + data.readyMade.length;
     const isProvider = isProviderRole(data.earner.role);
     const providerServiceCount = data.services.length;
+    // A provider storefront is titled by its business when the business is named — the same
+    // heading the page itself draws.
+    const displayName = data.earner.businessName ?? data.earner.name;
     const title = isProvider
-      ? `${data.earner.name} — Book local services | Traveloure`
+      ? `${displayName} — Book local services | Traveloure`
       : `${data.earner.name} — Book local experiences | Traveloure`;
     const description = isProvider
-      ? `${data.earner.bio ? `${data.earner.bio} ` : ""}${providerServiceCount} bookable service${providerServiceCount === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`
+      ? `${data.earner.bio ? `${data.earner.bio} ` : ""}${providerServiceCount} bookable service${providerServiceCount === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, verified reviews.`
       : data.earner.bio ??
         `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
     const shareUrl = `https://traveloure.com/s/${data.earner.handle}`;

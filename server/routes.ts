@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { getUserId, getDbRole } from "./utils/auth";
 // ONE ownership predicate for a custom venue (ledger `2026-09-05-custom-venues-owner-scope`).
 import { isCustomVenueOwner } from "./utils/custom-venue-owner";
+import { isBusinessVerificationStatus } from "./utils/earner-verification";
 import { OWNER_BOOKING_TRANSITIONS } from "./utils/booking-from-states";
 // Ledger `2026-09-17-surfaces-acceptance-completion` — READ EXPOSURE ONLY. The three booking LISTS
 // below carry the SAME two server derivations the single-booking GET already carries
@@ -5975,7 +5976,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!form) return { identityVerified: false, businessVerified: false, handle, role, displayName };
     return {
       identityVerified: form.identityVerificationStatus === "verified",
-      businessVerified: form.businessVerificationStatus === "verified",
+      businessVerified: isBusinessVerificationStatus(form.businessVerificationStatus),
       handle,
       role,
       displayName,
