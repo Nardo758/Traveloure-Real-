@@ -71,7 +71,7 @@ import {
   useStorefrontPlanContext,
 } from "@/components/storefront/StorefrontBookingPanel";
 import { responseTimeFigure } from "@/lib/storefront-booking-panel";
-import { providerCardTitle } from "@/lib/provider-directory-presentation";
+import { formatListingPrice, providerCardTitle } from "@/lib/provider-directory-presentation";
 import {
   Star,
   MapPin,
@@ -1038,7 +1038,11 @@ export default function StorefrontPage() {
                     chips.push(`📍 ${s.city.trim()}`);
                   }
                   const unit = priceUnitPhrase({ priceType: s.priceType, pricingUnit: s.pricingUnit });
-                  const price = s.price ? `$${Number(s.price).toFixed(0)}` : "Custom quote";
+                  // ONE price formatter, shared with the /providers card: cents are kept ($0.08 never
+                  // rounds to "$0", $42.50 never to "$43") and a missing or non-positive price is never
+                  // printed as a price (§13) — the card falls back to "Custom quote".
+                  const amount = formatListingPrice(s.price);
+                  const price = amount ?? "Custom quote";
                   // Vacation mode: the CTA stops promising "book" while the owner is away —
                   // the listing itself stays visible and clickable (its detail page carries
                   // the same honest away state and disables the actual booking action).
@@ -1057,7 +1061,7 @@ export default function StorefrontPage() {
                       chips={chips}
                       ratingSlot={<RatingLine rating={s.averageRating} count={s.reviewCount} />}
                       price={price}
-                      unit={s.price ? unit : null}
+                      unit={amount ? unit : null}
                       cta={cta}
                       showPrice={s.showPrice}
                       bookingMode={s.bookingMode}
@@ -1101,7 +1105,9 @@ export default function StorefrontPage() {
                           Complete trip
                         </span>
                       }
-                      price={typeof r.priceCents === "number" ? `$${(r.priceCents / 100).toFixed(0)}` : "Contact for price"}
+                      // Same formatter; a ready-made with no positive price cannot be bought ("This
+                      // listing has no price set"), so it reads "Contact for price", never "$0".
+                      price={(typeof r.priceCents === "number" ? formatListingPrice(r.priceCents / 100) : null) ?? "Contact for price"}
                       cta="Preview trip →"
                     />
                   );

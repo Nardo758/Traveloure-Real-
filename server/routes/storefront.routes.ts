@@ -977,7 +977,13 @@ export async function loadStorefront(handle: string, activeLocale?: string, buye
 export async function loadStorefrontById(id: string, activeLocale?: string, buyer?: BuyActionBuyer) {
   const owner = await findStorefrontOwnerById(id);
   if (!owner) return null;
-  return loadStorefrontFromOwner(owner, activeLocale, buyer, Boolean(owner.handle));
+  // The waived gates exist for ONE case: the legacy no-handle EXPERT profile, which renders without
+  // inventory and is gated instead by an approved expert form (checked inside the loader). Nothing
+  // else earns the waiver — a handle-less PROVIDER with no approved inventory is exactly the
+  // "unvetted earner" the inventory gate keeps off the public web (ledger
+  // `2026-09-23-storefront-price-cents`), so it keeps the gate and answers 404.
+  const waiveInventoryGates = !owner.handle && isExpertRole(owner.role);
+  return loadStorefrontFromOwner(owner, activeLocale, buyer, !waiveInventoryGates);
 }
 
 // Deprecated compatibility loader for callers of /api/provider-storefront/:handle. The canonical
