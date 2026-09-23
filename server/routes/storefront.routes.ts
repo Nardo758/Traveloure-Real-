@@ -26,7 +26,8 @@ import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId, getDbRole } from "../utils/auth";
 import { sanitizeInput } from "../utils/sanitize";
 import { z } from "zod";
-import { HANDLE_RE, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH } from "@shared/handle";
+import { HANDLE_RE, HANDLE_MIN_LENGTH, HANDLE_MAX_LENGTH, normalizeHandle } from "@shared/handle";
+import { resolveEarnerByHandle } from "../services/contact-rails.service";
 import { isBusinessVerificationStatus, isOwnerIdentityVerified } from "../utils/earner-verification";
 import { isExpertHireable } from "../services/booking-actions.service";
 import fs from "fs";
@@ -594,15 +595,13 @@ const storefrontOwnerFields = {
 };
 
 async function findStorefrontOwnerByHandle(handle: string): Promise<StorefrontOwner | null> {
-  const normalized = handle.trim().toLowerCase();
-  if (!HANDLE_RE.test(normalized)) return null;
-
-  const [owner] = await db
-    .select(storefrontOwnerFields)
-    .from(users)
-    .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
-    .limit(1);
-  return owner ?? null;
+  // "Which earner does this handle name?" is answered ONCE, by `resolveEarnerByHandle` — the same
+  // resolver the contact start rail and the advisors rail use (§18 rule 1): normalized handle, not
+  // deleted, not suspended, an earner role. This page then reads that earner's storefront fields by
+  // id. A malformed handle is refused before any query, as it always was.
+  if (!HANDLE_RE.test(normalizeHandle(handle))) return null;
+  const earner = await resolveEarnerByHandle(handle);
+  return earner ? findStorefrontOwnerById(earner.id) : null;
 }
 
 async function findStorefrontOwnerById(id: string): Promise<StorefrontOwner | null> {
