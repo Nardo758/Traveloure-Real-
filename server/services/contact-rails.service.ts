@@ -76,19 +76,18 @@ export interface PublicRecipientCard {
 
 /**
  * WHICH ACCOUNT A PUBLIC HANDLE NAMES — stated ONCE here, and called by every rail that is
- * addressed by handle (§18 rule 1): the contact rail above and the plan-share rail
- * (`POST /api/trips/:tripId/advisors`, `server/services/hire-advisor.service.ts`).
+ * addressed by handle (§18 rule 1): the contact rail above, the plan-share rail
+ * (`POST /api/trips/:tripId/advisors`, `server/services/hire-advisor.service.ts`) and the public
+ * storefront read (`server/routes/storefront.routes.ts`, `findStorefrontOwnerByHandle`).
  *
  * A handle names an account only when that account is LIVE (not deleted, not suspended) and its
  * role can EARN. A deleted or suspended earner, a traveler who somehow holds a handle, and a handle
  * nobody has claimed are all the SAME answer — `null` — because being suspended is not something a
  * public rail discloses, and the difference would let a caller probe account states by handle.
  *
- * STATED NEGATIVE SPACE: `server/routes/storefront.routes.ts` still carries its own copy of this
- * predicate for the public storefront read. It was deliberately NOT repointed in the lane that
- * extracted this function, because that file was being rebuilt by the storefront-unification lane
- * at the same time; converging it is the follow-up, and until then the two must be kept in step
- * by hand.
+ *
+ * The storefront carried its own copy of this predicate until ledger
+ * `2026-09-23-storefront-handle-converged`, which repointed it here; there is no second copy now.
  */
 export async function resolveEarnerByHandle(
   handle: string,
