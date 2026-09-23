@@ -121,9 +121,9 @@ function ClientCard({ client, onDelete }: { client: EaClient; onDelete: (id: str
               </div>
               <div className="flex items-center gap-2">
                 {client.clientUserId ? (
-                  <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">On Platform</Badge>
+                  <Badge className="bg-green-100 text-green-700 border-green-200 text-xs">Accepted</Badge>
                 ) : (
-                  <Badge variant="outline" className="text-xs text-gray-500">Email Only</Badge>
+                  <Badge variant="outline" className="text-xs text-gray-500">Invitation pending</Badge>
                 )}
                 {hasPaymentInfo && (
                   <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">
@@ -341,7 +341,7 @@ export default function EAClients() {
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Client Roster</h2>
             <p className="text-gray-500 text-sm mt-1">
-              {clients.length} client{clients.length !== 1 ? "s" : ""} · {onPlatform} on platform
+              {clients.length} client{clients.length !== 1 ? "s" : ""} · {onPlatform} accepted
             </p>
           </div>
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -411,7 +411,7 @@ export default function EAClients() {
           <Card className="border border-gray-200">
             <CardContent className="pt-4 pb-4 text-center">
               <div className="text-2xl font-bold text-green-600">{onPlatform}</div>
-              <div className="text-sm text-gray-500">On Platform</div>
+              <div className="text-sm text-gray-500">Accepted</div>
             </CardContent>
           </Card>
           <Card className="border border-gray-200">

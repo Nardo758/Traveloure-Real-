@@ -10,7 +10,9 @@ import { isEA } from "../middleware/ea-rbac";
 import {
   getUserByEmail,
   insertNotification,
-  getEaClientRelationshipByClient, createEaClientRelationship,
+  getEaClientRelationshipByEmail, createEaClientRelationship,
+  listPendingEaInvitationsForEmail, listAcceptedEaLinksForUser,
+  acceptEaInvitation, declineEaInvitation, revokeEaLink,
   getEaClientRelationshipById, updateEaClientRelationship, deleteEaClientRelationship,
   getEaExecutives, createEaExecutive, getEaExecutiveById, updateEaExecutive, deleteEaExecutive,
   getEaEvents, createEaEvent, getEaEventById, updateEaEvent, deleteEaEvent,
@@ -87,22 +89,43 @@ router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
         notes: z.string().optional(),
       }).parse(req.body);
 
-      // Look up the user by email
-      const foundUser = await getUserByEmail(email);
-
-      // Check not already added
-      const existing = await getEaClientRelationshipByClient(eaUserId, foundUser?.id ?? null, email);
+      // CONSENT (board task #502, ledger `2026-09-23-phase1-security`). Adding a client is an
+      // INVITATION addressed to an email. It links no account and reads nothing from one: the name
+      // shown is the one the EA typed, and whether the email belongs to an account is never
+      // revealed (the response is identical either way). The person links their account by
+      // accepting from their own session (`POST /api/me/ea-invitations/:id/accept`); until then the
+      // EA cannot see their profile or push to them.
+      const existing = await getEaClientRelationshipByEmail(eaUserId, email);
       if (existing) {
         return res.status(409).json({ message: "Client already added" });
       }
 
       const created = await createEaClientRelationship({
         eaUserId,
-        clientUserId: foundUser?.id ?? null,
+        clientUserId: null,
         clientEmail: email,
-        displayName: sanitizeText(displayName || (foundUser ? `${foundUser.firstName ?? ""} ${foundUser.lastName ?? ""}`.trim() : email)) as string,
+        displayName: sanitizeText(displayName || email) as string,
         notes: sanitizeText(notes ?? null),
       });
+
+      // Tell the invitee, if they have an account — an in-app notice they can act on. Best-effort,
+      // and invisible to the EA: nothing in the response depends on whether this happened.
+      try {
+        const invitee = await getUserByEmail(email);
+        if (invitee && invitee.id !== eaUserId) {
+          await insertNotification({
+            userId: invitee.id,
+            type: "ea_invitation",
+            title: "An executive assistant invited you",
+            message: "Someone would like to manage travel for you as your executive assistant. Review the invitation on your profile page.",
+            relatedId: created.id,
+            relatedType: "ea_invitation",
+            data: { link: "/profile" },
+          });
+        }
+      } catch (notifyErr) {
+        console.warn("[EA] invitation notice failed (non-fatal):", notifyErr);
+      }
 
       res.status(201).json(created);
     } catch (err) {
@@ -169,7 +192,7 @@ router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
 
       const row = await getEaClientRelationshipById(id, eaUserId);
       if (!row) return res.status(404).json({ message: "Client not found" });
-      if (!row.clientUserId) return res.status(400).json({ message: "Client does not have a platform account" });
+      if (!row.clientUserId) return res.status(409).json({ message: "This client has not accepted your invitation yet" });
 
       await insertNotification({
         userId: row.clientUserId,
@@ -646,5 +669,72 @@ router.patch("/api/ea/preferences", isAuthenticated, async (req, res) => {
       res.status(500).json({ message: "Failed to update preferences" });
     }
   });
+
+// ============================================================
+// THE CLIENT'S SIDE OF AN EA LINK (board task #502, ledger `2026-09-23-phase1-security`)
+// Deliberately NOT under /api/ea: the person being invited is not an EA. §14: the account and its
+// email come from the SESSION, never from the body; each write is an atomic conditional in storage.
+// ============================================================
+
+async function sessionAccount(req: any): Promise<{ id: string; email: string } | null> {
+  const userId = getUserId(req);
+  if (!userId) return null;
+  const [me] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+  return me?.email ? { id: me.id, email: me.email } : null;
+}
+
+router.get("/api/me/ea-invitations", isAuthenticated, async (req, res) => {
+  try {
+    const me = await sessionAccount(req);
+    if (!me) return res.json({ pending: [], accepted: [] });
+    const [pending, accepted] = await Promise.all([
+      listPendingEaInvitationsForEmail(me.email),
+      listAcceptedEaLinksForUser(me.id),
+    ]);
+    res.json({ pending, accepted });
+  } catch (err) {
+    console.error("[EA] list invitations error:", err);
+    res.status(500).json({ message: "Failed to load invitations" });
+  }
+});
+
+router.post("/api/me/ea-invitations/:id/accept", isAuthenticated, async (req, res) => {
+  try {
+    const me = await sessionAccount(req);
+    if (!me || !(await acceptEaInvitation(req.params.id, me.id, me.email))) {
+      return res.status(404).json({ message: "Invitation not found" });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[EA] accept invitation error:", err);
+    res.status(500).json({ message: "Failed to accept invitation" });
+  }
+});
+
+router.post("/api/me/ea-invitations/:id/decline", isAuthenticated, async (req, res) => {
+  try {
+    const me = await sessionAccount(req);
+    if (!me || !(await declineEaInvitation(req.params.id, me.email))) {
+      return res.status(404).json({ message: "Invitation not found" });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[EA] decline invitation error:", err);
+    res.status(500).json({ message: "Failed to decline invitation" });
+  }
+});
+
+router.delete("/api/me/ea-links/:id", isAuthenticated, async (req, res) => {
+  try {
+    const me = await sessionAccount(req);
+    if (!me || !(await revokeEaLink(req.params.id, me.id))) {
+      return res.status(404).json({ message: "Link not found" });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[EA] revoke link error:", err);
+    res.status(500).json({ message: "Failed to remove assistant" });
+  }
+});
 
 export default router;

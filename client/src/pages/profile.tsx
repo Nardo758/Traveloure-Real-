@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PaymentMethodsCard } from "@/components/payment/PaymentMethodsCard";
+import { EaInvitationsCard } from "@/components/profile/EaInvitationsCard";
 
 import { Camera, Mail, Bell, MapPin, Calendar, Save, Loader2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
@@ -556,6 +557,9 @@ export default function Profile() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Executive-assistant invitations — renders only when there is one to act on */}
+        <EaInvitationsCard />
 
         {/* Save Button */}
         <div className="flex justify-end">

@@ -6,9 +6,10 @@
  * second OAuth-redirect implementation never forks from this one (server/routes/instagram.ts
  * stays the single publish/OAuth backend either way).
  *
- * Fetches the Meta app id from the existing public GET /api/instagram/config, then redirects the
- * browser into Instagram's OAuth consent screen; the existing GET /api/instagram/callback
- * completes the flow and stores the token server-side.
+ * Fetches the Meta app id from the existing public GET /api/instagram/config (so a missing config is
+ * reported here, without leaving the page), then sends the browser to GET /api/instagram/authorize,
+ * which issues the OAuth `state` and redirects to Instagram; GET /api/instagram/callback checks that
+ * state, completes the flow and stores the token server-side.
  */
 export type InstagramConnectResult =
   | { ok: true }
@@ -23,11 +24,11 @@ export async function connectInstagram(): Promise<InstagramConnectResult> {
       return { ok: false, reason: "missing_config" };
     }
 
-    const redirectUri = encodeURIComponent(`${window.location.origin}/api/instagram/callback`);
-    const scope = encodeURIComponent("instagram_business_basic,instagram_business_content_publish");
-    const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
-
-    window.location.href = authUrl;
+    // The server builds the authorize URL and issues the one-time OAuth `state` it will check on
+    // the callback (board task #1545, ledger `2026-09-23-phase1-security`). The flow returns to the
+    // page it started from, so a provider no longer lands on the expert content studio.
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/api/instagram/authorize?returnTo=${returnTo}`;
     return { ok: true };
   } catch {
     return { ok: false, reason: "network_error" };

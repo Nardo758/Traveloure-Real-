@@ -5,7 +5,7 @@
  */
 
 import { db } from "../db";
-import { eq, and, desc, asc, like, sql } from "drizzle-orm";
+import { eq, and, desc, asc, like, sql, isNull } from "drizzle-orm";
 import {
   users, localExpertForms, serviceProviderForms, expertServiceOfferings,
   aiInteractions, notifications, providerServices, serviceCategories,
@@ -147,24 +147,105 @@ export async function getUserByEmail(email: string): Promise<any | null> {
   return row ?? null;
 }
 
-export async function getEaClientRelationshipByClient(
-  eaUserId: string,
-  clientUserId: string | null,
-  clientEmail: string
-): Promise<any | null> {
-  const [row] = await db.select().from(eaClientRelationships)
-    .where(and(
-      eq(eaClientRelationships.eaUserId, eaUserId),
-      clientUserId
-        ? eq(eaClientRelationships.clientUserId, clientUserId)
-        : eq(eaClientRelationships.clientEmail, clientEmail)
-    )).limit(1);
-  return row ?? null;
-}
-
 export async function createEaClientRelationship(values: Record<string, any>): Promise<any> {
   const [row] = await db.insert(eaClientRelationships).values(values as any).returning();
   return row;
+}
+
+// ── EA client CONSENT (board task #502, ledger `2026-09-23-phase1-security`) ──────────────────────
+//
+// An EA used to attach any platform account as a client just by typing its email, then see that
+// person's name, email and photo and push notifications to them — with no invitation and no consent.
+// A row now links an account (`client_user_id`) ONLY when that person accepts it from their own
+// session; until then it is an invitation addressed to an email and carries nothing about any account.
+// No schema change: `client_user_id IS NULL` is the pending state. Every write below is an atomic
+// conditional (§15) — the WHERE clause is the guard, never a read-then-write.
+
+/** Invitations addressed to this email that nobody has accepted yet, with the inviting EA's name. */
+export async function listPendingEaInvitationsForEmail(email: string): Promise<Array<{
+  id: string;
+  createdAt: Date | null;
+  eaFirstName: string | null;
+  eaLastName: string | null;
+}>> {
+  return db
+    .select({
+      id: eaClientRelationships.id,
+      createdAt: eaClientRelationships.createdAt,
+      eaFirstName: users.firstName,
+      eaLastName: users.lastName,
+    })
+    .from(eaClientRelationships)
+    .innerJoin(users, eq(eaClientRelationships.eaUserId, users.id))
+    .where(and(
+      sql`lower(${eaClientRelationships.clientEmail}) = lower(${email})`,
+      isNull(eaClientRelationships.clientUserId),
+    ));
+}
+
+/** EAs this account has accepted, so the person can see and revoke them. */
+export async function listAcceptedEaLinksForUser(userId: string): Promise<Array<{
+  id: string;
+  createdAt: Date | null;
+  eaFirstName: string | null;
+  eaLastName: string | null;
+}>> {
+  return db
+    .select({
+      id: eaClientRelationships.id,
+      createdAt: eaClientRelationships.createdAt,
+      eaFirstName: users.firstName,
+      eaLastName: users.lastName,
+    })
+    .from(eaClientRelationships)
+    .innerJoin(users, eq(eaClientRelationships.eaUserId, users.id))
+    .where(eq(eaClientRelationships.clientUserId, userId));
+}
+
+/** Accept: links THIS account, only if the invitation is addressed to its email and still pending. */
+export async function acceptEaInvitation(id: string, userId: string, email: string): Promise<boolean> {
+  const rows = await db
+    .update(eaClientRelationships)
+    .set({ clientUserId: userId, updatedAt: new Date() })
+    .where(and(
+      eq(eaClientRelationships.id, id),
+      isNull(eaClientRelationships.clientUserId),
+      sql`lower(${eaClientRelationships.clientEmail}) = lower(${email})`,
+    ))
+    .returning({ id: eaClientRelationships.id });
+  return rows.length > 0;
+}
+
+/** Decline: removes a pending invitation addressed to this email. */
+export async function declineEaInvitation(id: string, email: string): Promise<boolean> {
+  const rows = await db
+    .delete(eaClientRelationships)
+    .where(and(
+      eq(eaClientRelationships.id, id),
+      isNull(eaClientRelationships.clientUserId),
+      sql`lower(${eaClientRelationships.clientEmail}) = lower(${email})`,
+    ))
+    .returning({ id: eaClientRelationships.id });
+  return rows.length > 0;
+}
+
+/** Revoke: the client removes an EA they accepted. Consent that cannot be withdrawn is not consent. */
+export async function revokeEaLink(id: string, userId: string): Promise<boolean> {
+  const rows = await db
+    .delete(eaClientRelationships)
+    .where(and(eq(eaClientRelationships.id, id), eq(eaClientRelationships.clientUserId, userId)))
+    .returning({ id: eaClientRelationships.id });
+  return rows.length > 0;
+}
+
+/** Duplicate check for an invitation: the same EA inviting the same email twice. */
+export async function getEaClientRelationshipByEmail(eaUserId: string, email: string): Promise<any | null> {
+  const [row] = await db.select().from(eaClientRelationships)
+    .where(and(
+      eq(eaClientRelationships.eaUserId, eaUserId),
+      sql`lower(${eaClientRelationships.clientEmail}) = lower(${email})`,
+    )).limit(1);
+  return row ?? null;
 }
 
 export async function getEaClientRelationshipById(id: string, eaUserId: string): Promise<any | null> {

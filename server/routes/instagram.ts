@@ -5,6 +5,7 @@ import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { isValidOAuthState, newOAuthState, safeReturnPath, type IssuedOAuthState } from "../utils/oauth-state";
 
 const router = Router();
 
@@ -89,22 +90,62 @@ router.get("/config", (req: Request, res: Response) => {
   res.json({ appId: INSTAGRAM_APP_ID || null });
 });
 
+const DEFAULT_RETURN = "/expert/content-studio";
+const OAUTH_SESSION_KEY = "instagramOAuth";
+
+/** `path` with one query parameter added, whether or not it already has a query string. */
+function withParam(path: string, key: string, value: string): string {
+  return `${path}${path.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(value)}`;
+}
+
+// Starts the connect flow SERVER-SIDE (board task #1545, ledger `2026-09-23-phase1-security`). The
+// browser used to build the Instagram authorize URL itself, with no `state`, so the callback could not
+// tell a flow this user started from one an attacker started and handed to them. This route issues a
+// one-time `state`, stores it in the caller's own session with the page to return to, and redirects.
+router.get("/authorize", isAuthenticated, (req: Request, res: Response) => {
+  const returnTo = safeReturnPath(req.query.returnTo, DEFAULT_RETURN);
+  if (!INSTAGRAM_APP_ID) return res.redirect(withParam(returnTo, "error", "missing_config"));
+  const issued: IssuedOAuthState = { state: newOAuthState(), returnTo, issuedAt: Date.now() };
+  (req.session as any)[OAUTH_SESSION_KEY] = issued;
+  const redirectUri = `${req.protocol}://${req.get("host")}/api/instagram/callback`;
+  const authUrl =
+    "https://www.instagram.com/oauth/authorize?" +
+    new URLSearchParams({
+      client_id: INSTAGRAM_APP_ID,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "instagram_business_basic,instagram_business_content_publish",
+      state: issued.state,
+    }).toString();
+  res.redirect(authUrl);
+});
+
 router.get("/callback", isAuthenticated, async (req: Request, res: Response) => {
+  // The issued state is consumed on EVERY callback, valid or not, so it can never be replayed.
+  const issued = (req.session as any)?.[OAUTH_SESSION_KEY] as IssuedOAuthState | undefined;
+  if (req.session) delete (req.session as any)[OAUTH_SESSION_KEY];
+  const returnTo = safeReturnPath(issued?.returnTo, DEFAULT_RETURN);
   try {
-    const { code, error, error_description } = req.query;
+    const { code, error, error_description, state } = req.query;
+
+    // Checked before anything else: a callback this session did not start links nothing.
+    if (!isValidOAuthState(issued, state)) {
+      console.warn("[instagram] callback refused: missing, mismatched or expired OAuth state");
+      return res.redirect(withParam(returnTo, "error", "invalid_state"));
+    }
 
     if (error) {
       console.error("Instagram OAuth error:", error_description);
-      return res.redirect(`/expert/content-studio?error=${encodeURIComponent(error_description as string || "auth_failed")}`);
+      return res.redirect(withParam(returnTo, "error", (error_description as string) || "auth_failed"));
     }
 
     if (!code) {
-      return res.redirect("/expert/content-studio?error=no_code");
+      return res.redirect(withParam(returnTo, "error", "no_code"));
     }
 
     if (!INSTAGRAM_APP_ID || !INSTAGRAM_APP_SECRET) {
       console.error("Missing INSTAGRAM_APP_ID or INSTAGRAM_APP_SECRET");
-      return res.redirect("/expert/content-studio?error=missing_config");
+      return res.redirect(withParam(returnTo, "error", "missing_config"));
     }
 
     const redirectUri = `${req.protocol}://${req.get("host")}/api/instagram/callback`;
@@ -127,7 +168,7 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.text();
       console.error("Token exchange failed:", errorData);
-      return res.redirect("/expert/content-studio?error=token_exchange_failed");
+      return res.redirect(withParam(returnTo, "error", "token_exchange_failed"));
     }
 
     const tokenData = await tokenResponse.json();
@@ -159,10 +200,10 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
         .where(eq(users.id, userId));
     }
 
-    res.redirect("/expert/content-studio?instagram=connected");
+    res.redirect(withParam(returnTo, "instagram", "connected"));
   } catch (error) {
     console.error("Instagram callback error:", error);
-    res.redirect("/expert/content-studio?error=callback_failed");
+    res.redirect(withParam(returnTo, "error", "callback_failed"));
   }
 });
 

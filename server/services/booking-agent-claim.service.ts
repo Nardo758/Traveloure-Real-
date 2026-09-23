@@ -58,6 +58,24 @@ import { logger } from "../infrastructure/logger";
  */
 export const claimBodySchema = z.object({}).strict();
 
+/**
+ * WHO MAY WRITE A BOOKING REQUEST (board task #1678, ledger `2026-09-23-phase1-security`). Pure, and
+ * the ONE answer the PATCH rail asks: the agent holding the claim writes, an admin writes, an
+ * unclaimed request must be claimed first (through `claimBookingRequest`, the one claim author), and
+ * a request another agent holds is not the caller's to touch. Role is checked before this is asked.
+ */
+export type BookingRequestWriteStanding = "holder" | "admin" | "unclaimed" | "not_yours";
+
+export function bookingRequestWriteStanding(input: {
+  actorUserId: string;
+  actorIsAdmin: boolean;
+  holderUserId: string | null;
+}): BookingRequestWriteStanding {
+  if (input.actorIsAdmin) return "admin";
+  if (input.holderUserId === null) return "unclaimed";
+  return input.holderUserId === input.actorUserId ? "holder" : "not_yours";
+}
+
 export type BookingAgentClaimRefusal = "not_an_agent" | "not_found" | "already_claimed";
 
 export type BookingAgentClaimOutcome =

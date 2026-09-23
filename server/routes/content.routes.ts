@@ -35,6 +35,7 @@ import {
   BOOKING_AGENT_CLAIM_MESSAGE,
   BOOKING_AGENT_CLAIM_STATUS,
   claimBodySchema,
+  bookingRequestWriteStanding,
   claimBookingRequest,
 } from "../services/booking-agent-claim.service";
 import { z } from "zod";
@@ -3724,9 +3725,11 @@ router.get("/api/cache/status", isAuthenticated, async (req, res) => {
 
   // Trigger manual cache refresh (admin only)
 
-router.post("/api/cache/refresh", isAuthenticated, async (req, res) => {
+// Admin-only (board task #1334, ledger `2026-09-23-phase1-security`): a full refresh re-fetches every
+// external API the cache holds, so any signed-in user could spend the platform's partner quotas.
+// Same gate as the two Fever refresh routes below; no client calls this route.
+router.post("/api/cache/refresh", isAuthenticated, requireDbAdmin, async (req, res) => {
     try {
-      // Check if user is admin (optional - can be enforced later)
       if (cacheSchedulerService.isCurrentlyRefreshing()) {
         return res.status(409).json({ message: "Cache refresh already in progress" });
       }
@@ -8039,6 +8042,29 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
 
       const prior = await storage.getAffiliateBookingRequestById(id);
       if (!prior) return res.status(404).json({ message: "Request not found" });
+
+      // ONLY THE REQUEST'S CLAIMANT MAY WRITE IT (board task #1678, ledger
+      // `2026-09-23-phase1-security`). This rail checked the caller's ROLE and nothing else, so any
+      // expert could change another agent's request — its status, notes, price and confirmation.
+      // The standing is decided once (`bookingRequestWriteStanding`): the holder and an admin write;
+      // an UNCLAIMED request is claimed first through the ONE claim author (the Workstation lists
+      // unclaimed trip requests and records a purchase in one press, so the first write IS the
+      // claim), and a request another agent holds is one 404 — "not yours" and "no such thing" are
+      // the same sentence (Locked Decision 40), and the pooled list never showed it to this caller.
+      const standing = bookingRequestWriteStanding({
+        actorUserId: sessionUserId,
+        actorIsAdmin: dbUser.role === "admin",
+        holderUserId: prior.expertId ?? null,
+      });
+      if (standing === "not_yours") return res.status(404).json({ message: "Request not found" });
+      if (standing === "unclaimed") {
+        const claim = await claimBookingRequest({ requestId: id, actorUserId: sessionUserId });
+        if (!claim.ok) {
+          return res
+            .status(BOOKING_AGENT_CLAIM_STATUS[claim.reason])
+            .json({ message: BOOKING_AGENT_CLAIM_MESSAGE[claim.reason] });
+        }
+      }
 
       // Phase 2.3 cross-trip guard. Attaching a booking to a Trip + logging it onto
       // that Trip's itinerary is gated on a confirm transition AND BOTH:
