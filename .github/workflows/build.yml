@@ -2410,6 +2410,12 @@ jobs:
       # default-free, CHECK-free posture the deploy-push durability rule requires.
       - name: Reconciliation run tallies — the ready-made rail is durable (T1–T4)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/reconciliation-run-tallies.db.test.ts
+      # Board task #1259 (ledger 2026-09-23-reconciliation-month-boundary). The pass is a ROLLING
+      # 24h window with date-free dedupe keys; M1–M4 pin that on the first run of a month: the
+      # window straddles the boundary, re-detection writes no second row, a month-old booking named
+      # by an in-window charge is still examined, and the edge is 24h to the second.
+      - name: Reconciliation across a month boundary (M1–M4)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/reconciliation-month-boundary.db.test.ts
   plan-entry-source-fields:
     name: plan-entry-source-fields (Locked Decision 42 D13 — 2026-09-05-doors-source-fields)
     runs-on: ubuntu-latest
