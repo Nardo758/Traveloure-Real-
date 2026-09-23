@@ -30,9 +30,7 @@ const handlerFixtureExclusions = new Set([
   "POST /api/expert/ai-tasks/:taskId/approve", "POST /api/expert/ai-tasks/:taskId/regenerate",
   "POST /api/expert/ai-tasks/:taskId/reject", "POST /api/expert/ai-tasks/delegate",
   "POST /api/expert/assignments/:assignmentId/accept", "POST /api/expert/bookings/:id/complete",
-  "PATCH /api/expert/bookings/:id/status", "PATCH /api/expert/ready-made/:id",
-  "POST /api/expert/ready-made/:id/build-review", "POST /api/expert/ready-made/:id/submit",
-  "POST /api/expert/ready-made/:id/withdraw", "POST /api/expert/reviews/:id/respond",
+  "PATCH /api/expert/bookings/:id/status", "POST /api/expert/reviews/:id/respond",
   "PATCH /api/expert/role", "POST /api/expert/trips/:tripId/vendors",
   "DELETE /api/expert/vendors/:vendorId", "PUT /api/expert/vendors/:vendorId",
   "DELETE /api/provider/availability/:id", "PATCH /api/provider/availability/:id",
@@ -42,6 +40,16 @@ const handlerFixtureExclusions = new Set([
   "POST /api/provider/properties", "DELETE /api/provider/properties/:id",
   "PATCH /api/provider/properties/:id", "POST /api/provider/properties/:id/rooms",
   "DELETE /api/provider/rooms/:id", "PATCH /api/provider/rooms/:id",
+]);
+const readyMadeFixtureSet = new Set([
+  "POST /api/expert/ready-made",
+  "PATCH /api/expert/ready-made/:id",
+  "POST /api/expert/ready-made/:id/build-review",
+  "POST /api/expert/ready-made/:id/submit",
+  "POST /api/expert/ready-made/:id/withdraw",
+  "DELETE /api/expert/ready-made/build/:id",
+  "PATCH /api/expert/ready-made/build/:tripId",
+  "POST /api/expert/ready-made/from-trip/:tripId",
 ]);
 const tripFixturePaths = [
   "POST /api/trips/:tripId/participants", "POST /api/trips/:tripId/contracts",
@@ -78,6 +86,10 @@ function disposition(endpoint: Endpoint, contexts: Map<string, Set<string>>, evi
         ? "Fresh mocked-Stripe confirmation ownership evidence (three tests)."
         : "Fresh real-resource User A → User B ownership evidence." }
       : { tested: false, reason: `Not run: ${evidenceState || `fresh ${key.endsWith("/confirm") ? "optimization-confirm" : "resource-owner"} endpoint evidence is absent`}.` };
+  if (readyMadeFixtureSet.has(key))
+    return has("wrong-role")
+      ? { tested: true, reason: "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success." }
+      : { tested: false, reason: `Not run: ${evidenceState || "fresh ready-made author/non-author fixture evidence is absent"}.` };
   if ((endpoint.risk === "payments" || endpoint.risk === "user-data") && endpoint.expectedBoundary === "signature")
     return has("unauthenticated")
       ? { tested: true, reason: "Fresh unsigned-request evidence for the payment/user-data signature boundary." }
@@ -130,7 +142,7 @@ if (rows.some((row) => row.tested === undefined || !row.reason)) throw new Error
 const totals = (items: typeof rows) => ({ tested: items.filter((item) => item.tested).length, total: items.length });
 const overall = totals(rows);
 const categories = Object.fromEntries((["payments", "admin", "user-data", "other"] as Risk[]).map((risk) => [risk, totals(rows.filter((row) => row.risk === risk))]));
-if (rows.filter((row) => handlerFixtureExclusions.has(row.key)).length !== 30) throw new Error("Expected exactly 30 handler-fixture exclusions");
+if (rows.filter((row) => handlerFixtureExclusions.has(row.key)).length !== 26) throw new Error("Expected exactly 26 handler-fixture exclusions");
 
 const report = {
   schemaVersion: 1, generatedBy: "scripts/generate-mutation-auth-coverage.ts",
@@ -154,7 +166,7 @@ const markdown = [
   "- An endpoint is tested only when a passing, non-skipped suite in the fresh evidence artifact names that exact endpoint in its required context. Route classification alone never promotes coverage.",
   "- Totals are a strict endpoint union, not a sum of evidence dimensions. Endpoints with both unauthenticated and cross-owner evidence are counted once.",
   "- The confirmed optimization-confirm ownership bug is fixed: missing or mismatched Stripe `metadata.userId` is rejected before DB/revenue writes.",
-  "- Payments/user-data signature endpoints (2) are counted only for unsigned-request coverage. Session-self payments/user-data endpoints are counted from fresh unauthenticated evidence, except the 30 explicit handler-fixture exclusions below; only those exclusions are **not tested**.",
+  "- Payments/user-data signature endpoints (2) are counted only for unsigned-request coverage. Session-self payments/user-data endpoints are counted from fresh unauthenticated evidence, except the 26 explicit handler-fixture exclusions below; only those exclusions are **not tested**.",
   "", "## Remaining risk", "",
   "Untested endpoints below need endpoint-appropriate coverage. In particular, excluded expert/provider workflows require real handler-owned resources; public/system routes and all other-category routes have no authorization assertion in this strict report.",
   "", "## Untested endpoints", "",

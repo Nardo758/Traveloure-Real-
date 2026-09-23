@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/run-mutation-auth-live-audit.ts",
   "manifestSha256": "1e817f102bb76e96e3aea888e2f7b51fa1c6e86023cba366353fad569147f0f2",
-  "timestamp": "2026-09-22T02:55:55.009Z",
+  "timestamp": "2026-09-23T00:47:42.062Z",
   "passed": true,
   "suites": [
     {
@@ -408,6 +408,7 @@
       "exitStatus": 0,
       "endpointKeys": [
         "DELETE /api/expert/knowledge-nuggets/:id",
+        "DELETE /api/expert/ready-made/build/:id",
         "DELETE /api/expert/selected-services/:serviceOfferingId",
         "DELETE /api/expert/service-listings/:id",
         "DELETE /api/expert/specializations/:specialization",
@@ -417,6 +418,8 @@
         "PATCH /api/expert/photo",
         "PATCH /api/expert/profile",
         "PATCH /api/expert/profile-notes",
+        "PATCH /api/expert/ready-made/:id",
+        "PATCH /api/expert/ready-made/build/:tripId",
         "PATCH /api/expert/service-listings/:id",
         "PATCH /api/expert/services/:id/status",
         "PATCH /api/provider/services/:id",
@@ -425,6 +428,11 @@
         "POST /api/expert/knowledge-nuggets/:id/propose-gem",
         "POST /api/expert/neighborhood-claims",
         "POST /api/expert/neighborhood-claims/:id/submit",
+        "POST /api/expert/ready-made",
+        "POST /api/expert/ready-made/:id/build-review",
+        "POST /api/expert/ready-made/:id/submit",
+        "POST /api/expert/ready-made/:id/withdraw",
+        "POST /api/expert/ready-made/from-trip/:tripId",
         "POST /api/expert/selected-services",
         "POST /api/expert/service-listings",
         "POST /api/expert/service-listings/:id/submit",

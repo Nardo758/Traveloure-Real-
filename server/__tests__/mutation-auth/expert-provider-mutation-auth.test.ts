@@ -152,14 +152,6 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   "PATCH /api/expert/assignments/:assignmentId/workspace-status": "Assignment workspace state is resource-authorized in its handler; a concrete assigned-resource fixture is required.",
   "POST /api/expert/bookings/:id/complete": "Booking completion is owner-authorized in its shared handler; no expert-prefix role backstop covers bookings.",
   "PATCH /api/expert/bookings/:id/status": "Booking status is owner-authorized in its shared handler; no expert-prefix role backstop covers bookings.",
-  "POST /api/expert/ready-made": "Ready-made authoring application flow is resource/role-checked by its router, outside the assembled expert-prefix backstop.",
-  "PATCH /api/expert/ready-made/:id": "Ready-made authoring is handler/resource-authorized; a real author fixture is required.",
-  "POST /api/expert/ready-made/:id/build-review": "Ready-made build review is handler/resource-authorized; a real author fixture is required.",
-  "POST /api/expert/ready-made/:id/submit": "Ready-made submission is handler/resource-authorized; a real author fixture is required.",
-  "POST /api/expert/ready-made/:id/withdraw": "Ready-made withdrawal is handler/resource-authorized; a real author fixture is required.",
-  "DELETE /api/expert/ready-made/build/:id": "Ready-made build deletion is handler/resource-authorized; a real author fixture is required.",
-  "PATCH /api/expert/ready-made/build/:tripId": "Ready-made build editing is handler/resource-authorized; a real author fixture is required.",
-  "POST /api/expert/ready-made/from-trip/:tripId": "Trip-to-ready-made conversion is handler/resource-authorized; a real authored trip fixture is required.",
   "POST /api/expert/reviews/:id/respond": "Review response is handler-owned by the reviewed service/expert; a real review fixture is required.",
   "PATCH /api/expert/role": "Intentional role-application/self-service flow: ordinary users may request an expert role, and EVERY expert track switch requires admin review (ledger 2026-09-04-earn-role-safety).",
   "POST /api/expert/trips/:tripId/vendors": "Trip vendor write is trip-resource-authorized; a real non-owned trip fixture is required.",
@@ -201,11 +193,19 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * the fixture the probe needs; adding a key here without a probe below fails
  * the live audit's own tally.  Ledger `2026-09-16-ci-red-repairs-3`.
  */
-const RESOURCE_PROBES: Readonly<Record<string, "booking" | "quote">> = {
+const RESOURCE_PROBES: Readonly<Record<string, "booking" | "quote" | "readyMade">> = {
   "POST /api/expert/bookings/:id/component-failed": "booking",
   "POST /api/provider/bookings/:id/component-failed": "booking",
   "POST /api/provider/quotes/:quoteId/issue": "quote",
   "POST /api/provider/quotes/:quoteId/withdraw": "quote",
+  "POST /api/expert/ready-made": "readyMade",
+  "PATCH /api/expert/ready-made/:id": "readyMade",
+  "POST /api/expert/ready-made/:id/build-review": "readyMade",
+  "POST /api/expert/ready-made/:id/submit": "readyMade",
+  "POST /api/expert/ready-made/:id/withdraw": "readyMade",
+  "DELETE /api/expert/ready-made/build/:id": "readyMade",
+  "PATCH /api/expert/ready-made/build/:tripId": "readyMade",
+  "POST /api/expert/ready-made/from-trip/:tripId": "readyMade",
 };
 
 const HIGH_RISK = (() => {
@@ -231,6 +231,8 @@ let ownerCookie = "";
 let fixtureServiceId: string | undefined;
 let fixtureBookingId: string | undefined;
 let fixtureQuoteId: string | undefined;
+let readyMadeAuthorId: string | undefined;
+let readyMadeAuthorCookie = "";
 
 function emitEvidence(evidence: Record<string, unknown>): void {
   console.log(JSON.stringify({ audit: "expert-provider-wrong-role", ...evidence }));
@@ -265,6 +267,38 @@ async function fixtureRowStatus(table: "service_bookings" | "service_quotes", id
     ? await auditDb!.execute(sql`SELECT status FROM service_bookings WHERE id = ${id}`)
     : await auditDb!.execute(sql`SELECT status FROM service_quotes WHERE id = ${id}`);
   return (result.rows[0] as { status?: string } | undefined)?.status;
+}
+async function readyMadeTripRow(id: string): Promise<{ title?: string } | undefined> {
+  const result = await auditDb!.execute(sql`SELECT title FROM trips WHERE id = ${id}`);
+  return result.rows[0] as { title?: string } | undefined;
+}
+async function readyMadeListingRow(id: string): Promise<{
+  title?: string;
+  status?: string;
+  build_review?: unknown;
+} | undefined> {
+  const result = await auditDb!.execute(sql`
+    SELECT title, status, build_review
+    FROM ready_made_trips
+    WHERE id = ${id}
+  `);
+  return result.rows[0] as { title?: string; status?: string; build_review?: unknown } | undefined;
+}
+async function readyMadeListingCountForTrip(tripId: string): Promise<number> {
+  const result = await auditDb!.execute(sql`
+    SELECT count(*)::int AS count
+    FROM ready_made_trips
+    WHERE source_trip_id = ${tripId}
+  `);
+  return Number((result.rows[0] as { count?: number } | undefined)?.count ?? 0);
+}
+async function readyMadeAuthorTripCount(authorId: string): Promise<number> {
+  const result = await auditDb!.execute(sql`
+    SELECT count(*)::int AS count
+    FROM trips
+    WHERE author_id = ${authorId}
+  `);
+  return Number((result.rows[0] as { count?: number } | undefined)?.count ?? 0);
 }
 
 before(async () => {
@@ -306,12 +340,21 @@ before(async () => {
     INSERT INTO service_quotes (id, service_id, traveler_id, position, status)
     VALUES (${fixtureQuoteId}, ${fixtureServiceId}, ${fixtureUserId}, 1, 'requested')
   `);
+
+  readyMadeAuthorId = crypto.randomUUID();
+  readyMadeAuthorCookie = await createLoginFixture({
+    id: readyMadeAuthorId,
+    role: "local_expert",
+    firstName: "Ready Made Author",
+  });
 });
 
 after(async () => {
   if (!auditDb) return;
   const db = auditDb;
   const cleanup: Array<() => Promise<unknown>> = [
+    () => db.execute(sql`DELETE FROM ready_made_trips WHERE author_id = ${readyMadeAuthorId ?? ""}`),
+    () => db.execute(sql`DELETE FROM trips WHERE author_id = ${readyMadeAuthorId ?? ""}`),
     // Child rows first: the quote and the booking reference the listing and both users.
     () => db.execute(sql`DELETE FROM service_quotes WHERE id = ${fixtureQuoteId ?? ""}`),
     () => db.execute(sql`DELETE FROM content_registry WHERE content_id IN (${fixtureBookingId ?? ""}, ${fixtureServiceId ?? ""})`),
@@ -319,9 +362,10 @@ after(async () => {
     () => db.execute(sql`DELETE FROM provider_services WHERE id = ${fixtureServiceId ?? ""}`),
     () => db.execute(sql`
       DELETE FROM sessions
-      WHERE sess->'passport'->'user'->'claims'->>'sub' IN (${fixtureUserId ?? ""}, ${ownerUserId ?? ""})
-         OR sess->'passport'->'user'->>'id' IN (${fixtureUserId ?? ""}, ${ownerUserId ?? ""})
+      WHERE sess->'passport'->'user'->'claims'->>'sub' IN (${fixtureUserId ?? ""}, ${ownerUserId ?? ""}, ${readyMadeAuthorId ?? ""})
+         OR sess->'passport'->'user'->>'id' IN (${fixtureUserId ?? ""}, ${ownerUserId ?? ""}, ${readyMadeAuthorId ?? ""})
     `),
+    () => readyMadeAuthorId ? db.delete(users).where(eq(users.id, readyMadeAuthorId)) : Promise.resolve(),
     () => ownerUserId ? db.delete(users).where(eq(users.id, ownerUserId)) : Promise.resolve(),
     () => fixtureUserId ? db.delete(users).where(eq(users.id, fixtureUserId)) : Promise.resolve(),
   ];
@@ -493,7 +537,174 @@ test("handler-owned rails: anonymous 401, the non-owner is refused before the ha
   assert.equal(await quoteStatus(), "withdrawn", "the owner's withdraw must land");
 
   // The tally: every RESOURCE_PROBES rail was probed here, and nothing else was.
-  assert.deepEqual([...probed].sort(), Object.keys(RESOURCE_PROBES).sort(),
-    "RESOURCE_PROBES and the live resource probes must name the same rails");
+  const expected = Object.keys(RESOURCE_PROBES)
+    .filter((key) => RESOURCE_PROBES[key] === "booking" || RESOURCE_PROBES[key] === "quote")
+    .sort();
+  assert.deepEqual([...probed].sort(), expected,
+    "booking/quote RESOURCE_PROBES and their live probes must name the same rails");
   emitEvidence({ kind: "summary", resourceProbed: probed.size });
+});
+
+test("ready-made authoring rails: anonymous is refused, non-author writes nothing, author succeeds", {
+  skip: !LIVE_AUDIT && "set MUTATION_AUTH_AUDIT_OK=1 to run live HTTP authorization probes",
+}, async () => {
+  assert.ok(
+    readyMadeAuthorId && readyMadeAuthorCookie && fixtureUserId && sessionCookie,
+    "the ready-made author fixture was not created",
+  );
+  const manifestRow = new Map(HIGH_RISK.map((mutation) => [keyOf(mutation), mutation]));
+  const probed = new Set<string>();
+
+  const send = async (
+    endpoint: string,
+    principal: string,
+    cookie: string | undefined,
+    replacements: Record<string, string>,
+    body: unknown,
+    expectedStatus: number,
+  ) => {
+    const mutation = manifestRow.get(endpoint);
+    assert.ok(mutation, `${endpoint} is not a high-risk manifest route`);
+    let requestPath = mutation.effectivePath;
+    for (const [name, value] of Object.entries(replacements)) {
+      requestPath = requestPath.replace(`:${name}`, encodeURIComponent(value));
+    }
+    const response = await fetch(`${BASE_URL}${requestPath}`, {
+      method: mutation.method,
+      headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+      body: JSON.stringify(body),
+      redirect: "manual",
+    });
+    const text = await diagnosticBody(response);
+    emitEvidence({
+      kind: "probe",
+      endpoint,
+      principal,
+      source: mutation.source,
+      line: mutation.line,
+      url: `${BASE_URL}${requestPath}`,
+      expectedStatus,
+      actualStatus: response.status,
+      response: text,
+    });
+    assert.equal(
+      response.status,
+      expectedStatus,
+      `${endpoint} as ${principal}: expected ${expectedStatus}, got ${response.status}: ${text}`,
+    );
+    probed.add(endpoint);
+    return text;
+  };
+  const parseJson = (text: string) => JSON.parse(text) as Record<string, any>;
+
+  const create = "POST /api/expert/ready-made";
+  assert.equal(await readyMadeAuthorTripCount(readyMadeAuthorId), 0);
+  await send(create, "anonymous", undefined, {}, {}, 401);
+  await send(create, "ordinary user (role denied)", sessionCookie, {}, {}, 403);
+  assert.equal(await readyMadeAuthorTripCount(readyMadeAuthorId), 0,
+    "a role-denied create must not mint an authoring trip");
+  const created = parseJson(await send(create, "author", readyMadeAuthorCookie, {}, {
+    title: "Mutation auth ready-made build",
+    destination: "Kyoto",
+    durationDays: 1,
+  }, 201));
+  const tripId = String(created.tripId);
+  assert.ok(tripId, "author create must return a trip id");
+  assert.equal((await readyMadeTripRow(tripId))?.title, "Mutation auth ready-made build");
+
+  const editBuild = "PATCH /api/expert/ready-made/build/:tripId";
+  await send(editBuild, "anonymous", undefined, { tripId }, { title: "Anonymous edit" }, 401);
+  await send(editBuild, "ordinary user (non-author)", sessionCookie, { tripId }, { title: "Non-owner edit" }, 403);
+  assert.equal((await readyMadeTripRow(tripId))?.title, "Mutation auth ready-made build",
+    "a refused non-author must not edit the build");
+  await send(editBuild, "author", readyMadeAuthorCookie, { tripId }, {
+    title: "Mutation auth edited build",
+  }, 200);
+  assert.equal((await readyMadeTripRow(tripId))?.title, "Mutation auth edited build");
+
+  const fromTrip = "POST /api/expert/ready-made/from-trip/:tripId";
+  await send(fromTrip, "anonymous", undefined, { tripId }, {}, 401);
+  await send(fromTrip, "ordinary user (role denied)", sessionCookie, { tripId }, {}, 403);
+  assert.equal(await readyMadeListingCountForTrip(tripId), 0,
+    "a refused non-author must not ship a listing");
+  const shipped = parseJson(await send(fromTrip, "author", readyMadeAuthorCookie, { tripId }, {}, 201));
+  const listingId = String(shipped.listingId);
+  assert.ok(listingId, "author ship-to-store must return a listing id");
+
+  const patchListing = "PATCH /api/expert/ready-made/:id";
+  await send(patchListing, "anonymous", undefined, { id: listingId }, { title: "Anonymous listing edit" }, 401);
+  await send(patchListing, "ordinary user (non-author)", sessionCookie, { id: listingId }, { title: "Non-owner listing edit" }, 404);
+  assert.equal((await readyMadeListingRow(listingId))?.title, "Mutation auth edited build",
+    "a refused non-author must not edit the listing");
+  await send(patchListing, "author", readyMadeAuthorCookie, { id: listingId }, {
+    title: "Mutation auth complete listing",
+  }, 200);
+  assert.equal((await readyMadeListingRow(listingId))?.title, "Mutation auth complete listing");
+
+  const heroMeta = {
+    unsplashId: "mutation-auth-photo",
+    photographer: "Authorization Audit",
+    profileUrl: "https://unsplash.com/@mutation-auth",
+  };
+  await auditDb!.execute(sql`
+    UPDATE ready_made_trips
+    SET plan_type = 'city_itinerary',
+        pricing_mode = 'fixed',
+        price_cents = 500,
+        hero_image_url = 'https://images.unsplash.com/photo-mutation-auth',
+        hero_image_meta = ${JSON.stringify(heroMeta)}::jsonb,
+        duration_days = 1
+    WHERE id = ${listingId}
+  `);
+  await auditDb!.execute(sql`
+    INSERT INTO itinerary_items (id, trip_id, title, day_number, sort_order, routing_status)
+    VALUES (${`mutation-auth-item-${crypto.randomUUID()}`}, ${tripId},
+            'Mutation authorization itinerary item', 1, 0, 'in_planning')
+  `);
+
+  const buildReview = "POST /api/expert/ready-made/:id/build-review";
+  await send(buildReview, "anonymous", undefined, { id: listingId }, {}, 401);
+  await send(buildReview, "ordinary user (non-author)", sessionCookie, { id: listingId }, {}, 404);
+  assert.equal((await readyMadeListingRow(listingId))?.build_review, null,
+    "a refused non-author must not write a build review");
+  await send(buildReview, "author", readyMadeAuthorCookie, { id: listingId }, {}, 200);
+  assert.ok((await readyMadeListingRow(listingId))?.build_review,
+    "the author must persist a real build review");
+
+  const submit = "POST /api/expert/ready-made/:id/submit";
+  await send(submit, "anonymous", undefined, { id: listingId }, {}, 401);
+  await send(submit, "ordinary user (non-author)", sessionCookie, { id: listingId }, {}, 404);
+  assert.equal((await readyMadeListingRow(listingId))?.status, "draft",
+    "a refused non-author must not submit the listing");
+  await send(submit, "author", readyMadeAuthorCookie, { id: listingId }, {}, 200);
+  assert.equal((await readyMadeListingRow(listingId))?.status, "submitted");
+
+  const withdraw = "POST /api/expert/ready-made/:id/withdraw";
+  await send(withdraw, "anonymous", undefined, { id: listingId }, {}, 401);
+  await send(withdraw, "ordinary user (non-author)", sessionCookie, { id: listingId }, {}, 404);
+  assert.equal((await readyMadeListingRow(listingId))?.status, "submitted",
+    "a refused non-author must not withdraw the listing");
+  await send(withdraw, "author", readyMadeAuthorCookie, { id: listingId }, {}, 200);
+  assert.equal((await readyMadeListingRow(listingId))?.status, "withdrawn");
+
+  const deletionBuild = parseJson(await send(create, "author (delete fixture)", readyMadeAuthorCookie, {}, {
+    title: "Mutation auth disposable delete build",
+    destination: "Kyoto",
+    durationDays: 1,
+  }, 201));
+  const deleteTripId = String(deletionBuild.tripId);
+  const deleteBuild = "DELETE /api/expert/ready-made/build/:id";
+  await send(deleteBuild, "anonymous", undefined, { id: deleteTripId }, {}, 401);
+  await send(deleteBuild, "ordinary user (non-author)", sessionCookie, { id: deleteTripId }, {}, 403);
+  assert.ok(await readyMadeTripRow(deleteTripId),
+    "a refused non-author must not delete the build");
+  await send(deleteBuild, "author", readyMadeAuthorCookie, { id: deleteTripId }, {}, 204);
+  assert.equal(await readyMadeTripRow(deleteTripId), undefined);
+
+  const expected = Object.keys(RESOURCE_PROBES)
+    .filter((key) => RESOURCE_PROBES[key] === "readyMade")
+    .sort();
+  assert.deepEqual([...probed].sort(), expected,
+    "ready-made RESOURCE_PROBES and their live probes must name the same eight rails");
+  emitEvidence({ kind: "summary", readyMadeResourceProbed: probed.size });
 });

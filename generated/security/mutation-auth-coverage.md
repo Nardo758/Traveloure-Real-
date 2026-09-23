@@ -4,22 +4,22 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 291/589**; remaining: **298**.
-- Admin: **143/148**; payments: **14/31**; user-data: **134/200**; other: **0/210**.
+- **Tested: 299/589**; remaining: **290**.
+- Admin: **143/148**; payments: **14/31**; user-data: **142/200**; other: **0/210**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **fresh**; manifest SHA-256: `1e817f102bb76e96e3aea888e2f7b51fa1c6e86023cba366353fad569147f0f2`; run timestamp: 2026-09-22T02:55:55.009Z.
+- Evidence state: **fresh**; manifest SHA-256: `1e817f102bb76e96e3aea888e2f7b51fa1c6e86023cba366353fad569147f0f2`; run timestamp: 2026-09-23T00:47:42.062Z.
 - `admin`: **passed**, 143 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 229 exact endpoint keys, context `unauthenticated`.
-- `expert-provider-wrong-role`: **passed**, 45 exact endpoint keys, context `wrong-role`.
+- `expert-provider-wrong-role`: **passed**, 53 exact endpoint keys, context `wrong-role`.
 - `resource-ownership`: **passed**, 33 exact endpoint keys, context `resource-owner`.
 - `optimization-confirm`: **passed**, 1 exact endpoint keys, context `optimization-confirm`.
 - An endpoint is tested only when a passing, non-skipped suite in the fresh evidence artifact names that exact endpoint in its required context. Route classification alone never promotes coverage.
 - Totals are a strict endpoint union, not a sum of evidence dimensions. Endpoints with both unauthenticated and cross-owner evidence are counted once.
 - The confirmed optimization-confirm ownership bug is fixed: missing or mismatched Stripe `metadata.userId` is rejected before DB/revenue writes.
-- Payments/user-data signature endpoints (2) are counted only for unsigned-request coverage. Session-self payments/user-data endpoints are counted from fresh unauthenticated evidence, except the 30 explicit handler-fixture exclusions below; only those exclusions are **not tested**.
+- Payments/user-data signature endpoints (2) are counted only for unsigned-request coverage. Session-self payments/user-data endpoints are counted from fresh unauthenticated evidence, except the 26 explicit handler-fixture exclusions below; only those exclusions are **not tested**.
 
 ## Remaining risk
 
@@ -36,7 +36,6 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | DELETE /api/destination-calendar/events/:id | other | session-self | server/routes/content.routes.ts:2272 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/emergency-contacts/:id | other | session-self | server/routes/content.routes.ts:7308 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/expert-workspace/collections/:id/items/:itemId | other | public-or-system | server/routes/expert-workspace.routes.ts:789 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| DELETE /api/expert/ready-made/build/:id | user-data | resource-owner | server/routes/ready-made.routes.ts:321 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
 | DELETE /api/expert/vendors/:vendorId | user-data | session-self | server/routes/experts.routes.ts:428 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | DELETE /api/faqs/:id | other | session-self | server/routes/content.routes.ts:2077 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/invites/:inviteId | other | session-self | server/routes/guest-invites.ts:422 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -68,8 +67,6 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | PATCH /api/expert-workspace/library/:id/extracted-places/:index | other | resource-owner | server/routes/expert-workspace.routes.ts:425 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/expert/assignments/:assignmentId/workspace-status | user-data | resource-owner | server/routes/booking-actions.ts:1311 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
 | PATCH /api/expert/bookings/:id/status | user-data | session-self | server/routes.ts:7342 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/expert/ready-made/:id | user-data | session-self | server/routes/ready-made.routes.ts:575 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/expert/ready-made/build/:tripId | user-data | resource-owner | server/routes/ready-made.routes.ts:285 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
 | PATCH /api/expert/role | user-data | session-self | server/routes/expert-console.routes.ts:74 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | PATCH /api/expert/services/:id/status | user-data | resource-owner | server/routes.ts:6046 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
 | PATCH /api/faqs/:id | other | session-self | server/routes/content.routes.ts:2055 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -187,11 +184,6 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/expert/ai-tasks/delegate | user-data | session-self | server/routes.ts:11520 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/assignments/:assignmentId/accept | user-data | session-self | server/routes/booking-actions.ts:1293 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/bookings/:id/complete | user-data | session-self | server/routes.ts:7513 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/ready-made | user-data | resource-owner | server/routes/ready-made.routes.ts:71 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
-| POST /api/expert/ready-made/:id/build-review | user-data | session-self | server/routes/ready-made.routes.ts:782 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/ready-made/:id/submit | user-data | session-self | server/routes/ready-made.routes.ts:687 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/ready-made/:id/withdraw | user-data | session-self | server/routes/ready-made.routes.ts:748 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/ready-made/from-trip/:tripId | user-data | resource-owner | server/routes/ready-made.routes.ts:160 | Resource-owner endpoint is not one of the 32 trip or two optimization real-fixture endpoints. |
 | POST /api/expert/reviews/:id/respond | user-data | session-self | server/routes.ts:7965 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/trips/:tripId/vendors | user-data | session-self | server/routes/experts.routes.ts:351 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/faqs | other | session-self | server/routes/content.routes.ts:2036 | Other-category endpoint is intentionally outside the strict tested set. |

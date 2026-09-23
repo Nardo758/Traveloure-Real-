@@ -67,3 +67,7 @@
 - [Publish only from origin/main](publish-only-from-main.md) — the agent never publishes, never commits on main; a publish builds the WORKSPACE, so a checkout ahead of main ships unreviewed code with every check green.
 - [Photography source preference](photography-source-preference.md) — include Unsplash when sourcing licensed project photography; do not default exclusively to Pexels.
 - [Moment media association](moment-media-association.md) — expert photos need an explicit exact Moment key; never infer an occasion from city alone.
+- [Secret refresh boundaries](secret-refresh-boundaries.md) — secure-form secret updates do not refresh existing workspace shell environments; validate through a republish or newly injected runtime.
+- [Platform Stripe webhook verified](platform-stripe-webhook-verified.md) — live bookings webhook passed signature verification, durable insert, no-op isolation, and first-attempt 200.
+- [Stripe Stage 2 activation](stripe-stage2-subscription-hold.md) — approved events were activated in three windows; success is Connect-only, with the first live day requiring reconciliation.
+- [Provider fee parity](provider-fee-parity.md) — production display and charge resolution agree across all gated contexts; current split is 25% platform / 75% provider.
