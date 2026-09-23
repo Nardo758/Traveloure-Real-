@@ -27,11 +27,31 @@ test("resolves named re-exports used by authentication registration helpers", ()
   assert.equal(result.mutations[0].effectivePath, "/api/auth/login");
 });
 
+/*
+ * THE NUMBERS BELOW WERE WRONG FROM BIRTH, AND THAT — NOT DRIFT — IS WHY THEY
+ * WENT TEN MONTHS WITHOUT BEING NOTICED.
+ *
+ * This file was added by PR #973 asserting 587 raw / 578 unique. The manifest
+ * generated THAT SAME DAY already said 597 / 588, so the suite never passed
+ * once. It also runs in NO workflow, and `check-test-files-wired.cjs` does not
+ * scan `scripts/`, so nothing ever went red: a test that cannot pass and cannot
+ * be seen is indistinguishable from one that does not exist.
+ *
+ * Since that day the mounted graph has grown by exactly ONE route —
+ * `POST /api/memberships/checkout` (`payments.routes.ts`, ledger
+ * `2026-09-21-membership-checkout`) — taking it to 598 / 589. So updating these
+ * numbers blesses one reviewed, ratified addition and corrects a ten-count
+ * birth defect. It is not a drift detector being silenced.
+ *
+ * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
+ * the mounted graph fails here. Now that the file is wired into CI, changing a
+ * number is a decision that needs its reason stated, exactly as this one does.
+ */
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 587);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 578);
+  assert.equal(result.mutations.length, 598);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 589);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -41,12 +61,12 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 578);
-  assert.equal(manifest.rawRegistrationCount, 587);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 578);
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 147, "user-data": 194, other: 206 });
+  assert.equal(endpointRows.length, 589);
+  assert.equal(manifest.rawRegistrationCount, 598);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 589);
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 148, "user-data": 200, other: 210 });
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 147, "session-self": 297, "resource-owner": 90,
+    "admin-role": 148, "session-self": 304, "resource-owner": 93,
     signature: 6, "public-or-system": 38, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
