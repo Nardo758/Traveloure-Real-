@@ -182,6 +182,7 @@ import { safeOfferingContractSnapshot } from "./services/offering-contract-snaps
 import { createServiceReviewWithAggregate } from "./services/review-mutation.service";
 import { resolveOccasionTemplate } from "./services/occasion-templates";
 import { logger } from "./infrastructure/logger";
+import { loadEarnerRatings } from "./services/earner-rating.service";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
@@ -5127,7 +5128,9 @@ export class DatabaseStorage implements IStorage {
     // Get all users with any expert-like role
     const expertRoles = ["expert", "travel_expert", "local_expert", "event_planner", "executive_assistant"];
     const experts = await db.select().from(users).where(inArray(users.role, expertRoles));
-    
+    // One query for every expert's rating (board task #1665), rather than one per expert.
+    const earnerRatings = await loadEarnerRatings(experts.map((expert) => expert.id));
+
     const expertsWithProfiles = await Promise.all(experts.map(async (expert) => {
       // Get expert's experience types
       const expTypes = await db.select({
@@ -5150,27 +5153,13 @@ export class DatabaseStorage implements IStorage {
       // Get expert's local expert form for additional info
       const form = await this.getLocalExpertForm(expert.id);
 
-      // Expert-level rating aggregate (§13-honest). Experts have no rating column of
-      // their own, so we derive it from the real, booking-gated reviews on their OWN
-      // approved services (the per-service average_rating/review_count already stored
-      // on provider_services). Review-count-WEIGHTED mean — equivalent to the true
-      // mean of every individual review across the expert's services, so a service
-      // with many reviews correctly outweighs one with a single review (a naive
-      // average-of-averages would distort that). No fabrication: null → the client
-      // renders "New" when the expert has no reviews yet. Zero extra queries — the
-      // services are already loaded above.
-      let weightedSum = 0;
-      let totalReviews = 0;
-      for (const s of services) {
-        const rc = Number(s.reviewCount ?? 0);
-        const ar = s.averageRating != null ? Number(s.averageRating) : null;
-        if (rc > 0 && ar != null && !Number.isNaN(ar)) {
-          weightedSum += ar * rc;
-          totalReviews += rc;
-        }
-      }
-      const expertAverageRating =
-        totalReviews > 0 ? Math.round((weightedSum / totalReviews) * 100) / 100 : null;
+      // Expert-level rating: the ONE earner-rating rule (`earner-rating.service.ts`, board task
+      // #1665) — the mean of every approved review row naming this expert, the same figure their
+      // storefront shows. It used to be a review-count-weighted mean of the denormalized
+      // provider_services.average_rating/review_count, which can be stale and which a paused
+      // listing's reviews dropped out of, so /experts and /s/:handle could disagree. null → "New".
+      const { averageRating: expertAverageRating, reviewCount: totalReviews } =
+        earnerRatings.get(expert.id) ?? { averageRating: null, reviewCount: 0 };
 
       return {
         ...expert,
