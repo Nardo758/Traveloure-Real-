@@ -846,6 +846,11 @@ export async function createExpertAssignmentNotification(
   // `2026-09-23-phase2-messages`). Turning it off stops this notice; the assignment itself and its
   // place in Assigned Trips / the Inbox are unchanged.
   const { isNotificationChannelEnabled } = await import("./notification-preferences.service");
+  // Ledger 2026-09-24-earner-email-notifications: the invite also reaches the expert by EMAIL, on
+  // its own consent switch (bookingRequest · email), independent of the in-app toggle below.
+  void import("./activity-email.service").then(({ sendActivityEmail }) =>
+    sendActivityEmail({ recipientId: expertUserId, kind: "advisor_invite", subject: tripLabel, destination: "inbox" }),
+  );
   if (!(await isNotificationChannelEnabled(expertUserId, "bookingRequest", "push"))) return;
   await db.execute(sql`
     INSERT INTO notifications (id, user_id, type, title, message, data, is_read, created_at)
@@ -966,10 +971,13 @@ export async function getTripSuggestions(tripId: string, expertIdFilter?: string
       ts.id, ts.trip_id, ts.expert_id, ts.type, ts.day_number,
       ts.title, ts.description, ts.estimated_cost, ts.status,
       ts.rejection_note, ts.created_at, ts.reviewed_at,
+      ts.provider_service_id,
+      ps.service_name as listing_name, ps.price as listing_price,
       u.first_name as expert_first_name, u.last_name as expert_last_name,
       u.profile_image_url as expert_profile_image_url
     FROM trip_suggestions ts
     JOIN users u ON u.id = ts.expert_id
+    LEFT JOIN provider_services ps ON ps.id = ts.provider_service_id
     WHERE ts.trip_id = ${tripId}
       ${expertIdFilter ? sql`AND ts.expert_id = ${expertIdFilter}` : sql``}
     ORDER BY ts.created_at DESC
@@ -985,20 +993,41 @@ export async function createTripSuggestion(values: {
   title: string;
   description?: string | null;
   estimatedCost?: string | null;
+  /** Migration 321 / LD 52 (option B): a listing the caller has ALREADY verified live. */
+  providerServiceId?: string | null;
 }): Promise<string> {
   const suggestionId = crypto.randomUUID();
   await db.execute(sql`
-    INSERT INTO trip_suggestions (id, trip_id, expert_id, type, day_number, title, description, estimated_cost, status, created_at)
+    INSERT INTO trip_suggestions (id, trip_id, expert_id, type, day_number, title, description, estimated_cost, provider_service_id, status, created_at)
     VALUES (${suggestionId}, ${values.tripId}, ${values.expertId}, ${values.type},
             ${values.dayNumber ?? null}, ${values.title}, ${values.description ?? null},
-            ${values.estimatedCost ?? null}, 'pending', NOW())
+            ${values.estimatedCost ?? null}, ${values.providerServiceId ?? null}, 'pending', NOW())
   `);
   return suggestionId;
 }
 
+/**
+ * LD 52 (option B): the ONE answer to "may this listing be suggested?" — the public read gate every
+ * public `provider_services` surface applies (approved AND active, F2 / migration 111). Returns the
+ * listing's name and published price for the suggestion's display defaults, or null (§13: an
+ * unapproved, paused or missing listing is the same answer, so this cannot probe drafts).
+ */
+export async function resolveSuggestableListing(
+  serviceId: string,
+): Promise<{ id: string; name: string; price: string | null } | null> {
+  const result = await db.execute(sql`
+    SELECT id, service_name, price FROM provider_services
+    WHERE id = ${serviceId} AND approval_status = 'approved' AND status = 'active'
+    LIMIT 1
+  `);
+  const row: any = result.rows?.[0];
+  if (!row) return null;
+  return { id: String(row.id), name: String(row.service_name ?? ""), price: row.price == null ? null : String(row.price) };
+}
+
 export async function getPendingSuggestion(suggestionId: string, tripId: string): Promise<any | null> {
   const result = await db.execute(sql`
-    SELECT id, type, day_number, title, description, estimated_cost
+    SELECT id, type, day_number, title, description, estimated_cost, provider_service_id
     FROM trip_suggestions
     WHERE id = ${suggestionId} AND trip_id = ${tripId} AND status = 'pending'
   `);

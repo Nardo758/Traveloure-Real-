@@ -17,7 +17,11 @@
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, Lightbulb, Loader2, XCircle } from "lucide-react";
+import { useLocation } from "wouter";
+import { CheckCircle, Lightbulb, Loader2, ShoppingCart, XCircle } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 // The accept/decline mutation lives in ONE hook (ledger `2026-09-07-home-time-axis`) — Home's
 // "Since you were here" offers the same Accept / Decline through it (§18 rule 1).
 import { suggestionsQueryKey, useReviewSuggestion, type TripSuggestion } from "@/hooks/use-review-suggestion";
@@ -43,6 +47,31 @@ export function ExpertSuggestionsPanel({ tripId, className }: { tripId: string; 
   });
 
   const reviewSuggestionMutation = useReviewSuggestion(tripId);
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [bookingId, setBookingId] = useState<string | null>(null);
+
+  // LD 52 (option B): a listing-backed suggestion can be approved straight into checkout — the
+  // SAME approve rail (it materializes a bookable item), then the SAME per-item routing rail every
+  // "add to checkout" uses, then the payment step. The traveler pays; the suggester never does.
+  const approveAndBook = async (suggestionId: string) => {
+    setBookingId(suggestionId);
+    try {
+      const result = await reviewSuggestionMutation.mutateAsync({ suggestionId, status: "approved" });
+      if (!result?.itemId) throw new Error("no item");
+      await apiRequest("POST", `/api/trips/${tripId}/items/${result.itemId}/route`, { to: "ready_for_checkout" });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      setLocation(BUY_NOW_CART_PATH);
+    } catch {
+      toast({
+        title: "Added to your plan",
+        description: "It couldn't be moved to checkout automatically — send it to checkout from your plan.",
+      });
+    } finally {
+      setBookingId(null);
+    }
+  };
 
   const suggestions = data?.suggestions ?? [];
   const pendingCount = suggestions.filter((s) => s.status === "pending").length;
@@ -98,6 +127,12 @@ export function ExpertSuggestionsPanel({ tripId, className }: { tripId: string; 
                   )}
                 </div>
                 <p className="font-medium text-foreground mb-1">{suggestion.title}</p>
+                {suggestion.provider_service_id && (
+                  <p className="text-xs text-emerald-700 mb-1" data-testid={`suggestion-listing-${suggestion.id}`}>
+                    Bookable on Traveloure{suggestion.listing_name ? ` · ${suggestion.listing_name}` : ""}
+                    {suggestion.listing_price ? ` · $${parseFloat(suggestion.listing_price).toFixed(0)}` : ""}
+                  </p>
+                )}
                 {suggestion.description && (
                   <p className="text-sm text-muted-foreground mb-2">{suggestion.description}</p>
                 )}
@@ -128,6 +163,18 @@ export function ExpertSuggestionsPanel({ tripId, className }: { tripId: string; 
                   <CheckCircle className="w-3.5 h-3.5" />
                   Approve &amp; add to itinerary
                 </Button>
+                {suggestion.provider_service_id && (
+                  <Button
+                    size="sm"
+                    className="flex-1 gap-1.5"
+                    onClick={() => approveAndBook(suggestion.id)}
+                    disabled={reviewSuggestionMutation.isPending || bookingId !== null}
+                    data-testid={`button-approve-book-suggestion-${suggestion.id}`}
+                  >
+                    {bookingId === suggestion.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShoppingCart className="w-3.5 h-3.5" />}
+                    Approve &amp; book
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"

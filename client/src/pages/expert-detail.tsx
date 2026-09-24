@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useParams, Link, useLocation, useSearch, Redirect } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -252,47 +251,14 @@ export default function ExpertDetailPage() {
     navigate(`/chat?expertId=${expertId}`);
   };
 
-  // Sprint 2.1: request this expert's help WITH the trip plan attached. Creates
-  // a pending expert-booking-request (no payment moves here — amounts derive
-  // server-side from the service record, §14); the tripId on the booking is
-  // what lets the expert open the traveler's plan snapshot in their console.
-  const requestHelpMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("POST", "/api/expert-booking-requests", {
-        tripId: handoffTripId,
-        serviceId: services[0]?.id,
-        notes: "Traveler shared their trip plan and requested help from your storefront.",
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
-      toast({
-        title: "Request sent with your trip plan",
-        description: `${expert?.firstName || "The expert"} can now see your plan and will respond to your request.`,
-      });
-    },
-    onError: () => {
-      toast({ variant: "destructive", title: "Could not send request", description: "Please try again." });
-    },
-  });
-
-  // Ruling 2026-09-04-slip-precondition (lane b): the server now REQUIRES a tripId on this
-  // endpoint — no expert touchpoint exists without a slip. Without the ?tripId= handoff there
-  // is nothing to request help WITH, so this opens the unified planning entry instead of firing
-  // a request that would 400. The traveler returns here via the existing handoff once they have
-  // a trip. Only real page context is passed — never an invented destination (§13).
-  const handleRequestHelpWithPlan = () => {
-    if (!isAuthenticated) {
-      openSignInModal();
-      return;
-    }
-    if (!handoffTripId) {
-      planning.open({ city: heroLocation || undefined });
-      return;
-    }
-    requestHelpMutation.mutate();
-  };
-
+  // Decision-maker, Sep 24 2026 (ledger `2026-09-24-storefront-message-first`): a traveler can
+  // always MESSAGE an expert, listing or not. "Request help" used to POST
+  // /api/expert-booking-requests with `services[0]` — a priced booking against an arbitrary
+  // listing that nothing let the traveler pay (ledger `2026-09-24-request-rail-unpaid`). That rail
+  // is gone from this page. Sharing a PLAN with an expert goes through the handle-addressed
+  // advisors rail on `/s/:handle`; this page renders only for an earner with NO handle, and the
+  // id-addressed input on that rail is LD 40 debt no new caller may adopt, so here the traveler is
+  // told the honest reason and offered the message thread instead (§13).
   const handleScheduleConsultation = () => {
     if (!isAuthenticated) {
       openSignInModal();
@@ -301,10 +267,8 @@ export default function ExpertDetailPage() {
     if (services.length > 0) {
       navigate(`/cart?expertId=${expertId}&serviceId=${services[0]?.id || ""}`);
     } else {
-      toast({
-        title: "No services available",
-        description: `${expert?.firstName || "This expert"} hasn't listed any services yet. Contact them directly instead.`,
-      });
+      // No listing is not a dead end: the traveler can always write to the expert.
+      handleContactExpert();
     }
   };
 
@@ -828,43 +792,27 @@ export default function ExpertDetailPage() {
                   </div>
                 )}
                 <div className="mt-4 flex flex-col gap-2">
-                  {services.length > 0 && (
-                    <button
-                      className="inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2.5 text-[12px] font-bold text-white"
-                      style={{ background: PINK, boxShadow: "0 4px 12px rgba(232,93,85,.20)" }}
-                      onClick={handleRequestHelpWithPlan}
-                      disabled={requestHelpMutation.isPending || requestHelpMutation.isSuccess}
-                      data-testid="button-request-help-with-plan"
-                    >
-                      <Briefcase className="h-3.5 w-3.5" />
-                      {requestHelpMutation.isSuccess
-                        ? "Request sent"
-                        : requestHelpMutation.isPending
-                          ? "Sending…"
-                          : handoffTripId
-                            ? "Share plan & request help"
-                            : "Start a plan & request help"}
-                    </button>
+                  <button
+                    className="inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2.5 text-[12px] font-bold text-white"
+                    style={{ background: PINK, boxShadow: "0 4px 12px rgba(232,93,85,.20)" }}
+                    onClick={handleContactExpert}
+                    data-testid="button-message-expert"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" /> Message {expert.firstName || "this expert"}
+                  </button>
+                  {handoffTripId && (
+                    <p className="text-[11px] leading-snug" style={{ color: MUTED }} data-testid="text-plan-share-unavailable">
+                      {expert.firstName || "This expert"} hasn't set up a public storefront yet, so your plan
+                      can't be shared with them from here. Message them to get started.
+                    </p>
                   )}
                   <button
                     className="inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2.5 text-[12px] font-bold text-white"
-                    style={
-                      services.length > 0
-                        ? { background: NAVY }
-                        : { background: PINK, boxShadow: "0 4px 12px rgba(232,93,85,.20)" }
-                    }
+                    style={{ background: NAVY }}
                     onClick={handleScheduleConsultation}
                     data-testid="button-schedule-consultation"
                   >
                     <Calendar className="h-3.5 w-3.5" /> Plan with {expert.firstName || "them"}
-                  </button>
-                  <button
-                    className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3.5 py-2.5 text-[12px] font-bold"
-                    style={{ borderColor: LINE, color: INK, background: "var(--earn-card)" }}
-                    onClick={handleContactExpert}
-                    data-testid="button-contact-expert"
-                  >
-                    <MessageCircle className="h-3.5 w-3.5" /> Ask a quick question
                   </button>
                 </div>
                 {responseTime && (

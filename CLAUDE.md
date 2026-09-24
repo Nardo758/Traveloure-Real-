@@ -2015,6 +2015,26 @@ This document captures architectural decisions to maintain consistency across co
     classifies `plan_work`, but its plan access is the READ grant above, never checkout WRITE; the
     platform's reserved account is refused outright at the one author, for every caller.
 
+52. **BOOKING ON BEHALF: THE HELPER PREPARES, THE TRAVELER PAYS (decision-maker ratified Sep 24, 2026 —
+    ledger `2026-09-24-approve-and-book`, `2026-09-24-suggestion-names-listing`; migration 321).** Every
+    way someone books "for" a traveler ends in the traveler's own checkout; no helper ever pays (LD 42
+    D19). **(A) An expert-built plan is approved and booked in one press** ("Approve & book N items" on
+    the existing delivery handshake — the same `plan-review` rail, then the same per-item routing rail,
+    then the payment step). **(B) A booking concierge or expert may SUGGEST a specific platform
+    listing:** `trip_suggestions.provider_service_id` (migration 321) is additive NULLABLE, FK →
+    `provider_services` ON DELETE SET NULL, NO DEFAULT, NO CHECK, NO BACKFILL, declared in
+    `shared/schema.ts`. It is SERVER-VERIFIED at create — approved AND active, the public read gate,
+    through ONE `resolveSuggestableListing` — and only the id is taken from the body; the display name
+    and price come from the row (§14). Approval materializes a BOOKABLE item (it carries the listing),
+    and the traveler may "Approve & book" it straight to the payment step. This keeps LD 51's ruling
+    intact: a concierge's plan access stays READ-only (`pending`); a suggestion is not a write to the
+    plan, and only the traveler's approval makes one. **(C) An executive assistant builds a plan the
+    executive owns** — ratified in principle (the executive owns it, must accept the assistant first
+    through the existing `ea_client_relationships` link, and the assistant edits as a collaborator,
+    never labelled "your expert"); **not yet built** — it needs a server-written delegate grant and an
+    "acting for the owner" render role on the slip, and lands as its own lane with its own amendment
+    here.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

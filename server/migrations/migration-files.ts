@@ -1813,4 +1813,9 @@ export const MIGRATION_FILES = [
   "319_background_check_flags_repair.sql",
   // 320 — platform webhook per-consumer event claims. Separate from shared webhook_events.
   "320_platform_webhook_consumer_idempotency.sql",
+  // 2026-09-24-suggestion-names-listing (Locked Decision 52, option B): `trip_suggestions.
+  // provider_service_id` — additive NULLABLE FK, ON DELETE SET NULL, NO DEFAULT, NO CHECK, NO
+  // BACKFILL; declared in shared/schema.ts in the same commit. Column-only, so it is §20's one
+  // approvable publish prompt; no preflight-prod-constraints manifest entry is needed.
+  "321_trip_suggestions_listing.sql",
 ] as const;

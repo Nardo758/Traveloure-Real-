@@ -233,6 +233,19 @@ export async function sendMessage(
     data: { clientId: senderId },
   });
 
+  // Ledger 2026-09-24-earner-email-notifications: an earner also gets ONE email per sender per
+  // hour (consent, address and throttle decided in the ONE sender). Fire-and-forget — the message
+  // is already committed and an email must never fail it (§15b).
+  void import("./activity-email.service").then(({ sendActivityEmail }) =>
+    sendActivityEmail({
+      recipientId,
+      kind: "new_message",
+      actorName: senderName === "Someone" ? null : senderName,
+      destination: "messages",
+      throttleKey: `${senderId}>${recipientId}`,
+    }),
+  );
+
   return {
     id: newMessage.id,
     conversationId: buildConversationId(senderId, recipientId),

@@ -137,6 +137,13 @@ export function resolveNotificationLink(n: ApiNotification): ResolvedNotificatio
       : "/experts";
     return { href: path, label: "See other experts" };
   }
+  // Ledger 2026-09-24-earner-email-notifications: earner notices that open a console page.
+  if (n.type === "quote_requested" || n.type === "traveler_cancelled" || n.type === "review_received") {
+    const path = n.data?.workspacePath;
+    if (typeof path === "string" && (path.startsWith("/expert/") || path.startsWith("/provider/"))) {
+      return { href: path, label: "Open" };
+    }
+  }
   if (n.data?.tripId) {
     const isTravelerTripLink = n.data.workspacePath?.startsWith("/trip/");
     const itemId = typeof n.data.itemId === "string" ? n.data.itemId : undefined;

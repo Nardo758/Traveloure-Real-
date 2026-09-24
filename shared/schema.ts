@@ -533,6 +533,10 @@ export const tripSuggestions = pgTable("trip_suggestions", {
   rejectionNote: text("rejection_note"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   reviewedAt: timestamp("reviewed_at"),
+  // Migration 321 (Locked Decision 52, option B — ledger `2026-09-24-suggestion-names-listing`): the
+  // platform listing this suggestion proposes. Server-verified approved+active at create, never
+  // client-trusted beyond that (§14). NULL = a free-text suggestion (§13); no backfill.
+  providerServiceId: varchar("provider_service_id").references(() => providerServices.id, { onDelete: "set null" }),
 });
 
 export type TripSuggestion = typeof tripSuggestions.$inferSelect;

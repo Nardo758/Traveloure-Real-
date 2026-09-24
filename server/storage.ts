@@ -1822,6 +1822,19 @@ export class DatabaseStorage implements IStorage {
       } catch (err) {
         console.error('Failed to create message notification:', err);
       }
+      // Ledger 2026-09-24-earner-email-notifications: the email twin of the notice above, through
+      // the ONE sender (earner-only, consent-gated, one per sender per hour). Never throws.
+      const receiverId = newChat.receiverId;
+      const senderId = newChat.senderId;
+      void import('./services/activity-email.service').then(async ({ sendActivityEmail, displayNameOf }) =>
+        sendActivityEmail({
+          recipientId: receiverId,
+          kind: 'new_message',
+          actorName: await displayNameOf(senderId),
+          destination: 'messages',
+          throttleKey: `${senderId}>${receiverId}`,
+        }),
+      );
     }
 
     return newChat;

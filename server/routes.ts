@@ -8061,6 +8061,42 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         console.error("Failed to write traveler cancellation notification:", notifyErr);
       }
 
+      // Ledger 2026-09-24-earner-email-notifications: the SELLER was never told a traveler
+      // cancelled. Once (the booking id is the dedupe key), in-app and on their own email consent.
+      // Ancillary — never fails the cancellation that already committed (§15b).
+      if (booking.providerId) {
+        const sellerId = booking.providerId;
+        void (async () => {
+          try {
+            const { sendActivityEmail, displayNameOf, earnerConsolePath } = await import("./services/activity-email.service");
+            const seller = await storage.getUser(sellerId);
+            const service = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : undefined;
+            const actorName = await displayNameOf(userId);
+            const { inserted } = await storage.createNotificationOnce({
+              userId: sellerId,
+              type: "traveler_cancelled",
+              title: "Booking cancelled by the traveler",
+              message: `${actorName ?? "A traveler"} cancelled booking ${updated?.trackingNumber ?? ""}${service?.serviceName ? ` for ${service.serviceName}` : ""}.`,
+              relatedId: req.params.id,
+              relatedType: "booking",
+              data: { bookingId: req.params.id, workspacePath: earnerConsolePath(seller?.role, "bookings") },
+              dedupeKey: `traveler-cancelled:${req.params.id}`,
+            } as any);
+            if (inserted) {
+              await sendActivityEmail({
+                recipientId: sellerId,
+                kind: "booking_cancelled",
+                actorName,
+                subject: service?.serviceName ?? null,
+                destination: "bookings",
+              });
+            }
+          } catch (err) {
+            console.error("[cancel] seller notify failed (non-fatal):", err);
+          }
+        })();
+      }
+
       res.json({
         ...updated,
         refund: {
