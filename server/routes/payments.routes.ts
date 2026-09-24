@@ -200,6 +200,7 @@ import {
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 import { getStripeSecretKey } from "../utils/stripe-key";
+import { sanitizeInput } from "../utils/sanitize";
 
 const router = Router();
 
@@ -207,16 +208,7 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-function sanitizeInput(input: string): string {
-  if (typeof input !== 'string') return input;
-  return input
-    .replace(/<[^>]*>/g, '')
-    .replace(/[<>'"]/g, (char) => {
-      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
-      return entities[char] || char;
-    })
-    .trim();
-}
+// sanitizeInput: the ONE canonical copy lives in server/utils/sanitize.ts (board #1318).
 
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   const result = { ...obj };

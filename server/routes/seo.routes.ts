@@ -21,6 +21,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, readyMadeTrips } from "@shared/schema";
 import { transformDevHtml } from "../vite-dev-html";
+import { injectIntoHead } from "../utils/html-head";
 
 const router = Router();
 
@@ -209,7 +210,7 @@ async function serveWithHead(
       .replace(/<link rel="canonical"[^>]*>\s*/, "")
       .replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "")
       .replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
-    template = template.replace("<head>", `<head>\n    ${tags}`);
+    template = injectIntoHead(template, tags);
     template = await transformDevHtml(req.originalUrl, template);
     return res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (err) {

@@ -206,6 +206,8 @@ import { resolveTripTimezone } from "../services/trip-timezone";
 import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "../utils/plan-approval";
 
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
+import { buildItineraryViewOgTags, injectIntoHead } from "../utils/html-head";
+import { sanitizeInput } from "../utils/sanitize";
 
 const router = Router();
 
@@ -294,16 +296,7 @@ const vendorBulkEmailLimiter = createRateLimiter({
   keyGenerator: (req: any) => `vendor-bulk-email:${getReqUserId(req) ?? req.ip ?? "unknown"}`,
 });
 
-function sanitizeInput(input: string): string {
-  if (typeof input !== 'string') return input;
-  return input
-    .replace(/<[^>]*>/g, '')
-    .replace(/[<>'"]/g, (char) => {
-      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
-      return entities[char] || char;
-    })
-    .trim();
-}
+// sanitizeInput: the ONE canonical copy lives in server/utils/sanitize.ts (board #1318).
 
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   const result = { ...obj };
@@ -2939,28 +2932,9 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
 
       const destination = preview?.meta.destination || "an amazing destination";
       const variantName = preview?.meta.title || "Travel Itinerary";
-      const title = `${variantName} – ${destination} | Traveloure`;
-      const description = `Explore this AI-powered itinerary for ${destination}. View day-by-day activities, transport options, and more — shared via Traveloure.`;
       const shareUrl = `${req.protocol}://${req.get("host")}/itinerary-view/${token}`;
-
-      // Use a destination-based image for og:image (Unsplash source for travel images)
-      const encodedDest = encodeURIComponent(destination);
-      const ogImage = `https://source.unsplash.com/1200x630/?travel,${encodedDest}`;
-
-      const ogTags = [
-        `<title>${title}</title>`,
-        `<meta name="description" content="${description}" />`,
-        `<meta property="og:type" content="website" />`,
-        `<meta property="og:url" content="${shareUrl}" />`,
-        `<meta property="og:title" content="${title}" />`,
-        `<meta property="og:description" content="${description}" />`,
-        `<meta property="og:image" content="${ogImage}" />`,
-        `<meta property="og:site_name" content="Traveloure" />`,
-        `<meta name="twitter:card" content="summary_large_image" />`,
-        `<meta name="twitter:title" content="${title}" />`,
-        `<meta name="twitter:description" content="${description}" />`,
-        `<meta name="twitter:image" content="${ogImage}" />`,
-      ].join("\n    ");
+      // Escaped at render — see buildItineraryViewOgTags (board #1318 audit).
+      const ogTags = buildItineraryViewOgTags({ destination, variantName, shareUrl });
 
       // Read index.html and inject tags into <head>. ESM-safe resolution (no __dirname in the
       // dev runtime — the ReferenceError silently killed injection via catch/next()); prod
@@ -2980,7 +2954,7 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
       // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
       // duplicates are sloppy). Only sites that inject their own tags run this.
       template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
-      template = template.replace("<head>", `<head>\n    ${ogTags}`);
+      template = injectIntoHead(template, ogTags);
       // Dev-only: run the raw index.html through Vite's transform so the React-refresh
       // preamble/client injections are present (prod never registers a transformer, so this
       // is a no-op pass-through there).

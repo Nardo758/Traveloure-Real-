@@ -20,6 +20,8 @@
  *   S5  `seedStops` treats NO ROWS as NOT CAPTURED and falls back to `trips.destination`, and it
  *       never coerces an unparseable coordinate to 0 (0,0 is a real place).
  *   S6  the summary is a SEQUENCE and nothing more — no distance, no duration, no route.
+ *   S7  the city grid's "add to an existing plan" (board task #805) appends to the list it READ,
+ *       keeps every stop already there, and writes nothing when the plan already names the city.
  *
  * Pure unit: no DOM, no DB, no fetch.
  * Run: npx tsx --test client/src/lib/__tests__/plan-stops.test.ts
@@ -40,6 +42,7 @@ import {
   stopNameForLocation,
   stopSequence,
   stopsPayload,
+  stopsWithCityAdded,
   type PlanStop,
 } from "../plan-stops";
 
@@ -226,5 +229,34 @@ describe("S6 — the summary is a sequence, not a route", () => {
   it("claims no distance, duration or travel of any kind", () => {
     const summary = stopSequence([{ name: "Edinburgh" }, { name: "Dornoch" }]);
     assert.ok(!/\bkm\b|\bmiles?\b|\bmin(ute)?s?\b|\bhours?\b|\bdrive\b|\bdistance\b/i.test(summary));
+  });
+});
+
+describe("S7 — adding a city from the grid to an existing plan (#805)", () => {
+  it("appends to the plan's own rows and keeps every stop it read", () => {
+    const { changed, next } = stopsWithCityAdded(
+      "Kyoto",
+      [{ name: "Kyoto", lat: "35.01", lng: "135.77" }, { name: "Osaka" }],
+      "Nara",
+      "Japan",
+    );
+    assert.equal(changed, true);
+    assert.deepEqual(next.map((s) => s.name), ["Kyoto", "Osaka", "Nara"]);
+    assert.equal(next[0].lat, 35.01, "an existing stop's placement survives the write");
+    assert.deepEqual(next[2], { name: "Nara", city: "Nara", country: "Japan" });
+    assert.equal(next[2].lat, undefined, "the new stop is never geocoded");
+  });
+
+  it("falls back to trips.destination when the plan has no rows (not captured)", () => {
+    const { changed, next } = stopsWithCityAdded("Kyoto", [], "Osaka");
+    assert.equal(changed, true);
+    assert.deepEqual(next.map((s) => s.name), ["Kyoto", "Osaka"]);
+    assert.equal(next[1].country, undefined, "no country is claimed when the grid had none");
+  });
+
+  it("writes nothing when the plan already names the city", () => {
+    const { changed, next } = stopsWithCityAdded("Kyoto, Japan", null, "Kyoto");
+    assert.equal(changed, false);
+    assert.deepEqual(next.map((s) => s.name), ["Kyoto, Japan"]);
   });
 });

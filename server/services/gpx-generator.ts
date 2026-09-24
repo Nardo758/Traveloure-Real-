@@ -1,4 +1,4 @@
-import type { KmlInput } from "./kml-generator";
+import { escXml, type KmlInput } from "./kml-generator";
 
 export function generateGpx(input: KmlInput): string {
   const waypoints: string[] = [];
@@ -8,8 +8,8 @@ export function generateGpx(input: KmlInput): string {
     for (const activity of day.activities) {
       waypoints.push(
         `\n    <wpt lat="${activity.lat}" lon="${activity.lng}">` +
-        `\n      <name>Day ${day.dayNumber}: ${activity.name}</name>` +
-        `\n      <desc>Day ${day.dayNumber} - ${day.date}${activity.scheduledTime ? " - " + activity.scheduledTime : ""}</desc>` +
+        `\n      <name>Day ${day.dayNumber}: ${escXml(activity.name)}</name>` +
+        `\n      <desc>Day ${day.dayNumber} - ${escXml(day.date)}${activity.scheduledTime ? " - " + escXml(activity.scheduledTime) : ""}</desc>` +
         `\n      <type>Activity</type>` +
         `\n    </wpt>`
       );
@@ -17,12 +17,12 @@ export function generateGpx(input: KmlInput): string {
 
     if (day.activities.length >= 2) {
       const trackpoints = day.activities
-        .map(a => `        <trkpt lat="${a.lat}" lon="${a.lng}"><name>${a.name}</name></trkpt>`)
+        .map(a => `        <trkpt lat="${a.lat}" lon="${a.lng}"><name>${escXml(a.name)}</name></trkpt>`)
         .join("\n");
 
       tracks.push(
         `\n    <trk>` +
-        `\n      <name>Day ${day.dayNumber} - ${day.date}</name>` +
+        `\n      <name>Day ${day.dayNumber} - ${escXml(day.date)}</name>` +
         `\n      <trkseg>\n${trackpoints}\n      </trkseg>` +
         `\n    </trk>`
       );
@@ -35,7 +35,7 @@ export function generateGpx(input: KmlInput): string {
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
   <metadata>
-    <name>${input.tripName} - ${input.destination}</name>
+    <name>${escXml(input.tripName)} - ${escXml(input.destination)}</name>
     <desc>Traveloure Itinerary</desc>
     <time>${new Date().toISOString()}</time>
   </metadata>

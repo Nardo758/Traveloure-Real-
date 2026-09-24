@@ -16,6 +16,7 @@ import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
 import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
+import { SaveToggle } from "@/components/SaveToggle";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -829,6 +830,15 @@ export function CityFeedCardGem({
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
   const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
+  // What the heart saves (#330): the card's own identity, name, photo and city — a display cache
+  // for the Saved places shelf. A photo is carried only when it is an http(s) or site path.
+  const gemSaveItem = {
+    contentType: "gem" as const,
+    contentId: String(gem.id),
+    contentName: String(gem.placeName ?? "").trim().slice(0, 255),
+    contentImage: typeof photoUrl === "string" && /^(https?:\/\/|\/)/i.test(photoUrl) ? photoUrl : null,
+    city: city ? String(city).slice(0, 100) : null,
+  };
 
   const resolvedBookability: Bookability = bookability ?? resolveBookability(gem);
   // DISABLED: GET /api/gems/:id/matched-service has no server implementation — every gem
@@ -932,6 +942,8 @@ export function CityFeedCardGem({
       {!loading && photoUrl && isReferencePhoto({ url: photoUrl }) && (
         <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
       )}
+      {/* #330: save this place to Saved places. Bottom-left — the reference chip holds bottom-right. */}
+      {gemSaveItem.contentName && <SaveToggle item={gemSaveItem} className="absolute bottom-2 left-2 z-10" testId={`btn-save-gem-${gem.id}`} />}
     </div>
   );
 
@@ -1151,6 +1163,7 @@ export function CityFeedCardGem({
             {!loading && photoUrl && isReferencePhoto({ url: photoUrl }) && (
               <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
             )}
+            {gemSaveItem.contentName && <SaveToggle item={gemSaveItem} className="absolute bottom-2 left-2 z-10" testId={`btn-save-gem-${gem.id}`} />}
           </div>
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">

@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { savePlanStops } from "@/lib/plan-stops-writer";
+import { stopsWithCityAdded } from "@/lib/plan-stops";
 import { useLocation } from "wouter";
 import { CityCard as SharedCityCard } from "./CityCard";
 import { Card, CardContent } from "@/components/ui/card";
@@ -112,6 +115,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
   const { toast } = useToast();
   const { user, isAuthenticated } = useAuth();
   const { open: openPlanning } = usePlanning();
+  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const priceChange = parseFloat(city.priceChange || "0");
@@ -129,9 +133,36 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
     openPlanning({ city: city.cityName, country: city.country });
   };
 
-  const handleSelectTrip = (tripId: string) => {
+  // #805: this navigated to `/trip/:id?addCity=…`, which nothing read — the city was silently
+  // dropped, on the finalized Trip Card rather than the planning surface (LD 42 D8). It now adds
+  // the city as a stop through the ONE plan-stops writer, reading the plan's current list first
+  // (replace-list, LD 34), then opens the plan's slip. A failed write is said, never hidden.
+  const handleSelectTrip = async (tripId: string) => {
     setDialogOpen(false);
-    navigate(`/trip/${tripId}?addCity=${encodeURIComponent(city.cityName)}&country=${encodeURIComponent(city.country)}`);
+    try {
+      const res = await apiRequest("GET", `/api/trips/${tripId}`);
+      const trip = await res.json();
+      const { changed, next } = stopsWithCityAdded(trip?.destination, trip?.destinations, city.cityName, city.country);
+      if (!changed) {
+        toast({ title: `${city.cityName} is already in this plan` });
+      } else {
+        const result = await savePlanStops(tripId, next);
+        if (result.ok) {
+          void queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId] });
+          void queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
+          toast({ title: `Added ${city.cityName} to your plan` });
+        } else {
+          toast({
+            title: `Couldn't add ${city.cityName}`,
+            description: "The plan's stops were not changed.",
+            variant: "destructive",
+          });
+        }
+      }
+    } catch {
+      toast({ title: `Couldn't add ${city.cityName}`, description: "The plan's stops were not changed.", variant: "destructive" });
+    }
+    navigate(`/plans/${tripId}`);
   };
 
   const handleAddToQueue = () => {

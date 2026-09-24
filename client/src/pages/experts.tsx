@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { compareByRating, compareByReviews } from "@/lib/expert-sort";
 import { Link, useLocation, useSearch } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -353,6 +354,11 @@ export default function ExpertsPage() {
         const aPriceHigh = a.selectedServices?.[0]?.offering?.price || 0;
         const bPriceHigh = b.selectedServices?.[0]?.offering?.price || 0;
         return parseFloat(bPriceHigh) - parseFloat(aPriceHigh);
+      // #429: these two options were offered with no sort behind them.
+      case "rating":
+        return compareByRating(a, b);
+      case "reviews":
+        return compareByReviews(a, b);
       default:
         return b.superExpert ? 1 : -1;
     }

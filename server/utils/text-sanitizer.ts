@@ -30,11 +30,11 @@
  *    ▸ For: expert profile fields, storefront bios, review replies, expert notes —
  *           any field that may flow into a non-React surface NOW (e.g. provider-reply
  *           stored and re-read in admin consoles, email footers, future PDF reports).
- *    ▸ What it does: strips HTML tags AND entity-encodes remaining `< > ' "`.
- *    ▸ Safe for: React UI AND raw-HTML rendering paths.
- *    ▸ Trade-off: entity-encoded values display correctly in React only because JSX
- *      renders text nodes (not innerHTML); the entity characters are stored in the DB
- *      and are a valid persistent form.
+ *    ▸ What it does: strips HTML tags AND entity-encodes remaining `< >`. It no
+ *      longer encodes `'` or `"` (board #1318): JSX renders a text node, so a stored
+ *      `&#39;` showed on screen as those six characters — the old claim here that it
+ *      "displays correctly in React" was wrong. A quote matters only inside an HTML
+ *      attribute, and a raw-HTML renderer escapes its own attributes at render time.
  *
  * The divergence is INTENTIONAL. Provider listing text has a well-established React-
  * only render path today. The `sanitizeText` approach avoids double-encoding artifacts
