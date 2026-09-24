@@ -1483,6 +1483,15 @@ export function stripItineraryItemRoutingFields<T extends Record<string, unknown
   return safe as T;
 }
 
+/** A second expert application for a user who already has one (board #1725). The routes map it to
+ *  the same 400 they return for a sequential duplicate. */
+export class ExpertApplicationExistsError extends Error {
+  constructor(public readonly existingFormId: string) {
+    super("You already have an application submitted");
+    this.name = "ExpertApplicationExistsError";
+  }
+}
+
 export class DatabaseStorage implements IStorage {
   // Trips
   async getTrips(userId?: string, status?: string): Promise<TripListItem[]> {
@@ -1930,7 +1939,23 @@ export class DatabaseStorage implements IStorage {
         .where(eq(expertOfferingTypes.offeringTypeKey, form.offeringTypeKey));
       if (!known) form = { ...form, offeringTypeKey: null };
     }
-    const [newForm] = await db.insert(localExpertForms).values(form).returning();
+    // ONE APPLICATION PER USER, EVEN UNDER A RACE (board #1725). The routes refuse a second
+    // application after reading `getLocalExpertForm`, but two simultaneous submits both read
+    // "none" and both inserted — the table has no UNIQUE(user_id) (adding one needs a prod census
+    // for existing duplicates first). A per-user transaction-scoped advisory lock serialises the
+    // insert, and the existence check is repeated INSIDE it, so the second caller sees the first
+    // row and is refused with ExpertApplicationExistsError. No schema change.
+    const userId = form.userId;
+    const newForm = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"local-expert-form:" + userId}))`);
+      const [prior] = await tx.select({ id: localExpertForms.id })
+        .from(localExpertForms)
+        .where(eq(localExpertForms.userId, userId))
+        .limit(1);
+      if (prior) throw new ExpertApplicationExistsError(prior.id);
+      const [row] = await tx.insert(localExpertForms).values(form).returning();
+      return row;
+    });
     if (requestedOfferingTypeKey && !newForm.offeringTypeKey) {
       logger.warn(
         { formId: newForm.id, rejectedOfferingTypeKey: requestedOfferingTypeKey, catalog: "expert_offering_types" },

@@ -43,6 +43,21 @@ const DAY_COLORS = [
   "ff88cccc",
 ];
 
+/**
+ * XML text escaping for the KML/GPX exports (board #1318 audit). Activity names and the trip's
+ * destination are traveler text, and some write paths store them unsanitized — unescaped, a name
+ * like "Fish & Chips" made the whole file malformed and a `<` could inject markup into the KML
+ * description balloon. Escapes the five XML specials, so it is also safe in an attribute.
+ */
+export function escXml(raw: unknown): string {
+  return String(raw ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 export function generateKml(input: KmlInput): string {
   const allPlacemarks: string[] = [];
   const allRoutes: string[] = [];
@@ -51,12 +66,11 @@ export function generateKml(input: KmlInput): string {
     for (const activity of day.activities) {
       allPlacemarks.push(`
         <Placemark>
-          <name>Day ${day.dayNumber}: ${activity.name}</name>
-          <description><![CDATA[
-            <b>${activity.name}</b><br/>
-            Day ${day.dayNumber} - ${day.date}<br/>
-            ${activity.scheduledTime ? `Time: ${activity.scheduledTime}<br/>` : ""}
-          ]]></description>
+          <name>Day ${day.dayNumber}: ${escXml(activity.name)}</name>
+          <description>${escXml(
+            `<b>${escXml(activity.name)}</b><br/>Day ${day.dayNumber} - ${day.date}<br/>` +
+              (activity.scheduledTime ? `Time: ${escXml(activity.scheduledTime)}<br/>` : ""),
+          )}</description>
           <styleUrl>#day${day.dayNumber}Pin</styleUrl>
           <Point>
             <coordinates>${activity.lng},${activity.lat},0</coordinates>
@@ -72,7 +86,7 @@ export function generateKml(input: KmlInput): string {
       allRoutes.push(`
         <Placemark>
           <name>Day ${day.dayNumber} Route</name>
-          <description>Day ${day.dayNumber} - ${day.date}</description>
+          <description>Day ${day.dayNumber} - ${escXml(day.date)}</description>
           <styleUrl>#day${day.dayNumber}Route</styleUrl>
           <LineString>
             <tessellate>1</tessellate>
@@ -104,7 +118,7 @@ export function generateKml(input: KmlInput): string {
     const dayRoutes = allRoutes.filter(r => r.includes(`Day ${day.dayNumber} Route`));
     return `
     <Folder>
-      <name>Day ${day.dayNumber} - ${day.date}</name>
+      <name>Day ${day.dayNumber} - ${escXml(day.date)}</name>
       ${dayPlacemarks.join("")}
       ${dayRoutes.join("")}
     </Folder>`;
@@ -113,7 +127,7 @@ export function generateKml(input: KmlInput): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>${input.tripName} - ${input.destination}</name>
+    <name>${escXml(input.tripName)} - ${escXml(input.destination)}</name>
     <description>Traveloure Itinerary - Generated ${new Date().toISOString().split("T")[0]}</description>
 
     ${styles}

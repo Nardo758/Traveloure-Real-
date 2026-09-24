@@ -4,6 +4,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { savedItems } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { saveItemBodySchema } from "@shared/saved-items";
 
 const router = Router();
 
@@ -31,11 +32,13 @@ router.get("/api/saved-items", isAuthenticated, async (req, res) => {
 router.post("/api/saved-items", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
-    const { contentType, contentId, contentName, contentImage, city } = req.body;
-
-    if (!contentType || !contentId || !contentName) {
-      return res.status(400).json({ error: "contentType, contentId, and contentName are required" });
+    // §19 allowlist (board #330 — the first client caller of this route): the saving user is the
+    // session, the body may name only the card being saved, and an unknown key is refused.
+    const parsed = saveItemBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid saved item", issues: parsed.error.issues });
     }
+    const { contentType, contentId, contentName, contentImage, city } = parsed.data;
 
     const [item] = await db
       .insert(savedItems)

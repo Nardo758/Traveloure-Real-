@@ -33,7 +33,7 @@ import { deriveCityPatch } from "./utils/service-city";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
-import { storage, type BookingStatusNotification } from "./storage";
+import { storage, ExpertApplicationExistsError, type BookingStatusNotification } from "./storage";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
@@ -337,6 +337,7 @@ import { authorizeTripLogistics } from "./utils/trip-logistics-auth";
 // approves a delivered plan, the assigned expert's DIRECT item writes on that trip are refused —
 // checked ONLY on the advisor/assigned-expert path, never for the owner or an authored-build author.
 import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./utils/plan-approval";
+import { sanitizeInput } from "./utils/sanitize";
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
@@ -509,17 +510,7 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Simple XSS sanitization - strips HTML tags and dangerous characters
-function sanitizeInput(input: string): string {
-  if (typeof input !== 'string') return input;
-  return input
-    .replace(/<[^>]*>/g, '') // Remove HTML tags
-    .replace(/[<>'"]/g, (char) => {
-      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
-      return entities[char] || char;
-    })
-    .trim();
-}
+// sanitizeInput: the ONE canonical copy lives in server/utils/sanitize.ts (board #1318).
 
 // Sanitize all string fields in a plain object, including every nested array and object.
 // Delegates to the exported, tested sanitizeDeep (server/utils/text-sanitizer.ts) so that
@@ -2571,6 +2562,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (err instanceof z.ZodError) {
         return res.status(400).json(zodErrorBody(err));
       }
+      // A concurrent duplicate lost the per-user lock (board #1725): same answer as a sequential one.
+      if (err instanceof ExpertApplicationExistsError) {
+        return res.status(400).json({ message: "You already have an application submitted" });
+      }
       console.error("Error creating expert application:", err);
       res.status(500).json({ message: "Failed to submit application" });
     }
@@ -2636,6 +2631,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json(zodErrorBody(err));
+      }
+      if (err instanceof ExpertApplicationExistsError) {
+        return res.status(400).json({ message: "You already have an application submitted" });
       }
       res.status(500).json({ message: "Failed to submit application" });
     }

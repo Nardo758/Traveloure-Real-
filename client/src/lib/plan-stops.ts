@@ -235,3 +235,28 @@ export function seedStops(
 export function stopNameForLocation(location: string | null | undefined): string {
   return displayCity(location);
 }
+
+/**
+ * "Add <city> to an existing plan" from the city grid (board task #805). The plan's CURRENT list is
+ * the input — the caller read it — so the write can never drop a stop it did not see (the
+ * replace-list rule above). The city goes on through `appendStopNamed`, the same reducer the
+ * location-mismatch dialog uses, and carries its country when the grid knows it. `changed` is false
+ * when the plan already names the city: there is nothing to write.
+ */
+export function stopsWithCityAdded(
+  destination: string | null | undefined,
+  destinations: Parameters<typeof seedStops>[1],
+  cityName: string,
+  country?: string | null,
+): { changed: boolean; next: PlanStop[] } {
+  const current = seedStops(destination, destinations);
+  const appended = appendStopNamed(current, cityName);
+  if (stopSequence(appended) === stopSequence(current)) return { changed: false, next: current };
+  const trimmed = cityName.trim();
+  const next = appended.map((s) =>
+    s.name === trimmed && !s.city && !s.country
+      ? { ...s, city: trimmed, ...(country?.trim() ? { country: country.trim() } : {}) }
+      : s,
+  );
+  return { changed: true, next };
+}

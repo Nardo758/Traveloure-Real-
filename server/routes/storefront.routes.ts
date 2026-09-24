@@ -50,6 +50,7 @@ import { lowestListedPrice } from "@shared/listing-price";
 import { directoryCardListings, type DirectoryListingFacts } from "../services/provider-directory-listings";
 import { loadEarnerRatings, summarizeApprovedRatings } from "../services/earner-rating.service";
 import { updateUserPreferences } from "../services/user-preferences-writer";
+import { injectIntoHead } from "../utils/html-head";
 
 const router = Router();
 
@@ -1275,7 +1276,7 @@ router.get("/s/:handle", async (req, res, next) => {
     template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
     template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
     template = template.replace(/<meta name="description"[^>]*>\s*/, "");
-    template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    template = injectIntoHead(template, ogTags);
     // Dev-only: run the raw index.html through Vite's transform so the React-refresh
     // preamble/client injections are present (prod never registers a transformer, so this
     // is a no-op pass-through there).
@@ -1385,7 +1386,7 @@ router.get("/services/:id", async (req, res, next) => {
     template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
     template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
     template = template.replace(/<meta name="description"[^>]*>\s*/, "");
-    template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    template = injectIntoHead(template, ogTags);
     // Dev-only: run the raw index.html through Vite's transform so the React-refresh
     // preamble/client injections are present (prod never registers a transformer, so this
     // is a no-op pass-through there).
@@ -1477,7 +1478,7 @@ router.get("/ready-made/:id", async (req, res, next) => {
     template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
     template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
     template = template.replace(/<meta name="description"[^>]*>\s*/, "");
-    template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    template = injectIntoHead(template, ogTags);
     // Dev-only: run the raw index.html through Vite's transform so the React-refresh
     // preamble/client injections are present (prod never registers a transformer, so this
     // is a no-op pass-through there).

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatedBy": "scripts/run-mutation-auth-live-audit.ts",
-  "manifestSha256": "6a0d33c5ab3733dfebdd3c93ae2795d4d8041d77b2e39fe473c6620b4ab9162f",
-  "timestamp": "2026-09-24T11:30:54.709Z",
+  "manifestSha256": "027f2c45ed31281497d39d739d28c3f293d1dc4bedd0d2b5e06ba366aa4d84b7",
+  "timestamp": "2026-09-24T14:11:52.953Z",
   "passed": true,
   "suites": [
     {

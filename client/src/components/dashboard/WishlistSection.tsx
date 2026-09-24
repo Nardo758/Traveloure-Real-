@@ -6,16 +6,7 @@ import { Button } from "@/components/ui/button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
-
-interface SavedItem {
-  id: string;
-  contentType: string;
-  contentId: string;
-  contentName: string;
-  contentImage: string | null;
-  city: string | null;
-  createdAt: string;
-}
+import { groupSavedByCity, type SavedItemRow as SavedItem } from "@/lib/saved-items";
 
 export function WishlistSection() {
   const [, navigate] = useLocation();
@@ -52,8 +43,17 @@ export function WishlistSection() {
         </span>
       </div>
 
+      {/* #328: one row per city, most recently saved-to city first; places saved with no city
+          sit in one trailing row and are never filed under a guessed city (§13). */}
+      {groupSavedByCity(savedItems).map((group) => (
+      <div key={group.city ?? "__no_city__"} className="mb-3" data-testid={`wishlist-city-group-${group.city ?? "none"}`}>
+      <div className="text-[11px] font-medium mb-1.5 flex items-center gap-1" style={{ color: "#7A7A72" }}>
+        <MapPin className="h-3 w-3" />
+        <span>{group.city ?? "No city saved"}</span>
+        <span>· {group.items.length}</span>
+      </div>
       <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
-        {savedItems.map((item) => (
+        {group.items.map((item) => (
           <div
             key={item.id}
             className="flex-shrink-0 w-[160px] rounded-xl border bg-white overflow-hidden"
@@ -132,6 +132,8 @@ export function WishlistSection() {
           </div>
         ))}
       </div>
+      </div>
+      ))}
 
       <AddToExperienceDialog
         item={addDialogItem}

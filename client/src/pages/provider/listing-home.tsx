@@ -60,7 +60,8 @@ interface ServiceDetail {
   latitude: string | number | null;
   longitude: string | number | null;
   locationPrecision: string | null;
-  imageUrl: string | null;
+  /** The cover photo — `provider_services.service_image` (#1537: this read `imageUrl`, which the API never sends). */
+  serviceImage: string | null;
   availability: unknown[] | null;
   updatedAt?: string | null;
   createdAt?: string | null;
@@ -104,7 +105,7 @@ function deriveChecklist(
   const isInPerson = isPlaceAnchored({ deliveryMethod: s.deliveryMethod, productShape: s.productShape });
 
   // 1 — Cover photo
-  const hasCoverPhoto = !!(s.imageUrl);
+  const hasCoverPhoto = !!(s.serviceImage);
   const items: CheckItem[] = [
     {
       key: "photo",
@@ -743,11 +744,11 @@ export default function ProviderListingHome() {
           open={photosDrawerOpen}
           onOpenChange={setPhotosDrawerOpen}
           serviceId={serviceId}
-          coverUrl={service.imageUrl ?? ""}
+          coverUrl={service.serviceImage ?? ""}
           onCoverChange={(url) => {
             queryClient.setQueryData<ServiceDetail>(
               [`/api/provider/services/${serviceId}`],
-              (current) => current ? { ...current, imageUrl: url } : current,
+              (current) => current ? { ...current, serviceImage: url } : current,
             );
           }}
         />
