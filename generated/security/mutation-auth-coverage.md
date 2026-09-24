@@ -4,18 +4,19 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 307/592**; remaining: **285**.
-- Admin: **143/148**; payments: **19/31**; user-data: **145/203**; other: **0/210**.
+- **Tested: 317/592**; remaining: **275**.
+- Admin: **143/148**; payments: **29/31**; user-data: **145/203**; other: **0/210**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **fresh**; manifest SHA-256: `37c3998a820393018e13fa9b80fd1da464fcd7a3c422c40b134f5fe617917f70`; run timestamp: 2026-09-23T21:53:07.453Z.
+- Evidence state: **fresh**; manifest SHA-256: `37c3998a820393018e13fa9b80fd1da464fcd7a3c422c40b134f5fe617917f70`; run timestamp: 2026-09-24T00:16:30.248Z.
 - `admin`: **passed**, 143 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 232 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 53 exact endpoint keys, context `wrong-role`.
 - `resource-ownership`: **passed**, 34 exact endpoint keys, context `resource-owner`.
 - `payments-resource-ownership`: **passed**, 5 exact endpoint keys, context `payments-resource-owner`.
+- `payments-other-rails-ownership`: **passed**, 10 exact endpoint keys, context `payments-other-rails-owner`.
 - `optimization-confirm`: **passed**, 1 exact endpoint keys, context `optimization-confirm`.
 - An endpoint is tested only when a passing, non-skipped suite in the fresh evidence artifact names that exact endpoint in its required context. Route classification alone never promotes coverage.
 - Totals are a strict endpoint union, not a sum of evidence dimensions. Endpoints with both unauthenticated and cross-owner evidence are counted once.
@@ -147,14 +148,9 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/content/:trackingNumber/flag | other | session-self | server/routes/content.routes.ts:9217 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/content/affiliate-redirect | other | session-self | server/routes/content.routes.ts:9047 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/content/checkout | other | session-self | server/routes/content.routes.ts:9032 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/contracts/:id/milestone | payments | resource-owner | server/routes.ts:12137 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/contracts/:id/payment | payments | resource-owner | server/routes.ts:12119 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/coordination-bookings/:id/confirm | other | session-self | server/routes.ts:10490 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/coordination-states | other | resource-owner | server/routes.ts:10247 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/coordination-states/:coordinationId/bookings | other | session-self | server/routes.ts:10433 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/coordination-states/:id/pay | payments | resource-owner | server/routes.ts:10560 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/coordination-states/:id/pay/confirm | payments | resource-owner | server/routes.ts:10768 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/coordination-states/:id/refund | payments | resource-owner | server/routes.ts:10844 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/cross-sell-events | other | session-self | server/routes/cross-sell.routes.ts:38 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/custom-venues | other | resource-owner | server/routes/content.routes.ts:1064 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/destination-calendar/events | other | session-self | server/routes/content.routes.ts:2206 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -165,7 +161,6 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/expert-booking-requests | other | resource-owner | server/routes.ts:1894 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-forms | other | session-self | server/routes.ts:2579 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-requests | other | resource-owner | server/routes/booking-actions.ts:203 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/expert-requests/payment-intent | payments | resource-owner | server/routes/booking-actions.ts:115 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/expert-review/:shareToken/submit | other | resource-owner | server/routes/trips.routes.ts:2731 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-workspace/build-itinerary | other | resource-owner | server/routes/expert-workspace.routes.ts:583 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-workspace/collections | other | session-self | server/routes/expert-workspace.routes.ts:540 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -216,7 +211,6 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/memberships/checkout | other | session-self | server/routes/payments.routes.ts:3179 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/occasions | other | session-self | server/routes/occasions.routes.ts:85 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/optimization-preview | other | session-self | server/routes/optimization.routes.ts:59 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/participants/:id/payment | payments | resource-owner | server/routes/content.routes.ts:7212 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/provider-application | other | session-self | server/routes.ts:2717 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/provider-forms | other | session-self | server/routes.ts:2790 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/provider/availability | user-data | resource-owner | server/routes.ts:10131 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
@@ -231,8 +225,6 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/quotes/:quoteId/accept | other | session-self | server/routes/service-quotes.routes.ts:82 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/quotes/:quoteId/decline | other | session-self | server/routes/service-quotes.routes.ts:94 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/ready-made/:id/purchase/confirm | payments | resource-owner | server/routes/ready-made.routes.ts:1347 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/ready-made/purchases/:id/concern | payments | resource-owner | server/routes/ready-made.routes.ts:1439 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/ready-made/purchases/:id/request-revision | payments | resource-owner | server/routes/ready-made.routes.ts:1592 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/recommendations/:id/convert | other | session-self | server/routes.ts:8434 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/recommendations/:id/dismiss | other | session-self | server/routes.ts:8464 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/recommendations/refresh/:city | other | session-self | server/routes.ts:8418 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -312,6 +304,5 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | PUT /api/destination-calendar/events/:id | other | session-self | server/routes/content.routes.ts:2224 | Other-category endpoint is intentionally outside the strict tested set. |
 | PUT /api/expert/vendors/:vendorId | user-data | session-self | server/routes/experts.routes.ts:390 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | PUT /api/provider/booking-requests/:requestId/respond | user-data | resource-owner | server/routes/experts.routes.ts:546 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PUT /api/provider/services/:id/surcharge-tiers | payments | resource-owner | server/routes.ts:3378 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PUT /api/provider/services/:id/translations/:locale | user-data | resource-owner | server/routes.ts:3704 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PUT /api/trip-context | other | session-self | server/routes/trip-context.routes.ts:247 | Other-category endpoint is intentionally outside the strict tested set. |

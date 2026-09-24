@@ -26,6 +26,12 @@ const exercisedByPaymentsSuite =
   + "traveler, who passes the ownership gate. Exact refusal statuses are asserted; the post-gate status "
   + "deliberately is not, because that is a state-machine question and this is an authorization audit.";
 
+const exercisedByOtherRailsSuite =
+  "Exercised by server/__tests__/mutation-auth/payments-other-rails-mutation-auth.test.ts: a REAL resource "
+  + "owned by another user is addressed as anonymous (401), as a stranger who is party to nothing and as every "
+  + "named wrong party for the rail -- each refused with its exact recorded status and the row proven unchanged "
+  + "-- and then as the authorized party, who passes the gate. The post-gate status deliberately is not pinned.";
+
 const notYetSafelyMounted =
   "Untested: this repository has no isolated authenticated HTTP fixture that mounts the real " +
   "route with User A/User B sessions and a disposable DB transaction. Do not substitute a random-id 404.";
@@ -46,19 +52,19 @@ export const paymentMutationAuthorizationManifest: readonly PaymentMutationAudit
   { method: "DELETE", path: "/api/me/payment-methods/:id", source: "server/routes/payment-methods.routes.ts", declaration: 'router.delete("/api/me/payment-methods/:id", isAuthenticated', ownership: "session", state: "untested", reason: notYetSafelyMounted },
   { method: "POST", path: "/api/optimization-payments", source: "server/routes/optimization.routes.ts", declaration: 'router.post("/api/optimization-payments", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
   { method: "POST", path: "/api/optimization-payments/confirm", source: "server/routes/optimization.routes.ts", declaration: 'router.post("/api/optimization-payments/confirm", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/expert-requests/payment-intent", source: "server/routes/booking-actions.ts", declaration: "router.post('/expert-requests/payment-intent', isAuthenticated", ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/contracts/:id/payment", source: "server/routes.ts", declaration: 'app.post("/api/contracts/:id/payment", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/contracts/:id/milestone", source: "server/routes.ts", declaration: 'app.post("/api/contracts/:id/milestone", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/participants/:id/payment", source: "server/routes/content.routes.ts", declaration: 'router.post("/api/participants/:id/payment", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
+  { method: "POST", path: "/api/expert-requests/payment-intent", source: "server/routes/booking-actions.ts", declaration: "router.post('/expert-requests/payment-intent', isAuthenticated", ownership: "resource", state: "exercised", reason: exercisedByOtherRailsSuite },
+  { method: "POST", path: "/api/contracts/:id/payment", source: "server/routes.ts", declaration: 'app.post("/api/contracts/:id/payment", isAuthenticated', ownership: "resource", state: "exercised", reason: exercisedByOtherRailsSuite },
+  { method: "POST", path: "/api/contracts/:id/milestone", source: "server/routes.ts", declaration: 'app.post("/api/contracts/:id/milestone", isAuthenticated', ownership: "resource", state: "exercised", reason: exercisedByOtherRailsSuite },
+  { method: "POST", path: "/api/participants/:id/payment", source: "server/routes/content.routes.ts", declaration: 'router.post("/api/participants/:id/payment", isAuthenticated', ownership: "resource", state: "exercised", reason: exercisedByOtherRailsSuite },
 
   // Coordination and ready-made purchase rails.
-  { method: "POST", path: "/api/coordination-states/:id/pay", source: "server/routes.ts", declaration: 'app.post("/api/coordination-states/:id/pay", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/coordination-states/:id/pay/confirm", source: "server/routes.ts", declaration: 'app.post("/api/coordination-states/:id/pay/confirm", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/coordination-states/:id/refund", source: "server/routes.ts", declaration: 'app.post("/api/coordination-states/:id/refund", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
+  { method: "POST", path: "/api/coordination-states/:id/pay", source: "server/routes.ts", declaration: 'app.post("/api/coordination-states/:id/pay", isAuthenticated', ownership: "resource", state: "exercised", reason: exercisedByOtherRailsSuite },
+  { method: "POST", path: "/api/coordination-states/:id/pay/confirm", source: "server/routes.ts", declaration: 'app.post("/api/coordination-states/:id/pay/confirm", isAuthenticated', ownership: "resource", state: "exercised", reason: exercisedByOtherRailsSuite },
+  { method: "POST", path: "/api/coordination-states/:id/refund", source: "server/routes.ts", declaration: 'app.post("/api/coordination-states/:id/refund", isAuthenticated', ownership: "resource", state: "exercised", reason: exercisedByOtherRailsSuite },
   { method: "POST", path: "/api/ready-made/:id/purchase", source: "server/routes/ready-made.routes.ts", declaration: 'router.post("/api/ready-made/:id/purchase", isAuthenticated', ownership: "session", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/ready-made/:id/purchase/confirm", source: "server/routes/ready-made.routes.ts", declaration: 'router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/ready-made/purchases/:id/concern", source: "server/routes/ready-made.routes.ts", declaration: 'router.post("/api/ready-made/purchases/:id/concern", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
-  { method: "POST", path: "/api/ready-made/purchases/:id/request-revision", source: "server/routes/ready-made.routes.ts", declaration: 'router.post("/api/ready-made/purchases/:id/request-revision", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
+  { method: "POST", path: "/api/ready-made/:id/purchase/confirm", source: "server/routes/ready-made.routes.ts", declaration: 'router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated', ownership: "resource", state: "untested", reason: "Untested: authorization is on the Stripe PaymentIntent's own metadata.buyerId, retrieved from Stripe BEFORE any other check, so the live audit (stub Stripe key) cannot present another buyer's resource; named OUT_OF_SCOPE in payments-other-rails-mutation-auth.test.ts. Needs a mocked-Stripe in-process test (the optimization-confirm-ownership.test.ts shape)." },
+  { method: "POST", path: "/api/ready-made/purchases/:id/concern", source: "server/routes/ready-made.routes.ts", declaration: 'router.post("/api/ready-made/purchases/:id/concern", isAuthenticated', ownership: "resource", state: "exercised", reason: exercisedByOtherRailsSuite },
+  { method: "POST", path: "/api/ready-made/purchases/:id/request-revision", source: "server/routes/ready-made.routes.ts", declaration: 'router.post("/api/ready-made/purchases/:id/request-revision", isAuthenticated', ownership: "resource", state: "exercised", reason: exercisedByOtherRailsSuite },
 
   // Credits are retired endpoints, retained because callers can still send a mutation request.
   { method: "POST", path: "/api/wallet/add-credits", source: "server/routes/payments.routes.ts", declaration: 'router.post("/api/wallet/add-credits", isAuthenticated', ownership: "session", state: "untested", reason: "Untested: retired (410) endpoint; audit needs a mounted auth fixture to prove the unauthenticated gate." },

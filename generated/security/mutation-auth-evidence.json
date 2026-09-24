@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/run-mutation-auth-live-audit.ts",
   "manifestSha256": "37c3998a820393018e13fa9b80fd1da464fcd7a3c422c40b134f5fe617917f70",
-  "timestamp": "2026-09-23T21:53:07.453Z",
+  "timestamp": "2026-09-24T00:16:30.248Z",
   "passed": true,
   "suites": [
     {
@@ -526,6 +526,27 @@
         "POST /api/bookings/refund"
       ],
       "log": "generated/security/evidence-logs/payments-resource-ownership.log"
+    },
+    {
+      "id": "payments-other-rails-ownership",
+      "context": "payments-other-rails-owner",
+      "command": "MUTATION_AUTH_AUDIT_OK=1 npx tsx --test server/__tests__/mutation-auth/payments-other-rails-mutation-auth.test.ts",
+      "passed": true,
+      "skipped": false,
+      "exitStatus": 0,
+      "endpointKeys": [
+        "POST /api/contracts/:id/milestone",
+        "POST /api/contracts/:id/payment",
+        "POST /api/coordination-states/:id/pay",
+        "POST /api/coordination-states/:id/pay/confirm",
+        "POST /api/coordination-states/:id/refund",
+        "POST /api/expert-requests/payment-intent",
+        "POST /api/participants/:id/payment",
+        "POST /api/ready-made/purchases/:id/concern",
+        "POST /api/ready-made/purchases/:id/request-revision",
+        "PUT /api/provider/services/:id/surcharge-tiers"
+      ],
+      "log": "generated/security/evidence-logs/payments-other-rails-ownership.log"
     },
     {
       "id": "optimization-confirm",
