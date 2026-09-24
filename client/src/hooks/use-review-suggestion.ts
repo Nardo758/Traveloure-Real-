@@ -30,6 +30,10 @@ export interface TripSuggestion {
   expert_first_name: string;
   expert_last_name: string;
   expert_profile_image_url: string | null;
+  /** LD 52 (option B): the platform listing this suggestion proposes; null = free text. */
+  provider_service_id?: string | null;
+  listing_name?: string | null;
+  listing_price?: string | null;
 }
 
 export type ReviewSuggestionInput = {
@@ -48,7 +52,7 @@ export function useReviewSuggestion(tripId: string) {
   return useMutation({
     mutationFn: async ({ suggestionId, status, rejectionNote }: ReviewSuggestionInput) => {
       const res = await apiRequest("PATCH", `/api/trips/${tripId}/suggestions/${suggestionId}`, { status, rejectionNote });
-      return res.json() as Promise<{ suggestion: { status: string } }>;
+      return res.json() as Promise<{ suggestion: { status: string }; itemId?: string }>;
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: suggestionsQueryKey(tripId) });

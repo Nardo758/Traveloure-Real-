@@ -304,7 +304,10 @@ describe("T7 — the four rails already existed", () => {
 
 describe("A1 — the slip renders the tools through the owner-gated predicate", () => {
   it("computes the toolset from `slipItemTools` with `isOwner`, and never inline", () => {
-    assert.match(slipViewSrc, /slipItemTools\(\{\s*\n?\s*isOwner,/);
+    // Locked Decision 52 (C): the owner's tools are shared with the delegate through ONE named
+    // flag (`canEditItems` = `canEditPlanItems(slipViewer(tripRole))`), never an inline role check.
+    assert.match(slipViewSrc, /slipItemTools\(\{\s*\n?\s*isOwner: canEditItems,/);
+    assert.match(slipViewSrc, /const canEditItems = canEditPlanItems\(viewer\);/);
     assert.match(slipViewSrc, /<SlipItemTools/);
     // The row passes the SHARED money facts, not a re-derived local rule.
     assert.match(slipViewSrc, /routingStatus: a\.routingStatus \?\? null,/);
@@ -316,8 +319,9 @@ describe("A1 — the slip renders the tools through the owner-gated predicate", 
     assert.match(slipViewSrc, /<SlipAddItemControl[\s\S]{0,320}userExperienceId=\{null\}/);
     assert.match(slipViewSrc, /SLIP_ADD_EVENT_LABEL/);
     assert.match(slipViewSrc, /SLIP_ADD_DAY_LABEL/);
-    // D16 — the day-level control is inside an owner branch.
-    assert.match(slipViewSrc, /\{isOwner && addDayNumber != null && \(\s*\n\s*<div className="px-3 pt-1\.5 pb-0\.5">/);
+    // D16 — the day-level control is inside an item-editor branch: the owner, or since Locked
+    // Decision 52 (C) the delegate who builds the plan for them. Never the expert viewer.
+    assert.match(slipViewSrc, /\{canEditItems && addDayNumber != null && \(\s*\n\s*<div className="px-3 pt-1\.5 pb-0\.5">/);
   });
 
   it("keeps the labels the ratified artboards draw", () => {

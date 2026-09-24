@@ -84,6 +84,8 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, LucideIcon> = {
   // R-F (Console Realign, Trip Card delivery): fired on Finalize and on the T-48h auto-nudge —
   // both mean "the Trip Card is ready to view".
   trip_card_ready: CheckCircle2,
+  // LD 52 (C): an executive assistant started a plan on this account.
+  assistant_plan_created: FileText,
 };
 
 export function getNotificationIcon(type: string): LucideIcon {
@@ -136,6 +138,13 @@ export function resolveNotificationLink(n: ApiNotification): ResolvedNotificatio
       ? n.data.workspacePath
       : "/experts";
     return { href: path, label: "See other experts" };
+  }
+  // Ledger 2026-09-24-earner-email-notifications: earner notices that open a console page.
+  if (n.type === "quote_requested" || n.type === "traveler_cancelled" || n.type === "review_received") {
+    const path = n.data?.workspacePath;
+    if (typeof path === "string" && (path.startsWith("/expert/") || path.startsWith("/provider/"))) {
+      return { href: path, label: "Open" };
+    }
   }
   if (n.data?.tripId) {
     const isTravelerTripLink = n.data.workspacePath?.startsWith("/trip/");

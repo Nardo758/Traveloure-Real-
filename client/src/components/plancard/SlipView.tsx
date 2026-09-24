@@ -85,6 +85,7 @@ import { slipAdvisorStandingLine, type SlipRailAdvisor } from "@/lib/slip-rail";
 // their own plan. The RULES are pure and live in `@/lib/slip-item-tools`; the buttons and the four
 // existing rails they call live in `SlipItemTools.tsx`. Nothing here restates either (§18 rule 1).
 import { SlipAddItemControl, SlipItemTools } from "./SlipItemTools";
+import { SLIP_DELEGATE_NOTE, canEditPlanItems, slipViewer } from "@/lib/slip-viewer-role";
 import {
   resolveAddDayNumber,
   slipItemTools,
@@ -575,6 +576,7 @@ function SlipItemRow({
   tripId,
   activity,
   isOwner,
+  canEditItems,
   isExpertViewer,
   hasAdvisor,
   expertName,
@@ -588,6 +590,8 @@ function SlipItemRow({
   tripId: string;
   activity: PlanCardActivity;
   isOwner: boolean;
+  /** LD 52 (C): the owner's item tools, shared with the delegate (`canEditPlanItems`). */
+  canEditItems: boolean;
   isExpertViewer: boolean;
   /**
    * S3 — an advisor in a §12 access status is on this plan. Resolved ONCE by `SlipView` (see the
@@ -613,7 +617,7 @@ function SlipItemRow({
   // tools at all, a booked row keeps reorder and edit and loses ✕. Decided by the ONE shared
   // predicate the DELETE rail refuses on (`@shared/itinerary-item-money`), never a second copy.
   const tools = slipItemTools({
-    isOwner,
+    isOwner: canEditItems,
     routingStatus: a.routingStatus ?? null,
     bookingId: a.booking?.id ?? null,
   });
@@ -1267,6 +1271,9 @@ export function SlipView({
   const days: PlanCardDay[] = data.days ?? [];
   const isOwner = data.tripRole === "owner";
   const isExpertViewer = data.tripRole === "expert";
+  // LD 52 (C): an executive assistant building this plan for its owner edits items, nothing more.
+  const viewer = slipViewer(data.tripRole);
+  const canEditItems = canEditPlanItems(viewer);
   const expertName = expertFirstName(data);
   // S6 — the stops line's Edit affordance is a DOOR of the ONE planning modal (Locked Decision
   // 33's opener, Locked Decision 34's one stop editor), never a second editor mounted here.
@@ -1529,6 +1536,26 @@ export function SlipView({
           workspaceStatus/status (PlanApprovalBanner.tsx:84-88). This is the bell-notification
           landing surface (resolveNotificationLink rewrites /trip/:id → /plans/:tripId), so
           without this mount the delivery handshake had no Approve/Request-changes control here. */}
+      {viewer === "delegate" && (
+        <div
+          className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+          data-testid="slip-delegate-note"
+        >
+          {SLIP_DELEGATE_NOTE}
+          {/* An empty plan has no day slot to add from; day 1 is the plan's own first day. */}
+          {days.length === 0 && (
+            <span className="mt-2 block">
+              <SlipAddItemControl
+                tripId={tripId}
+                dayNumber={1}
+                userExperienceId={null}
+                label={SLIP_ADD_DAY_LABEL}
+                testId="slip-delegate-add-first"
+              />
+            </span>
+          )}
+        </div>
+      )}
       {isOwner && (
         <PlanApprovalBanner tripId={tripId} planApproval={data.meta?.planApproval} activities={allActivities} />
       )}
@@ -1755,6 +1782,7 @@ export function SlipView({
                       tripId={tripId}
                       activity={a}
                       isOwner={isOwner}
+                      canEditItems={canEditItems}
                       isExpertViewer={isExpertViewer}
                       hasAdvisor={hasAdvisor}
                       expertName={expertName}
@@ -1811,7 +1839,7 @@ export function SlipView({
                     because an undated event put it there, its own event header already says what
                     is missing, and an item filed under the implicit event there would have no day
                     to sit on (§13 — the absence is explained once, not twice). */}
-                {isOwner && addDayNumber != null && (
+                {canEditItems && addDayNumber != null && (
                   <div className="px-3 pt-1.5 pb-0.5">
                     <SlipAddItemControl
                       tripId={tripId}
@@ -1871,6 +1899,7 @@ export function SlipView({
               trip={data.trip}
               tripId={tripId}
               isOwner={isOwner}
+              canEditItems={canEditItems}
               isExpertViewer={isExpertViewer}
               isPrimary={isPrimary}
               activities={allActivities}

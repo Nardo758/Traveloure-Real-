@@ -1,5 +1,6 @@
 import { EALayout } from "@/components/ea-layout";
 import { eaClientLabel } from "@/lib/ea-client-label";
+import { PlanForClientDialog } from "@/components/ea/PlanForClientDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -228,6 +229,9 @@ function ClientCard({ client, onDelete }: { client: EaClient; onDelete: (id: str
                   </div>
                 </DialogContent>
               </Dialog>
+
+              {/* LD 52 (C): a plan the client owns, built by the assistant. Accepted clients only. */}
+              {client.clientUserId && <PlanForClientDialog relationshipId={client.id} clientLabel={label.primary} />}
 
               {/* Push Notification */}
               {client.clientUserId && (

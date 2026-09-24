@@ -478,6 +478,22 @@ export async function enqueueGuestInviteEmail(params: {
 
 // ── Scheduler wrapper (used by server/index.ts) ───────────────────────────────
 
+/**
+ * The outbox pass, then the phone-push sweep (Locked Decision 53). Push rides this existing
+ * 5-minute job — no new cron, no new internal endpoint — and catches every notification writer
+ * that did not dispatch immediately. The sweep never throws and never changes the drain's result.
+ */
+export async function drainOutboxAndSweepPush(): Promise<DrainOutboxResult> {
+  const result = await drainOutbox();
+  try {
+    const { sweepUnpushedNotifications } = await import("./web-push.service");
+    await sweepUnpushedNotifications();
+  } catch (err) {
+    logger.warn({ err }, "[email-outbox] push sweep failed (non-fatal)");
+  }
+  return result;
+}
+
 let _drainInterval: ReturnType<typeof setInterval> | null = null;
 
 export const emailOutboxScheduler = {
@@ -486,11 +502,11 @@ export const emailOutboxScheduler = {
     // First pass after startup (boot-herd floor + jitter, #1712 — lifts the old 30s delay clear of
     // the boot window). The drain cadence itself is unchanged.
     setTimeout(() => {
-      void runBackgroundJob("email-outbox", () => drainOutbox()).catch((err) =>
+      void runBackgroundJob("email-outbox", () => drainOutboxAndSweepPush()).catch((err) =>
         logger.error({ err }, "[email-outbox] scheduled pass failed"),
       );
       _drainInterval = setInterval(() => {
-        void runBackgroundJob("email-outbox", () => drainOutbox()).catch((err) =>
+        void runBackgroundJob("email-outbox", () => drainOutboxAndSweepPush()).catch((err) =>
           logger.error({ err }, "[email-outbox] scheduled pass failed"),
         );
       }, intervalMs);

@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { LanguagePreferenceCard } from "@/components/settings/language-preference-card";
+import { EarnerEmailNotificationsCard } from "@/components/settings/earner-email-notifications-card";
+import { PhoneNotificationsCard } from "@/components/settings/phone-notifications-card";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
@@ -577,6 +579,10 @@ export default function ProviderSettings() {
 
         {/* Vacation Mode — mockup §06b */}
         <VacationModeSection />
+
+        {/* Ledger 2026-09-24-earner-email-notifications: the email switches that have readers. */}
+        <PhoneNotificationsCard />
+        <EarnerEmailNotificationsCard />
 
         {/* Payment Settings */}
         <Card>

@@ -193,6 +193,7 @@ import { getTripRole } from "../utils/trip-role";
 // The CANONICAL §12 READ-access advisor predicate (pending/accepted/assigned; rejected and any
 // unrecognised status DENY). Imported directly rather than re-derived — V-33.
 import { isTripAdvisor } from "../utils/trip-advisor";
+import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { renderTripPdf } from "../services/trip-pdf.render";
 // The plan's .ics — ONE generator, two callers (§18 rule 1). `generateIcsContent` already owned
@@ -375,7 +376,8 @@ router.get(api.trips.get.path, async (req, res) => {
     }
 
     const isOwner = trip.userId && trip.userId === userId;
-    const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
+    // LD 52 (C): the managing assistant passes only through the LIVE accepted link.
+    const isManagingEa = !isOwner && userId != null && (await isManagingEaForTrip(trip.id, userId));
     const isGuestWithToken = shareToken && trip.shareToken === shareToken;
     // V-33 (ledger `2026-09-15-v32-v33-leads-door-item-read-gate`). The expert arm here used to be
     // `(trip as any).expertId === userId` — a grant NOTHING can satisfy. `trips.expert_id` is
@@ -571,7 +573,7 @@ router.patch(api.trips.update.path, async (req, res) => {
       const userId = getUserId(req)!;
       const shareToken = req.query.token as string | undefined;
       const isOwner = trip.userId && trip.userId === userId;
-      const isManagingEa = (trip as any).managedByEaId === userId;
+      const isManagingEa = !isOwner && userId != null && (await isManagingEaForTrip(trip.id, userId));
       const isGuestWithToken = shareToken && trip.shareToken === shareToken;
 
       if (!isOwner && !isManagingEa && !isGuestWithToken) {

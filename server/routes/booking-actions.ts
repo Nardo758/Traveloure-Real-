@@ -71,6 +71,7 @@ import {
   tripExistsById,
   getTripSuggestions,
   createTripSuggestion,
+  resolveSuggestableListing,
   getPendingSuggestion,
   updateSuggestionStatus,
   getGeneratedItinerary,
@@ -1071,10 +1072,14 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
-    const { type, dayNumber, title, description, estimatedCost } = req.body;
-
-    if (!type || !title) {
-      return res.status(400).json({ error: 'type and title are required' });
+    const { type, dayNumber, description, estimatedCost } = req.body;
+    let { title } = req.body;
+    // LD 52 (option B, ledger `2026-09-24-suggestion-names-listing`): a suggestion may name ONE
+    // platform listing. It is VERIFIED here — approved and active, the public read gate — and the
+    // id is the only thing taken from the body; the name and price come from the row (§14).
+    const rawServiceId = req.body?.providerServiceId;
+    if (rawServiceId !== undefined && rawServiceId !== null && (typeof rawServiceId !== 'string' || !rawServiceId.trim())) {
+      return res.status(400).json({ error: 'providerServiceId must be a listing id' });
     }
 
     const assigned = await isExpertAssignedToTrip(id, userId);
@@ -1082,11 +1087,26 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
       return res.status(403).json({ error: 'You are not an assigned expert for this trip' });
     }
 
+    let listing: Awaited<ReturnType<typeof resolveSuggestableListing>> = null;
+    if (typeof rawServiceId === 'string') {
+      listing = await resolveSuggestableListing(rawServiceId.trim());
+      if (!listing) {
+        return res.status(400).json({ error: "That listing isn't available on Traveloure right now, so it can't be suggested." });
+      }
+      if (!title) title = listing.name;
+    }
+
+    if (!type || !title) {
+      return res.status(400).json({ error: 'type and title are required' });
+    }
+
     const suggestionId = await createTripSuggestion({
       tripId: id, expertId: userId, type,
       dayNumber: dayNumber ?? null, title,
       description: description ?? null,
-      estimatedCost: estimatedCost ?? null,
+      // A listing's display estimate is its own published price unless the expert stated one.
+      estimatedCost: estimatedCost ?? listing?.price ?? null,
+      providerServiceId: listing?.id ?? null,
     });
 
     // GAP 3 fix (expert-loop object-flow audit, Jul 30 2026): the Suggest submission was
@@ -1226,6 +1246,10 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
         itemType: suggestion.type || 'activity',
         dayNumber: suggestion.day_number ?? 1,
         estimatedCost: suggestion.estimated_cost ?? undefined,
+        // LD 52 (option B): a listing-backed suggestion materializes as a BOOKABLE item — the
+        // traveler can then route it to checkout. NULL (free text, or a since-deleted listing)
+        // makes the same free-text item as before (§13).
+        ...(suggestion.provider_service_id ? { providerServiceId: suggestion.provider_service_id } : {}),
         // D2: the suggestion this materializes is the expert-curated proposal the traveler just
         // approved (`expertCurated: true` above) — provenance is the expert who suggested it.
         origin: 'expert',

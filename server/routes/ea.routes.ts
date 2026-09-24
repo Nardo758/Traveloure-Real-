@@ -7,6 +7,7 @@ import { db } from "../db";
 import { updateUserPreferences } from "../services/user-preferences-writer";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isEA } from "../middleware/ea-rbac";
+import { listEaManagedPlans, mintPlanForEaClient } from "../services/ea-plan-delegate.service";
 import {
   getUserByEmail,
   insertNotification,
@@ -210,6 +211,73 @@ router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("[EA] pushNotification error:", err);
       res.status(500).json({ message: "Failed to send notification" });
+    }
+  });
+
+  // ============================================================
+  // PLANS FOR A CLIENT (Locked Decision 52 (C), ledger 2026-09-24-ea-plans-for-executive)
+  // The executive OWNS the plan; the assistant builds it. The owner comes from the accepted
+  // relationship row, never the body (§14); the body is a .strict() pick (§19).
+  // ============================================================
+
+  const eaPlanBody = z
+    .object({
+      destination: z.string().trim().min(1).max(255),
+      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startDate must be YYYY-MM-DD"),
+      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "endDate must be YYYY-MM-DD"),
+      title: z.string().trim().min(1).max(255).optional(),
+      numberOfTravelers: z.coerce.number().int().min(1).max(500).optional(),
+      specialRequests: z.string().max(2000).optional(),
+    })
+    .strict()
+    .refine((b) => b.endDate >= b.startDate, { message: "endDate must be on or after startDate" });
+
+  router.post("/api/ea/clients/:id/trips", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = getEaUserId(req);
+      const body = eaPlanBody.parse(req.body);
+      const destination = sanitizeText(body.destination) as string;
+      const result = await mintPlanForEaClient(eaUserId, req.params.id, {
+        destination,
+        startDate: body.startDate,
+        endDate: body.endDate,
+        title: (body.title ? (sanitizeText(body.title) as string) : null) || `Trip to ${destination}`,
+        ...(body.numberOfTravelers ? { numberOfTravelers: body.numberOfTravelers } : {}),
+        ...(body.specialRequests ? { specialRequests: sanitizeText(body.specialRequests) as string } : {}),
+      } as any);
+      if (!result.ok) {
+        return res.status(result.status).json(
+          result.reason === "not_found"
+            ? { message: "Client not found" }
+            : { message: "This client has not accepted your invitation yet", reason: "not_accepted" },
+        );
+      }
+      res.status(201).json({ id: result.trip.id, title: result.trip.title });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid body" });
+      console.error("[EA] create plan error:", err);
+      res.status(500).json({ message: "Failed to create plan" });
+    }
+  });
+
+  router.get("/api/ea/clients/:id/trips", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = getEaUserId(req);
+      const row = await getEaClientRelationshipById(req.params.id, eaUserId);
+      if (!row) return res.status(404).json({ message: "Client not found" });
+      res.json(await listEaManagedPlans(eaUserId, row.id));
+    } catch (err) {
+      console.error("[EA] list client plans error:", err);
+      res.status(500).json({ message: "Failed to load plans" });
+    }
+  });
+
+  router.get("/api/ea/trips", isAuthenticated, async (req, res) => {
+    try {
+      res.json(await listEaManagedPlans(getEaUserId(req)));
+    } catch (err) {
+      console.error("[EA] list plans error:", err);
+      res.status(500).json({ message: "Failed to load plans" });
     }
   });
 

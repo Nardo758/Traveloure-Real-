@@ -22,6 +22,7 @@ import { storage } from "../storage";
 import { verifyTripOwnership } from "./trip-ownership";
 import { isTripAuthor } from "./trip-authorship";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./trip-advisor";
+import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
 import { logger } from "../infrastructure/logger";
 
 /**
@@ -52,6 +53,11 @@ export async function authorizeTripLogistics(
     ? await isTripAdvisorWithWriteAccess(tripId, userId)
     : await isTripAdvisor(tripId, userId);
   if (advisorGrants) return null;
+
+  // Locked Decision 52 (C): the executive assistant who manages this plan under a LIVE accepted
+  // link reads and edits it like a write-status advisor. The grant is the link, not the column
+  // (`isManagingEaForTrip`); it never reaches `authorizeTripOwnerTier` below.
+  if (await isManagingEaForTrip(tripId, userId)) return null;
 
   // Authoring mode (ready-made brief §2): the expert who AUTHORS this trip. Explicit named check —
   // deliberately NOT routed through getTripRole (known pre-launch bypass).

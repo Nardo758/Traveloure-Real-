@@ -2353,6 +2353,8 @@ interface SuggestionPayload {
   // string, not number — mirrors `createTripSuggestion`'s `estimatedCost?: string | null` param
   // (Fix 1's same-drift sibling: `trip_suggestions.estimated_cost` is a decimal column too).
   estimatedCost?: string;
+  /** LD 52 (option B): a platform listing the traveler can book once they approve. */
+  providerServiceId?: string;
 }
 
 // Add-panel source pills (§17 Central Content network). D1/D5 (UX audit Jul 29): every
@@ -2386,10 +2388,26 @@ const suggestFieldStyle: React.CSSProperties = {
   background: CARD, color: INK, fontSize: 12, fontFamily: "inherit", boxSizing: "border-box",
 };
 
-function ClientSuggestPanel({ tripId }: { tripId: string }) {
+function ClientSuggestPanel({ tripId, destination }: { tripId: string; destination?: string | null }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ type: "activity", dayNumber: "", title: "", description: "", estimatedCost: "" });
+  // LD 52 (option B, ledger `2026-09-24-suggestion-names-listing`): the suggestion may name ONE
+  // bookable listing. Chosen from the SAME approved-listing read the service picker uses
+  // (`GET /api/services?location=<city>`); the server re-verifies it is approved and active, so
+  // this list is a convenience and never the authority (§14).
+  const [listingId, setListingId] = useState("");
+  const city = (destination || "").split(",")[0].trim();
+  const { data: listings = [] } = useQuery<Array<{ id: string; serviceName: string; price: string | null }>>({
+    queryKey: ["/api/services", city, "suggest-listing"],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (city) params.set("location", city);
+      const res = await apiRequest("GET", `/api/services?${params.toString()}`);
+      return res.json();
+    },
+    enabled: open && !!city,
+  });
 
   const { data: suggestionsData, isLoading: suggestionsLoading } = useQuery<{ suggestions: TripSuggestion[] }>({
     queryKey: [`/api/trips/${tripId}/suggestions`],
@@ -2406,6 +2424,7 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/suggestions`] });
       queryClient.invalidateQueries({ queryKey: ["/api/expert/assigned-trips"] });
       setForm({ type: "activity", dayNumber: "", title: "", description: "", estimatedCost: "" });
+      setListingId("");
       toast({ title: "Suggestion sent!", description: "The traveler will review your idea." });
     },
     onError: (err: any) => {
@@ -2414,8 +2433,9 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
   });
 
   const handleSubmit = () => {
-    if (!form.title.trim()) return;
+    if (!form.title.trim() && !listingId) return;
     const payload: SuggestionPayload = { type: form.type, title: form.title.trim() };
+    if (listingId) payload.providerServiceId = listingId;
     if (form.dayNumber) payload.dayNumber = parseInt(form.dayNumber, 10);
     if (form.description.trim()) payload.description = form.description.trim();
     if (form.estimatedCost) payload.estimatedCost = String(parseFloat(form.estimatedCost));
@@ -2439,7 +2459,7 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
       {open && (
         <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: 8 }}>
           <p style={{ fontSize: 11, color: MID, margin: 0 }}>
-            Your suggestion goes to the traveler for approval. Approved suggestions are added to their itinerary.
+            Your suggestion goes to the traveler for approval. Approved suggestions are added to their itinerary; one that names a listing can be booked by the traveler in one step.
           </p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             <select
@@ -2462,6 +2482,26 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
               style={suggestFieldStyle}
             />
           </div>
+          {city && listings.length > 0 && (
+            <select
+              value={listingId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setListingId(id);
+                const picked = listings.find((l) => l.id === id);
+                if (picked && !form.title.trim()) setForm((f) => ({ ...f, title: picked.serviceName }));
+              }}
+              data-testid="select-suggestion-listing"
+              style={suggestFieldStyle}
+            >
+              <option value="">No listing — a free-text idea</option>
+              {listings.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.serviceName}{l.price ? ` — $${parseFloat(String(l.price)).toFixed(0)}` : ""}
+                </option>
+              ))}
+            </select>
+          )}
           <input
             placeholder="Title — e.g. Visit Senso-ji Temple at sunrise"
             value={form.title}
@@ -2488,9 +2528,9 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
           />
           <button
             onClick={handleSubmit}
-            disabled={submitSuggestionMutation.isPending || !form.title.trim()}
+            disabled={submitSuggestionMutation.isPending || (!form.title.trim() && !listingId)}
             data-testid="button-submit-suggestion"
-            style={{ ...btnPrimaryStyle, padding: "7px 12px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: submitSuggestionMutation.isPending || !form.title.trim() ? 0.6 : 1 }}
+            style={{ ...btnPrimaryStyle, padding: "7px 12px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: submitSuggestionMutation.isPending || (!form.title.trim() && !listingId) ? 0.6 : 1 }}
           >
             {submitSuggestionMutation.isPending
               ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
@@ -5181,7 +5221,7 @@ export default function ExpertWorkspace() {
                     )}
 
                     {/* Suggest to client — traveler-approval rail (C5, from /expert/assigned-trips). */}
-                    <ClientSuggestPanel tripId={tripId!} />
+                    <ClientSuggestPanel tripId={tripId!} destination={trip?.destination ?? null} />
 
                     {/* Event coordination — client-delivery state for event-type trips (P3-19). */}
                     {isEvent && (

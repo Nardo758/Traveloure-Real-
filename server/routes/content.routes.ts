@@ -547,6 +547,16 @@ router.post("/api/chat/start", isAuthenticated, async (req, res) => {
 
       // Create notification for expert
       await insertChatNotification({ userId: expertId, chatId: chat.id, senderId: userId, tripId });
+      // Ledger 2026-09-24-earner-email-notifications: the email twin, through the ONE sender.
+      void import("../services/activity-email.service").then(async ({ sendActivityEmail, displayNameOf }) =>
+        sendActivityEmail({
+          recipientId: expertId,
+          kind: "new_message",
+          actorName: await displayNameOf(userId),
+          destination: "messages",
+          throttleKey: `${userId}>${expertId}`,
+        }),
+      );
 
       // Live-push to the expert's open chat client (same frame shape as the /ws relay).
       broadcastToUser(expertId, {
@@ -3218,6 +3228,40 @@ router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res
       }));
       
       const review = await storage.createServiceReview(input);
+      // Ledger 2026-09-24-earner-email-notifications: the seller was never told a review landed.
+      // Once per review, in-app and on their own email consent. Ancillary (§15b).
+      if (service.userId && review?.id) {
+        const sellerId = service.userId;
+        const reviewerId = userId;
+        void (async () => {
+          try {
+            const { sendActivityEmail, displayNameOf, earnerConsolePath } = await import("../services/activity-email.service");
+            const seller = await storage.getUser(sellerId);
+            const actorName = await displayNameOf(reviewerId);
+            const { inserted } = await storage.createNotificationOnce({
+              userId: sellerId,
+              type: "review_received",
+              title: "New review",
+              message: `${actorName ?? "A traveler"} reviewed ${service.serviceName}. It appears on your listing once it has been checked.`,
+              relatedId: String(review.id),
+              relatedType: "review",
+              data: { workspacePath: earnerConsolePath(seller?.role, "catalog") },
+              dedupeKey: `review-received:${review.id}`,
+            } as any);
+            if (inserted) {
+              await sendActivityEmail({
+                recipientId: sellerId,
+                kind: "review_received",
+                actorName,
+                subject: service.serviceName,
+                destination: "catalog",
+              });
+            }
+          } catch (err) {
+            console.error("[reviews] seller notify failed (non-fatal):", err);
+          }
+        })();
+      }
       res.status(201).json(review);
     } catch (err) {
       if (err instanceof z.ZodError) {

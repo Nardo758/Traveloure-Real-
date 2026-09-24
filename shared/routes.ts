@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { 
-  insertTripSchema, 
+  tripClientBodySchema, 
   trips, 
   generatedItineraries, 
   insertGeneratedItinerarySchema,
@@ -68,7 +68,8 @@ export const api = {
     create: {
       method: 'POST' as const,
       path: '/api/trips',
-      input: insertTripSchema,
+      // §19 allowlist (ledger 2026-09-24-trip-body-allowlist): planning answers only.
+      input: tripClientBodySchema,
       responses: {
         201: z.custom<typeof trips.$inferSelect>(),
         400: errorSchemas.validation,
@@ -78,7 +79,9 @@ export const api = {
     update: {
       method: 'PATCH' as const,
       path: '/api/trips/:id',
-      input: insertTripSchema.partial(),
+      // §19 allowlist (ledger 2026-09-24-trip-body-allowlist): a share-token guest reaches this
+      // rail, so no grant-bearing column may ride it.
+      input: tripClientBodySchema.partial(),
       responses: {
         200: z.custom<typeof trips.$inferSelect>(),
         400: errorSchemas.validation,

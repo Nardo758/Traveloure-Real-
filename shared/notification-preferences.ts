@@ -7,9 +7,10 @@
  * from it and the server asks it before creating a notice (§18 rule 1: a second copy of the defaults
  * would drift, and a server default that disagrees with the page would ignore what the page shows).
  *
- * CHANNELS. `email` is an email; `push` is what the Settings page labels Push. There is no device
- * push transport in the platform, so the only non-email notice that exists is the in-app one, and
- * `push` governs that.
+ * CHANNELS. `email` is an email; `push` is what the Settings page labels Push. It governs the in-app
+ * notice where a writer asks it, AND — since Locked Decision 53 — whether that notice also reaches
+ * the person's registered devices (`server/services/web-push.service.ts`, via the type map in
+ * `shared/push-notifications.ts`).
  *
  * ABSENT IS NOT OPTED OUT (§13). A key or channel the user never saved reads as its born default,
  * never as `false`.

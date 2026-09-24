@@ -144,6 +144,7 @@ import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
 import conversationsRoutes from "./routes/conversations.routes";
 import serviceQuotesRoutes from "./routes/service-quotes.routes";
+import pushRoutes from "./routes/push.routes";
 import bookingComponentsRoutes from "./routes/booking-components.routes";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -333,6 +334,7 @@ import { verifyTripOwnership } from "./utils/trip-ownership";
 // Canonical per-trip mutation authorization: owner ‖ trip-assigned expert ‖ trip author ‖
 // audit-logged admin. Returns null when authorized, else the {status, message} to send.
 import { authorizeTripLogistics } from "./utils/trip-logistics-auth";
+import { isManagingEaForTrip } from "./services/ea-plan-delegate.service";
 // Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): once the customer
 // approves a delivered plan, the assigned expert's DIRECT item writes on that trip are refused —
 // checked ONLY on the advisor/assigned-expert path, never for the owner or an authored-build author.
@@ -1104,6 +1106,7 @@ export async function registerRoutes(
   // atomic claim that mints through the EXISTING birth-rail writer with the quote's amount as the
   // server-derived total (§14/§15). Declares full `/api/...` paths; mounted without a prefix.
   app.use(serviceQuotesRoutes);
+  app.use(pushRoutes);
   // ledger `2026-09-17-surfaces-quotes-settlement`: the ONE read of a purchased bundle's
   // components + its settlement (GET /api/bookings/:id/components). Read-only; every action on
   // those surfaces still calls the existing component rails.
@@ -1523,7 +1526,9 @@ export async function registerRoutes(
       const userId = getUserId(req)!;
       const shareToken = req.query.token as string | undefined;
       const isOwner = trip.userId && trip.userId === userId;
-      const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
+      // LD 52 (C): the grant is the LIVE accepted link, never the bare column (which was
+      // client-settable through this very rail until ledger `2026-09-24-trip-body-allowlist`).
+      const isManagingEa = !isOwner && userId != null && (await isManagingEaForTrip(trip.id, userId));
       const isGuestWithToken = shareToken && trip.shareToken === shareToken;
 
       if (!isOwner && !isManagingEa && !isGuestWithToken) {
@@ -1627,9 +1632,11 @@ export async function registerRoutes(
       //
       // Placed after the trip fetch (it needs the EA column) but BEFORE the AI call and BEFORE
       // the destructive delete, so a denied caller costs zero AI tokens and destroys nothing.
+      // LD 52 (C), ledger `2026-09-24-ea-plans-for-executive`: `authorizeTripLogistics` now admits
+      // the managing executive assistant itself (through the live accepted link, not the bare
+      // column), so the local EA arm this stopgap carried is gone — one predicate, one caller.
       const callerUserId = getUserId(req)!;
-      const isManagingEa = callerUserId != null && (trip as any).managedByEaId === callerUserId;
-      if (!isManagingEa) {
+      {
         const denied = await authorizeTripLogistics(
           req.params.id,
           callerUserId,
@@ -8061,6 +8068,42 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         console.error("Failed to write traveler cancellation notification:", notifyErr);
       }
 
+      // Ledger 2026-09-24-earner-email-notifications: the SELLER was never told a traveler
+      // cancelled. Once (the booking id is the dedupe key), in-app and on their own email consent.
+      // Ancillary — never fails the cancellation that already committed (§15b).
+      if (booking.providerId) {
+        const sellerId = booking.providerId;
+        void (async () => {
+          try {
+            const { sendActivityEmail, displayNameOf, earnerConsolePath } = await import("./services/activity-email.service");
+            const seller = await storage.getUser(sellerId);
+            const service = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : undefined;
+            const actorName = await displayNameOf(userId);
+            const { inserted } = await storage.createNotificationOnce({
+              userId: sellerId,
+              type: "traveler_cancelled",
+              title: "Booking cancelled by the traveler",
+              message: `${actorName ?? "A traveler"} cancelled booking ${updated?.trackingNumber ?? ""}${service?.serviceName ? ` for ${service.serviceName}` : ""}.`,
+              relatedId: req.params.id,
+              relatedType: "booking",
+              data: { bookingId: req.params.id, workspacePath: earnerConsolePath(seller?.role, "bookings") },
+              dedupeKey: `traveler-cancelled:${req.params.id}`,
+            } as any);
+            if (inserted) {
+              await sendActivityEmail({
+                recipientId: sellerId,
+                kind: "booking_cancelled",
+                actorName,
+                subject: service?.serviceName ?? null,
+                destination: "bookings",
+              });
+            }
+          } catch (err) {
+            console.error("[cancel] seller notify failed (non-fatal):", err);
+          }
+        })();
+      }
+
       res.json({
         ...updated,
         refund: {
@@ -12465,7 +12508,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
       // Authoring mode (ready-made brief §2): the trip's author may read its own build.
       const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
-      if (!owned && !assigned && !authored) return res.status(403).json({ message: "Access denied" });
+      // LD 52 (C): the managing executive assistant reads the plan it builds (live accepted link).
+      const managingEa = (owned || assigned || authored) ? false : await isManagingEaForTrip(tripId, userId);
+      if (!owned && !assigned && !authored && !managingEa) return res.status(403).json({ message: "Access denied" });
       const items = await storage.getItineraryItems(tripId);
       // Migration 277 (ledger 2026-09-03-item-event-link): each row carries `userExperienceId` —
       // the EVENT inside the plan it is scheduled under — and it needs NO mapping here because
@@ -12566,7 +12611,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const assigned = owned || isAdvisor;
       // Authoring mode (ready-made brief §2): the trip's author may build it.
       const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
-      if (!owned && !assigned && !authored) return res.status(403).json({ message: "Access denied" });
+      // LD 52 (C): the executive assistant managing this plan under a LIVE accepted link builds it
+      // for the executive. Never an advisor (no mode-flip gate, no expert note, never "expert").
+      const managingEa = (owned || assigned || authored) ? false : await isManagingEaForTrip(tripId, userId);
+      if (!owned && !assigned && !authored && !managingEa) return res.status(403).json({ message: "Access denied" });
       // FABLE-REVIEW: the mode-flip gate. Advisor-only (never owner, never author) — see
       // server/utils/plan-approval.ts. Pre-approval (NULL/changes_requested) is byte-identical
       // to today; suggestions (POST /trips/:id/suggestions) are unaffected by this gate.
@@ -12591,7 +12639,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // mirroring `suggestedBy` immediately above. `isAdvisor` here is the WRITE-gated flag, so
       // an item can only be stamped 'expert' by a caller who actually has write access.
       delete itemData.origin;
-      itemData.origin = isAdvisor ? "expert" : "traveler";
+      // LD 52 (C): an assistant's item says so ("assistant"), so the owner's slip never labels it
+      // "you added" (§13). Regenerate spares it exactly as it spares 'traveler' (it deletes 'ai' only).
+      itemData.origin = isAdvisor ? "expert" : managingEa ? "assistant" : "traveler";
       // D4 (LD 42, ratified Sep 5 2026): `expert_note` is the SAME authorship class as
       // `suggestedBy`/`origin` above — the insert schema does NOT omit it (the column post-dates
       // that omit list: D4's "a privileged column reachable by default through a body schema

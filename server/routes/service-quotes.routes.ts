@@ -39,6 +39,37 @@ import {
 
 const router = Router();
 
+async function notifyQuoteRequested(serviceId: string, travelerId: string, quoteId: string): Promise<void> {
+  try {
+    const { storage } = await import("../storage");
+    const { sendActivityEmail, displayNameOf, earnerConsolePath } = await import("../services/activity-email.service");
+    const service = await storage.getProviderServiceById(serviceId);
+    if (!service?.userId || !quoteId) return;
+    const owner = await storage.getUser(service.userId);
+    const actorName = await displayNameOf(travelerId);
+    const { inserted } = await storage.createNotificationOnce({
+      userId: service.userId,
+      type: "quote_requested",
+      title: "Quote requested",
+      message: `${actorName ?? "A traveler"} asked you for a quote for ${service.serviceName}.`,
+      relatedId: quoteId,
+      relatedType: "quote",
+      data: { workspacePath: earnerConsolePath(owner?.role, "catalog") },
+      dedupeKey: `quote-requested:${quoteId}`,
+    } as any);
+    if (!inserted) return;
+    await sendActivityEmail({
+      recipientId: service.userId,
+      kind: "quote_request",
+      actorName,
+      subject: service.serviceName,
+      destination: "catalog",
+    });
+  } catch (err) {
+    console.error("[service-quotes] seller notify failed (non-fatal):", err);
+  }
+}
+
 function sendRefusal(res: any, r: QuoteRefusal) {
   const { ok: _ok, status, ...body } = r;
   return res.status(status).json(body);
@@ -60,6 +91,12 @@ router.post("/api/services/:id/quote-requests", isAuthenticated, async (req, res
       itineraryItemId: body.itineraryItemId ?? null,
     });
     if (!r.ok) return sendRefusal(res, r);
+    // Ledger 2026-09-24-earner-email-notifications: a NEW request reached its seller by nothing at
+    // all — no bell, no email. The seller is told once (the quote id is the dedupe key) and, on
+    // their own consent, by email. Ancillary: it never fails the request (§15b).
+    if (r.created) {
+      void notifyQuoteRequested(String(req.params.id), travelerId, String((r.quote as any)?.id ?? ""));
+    }
     return res.status(r.created ? 201 : 200).json({ quote: r.quote, created: r.created });
   } catch (err) {
     const zm = zodMessage(err);

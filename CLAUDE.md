@@ -2015,6 +2015,67 @@ This document captures architectural decisions to maintain consistency across co
     classifies `plan_work`, but its plan access is the READ grant above, never checkout WRITE; the
     platform's reserved account is refused outright at the one author, for every caller.
 
+52. **BOOKING ON BEHALF: THE HELPER PREPARES, THE TRAVELER PAYS (decision-maker ratified Sep 24, 2026 —
+    ledger `2026-09-24-approve-and-book`, `2026-09-24-suggestion-names-listing`; migration 321).** Every
+    way someone books "for" a traveler ends in the traveler's own checkout; no helper ever pays (LD 42
+    D19). **(A) An expert-built plan is approved and booked in one press** ("Approve & book N items" on
+    the existing delivery handshake — the same `plan-review` rail, then the same per-item routing rail,
+    then the payment step). **(B) A booking concierge or expert may SUGGEST a specific platform
+    listing:** `trip_suggestions.provider_service_id` (migration 321) is additive NULLABLE, FK →
+    `provider_services` ON DELETE SET NULL, NO DEFAULT, NO CHECK, NO BACKFILL, declared in
+    `shared/schema.ts`. It is SERVER-VERIFIED at create — approved AND active, the public read gate,
+    through ONE `resolveSuggestableListing` — and only the id is taken from the body; the display name
+    and price come from the row (§14). Approval materializes a BOOKABLE item (it carries the listing),
+    and the traveler may "Approve & book" it straight to the payment step. This keeps LD 51's ruling
+    intact: a concierge's plan access stays READ-only (`pending`); a suggestion is not a write to the
+    plan, and only the traveler's approval makes one. **(C) An executive assistant builds a plan the
+    executive owns — BUILT (ledger `2026-09-24-ea-plans-for-executive`; NO migration).** The plan is an
+    ordinary `trips` row whose `user_id` is the executive, minted by `POST /api/ea/clients/:id/trips`
+    (`.strict()` pick body; the owner comes from the EA's own ACCEPTED `ea_client_relationships` row,
+    never the body — §14; a pending link is a 409). The assistant is recorded on the two pre-existing,
+    until-now-unwritten columns `trips.managed_by_ea_id` / `ea_client_relationship_id`, written ONLY
+    by `mintPlanForEaClient`. **THE GRANT IS THE LINK, NOT THE COLUMN:** ONE predicate,
+    `isManagingEaForTrip` (`server/services/ea-plan-delegate.service.ts`), passes only while that
+    relationship exists, belongs to the assistant and is accepted by the plan's OWN owner — so a
+    hand-set column grants nothing and revoking the link cuts every plan at once. It is one more arm
+    of `authorizeTripLogistics` (read AND write, like a write-status advisor) and of the trip GET /
+    PATCH, the items read, the inline item create and the plancard read, where it renders as
+    `tripRole: "delegate"`; it is **never** in `authorizeTripOwnerTier` (guest PII, money between
+    people) and reaches no payment rail — the executive approves, books and pays (LD 42 D19). An
+    assistant's item is stamped `origin = 'assistant'`, which regenerate spares like `traveler` and
+    which draws NO origin chip (never "you added", never a fourth artboard label). On the slip the
+    delegate gets the owner's item tools and "Browse services" and nothing else (`canEditPlanItems`,
+    `client/src/lib/slip-viewer-role.ts` — a render rule that grants nothing). **The same lane closed
+    the hole the grant would have stood on (ledger `2026-09-24-trip-body-allowlist`):** the two client
+    trip rails parsed the `insertTripSchema` DENYLIST, so `authorId`, `managedByEaId`, `shareToken`,
+    `finalizedAt`, `status`, `isPublic` and more were body-settable — including by a share-token GUEST
+    on `PATCH /api/trips/:id`, who could name themselves the trip's author (an owner-tier grant). Both
+    rails now parse `tripClientBodySchema`, a `.pick()` of the planning answers only (§19);
+    `InsertTrip` stays whole for server composers (the §19d placement).
+
+53. **PHONE PUSH: EVERY NOTICE MAY REACH A DEVICE, AT MOST ONCE, UNDER THE PERSON'S OWN PUSH SWITCH
+    (decision-maker, Sep 24, 2026: "letting experts and providers receive push notifications on their
+    phones" — ledger `2026-09-24-web-push`; migration 322).** Web Push (VAPID) through a service worker
+    (`client/public/sw.js`, push + click only: NO fetch handler, nothing cached — offline is a different
+    decision) and a web-app manifest. Two additive objects, both declared in `shared/schema.ts`:
+    **`push_subscriptions`** (one row per browser endpoint, UNIQUE endpoint, FK → users ON DELETE
+    CASCADE) and **`notifications.push_claimed_at`** (nullable, NO DEFAULT, NO BACKFILL, with a partial
+    index on unclaimed rows). **ONE sender, `server/services/web-push.service.ts`:** a notice is CLAIMED
+    by an atomic conditional (`… WHERE push_claimed_at IS NULL`) BEFORE the external call (§15), so the
+    immediate dispatch after a write and the periodic sweep (riding the existing email-outbox job) can
+    race and a device still buzzes once; only notices from the last 15 minutes whose owner has a device
+    are ever claimed, so a deploy never sends a backlog. **Consent is the EXISTING `push` switch** of the
+    notice's preference key, through ONE type→key table (`shared/push-notifications.ts`); a type the table
+    does not name is never pushed (§13 — a phone buzz is not sent under a guessed key). A tap opens an
+    in-app path only. The device rails (`/api/push/*`) act on the SESSION account only (§14) with
+    `.strict()` bodies (§19); the status check takes a SHA-256 of the endpoint, never the endpoint, in
+    its query string. Sign-out forgets the device, so a shared device stops receiving that account's
+    notices. **CONFIGURED OR SILENT:** without `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` (operator secrets;
+    `VAPID_SUBJECT` optional) nothing is claimed, the card says phone notifications are not available,
+    and no test is reported as sent. **iPhone/iPad receive push only from the installed Home Screen app
+    (iOS 16.4+)**, and the card says so rather than offering a button that cannot work. Push never fails
+    the write that caused it (§15b).
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs
