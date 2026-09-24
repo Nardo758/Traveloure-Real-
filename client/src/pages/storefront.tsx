@@ -56,6 +56,7 @@ import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
 import { useAuth } from "@/hooks/use-auth";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import { storefrontContactInput } from "@/lib/earner-address";
 import { LanguageMenu } from "@/components/language-menu";
 import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
@@ -659,13 +660,26 @@ export default function StorefrontPage() {
     ...(memberSinceYear ? [{ value: memberSinceYear, label: "On Traveloure since", testId: "fact-member-since" }] : []),
   ];
 
+  // Locked Decision 40 (lane 3): the HANDLE is the address wherever one exists; the server resolves
+  // the earner itself and the payload carries no user id. A handle-less EXPERT's only page is
+  // the id route (`/experts/:id`, `/local-experts/:id`) — there the ONE address decision
+  // (`storefrontContactInput`) falls back to the id already in this page's URL.
+  // LD 40 lane 2: still id-addressed (handle-less experts only).
+  const contact = storefrontContactInput({
+    earnerHandle: earner.handle,
+    urlHandle: handle,
+    profileId: legacyId,
+    profilePath: typeof window !== "undefined" ? window.location.pathname : null,
+  });
+  // The ruled copy for a handle-less expert's page is "Message {name}" (ledger
+  // `2026-09-24-storefront-message-first`); a claimed storefront keeps its own wording.
+  const messageLabel = contact?.handle ? "Start a conversation" : `Message ${firstName}`;
+
   function messageEarner() {
     askExpert({
-      // Locked Decision 40 (lane 3): the HANDLE is the address. This page IS `/s/:handle`, so the
-      // address is the URL it was opened with; the server resolves the earner itself. `earner.id`
-      // is no longer read here — lane 2 removes it from `loadStorefront`'s payload.
-      handle: earner.handle ?? handle,
-      returnTo: `/s/${handle}`,
+      handle: contact?.handle ?? null,
+      expertId: contact?.expertId ?? null,
+      returnTo: contact?.returnTo ?? null,
       fallbackName: displayName,
       fallbackAvatar: earner.profileImageUrl ?? undefined,
     });
@@ -853,7 +867,7 @@ export default function StorefrontPage() {
                     data-testid="button-message-storefront"
                   >
                     <MessageCircle className="w-4 h-4 mr-1.5 shrink-0" />
-                    Start a conversation
+                    {messageLabel}
                   </Button>
                 )}
                 {/* "Share page", not "Share": the booking panel's "Share my plan" is a different act
@@ -1156,7 +1170,7 @@ export default function StorefrontPage() {
               data-testid="button-message-band"
             >
               <MessageCircle className="w-4 h-4 mr-1.5" />
-              Start a conversation
+              {messageLabel}
             </Button>
           </div>
         )}

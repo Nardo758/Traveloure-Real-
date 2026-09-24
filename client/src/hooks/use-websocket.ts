@@ -27,6 +27,13 @@ export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
 
+  // The handlers live in refs so the socket's lifetime is the USER's, not the render's. Callers pass
+  // inline callbacks (a fresh function every render); when `connect` depended on them, every
+  // re-render closed the socket and opened a new one, and a message sent in between was dropped
+  // because `sendMessage` found no open socket.
+  const handlersRef = useRef({ onMessage, onTyping, onConnected, onError });
+  handlersRef.current = { onMessage, onTyping, onConnected, onError };
+
   const connect = useCallback(() => {
     if (!userId) return;
 
@@ -54,19 +61,19 @@ export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError
 
           switch (message.type) {
             case "connected":
-              onConnected?.();
+              handlersRef.current.onConnected?.();
               break;
             case "chat":
-              onMessage?.(message);
+              handlersRef.current.onMessage?.(message);
               break;
             case "typing":
               if (message.senderId) {
-                onTyping?.(message.senderId);
+                handlersRef.current.onTyping?.(message.senderId);
               }
               break;
             case "error":
               if (message.error) {
-                onError?.(message.error);
+                handlersRef.current.onError?.(message.error);
               }
               break;
           }
@@ -95,7 +102,7 @@ export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError
       console.error("Failed to create WebSocket:", err);
       setConnectionError("Failed to connect");
     }
-  }, [userId, onMessage, onTyping, onConnected]);
+  }, [userId]);
 
   useEffect(() => {
     connect();
@@ -105,8 +112,12 @@ export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError
         clearTimeout(reconnectTimeoutRef.current);
       }
       if (wsRef.current) {
+        // A deliberate close (unmount, or a different user) must not schedule a reconnect.
+        wsRef.current.onclose = null;
         wsRef.current.close();
+        wsRef.current = null;
       }
+      setIsConnected(false);
     };
   }, [connect]);
 
