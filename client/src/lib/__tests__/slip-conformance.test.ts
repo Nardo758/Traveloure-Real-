@@ -166,6 +166,12 @@ const ALLOWED_ADDITIONS = {
   // It carries NO handler — it is a sentence, not an action — and §13 keeps it silent for a plan
   // with zero or one advisor rather than stating "1 expert" or "no others".
   "slip-rail-expert-others": "D7 — the other advisors on this plan, named rather than hidden",
+  // Ledger `2026-09-24-ea-plans-for-executive` (Locked Decision 52 (C)). A LATER ruling's control:
+  // an empty plan has no day slot, so the delegate (an executive assistant building the plan for
+  // its owner) is given the SAME add control, on day 1, inside its own note. It renders for the
+  // delegate only and writes through the one shared add rail.
+  "slip-delegate-note": "LD 52 (C) — tells the delegate the client approves, books and pays (no handler)",
+  "slip-delegate-add-first": "LD 52 (C) — the delegate's first item on an empty plan",
 } as const;
 
 /**

@@ -23,6 +23,7 @@ import { attachRolesNeeded } from "../services/occasion-roles.service";
 import { getTripDestinations } from "../services/trip-destinations.service";
 import { planComparisonRef } from "@shared/trip-plan";
 import { isUntouchedAiDraft } from "../services/ai-draft-eligibility";
+import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -396,7 +397,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: "Trip not found" });
     }
 
-    const tripRole = await getTripRole(tripId, userId);
+    let tripRole: string | null = await getTripRole(tripId, userId);
 
     if (!tripRole) {
       // Legacy fallback: check trip_expert_advisors for assigned experts
@@ -407,9 +408,14 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // (known pre-launch bypass, separate fix). getTripRole returns null for an author (no
       // collaborator/advisor row), so without this branch authoring mode 403s its own itinerary.
       const isAuthor = isAssignedExpert ? false : await isTripAuthor(tripId, userId);
-      if (!isAssignedExpert && !isAuthor) {
+      // LD 52 (C): the executive assistant managing this plan under a LIVE accepted link. Rendered
+      // as "delegate" — it edits for the owner but is never shown as "your expert" and never gets
+      // the owner's pay/finalize controls (the slip decides that from this role).
+      const isManagingEa = isAssignedExpert || isAuthor ? false : await isManagingEaForTrip(tripId, userId);
+      if (!isAssignedExpert && !isAuthor && !isManagingEa) {
         return res.status(403).json({ error: "Access denied" });
       }
+      if (isManagingEa) tripRole = "delegate";
     }
 
     // ── Thin caller (L3a): the assembly lives in the ONE TripPlan assembler ────────────────

@@ -281,12 +281,15 @@ function BuildCard({
   trip,
   tripId,
   isOwner,
+  canEditItems,
   activities,
   expertState,
 }: {
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
+  /** LD 52 (C): the owner, or the delegate who builds the plan for them (browse + add only). */
+  canEditItems: boolean;
   activities: PlanCardActivity[];
   /**
    * The expert row's state, resolved ONCE by `SlipRail` from the ONE owner-gated advisor read
@@ -473,7 +476,7 @@ function BuildCard({
 
   return (
     <RailCard card="build" title="Build">
-      {isOwner && (
+      {canEditItems && (
         <RailRow
           label="Browse services for this trip"
           meta="/services"
@@ -1235,6 +1238,7 @@ export function SlipRail({
   trip,
   tripId,
   isOwner,
+  canEditItems = isOwner,
   isExpertViewer,
   isPrimary,
   activities,
@@ -1246,6 +1250,8 @@ export function SlipRail({
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
+  /** LD 52 (C): item-building for the owner or the delegate (`canEditPlanItems`); defaults to owner. */
+  canEditItems?: boolean;
   /**
    * `plancard.tripRole === "expert"` — resolved ONCE by `SlipView` and passed down (§18 rule 1).
    * An advisor of ANY §12 access status, `pending` INCLUDED: `getTripRole`'s advisor branch is
@@ -1305,6 +1311,7 @@ export function SlipRail({
         trip={trip}
         tripId={tripId}
         isOwner={isOwner}
+        canEditItems={canEditItems}
         activities={activities}
         expertState={expertState}
       />

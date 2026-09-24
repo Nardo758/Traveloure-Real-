@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatedBy": "scripts/run-mutation-auth-live-audit.ts",
-  "manifestSha256": "3ea41ce7334d2243aeebcf2880f6364d7f5b29be2eaca57108d9be42c2ca6b3d",
-  "timestamp": "2026-09-24T18:40:06.444Z",
+  "manifestSha256": "c99ad36ed5f657a1d4ccb966f485b08dfe7c0974e095c8aeaa78224aa335976d",
+  "timestamp": "2026-09-24T19:13:27.194Z",
   "passed": true,
   "suites": [
     {
@@ -148,6 +148,7 @@
         "POST /api/ea/ai-tasks",
         "POST /api/ea/clients",
         "POST /api/ea/clients/:id/push",
+        "POST /api/ea/clients/:id/trips",
         "POST /api/ea/communications",
         "POST /api/ea/events",
         "POST /api/ea/executives",

@@ -32,6 +32,7 @@ const TYPE_TO_KEY: Record<string, NotificationPreferenceKey> = {
   itinerary_item_added: "itineraryUpdate",
   expert_suggestion: "itineraryUpdate",
   trip_card_ready: "itineraryUpdate",
+  assistant_plan_created: "itineraryUpdate",
   // Money
   payout_processed: "paymentReceived",
 };

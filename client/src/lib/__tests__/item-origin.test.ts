@@ -54,6 +54,10 @@ describe("itemOriginChip — the three ratified values", () => {
       "affiliate",
       "dmo",
       "sourced-derived",
+      // LD 52 (C), ledger 2026-09-24-ea-plans-for-executive: an executive assistant's item is
+      // stamped `assistant` and draws NO chip — never "you added" (§13), never a fourth label
+      // the ratified artboard does not draw.
+      "assistant",
     ];
     const chipped = candidates.filter((o) => itemOriginChip(o) !== null);
     assert.deepEqual(chipped.sort(), ["ai", "expert", "traveler"]);

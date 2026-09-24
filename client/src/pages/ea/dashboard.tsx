@@ -132,9 +132,8 @@ export default function EADashboard() {
     queryKey: ["/api/ea/clients"],
   });
 
-  // "Managed Trips" (/api/ea/trips) has no server endpoint yet (see ea/trips.tsx —
-  // that surface is honestly gated). Travel Coordination (/api/ea/travel) is the
-  // real, live source for "trips arranged on behalf of an executive" today.
+  // Travel Coordination (/api/ea/travel) counts the EA's own travel records. The plans an EA
+  // builds for a client (LD 52 (C)) are listed on /ea/trips from /api/ea/trips.
   const { data: travel } = useQuery<{ id: string; status: string }[]>({
     queryKey: ["/api/ea/travel"],
   });

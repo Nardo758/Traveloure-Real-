@@ -2029,11 +2029,29 @@ This document captures architectural decisions to maintain consistency across co
     and the traveler may "Approve & book" it straight to the payment step. This keeps LD 51's ruling
     intact: a concierge's plan access stays READ-only (`pending`); a suggestion is not a write to the
     plan, and only the traveler's approval makes one. **(C) An executive assistant builds a plan the
-    executive owns** — ratified in principle (the executive owns it, must accept the assistant first
-    through the existing `ea_client_relationships` link, and the assistant edits as a collaborator,
-    never labelled "your expert"); **not yet built** — it needs a server-written delegate grant and an
-    "acting for the owner" render role on the slip, and lands as its own lane with its own amendment
-    here.
+    executive owns — BUILT (ledger `2026-09-24-ea-plans-for-executive`; NO migration).** The plan is an
+    ordinary `trips` row whose `user_id` is the executive, minted by `POST /api/ea/clients/:id/trips`
+    (`.strict()` pick body; the owner comes from the EA's own ACCEPTED `ea_client_relationships` row,
+    never the body — §14; a pending link is a 409). The assistant is recorded on the two pre-existing,
+    until-now-unwritten columns `trips.managed_by_ea_id` / `ea_client_relationship_id`, written ONLY
+    by `mintPlanForEaClient`. **THE GRANT IS THE LINK, NOT THE COLUMN:** ONE predicate,
+    `isManagingEaForTrip` (`server/services/ea-plan-delegate.service.ts`), passes only while that
+    relationship exists, belongs to the assistant and is accepted by the plan's OWN owner — so a
+    hand-set column grants nothing and revoking the link cuts every plan at once. It is one more arm
+    of `authorizeTripLogistics` (read AND write, like a write-status advisor) and of the trip GET /
+    PATCH, the items read, the inline item create and the plancard read, where it renders as
+    `tripRole: "delegate"`; it is **never** in `authorizeTripOwnerTier` (guest PII, money between
+    people) and reaches no payment rail — the executive approves, books and pays (LD 42 D19). An
+    assistant's item is stamped `origin = 'assistant'`, which regenerate spares like `traveler` and
+    which draws NO origin chip (never "you added", never a fourth artboard label). On the slip the
+    delegate gets the owner's item tools and "Browse services" and nothing else (`canEditPlanItems`,
+    `client/src/lib/slip-viewer-role.ts` — a render rule that grants nothing). **The same lane closed
+    the hole the grant would have stood on (ledger `2026-09-24-trip-body-allowlist`):** the two client
+    trip rails parsed the `insertTripSchema` DENYLIST, so `authorId`, `managedByEaId`, `shareToken`,
+    `finalizedAt`, `status`, `isPublic` and more were body-settable — including by a share-token GUEST
+    on `PATCH /api/trips/:id`, who could name themselves the trip's author (an owner-tier grant). Both
+    rails now parse `tripClientBodySchema`, a `.pick()` of the planning answers only (§19);
+    `InsertTrip` stays whole for server composers (the §19d placement).
 
 53. **PHONE PUSH: EVERY NOTICE MAY REACH A DEVICE, AT MOST ONCE, UNDER THE PERSON'S OWN PUSH SWITCH
     (decision-maker, Sep 24, 2026: "letting experts and providers receive push notifications on their

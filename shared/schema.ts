@@ -2681,6 +2681,38 @@ export const insertTripSchema = createInsertSchema(trips).omit({
 });
 
 /**
+ * ALLOWLIST (§19) for the two CLIENT trip rails — `POST /api/trips` and `PATCH /api/trips/:id`
+ * (ledger `2026-09-24-trip-body-allowlist`).
+ *
+ * Both rails parsed `insertTripSchema` / `.partial()`, an `.omit()` DENYLIST, so every column
+ * nobody had thought to omit was client-settable — among them `authorId` (which `isTripAuthor`
+ * reads as an owner-tier grant), `managedByEaId` / `eaClientRelationshipId` (the executive-
+ * assistant grant, Locked Decision 52 (C)), `shareToken`, `finalizedAt`, `status`, `isPublic`,
+ * `trackingNumber` and the expert-authored fields. The PATCH rail admits a share-token GUEST, so a
+ * holder of a trip's share link could name themselves its author. Only the planning answers a
+ * traveler actually gives are admitted here; any other key is dropped, never trusted.
+ * `insertTripSchema` / `InsertTrip` stay whole for SERVER composers (storage, the EA mint), which
+ * is the §19d placement: strip on the client rail, keep the server composer.
+ */
+export const tripClientBodySchema = insertTripSchema.pick({
+  title: true,
+  destination: true,
+  startDate: true,
+  endDate: true,
+  eventType: true,
+  numberOfTravelers: true,
+  adults: true,
+  kids: true,
+  travelers: true,
+  budget: true,
+  preferences: true,
+  experienceType: true,
+  momentKey: true,
+  specialRequests: true,
+  originMarket: true,
+});
+
+/**
  * ALLOWLIST (§19) for `POST /api/cart/convert-to-itinerary` — the rail that MOVES cart lines onto
  * a plan (ledger `2026-09-15-d16-plan-holds-venues-and-content`).
  *
