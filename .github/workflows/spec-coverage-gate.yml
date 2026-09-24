@@ -140,6 +140,8 @@ jobs:
           # Both of the following are graded `fail` by /api/ready when absent, which returns
           # HTTP 503 and makes global-setup abort the whole run. See item 3 in the header.
           STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
           XAI_API_KEY: xai-ci-stub-no-real-calls
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development

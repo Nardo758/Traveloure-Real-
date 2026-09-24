@@ -12,7 +12,10 @@ test("signed platform charge.refunded reaches #1288 and blocks booking earnings"
   assert.notEqual(process.env.NODE_ENV, "production");
   assert.ok(process.env.DATABASE_URL);
   assert.notEqual(process.env.DATABASE_URL, process.env.PROD_DATABASE_URL);
-  assert.ok(process.env.REPLIT_DEV_DOMAIN?.endsWith(".replit.dev"));
+  // The running app to deliver to: CI's local server (JOURNEY_BASE_URL), or the Replit dev domain.
+  const baseUrl = process.env.JOURNEY_BASE_URL
+    ?? (process.env.REPLIT_DEV_DOMAIN?.endsWith(".replit.dev") ? `https://${process.env.REPLIT_DEV_DOMAIN}` : undefined);
+  assert.ok(baseUrl, "set JOURNEY_BASE_URL (CI) or run in a Replit dev workspace");
   assert.ok(process.env.STRIPE_WEBHOOK_SECRET_TEST);
 
   const chargeId = `ch_signed_refund_${crypto.randomUUID().replaceAll("-", "")}`;
@@ -57,7 +60,7 @@ test("signed platform charge.refunded reaches #1288 and blocks booking earnings"
        VALUES ($1,$2,'service_booking',12,'booking',$3,'releasable','none')`,
       [earningId, providerId, bookingId],
     );
-    const response = await fetch(`https://${process.env.REPLIT_DEV_DOMAIN}/api/bookings/webhooks/stripe`, {
+    const response = await fetch(`${baseUrl}/api/bookings/webhooks/stripe`, {
       method: "POST",
       headers: { "content-type": "application/json", "stripe-signature": signature },
       body: payload,

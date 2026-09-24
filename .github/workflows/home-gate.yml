@@ -105,6 +105,8 @@ jobs:
           # never reaches a real charge or a real generation.
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
           STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
           XAI_API_KEY: xai-ci-stub-no-real-calls
           ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
           RESEND_API_KEY: re_ci_stub_no_real_calls

@@ -3,7 +3,8 @@
  *
  * Covers:
  *   R1  Dev: STRIPE_SECRET_KEY_TEST present → resolver returns it, ignores live key
- *   R2  Dev: only STRIPE_SECRET_KEY present → resolver refuses it
+ *   R2  Dev: only a LIVE STRIPE_SECRET_KEY present → resolver refuses it
+ *   R2b Dev/CI: only a TEST-mode STRIPE_SECRET_KEY present → resolver returns it (CI's stub)
  *   R3  Dev: neither key present → resolver returns undefined
  *   R4  Prod (NODE_ENV=production): ignores STRIPE_SECRET_KEY_TEST, returns live key
  *   R5  Prod (ENVIRONMENT=PROD): same as R4
@@ -42,6 +43,13 @@ describe("getStripeSecretKey — key-selection rules", () => {
   it("R2: dev with only live key → refuses the fallback", () => {
     const env = devEnv({ STRIPE_SECRET_KEY: "sk_live_xyz" });
     assert.equal(getStripeSecretKey(env), undefined);
+  });
+
+  it("R2b: dev/CI with only a test-mode STRIPE_SECRET_KEY → returns it; never a live one", () => {
+    assert.equal(getStripeSecretKey(devEnv({ STRIPE_SECRET_KEY: "sk_test_ci_stub" })), "sk_test_ci_stub");
+    assert.equal(getStripeSecretKey(devEnv({ STRIPE_SECRET_KEY: "rk_test_ci_stub" })), "rk_test_ci_stub");
+    assert.equal(getStripeSecretKey(devEnv({ STRIPE_SECRET_KEY: "rk_live_xyz" })), undefined);
+    assert.equal(getStripeSecretKey(devEnv({ STRIPE_SECRET_KEY: "" })), undefined);
   });
 
   it("R3: dev with neither key → returns undefined", () => {
