@@ -36,6 +36,7 @@ import {
 import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
 import Stripe from 'stripe';
 import { getStripeSecretKey } from '../utils/stripe-key';
+import { processPlatformWebhookEvent, PLATFORM_EVENT_TYPES } from '../services/stripe-dispute.service';
 
 const router = Router();
 
@@ -554,25 +555,34 @@ router.post('/webhooks/stripe', async (req: any, res) => {
     return res.status(500).json({ error: 'Raw body unavailable for signature verification' });
   }
 
+  const stripe = new Stripe(getStripeSecretKey() || '', {
+    apiVersion: '2024-12-18.acacia' as any,
+  });
+  let event: Stripe.Event;
   try {
-    const stripe = new Stripe(getStripeSecretKey() || '', {
-      apiVersion: '2024-12-18.acacia' as any,
-    });
-
-    const event = stripe.webhooks.constructEvent(
+    event = stripe.webhooks.constructEvent(
       req.rawBody,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET || ''
     );
-
-    await stripePaymentService.handleWebhook(event);
+  } catch (error: any) {
+    console.warn('Webhook signature error:', error.message);
+    return res.status(400).json({ error: 'Invalid webhook signature' });
+  }
+  try {
+    // Platform disputes and bank payouts have a separate consumer claim. Do not
+    // use webhook_events.processed: the Connect rail legitimately sees the
+    // same Stripe event ID for different work.
+    if (PLATFORM_EVENT_TYPES.has(event.type)) {
+      await processPlatformWebhookEvent(event, stripe);
+    } else {
+      await stripePaymentService.handleWebhook(event);
+    }
 
     res.json({ received: true });
   } catch (error: any) {
-    console.error('Webhook error:', error);
-    res.status(400).json({
-      error: `Webhook Error: ${error.message}`,
-    });
+    console.error('Webhook processing error:', error);
+    res.status(500).json({ error: 'Webhook processing failed; delivery can be retried' });
   }
 });
 

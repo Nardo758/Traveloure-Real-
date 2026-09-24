@@ -10573,6 +10573,29 @@ export const webhookEvents = pgTable("webhook_events", {
     .on(table.createdAt.desc().nullsFirst()),
 ]);
 
+// Platform-account dispute and bank-payout events have their own consumer
+// lifecycle: the Connect handler may receive the same Stripe event ID and
+// must not suppress independent platform work via webhook_events.processed.
+export const platformWebhookConsumers = pgTable("platform_webhook_consumers", {
+  stripeEventId: text("stripe_event_id").notNull(),
+  consumer: text("consumer").notNull(),
+  eventType: text("event_type").notNull(),
+  rawPayload: jsonb("raw_payload").notNull(),
+  completedAt: timestamp("completed_at"),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.stripeEventId, table.consumer] })]);
+
+// The terminal outcome is shared by both verified webhook consumers so a
+// late created/updated event cannot reopen a dispute after it closes.
+export const stripeDisputeLifecycle = pgTable("stripe_dispute_lifecycle", {
+  disputeId: text("dispute_id").primaryKey(),
+  terminalOutcome: text("terminal_outcome"),
+  bookingStatus: jsonb("booking_status").notNull().default({}),
+  closedAt: timestamp("closed_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const insertWebhookEventSchema = createInsertSchema(webhookEvents).omit({ id: true, createdAt: true });
 export type InsertWebhookEvent = z.infer<typeof insertWebhookEventSchema>;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;

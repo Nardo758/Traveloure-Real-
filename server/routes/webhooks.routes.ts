@@ -14,9 +14,10 @@ import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { activateVerificationHeldListings } from "../services/publish-verification.service";
 import { db } from "../db";
-import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, bookings, adminNotifications, expertRequests, users } from "@shared/schema";
+import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, adminNotifications, users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { getStripeSecretKey } from "../utils/stripe-key";
+import { handleStripeDispute } from "../services/stripe-dispute.service";
 
 const router = Router();
 
@@ -91,7 +92,8 @@ router.post("/persona", (_req, res) => {
 });
 
 // ─── Core Stripe event processor ────────────────────────────────────────────
-// Runs AFTER res.json({ received: true }) so Stripe never times out waiting.
+// Finish durable processing before acknowledging Stripe, so transient failures
+// can be retried rather than becoming silently successful deliveries.
 //
 // Responsibilities:
 //   1. Deduplication  — check webhook_events for already-processed event IDs
@@ -447,85 +449,25 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       }
 
       case "charge.dispute.created": {
-        const dispute = event.data.object as Stripe.Dispute;
-
-        // Fetch the charge to get bookingId from metadata
-        const charge = await stripe.charges.retrieve(dispute.charge as string);
-        const bookingId = charge.metadata?.bookingId;
-
-        if (bookingId) {
-          // Mark booking as disputed
-          await db
-            .update(bookings)
-            .set({
-              status: "disputed",
-              disputeId: dispute.id,
-              disputeReason: dispute.reason,
-            })
-            .where(eq(bookings.id, bookingId));
-
-          // Alert admin immediately
-          await db.insert(adminNotifications).values({
-            type: "dispute_created",
-            message: `Chargeback filed for booking ${bookingId} — reason: ${dispute.reason}`,
-            reason: dispute.reason,
-          } as any);
-
-          console.warn(`[DISPUTE] Booking ${bookingId} disputed. Reason: ${dispute.reason} · Dispute ID: ${dispute.id}`);
-
-          // Check if expert was already paid for this booking —
-          // DO NOT automatically claw back funds; flag for human review only.
-          const booking = await db
-            .select({ tripId: bookings.tripId })
-            .from(bookings)
-            .where(eq(bookings.id, bookingId))
-            .limit(1);
-
-          if (booking[0]?.tripId) {
-            const relatedExpertRequest = await db
-              .select({ status: expertRequests.status })
-              .from(expertRequests)
-              .where(eq(expertRequests.tripId, booking[0].tripId))
-              .limit(1);
-
-            if (relatedExpertRequest[0]?.status === "completed") {
-              await db.insert(adminNotifications).values({
-                type: "dispute_after_payout",
-                message: `URGENT: Booking ${bookingId} disputed but expert may have already been paid. Manual review required.`,
-                reason: "payout_clawback_review",
-              } as any);
-              console.warn(`[DISPUTE] Booking ${bookingId}: expert request was completed — possible payout clawback needed. Manual review required.`);
-            }
-          }
-        } else {
-          console.warn(`[DISPUTE] Dispute ${dispute.id} on charge ${dispute.charge} has no bookingId in metadata — no booking updated.`);
-        }
+        await db.transaction(async (tx) =>
+          handleStripeDispute(event.data.object as Stripe.Dispute, stripe, { closed: false, eventId: event.id }, tx)
+        );
         break;
       }
 
       case "charge.dispute.closed": {
-        const dispute = event.data.object as Stripe.Dispute;
+        await db.transaction(async (tx) =>
+          handleStripeDispute(event.data.object as Stripe.Dispute, stripe, { closed: true, eventId: event.id }, tx)
+        );
+        break;
+      }
 
-        // won  → we keep the funds; restore booking to confirmed
-        // lost → customer refunded; mark booking as dispute_lost for ops
-        const charge = await stripe.charges.retrieve(dispute.charge as string);
-        const bookingId = charge.metadata?.bookingId;
-
-        if (bookingId) {
-          const newStatus = dispute.status === "won" ? "confirmed" : "dispute_lost";
-          await db
-            .update(bookings)
-            .set({ status: newStatus })
-            .where(eq(bookings.id, bookingId));
-
-          await db.insert(adminNotifications).values({
-            type: "dispute_closed",
-            message: `Dispute ${dispute.id} for booking ${bookingId} closed — outcome: ${dispute.status}. Booking status set to "${newStatus}".`,
-            reason: dispute.status,
-          } as any);
-
-          console.info(`[DISPUTE] Dispute ${dispute.id} closed (${dispute.status}). Booking ${bookingId} → ${newStatus}.`);
-        }
+      case "charge.dispute.updated":
+      case "charge.dispute.funds_withdrawn":
+      case "charge.dispute.funds_reinstated": {
+        await db.transaction(async (tx) =>
+          handleStripeDispute(event.data.object as Stripe.Dispute, stripe, { closed: false, eventId: event.id }, tx)
+        );
         break;
       }
 
@@ -553,6 +495,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       SET error = ${processingError}
       WHERE stripe_event_id = ${event.id}
     `);
+    throw new Error(processingError);
   }
 }
 
@@ -588,15 +531,13 @@ router.post("/stripe", async (req: any, res) => {
     }
   }
 
-  // Acknowledge receipt IMMEDIATELY — Stripe's 30-second timeout starts from
-  // the HTTP request. Blocking on DB writes risks a timeout that triggers Stripe
-  // to re-queue the event, creating duplicate deliveries.
-  res.json({ received: true });
-
-  // Process AFTER responding — fire-and-forget with full error logging
-  processStripeWebhookEvent(event).catch(err => {
+  try {
+    await processStripeWebhookEvent(event);
+    res.json({ received: true });
+  } catch (err) {
     console.error("[WEBHOOK PROCESSING ERROR]", event.type, err);
-  });
+    res.status(500).json({ message: "Webhook processing failed; delivery can be retried" });
+  }
 });
 
 export default router;

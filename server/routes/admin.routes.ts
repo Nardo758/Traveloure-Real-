@@ -5372,12 +5372,21 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
           // 'processing' only if it isn't already completed/processing. If zero rows claim, another
           // concurrent call / retry already owns this payout → do NOT transfer again. The DB
           // transition is the guard (a check-then-transfer is the double-spend TOCTOU we're closing).
-          const claimed = requesterType === 'expert'
+          const claimResult = requesterType === 'expert'
             ? await storage.claimExpertPayoutForProcessing(id)
             : await storage.claimProviderPayoutForProcessing(id);
-          if (!claimed) {
+          if (!claimResult.payout) {
+            if (claimResult.reason === 'insufficient_releasable_earnings') {
+              return res.status(409).json({
+                error: "Payout remains pending: insufficient undisputed, unreserved releasable earnings to fund this payout.",
+                reason: "insufficient_releasable_earnings",
+                payoutId: id,
+              });
+            }
             return res.status(409).json({
-              error: "Payout is already processing or completed — refusing to transfer again.",
+              error: claimResult.reason === 'already_processing'
+                ? "Payout is already processing and may already have been sent to Stripe; refusing to retry or reverse it."
+                : "Payout is completed or failed — refusing to transfer again.",
               payoutId: id,
             });
           }
@@ -5425,16 +5434,15 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
               console.error('Failed to send payout notification:', notifError);
             }
           } catch (stripeError: any) {
-            console.error('Stripe transfer failed:', stripeError);
-            if (requesterType === 'expert') {
-              updated = await storage.updateExpertPayoutStatus(id, 'failed', `Stripe transfer failed: ${stripeError.message}`);
-            } else {
-              updated = await storage.updateProviderPayoutStatus(id, 'failed', `Stripe transfer failed: ${stripeError.message}`);
-            }
+            // A network/API error after a transfer request is not proof that Stripe
+            // rejected it. Leave the claimed payout and its earning reservations in
+            // processing until an operator reconciles the deterministic Stripe key.
+            // Releasing them or marking failed here could pay the same earnings twice.
+            console.error('Stripe transfer outcome needs reconciliation:', stripeError);
             await insertAccessAuditLog({
               actorId: userId,
               actorRole: user.role,
-              action: "payout_approve_failed",
+              action: "payout_approve_reconcile",
               resourceType: "payout",
               resourceId: id,
               targetUserId: recipientId,
@@ -5442,7 +5450,11 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
               ipAddress: req.ip ?? null,
               userAgent: req.get("user-agent") ?? null,
             }).catch((err: any) => console.error("[admin-payouts] audit log failed (non-fatal):", err));
-            return res.json({ ...updated, stripeError: stripeError.message });
+            return res.status(502).json({
+              error: "Transfer outcome is unknown. The payout remains processing; reconcile with Stripe before any retry.",
+              payoutId: id,
+              requiresManualReview: true,
+            });
           }
         } else {
           return res.status(400).json({
@@ -5457,6 +5469,13 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
           updated = await storage.updateExpertPayoutStatus(id, status, notes, transactionId);
         } else {
           updated = await storage.updateProviderPayoutStatus(id, status, notes, payoutReference);
+        }
+        if (status === 'failed' && updated?.status !== 'failed') {
+          return res.status(409).json({
+            error: "A processing payout may already have reached Stripe. Reconcile its transfer before changing its status or releasing its reserved earnings.",
+            payoutId: id,
+            requiresManualReview: true,
+          });
         }
         // status is 'processing' or 'failed' here (the 'completed' branch is handled above).
         // 'failed' at this stage is an admin explicitly rejecting the payout request (no transfer attempted).
