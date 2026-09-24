@@ -119,10 +119,10 @@ $29 per month (`plans.pro_monthly`), **free during beta until December 31, 2026*
 
 | Revenue event | Payer | Rule | Row | Value |
 |---|---|---|---|---|
-| Traveler service fee | traveler | on every platform booking; waived under Trip Pass and on provider-attributed short-link bookings | `traveler:service_fee_pct`, `traveler:service_fee_cap_cents` | 7%, cap $25 |
+| Traveler service fee | traveler | on every platform booking; waived under Trip Pass and on provider-attributed short-link bookings | `traveler_service_fee` (cap via its own `max_amount`) | 7%, cap $25 |
 | Provider commission, tiered | provider | by insurance / risk band | `limited` / `moderate` / `commercial` / `premium` | 12% / 8% / 6% / 4% |
 | Provider commission, beta | provider | active policy during beta | `beta_flat` | 10% |
-| Provider commission, rails | provider | own-sourced via short link; repeat pairs | `provider:rails_rate` | ~8%, admin-set |
+| Provider commission, rails | provider | own-sourced via short link; repeat pairs | `provider_rails` | 8%, admin-set |
 | Expert commission | expert | standard split | `expert_standard` | 25% (expert keeps 75%) |
 | Expert commission, beta cohort | expert | admin-flagged beta experts | `expert_new` | 15% (expert keeps 85%) |
 | Affiliate commission | partner | per partner, received from the partner's report | `affiliate:<partner>` | seeded 4–12%, **confirm per contract** |
@@ -393,7 +393,7 @@ v1.3's Year-1 projection ($955K revenue, break-even in month 11) rested on a mem
 | Plans created | 588 | 951 | 1,632 | bookings ÷ bookings-per-plan (assumption) |
 | Provider commission | $6,985 | $15,132 | $30,259 | `beta_flat` 10% (mig 033) |
 | Expert commission | $4,490 | $9,728 | $24,440 | `expert_new` 15% (mig 033) |
-| Traveler service fee | $5,937 | $12,105 | $24,440 | `traveler:service_fee_pct` 7% cap $25 |
+| Traveler service fee | $5,937 | $12,105 | $24,440 | `traveler_service_fee` 7% cap $25 |
 | Optimization runs | $704 | $1,993 | $4,888 | `optimization_fees` $5.99 |
 | AI Concierge tasks | $176 | $568 | $1,464 | `concierge:ai_task` $2.99 |
 | Trip Pass | $558 | $1,806 | $4,651 | `plans.trip_pass` $19 |
@@ -525,7 +525,7 @@ Lanes are sequenced in the wave grammar the architecture rules use; each lane ap
 | `beta_flat` | percent | 0.10 | migration 033 |
 | `limited` / `moderate` / `commercial` / `premium` | percent | 0.12 / 0.08 / 0.06 / 0.04 | migrations 033, 259 |
 | `affiliate:<partner>` | percent | 0.08 (0.06 air/hotel) | migration 033 |
-| `traveler_service_fee` (`traveler:service_fee_pct`, `_cap_cents`) | percent, cap | 0.07, 2500 | migration 258 |
+| `traveler_service_fee` (one band; the $25 cap is its own `max_amount`) | percent, cap | 0.0700, $25.00 | migration 178 |
 | `optimization_fees` | flat | 5.99 / 19.99 | migration 076 |
 | `concierge:ai_task` | flat_cents | 299 | migration 258 |
 | `expert_concierge_booking` (Booking Concierge fee, live, capped) | percent, max_amount | 0.05, cap $40 | migrations 064, 066, 311 |
