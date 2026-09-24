@@ -14,6 +14,14 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { parseApiErrorMessage } from "@/lib/api-error";
 import type { TripPlanPlanApproval } from "@shared/trip-plan";
+import { useLocation } from "wouter";
+import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
+import {
+  runBulkRouteToCheckout,
+  selectPlatformBookableItems,
+  summarizeBulkRoute,
+  type RoutableItemLike,
+} from "@/lib/slip-plan-actions";
 
 /**
  * The delivery handshake (migration 164; QA_PUNCH_LIST W2-A items 11+13). Reads
@@ -25,18 +33,59 @@ import type { TripPlanPlanApproval } from "@shared/trip-plan";
  *   - Approved → a quiet confirmation chip.
  * Anything else (no advisor, still drafting, already sent back for changes) renders nothing —
  * §13, never fabricate a decision state that doesn't exist.
+ *
+ * Booking-on-behalf option A (ledger `2026-09-24-approve-and-book`): when the plan holds items the
+ * traveler can buy on the platform (`selectPlatformBookableItems`), both renders also offer ONE
+ * press that approves (if not yet approved), routes those items to checkout through the existing
+ * per-item routing rail, and lands on the payment step. The expert prepares; the traveler pays
+ * (LD 42 D19) — nothing here charges, and the count is the plan's own rows.
  */
 export function PlanApprovalBanner({
   tripId,
   planApproval,
+  activities = [],
 }: {
   tripId: string;
   planApproval: TripPlanPlanApproval | null | undefined;
+  /** The plan's items, read for the approve-and-book count. Absent ⇒ no book control. */
+  activities?: Array<RoutableItemLike & { providerServiceId?: string | null }>;
 }) {
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
+  const bookable = selectPlatformBookableItems(activities);
+  const bookLabel = `${bookable.length} item${bookable.length === 1 ? "" : "s"}`;
+
+  const approveAndBook = useMutation({
+    mutationFn: async (approveFirst: boolean) => {
+      if (approveFirst) {
+        await apiRequest("POST", `/api/trips/${tripId}/plan-review`, { decision: "approve" });
+      }
+      return runBulkRouteToCheckout({
+        items: bookable,
+        postRoute: (itemId) =>
+          apiRequest("POST", `/api/trips/${tripId}/items/${itemId}/route`, { to: "ready_for_checkout" }),
+        invalidate: () => {
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+          queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        },
+      });
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      toast(summarizeBulkRoute(result));
+      if (result.succeeded > 0) setLocation(BUY_NOW_CART_PATH);
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't send these to checkout",
+        description: parseApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      });
+    },
+  });
 
   const decide = useMutation({
     mutationFn: async (payload: { decision: "approve" | "request_changes"; note?: string }) => {
@@ -77,6 +126,18 @@ export function PlanApprovalBanner({
             })}
           </span>
         )}
+        {bookable.length > 0 && (
+          <Button
+            size="sm"
+            className="ml-auto text-xs h-7"
+            onClick={() => approveAndBook.mutate(false)}
+            disabled={approveAndBook.isPending}
+            title="Sends these to checkout. You pay for them there."
+            data-testid={`button-book-approved-${tripId}`}
+          >
+            {approveAndBook.isPending ? "Sending…" : `Book ${bookLabel}`}
+          </Button>
+        )}
       </div>
     );
   }
@@ -111,13 +172,26 @@ export function PlanApprovalBanner({
           </Button>
           <Button
             size="sm"
+            variant={bookable.length > 0 ? "outline" : "default"}
             className="text-xs h-7"
             onClick={() => decide.mutate({ decision: "approve" })}
-            disabled={decide.isPending}
+            disabled={decide.isPending || approveAndBook.isPending}
             data-testid={`button-approve-plan-${tripId}`}
           >
             Approve plan
           </Button>
+          {bookable.length > 0 && (
+            <Button
+              size="sm"
+              className="text-xs h-7"
+              onClick={() => approveAndBook.mutate(true)}
+              disabled={decide.isPending || approveAndBook.isPending}
+              title="Approves the plan and sends these to checkout. You pay for them there."
+              data-testid={`button-approve-and-book-${tripId}`}
+            >
+              {approveAndBook.isPending ? "Sending…" : `Approve & book ${bookLabel}`}
+            </Button>
+          )}
         </div>
       </div>
 

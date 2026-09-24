@@ -49,8 +49,9 @@
  * role='owner' row, which is the other half of the same principal (createTrip writes both;
  * the three raw-SQL minters write only the `trips` row). Either one is the owner.
  *
- * The expert branch uses the canonical `isTripAdvisor` predicate (server/utils/trip-advisor.ts):
- * pending|accepted|assigned PASS, rejected DENIES, unknown DENIES. Never a bespoke query.
+ * The expert branch uses the canonical WRITE predicate `isTripAdvisorWithWriteAccess`
+ * (server/utils/trip-advisor.ts): accepted|assigned PASS, pending/rejected/unknown DENY (Locked
+ * Decision 12 — a pending advisor reads, never writes). Never a bespoke query.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * CONCURRENCY
@@ -74,7 +75,7 @@ import { itineraryItems, notifications, tripCollaborators, trips, ROUTING_STATUS
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
 import { verifyTripOwnership } from "../utils/trip-ownership";
-import { isTripAdvisor } from "../utils/trip-advisor";
+import { isTripAdvisorWithWriteAccess } from "../utils/trip-advisor";
 import { syncItemProjection } from "../services/cart-projection.service";
 import { logItemTransition } from "../services/item-transition-log.service";
 import { finalizeTrip, TripNotFoundError } from "../services/trip-finalize.service";
@@ -169,7 +170,10 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
     let actor: "owner" | "expert";
     if (owner) {
       actor = "owner";
-    } else if (to === "in_planning" && from === "with_expert" && (await isTripAdvisor(tripId, userId))) {
+    } else if (to === "in_planning" && from === "with_expert" && (await isTripAdvisorWithWriteAccess(tripId, userId))) {
+      // Locked Decision 12 (Phase 3 batch 2): this is an ITEM WRITE, so it takes the WRITE statuses
+      // (accepted/assigned) — a `pending` advisor, including a booking concierge's read-only grant
+      // (LD 51), may read the plan but not move its items. It used the READ predicate.
       // The ONE cell where the expert workspace has WRITES: returning a refined item to the
       // traveler's plan. An expert may not un-route a `ready_for_checkout` item, and may not
       // send an item to themselves.

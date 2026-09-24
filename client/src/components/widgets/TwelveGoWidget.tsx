@@ -49,9 +49,10 @@ export function TwelveGoWidget({
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
+          {/* Phase 3 batch 2 (§13): a request, not a promise to book. */}
           {routeLabel
-            ? `Our booking agent finds the best trains, buses and ferries for ${routeLabel}, books them for you, and adds them to your trip.`
-            : 'Our booking agent finds the best trains, buses and ferries for your route, books them for you, and adds them to your trip.'}
+            ? `Send a request and a booking agent will look for trains, buses and ferries for ${routeLabel}.`
+            : 'Send a request and a booking agent will look for trains, buses and ferries for your route.'}
         </p>
         {agentBooking.requested ? (
           <div

@@ -333,6 +333,14 @@ router.delete("/api/ea/events/:id", isAuthenticated, async (req, res) => {
   // ============================================================
 
 
+// §19 PATCH allowlists (Phase 3 batch 2). `.pick()` names what an EA may change; zod strips the rest.
+const eaTravelPatchSchema = insertEaTravelArrangementSchema
+  .pick({ executiveId: true, executiveName: true, title: true, destination: true, startDate: true, endDate: true, status: true, segments: true, notes: true })
+  .partial();
+const eaAiTaskPatchSchema = insertEaAiTaskSchema
+  .pick({ type: true, executiveName: true, task: true, status: true, confidence: true, draft: true, options: true })
+  .partial();
+
 router.get("/api/ea/travel", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
@@ -361,8 +369,13 @@ router.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
       const eaUserId = getEaUserId(req);
       const row = await getEaTravelArrangementById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Travel arrangement not found" });
-      res.json(await updateEaTravelArrangement(req.params.id, sanitizeStringFields(req.body)));
+      // §19 (Phase 3 batch 2): an ALLOWLIST. The raw body was spread into the update, so a PATCH
+      // could move the row to another EA (`eaUserId`) or rewrite its timestamps. Unknown keys are
+      // stripped; the owner stays the session's EA.
+      const patch = eaTravelPatchSchema.parse(req.body ?? {});
+      res.json(await updateEaTravelArrangement(req.params.id, sanitizeStringFields(patch)));
     } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid update", errors: err.errors });
       console.error("[EA] updateTravel error:", err);
       res.status(500).json({ message: "Failed to update travel arrangement" });
     }
@@ -557,11 +570,16 @@ router.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
       const eaUserId = getEaUserId(req);
       const row = await getEaAiTaskById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "AI task not found" });
-      const updates: Record<string, any> = sanitizeStringFields({ ...req.body });
-      if (req.body.status === "approved") updates.approvedAt = new Date();
-      if (req.body.status === "rejected") updates.rejectedAt = new Date();
+      // §19 (Phase 3 batch 2): an ALLOWLIST — the raw body was spread into the update, so
+      // `eaUserId`, `approvedAt` and `rejectedAt` were client-settable. The two stamps are the
+      // server's, from the status this request sets.
+      const patch = eaAiTaskPatchSchema.parse(req.body ?? {});
+      const updates: Record<string, any> = sanitizeStringFields({ ...patch });
+      if (patch.status === "approved") updates.approvedAt = new Date();
+      if (patch.status === "rejected") updates.rejectedAt = new Date();
       res.json(await updateEaAiTask(req.params.id, updates));
     } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: "Invalid update", errors: err.errors });
       console.error("[EA] updateAiTask error:", err);
       res.status(500).json({ message: "Failed to update AI task" });
     }

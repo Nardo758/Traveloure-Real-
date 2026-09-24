@@ -1529,7 +1529,9 @@ export function SlipView({
           workspaceStatus/status (PlanApprovalBanner.tsx:84-88). This is the bell-notification
           landing surface (resolveNotificationLink rewrites /trip/:id → /plans/:tripId), so
           without this mount the delivery handshake had no Approve/Request-changes control here. */}
-      {isOwner && <PlanApprovalBanner tripId={tripId} planApproval={data.meta?.planApproval} />}
+      {isOwner && (
+        <PlanApprovalBanner tripId={tripId} planApproval={data.meta?.planApproval} activities={allActivities} />
+      )}
 
       <SlipHeader
         data={data}

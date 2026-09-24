@@ -19,6 +19,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
 import type { CatalogItem } from "@/types/catalog";
+import { AGENT_REQUEST_SENT_TITLE, AGENT_REQUEST_SENT_DESCRIPTION } from "@shared/booking-agent-vocabulary";
 
 export function useAgentBooking(item: CatalogItem, partnerCategory: string) {
   const { user } = useAuth();
@@ -42,8 +43,8 @@ export function useAgentBooking(item: CatalogItem, partnerCategory: string) {
     onSuccess: () => {
       setRequested(true);
       toast({
-        title: "Booking request sent",
-        description: "Our booking agent will handle this and add it to your trip.",
+        title: AGENT_REQUEST_SENT_TITLE,
+        description: AGENT_REQUEST_SENT_DESCRIPTION,
       });
     },
     onError: (err: any) => {

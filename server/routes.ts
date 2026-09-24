@@ -6,7 +6,7 @@ import { getUserId, getDbRole } from "./utils/auth";
 // ONE ownership predicate for a custom venue (ledger `2026-09-05-custom-venues-owner-scope`).
 import { isCustomVenueOwner } from "./utils/custom-venue-owner";
 import { isBusinessVerificationStatus } from "./utils/earner-verification";
-import { OWNER_BOOKING_TRANSITIONS } from "./utils/booking-from-states";
+import { OWNER_BOOKING_TRANSITIONS, ownerTransitionRefusal } from "./utils/booking-from-states";
 // Ledger `2026-09-17-surfaces-acceptance-completion` — READ EXPOSURE ONLY. The three booking LISTS
 // below carry the SAME two server derivations the single-booking GET already carries
 // (`describeAcceptance`, `describeCompletionDeclaration`), so no surface has to restate an
@@ -7142,6 +7142,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(409).json({
           message: `This booking is "${booking.status}" and cannot be moved to "${status}". A checkout still awaiting payment is not yours to accept — it resolves itself when the traveler pays, or is released automatically if they do not.`,
           currentStatus: booking.status,
+        });
+      }
+      // ── ACCEPT NEVER CONFIRMS AROUND THE CHECKOUT (ledger `2026-09-24-request-rail-unpaid`) ──
+      // A `pending` row with NO PaymentIntent on record is a request nobody has paid for: an
+      // expert-booking-request (storefront / visa-help) or a quote-born booking awaiting its
+      // `/api/checkout` charge. Accepting it moved it to `confirmed` with no money taken — and the
+      // quote charge only claims a `pending` row, so the traveler could then never pay it, while
+      // the artifact-acceptance and bundle completion rails could mint an earning on it. The
+      // legitimate paid-request rows carry the PaymentIntent the checkout stamped. The column only
+      // ever goes NULL → set (payment starting), never back, so this refusal cannot race into a
+      // wrong acceptance; the atomic conditional below remains the status guard (§15).
+      if (ownerTransitionRefusal(status, booking) === "unpaid") {
+        return res.status(409).json({
+          message:
+            "This request hasn't been paid yet, so it can't be accepted. It becomes acceptable once the traveler pays — or you can decline it.",
+          currentStatus: booking.status,
+          reason: "unpaid",
         });
       }
       // Owner cancels a PAID booking → the traveler gets a FULL refund (service price + platform

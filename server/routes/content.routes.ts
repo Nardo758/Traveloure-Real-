@@ -7887,6 +7887,16 @@ router.get("/api/affiliate-booking-requests/:id/open", isAuthenticated, async (r
         if (!isAgent) {
           return res.status(403).json({ message: "Not authorized to open this booking link" });
         }
+        // Phase 3 batch 2: the same standing the write rail uses. Any agent could open ANY
+        // request's partner link, including one another agent holds. The holder and an admin
+        // may; an unclaimed (pooled) request stays open to every agent; another agent's request
+        // is one 404 (Locked Decision 40 — "not yours" and "no such thing" are the same answer).
+        const standing = bookingRequestWriteStanding({
+          actorUserId: sessionUserId,
+          actorIsAdmin: dbUser!.role === "admin",
+          holderUserId: row.expertId ?? null,
+        });
+        if (standing === "not_yours") return res.status(404).json({ message: "Request not found" });
         openedBy = "expert";
       }
 
@@ -8039,7 +8049,12 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       // first (§15: a write with no conditional is not a claim). Assignment now has ONE rail —
       // `POST /api/affiliate-booking-requests/:id/claim` above — and `storage` strips the field a
       // second time, so an internal caller cannot reach it either.
-      const allowed = ["status", "expertNotes", "confirmationRef", "price"] as const;
+      // `price` LEFT this list (Phase 3 batch 2, §14): it was a hand-typed figure that became the
+      // purchase's `affiliate_earnings.bookingAmount` — an amount taken from the request body into a
+      // money record. The row keeps the price the server set when the request was created; what the
+      // partner actually charged arrives with the partner's own report (the reconciliation matcher).
+      // No client sent it.
+      const allowed = ["status", "expertNotes", "confirmationRef"] as const;
       const data: any = {};
       for (const key of allowed) {
         if (req.body[key] !== undefined) data[key] = req.body[key];
@@ -8309,6 +8324,17 @@ router.post("/api/affiliate-booking-requests/:id/verify", isAuthenticated, async
         return res.status(403).json({ message: "Expert role required" });
       }
       const { id } = req.params;
+      // Phase 3 batch 2: verification makes paid research calls, so it takes the write rail's
+      // standing — the holder, an admin, or any agent on an unclaimed request; another agent's
+      // request is one 404.
+      const target = await storage.getAffiliateBookingRequestById(id);
+      if (!target) return res.status(404).json({ message: "Request not found" });
+      const standing = bookingRequestWriteStanding({
+        actorUserId: sessionUserId,
+        actorIsAdmin: dbUser.role === "admin",
+        holderUserId: target.expertId ?? null,
+      });
+      if (standing === "not_yours") return res.status(404).json({ message: "Request not found" });
       const result = await verifyBookingRequest(id);
       if (!result.available && result.reason === "request_not_found") {
         return res.status(404).json({ message: "Request not found" });

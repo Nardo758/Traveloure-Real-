@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Train, Bus, Ship, ExternalLink, Clock, MapPin, AlertCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AGENT_REQUEST_SENT_TITLE, AGENT_REQUEST_SENT_DESCRIPTION } from "@shared/booking-agent-vocabulary";
 
 interface AffiliateProduct {
   id: string;
@@ -100,7 +101,7 @@ export function AffiliateTransportProducts({
         affiliateProductId: product.id,
         travelers: 1,
       }),
-    onSuccess: () => toast({ title: "Booking request sent", description: "Our booking agent will handle this and add it to your trip." }),
+    onSuccess: () => toast({ title: AGENT_REQUEST_SENT_TITLE, description: AGENT_REQUEST_SENT_DESCRIPTION }),
     onError: (e: any) => toast({ variant: "destructive", title: "Couldn't send request", description: e?.message || "Please try again." }),
   });
 
@@ -114,7 +115,7 @@ export function AffiliateTransportProducts({
         partnerRoute: { partner: "12go", origin: origin || undefined, destination: destination || undefined },
         travelers: 1,
       }),
-    onSuccess: () => toast({ title: "Booking request sent", description: "Our booking agent will handle this and add it to your trip." }),
+    onSuccess: () => toast({ title: AGENT_REQUEST_SENT_TITLE, description: AGENT_REQUEST_SENT_DESCRIPTION }),
     onError: (e: any) => toast({ variant: "destructive", title: "Couldn't send request", description: e?.message || "Please try again." }),
   });
 

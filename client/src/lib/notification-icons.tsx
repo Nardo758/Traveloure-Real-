@@ -130,6 +130,13 @@ export interface ResolvedNotificationLink {
  * (e.g. /itinerary-view/) are left untouched.
  */
 export function resolveNotificationLink(n: ApiNotification): ResolvedNotificationLink | null {
+  // Phase 3: the 48-hour "no response yet" notice offers other experts — its one action.
+  if (n.type === "earner_no_response") {
+    const path = typeof n.data?.workspacePath === "string" && n.data.workspacePath.startsWith("/experts")
+      ? n.data.workspacePath
+      : "/experts";
+    return { href: path, label: "See other experts" };
+  }
   if (n.data?.tripId) {
     const isTravelerTripLink = n.data.workspacePath?.startsWith("/trip/");
     const itemId = typeof n.data.itemId === "string" ? n.data.itemId : undefined;

@@ -748,6 +748,7 @@ function ShareKitCard({ service, serviceId }: { service: OwnerService | null; se
                 <InstagramPublishButton
                   imageUrl={activeImageUrl}
                   caption={caption}
+                  format={selectedFrame === "story" ? "story" : "feed"}
                   available={selectedFrame !== "route" || routeAvailable}
                   unavailableReason={selectedFrame === "route" && !routeAvailable ? "This service has no route stops yet" : undefined}
                   idPrefix={`sharekit-${serviceId}`}
@@ -756,7 +757,7 @@ function ShareKitCard({ service, serviceId }: { service: OwnerService | null; se
             </div>
 
             <p style={{ fontSize: 11.5, color: MUT, lineHeight: 1.5, margin: 0 }}>
-              Instagram publish sends the selected image + caption to your connected account. Connect your account in Settings if you haven't yet.
+              Instagram publish sends the selected image to your connected account — the Story frame posts as a story (no caption), the others as a post with this caption. Connect your account in Settings if you haven't yet.
             </p>
           </div>
         )}

@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ListingReviewFeedback } from "@/components/ListingReviewFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1425,7 +1426,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // clobbers a stored location with a placeholder.
         location: (() => {
           const sel = allNeighborhoods.find((n) => n.slug === formData.neighborhood);
-          return sel ? `${sel.name}, ${sel.city}` : undefined;
+          if (!sel) return undefined;
+          // A listing with no meeting place (video, call, PDF…) names only the CITY the host is
+          // based in — a neighborhood there would read as a meeting point that does not exist.
+          const hasMeetingPlace = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
+          return hasMeetingPlace ? `${sel.name}, ${sel.city}` : sel.city;
         })(),
         neighborhood: formData.neighborhood || null,
         meetingPoint: formData.meetingPoint || null,
@@ -1853,6 +1858,103 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     categories.length > 0 &&
     !selectedCategory;
   const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
+
+  // ONE neighborhood picker (Ruling 112 Q1), rendered in the in-person Meeting Location card and —
+  // decision-maker Sep 24, 2026 (Phase 3 #3) — in a "Where you're based" card for every listing
+  // that has no meeting place (video, call, PDF, voice notes, messaging). The neighborhood is the
+  // ONE structured signal the server derives `city` from (server/utils/service-city.ts), and a
+  // remote listing never got asked, so it never reached its city's market page.
+  const renderNeighborhoodPicker = (label: string, help: string) => (
+            <div>
+              <Label>{label}</Label>
+              <p className="text-xs text-muted-foreground mt-1 mb-2">{help}</p>
+              {allNeighborhoods.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No neighborhoods available.</p>
+              ) : (
+                <>
+                  {formData.neighborhood && (() => {
+                    const sel = allNeighborhoods.find((n) => n.slug === formData.neighborhood);
+                    return (
+                      <div className="flex items-center gap-2 mb-2" data-testid="chip-selected-neighborhood">
+                        <Badge variant="secondary" className="rounded-full px-3">
+                          {sel ? `${sel.name} · ${sel.city}` : formData.neighborhood}
+                        </Badge>
+                        <button
+                          type="button"
+                          className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground"
+                          onClick={() => set("neighborhood", "")}
+                          data-testid="button-clear-neighborhood"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    );
+                  })()}
+                  <Input
+                    value={neighborhoodQuery}
+                    onChange={(e) => setNeighborhoodQuery(e.target.value)}
+                    placeholder="Search neighborhoods or cities…"
+                    className="mb-2"
+                    data-testid="input-neighborhood-search"
+                  />
+                  <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-1">
+                    {(() => {
+                      const q = neighborhoodQuery.trim().toLowerCase();
+                      const filtered = q
+                        ? allNeighborhoods.filter(
+                            (n) =>
+                              n.name.toLowerCase().includes(q) ||
+                              n.city.toLowerCase().includes(q) ||
+                              n.country.toLowerCase().includes(q),
+                          )
+                        : allNeighborhoods;
+                      if (filtered.length === 0) {
+                        return (
+                          <p className="text-xs text-muted-foreground px-1 py-2" data-testid="text-no-neighborhood-match">
+                            Nothing matches "{neighborhoodQuery}".
+                          </p>
+                        );
+                      }
+                      return Object.entries(
+                        filtered.reduce<Record<string, typeof allNeighborhoods>>((acc, n) => {
+                          const key = `${n.city}, ${n.country}`;
+                          if (!acc[key]) acc[key] = [];
+                          acc[key].push(n);
+                          return acc;
+                        }, {}),
+                      ).map(([cityLabel, items]) => (
+                        <div key={cityLabel}>
+                          <p className="text-xs font-semibold text-muted-foreground px-1 py-0.5 uppercase tracking-wide">
+                            {cityLabel}
+                          </p>
+                          {items.map((n) => {
+                            const selected = formData.neighborhood === n.slug;
+                            return (
+                              <button
+                                key={n.slug}
+                                type="button"
+                                onClick={() => set("neighborhood", selected ? "" : n.slug)}
+                                className={`flex w-full items-center gap-2 px-2 py-1 rounded text-left text-sm hover:bg-accent ${selected ? "bg-accent font-medium" : ""}`}
+                                data-testid={`option-neighborhood-${n.slug}`}
+                                aria-pressed={selected}
+                              >
+                                <span className="flex-1">{n.name}</span>
+                                {selected && (
+                                  <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">selected</Badge>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </>
+              )}
+            </div>
+  );
+
+
   // ── D7 (docs/DECISIONS.md ruling 62) ─────────────────────────────────────────────────────
   // Placement: the logistics/delivery step, shown ONLY for place-anchored methods, decided by
   // the SHARED predicate (shared/service-fundamentals.ts) rather than a local method list.
@@ -2184,6 +2286,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </Badge>
           </CardContent>
         </Card>
+
+        <ListingReviewFeedback
+          approvalStatus={existingService?.approvalStatus}
+          rejectionReason={existingService?.rejectionReason}
+        />
 
         <Card>
           <CardHeader className="pb-2">
@@ -4177,97 +4284,25 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 free text is what left `location` reading 'Unknown'. One searchable pick;
                 it drives the market-page city (server-derived, utils/service-city.ts) and
                 the display location. */}
-            <div>
-              <Label>Neighborhood (where this happens)</Label>
-              <p className="text-xs text-muted-foreground mt-1 mb-2">
-                Pick the one neighborhood travelers should file this under — it places the
-                listing on its city's market page. Search by neighborhood or city.
-              </p>
-              {allNeighborhoods.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No neighborhoods available.</p>
-              ) : (
-                <>
-                  {formData.neighborhood && (() => {
-                    const sel = allNeighborhoods.find((n) => n.slug === formData.neighborhood);
-                    return (
-                      <div className="flex items-center gap-2 mb-2" data-testid="chip-selected-neighborhood">
-                        <Badge variant="secondary" className="rounded-full px-3">
-                          {sel ? `${sel.name} · ${sel.city}` : formData.neighborhood}
-                        </Badge>
-                        <button
-                          type="button"
-                          className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground"
-                          onClick={() => set("neighborhood", "")}
-                          data-testid="button-clear-neighborhood"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    );
-                  })()}
-                  <Input
-                    value={neighborhoodQuery}
-                    onChange={(e) => setNeighborhoodQuery(e.target.value)}
-                    placeholder="Search neighborhoods or cities…"
-                    className="mb-2"
-                    data-testid="input-neighborhood-search"
-                  />
-                  <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-1">
-                    {(() => {
-                      const q = neighborhoodQuery.trim().toLowerCase();
-                      const filtered = q
-                        ? allNeighborhoods.filter(
-                            (n) =>
-                              n.name.toLowerCase().includes(q) ||
-                              n.city.toLowerCase().includes(q) ||
-                              n.country.toLowerCase().includes(q),
-                          )
-                        : allNeighborhoods;
-                      if (filtered.length === 0) {
-                        return (
-                          <p className="text-xs text-muted-foreground px-1 py-2" data-testid="text-no-neighborhood-match">
-                            Nothing matches "{neighborhoodQuery}".
-                          </p>
-                        );
-                      }
-                      return Object.entries(
-                        filtered.reduce<Record<string, typeof allNeighborhoods>>((acc, n) => {
-                          const key = `${n.city}, ${n.country}`;
-                          if (!acc[key]) acc[key] = [];
-                          acc[key].push(n);
-                          return acc;
-                        }, {}),
-                      ).map(([cityLabel, items]) => (
-                        <div key={cityLabel}>
-                          <p className="text-xs font-semibold text-muted-foreground px-1 py-0.5 uppercase tracking-wide">
-                            {cityLabel}
-                          </p>
-                          {items.map((n) => {
-                            const selected = formData.neighborhood === n.slug;
-                            return (
-                              <button
-                                key={n.slug}
-                                type="button"
-                                onClick={() => set("neighborhood", selected ? "" : n.slug)}
-                                className={`flex w-full items-center gap-2 px-2 py-1 rounded text-left text-sm hover:bg-accent ${selected ? "bg-accent font-medium" : ""}`}
-                                data-testid={`option-neighborhood-${n.slug}`}
-                                aria-pressed={selected}
-                              >
-                                <span className="flex-1">{n.name}</span>
-                                {selected && (
-                                  <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">selected</Badge>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </>
-              )}
-            </div>
+            {renderNeighborhoodPicker("Neighborhood (where this happens)", "Pick the one neighborhood travelers should file this under — it places the listing on its city's market page. Search by neighborhood or city.")}
 
+          </CardContent>
+        </Card>
+      )}
+
+      {onSection("place") && !needsMeetingPoint && (
+        <Card data-testid="card-based-in">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MapPin className="w-5 h-5" />
+              Where you're based
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {renderNeighborhoodPicker(
+              "Your neighborhood",
+              "This session has no meeting place, so tell travelers where you are based — it puts the listing on that city's market page. Optional; leave it empty and the listing appears in search but on no city page.",
+            )}
           </CardContent>
         </Card>
       )}

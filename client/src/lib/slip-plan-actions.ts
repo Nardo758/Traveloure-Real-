@@ -33,6 +33,20 @@ export function selectBulkCheckoutItems<T extends RoutableItemLike>(items: T[]):
 }
 
 /**
+ * Booking-on-behalf option A (ledger `2026-09-24-approve-and-book`): the items an owner can BUY
+ * on the platform in one step after approving an expert's plan — the bulk-checkout rows that name
+ * a platform listing (`providerServiceId`). A free-text row or a partner-grounded row has nothing
+ * the checkout can charge, so it is never counted as "N items to book" (§13).
+ */
+export function selectPlatformBookableItems<T extends RoutableItemLike & { providerServiceId?: string | null }>(
+  items: T[],
+): T[] {
+  return selectBulkCheckoutItems(items).filter(
+    (i) => typeof i.providerServiceId === "string" && i.providerServiceId.length > 0,
+  );
+}
+
+/**
  * How many items the optimizer would actually read for this trip — the server's
  * `loadTripOptimizerInputs` pulls `in_planning` + `ready_for_checkout` items.
  */
