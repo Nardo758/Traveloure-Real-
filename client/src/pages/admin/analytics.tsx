@@ -77,7 +77,7 @@ export default function AdminAnalytics() {
   return (
     <AdminLayout title="Analytics">
       <div className="p-6 space-y-6">
-        <AdminTabNav tabs={[{ label: "Overview", href: "/admin/analytics" }, { label: "Tourism", href: "/admin/tourism-analytics" }]} />
+        <AdminTabNav tabs={[{ label: "Overview", href: "/admin/analytics" }, { label: "Tourism", href: "/admin/tourism-analytics" }, { label: "Discover", href: "/admin/analytics/discover" }]} />
         {/* Conversion funnel drop-off (relocated from Dashboard) */}
         <FunnelChart />
 
