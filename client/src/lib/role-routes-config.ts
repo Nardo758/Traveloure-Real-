@@ -199,6 +199,7 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/message-moderation',  description: 'Message moderation queue' },
   { href: '/admin/destination-events',  description: 'Destination events management' },
   { href: '/admin/analytics/cross-sell', description: 'Cross-sell analytics' },
+  { href: '/admin/analytics/discover',  description: 'Discover impressions — cards seen per city and type, click-through from linking start' },
   { href: '/admin/qa-checklist',        description: 'QA checklist' },
   { href: '/admin/content-ops',         description: 'Content Ops — YouTube ingestion, extraction status, offering requests, market checklist' },
   { href: '/admin/audit-log',           description: 'Administrative audit log' },

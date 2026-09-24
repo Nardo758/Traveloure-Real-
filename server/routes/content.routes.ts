@@ -19,6 +19,11 @@ import {
   validateGeneratedItineraryTextLength,
 } from "../utils/generated-itinerary";
 import { Router } from "express";
+import {
+  DISCOVER_IMPRESSION_WINDOWS,
+  loadDiscoverImpressions,
+  resolveClickAttribution,
+} from "../services/discover-impressions.service";
 import { db } from "../db";
 import { storage } from "../storage";
 import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
@@ -9257,7 +9262,18 @@ router.post("/api/affiliates/track", async (req, res) => {
         return res.status(400).json({ message: "partner is required" });
       }
       const userId = getUserId(req)!;
+      // Board #621: the Discover cards send which card was pressed and the impression it came
+      // from; until now all three were dropped here. Stored for analytics only — the impression
+      // is linked only when it exists and names the same card (see resolveClickAttribution).
+      const attribution = await resolveClickAttribution({
+        contentType: req.body?.contentType,
+        contentId: req.body?.contentId,
+        impressionId: req.body?.impressionId,
+      });
       await insertAffiliateClick({
+        clickContentType: attribution.clickContentType,
+        clickContentId: attribution.clickContentId,
+        sourceImpressionId: attribution.sourceImpressionId,
         productId: null,
         partnerId: null,
         userId: userId || null,
@@ -9370,6 +9386,28 @@ router.get("/api/platform/stats", async (_req, res) => {
     city: z.string().nullable().optional(),
     cardPosition: z.number().int().nullable().optional(),
     sessionId: z.string().min(1),
+  });
+
+  // Board #621 — admin read of the impressions above (the §2 blanket guard covers /api/admin).
+  // Click-through is counted only from the earliest impression a click was linked to; see
+  // server/services/discover-impressions.service.ts for why nothing earlier can be.
+  const discoverImpressionsQuery = z.object({
+    window: z.enum(DISCOVER_IMPRESSION_WINDOWS).optional(),
+    city: z.string().trim().min(1).max(100).optional(),
+  });
+
+  router.get("/api/admin/discover/impressions", isAuthenticated, requireDbAdmin, async (req, res) => {
+    const parsed = discoverImpressionsQuery.safeParse(req.query);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid filter" });
+    }
+    try {
+      const city = parsed.data.city && parsed.data.city !== "all" ? parsed.data.city : null;
+      res.json(await loadDiscoverImpressions({ window: parsed.data.window ?? "30", city }));
+    } catch (err) {
+      console.error("Error loading Discover impressions:", err);
+      res.status(500).json({ message: "Failed to load impressions" });
+    }
   });
 
   router.post("/api/tracking/impression", async (req, res) => {

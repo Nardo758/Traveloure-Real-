@@ -150,7 +150,7 @@ export default function TourismAnalytics() {
   return (
     <AdminLayout title="Tourism Analytics">
       <div className="p-6 space-y-6">
-        <AdminTabNav tabs={[{ label: "Overview", href: "/admin/analytics" }, { label: "Tourism", href: "/admin/tourism-analytics" }]} />
+        <AdminTabNav tabs={[{ label: "Overview", href: "/admin/analytics" }, { label: "Tourism", href: "/admin/tourism-analytics" }, { label: "Discover", href: "/admin/analytics/discover" }]} />
         {/* Header with Actions */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
