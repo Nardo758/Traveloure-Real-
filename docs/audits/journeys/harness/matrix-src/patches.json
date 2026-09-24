@@ -3,7 +3,7 @@
   "id": "plan-modal:dialog-on-open-change",
   "evidence": "behavioral",
   "evidenceRef": "J6/R-close-x, R-backdrop, R-escape steps 2-3; J1/R7",
-  "actual": "✕, backdrop and Escape all call close() with no write; on reopen the modal restarts empty",
+  "actual": "\u2715, backdrop and Escape all call close() with no write; on reopen the modal restarts empty",
   "addGaps": [
    {
     "class": "LIFECYCLE_LOSS",
@@ -20,7 +20,7 @@
  {
   "id": "planning-provider:ai-modal-on-close",
   "evidence": "behavioral",
-  "evidenceRef": "J1/README §2 (debug run)",
+  "evidenceRef": "J1/README \u00a72 (debug run)",
   "addGaps": [
    {
     "class": "INCONSISTENT_AFFORDANCE",
@@ -33,7 +33,7 @@
   "id": "app-shell:guest-cart-migrator",
   "evidence": "behavioral",
   "evidenceRef": "J5/R1 step 5",
-  "actual": "POST /api/cart/migrate → migrated 0: it moves cart_items.guest_session_id rows, and no path writes that column (routes.ts:9154 requires auth; cart-projection.service.ts:330 writes null)",
+  "actual": "POST /api/cart/migrate \u2192 migrated 0: it moves cart_items.guest_session_id rows, and no path writes that column (routes.ts:9154 requires auth; cart-projection.service.ts:330 writes null)",
   "addGaps": [
    {
     "class": "ORPHAN_READ",
@@ -45,7 +45,7 @@
  {
   "id": "discover-location:matched-service-request",
   "evidence": "behavioral",
-  "evidenceRef": "curl POST /api/services/request → 404 (local prod build)",
+  "evidenceRef": "curl POST /api/services/request \u2192 404 (local prod build)",
   "addGaps": [
    {
     "class": "DEAD_TRIGGER",
@@ -84,7 +84,7 @@
  {
   "id": "experience-template:add-to-cart",
   "evidence": "behavioral",
-  "evidenceRef": "J4/R1 step 4 (authed → cart_items trip_id NULL, → /cart); J4/R2 step 4 (guest → toast then location \"/\")",
+  "evidenceRef": "J4/R1 step 4 (authed \u2192 cart_items trip_id NULL, \u2192 /cart); J4/R2 step 4 (guest \u2192 toast then location \"/\")",
   "addGaps": [
    {
     "class": "SPEC_DIVERGENCE",
@@ -101,7 +101,7 @@
    {
     "class": "FALSE_PROMISE",
     "severity": "P2",
-    "note": "J4-F3: travelers:2 written to the pen and shown on the trip strip with no user input (§13)"
+    "note": "J4-F3: travelers:2 written to the pen and shown on the trip strip with no user input (\u00a713)"
    }
   ]
  },
@@ -149,7 +149,7 @@
  {
   "id": "ai-assistant:button-send-message",
   "evidence": "behavioral",
-  "evidenceRef": "J3/R1 step 3 (POST …/messages 500; empty thread; console-only error)",
+  "evidenceRef": "J3/R1 step 3 (POST \u2026/messages 500; empty thread; console-only error)",
   "addGaps": [
    {
     "class": "SILENT_FAILURE_UI",
@@ -191,7 +191,7 @@
   "u3": true,
   "id": "app-shell:capture-acquisition-ref",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible (?ref= is silently stored; invalid or missing refs are ignored, acquisition.ts:15-19)",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible (?ref= is silently stored; invalid or missing refs are ignored, acquisition.ts:15-19)",
    "resultLocation": "not visible to the user (sessionStorage \"acquisitionRef\" @ client/src/lib/acquisition.ts:21; relayed via getAcquisitionRef @ acquisition.ts:29 at checkout for server-side attribution)",
    "resultReachableFromSurface": false
   }
@@ -200,8 +200,8 @@
   "u3": true,
   "id": "hooks:use-claim-guest-trips-effect",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; after sign-in the guest-created trips could appear in my trip list (the create toast says \"Sign up to book services!\", client/src/hooks/use-trips.ts:85)",
-   "resultLocation": "/dashboard or /my-trips trip list (useTrips @ client/src/pages/dashboard.tsx:70, client/src/pages/my-trips.tsx:244), once the list refetches — claimTrips invalidates no query (client/src/contexts/GuestTripContext.tsx:52-67); the DB effect lands in trips.user_id (server/routes.ts:1576-1579). Note: fetch non-2xx does not throw, so removeGuestTrip (GuestTripContext.tsx:62) runs even on a 401/409 refusal",
+   "uiPromise": "implicit \u2014 no user-facing promise; after sign-in the guest-created trips could appear in my trip list (the create toast says \"Sign up to book services!\", client/src/hooks/use-trips.ts:85)",
+   "resultLocation": "/dashboard or /my-trips trip list (useTrips @ client/src/pages/dashboard.tsx:70, client/src/pages/my-trips.tsx:244), once the list refetches \u2014 claimTrips invalidates no query (client/src/contexts/GuestTripContext.tsx:52-67); the DB effect lands in trips.user_id (server/routes.ts:1576-1579). Note: fetch non-2xx does not throw, so removeGuestTrip (GuestTripContext.tsx:62) runs even on a 401/409 refusal",
    "resultReachableFromSurface": true
   }
  },
@@ -209,7 +209,7 @@
   "u3": true,
   "id": "guest-trip-context:load",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible (hydrates tripId→shareToken map from localStorage)",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible (hydrates tripId\u2192shareToken map from localStorage)",
    "resultLocation": "not visible to the user (GuestTripContext state, client/src/contexts/GuestTripContext.tsx:21-24; consumed as ?token= on trip fetch/update, client/src/hooks/use-trips.ts:30-33,106-109)",
    "resultReachableFromSurface": false
   }
@@ -218,7 +218,7 @@
   "u3": true,
   "id": "guest-trip-context:persist",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible",
    "resultLocation": "not visible to the user (localStorage \"guestTrips\" @ client/src/contexts/GuestTripContext.tsx:33)",
    "resultReachableFromSurface": false
   }
@@ -227,8 +227,8 @@
   "u3": true,
   "id": "guest-trip-context:add-guest-trip",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; runs inside the guest trip-create success path; user sees only the \"Trip Created\" toast (client/src/hooks/use-trips.ts:82-86)",
-   "resultLocation": "not visible to the user (GuestTripContext.guestTrips → localStorage \"guestTrips\"; called from client/src/hooks/use-trips.ts:80)",
+   "uiPromise": "implicit \u2014 no user-facing promise; runs inside the guest trip-create success path; user sees only the \"Trip Created\" toast (client/src/hooks/use-trips.ts:82-86)",
+   "resultLocation": "not visible to the user (GuestTripContext.guestTrips \u2192 localStorage \"guestTrips\"; called from client/src/hooks/use-trips.ts:80)",
    "resultReachableFromSurface": false
   }
  },
@@ -236,7 +236,7 @@
   "u3": true,
   "id": "guest-trip-context:remove-guest-trip",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible (only caller is claimTrips, client/src/contexts/GuestTripContext.tsx:62)",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible (only caller is claimTrips, client/src/contexts/GuestTripContext.tsx:62)",
    "resultLocation": "not visible to the user (localStorage \"guestTrips\" entry deleted)",
    "resultReachableFromSurface": false
   }
@@ -245,8 +245,8 @@
   "u3": true,
   "id": "trip-queue-context:add-city",
   "uiMerge": {
-   "uiPromise": "\"Add to trip queue\" button in the \"Take me to <city>\" dialog (client/src/components/travelpulse/CityGrid.tsx:318-319) — user expects the city to join a multi-city trip list",
-   "resultLocation": "/discover floating \"My Trip\" button with count badge (client/src/components/TripQueueIndicator.tsx:46-57, mounted client/src/pages/discover.tsx:2191) → \"Your Trip Queue\" sheet list (TripQueueIndicator.tsx:77); also toast \"Added to trip queue\" (CityGrid.tsx:188-191) and card inTrip state (CityGrid.tsx:210). In-memory only — lost on reload (client/src/contexts/TripQueueContext.tsx:26)",
+   "uiPromise": "\"Add to trip queue\" button in the \"Take me to <city>\" dialog (client/src/components/travelpulse/CityGrid.tsx:318-319) \u2014 user expects the city to join a multi-city trip list",
+   "resultLocation": "/discover floating \"My Trip\" button with count badge (client/src/components/TripQueueIndicator.tsx:46-57, mounted client/src/pages/discover.tsx:2191) \u2192 \"Your Trip Queue\" sheet list (TripQueueIndicator.tsx:77); also toast \"Added to trip queue\" (CityGrid.tsx:188-191) and card inTrip state (CityGrid.tsx:210). In-memory only \u2014 lost on reload (client/src/contexts/TripQueueContext.tsx:26)",
    "resultReachableFromSurface": true
   }
  },
@@ -254,7 +254,7 @@
   "u3": true,
   "id": "trip-queue-context:remove-city",
   "uiMerge": {
-   "uiPromise": "X button on a queued city in the Trip Queue sheet (client/src/components/TripQueueIndicator.tsx:125-130), or toggling the queue button in the city dialog (CityGrid.tsx:170-176) — user expects that city to leave the queue",
+   "uiPromise": "X button on a queued city in the Trip Queue sheet (client/src/components/TripQueueIndicator.tsx:125-130), or toggling the queue button in the city dialog (CityGrid.tsx:170-176) \u2014 user expects that city to leave the queue",
    "resultLocation": "/discover \"Your Trip Queue\" sheet list and \"My Trip\" count badge (client/src/components/TripQueueIndicator.tsx:55,77); button disappears when count hits 0 (TripQueueIndicator.tsx:25); toast \"Removed from trip queue\" when removed from CityGrid (CityGrid.tsx:172-175)",
    "resultReachableFromSurface": true
   }
@@ -263,7 +263,7 @@
   "u3": true,
   "id": "trip-queue-context:clear-queue",
   "uiMerge": {
-   "uiPromise": "\"Clear All\" button in the Trip Queue sheet (client/src/components/TripQueueIndicator.tsx:152-162) — user expects every queued city removed",
+   "uiPromise": "\"Clear All\" button in the Trip Queue sheet (client/src/components/TripQueueIndicator.tsx:152-162) \u2014 user expects every queued city removed",
    "resultLocation": "/discover: sheet closes and the floating \"My Trip\" button disappears (client/src/components/TripQueueIndicator.tsx:25,157); no toast",
    "resultReachableFromSurface": true
   }
@@ -272,7 +272,7 @@
   "u3": true,
   "id": "active-console-context:derive-role",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; user may notice /chat rendering inside their role’s shell (expert/provider/EA/dashboard)",
+   "uiPromise": "implicit \u2014 no user-facing promise; user may notice /chat rendering inside their role\u2019s shell (expert/provider/EA/dashboard)",
    "resultLocation": "/chat layout shell chosen by ConsoleAwareLayout (client/src/components/console-aware-layout.tsx:22-34, mounted client/src/App.tsx:326); persisted to localStorage traveloure_active_console (client/src/contexts/ActiveConsoleContext.tsx:47)",
    "resultReachableFromSurface": true
   }
@@ -281,8 +281,8 @@
   "u3": true,
   "id": "planning-provider:run-branch-door-override",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; user clicked a finish CTA (\"Build it myself\" / \"Plan with AI\" / \"Get a local expert\", client/src/components/trip/plan-modal.tsx:1372-1376, 2222-2238) and sees the modal close and the door’s own next step",
-   "resultLocation": "door-owned: only door is /concierge (client/src/pages/concierge/index.tsx:157) — for \"local\" the ExpertRequestReviewSheet opens (concierge/index.tsx:396-412); other branches fall through to the default rail (PlanningContext.tsx:309-360)",
+   "uiPromise": "implicit \u2014 no user-facing promise; user clicked a finish CTA (\"Build it myself\" / \"Plan with AI\" / \"Get a local expert\", client/src/components/trip/plan-modal.tsx:1372-1376, 2222-2238) and sees the modal close and the door\u2019s own next step",
+   "resultLocation": "door-owned: only door is /concierge (client/src/pages/concierge/index.tsx:157) \u2014 for \"local\" the ExpertRequestReviewSheet opens (concierge/index.tsx:396-412); other branches fall through to the default rail (PlanningContext.tsx:309-360)",
    "resultReachableFromSurface": true
   }
  },
@@ -290,8 +290,8 @@
   "u3": true,
   "id": "planning-provider:on-finish-wire",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; wiring for the plan modal finish CTAs (client/src/components/trip/plan-modal.tsx:2222-2238) — user expects the chosen way-to-build to start",
-   "resultLocation": "per branch in runBranch (client/src/contexts/PlanningContext.tsx:298-360): myself → /plans/:tripId (:315); ai → EnhancedPlanningModal opens (:307-310, :418); local → expert storefront or /experts browse (:329-345); occasion → Plus checkout (:347-356)",
+   "uiPromise": "implicit \u2014 no user-facing promise; wiring for the plan modal finish CTAs (client/src/components/trip/plan-modal.tsx:2222-2238) \u2014 user expects the chosen way-to-build to start",
+   "resultLocation": "per branch in runBranch (client/src/contexts/PlanningContext.tsx:298-360): myself \u2192 /plans/:tripId (:315); ai \u2192 EnhancedPlanningModal opens (:307-310, :418); local \u2192 expert storefront or /experts browse (:329-345); occasion \u2192 Plus checkout (:347-356)",
    "resultReachableFromSurface": true
   }
  },
@@ -299,8 +299,8 @@
   "u3": true,
   "id": "planning-provider:on-change-basics",
   "uiMerge": {
-   "uiPromise": "\"change\" link beside the basics summary in the AI planning form (client/src/components/EnhancedPlanningModal.tsx:483-491) — user expects to edit destination/dates/travelers",
-   "resultLocation": "AI form closes and the plan modal reopens (client/src/contexts/PlanningContext.tsx:433-436 → open @ :240-249; modal client/src/components/trip/plan-modal.tsx data-testid plan-modal); the committed plan is reset (setCommitted(null) @ PlanningContext.tsx:243)",
+   "uiPromise": "\"change\" link beside the basics summary in the AI planning form (client/src/components/EnhancedPlanningModal.tsx:483-491) \u2014 user expects to edit destination/dates/travelers",
+   "resultLocation": "AI form closes and the plan modal reopens (client/src/contexts/PlanningContext.tsx:433-436 \u2192 open @ :240-249; modal client/src/components/trip/plan-modal.tsx data-testid plan-modal); the committed plan is reset (setCommitted(null) @ PlanningContext.tsx:243)",
    "resultReachableFromSurface": true
   }
  },
@@ -308,7 +308,7 @@
   "u3": true,
   "id": "trip-context:use-trip-context-sync",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; after sign-in/out the user could notice the Trip Strip plan (destination · dates · party) appear, carry over, or vanish",
+   "uiPromise": "implicit \u2014 no user-facing promise; after sign-in/out the user could notice the Trip Strip plan (destination \u00b7 dates \u00b7 party) appear, carry over, or vanish",
    "resultLocation": "global Trip Strip (client/src/components/trip/trip-strip.tsx:227, mounted client/src/components/layout.tsx:1020) reflects the pen; storage lands in sessionStorage pen keys (client/src/lib/trip-context.ts:652-661) and trip_contexts via PUT/GET /api/trip-context (trip-context.ts:513)",
    "resultReachableFromSurface": true
   }
@@ -317,7 +317,7 @@
   "u3": true,
   "id": "layout-header:use-trip-context-sync",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; same as the pen binding: the Trip Strip may change on sign-in/out",
+   "uiPromise": "implicit \u2014 no user-facing promise; same as the pen binding: the Trip Strip may change on sign-in/out",
    "resultLocation": "global Trip Strip (client/src/components/trip/trip-strip.tsx:227, rendered client/src/components/layout.tsx:1020); storage in sessionStorage pen key and trip_contexts",
    "resultReachableFromSurface": true
   }
@@ -326,7 +326,7 @@
   "u3": true,
   "id": "layout-header:language-menu",
   "uiMerge": {
-   "uiPromise": "Globe icon button \"language\" menu (client/src/components/language-menu.tsx:62-73) — user expects the site to switch to the picked language",
+   "uiPromise": "Globe icon button \"language\" menu (client/src/components/language-menu.tsx:62-73) \u2014 user expects the site to switch to the picked language",
    "resultLocation": "whole UI re-renders in the chosen locale; check mark on the active option (client/src/components/language-menu.tsx:90) + toast savedToAccount/savedForDevice (language-menu.tsx:42-46) or saveFailed (:50); persisted via useLocale to localStorage and, if signed in, PATCH /api/me/preferences (per header comment language-menu.tsx:9-11)",
    "resultReachableFromSurface": true
   }
@@ -335,7 +335,7 @@
   "u3": true,
   "id": "layout-header:button-mobile-logout",
   "uiMerge": {
-   "uiPromise": "LogOut icon (aria-label signOut) in the mobile menu (client/src/components/layout.tsx:974-982) — user expects to be signed out",
+   "uiPromise": "LogOut icon (aria-label signOut) in the mobile menu (client/src/components/layout.tsx:974-982) \u2014 user expects to be signed out",
    "resultLocation": "full reload to \"/\" on success (client/src/hooks/use-auth.ts:38) with header showing signed-out CTAs; on failure the mutation throws (use-auth.ts:35-37) and nothing is shown",
    "resultReachableFromSurface": true
   }
@@ -344,7 +344,7 @@
   "u3": true,
   "id": "landing:moment-impression",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible (fires after the moment is ≥40% in view for 2s, client/src/components/landing/moments-section.tsx:103-121)",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible (fires after the moment is \u226540% in view for 2s, client/src/components/landing/moments-section.tsx:103-121)",
    "resultLocation": "not visible to the user (landing_moment_events kind=impression via POST /api/landing/moments/event)",
    "resultReachableFromSurface": false
   }
@@ -353,7 +353,7 @@
   "u3": true,
   "id": "landing:moment-dot",
   "uiMerge": {
-   "uiPromise": "carousel dot button (aria-label \"Photo N\", client/src/components/landing/moments-section.tsx:203-215) — user expects to jump to photo N",
+   "uiPromise": "carousel dot button (aria-label \"Photo N\", client/src/components/landing/moments-section.tsx:203-215) \u2014 user expects to jump to photo N",
    "resultLocation": "nothing changes on screen: onClick only calls postEvent (moments-section.tsx:208); photoIdx comes from auto-rotation (moments-section.tsx:95) and is not set by the click; event lands in landing_moment_events (kind=dot)",
    "resultReachableFromSurface": false
   }
@@ -362,7 +362,7 @@
   "u3": true,
   "id": "landing:moment-tab",
   "uiMerge": {
-   "uiPromise": "moment tab pill in the landing Moments section (client/src/components/landing/moments-section.tsx:306-320) — user expects that moment to show",
+   "uiPromise": "moment tab pill in the landing Moments section (client/src/components/landing/moments-section.tsx:306-320) \u2014 user expects that moment to show",
    "resultLocation": "landing Moments section switches to and pins the chosen moment (setPinned @ client/src/components/landing/moments-section.tsx:310; active tab styled :317-319); analytics row in landing_moment_events (kind=tab) not visible",
    "resultReachableFromSurface": true
   }
@@ -371,7 +371,7 @@
   "u3": true,
   "id": "discover-shared:track-search-event",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible (fires when locationFilter ≥2 chars, client/src/pages/discover.tsx:1037-1044)",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible (fires when locationFilter \u22652 chars, client/src/pages/discover.tsx:1037-1044)",
    "resultLocation": "not visible to the user (destination_search_patterns via storage.createDestinationSearchPattern, server/storage.ts:7635)",
    "resultReachableFromSurface": false
   }
@@ -380,7 +380,7 @@
   "u3": true,
   "id": "services:unified-card-click",
   "uiMerge": {
-   "uiPromise": "clicking the result card body (client/src/components/unified-result-card.tsx:251-255, cursor-pointer) — user would expect details to open",
+   "uiPromise": "clicking the result card body (client/src/components/unified-result-card.tsx:251-255, cursor-pointer) \u2014 user would expect details to open",
    "resultLocation": "nothing visible: card-body onClick is handleCardClick, which only records a SERP click once (client/src/components/unified-result-card.tsx:167-172); detail/booking open only via handleViewDetails (:174-183). Effect lands in serp_provider_tracking (server/services/serp.service.ts:197)",
    "resultReachableFromSurface": false
   }
@@ -389,7 +389,7 @@
   "u3": true,
   "id": "discover-location:track-city-view",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; user could notice the city under \"Recently Viewed\" in the header Experiences menu",
+   "uiPromise": "implicit \u2014 no user-facing promise; user could notice the city under \"Recently Viewed\" in the header Experiences menu",
    "resultLocation": "header Experiences dropdown \"Recently Viewed\" chips (client/src/components/layout.tsx:540-556, link-recent-city-<slug>); stored in sessionStorage traveloure_recently_viewed (client/src/hooks/use-recently-viewed.ts:5,19)",
    "resultReachableFromSurface": true
   }
@@ -398,8 +398,8 @@
   "u3": true,
   "id": "discover-location:track-download",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible (Unsplash API compliance ping, client/src/pages/discover-location.tsx:1736-1757)",
-   "resultLocation": "not visible to the user (POST /api/travelpulse/media/track-download → Unsplash download endpoint; errors swallowed :1755)",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible (Unsplash API compliance ping, client/src/pages/discover-location.tsx:1736-1757)",
+   "resultLocation": "not visible to the user (POST /api/travelpulse/media/track-download \u2192 Unsplash download endpoint; errors swallowed :1755)",
    "resultReachableFromSurface": false
   }
  },
@@ -407,7 +407,7 @@
   "u3": true,
   "id": "discover-location:upsell-slot",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; user could notice recommendation cards in the city feed",
+   "uiPromise": "implicit \u2014 no user-facing promise; user could notice recommendation cards in the city feed",
    "resultLocation": "/discover/location/:city feed recommendation cards (CityFeedCardRecommendation rendered client/src/pages/discover-location.tsx:629-643 from useUpsellSlot @ :1789); ranking log + upsell_impressions rows not visible",
    "resultReachableFromSurface": true
   }
@@ -416,7 +416,7 @@
   "u3": true,
   "id": "discover-location:impression-tracker",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible",
    "resultLocation": "not visible to the user (content_impressions via POST /api/tracking/impression, client/src/hooks/use-impression-tracker.ts:44-63)",
    "resultReachableFromSurface": false
   }
@@ -425,8 +425,8 @@
   "u3": true,
   "id": "discover-location:matched-service-request",
   "uiMerge": {
-   "uiPromise": "request button labelled suggestion.actionLabel on a feed card’s matched-service strip (client/src/components/city-feed-card.tsx:447-456) — user expects Traveloure to record the request and notify them",
-   "resultLocation": "inline \"Requested\" status (client/src/components/city-feed-card.tsx:436-443) + toast \"Request recorded… We’ll notify you\" (:409-412) — but no server route for POST /api/services/request was found in server/ (grep), so the isJson/ok check (:405-406) should throw and show \"Could not send request\" (:414); no persisted record and no notification surface",
+   "uiPromise": "request button labelled suggestion.actionLabel on a feed card\u2019s matched-service strip (client/src/components/city-feed-card.tsx:447-456) \u2014 user expects Traveloure to record the request and notify them",
+   "resultLocation": "inline \"Requested\" status (client/src/components/city-feed-card.tsx:436-443) + toast \"Request recorded\u2026 We\u2019ll notify you\" (:409-412) \u2014 but no server route for POST /api/services/request was found in server/ (grep), so the isJson/ok check (:405-406) should throw and show \"Could not send request\" (:414); no persisted record and no notification surface",
    "resultReachableFromSurface": false
   }
  },
@@ -434,7 +434,7 @@
   "u3": true,
   "id": "discover-location:rec-book",
   "uiMerge": {
-   "uiPromise": "\"Book now\" / \"Book on partner\" button on a recommendation card (client/src/components/city-feed-card-recommendation.tsx:139,228-240) — user expects to book this specific offering",
+   "uiPromise": "\"Book now\" / \"Book on partner\" button on a recommendation card (client/src/components/city-feed-card-recommendation.tsx:139,228-240) \u2014 user expects to book this specific offering",
    "resultLocation": "navigates to /services?categoryKey=<key>&location=<city> category browse (client/src/pages/discover-location.tsx:1818-1823), not the specific offering; click logged to upsell_impressions (not visible)",
    "resultReachableFromSurface": true
   }
@@ -443,7 +443,7 @@
   "u3": true,
   "id": "discover-location:rec-impression",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible",
    "resultLocation": "not visible to the user (upsell_impressions INSERT via POST /api/upsell/impression, client/src/components/city-feed-card-recommendation.tsx:151-164)",
    "resultReachableFromSurface": false
   }
@@ -452,8 +452,8 @@
   "u3": true,
   "id": "discover-location:wanted-slot",
   "uiMerge": {
-   "uiPromise": "\"More info →\", \"Ways to earn\", \"Ask an expert\" on the \"Wanted here\" card (client/src/components/feed/wanted-slot-card.tsx:74-81, 90-97, 99-106) — user expects to learn about / apply to offer this, or ask an expert",
-   "resultLocation": "More info → /earn; Ways to earn → buildWantedSlotSignupHref (become-expert signup); Ask an expert → /chat?expertId=… or /local-experts, or sign-in modal for guests (client/src/lib/use-ask-expert.ts:104,141,147); recruitment click analytics not visible",
+   "uiPromise": "\"More info \u2192\", \"Ways to earn\", \"Ask an expert\" on the \"Wanted here\" card (client/src/components/feed/wanted-slot-card.tsx:74-81, 90-97, 99-106) \u2014 user expects to learn about / apply to offer this, or ask an expert",
+   "resultLocation": "More info \u2192 /earn; Ways to earn \u2192 buildWantedSlotSignupHref (become-expert signup); Ask an expert \u2192 /chat?expertId=\u2026 or /local-experts, or sign-in modal for guests (client/src/lib/use-ask-expert.ts:104,141,147); recruitment click analytics not visible",
    "resultReachableFromSurface": true
   }
  },
@@ -461,7 +461,7 @@
   "u3": true,
   "id": "discover-location:complement-addon",
   "uiMerge": {
-   "uiPromise": "add-on tile in \"COMPLETE YOUR <CITY> TRIP\" strip (client/src/pages/discover-location.tsx:1533-1545) — user expects to open that partner/add-on",
+   "uiPromise": "add-on tile in \"COMPLETE YOUR <CITY> TRIP\" strip (client/src/pages/discover-location.tsx:1533-1545) \u2014 user expects to open that partner/add-on",
    "resultLocation": "addon.href opens (new tab if external, client/src/pages/discover-location.tsx:1536-1538); affiliate_clicks tracking row not visible",
    "resultReachableFromSurface": true
   }
@@ -470,7 +470,7 @@
   "u3": true,
   "id": "discover-location:service-request-submit",
   "uiMerge": {
-   "uiPromise": "\"Submit request\" in \"Can’t find what you’re looking for?\" dialog (client/src/components/service-request-dialog.tsx:139-147) — user expects Traveloure to try to source it",
+   "uiPromise": "\"Submit request\" in \"Can\u2019t find what you\u2019re looking for?\" dialog (client/src/components/service-request-dialog.tsx:139-147) \u2014 user expects Traveloure to try to source it",
    "resultLocation": "toast \"Request submitted\" and dialog closes (client/src/components/service-request-dialog.tsx:55-59); the request itself is visible only to admins at /admin/service-requests (client/src/pages/admin/service-requests.tsx:40); GET /api/service-requests/mine (server/routes/service-requests.routes.ts:81) has no client consumer",
    "resultReachableFromSurface": false
   }
@@ -479,7 +479,7 @@
   "u3": true,
   "id": "service-detail:flag-submit",
   "uiMerge": {
-   "uiPromise": "\"Submit Report\" in the report-review dialog (client/src/pages/service-detail.tsx:2443-2449) — user expects the review to be reported for moderation",
+   "uiPromise": "\"Submit Report\" in the report-review dialog (client/src/pages/service-detail.tsx:2443-2449) \u2014 user expects the review to be reported for moderation",
    "resultLocation": "toast \"Review reported\" + dialog closes (client/src/pages/service-detail.tsx:2351-2352); review stays visible (flagReviewSignal does not change visibility, server/services/review-mutation.service.ts:130-131); report shows only in /admin/review-moderation (client/src/App.tsx:1184)",
    "resultReachableFromSurface": false
   }
@@ -488,7 +488,7 @@
   "u3": true,
   "id": "experience-template:effect-rehydrate",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; user could notice previous destination/dates/tab/filters restored on /experiences/:slug",
+   "uiPromise": "implicit \u2014 no user-facing promise; user could notice previous destination/dates/tab/filters restored on /experiences/:slug",
    "resultLocation": "/experiences/:slug restored tab strip, filters and destination (Tabs value @ client/src/pages/experience-template.tsx:2308; state setters :1022-1039); trip-queue destinations consumed from sessionStorage (:1012-1017)",
    "resultReachableFromSurface": true
   }
@@ -497,7 +497,7 @@
   "u3": true,
   "id": "experience-template:effect-persist-settings",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; user could notice the global Trip Strip reflect destination/dates/party from this page",
+   "uiPromise": "implicit \u2014 no user-facing promise; user could notice the global Trip Strip reflect destination/dates/party from this page",
    "resultLocation": "global Trip Strip (client/src/components/trip/trip-strip.tsx:227); sessionStorage searchSettings_<slug> (client/src/pages/experience-template.tsx:1117) and trip_contexts (signed-in) not directly visible",
    "resultReachableFromSurface": true
   }
@@ -506,7 +506,7 @@
   "u3": true,
   "id": "experience-template:effect-geocode",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; user could notice the map centring on the destination and service markers appearing",
+   "uiPromise": "implicit \u2014 no user-facing promise; user could notice the map centring on the destination and service markers appearing",
    "resultLocation": "ExperienceMap on /experiences/:slug (client/src/pages/experience-template.tsx:3058, 3178; markers computed :1967-2009 only when destinationCenter is set); on failure the map shows its no-location state",
    "resultReachableFromSurface": true
   }
@@ -515,8 +515,8 @@
   "u3": true,
   "id": "concierge:plan-modal-onfinish",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise for the tier write; user clicked a plan-modal finish CTA from /concierge and sees that branch’s next step",
-   "resultLocation": "not visible to the user (concierge_requests.chosen_tier; shown only in /admin/concierge-requests tier badge, client/src/pages/admin/concierge-requests.tsx:374). Visible follow-on: local → ExpertRequestReviewSheet (client/src/pages/concierge/index.tsx:396); others → default rail",
+   "uiPromise": "implicit \u2014 no user-facing promise for the tier write; user clicked a plan-modal finish CTA from /concierge and sees that branch\u2019s next step",
+   "resultLocation": "not visible to the user (concierge_requests.chosen_tier; shown only in /admin/concierge-requests tier badge, client/src/pages/admin/concierge-requests.tsx:374). Visible follow-on: local \u2192 ExpertRequestReviewSheet (client/src/pages/concierge/index.tsx:396); others \u2192 default rail",
    "resultReachableFromSurface": false
   }
  },
@@ -524,7 +524,7 @@
   "u3": true,
   "id": "cart:url-step-optimize",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; landing on /cart?step=optimize|payment shows the requested step",
+   "uiPromise": "implicit \u2014 no user-facing promise; landing on /cart?step=optimize|payment shows the requested step",
    "resultLocation": "/cart \"Optimization Preview\" card (client/src/pages/cart.tsx:2581-2590) or payment step (:2998); without a stored preview falls back to cart step with toast (:765-776)",
    "resultReachableFromSurface": true
   }
@@ -533,8 +533,8 @@
   "u3": true,
   "id": "cart:effect-guest-session",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible",
-   "resultLocation": "not visible to the user (localStorage traveloure_guest_session via client/src/lib/guestSession.ts:4-10 — cart imports lib/guestSession, not lib/guest-session; sent as X-Guest-Session header client/src/lib/queryClient.ts:14-19 and to /api/cart/migrate client/src/App.tsx:1275)",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible",
+   "resultLocation": "not visible to the user (localStorage traveloure_guest_session via client/src/lib/guestSession.ts:4-10 \u2014 cart imports lib/guestSession, not lib/guest-session; sent as X-Guest-Session header client/src/lib/queryClient.ts:14-19 and to /api/cart/migrate client/src/App.tsx:1275)",
    "resultReachableFromSurface": false
   }
  },
@@ -542,7 +542,7 @@
   "u3": true,
   "id": "cart:effect-migrate-guest-pending",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; after signing in, items added as a guest should appear in the cart",
+   "uiPromise": "implicit \u2014 no user-facing promise; after signing in, items added as a guest should appear in the cart",
    "resultLocation": "/cart platform item list (cart-item-<id> cards, client/src/pages/cart.tsx:2160) after invalidation (:689); still-pending guest items render at :2380; failures only console.error (:675)",
    "resultReachableFromSurface": true
   }
@@ -551,7 +551,7 @@
   "u3": true,
   "id": "cart:effect-external-items-storage",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; external items persist across reloads in the tab",
+   "uiPromise": "implicit \u2014 no user-facing promise; external items persist across reloads in the tab",
    "resultLocation": "/cart external item cards (client/src/pages/cart.tsx:2287-2288) after reload; stored in sessionStorage externalCart_<slug> (:741-743)",
    "resultReachableFromSurface": true
   }
@@ -560,8 +560,8 @@
   "u3": true,
   "id": "cart:effect-optimize-nudge",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; user may see an \"Optimize\" savings nudge on the cart step",
-   "resultLocation": "/cart nudge block \"Preview: up to N% savings … Optimize →\" (client/src/pages/cart.tsx:1993-2020), shown only when cartIntent===\"plan\" and savings/fee conditions hold",
+   "uiPromise": "implicit \u2014 no user-facing promise; user may see an \"Optimize\" savings nudge on the cart step",
+   "resultLocation": "/cart nudge block \"Preview: up to N% savings \u2026 Optimize \u2192\" (client/src/pages/cart.tsx:1993-2020), shown only when cartIntent===\"plan\" and savings/fee conditions hold",
    "resultReachableFromSurface": true
   }
  },
@@ -569,8 +569,8 @@
   "u3": true,
   "id": "cart:pickup-location",
   "uiMerge": {
-   "uiPromise": "\"Confirm\" / \"Clear\" in the \"Pickup location\" field (client/src/pages/cart.tsx:517-536) — user expects the pickup address saved (and any surcharge shown before paying)",
-   "resultLocation": "/cart item card: \"Pickup confirmed: <address>\" text (client/src/pages/cart.tsx:540-543) after /api/cart refetch; geocode failures toast (:487, :493); button shows \"…\" while pending (:523); stored in cart_items.pickup_location",
+   "uiPromise": "\"Confirm\" / \"Clear\" in the \"Pickup location\" field (client/src/pages/cart.tsx:517-536) \u2014 user expects the pickup address saved (and any surcharge shown before paying)",
+   "resultLocation": "/cart item card: \"Pickup confirmed: <address>\" text (client/src/pages/cart.tsx:540-543) after /api/cart refetch; geocode failures toast (:487, :493); button shows \"\u2026\" while pending (:523); stored in cart_items.pickup_location",
    "resultReachableFromSurface": true
   }
  },
@@ -578,8 +578,8 @@
   "u3": true,
   "id": "cart:external-qty-remove",
   "uiMerge": {
-   "uiPromise": "−/+ quantity and \"Remove\" buttons on an external cart item (client/src/pages/cart.tsx:2337-2371) — user expects quantity change or removal",
-   "resultLocation": "/cart external item card quantity text (client/src/pages/cart.tsx:2346-2348) or card removed (:2287) + toast \"Item removed from cart\" (:1208); qty clamped 1–10 (:1200); persisted to sessionStorage externalCart_<slug>",
+   "uiPromise": "\u2212/+ quantity and \"Remove\" buttons on an external cart item (client/src/pages/cart.tsx:2337-2371) \u2014 user expects quantity change or removal",
+   "resultLocation": "/cart external item card quantity text (client/src/pages/cart.tsx:2346-2348) or card removed (:2287) + toast \"Item removed from cart\" (:1208); qty clamped 1\u201310 (:1200); persisted to sessionStorage externalCart_<slug>",
    "resultReachableFromSurface": true
   }
  },
@@ -669,7 +669,7 @@
   "id": "my-events:button-pay-saved-card",
   "uiMerge": {
    "uiPromise": "'Pay $X with <card>': charge my saved card for the coordination fee in one click",
-   "resultLocation": "/my-events engagement card: 'Paid — your coordinator is handling the rest.' (client/src/pages/my-events.tsx:235-238) after /api/coordination-states invalidate (client/src/pages/my-events.tsx:168); if 3DS required, the payment sheet opens instead (client/src/pages/my-events.tsx:146-149)",
+   "resultLocation": "/my-events engagement card: 'Paid \u2014 your coordinator is handling the rest.' (client/src/pages/my-events.tsx:235-238) after /api/coordination-states invalidate (client/src/pages/my-events.tsx:168); if 3DS required, the payment sheet opens instead (client/src/pages/my-events.tsx:146-149)",
    "resultReachableFromSurface": true
   }
  },
@@ -687,7 +687,7 @@
   "id": "inbox:button-block-thread",
   "uiMerge": {
    "uiPromise": "'Block <name>' in thread menu: stop this person from messaging me",
-   "resultLocation": "Nothing changes on /inbox (thread stays listed — GET /api/messages does not filter blocks, server/routes/messages.ts:78-87 / server/services/messages.service.ts:72; menu still reads 'Block'); visible only after opening the thread in /chat: 'You have blocked <name>' notice replacing the composer (client/src/pages/chat.tsx:1273-1280) and 'Unblock' menu item (client/src/pages/chat.tsx:1167-1174)",
+   "resultLocation": "Nothing changes on /inbox (thread stays listed \u2014 GET /api/messages does not filter blocks, server/routes/messages.ts:78-87 / server/services/messages.service.ts:72; menu still reads 'Block'); visible only after opening the thread in /chat: 'You have blocked <name>' notice replacing the composer (client/src/pages/chat.tsx:1273-1280) and 'Unblock' menu item (client/src/pages/chat.tsx:1167-1174)",
    "resultReachableFromSurface": true
   }
  },
@@ -722,7 +722,7 @@
   "u3": true,
   "id": "chat:effect-mark-read",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; unread badges for the opened thread clear",
+   "uiPromise": "implicit \u2014 no user-facing promise; unread badges for the opened thread clear",
    "resultLocation": "Per-thread unread badge in /chat list (client/src/pages/chat.tsx:883-889) and /inbox thread badge (client/src/pages/inbox.tsx:196-202) disappear; aggregate /api/messages/unread/count refetched (client/src/hooks/use-message-read.ts:51-52)",
    "resultReachableFromSurface": true
   }
@@ -732,7 +732,7 @@
   "id": "chat:send-message",
   "uiMerge": {
    "uiPromise": "Send button (aria-label 'Send message') / Enter: deliver my typed message to this person",
-   "resultLocation": "/chat message thread log (role=log, client/src/pages/chat.tsx:1191-1197) — new bubble in the timeline",
+   "resultLocation": "/chat message thread log (role=log, client/src/pages/chat.tsx:1191-1197) \u2014 new bubble in the timeline",
    "resultReachableFromSurface": true
   }
  },
@@ -740,7 +740,7 @@
   "u3": true,
   "id": "chat:typing",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible to the sender",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible to the sender",
    "resultLocation": "not visible to the sender (WebSocket typing frame); the counterpart sees 'typing...' in their thread header (client/src/pages/chat.tsx:1115-1121)",
    "resultReachableFromSurface": false
   }
@@ -803,7 +803,7 @@
   "u3": true,
   "id": "invite:mount-fetch-invite",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; the invite page loads with the event title/destination/date",
+   "uiPromise": "implicit \u2014 no user-facing promise; the invite page loads with the event title/destination/date",
    "resultLocation": "/invite/:token: header with event title/destination/date (client/src/pages/GuestInvitePage.tsx:288-307) and the welcome card 'You're Invited, <name>!' (client/src/pages/GuestInvitePage.tsx:312-315), or RSVP/recommendations step if already answered (:136-143); failure shows 'Invite Not Found' card (:267-280); trip-context stamp (sessionStorage/PUT) not visible",
    "resultReachableFromSurface": true
   }
@@ -857,7 +857,7 @@
   "u3": true,
   "id": "auth:login-route-mount",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; visiting /login shows the landing page with the sign-in modal open",
+   "uiPromise": "implicit \u2014 no user-facing promise; visiting /login shows the landing page with the sign-in modal open",
    "resultLocation": "'/' with sign-in modal titled 'Sign in to your account' (client/src/App.tsx:289-294); signed-in users are redirected to returnTo or '/' (client/src/App.tsx:281-284); sessionStorage traveloure_return_to not visible",
    "resultReachableFromSurface": true
   }
@@ -866,7 +866,7 @@
   "u3": true,
   "id": "auth:protected-route-guest",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; a signed-out user opening a protected page is bounced to the home page with a sign-in prompt",
+   "uiPromise": "implicit \u2014 no user-facing promise; a signed-out user opening a protected page is bounced to the home page with a sign-in prompt",
    "resultLocation": "'/' with sign-in modal 'Sign in to continue' / 'Please sign in to access this page.' (client/src/App.tsx:227-232); spinner while loading (client/src/App.tsx:236-241); stored return-to not visible",
    "resultReachableFromSurface": true
   }
@@ -875,7 +875,7 @@
   "u3": true,
   "id": "auth:return-to-restorer",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; after OAuth sign-in the user lands back on the page they were headed to",
+   "uiPromise": "implicit \u2014 no user-facing promise; after OAuth sign-in the user lands back on the page they were headed to",
    "resultLocation": "Navigation to the sanitized stored path (client/src/App.tsx:312-319); nothing visible if no stored value",
    "resultReachableFromSurface": null
   }
@@ -884,7 +884,7 @@
   "u3": true,
   "id": "auth:claim-hooks",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; guest trips / guest concierge request silently attach to the new account",
+   "uiPromise": "implicit \u2014 no user-facing promise; guest trips / guest concierge request silently attach to the new account",
    "resultLocation": "Navigates to /my-events only when stored returnTo === '/my-events' after a successful concierge claim (client/src/hooks/use-claim-guest-concierge.ts:55-60); otherwise not visible to the user (ownership writes via /api/concierge/requests/:id/claim and /api/trips/:id/claim; no toast, failures only console.warn :44-51)",
    "resultReachableFromSurface": null
   }
@@ -947,7 +947,7 @@
   "u3": true,
   "id": "trip-card:trip-logistics-dashboard-delegated",
   "uiMerge": {
-   "uiPromise": "'Logistics — participants · budget · contracts' drawer (owner only): open my trip's logistics tools",
+   "uiPromise": "'Logistics \u2014 participants \u00b7 budget \u00b7 contracts' drawer (owner only): open my trip's logistics tools",
    "resultLocation": "Inside the expanded drawer on /trip/:id: TripLogisticsDashboard (client/src/pages/trip-details.tsx:430-457, mounted :448-455); per-control effects delegated to TripLogisticsDashboard (not resolved here)",
    "resultReachableFromSurface": true
   }
@@ -956,7 +956,7 @@
   "u3": true,
   "id": "itinerary-comparison:upsell-impressions",
   "uiMerge": {
-   "uiPromise": "implicit — no user-facing promise; nothing visible",
+   "uiPromise": "implicit \u2014 no user-facing promise; nothing visible",
    "resultLocation": "not visible to the user (cross_sell_events insert via POST /api/cross-sell-events, client/src/pages/itinerary-comparison.tsx:1133-1152; errors swallowed)",
    "resultReachableFromSurface": false
   }
@@ -975,7 +975,7 @@
   "id": "itinerary-comparison:variant-options-menu",
   "uiMerge": {
    "uiPromise": "Save/share variant",
-   "resultLocation": "'Save for Later' → toast then saved trip listed in SavedTripsSection on /destinations (client/src/pages/discover.tsx:2127; toast wrongly says 'dashboard', client/src/components/booking/VariantActionButtons.tsx:586-589); 'Share' → share modal with link input + copy (alert) and social buttons (client/src/components/booking/VariantActionButtons.tsx:755-797)",
+   "resultLocation": "'Save for Later' \u2192 toast then saved trip listed in SavedTripsSection on /destinations (client/src/pages/discover.tsx:2127; toast wrongly says 'dashboard', client/src/components/booking/VariantActionButtons.tsx:586-589); 'Share' \u2192 share modal with link input + copy (alert) and social buttons (client/src/components/booking/VariantActionButtons.tsx:755-797)",
    "resultReachableFromSurface": true
   }
  },
@@ -1006,7 +1006,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/planning-provider__ai-modal-on-close/",
-     "uiObserved": "backdrop click + Escape: AI modal remains open (only its own Cancel/✕ close it)"
+     "uiObserved": "backdrop click + Escape: AI modal remains open (only its own Cancel/\u2715 close it)"
     }
    }
   ]
@@ -1070,7 +1070,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/discover-shared__mismatch-add-as-stop/",
-     "uiObserved": "PUT destinations forced 500 → toasts [\"Added to your plan Find it on your plan.\",\"Notification Added to your planFind it on your plan.\"]"
+     "uiObserved": "PUT destinations forced 500 \u2192 toasts [\"Added to your plan Find it on your plan.\",\"Notification Added to your planFind it on your plan.\"]"
     }
    }
   ]
@@ -1086,7 +1086,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/services__add-to-plan#false-promise-cart/",
-     "uiObserved": "label \"Add to Plan\" → POST /api/cart 201; toast [\"Added to cart! Service has been added to your cart.\",\"Notification Added to cart!Service has been added to your cart.\"]"
+     "uiObserved": "label \"Add to Plan\" \u2192 POST /api/cart 201; toast [\"Added to cart! Service has been added to your cart.\",\"Notification Added to cart!Service has been added to your cart.\"]"
     }
    },
    {
@@ -1174,7 +1174,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/destinations__ade-primary/",
-     "uiObserved": "dialog primary button reads \"Add to my trip plan\n\nPlan & optimize whenever you're ready — nothing to set up now\" — it does not name the plan it will write to"
+     "uiObserved": "dialog primary button reads \"Add to my trip plan\n\nPlan & optimize whenever you're ready \u2014 nothing to set up now\" \u2014 it does not name the plan it will write to"
     }
    }
   ]
@@ -1190,7 +1190,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/discover-location__addon-agent/",
-     "uiObserved": "request → 200 {\"id\":\"84476780-6cb5-41fb-be2d-187be4279641\",\"userId\":\"6ac1907e-1d29-40d1-8e07-3b9e995969d2\",\"expertId\":null,\"tripId\":nu; 'Request sent' badge survives reload=false; request carries no tripId (body {\"itemName\":\"Airport transfer — Kyoto\",\"itemDescription\":\"Trains, buses, ferries and tra"
+     "uiObserved": "request \u2192 200 {\"id\":\"84476780-6cb5-41fb-be2d-187be4279641\",\"userId\":\"6ac1907e-1d29-40d1-8e07-3b9e995969d2\",\"expertId\":null,\"tripId\":nu; 'Request sent' badge survives reload=false; request carries no tripId (body {\"itemName\":\"Airport transfer \u2014 Kyoto\",\"itemDescription\":\"Trains, buses, ferries and tra"
     }
    }
   ]
@@ -1206,7 +1206,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/discover-location__ade-primary/",
-     "uiObserved": "dialog primary button reads \"Add to my trip plan\n\nPlan & optimize whenever you're ready — nothing to set up now\""
+     "uiObserved": "dialog primary button reads \"Add to my trip plan\n\nPlan & optimize whenever you're ready \u2014 nothing to set up now\""
     }
    }
   ]
@@ -1222,7 +1222,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/service-detail__add-to-plan/",
-     "uiObserved": "banner \"Booking for your trip.\" · toast [\"Added to your plan Find it on your plan — check out when you're ready.\",\"Notification Added to your planFind it on your plan — check out when you're ready.\"] — plan named=false"
+     "uiObserved": "banner \"Booking for your trip.\" \u00b7 toast [\"Added to your plan Find it on your plan \u2014 check out when you're ready.\",\"Notification Added to your planFind it on your plan \u2014 check out when you're ready.\"] \u2014 plan named=false"
     }
    }
   ]
@@ -1238,7 +1238,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/service-detail__mismatch-add-as-stop/",
-     "uiObserved": "PUT destinations forced 500 → toasts [\"Added to your plan Find it on your plan — check out when you're ready.\",\"Notification Added to your planFind it on your plan — check out when you're ready.\"]"
+     "uiObserved": "PUT destinations forced 500 \u2192 toasts [\"Added to your plan Find it on your plan \u2014 check out when you're ready.\",\"Notification Added to your planFind it on your plan \u2014 check out when you're ready.\"]"
     }
    }
   ]
@@ -1254,7 +1254,7 @@
     "set": {
      "uiCheck": "BLOCKED",
      "uiEvidence": "docs/audits/ui/deals__book/",
-     "uiObserved": "GET /api/deals → 200 {\"deals\":[],\"total\":0}; no deal card to click. Needs partner deal feeds."
+     "uiObserved": "GET /api/deals \u2192 200 {\"deals\":[],\"total\":0}; no deal card to click. Needs partner deal feeds."
     }
    }
   ]
@@ -1270,7 +1270,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/transportation__twelvego-deeplink-book/",
-     "uiObserved": "card text \"Bangkok → Chiang Mai View schedules & prices\" → POST /api/affiliate-booking-requests 200"
+     "uiObserved": "card text \"Bangkok \u2192 Chiang Mai View schedules & prices\" \u2192 POST /api/affiliate-booking-requests 200"
     }
    }
   ]
@@ -1286,7 +1286,7 @@
     "set": {
      "uiCheck": "REFUTED",
      "uiEvidence": "docs/audits/ui/experiences__button-intake-create/",
-     "uiObserved": "POST /api/trips forced 500 → toasts [\"Error Failed to create trip\",\"Notification ErrorFailed to create trip\"]"
+     "uiObserved": "POST /api/trips forced 500 \u2192 toasts [\"Error Failed to create trip\",\"Notification ErrorFailed to create trip\"]"
     }
    }
   ]
@@ -1318,7 +1318,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/experience-template__review-sheet-send/",
-     "uiObserved": "sheet basics \"Destination Kyoto, Japan Dates Not set Travelers 2 travelers\", Send enabled=true; after Send toast [\"Your plan needs a few basics first Pick your dates — the plan needs a start and an end.\",\"Notification Your plan needs a few basics firstPick your dates — the plan needs a start and an "
+     "uiObserved": "sheet basics \"Destination Kyoto, Japan Dates Not set Travelers 2 travelers\", Send enabled=true; after Send toast [\"Your plan needs a few basics first Pick your dates \u2014 the plan needs a start and an end.\",\"Notification Your plan needs a few basics firstPick your dates \u2014 the plan needs a start and an "
     }
    }
   ]
@@ -1334,7 +1334,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/experience-template__add-to-cart/",
-     "uiObserved": "SPA path, pen bound to 21e5e3a9-4888-470e-9194-f5de1850c8fb: button \"Add to Cart\" → POST itinerary-items 201, landed on /plans/21e5e3a9-4888-470e-9194-f5de1850c8fb. (First-pass full-load variant: the pen was unbound (H8 D6) and the same button went to /cart — so the label is right on one path and wr"
+     "uiObserved": "SPA path, pen bound to 21e5e3a9-4888-470e-9194-f5de1850c8fb: button \"Add to Cart\" \u2192 POST itinerary-items 201, landed on /plans/21e5e3a9-4888-470e-9194-f5de1850c8fb. (First-pass full-load variant: the pen was unbound (H8 D6) and the same button went to /cart \u2014 so the label is right on one path and wr"
     }
    }
   ]
@@ -1350,7 +1350,7 @@
     "set": {
      "uiCheck": "REFUTED",
      "uiEvidence": "docs/audits/ui/storefront__storefront-panel-share/",
-     "uiObserved": "POST advisors forced 500 → toasts [], inline error (storefront-panel-share-error) visible=true"
+     "uiObserved": "POST advisors forced 500 \u2192 toasts [], inline error (storefront-panel-share-error) visible=true"
     }
    }
   ]
@@ -1366,7 +1366,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/inbox__button-report-thread/",
-     "uiObserved": "report forced 500 → toasts []; dialog still open=true"
+     "uiObserved": "report forced 500 \u2192 toasts []; dialog still open=true"
     }
    }
   ]
@@ -1398,7 +1398,7 @@
     "set": {
      "uiCheck": "CONFIRMED",
      "uiEvidence": "docs/audits/ui/slip__button-slip-dates-save/",
-     "uiObserved": "PATCH trip forced 500 → toasts []; dialog still open=true"
+     "uiObserved": "PATCH trip forced 500 \u2192 toasts []; dialog still open=true"
     }
    }
   ]
@@ -1439,14 +1439,708 @@
   "u2": true,
   "id": "chat:send-message",
   "evidence": "behavioral",
-  "evidenceRef": "docs/audits/ui/chat__first-message/ (storefront Message → /chat → first send → POST /api/chats 404 Conversation not found)",
+  "evidenceRef": "docs/audits/ui/chat__first-message/ (storefront Message \u2192 /chat \u2192 first send \u2192 POST /api/chats 404 Conversation not found)",
   "addGaps": [
    {
     "class": "DEAD_TRIGGER",
     "severity": "P1",
-    "note": "NEW (U2): a first message from a storefront always 404s — resolvePublicConversationId (server/services/messages.service.ts:378-389) only matches threads that already have messages, so a started-but-empty conversation never resolves; toast \"Message failed\", text kept",
+    "note": "NEW (U2): a first message from a storefront always 404s \u2014 resolvePublicConversationId (server/services/messages.service.ts:378-389) only matches threads that already have messages, so a started-but-empty conversation never resolves; toast \"Message failed\", text kept",
     "uiCheck": "CONFIRMED",
     "uiEvidence": "docs/audits/ui/chat__first-message/"
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:seed-on-open",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:resolve-start-step",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:seed-stops-from-trip",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:home-city-suggestion",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:clamp-step",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:dialog-on-open-change",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:plan-modal-occasion-pill",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "upstream",
+    "note": "Not a selection control itself. The occasion picked here is the experience_types slug that later keys SELECTION_CONTROL_SEED[templateSlug] (client/src/pages/experience-template.tsx:495) when the traveler opens /experiences/<slug>; which refine controls exist downstream is decided by this tile."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:plan-step-rail",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:option-occasion",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "upstream",
+    "note": "Not a selection control itself. The occasion picked here is the experience_types slug that later keys SELECTION_CONTROL_SEED[templateSlug] (client/src/pages/experience-template.tsx:495) when the traveler opens /experiences/<slug>; which refine controls exist downstream is decided by this tile."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-destination",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-plan-stop",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:button-plan-stop-up",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:button-plan-stop-down",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:button-plan-stop-remove",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:button-plan-add-stop",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-start-date-day",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-main-moment-day",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-start-date-range",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-end-date",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-main-moment-date",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-main-moment-range",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:button-etp-minus",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-plan-party",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:button-etp-plus",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-budget-approver-name",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-budget-approver-email",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-accessibility-note",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:chip-etp-event",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:chip-etp-event-something-else",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-custom-event",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-custom-event-blur",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-custom-event-enter",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:select-etp-event-day",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-event-time",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-event-place",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:input-etp-title",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:planning-option-continue",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:button-planning-back",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:button-planning-next",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:planning-option-ai",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:planning-option-branch",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:button-etp-clear",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:button-etp-save",
+  "specRefsReplace": true,
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "whole document",
+    "relation": "not_governed",
+    "note": "Spec scope is the template-page refine selection controls (getSelectionControls \u2192 #462 query: category \u00b7 searchQuery \u00b7 priceRange \u00b7 minRating \u00b7 tags). The plan modal asks plan identity (occasion / where / when / who / events) and renders no selection control, so this row neither conforms to nor diverges from the spec."
+   }
+  ]
+ },
+ {
+  "closeout": "U1",
+  "id": "plan-modal:option-occasion",
+  "addGaps": [
+   {
+    "class": "SPEC_DIVERGENCE",
+    "severity": "P3",
+    "note": "Occasion coverage vs SELECTION_CONTROL_MODEL_SPEC_v2: the modal offers 27 occasions (GET /api/experience-types); the spec defines starter sets for 7 (Travel, Wedding, Corporate, Date Night, Proposal, Birthday, Custom); SELECTION_CONTROL_SEED keys 3 slugs (travel, wedding, corporate-events \u2014 shared/selection-control-seed.ts:70-82). Picking any of the other 24 leads to a template page with no refine controls, including 4 the spec covers (corporate, date-night, proposal, birthday). See rows experience-template:selection-controls:*.",
+    "uiCheck": "CONFIRMED",
+    "uiEvidence": "docs/audits/ui/u1-controls__date-night__dining/",
+    "uiObserved": "U1 closeout: date-night/dining, proposal/services, birthday/venues and corporate/venues each render 0 selection-control options"
+   }
+  ]
+ },
+ {
+  "closeout": "rerun",
+  "id": "services:unified-request-booking",
+  "evidence": "behavioral",
+  "evidenceRef": "U1 closeout re-run: docs/audits/ui/services__unified-request-booking*/",
+  "actual": "Signed-in submit (fixture feed card, real vault token) \u2192 POST /api/affiliate-booking-requests 200, toast 'Booking requested!', one affiliate_booking_requests row with trip_id NULL, expert_id NULL (pooled); after reload the card still reads 'Request booking' with no state. With the POST forced to 500 while signed in, the toast says 'Sign in required'.",
+  "annotateGaps": [
+   {
+    "class": "SILENT_FAILURE_UI",
+    "severity": "P2",
+    "noteMatch": "Every failure is reported",
+    "set": {
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/services__unified-request-booking-failure/",
+     "uiObserved": "signed in (GET /api/auth/user 200); POST /api/affiliate-booking-requests forced 500 \u2192 toast 'Sign in required \u2014 Please sign in to request a booking.' (re-run with domcontentloaded + 90s goto timeout)"
+    }
+   },
+   {
+    "class": "INVISIBLE_RESULT",
+    "severity": "P2",
+    "noteMatch": "Request not tied to any t",
+    "set": {
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/services__unified-request-booking/",
+     "uiObserved": "POST 200 \u2192 affiliate_booking_requests row trip_id=NULL; after reload the card reads 'Request booking' with no requested/pending state (reload.png). Card rendered from a fixture feed response (partner feed empty with stub keys) carrying a REAL vault token; the submit hit the real rail."
+    }
+   }
+  ]
+ },
+ {
+  "closeout": "deals",
+  "id": "deals:book",
+  "annotateGaps": [
+   {
+    "class": "INVISIBLE_RESULT",
+    "severity": "P2",
+    "noteMatch": "Request not tied to a tri",
+    "set": {
+     "uiCheck": "NOT_PROVEN",
+     "uiObserved": "GET /api/deals \u2192 200 {\"deals\":[],\"total\":0}: no feed data, so there is no deal card to act on. Moved to NOT PROVEN at closeout (ACTION_EFFECT_AUDIT.md \u00a7NOT PROVEN #16); needs partner deal feeds."
+    }
+   }
+  ]
+ },
+ {
+  "closeout": "RC-12",
+  "id": "plan-modal:planning-option-branch",
+  "addGaps": [
+   {
+    "class": "FALSE_PROMISE",
+    "severity": "P2",
+    "rootCause": "RC-12",
+    "note": "RC-12: 'Build it myself' with the Who step untouched mints adults/kids/number_of_travelers all NULL (correct, \u00a713) \u2014 then the slip header reads '1 traveler'. Source: plancardPartyCount(adults, kids, numberOfTravelers, 1) at server/services/trip-plan.service.ts:1137 (ladder shared/plan-vocabulary.ts:116-128) returns the held fallback 1, and SlipView.tsx:1491-1497 renders it through planHeaderCountLabel as the traveler's own count.",
+    "uiCheck": "CONFIRMED",
+    "uiEvidence": "docs/audits/ui/rc12__slip-party-untouched/",
+    "uiObserved": "mint body has no party fields; DB trips(adults,kids,number_of_travelers) = (NULL,NULL,NULL); GET /api/trips/:id/plancard trip.travelers = 1; slip header text '1 traveler'"
+   }
+  ]
+ },
+ {
+  "closeout": "RC-12",
+  "id": "intake-panel:button-intake-create",
+  "annotateGaps": [
+   {
+    "class": "FALSE_PROMISE",
+    "severity": "P3",
+    "noteMatch": "useState\\(2\\)",
+    "set": {
+     "rootCause": "RC-12",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/rc12__intake-panel-default/",
+     "uiObserved": "Travelers field pre-filled '2' before any input; create body numberOfTravelers:2"
+    }
+   },
+   {
+    "class": "FALSE_PROMISE",
+    "severity": "P3",
+    "noteMatch": "static cause not traced",
+    "set": {
+     "rootCause": "RC-12",
+     "note": "J2-F6 (RC-12): the new plan shows '2 travelers' never entered. Cause now traced: intake-panel.tsx:133 useState(2) \u2192 sent as numberOfTravelers at :202 (and to the pen at :179 on 'Plan with AI').",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/rc12__intake-panel-default/",
+     "uiObserved": "create body {\u2026,\"numberOfTravelers\":2,\u2026} with the field untouched"
+    }
+   }
+  ]
+ },
+ {
+  "closeout": "RC-12",
+  "id": "experience-template:effect-persist-settings",
+  "annotateGaps": [
+   {
+    "class": "FALSE_PROMISE",
+    "severity": "P2",
+    "noteMatch": "travelers:2",
+    "set": {
+     "rootCause": "RC-12",
+     "note": "J4-F3 (RC-12): travelers:2 written to the pen and shown on the trip strip with no user input (\u00a713). Sites: useState(initialSettings?.adults ?? 2) at experience-template.tsx:917 and the rehydrate fallback `settings?.adults ?? settings?.travelers ?? 2` at :1036; written as a stated total `travelers: adults + kids` to the pen at :1146 (guarded only on destination), :1482 and :1759/:1828, to the comparison request at :1407 and to the expert-request snapshot at :1549.",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/u1-controls__date-night__dining/",
+     "uiObserved": "/experiences/date-night?destination=Kyoto: Trip Strip reads 'Your Kyoto Date Night \u00b7 2 travelers' for a fresh account that never stated a party (also travel/services tab.png: 'Kyoto, Japan \u00b7 2 travelers')"
+    }
+   }
+  ]
+ },
+ {
+  "closeout": "RC-12",
+  "id": "planning-provider:run-branch-ai",
+  "addGaps": [
+   {
+    "class": "SPEC_DIVERGENCE",
+    "severity": "P3",
+    "rootCause": "RC-12",
+    "note": "J1-F9 (RC-12): the AI modal labels the party '2 travelers (not stated)' (EnhancedPlanningModal.tsx:288-290, fallback at :173-175) but sends travelers:2 to POST /api/ai/generate-itinerary (:330); on a successful generation the server mints the trip with numberOfTravelers: travelers (server/routes/content.routes.ts:4965 \u2014 static, AI success not runnable here). The server also refuses a missing count (:4851-4852), which is why the client invents one.",
+    "uiCheck": "CONFIRMED",
+    "uiEvidence": "docs/audits/ui/rc12__ai-modal-body/",
+    "uiObserved": "summary 'text-basics-travelers' = '2 travelers (not stated)'; request body travelers=2 (response forced 500, nothing minted)"
    }
   ]
  }

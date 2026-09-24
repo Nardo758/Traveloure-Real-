@@ -1,0 +1,10 @@
+{
+ "rowId": "u1-controls:corporate-events:team-activities",
+ "verdict": "OBSERVED",
+ "observed": "/experiences/corporate-events tab team-activities: 3 selection-control option(s) rendered [\"selection-activity-focus-focus-zen=\\\"Zen & mindfulness\\\"\",\"selection-activity-focus-focus-sake=\\\"Sake & social\\\"\",\"selection-activity-focus-focus-craft=\\\"Craft workshops\\\"\"]",
+ "options": [
+  "selection-activity-focus-focus-zen=\"Zen & mindfulness\"",
+  "selection-activity-focus-focus-sake=\"Sake & social\"",
+  "selection-activity-focus-focus-craft=\"Craft workshops\""
+ ]
+}

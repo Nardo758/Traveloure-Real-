@@ -4,7 +4,7 @@ Every P1/P2 gap in a UI class (FALSE_PROMISE, INVISIBLE_RESULT, INCONSISTENT_AFF
 
 Each directory below holds `before.png`, `after.png` (plus extra frames where useful), `network.json` and `result.json`.
 
-**Tally: CONFIRMED 26 · BLOCKED 3 · REFUTED 2** (31 gap entries: the 30 UI-class P1/P2 gaps plus one NEW P1 found while probing).
+**Tally at closeout: CONFIRMED 28 · REFUTED 2 · NOT PROVEN 1 · BLOCKED 0** (31 gap entries: the 30 UI-class P1/P2 gaps plus one NEW P1 found while probing). The first pass had 3 BLOCKED. At closeout, the two `services:unified-request-booking` entries were re-run and CONFIRMED, and `deals:book` was moved to NOT PROVEN.
 
 | Row id | Gap(s) | Verdict | Observed | Evidence |
 |---|---|---|---|---|
@@ -19,14 +19,14 @@ Each directory below holds `before.png`, `after.png` (plus extra frames where us
 | `services:add-to-plan` | P2 FALSE_PROMISE | **CONFIRMED** | guest toast ["Saved! Sign in to checkout and save your selection.","Notification Saved!Sign in to checkout and save your selection."]; server writes=0 (localStorage only) | [dir](services__add-to-plan#guest-saved/) |
 | `services:add-to-plan` | P2 INVISIBLE_RESULT | **CONFIRMED** | item written to /api/trips/ccd05d30-9e9b-42b1-a137-b27c04a43843/itinerary-items (trip ccd05d30-9e9b-42b1-a137-b27c04a43843); target banner visible=false; toast ["Added to your plan Find it on your plan.","Notification Added to your planFind it on your plan."]  | [dir](services__add-to-plan#invisible-target/) |
 | `services:curated-pick-trip` | P2 INCONSISTENT_AFFORDANCE | **CONFIRMED** | curated label "Add to Plan" opened a trip picker=true; ServiceCard label on the same page "Add to Plan" adds directly to the pen target (J1 R3) | [dir](services__curated-pick-trip/) |
-| `services:unified-request-booking` | P2 SILENT_FAILURE_UI | **BLOCKED** | harness error: page.goto: Timeout 30000ms exceeded. Call log: [2m  - navigating to "http://127.0.0.1:5000/services?location=Kyoto%2C+Japan", waiting until "networkidle"[22m  | [dir](services__unified-request-booking/) |
-| `services:unified-request-booking` | P2 INVISIBLE_RESULT | **BLOCKED** | harness error: page.goto: Timeout 30000ms exceeded. Call log: [2m  - navigating to "http://127.0.0.1:5000/services?location=Kyoto%2C+Japan", waiting until "networkidle"[22m  | [dir](services__unified-request-booking/) |
+| `services:unified-request-booking` | P2 SILENT_FAILURE_UI | **CONFIRMED** (closeout re-run) | Signed in (GET /api/auth/user 200), POST /api/affiliate-booking-requests forced to 500 → toast "Sign in required · Please sign in to request a booking." | [dir](services__unified-request-booking-failure/) |
+| `services:unified-request-booking` | P2 INVISIBLE_RESULT | **CONFIRMED** (closeout re-run) | POST 200, toast "Booking requested!", one `affiliate_booking_requests` row with `trip_id` NULL. After reload the card still reads "Request booking" with no requested or pending state. | [dir](services__unified-request-booking/) |
 | `destinations:ade-primary` | P2 INVISIBLE_RESULT | **CONFIRMED** | dialog primary button reads "Add to my trip plan  Plan & optimize whenever you're ready — nothing to set up now" — it does not name the plan it will write to | [dir](destinations__ade-primary/) |
 | `discover-location:addon-agent` | P2 INVISIBLE_RESULT | **CONFIRMED** | request → 200 {"id":"84476780-6cb5-41fb-be2d-187be4279641","userId":"6ac1907e-1d29-40d1-8e07-3b9e995969d2","expertId":null,"tripId":nu; 'Request sent' badge survives reload=false; request carries no tripId (body {"itemName":"Airport transfer — Kyoto","itemDesc | [dir](discover-location__addon-agent/) |
 | `discover-location:ade-primary` | P2 INVISIBLE_RESULT | **CONFIRMED** | dialog primary button reads "Add to my trip plan  Plan & optimize whenever you're ready — nothing to set up now" | [dir](discover-location__ade-primary/) |
 | `service-detail:add-to-plan` | P2 INVISIBLE_RESULT | **CONFIRMED** | banner "Booking for your trip." · toast ["Added to your plan Find it on your plan — check out when you're ready.","Notification Added to your planFind it on your plan — check out when you're ready."] — plan named=false | [dir](service-detail__add-to-plan/) |
 | `service-detail:mismatch-add-as-stop` | P2 SILENT_FAILURE_UI | **CONFIRMED** | PUT destinations forced 500 → toasts ["Added to your plan Find it on your plan — check out when you're ready.","Notification Added to your planFind it on your plan — check out when you're ready."] | [dir](service-detail__mismatch-add-as-stop/) |
-| `deals:book` | P2 INVISIBLE_RESULT | **BLOCKED** | GET /api/deals → 200 {"deals":[],"total":0}; no deal card to click. Needs partner deal feeds. | [dir](deals__book/) |
+| `deals:book` | P2 INVISIBLE_RESULT | **NOT PROVEN** (closeout) | GET /api/deals → 200 {"deals":[],"total":0}. There is no feed data, so no deal card to act on. | [dir](deals__book/) |
 | `transportation:twelvego-deeplink-book` | P2 FALSE_PROMISE | **CONFIRMED** | card text "Bangkok → Chiang Mai View schedules & prices" → POST /api/affiliate-booking-requests 200 | [dir](transportation__twelvego-deeplink-book/) |
 | `experiences:button-intake-create` | P2 SILENT_FAILURE_UI | **REFUTED** | POST /api/trips forced 500 → toasts ["Error Failed to create trip","Notification ErrorFailed to create trip"] | [dir](experiences__button-intake-create/) |
 | `experience-template:effect-persist-settings` | P2 FALSE_PROMISE | **CONFIRMED** | PUT /api/trip-context carried travelers:2 with no user input: {"context":{"experienceSlug":"travel","destination":"Kyoto, Japan","travelers":2,"experienceType":"Travel"}} | [dir](experience-template__effect-persist-settings/) |
@@ -45,11 +45,15 @@ Each directory below holds `before.png`, `after.png` (plus extra frames where us
 - **experiences:button-intake-create**, SILENT_FAILURE_UI: a forced-500 create shows "Error · Failed to create trip" through `useCreateTrip`'s own `onError` (`client/src/hooks/use-trips.ts:88-94`). The tracing pass read only the call site.
 - **storefront:storefront-panel-share**, SILENT_FAILURE_UI: a forced-500 share renders the inline `storefront-panel-share-error` (`role="alert"`, `StorefrontBookingPanel.tsx:328-331`). The tracing pass missed the inline error.
 
-## BLOCKED (environment, not static-only)
+## Closeout: the BLOCKED entries resolved
 
-Each one has a screenshot proving the control is absent, plus the reason:
-- **services:unified-request-booking** (INVISIBLE_RESULT P2, SILENT_FAILURE_UI P2): the unified SERP/partner result cards never render without live SERP or partner keys. *Needs:* `SERP_API_KEY` or a partner sandbox.
-- **deals:book** (INVISIBLE_RESULT P2): `GET /api/deals` returns `{"deals":[]}` locally. *Needs:* partner deal feeds.
+- **services:unified-request-booking** (INVISIBLE_RESULT P2, SILENT_FAILURE_UI P2): **CONFIRMED**. The first pass died on `page.goto(..., {waitUntil: "networkidle"})` after 30 s. The re-run (`u2d-closeout-probes.mjs`) uses `domcontentloaded` and a 90 s goto timeout. The partner catalog feed (`/api/catalog/activities-gyg`) is still empty with stub keys, so the re-run works as follows:
+  - One card is rendered from a **fixture feed response** (`page.route`).
+  - The card carries a **real vault token**, seeded into the table the vault reads (`travelpayouts_cache`, brand `affiliate-url-vault`, 1 h TTL).
+  - The submit goes to the **real** booking-agent rail.
+
+  Only the feed is simulated; the rail, the DB row and the toasts are real.
+- **deals:book** (INVISIBLE_RESULT P2): **NOT PROVEN**. `GET /api/deals` returns `{"deals":[],"total":0}` locally, so there is no feed data and no card. The gap stays a static claim (see `ACTION_EFFECT_AUDIT.md` §NOT PROVEN #16). *Needs:* partner deal feeds.
 
 ## NEW finding surfaced by U2
 

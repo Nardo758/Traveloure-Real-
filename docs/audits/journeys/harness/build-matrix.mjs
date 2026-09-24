@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const [rowsDir, patchFile, baseSha] = process.argv.slice(2);
-const GROUPS = ["shell", "marketplace", "entry", "console"];
+const GROUPS = ["shell", "marketplace", "entry", "console", "closeout"];
 let rows = [];
 for (const g of GROUPS) {
   const f = path.join(rowsDir, `${g}.json`);
@@ -49,6 +49,7 @@ for (const p of patches) {
       for (const g of p.addGaps) if (!have.has(g.class + g.note)) r.verdict.gaps.push(g);
     }
     if (p.uiMerge) r.ui = { ...(r.ui || {}), ...p.uiMerge };
+    if (p.specRefs) r.specRefs = p.specRefsReplace ? p.specRefs : [...(r.specRefs || []), ...p.specRefs];
     if (p.annotateGaps) {
       for (const a of p.annotateGaps) {
         for (const g of r.verdict.gaps) {

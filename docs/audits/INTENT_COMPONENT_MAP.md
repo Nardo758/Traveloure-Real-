@@ -5,9 +5,9 @@ Generated with the matrix (base `858d28f`). One section per normalised `intent`;
 | Intent | Components | Distinct labels | Consolidation candidate? |
 |---|---|---|---|
 | `open_planner` | 26 | 28 | **yes** |
+| `filter` | 15 | 31 | **yes** |
 | `ui_local` | 15 | 26 | **yes** |
 | `dismiss` | 14 | 13 | **yes** |
-| `filter` | 14 | 24 | **yes** |
 | `sign_in` | 13 | 18 | **yes** |
 | `add_to_plan` | 13 | 15 | **yes** |
 | `message_expert` | 11 | 10 | **yes** |
@@ -195,6 +195,26 @@ Generated with the matrix (base `858d28f`). One section per normalised `intent`;
 | PlanCard (rail) (client/src/components/plancard/SlipRail.tsx) | "Stops & timezone" | /plans/:tripId |
 | AiPlannerDraftPanel (client/src/components/ai-planner-draft-panel.tsx) | "Continue in planner" | /ai-assistant |
 
+## `filter` — 15 component(s)
+
+| Component (file) | Labels | Routes |
+|---|---|---|
+| TwoFieldSearch (client/src/pages/discover.tsx) | "What / Where inputs" | /destinations \| /ready-made \| /services |
+| ServiceFiltersPopover (client/src/pages/discover.tsx) | "Min/Max price, Min rating, Sort, Clear …" | /services |
+| DiscoverPage (client/src/pages/discover.tsx) | "All / category chips", "Prev / Next page", "Did you mean <suggestion>", "Theme chips / See all / Show all (local…" | /services, /ready-made |
+| GlobalCalendar (client/src/components/travelpulse/GlobalCalendar.tsx) | "view / calendar toggle / vibe / clear /…" | /events |
+| HeroBand (client/src/pages/discover-location.tsx) | "dismiss date chip" | /discover/location/:city |
+| DiscoverLocationPage (client/src/pages/discover-location.tsx) | "search input, price/sort popover, spine…" | /discover/location/:city |
+| FeedRenderer (client/src/pages/discover-location.tsx) | "See all / neighbourhood tabs" | /discover/location/:city |
+| ServiceDetailPage (client/src/pages/service-detail.tsx) | "availability month, slot pick, room che…" | /services/:id |
+| HiddenGemsPage (client/src/pages/hidden-gems.tsx) | "destination input, destination chips, c…" | /hidden-gems |
+| DealsPage (client/src/pages/deals.tsx) | "search (debounced), category chips, cle…" | /deals |
+| TransportationBookingPage (client/src/pages/transportation-booking.tsx) | "tabs, from/to inputs, Search (local-UI …" | /transportation |
+| ExpertsPage (client/src/pages/experts.tsx) | "?role/?destination/?topic", "role auto-switch", "chips / clear filters / load more / sort" | /experts |
+| StorefrontPage (client/src/pages/storefront.tsx) | "Category / search / clear" | /s/:handle \| /experts/:id |
+| MyTrips (client/src/pages/my-trips.tsx) | "Search plans", "Type filter", "Status filter", "Grid view", "List view", "Show all / Show less" | /my-trips |
+| CompactFilterBar (client/src/components/compact-filter-bar.tsx) | "Budget? — Under $150 / Premium ($150+)", "Vendor focus? — Photography / Florals /…", "Activity focus? — Zen / Sake / Craft (c…", "date-night refine controls (none render…", "proposal refine controls (none rendered)", "birthday refine controls (none rendered)", "Custom refine controls (no template)" | /experiences/:slug |
+
 ## `ui_local` — 15 component(s)
 
 | Component (file) | Labels | Routes |
@@ -233,25 +253,6 @@ Generated with the matrix (base `858d28f`). One section per normalised `intent`;
 | ReviewCard (client/src/pages/service-detail.tsx) | "Cancel / close flag dialog" | /services/:id |
 | ReadyMadeDetailPage (client/src/pages/ready-made-detail.tsx) | "payment dialog close" | /ready-made/:id |
 | SavePaymentMethodPrompt (client/src/components/payment/SavePaymentMethodPrompt.tsx) | "Dismiss" | /plans/:tripId |
-
-## `filter` — 14 component(s)
-
-| Component (file) | Labels | Routes |
-|---|---|---|
-| TwoFieldSearch (client/src/pages/discover.tsx) | "What / Where inputs" | /destinations \| /ready-made \| /services |
-| ServiceFiltersPopover (client/src/pages/discover.tsx) | "Min/Max price, Min rating, Sort, Clear …" | /services |
-| DiscoverPage (client/src/pages/discover.tsx) | "All / category chips", "Prev / Next page", "Did you mean <suggestion>", "Theme chips / See all / Show all (local…" | /services, /ready-made |
-| GlobalCalendar (client/src/components/travelpulse/GlobalCalendar.tsx) | "view / calendar toggle / vibe / clear /…" | /events |
-| HeroBand (client/src/pages/discover-location.tsx) | "dismiss date chip" | /discover/location/:city |
-| DiscoverLocationPage (client/src/pages/discover-location.tsx) | "search input, price/sort popover, spine…" | /discover/location/:city |
-| FeedRenderer (client/src/pages/discover-location.tsx) | "See all / neighbourhood tabs" | /discover/location/:city |
-| ServiceDetailPage (client/src/pages/service-detail.tsx) | "availability month, slot pick, room che…" | /services/:id |
-| HiddenGemsPage (client/src/pages/hidden-gems.tsx) | "destination input, destination chips, c…" | /hidden-gems |
-| DealsPage (client/src/pages/deals.tsx) | "search (debounced), category chips, cle…" | /deals |
-| TransportationBookingPage (client/src/pages/transportation-booking.tsx) | "tabs, from/to inputs, Search (local-UI …" | /transportation |
-| ExpertsPage (client/src/pages/experts.tsx) | "?role/?destination/?topic", "role auto-switch", "chips / clear filters / load more / sort" | /experts |
-| StorefrontPage (client/src/pages/storefront.tsx) | "Category / search / clear" | /s/:handle \| /experts/:id |
-| MyTrips (client/src/pages/my-trips.tsx) | "Search plans", "Type filter", "Status filter", "Grid view", "List view", "Show all / Show less" | /my-trips |
 
 ## `sign_in` — 13 component(s)
 

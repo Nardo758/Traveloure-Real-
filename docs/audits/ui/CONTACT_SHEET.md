@@ -24,7 +24,7 @@ The flow is split into three paths:
 | 07 | ![](contact/07-discover-services.png) | Discover `/services`. The pen is bound to the new plan, but **no banner names it**. | `services:add-to-plan` (INVISIBLE_RESULT P2, **U2 CONFIRMED**) |
 | 08 | ![](contact/08-discover-add-toast.png) | "Add to Plan" → "Added to your plan · Find it on your plan", which doesn't say *which* plan | `services:add-to-plan` (INVISIBLE_RESULT P2, **U2 CONFIRMED**) |
 | 09 | ![](contact/09-my-plans.png) | `/my-trips`, loaded for the first time here, so it's correct: 1 plan | — |
-| 10 | ![](contact/10-slip.png) | `/plans/:tripId`, the slip, with the added item | — (**new observation, not registered:** the header reads "1 traveler" although the party was never set in the modal; the §13 posture is "untouched ⇒ not stated". **NOT PROVEN** as a gap; it needs tracing.) |
+| 10 | ![](contact/10-slip.png) | `/plans/:tripId`, the slip, with the added item | `plan-modal:planning-option-branch` (FALSE_PROMISE P2, **RC-12**, closeout CONFIRMED). The header reads "1 traveler" although the party was never set. The trip row holds `adults`, `kids` and `number_of_travelers` all NULL. The `1` is the plancard fallback at `server/services/trip-plan.service.ts:1137`. |
 
 ## Path B: My Plans loaded before planning (stale list)
 
@@ -37,7 +37,7 @@ The flow is split into three paths:
 
 | # | Screen | What it shows | Gap row ids visible |
 |---|---|---|---|
-| 13 | ![](contact/13-exit-ai-modal.png) | "Plan with AI" opens a second modal. The "YOUR PLAN" card describes a plan that doesn't exist yet, and shows **"2 travelers (not stated)"**. | `plan-modal:planning-option-ai` (SPEC_DIVERGENCE **P1**); `planning-provider:run-branch-ai` / `planning-provider:ai-modal-on-close` (INCONSISTENT_AFFORDANCE P2: Escape and the backdrop don't close it, **U2 CONFIRMED**); J1-F9 (travelers: 2 sent, P3) |
+| 13 | ![](contact/13-exit-ai-modal.png) | "Plan with AI" opens a second modal. The "YOUR PLAN" card describes a plan that doesn't exist yet, and shows **"2 travelers (not stated)"**. | `plan-modal:planning-option-ai` (SPEC_DIVERGENCE **P1**); `planning-provider:run-branch-ai` / `planning-provider:ai-modal-on-close` (INCONSISTENT_AFFORDANCE P2: Escape and the backdrop don't close it, **U2 CONFIRMED**); J1-F9 / **RC-12** (travelers: 2 sent, P3, closeout CONFIRMED) |
 | 14 | ![](contact/14-c-ai-add.png) | After the AI exit, "Add to Plan" → **"Added to cart!"** | `services:add-to-plan` (FALSE_PROMISE **P1**, **U2 CONFIRMED**) |
 | 15 | ![](contact/15-c-ai-my-plans.png) | `/my-trips`: No plans yet (correct, because no plan exists) | `plan-modal:planning-option-ai` (SPEC_DIVERGENCE **P1**) |
 | 16 | ![](contact/16-exit-save.png) | Save closes the modal with no confirmation. Only the "YOUR TRIP" strip changes, and no plan exists. | `plan-modal:button-etp-save` (ORPHAN_WRITE **P1**, SILENT_SUCCESS P2 **U2 CONFIRMED**) |

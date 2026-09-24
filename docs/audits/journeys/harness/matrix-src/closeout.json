@@ -1,0 +1,591 @@
+[
+ {
+  "id": "experience-template:selection-controls:travel",
+  "tier": 1,
+  "intent": "filter",
+  "surface": "experience-template",
+  "route": "/experiences/:slug",
+  "component": {
+   "name": "CompactFilterBar",
+   "loc": "client/src/components/compact-filter-bar.tsx:103"
+  },
+  "label": {
+   "text": "Budget? \u2014 Under $150 / Premium ($150+)",
+   "ariaLabel": null,
+   "testId": "selection-<controlId>-<optionId>"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/compact-filter-bar.tsx:119"
+  },
+  "conditions": [
+   {
+    "axis": "none",
+    "value": "template=travel",
+    "outcome": "travel/services and travel/activities render ONE control, 'Budget?' with 2 options (Under $150, Premium ($150+)), beside the legacy Category/Distance selects"
+   }
+  ],
+  "chain": {
+   "handler": "handleSelectionToggle @ client/src/pages/experience-template.tsx:1906 \u2192 applySelections :1892",
+   "clientWrites": [
+    "component state: selectionState @ client/src/pages/experience-template.tsx:1913",
+    "priceRange / minRating / selectedFilters from resolveSelectionsToFilterQuery (shared/selection-controls.ts:151-175) @ client/src/pages/experience-template.tsx:1900-1903 \u2014 q.category is resolved but DISCARDED here"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "filteredServices memo (client/src/pages/experience-template.tsx)",
+    "control set: SELECTION_CONTROL_SEED[templateSlug][tab.slug] fallback when DB experience_template_tabs.control_config.selectionControls is empty @ client/src/pages/experience-template.tsx:495-506"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Narrow this tab's results to what I picked",
+   "feedback": {
+    "success": "chip turns active; result grid re-filters in place",
+    "failure": "none (client-only filter)",
+    "loading": "none"
+   },
+   "resultLocation": "the same tab's result grid",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md \u00a7Revised starter sets \u2014 Travel (spec lines 18-22)"
+  },
+  "expected": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md starter set (Travel (spec lines 18-22))",
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "U1 closeout u1-controls:travel:services, u1-controls:travel:activities (docs/audits/ui/u1-controls__travel__*/tab.png)",
+   "actual": "travel/services and travel/activities render ONE control, 'Budget?' with 2 options (Under $150, Premium ($150+)), beside the legacy Category/Distance selects",
+   "gaps": [
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "Budget bands: spec 'Budget?' has 4 bands \u2014 Budget [0,50] \u00b7 Moderate [0,150] \u00b7 Premium [150,500] \u00b7 Splurge [500,null]; seed has 2 \u2014 Under $150 [0,150] \u00b7 Premium ($150+) [150,500] (shared/selection-control-seed.ts:32-40). Note: the spec's [500,null] shape would resolve to [500,0] through toNumberPair (shared/selection-controls.ts:116-124, Number(null)=0); the seed avoids it by using the 500 'uncapped' sentinel (:31).",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/u1-controls__travel__services/",
+     "uiObserved": "screenshot of the rendered control set (tab.png)"
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "'What are you in the mood for?' (multi: Dining/Culture/Outdoors/Nightlife/Food experiences) is absent. Seed says outdoor/nature/nightlife tags are inventory gaps (shared/selection-control-seed.ts:23-25); spec's Dining option is category:dining \u2014 see the category note on the wedding row.",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/u1-controls__travel__activities/",
+     "uiObserved": "screenshot of the rendered control set (tab.png)"
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "'Quality bar?' (minRating Any/4/4.5) is absent; seed defers it because travel ratings are all 4.7\u20135.0 and a \u22654 floor is a no-op (shared/selection-control-seed.ts:17-21). Spec lists it as ACTIVE, not deferred."
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "Spec Phase 3 'replace the facet-wall UI with the selection controls': the travel services tab still renders the legacy 'Category' and 'Distance' selects beside 'Budget?' (screenshot). Whether those are the facet wall the spec means is not decided here.",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/u1-controls__travel__services/",
+     "uiObserved": "screenshot of the rendered control set (tab.png)"
+    }
+   ]
+  },
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "Travel (spec lines 18-22)",
+    "relation": "governs",
+    "code": "shared/selection-control-seed.ts:32-40,70-75"
+   }
+  ]
+ },
+ {
+  "id": "experience-template:selection-controls:wedding",
+  "tier": 1,
+  "intent": "filter",
+  "surface": "experience-template",
+  "route": "/experiences/:slug",
+  "component": {
+   "name": "CompactFilterBar",
+   "loc": "client/src/components/compact-filter-bar.tsx:103"
+  },
+  "label": {
+   "text": "Vendor focus? \u2014 Photography / Florals / Music",
+   "ariaLabel": null,
+   "testId": "selection-<controlId>-<optionId>"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/compact-filter-bar.tsx:119"
+  },
+  "conditions": [
+   {
+    "axis": "none",
+    "value": "template=wedding",
+    "outcome": "wedding/vendors renders 'Vendor focus?' (multi) with Photography, Florals, Music \u2014 tags, not category"
+   }
+  ],
+  "chain": {
+   "handler": "handleSelectionToggle @ client/src/pages/experience-template.tsx:1906 \u2192 applySelections :1892",
+   "clientWrites": [
+    "component state: selectionState @ client/src/pages/experience-template.tsx:1913",
+    "priceRange / minRating / selectedFilters from resolveSelectionsToFilterQuery (shared/selection-controls.ts:151-175) @ client/src/pages/experience-template.tsx:1900-1903 \u2014 q.category is resolved but DISCARDED here"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "filteredServices memo (client/src/pages/experience-template.tsx)",
+    "control set: SELECTION_CONTROL_SEED[templateSlug][tab.slug] fallback when DB experience_template_tabs.control_config.selectionControls is empty @ client/src/pages/experience-template.tsx:495-506"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Narrow this tab's results to what I picked",
+   "feedback": {
+    "success": "chip turns active; result grid re-filters in place",
+    "failure": "none (client-only filter)",
+    "loading": "none"
+   },
+   "resultLocation": "the same tab's result grid",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md \u00a7Revised starter sets \u2014 Wedding (spec lines 24-28)"
+  },
+  "expected": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md starter set (Wedding (spec lines 24-28))",
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "U1 closeout u1-controls:wedding:vendors",
+   "actual": "wedding/vendors renders 'Vendor focus?' (multi) with Photography, Florals, Music \u2014 tags, not category",
+   "gaps": [
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "Spec 'Which vendor?' is SINGLE-select on the `category` key (planner \u00b7 venue \u00b7 photographer \u00b7 videographer \u00b7 florist \u00b7 caterer \u00b7 musician \u00b7 cake \u00b7 transport); seed 'Vendor focus?' is MULTI-select on `tags` [photography|floral|music] (shared/selection-control-seed.ts:43-53). Code-side counter-ruling recorded, not resolved (R-3): the seed header (shared/selection-control-seed.ts:4-6) states 'Category navigation is served by the tab bar itself, so there are NO category-selection controls', while spec v2 makes category the lead control. Independently, a seeded category control would be a no-op on this page: resolveSelectionsToFilterQuery emits q.category (shared/selection-controls.ts:151-153) and applySelections (client/src/pages/experience-template.tsx:1892-1904) never reads it.",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/u1-controls__wedding__vendors/",
+     "uiObserved": "screenshot of the rendered control set (tab.png)"
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "'Budget band?' absent: seed omits it because wedding prices exceed #462's 0\u2013500 price sentinel so any band empties results (shared/selection-control-seed.ts:14-16); spec expects per-category bands e.g. photographer [5000,50000], which the 0\u2013500 engine cannot express."
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "'Quality bar?' absent: wedding rows carry no rating so a floor empties them (shared/selection-control-seed.ts:17-21)."
+    }
+   ]
+  },
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "Wedding (spec lines 24-28)",
+    "relation": "governs",
+    "code": "shared/selection-control-seed.ts:43-53,76-78"
+   }
+  ]
+ },
+ {
+  "id": "experience-template:selection-controls:corporate",
+  "tier": 1,
+  "intent": "filter",
+  "surface": "experience-template",
+  "route": "/experiences/:slug",
+  "component": {
+   "name": "CompactFilterBar",
+   "loc": "client/src/components/compact-filter-bar.tsx:103"
+  },
+  "label": {
+   "text": "Activity focus? \u2014 Zen / Sake / Craft (corporate-events only)",
+   "ariaLabel": null,
+   "testId": "selection-<controlId>-<optionId>"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/compact-filter-bar.tsx:119"
+  },
+  "conditions": [
+   {
+    "axis": "none",
+    "value": "template=corporate-events",
+    "outcome": "corporate-events/team-activities renders 'Activity focus?' (Zen & mindfulness, Sake & social, Craft workshops); the separate `corporate` template (LD 28 seed, nav 'Corporate Retreats') renders 0 controls on venues"
+   }
+  ],
+  "chain": {
+   "handler": "handleSelectionToggle @ client/src/pages/experience-template.tsx:1906 \u2192 applySelections :1892",
+   "clientWrites": [
+    "component state: selectionState @ client/src/pages/experience-template.tsx:1913",
+    "priceRange / minRating / selectedFilters from resolveSelectionsToFilterQuery (shared/selection-controls.ts:151-175) @ client/src/pages/experience-template.tsx:1900-1903 \u2014 q.category is resolved but DISCARDED here"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "filteredServices memo (client/src/pages/experience-template.tsx)",
+    "control set: SELECTION_CONTROL_SEED[templateSlug][tab.slug] fallback when DB experience_template_tabs.control_config.selectionControls is empty @ client/src/pages/experience-template.tsx:495-506"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Narrow this tab's results to what I picked",
+   "feedback": {
+    "success": "chip turns active; result grid re-filters in place",
+    "failure": "none (client-only filter)",
+    "loading": "none"
+   },
+   "resultLocation": "the same tab's result grid",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md \u00a7Revised starter sets \u2014 Corporate (spec lines 30-34)"
+  },
+  "expected": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md starter set (Corporate (spec lines 30-34))",
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "U1 closeout u1-controls:corporate-events:team-activities, u1-controls:corporate:venues",
+   "actual": "corporate-events/team-activities renders 'Activity focus?' (Zen & mindfulness, Sake & social, Craft workshops); the separate `corporate` template (LD 28 seed, nav 'Corporate Retreats') renders 0 controls on venues",
+   "gaps": [
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "Spec 'Service?' (category: venue \u00b7 AV/tech \u00b7 catering \u00b7 transport \u00b7 accommodations), 'Budget per head?' and 'Quality bar?' are all absent. Seed ships 'Activity focus?' zen/sake/craft tags (shared/selection-control-seed.ts:55-66), a control the spec does not list for Corporate. Code-side counter-ruling recorded, not resolved (R-3): the seed header (shared/selection-control-seed.ts:4-6) states 'Category navigation is served by the tab bar itself, so there are NO category-selection controls', while spec v2 makes category the lead control. Independently, a seeded category control would be a no-op on this page: resolveSelectionsToFilterQuery emits q.category (shared/selection-controls.ts:151-153) and applySelections (client/src/pages/experience-template.tsx:1892-1904) never reads it.",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/u1-controls__corporate-events__team-activities/",
+     "uiObserved": "screenshot of the rendered control set (tab.png)"
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "Two occasion rows answer 'Corporate' \u2014 `corporate-events` (seeded, shared/selection-control-seed.ts:79-81) and `corporate` (LD 28, no seed entry) \u2014 so the same spec set is present on one and absent on the other depending on which occasion the plan modal's tile resolved.",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/u1-controls__corporate__venues/",
+     "uiObserved": "screenshot of the rendered control set (tab.png)"
+    }
+   ]
+  },
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "Corporate (spec lines 30-34)",
+    "relation": "governs",
+    "code": "shared/selection-control-seed.ts:55-66,79-81"
+   }
+  ]
+ },
+ {
+  "id": "experience-template:selection-controls:date-night",
+  "tier": 1,
+  "intent": "filter",
+  "surface": "experience-template",
+  "route": "/experiences/:slug",
+  "component": {
+   "name": "CompactFilterBar",
+   "loc": "client/src/components/compact-filter-bar.tsx:103"
+  },
+  "label": {
+   "text": "date-night refine controls (none rendered)",
+   "ariaLabel": null,
+   "testId": "selection-<controlId>-<optionId>"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/compact-filter-bar.tsx:119"
+  },
+  "conditions": [
+   {
+    "axis": "none",
+    "value": "template=date-night",
+    "outcome": "date-night/dining: 0 selection-control options rendered (only Sort By)"
+   }
+  ],
+  "chain": {
+   "handler": "handleSelectionToggle @ client/src/pages/experience-template.tsx:1906 \u2192 applySelections :1892",
+   "clientWrites": [
+    "component state: selectionState @ client/src/pages/experience-template.tsx:1913",
+    "priceRange / minRating / selectedFilters from resolveSelectionsToFilterQuery (shared/selection-controls.ts:151-175) @ client/src/pages/experience-template.tsx:1900-1903 \u2014 q.category is resolved but DISCARDED here"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "filteredServices memo (client/src/pages/experience-template.tsx)",
+    "control set: SELECTION_CONTROL_SEED[templateSlug][tab.slug] fallback when DB experience_template_tabs.control_config.selectionControls is empty @ client/src/pages/experience-template.tsx:495-506"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Narrow this tab's results to what I picked",
+   "feedback": {
+    "success": "chip turns active; result grid re-filters in place",
+    "failure": "none (client-only filter)",
+    "loading": "none"
+   },
+   "resultLocation": "the same tab's result grid",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md \u00a7Revised starter sets \u2014 Date Night (spec lines 36-39)"
+  },
+  "expected": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md starter set (Date Night (spec lines 36-39))",
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "U1 closeout u1-controls:date-night:dining",
+   "actual": "date-night/dining: 0 selection-control options rendered (only Sort By)",
+   "gaps": [
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "Spec defines an active Date Night set (category control + 'Budget?' priceRange); SELECTION_CONTROL_SEED has no `date-night` key (shared/selection-control-seed.ts:70-82) and the DB control_config carries none, so the template renders no refine controls. Code-side counter-ruling recorded, not resolved (R-3): the seed header (shared/selection-control-seed.ts:4-6) states 'Category navigation is served by the tab bar itself, so there are NO category-selection controls', while spec v2 makes category the lead control. Independently, a seeded category control would be a no-op on this page: resolveSelectionsToFilterQuery emits q.category (shared/selection-controls.ts:151-153) and applySelections (client/src/pages/experience-template.tsx:1892-1904) never reads it.",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/u1-controls__date-night__dining/",
+     "uiObserved": "screenshot of the rendered control set (tab.png)"
+    }
+   ]
+  },
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "Date Night (spec lines 36-39)",
+    "relation": "governs",
+    "code": "shared/selection-control-seed.ts:70-82"
+   }
+  ]
+ },
+ {
+  "id": "experience-template:selection-controls:proposal",
+  "tier": 1,
+  "intent": "filter",
+  "surface": "experience-template",
+  "route": "/experiences/:slug",
+  "component": {
+   "name": "CompactFilterBar",
+   "loc": "client/src/components/compact-filter-bar.tsx:103"
+  },
+  "label": {
+   "text": "proposal refine controls (none rendered)",
+   "ariaLabel": null,
+   "testId": "selection-<controlId>-<optionId>"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/compact-filter-bar.tsx:119"
+  },
+  "conditions": [
+   {
+    "axis": "none",
+    "value": "template=proposal",
+    "outcome": "proposal/services: 0 selection-control options rendered (only Sort By)"
+   }
+  ],
+  "chain": {
+   "handler": "handleSelectionToggle @ client/src/pages/experience-template.tsx:1906 \u2192 applySelections :1892",
+   "clientWrites": [
+    "component state: selectionState @ client/src/pages/experience-template.tsx:1913",
+    "priceRange / minRating / selectedFilters from resolveSelectionsToFilterQuery (shared/selection-controls.ts:151-175) @ client/src/pages/experience-template.tsx:1900-1903 \u2014 q.category is resolved but DISCARDED here"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "filteredServices memo (client/src/pages/experience-template.tsx)",
+    "control set: SELECTION_CONTROL_SEED[templateSlug][tab.slug] fallback when DB experience_template_tabs.control_config.selectionControls is empty @ client/src/pages/experience-template.tsx:495-506"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Narrow this tab's results to what I picked",
+   "feedback": {
+    "success": "chip turns active; result grid re-filters in place",
+    "failure": "none (client-only filter)",
+    "loading": "none"
+   },
+   "resultLocation": "the same tab's result grid",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md \u00a7Revised starter sets \u2014 Proposal (spec lines 41-44)"
+  },
+  "expected": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md starter set (Proposal (spec lines 41-44))",
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "U1 closeout u1-controls:proposal:services",
+   "actual": "proposal/services: 0 selection-control options rendered (only Sort By)",
+   "gaps": [
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "Spec defines an active Proposal set (category control + 'Budget?' priceRange); SELECTION_CONTROL_SEED has no `proposal` key (shared/selection-control-seed.ts:70-82) and the DB control_config carries none, so the template renders no refine controls. Code-side counter-ruling recorded, not resolved (R-3): the seed header (shared/selection-control-seed.ts:4-6) states 'Category navigation is served by the tab bar itself, so there are NO category-selection controls', while spec v2 makes category the lead control. Independently, a seeded category control would be a no-op on this page: resolveSelectionsToFilterQuery emits q.category (shared/selection-controls.ts:151-153) and applySelections (client/src/pages/experience-template.tsx:1892-1904) never reads it.",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/u1-controls__proposal__services/",
+     "uiObserved": "screenshot of the rendered control set (tab.png)"
+    }
+   ]
+  },
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "Proposal (spec lines 41-44)",
+    "relation": "governs",
+    "code": "shared/selection-control-seed.ts:70-82"
+   }
+  ]
+ },
+ {
+  "id": "experience-template:selection-controls:birthday",
+  "tier": 1,
+  "intent": "filter",
+  "surface": "experience-template",
+  "route": "/experiences/:slug",
+  "component": {
+   "name": "CompactFilterBar",
+   "loc": "client/src/components/compact-filter-bar.tsx:103"
+  },
+  "label": {
+   "text": "birthday refine controls (none rendered)",
+   "ariaLabel": null,
+   "testId": "selection-<controlId>-<optionId>"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/compact-filter-bar.tsx:119"
+  },
+  "conditions": [
+   {
+    "axis": "none",
+    "value": "template=birthday",
+    "outcome": "birthday/venues: 0 selection-control options rendered (only Sort By)"
+   }
+  ],
+  "chain": {
+   "handler": "handleSelectionToggle @ client/src/pages/experience-template.tsx:1906 \u2192 applySelections :1892",
+   "clientWrites": [
+    "component state: selectionState @ client/src/pages/experience-template.tsx:1913",
+    "priceRange / minRating / selectedFilters from resolveSelectionsToFilterQuery (shared/selection-controls.ts:151-175) @ client/src/pages/experience-template.tsx:1900-1903 \u2014 q.category is resolved but DISCARDED here"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "filteredServices memo (client/src/pages/experience-template.tsx)",
+    "control set: SELECTION_CONTROL_SEED[templateSlug][tab.slug] fallback when DB experience_template_tabs.control_config.selectionControls is empty @ client/src/pages/experience-template.tsx:495-506"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Narrow this tab's results to what I picked",
+   "feedback": {
+    "success": "chip turns active; result grid re-filters in place",
+    "failure": "none (client-only filter)",
+    "loading": "none"
+   },
+   "resultLocation": "the same tab's result grid",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md \u00a7Revised starter sets \u2014 Birthday (spec lines 46-49)"
+  },
+  "expected": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md starter set (Birthday (spec lines 46-49))",
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "U1 closeout u1-controls:birthday:venues",
+   "actual": "birthday/venues: 0 selection-control options rendered (only Sort By)",
+   "gaps": [
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "Spec defines an active Birthday set (category control + 'Budget?' priceRange); SELECTION_CONTROL_SEED has no `birthday` key (shared/selection-control-seed.ts:70-82) and the DB control_config carries none, so the template renders no refine controls. Code-side counter-ruling recorded, not resolved (R-3): the seed header (shared/selection-control-seed.ts:4-6) states 'Category navigation is served by the tab bar itself, so there are NO category-selection controls', while spec v2 makes category the lead control. Independently, a seeded category control would be a no-op on this page: resolveSelectionsToFilterQuery emits q.category (shared/selection-controls.ts:151-153) and applySelections (client/src/pages/experience-template.tsx:1892-1904) never reads it.",
+     "uiCheck": "CONFIRMED",
+     "uiEvidence": "docs/audits/ui/u1-controls__birthday__venues/",
+     "uiObserved": "screenshot of the rendered control set (tab.png)"
+    }
+   ]
+  },
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "Birthday (spec lines 46-49)",
+    "relation": "governs",
+    "code": "shared/selection-control-seed.ts:70-82"
+   }
+  ]
+ },
+ {
+  "id": "experience-template:selection-controls:custom",
+  "tier": 1,
+  "intent": "filter",
+  "surface": "experience-template",
+  "route": "/experiences/:slug",
+  "component": {
+   "name": "CompactFilterBar",
+   "loc": "client/src/components/compact-filter-bar.tsx:103"
+  },
+  "label": {
+   "text": "Custom refine controls (no template)",
+   "ariaLabel": null,
+   "testId": "selection-<controlId>-<optionId>"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/compact-filter-bar.tsx:119"
+  },
+  "conditions": [
+   {
+    "axis": "none",
+    "value": "template=custom",
+    "outcome": "No `custom` experience_types row exists (30 slugs checked in the local DB), so the spec's Custom set has no template page to render on"
+   }
+  ],
+  "chain": {
+   "handler": "handleSelectionToggle @ client/src/pages/experience-template.tsx:1906 \u2192 applySelections :1892",
+   "clientWrites": [
+    "component state: selectionState @ client/src/pages/experience-template.tsx:1913",
+    "priceRange / minRating / selectedFilters from resolveSelectionsToFilterQuery (shared/selection-controls.ts:151-175) @ client/src/pages/experience-template.tsx:1900-1903 \u2014 q.category is resolved but DISCARDED here"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "filteredServices memo (client/src/pages/experience-template.tsx)",
+    "control set: SELECTION_CONTROL_SEED[templateSlug][tab.slug] fallback when DB experience_template_tabs.control_config.selectionControls is empty @ client/src/pages/experience-template.tsx:495-506"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Narrow this tab's results to what I picked",
+   "feedback": {
+    "success": "chip turns active; result grid re-filters in place",
+    "failure": "none (client-only filter)",
+    "loading": "none"
+   },
+   "resultLocation": "the same tab's result grid",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md \u00a7Revised starter sets \u2014 Custom (spec lines 51-53)"
+  },
+  "expected": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md starter set (Custom (spec lines 51-53))",
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "No `custom` experience_types row exists (30 slugs checked in the local DB), so the spec's Custom set has no template page to render on",
+   "gaps": [
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P3",
+     "note": "Spec 'Custom' set ('What are you looking for?' category + 'Budget?') has no carrier: no `custom` experience_types slug and no seed key (shared/selection-control-seed.ts:70-82). Code-side counter-ruling recorded, not resolved (R-3): the seed header (shared/selection-control-seed.ts:4-6) states 'Category navigation is served by the tab bar itself, so there are NO category-selection controls', while spec v2 makes category the lead control. Independently, a seeded category control would be a no-op on this page: resolveSelectionsToFilterQuery emits q.category (shared/selection-controls.ts:151-153) and applySelections (client/src/pages/experience-template.tsx:1892-1904) never reads it."
+    }
+   ]
+  },
+  "specRefs": [
+   {
+    "doc": "attached_assets/SELECTION_CONTROL_MODEL_SPEC_v2.md",
+    "section": "Custom (spec lines 51-53)",
+    "relation": "governs",
+    "code": "shared/selection-control-seed.ts:70-82"
+   }
+  ]
+ }
+]

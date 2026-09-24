@@ -64,6 +64,13 @@
             }
           },
           "expected": { "type": ["string", "null"], "description": "spec/ruling reference" },
+          "specRefs": {
+            "type": "array", "description": "optional (closeout, additive): which spec governs this row and how",
+            "items": { "type": "object", "required": ["doc", "relation"], "properties": {
+              "doc": { "type": "string" }, "section": { "type": "string" },
+              "relation": { "enum": ["governs", "upstream", "not_governed"] },
+              "note": { "type": "string" }, "code": { "type": "string" } } }
+          },
           "verdict": {
             "type": "object", "required": ["evidence", "gaps"],
             "properties": {
@@ -77,7 +84,11 @@
                   "properties": {
                     "class": { "enum": ["DEAD_TRIGGER", "ORPHAN_WRITE", "ORPHAN_READ", "KEY_MISMATCH", "LIFECYCLE_LOSS", "AUTH_DROP", "STALE_CACHE", "SILENT_FAILURE", "SPEC_DIVERGENCE", "FALSE_PROMISE", "SILENT_SUCCESS", "SILENT_FAILURE_UI", "INVISIBLE_RESULT", "INCONSISTENT_AFFORDANCE", "WIREFRAME_DIVERGENCE"] },
                     "severity": { "enum": ["P1", "P2", "P3"] },
-                    "note": { "type": "string" }
+                    "note": { "type": "string" },
+                    "rootCause": { "type": "string", "description": "optional (closeout, additive): GAP_REGISTER §A root-cause id, e.g. RC-12" },
+                    "uiCheck": { "enum": ["CONFIRMED", "REFUTED", "BLOCKED", "NOT_PROVEN"], "description": "optional (Addendum 2 U2 / closeout): browser re-check verdict" },
+                    "uiEvidence": { "type": "string" },
+                    "uiObserved": { "type": "string" }
                   }
                 }
               }

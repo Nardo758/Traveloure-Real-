@@ -1,0 +1,9 @@
+{
+ "rowId": "u1-controls:travel:services",
+ "verdict": "OBSERVED",
+ "observed": "/experiences/travel tab services: 2 selection-control option(s) rendered [\"selection-budget-budget-under-150=\\\"Under $150\\\"\",\"selection-budget-budget-premium=\\\"Premium ($150+)\\\"\"]",
+ "options": [
+  "selection-budget-budget-under-150=\"Under $150\"",
+  "selection-budget-budget-premium=\"Premium ($150+)\""
+ ]
+}

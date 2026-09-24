@@ -9,7 +9,7 @@
   "rowId": "planning-provider:ai-modal-on-close",
   "dir": "docs/audits/ui/planning-provider__ai-modal-on-close",
   "verdict": "CONFIRMED",
-  "observed": "backdrop click + Escape: AI modal remains open (only its own Cancel/✕ close it)"
+  "observed": "backdrop click + Escape: AI modal remains open (only its own Cancel/\u2715 close it)"
  },
  {
   "rowId": "plan-modal:dialog-on-open-change",
@@ -27,7 +27,7 @@
   "rowId": "services:add-to-plan#false-promise-cart",
   "dir": "docs/audits/ui/services__add-to-plan#false-promise-cart",
   "verdict": "CONFIRMED",
-  "observed": "label \"Add to Plan\" → POST /api/cart 201; toast [\"Added to cart! Service has been added to your cart.\",\"Notification Added to cart!Service has been added to your cart.\"]"
+  "observed": "label \"Add to Plan\" \u2192 POST /api/cart 201; toast [\"Added to cart! Service has been added to your cart.\",\"Notification Added to cart!Service has been added to your cart.\"]"
  },
  {
   "rowId": "services:add-to-plan#invisible-target",
@@ -50,8 +50,8 @@
  {
   "rowId": "services:unified-request-booking",
   "dir": "docs/audits/ui/services__unified-request-booking",
-  "verdict": "BLOCKED",
-  "observed": "harness error: page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:5000/services?location=Kyoto%2C+Japan\", waiting until \"networkidle\"\u001b[22m\n"
+  "verdict": "CONFIRMED",
+  "observed": "closeout re-run: INVISIBLE_RESULT \u2192 fixture feed card (real vault token) \u2192 POST /api/affiliate-booking-requests 200; toasts [\"Booking requested! An expert will handle this for you.\"]; DB affiliate_booking_requests [{\"id\":\"fad27238-7c19-4d2b-9292-6dc448434159\",\"trip_id\":null,\"status\":\"pending\",\"expert_id\":null,\"item_name\":\"Audit Kyoto Tea Walk\"}]; after reload of /services the card reads \"No image Traveloure Partner Audit Kyoto Tea Walk New Fixture feed row (audit harness) Kyoto, Japan $89 Request booking\"; request state shown on the surface=false | SILENT_FAILURE_UI \u2192 signed in (GET /api/auth/user 200)=true; POST affiliate-booking-requests forced 500 \u2192 toasts [\"Sign in required Please sign in to request a booking.\",\"Notification Sign in requiredPlease sign in to request a booking.\"]"
  },
  {
   "rowId": "discover-shared:mismatch-add-anyway",
@@ -63,55 +63,55 @@
   "rowId": "discover-shared:mismatch-add-as-stop",
   "dir": "docs/audits/ui/discover-shared__mismatch-add-as-stop",
   "verdict": "CONFIRMED",
-  "observed": "PUT destinations forced 500 → toasts [\"Added to your plan Find it on your plan.\",\"Notification Added to your planFind it on your plan.\"]"
+  "observed": "PUT destinations forced 500 \u2192 toasts [\"Added to your plan Find it on your plan.\",\"Notification Added to your planFind it on your plan.\"]"
  },
  {
   "rowId": "destinations:ade-primary",
   "dir": "docs/audits/ui/destinations__ade-primary",
   "verdict": "CONFIRMED",
-  "observed": "dialog primary button reads \"Add to my trip plan\n\nPlan & optimize whenever you're ready — nothing to set up now\" — it does not name the plan it will write to"
+  "observed": "dialog primary button reads \"Add to my trip plan\n\nPlan & optimize whenever you're ready \u2014 nothing to set up now\" \u2014 it does not name the plan it will write to"
  },
  {
   "rowId": "discover-location:ade-primary",
   "dir": "docs/audits/ui/discover-location__ade-primary",
   "verdict": "CONFIRMED",
-  "observed": "dialog primary button reads \"Add to my trip plan\n\nPlan & optimize whenever you're ready — nothing to set up now\""
+  "observed": "dialog primary button reads \"Add to my trip plan\n\nPlan & optimize whenever you're ready \u2014 nothing to set up now\""
  },
  {
   "rowId": "discover-location:addon-agent",
   "dir": "docs/audits/ui/discover-location__addon-agent",
   "verdict": "CONFIRMED",
-  "observed": "request → 200 {\"id\":\"84476780-6cb5-41fb-be2d-187be4279641\",\"userId\":\"6ac1907e-1d29-40d1-8e07-3b9e995969d2\",\"expertId\":null,\"tripId\":nu; 'Request sent' badge survives reload=false; request carries no tripId (body {\"itemName\":\"Airport transfer — Kyoto\",\"itemDescription\":\"Trains, buses, ferries and transfers via 12Go Asia\",\"partnerNa)"
+  "observed": "request \u2192 200 {\"id\":\"84476780-6cb5-41fb-be2d-187be4279641\",\"userId\":\"6ac1907e-1d29-40d1-8e07-3b9e995969d2\",\"expertId\":null,\"tripId\":nu; 'Request sent' badge survives reload=false; request carries no tripId (body {\"itemName\":\"Airport transfer \u2014 Kyoto\",\"itemDescription\":\"Trains, buses, ferries and transfers via 12Go Asia\",\"partnerNa)"
  },
  {
   "rowId": "service-detail:add-to-plan",
   "dir": "docs/audits/ui/service-detail__add-to-plan",
   "verdict": "CONFIRMED",
-  "observed": "banner \"Booking for your trip.\" · toast [\"Added to your plan Find it on your plan — check out when you're ready.\",\"Notification Added to your planFind it on your plan — check out when you're ready.\"] — plan named=false"
+  "observed": "banner \"Booking for your trip.\" \u00b7 toast [\"Added to your plan Find it on your plan \u2014 check out when you're ready.\",\"Notification Added to your planFind it on your plan \u2014 check out when you're ready.\"] \u2014 plan named=false"
  },
  {
   "rowId": "service-detail:mismatch-add-as-stop",
   "dir": "docs/audits/ui/service-detail__mismatch-add-as-stop",
   "verdict": "CONFIRMED",
-  "observed": "PUT destinations forced 500 → toasts [\"Added to your plan Find it on your plan — check out when you're ready.\",\"Notification Added to your planFind it on your plan — check out when you're ready.\"]"
+  "observed": "PUT destinations forced 500 \u2192 toasts [\"Added to your plan Find it on your plan \u2014 check out when you're ready.\",\"Notification Added to your planFind it on your plan \u2014 check out when you're ready.\"]"
  },
  {
   "rowId": "deals:book",
   "dir": "docs/audits/ui/deals__book",
-  "verdict": "BLOCKED",
-  "observed": "GET /api/deals → 200 {\"deals\":[],\"total\":0}; no deal card to click. Needs partner deal feeds."
+  "verdict": "NOT_PROVEN",
+  "observed": "GET /api/deals \u2192 200 {\"deals\":[],\"total\":0}; no deal card to click. Needs partner deal feeds. (moved to NOT PROVEN at closeout: no feed data)"
  },
  {
   "rowId": "transportation:twelvego-deeplink-book",
   "dir": "docs/audits/ui/transportation__twelvego-deeplink-book",
   "verdict": "CONFIRMED",
-  "observed": "card text \"Bangkok → Chiang Mai View schedules & prices\" → POST /api/affiliate-booking-requests 200"
+  "observed": "card text \"Bangkok \u2192 Chiang Mai View schedules & prices\" \u2192 POST /api/affiliate-booking-requests 200"
  },
  {
   "rowId": "experiences:button-intake-create",
   "dir": "docs/audits/ui/experiences__button-intake-create",
   "verdict": "REFUTED",
-  "observed": "POST /api/trips forced 500 → toasts [\"Error Failed to create trip\",\"Notification ErrorFailed to create trip\"]"
+  "observed": "POST /api/trips forced 500 \u2192 toasts [\"Error Failed to create trip\",\"Notification ErrorFailed to create trip\"]"
  },
  {
   "rowId": "experience-template:effect-persist-settings",
@@ -123,25 +123,25 @@
   "rowId": "experience-template:review-sheet-send",
   "dir": "docs/audits/ui/experience-template__review-sheet-send",
   "verdict": "CONFIRMED",
-  "observed": "sheet basics \"Destination Kyoto, Japan Dates Not set Travelers 2 travelers\", Send enabled=true; after Send toast [\"Your plan needs a few basics first Pick your dates — the plan needs a start and an end.\",\"Notification Your plan needs a few basics firstPick your dates — the plan needs a start and an end.\"]"
+  "observed": "sheet basics \"Destination Kyoto, Japan Dates Not set Travelers 2 travelers\", Send enabled=true; after Send toast [\"Your plan needs a few basics first Pick your dates \u2014 the plan needs a start and an end.\",\"Notification Your plan needs a few basics firstPick your dates \u2014 the plan needs a start and an end.\"]"
  },
  {
   "rowId": "experience-template:add-to-cart",
   "dir": "docs/audits/ui/experience-template__add-to-cart",
   "verdict": "CONFIRMED",
-  "observed": "SPA path, pen bound to 21e5e3a9-4888-470e-9194-f5de1850c8fb: button \"Add to Cart\" → POST itinerary-items 201, landed on /plans/21e5e3a9-4888-470e-9194-f5de1850c8fb. (First-pass full-load variant: the pen was unbound (H8 D6) and the same button went to /cart — so the label is right on one path and wrong on the other.)"
+  "observed": "SPA path, pen bound to 21e5e3a9-4888-470e-9194-f5de1850c8fb: button \"Add to Cart\" \u2192 POST itinerary-items 201, landed on /plans/21e5e3a9-4888-470e-9194-f5de1850c8fb. (First-pass full-load variant: the pen was unbound (H8 D6) and the same button went to /cart \u2014 so the label is right on one path and wrong on the other.)"
  },
  {
   "rowId": "storefront:storefront-panel-share",
   "dir": "docs/audits/ui/storefront__storefront-panel-share",
   "verdict": "REFUTED",
-  "observed": "POST advisors forced 500 → toasts [], inline error (storefront-panel-share-error) visible=true"
+  "observed": "POST advisors forced 500 \u2192 toasts [], inline error (storefront-panel-share-error) visible=true"
  },
  {
   "rowId": "inbox:button-report-thread",
   "dir": "docs/audits/ui/inbox__button-report-thread",
   "verdict": "CONFIRMED",
-  "observed": "report forced 500 → toasts []; dialog still open=true"
+  "observed": "report forced 500 \u2192 toasts []; dialog still open=true"
  },
  {
   "rowId": "profile:button-save-profile",
@@ -153,7 +153,7 @@
   "rowId": "slip:button-slip-dates-save",
   "dir": "docs/audits/ui/slip__button-slip-dates-save",
   "verdict": "CONFIRMED",
-  "observed": "PATCH trip forced 500 → toasts []; dialog still open=true"
+  "observed": "PATCH trip forced 500 \u2192 toasts []; dialog still open=true"
  },
  {
   "rowId": "trip-card:button-delete-plan-x",

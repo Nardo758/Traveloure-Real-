@@ -1,6 +1,6 @@
 # Gap register: Action → Effect audit (traveler surfaces)
 
-**Base:** `{{BASE}}`. **{{TOTAL}} open gaps** across 818 matrix rows (REFUTED gaps are listed but not counted): **{{P1}} P1**, **{{P2}} P2**, **{{P3}} P3**.
+**Base:** `{{BASE}}`. **Frozen as the audit baseline** (git tag `audit/action-effect-baseline`); nothing after the tag amends it. **{{TOTAL}} open gaps** across {{ROWS}} matrix rows (REFUTED gaps are listed but not counted): **{{P1}} P1**, **{{P2}} P2**, **{{P3}} P3**.
 
 **Severity**
 - **P1:** the user loses work, or a canonical Trip is never created.
@@ -30,6 +30,7 @@ The IDs refer to the journey reports.
 | **RC-9** | **Client-only state is lost on tab or device change.** External/affiliate template cart lines live only in `sessionStorage externalCart_<slug>`. | `experience-template:effect-external-cart-storage` | static | `experience-template.tsx:826-833` |
 | **RC-10** | **The profile photo is never saved,** yet the toast says it was. | `profile:button-save-profile` | **U2 CONFIRMED** (`ui/profile__button-save-profile/`) | `pages/profile.tsx:211-231` |
 | **RC-11** | **A traveler cannot send a first message to an earner.** Storefront "Message" opens `/chat` with an opaque id that the send rail can resolve only once the thread already has messages, so the first send is a 404. *New in Addendum 2.* | `chat:send-message` | **U2** (`ui/chat__first-message/`) | `server/services/messages.service.ts:378-389`; `server/routes.ts:2268-2276` |
+| **RC-12** | **Invented party size.** Four surfaces put a traveler count on screen or on the wire that nobody stated (§13: untouched ⇒ not stated). **(a) Slip "1 traveler":** a plan minted with the Who step untouched stores `adults`, `kids` and `number_of_travelers` all NULL (correct), then the plancard DTO fills the held fallback `1` and the slip header renders it as the traveler's own count. **(b) AI modal:** it shows "2 travelers (not stated)" but sends `travelers: 2`; on a successful generation the server mints the trip with that 2. **(c) IntakePanel:** the Travelers field is pre-filled `2` and sent as `numberOfTravelers`. **(d) Experience template:** `adults` defaults to 2 and is written to the pen and Trip Strip as a stated total. *Registered at closeout. Symptoms are P2/P3; there is no P1.* | `plan-modal:planning-option-branch` (P2), `experience-template:effect-persist-settings` (J4-F3, P2), `intake-panel:button-intake-create` (J2-F6, P3), `planning-provider:run-branch-ai` (J1-F9, P3) | **closeout `ui/rc12__slip-party-untouched/`, `ui/rc12__ai-modal-body/`, `ui/rc12__intake-panel-default/`, `ui/u1-controls__date-night__dining/`**; the AI-success mint is static | (a) `server/services/trip-plan.service.ts:1137` (`plancardPartyCount(…, 1)`; ladder `shared/plan-vocabulary.ts:116-128`), rendered by `client/src/components/plancard/SlipView.tsx:1491-1497`. (b) `client/src/components/EnhancedPlanningModal.tsx:173-175` (fallback 2), `:288-290` (label), `:330` (body); `server/routes/content.routes.ts:4851-4852` (refuses a missing count), `:4965` (mint). (c) `client/src/components/intake-panel.tsx:133` `useState(2)`, `:179` (pen), `:202` (mint body). (d) `client/src/pages/experience-template.tsx:917`, `:1036`, then `:1146`, `:1407`, `:1482`, `:1549`, `:1759`, `:1828` |
 
 **Money:** FU-AE-1 is the 3DS return that never calls confirm-payment. It is a **P1 candidate**, observe-only, and
 currently unreachable because every platform PaymentIntent sets `allow_redirects:'never'`. It lives in
@@ -48,4 +49,10 @@ currently unreachable because every platform PaymentIntent sets `allow_redirects
 **Wireframe divergences:**
 - There are 22 WIREFRAME_DIVERGENCE rows. Most are P3 copy or structure differences against WIREFRAMES_v2 and COMMERCE_WIREFRAMES_v4.
 - The two P2 rows are listed in §B.
-- **SELECTION_CONTROL_MODEL_SPEC_v2 was not available** in the repo at `{{BASE}}` or on `origin/main`, so no row cites it.
+- **SELECTION_CONTROL_MODEL_SPEC_v2** (`attached_assets/`, added at closeout) governs the template-page refine controls, not the plan modal:
+  - Every `plan-modal:*` row carries a `specRefs` entry. 41 are `not_governed`; `option-occasion` and the occasion pill are `upstream`, because the tile picks the template whose controls apply.
+  - Seven new rows, `experience-template:selection-controls:<set>`, compare each spec starter set with what renders. They carry 13 SPEC_DIVERGENCE (P3) gaps.
+  - Only 3 of the 27 occasions reach any refine control.
+  - Two code-side facts diverge from the spec's category-first sets, and are recorded, not resolved (R-3):
+    - the seed deliberately ships no category control (`shared/selection-control-seed.ts:4-6`);
+    - the page discards the resolver's `category` (`experience-template.tsx:1892-1904`), so a category control would have no effect.
