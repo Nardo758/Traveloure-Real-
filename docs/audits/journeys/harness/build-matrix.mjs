@@ -22,6 +22,20 @@ for (const r of rows) {
   if (n > 1) r.id = `${r.id}#${n}`;
 }
 
+// Intent normalisation — the four tracing passes named some identical user goals differently.
+// Only unambiguous synonyms are merged; anything that could be a different product stays separate.
+const INTENT_SYNONYMS = {
+  open_sign_in: "sign_in", dismiss_sign_in: "dismiss", dismiss_menu: "dismiss", dismiss_prompt: "dismiss",
+  claim_guest_work: "claim_guest_state", restore_guest_state: "claim_guest_state",
+  ask_expert: "message_expert", send_message: "message_expert",
+  share_plan_with_expert: "request_expert", share: "share_plan",
+  filter_results: "filter", filter_plans: "filter",
+  report_user: "report", report_review: "report",
+  sync_planning_pen: "bind_planning_pen", quote_concierge: "request_concierge",
+  resume_after_sign_in: "resume_after_auth", start_ai_planning: "open_ai_planner",
+};
+for (const r of rows) if (r.intent && INTENT_SYNONYMS[r.intent]) r.intent = INTENT_SYNONYMS[r.intent];
+
 // Apply patches: { match: {idPrefix|id}, set: {...}, addGaps: [...], evidence, evidenceRef }
 const patches = patchFile && fs.existsSync(patchFile) ? JSON.parse(fs.readFileSync(patchFile, "utf8")) : [];
 const unmatched = [];
@@ -76,7 +90,9 @@ const byIntent = new Map();
 for (const r of out.rows) {
   if (!r.intent || r.intent === "navigate") continue;
   if (!byIntent.has(r.intent)) byIntent.set(r.intent, new Map());
-  const comp = `${r.component?.name} (${r.component?.loc})`;
+  // Group by component + FILE (a component rendering several controls for one intent is one component).
+  const file = String(r.component?.loc || "").replace(/:\d+(-\d+)?$/, "");
+  const comp = `${r.component?.name} (${file})`;
   const m = byIntent.get(r.intent);
   if (!m.has(comp)) m.set(comp, { labels: new Set(), surfaces: new Set() });
   m.get(comp).labels.add(r.label?.text || "");
@@ -89,7 +105,7 @@ for (const [intent, comps] of intents) {
   im += `| \`${intent}\` | ${comps.size} | ${labels.size} | ${comps.size > 1 ? "**yes**" : "no"} |\n`;
 }
 for (const [intent, comps] of intents) {
-  im += `\n## \`${intent}\` — ${comps.size} component(s)\n\n| Component (file:line) | Labels | Routes |\n|---|---|---|\n`;
+  im += `\n## \`${intent}\` — ${comps.size} component(s)\n\n| Component (file) | Labels | Routes |\n|---|---|---|\n`;
   for (const [comp, v] of comps) im += `| ${esc(comp)} | ${[...v.labels].map((l) => `"${cut(l, 40)}"`).join(", ")} | ${[...v.surfaces].map(esc).join(", ")} |\n`;
 }
 fs.writeFileSync("docs/audits/INTENT_COMPONENT_MAP.md", im);
