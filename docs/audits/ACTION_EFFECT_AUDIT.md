@@ -88,7 +88,7 @@ Every claim below was **not** confirmed in the browser. Each entry says what wou
 11. **RC-6 #972 merges** (IntakePanel "Plan with AI" and AI-assistant extraction onto a bound `tripId`): static.
 12. **RC-8 concierge guest Send** and **`/signup` return-to**: static.
 13. **RC-9 external template cart lines lost on tab close**, and **RC-10 profile photo not saved**: static.
-14. **About 290 matrix rows are marked `static`.** Their `chain` fields are code readings at `file:line`, one hop deep.
+14. **794 of 818 matrix rows are marked `static`, 292 of them Tier 1.** Their `chain` fields are code readings at `file:line`, one hop deep.
     Downstream DB columns written through `storage.*` helpers are sometimes named from the helper, as each tracing
     pass noted. The two delegated placeholders (`TripLogisticsDashboard`, the slip anchor managers) were not traced.
 15. **WIREFRAME_DIVERGENCE rows** compare against WIREFRAMES_COMPLETE_v2 and COMMERCE_WIREFRAMES_v4 as written in
