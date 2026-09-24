@@ -1,0 +1,198 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/travelpulse/cities",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/hero",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/platform/stats",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/moments",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"3b4593b9-683c-4a02-b26e-11bbc226b3a8\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/trips",
+  "status": 201,
+  "body": "{\"title\":\"Osaka trip\",\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\"}",
+  "response": "{\"id\":\"1f6cc6d9-6bd2-47dc-beaa-853bb16423fd\",\"userId\":\"93b103de-4207-4b77-abd5-f9ef57bfbafb\",\"trackingNumber\":\"TRV-202609-00019\",\"title\":\"Osaka trip\",\"eventType\":\"vacation\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"destination\":\"Osaka, Japan\",\"status\":\"draft\",\"numberOfTravelers\":null,\"adults\":null,\"kids\":null,\"budget\":null,\"preferences\":{},\"experienceType\":null,\"momentKey\":null,\"travelers\":"
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd/destinations",
+  "status": 200,
+  "body": "{\"stops\":[{\"name\":\"Osaka, Japan\"}]}",
+  "response": "{\"destinations\":[{\"id\":\"b39a28cf-a115-4351-ab02-5835d97465a3\",\"tripId\":\"1f6cc6d9-6bd2-47dc-beaa-853bb16423fd\",\"position\":0,\"name\":\"Osaka, Japan\",\"city\":null,\"country\":null,\"lat\":null,\"lng\":null,\"createdAt\":\"2026-09-24T22:23:18.654Z\"}]}"
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[]}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "PATCH",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd/occasion",
+  "status": 200,
+  "body": "{\"eventType\":\"vacation\"}",
+  "response": "{\"ok\":true,\"eventType\":\"vacation\"}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd/plancard",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/ready-made/purchases/by-clone/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/coordination-states",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd/trip-pass",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd/suggestions",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd/guests",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd/expert-advisor",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd/proposals",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context?tripId=1f6cc6d9-6bd2-47dc-beaa-853bb16423fd",
+  "status": 200,
+  "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[],\"tripId\":\"1f6cc6d9-6bd2-47dc-beaa-853bb16423fd\",\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[]}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&surface=travelpulse-discover",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/service-categories",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/ready-made",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/catalog/activities-gyg?destination=Kyoto%2C+Japan&limit=8",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/analytics/search-event",
+  "status": 202,
+  "body": "",
+  "response": "{\"received\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/discover?location=Kyoto%2C+Japan&sortBy=rating&limit=12&offset=0",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/trips/1f6cc6d9-6bd2-47dc-beaa-853bb16423fd/itinerary-items",
+  "status": 201,
+  "body": "{\"title\":\"Temple Garden Wedding Coordination\",\"description\":\"End-to-end coordination of an intimate garden or Shinto ceremony at one of Kyoto's licensed venues. Includes shrine liaison, rehearsal, officiant arrangement, ceremony script translation, guest seating, and day-of coordination for up to 30 guests.\",\"itemType\":\"activity\",\"providerServiceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"estimate",
+  "response": "{\"id\":\"3a421dcb-e070-4bc0-b03e-fa4e12428351\",\"tripId\":\"1f6cc6d9-6bd2-47dc-beaa-853bb16423fd\",\"title\":\"Temple Garden Wedding Coordination\",\"description\":\"End-to-end coordination of an intimate garden or Shinto ceremony at one of Kyoto's licensed venues. Includes shrine liaison, rehearsal, officiant arrangement, ceremony script translation, guest seating, and day-of coordination for up to 30 guests."
+ }
+]

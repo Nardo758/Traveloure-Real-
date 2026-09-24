@@ -1,0 +1,5 @@
+{
+ "rowId": "inbox:button-report-thread",
+ "verdict": "CONFIRMED",
+ "observed": "report forced 500 → toasts []; dialog still open=true"
+}

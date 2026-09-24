@@ -1,0 +1,78 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/catalog/activities-gyg?destination=Kyoto%2C+Japan&limit=8",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&surface=travelpulse-discover",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/service-categories",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/ready-made",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/discover?location=Kyoto%2C+Japan&sortBy=rating&limit=12&offset=0",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/analytics/search-event",
+  "status": 202,
+  "body": "{\"destination\":\"Kyoto, Japan\",\"searchContext\":\"discover\"}",
+  "response": "{\"received\":true}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"e8634e56-f628-4f02-be76-f4f941073cbb\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/affiliate-booking-requests",
+  "status": 500,
+  "body": "{\"itemName\":\"Audit Kyoto Tea Walk\",\"partnerName\":\"Partner\",\"partnerCategory\":\"activity\",\"bookingToken\":\"571f5f41-74fe-4750-a814-6375eb8ca657.0\",\"travelDate\":\"2026-11-03\",\"travelers\":1,\"userNotes\":null}",
+  "response": "{\"message\":\"forced failure (audit)\"}"
+ }
+]

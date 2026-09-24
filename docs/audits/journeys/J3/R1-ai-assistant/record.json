@@ -1,0 +1,197 @@
+{
+  "name": "R1-ai-assistant",
+  "user": {
+    "id": "df604756-51d5-421e-af38-eb7e5357b091",
+    "email": "j3-1790286869521@traveloure.test",
+    "password": "<redacted>"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "label": "Home (console)",
+      "note": "",
+      "url": "/dashboard",
+      "screenshot": "R1-ai-assistant/step-1.png",
+      "network": [
+        {
+          "t": 1790286870123,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790286870198,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790286870309,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790286870309,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790286870309,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790286870309,
+          "method": "GET",
+          "url": "/api/me/upcoming",
+          "status": 200
+        },
+        {
+          "t": 1790286870223,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"d048123c-032e-45f7-85c7-f4f6abff7548\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        },
+        {
+          "t": 1790286870338,
+          "method": "GET",
+          "url": "/api/trips",
+          "status": 200
+        },
+        {
+          "t": 1790286870374,
+          "method": "GET",
+          "url": "/api/me/home-city",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "guestTrips": "{}",
+          "traveloure_guest_session": "d048123c-032e-45f7-85c7-f4f6abff7548"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 2,
+      "label": "sidebar 'Start with AI' → /ai-assistant",
+      "note": "",
+      "url": "/ai-assistant",
+      "screenshot": "R1-ai-assistant/step-2.png",
+      "network": [
+        {
+          "t": 1790286872300,
+          "method": "GET",
+          "url": "/api/conversations",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "guestTrips": "{}",
+          "traveloure_guest_session": "d048123c-032e-45f7-85c7-f4f6abff7548"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 3,
+      "label": "sent a planning prompt (AI provider is stubbed)",
+      "note": "",
+      "url": "/ai-assistant",
+      "screenshot": "R1-ai-assistant/step-3.png",
+      "network": [
+        {
+          "t": 1790286876089,
+          "method": "POST",
+          "url": "/api/conversations",
+          "status": 201,
+          "body": "{\"title\":\"Plan 5 days in Kyoto, Japan from Nov 3 to Nov 8 fo...\"}",
+          "response": "{\"id\":1,\"title\":\"Plan 5 days in Kyoto, Japan from Nov 3 to Nov 8 fo...\",\"userId\":\"df604756-51d5-421e-af38-eb7e5357b091\",\"tripId\":null,\"createdAt\":\"2026-09-24T21:54:36.083Z\"}"
+        },
+        {
+          "t": 1790286876113,
+          "method": "GET",
+          "url": "/api/conversations",
+          "status": 200
+        },
+        {
+          "t": 1790286876216,
+          "method": "POST",
+          "url": "/api/conversations/1/messages",
+          "status": 500,
+          "body": "{\"content\":\"Plan 5 days in Kyoto, Japan from Nov 3 to Nov 8 for 2 adults\"}",
+          "response": "{\"error\":\"Failed to send message\"}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "guestTrips": "{}",
+          "traveloure_guest_session": "d048123c-032e-45f7-85c7-f4f6abff7548"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 4,
+      "label": "clicked 'Continue in planner'",
+      "note": "",
+      "url": "/ai-assistant",
+      "screenshot": "R1-ai-assistant/step-4.png",
+      "network": [
+        {
+          "t": 1790286886471,
+          "method": "GET",
+          "url": "/api/experience-types",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "guestTrips": "{}",
+          "traveloure_guest_session": "d048123c-032e-45f7-85c7-f4f6abff7548"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 5,
+      "label": "My Plans",
+      "note": "cards=0",
+      "url": "/my-trips",
+      "screenshot": "R1-ai-assistant/step-5.png",
+      "network": [
+        {
+          "t": 1790286890319,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "guestTrips": "{}",
+          "traveloure_guest_session": "d048123c-032e-45f7-85c7-f4f6abff7548"
+        },
+        "session": {}
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+    "Error sending message: Error: HTTP error! status: 500\n    at Ce (http://127.0.0.1:5000/assets/ai-assistant-CQcZDiw1.js:14:20317)"
+  ]
+}

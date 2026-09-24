@@ -1,0 +1,5 @@
+{
+ "rowId": "services:add-to-plan#invisible-target",
+ "verdict": "CONFIRMED",
+ "observed": "item written to /api/trips/ccd05d30-9e9b-42b1-a137-b27c04a43843/itinerary-items (trip ccd05d30-9e9b-42b1-a137-b27c04a43843); target banner visible=false; toast [\"Added to your plan Find it on your plan.\",\"Notification Added to your planFind it on your plan.\"] names the plan=false"
+}

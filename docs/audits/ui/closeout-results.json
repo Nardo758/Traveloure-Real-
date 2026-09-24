@@ -1,0 +1,104 @@
+[
+ {
+  "rowId": "u1-controls:travel:services",
+  "dir": "docs/audits/ui/u1-controls__travel__services",
+  "verdict": "OBSERVED",
+  "observed": "/experiences/travel tab services: 2 selection-control option(s) rendered [\"selection-budget-budget-under-150=\\\"Under $150\\\"\",\"selection-budget-budget-premium=\\\"Premium ($150+)\\\"\"]",
+  "options": [
+   "selection-budget-budget-under-150=\"Under $150\"",
+   "selection-budget-budget-premium=\"Premium ($150+)\""
+  ]
+ },
+ {
+  "rowId": "u1-controls:travel:activities",
+  "dir": "docs/audits/ui/u1-controls__travel__activities",
+  "verdict": "OBSERVED",
+  "observed": "/experiences/travel tab activities: 2 selection-control option(s) rendered [\"selection-budget-budget-under-150=\\\"Under $150\\\"\",\"selection-budget-budget-premium=\\\"Premium ($150+)\\\"\"]",
+  "options": [
+   "selection-budget-budget-under-150=\"Under $150\"",
+   "selection-budget-budget-premium=\"Premium ($150+)\""
+  ]
+ },
+ {
+  "rowId": "u1-controls:wedding:vendors",
+  "dir": "docs/audits/ui/u1-controls__wedding__vendors",
+  "verdict": "OBSERVED",
+  "observed": "/experiences/wedding tab vendors: 3 selection-control option(s) rendered [\"selection-vendor-focus-focus-photography=\\\"Photography\\\"\",\"selection-vendor-focus-focus-floral=\\\"Florals\\\"\",\"selection-vendor-focus-focus-music=\\\"Music\\\"\"]",
+  "options": [
+   "selection-vendor-focus-focus-photography=\"Photography\"",
+   "selection-vendor-focus-focus-floral=\"Florals\"",
+   "selection-vendor-focus-focus-music=\"Music\""
+  ]
+ },
+ {
+  "rowId": "u1-controls:corporate-events:team-activities",
+  "dir": "docs/audits/ui/u1-controls__corporate-events__team-activities",
+  "verdict": "OBSERVED",
+  "observed": "/experiences/corporate-events tab team-activities: 3 selection-control option(s) rendered [\"selection-activity-focus-focus-zen=\\\"Zen & mindfulness\\\"\",\"selection-activity-focus-focus-sake=\\\"Sake & social\\\"\",\"selection-activity-focus-focus-craft=\\\"Craft workshops\\\"\"]",
+  "options": [
+   "selection-activity-focus-focus-zen=\"Zen & mindfulness\"",
+   "selection-activity-focus-focus-sake=\"Sake & social\"",
+   "selection-activity-focus-focus-craft=\"Craft workshops\""
+  ]
+ },
+ {
+  "rowId": "u1-controls:corporate:venues",
+  "dir": "docs/audits/ui/u1-controls__corporate__venues",
+  "verdict": "OBSERVED",
+  "observed": "/experiences/corporate tab venues: 0 selection-control option(s) rendered []",
+  "options": []
+ },
+ {
+  "rowId": "u1-controls:date-night:dining",
+  "dir": "docs/audits/ui/u1-controls__date-night__dining",
+  "verdict": "OBSERVED",
+  "observed": "/experiences/date-night tab dining: 0 selection-control option(s) rendered []",
+  "options": []
+ },
+ {
+  "rowId": "u1-controls:proposal:services",
+  "dir": "docs/audits/ui/u1-controls__proposal__services",
+  "verdict": "OBSERVED",
+  "observed": "/experiences/proposal tab services: 0 selection-control option(s) rendered []",
+  "options": []
+ },
+ {
+  "rowId": "u1-controls:birthday:venues",
+  "dir": "docs/audits/ui/u1-controls__birthday__venues",
+  "verdict": "OBSERVED",
+  "observed": "/experiences/birthday tab venues: 0 selection-control option(s) rendered []",
+  "options": []
+ },
+ {
+  "rowId": "services:unified-request-booking",
+  "dir": "docs/audits/ui/services__unified-request-booking",
+  "verdict": "CONFIRMED",
+  "gap": "INVISIBLE_RESULT",
+  "observed": "fixture feed card (real vault token) \u2192 POST /api/affiliate-booking-requests 200; toasts [\"Booking requested! An expert will handle this for you.\"]; DB affiliate_booking_requests [{\"id\":\"fad27238-7c19-4d2b-9292-6dc448434159\",\"trip_id\":null,\"status\":\"pending\",\"expert_id\":null,\"item_name\":\"Audit Kyoto Tea Walk\"}]; after reload of /services the card reads \"No image Traveloure Partner Audit Kyoto Tea Walk New Fixture feed row (audit harness) Kyoto, Japan $89 Request booking\"; request state shown on the surface=false"
+ },
+ {
+  "rowId": "services:unified-request-booking-failure",
+  "dir": "docs/audits/ui/services__unified-request-booking-failure",
+  "verdict": "CONFIRMED",
+  "gap": "SILENT_FAILURE_UI",
+  "observed": "signed in (GET /api/auth/user 200)=true; POST affiliate-booking-requests forced 500 \u2192 toasts [\"Sign in required Please sign in to request a booking.\",\"Notification Sign in requiredPlease sign in to request a booking.\"]"
+ },
+ {
+  "rowId": "rc12:slip-party-untouched",
+  "dir": "docs/audits/ui/rc12__slip-party-untouched",
+  "verdict": "CONFIRMED",
+  "observed": "mint body {\"title\":\"Kyoto trip\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\"}; DB trips(adults,kids,number_of_travelers)={\"adults\":null,\"kids\":null,\"number_of_travelers\":null}; plancard trip.travelers=1; slip header party text=\"1 traveler\""
+ },
+ {
+  "rowId": "rc12:intake-panel-default",
+  "dir": "docs/audits/ui/rc12__intake-panel-default",
+  "verdict": "CONFIRMED",
+  "observed": "Travelers field pre-filled with \"2\" before any input; create body {\"title\":\"Kyoto, Japan Trip\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"numberOfTravelers\":2,\"eventType\":\"vacation\"}"
+ },
+ {
+  "rowId": "rc12:ai-modal-body",
+  "dir": "docs/audits/ui/rc12__ai-modal-body",
+  "verdict": "CONFIRMED",
+  "observed": "summary label \"2 travelers (not stated)\"; generate-itinerary request body travelers=2 (response forced 500 so nothing is minted)"
+ }
+]

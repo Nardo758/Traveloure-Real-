@@ -1,0 +1,148 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types/travel",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/service-categories",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/itinerary-comparisons",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/provider-services",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/custom-venues?experienceType=travel",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/venues/search?location=Kyoto%2C+Japan&type=venue&keyword=event+venues",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/amadeus/locations?keyword=Kyoto%2C+Japan&subType=CITY",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/geocode",
+  "status": 404,
+  "body": "{\"address\":\"Kyoto, Japan\"}",
+  "response": "{\"message\":\"Location not found\"}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"64096819-17cc-40e3-bba2-fe281096c9ac\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=venue&surface=experience-template",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types/ce20482c-8116-4665-98d6-9e0717b9d592/tabs",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/venues/search?location=Kyoto%2C+Japan&type=venue&keyword=event+venues",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/catalog/tiqets/Kyoto,%20Japan",
+  "status": 404
+ },
+ {
+  "method": "GET",
+  "url": "/api/catalog/viator-feed/Kyoto,%20Japan",
+  "status": 404
+ },
+ {
+  "method": "GET",
+  "url": "/api/catalog/activities-gyg/Kyoto,%20Japan",
+  "status": 404
+ },
+ {
+  "method": "GET",
+  "url": "/api/catalog/wegotrip/Kyoto,%20Japan",
+  "status": 404
+ },
+ {
+  "method": "GET",
+  "url": "/api/catalog/klook/Kyoto,%20Japan",
+  "status": 404
+ },
+ {
+  "method": "GET",
+  "url": "/api/cache/activities?destination=Kyoto%2C+Japan&count=30",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=activities&surface=experience-template",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"experienceSlug\":\"travel\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Travel\"}}",
+  "response": "{\"ok\":true}"
+ }
+]

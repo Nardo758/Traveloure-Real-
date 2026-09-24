@@ -1,0 +1,95 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&surface=travelpulse-discover",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/ready-made",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/service-categories",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/catalog/activities-gyg?destination=Kyoto%2C+Japan&limit=8",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/discover?location=Kyoto%2C+Japan&sortBy=rating&limit=12&offset=0",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/analytics/search-event",
+  "status": 202,
+  "body": "",
+  "response": "{\"received\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/analytics/search-event",
+  "status": 202,
+  "body": "",
+  "response": "{\"received\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"a77bb67b-1d31-475d-b069-9ecbedf6c60d\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart",
+  "status": 201,
+  "body": "{\"serviceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"quantity\":1}",
+  "response": "{\"id\":\"c71458bf-bc42-46c1-8ace-8650718bbaf1\",\"userId\":\"48fb4437-d5e5-41e4-8d8d-76250ae42918\",\"guestSessionId\":null,\"serviceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"customVenueId\":null,\"contentType\":null,\"contentId\":null,\"contentMeta\":{},\"experienceSlug\":null,\"quantity\":1,\"tripId\":null,\"scheduledDate\":null,\"slotId\":null,\"itineraryItemId\":null,\"notes\":null,\"pickupLocation\":null,\"partySize\":null,\""
+ }
+]

@@ -1,0 +1,106 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"29493eaa-c29c-4379-91eb-7db6dca43f54\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/trips",
+  "status": 201,
+  "body": "{\"title\":\"Kyoto, Japan Trip\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"numberOfTravelers\":2,\"eventType\":\"vacation\"}",
+  "response": "{\"id\":\"51ebee15-ab60-40ab-96a9-f58c9d52aa51\",\"userId\":\"08c25da6-7c75-435a-95b4-01a19c0f1f02\",\"trackingNumber\":\"TRV-202609-00040\",\"title\":\"Kyoto, Japan Trip\",\"eventType\":\"vacation\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"destination\":\"Kyoto, Japan\",\"status\":\"draft\",\"numberOfTravelers\":2,\"adults\":null,\"kids\":null,\"budget\":null,\"preferences\":{},\"experienceType\":null,\"momentKey\":null,\"travele"
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/51ebee15-ab60-40ab-96a9-f58c9d52aa51/plancard",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/ready-made/purchases/by-clone/51ebee15-ab60-40ab-96a9-f58c9d52aa51",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/coordination-states",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/51ebee15-ab60-40ab-96a9-f58c9d52aa51/suggestions",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/51ebee15-ab60-40ab-96a9-f58c9d52aa51",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/51ebee15-ab60-40ab-96a9-f58c9d52aa51/trip-pass",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/51ebee15-ab60-40ab-96a9-f58c9d52aa51/proposals",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/51ebee15-ab60-40ab-96a9-f58c9d52aa51/expert-advisor",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/51ebee15-ab60-40ab-96a9-f58c9d52aa51/guests",
+  "status": 200
+ }
+]

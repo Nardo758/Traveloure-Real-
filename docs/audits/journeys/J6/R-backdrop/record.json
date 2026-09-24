@@ -1,0 +1,147 @@
+{
+  "name": "R-backdrop",
+  "steps": [
+    {
+      "step": 1,
+      "label": "modal filled to the finish CTAs",
+      "note": "",
+      "url": "/",
+      "screenshot": "R-backdrop/step-1.png",
+      "network": [
+        {
+          "t": 1790287031854,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790287031854,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790287031999,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790287032001,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790287032001,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790287032001,
+          "method": "GET",
+          "url": "/api/travelpulse/cities",
+          "status": 200
+        },
+        {
+          "t": 1790287032001,
+          "method": "GET",
+          "url": "/api/trip-context",
+          "status": 200
+        },
+        {
+          "t": 1790287032001,
+          "method": "GET",
+          "url": "/api/platform/stats",
+          "status": 200
+        },
+        {
+          "t": 1790287032001,
+          "method": "GET",
+          "url": "/api/landing/hero",
+          "status": 200
+        },
+        {
+          "t": 1790287032001,
+          "method": "GET",
+          "url": "/api/landing/moments",
+          "status": 200
+        },
+        {
+          "t": 1790287031885,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"857593c5-e725-4928-b416-15c353ffd457\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        },
+        {
+          "t": 1790287033180,
+          "method": "GET",
+          "url": "/api/experience-types",
+          "status": 200
+        },
+        {
+          "t": 1790287034071,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"0a711dac-104a-4306-9b79-67492164b4fe\"}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "857593c5-e725-4928-b416-15c353ffd457",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 2,
+      "label": "dismissed via backdrop",
+      "note": "",
+      "url": "/",
+      "screenshot": "R-backdrop/step-2.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "857593c5-e725-4928-b416-15c353ffd457",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 3,
+      "label": "reopened: were the answers kept?",
+      "note": "",
+      "url": "/",
+      "screenshot": "R-backdrop/step-3.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "857593c5-e725-4928-b416-15c353ffd457",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID"
+  ]
+}

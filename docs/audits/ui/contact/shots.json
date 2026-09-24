@@ -1,0 +1,107 @@
+[
+ {
+  "file": "01-landing.png",
+  "caption": "Landing (signed in)",
+  "url": "/"
+ },
+ {
+  "file": "02-modal-step-occasion.png",
+  "caption": "Plan modal: step 1, Occasion",
+  "url": "/"
+ },
+ {
+  "file": "03-modal-step-where.png",
+  "caption": "Plan modal: step 2, Where",
+  "url": "/"
+ },
+ {
+  "file": "04-modal-step-when.png",
+  "caption": "Plan modal: step 3, When",
+  "url": "/"
+ },
+ {
+  "file": "05-modal-finish.png",
+  "caption": "Plan modal: step 4, Who, with the finish CTAs",
+  "url": "/"
+ },
+ {
+  "file": "06-exit-build-myself-slip.png",
+  "caption": "Exit: 'Build it myself' lands on the new plan's slip",
+  "url": "/plans/685ed16e-dbbf-45af-84d4-8563a59afb0a"
+ },
+ {
+  "file": "07-discover-services.png",
+  "caption": "Discover /services (pen bound to the new plan)",
+  "url": "/services?location=Kyoto%2C+Japan"
+ },
+ {
+  "file": "08-discover-add-toast.png",
+  "caption": "'Add to plan' result on the grid",
+  "url": "/services?location=Kyoto%2C+Japan"
+ },
+ {
+  "file": "09-my-plans.png",
+  "caption": "/my-trips after the add (list first loaded here)",
+  "url": "/my-trips"
+ },
+ {
+  "file": "10-slip.png",
+  "caption": "/plans/:tripId, the slip, showing the added item",
+  "url": "/plans/685ed16e-dbbf-45af-84d4-8563a59afb0a"
+ },
+ {
+  "file": "11-my-plans-empty-before.png",
+  "caption": "/my-trips visited first (list cached, empty)",
+  "url": "/my-trips"
+ },
+ {
+  "file": "12-my-plans-stale.png",
+  "caption": "/my-trips after 'Build it myself' in the same session: list not refreshed",
+  "url": "/my-trips"
+ },
+ {
+  "file": "13-exit-ai-modal.png",
+  "caption": "Exit: 'Plan with AI' opens a second modal (no plan yet)",
+  "url": "/"
+ },
+ {
+  "file": "14-c-ai-add.png",
+  "caption": "Discover 'Add to plan' after the ai exit",
+  "url": "/services?location=Kyoto%2C+Japan"
+ },
+ {
+  "file": "15-c-ai-my-plans.png",
+  "caption": "/my-trips after the ai exit",
+  "url": "/my-trips"
+ },
+ {
+  "file": "16-exit-save.png",
+  "caption": "Exit: Save (no plan created; only the trip strip changes)",
+  "url": "/"
+ },
+ {
+  "file": "17-c-save-add.png",
+  "caption": "Discover 'Add to plan' after the save exit",
+  "url": "/services?location=Kyoto%2C+Japan"
+ },
+ {
+  "file": "18-c-save-my-plans.png",
+  "caption": "/my-trips after the save exit",
+  "url": "/my-trips"
+ },
+ {
+  "file": "19-exit-escape.png",
+  "caption": "Exit: Escape (nothing kept)",
+  "url": "/"
+ },
+ {
+  "file": "20-c-escape-add.png",
+  "caption": "Discover 'Add to plan' after the escape exit",
+  "url": "/services"
+ },
+ {
+  "file": "21-c-escape-my-plans.png",
+  "caption": "/my-trips after the escape exit",
+  "url": "/my-trips"
+ }
+]

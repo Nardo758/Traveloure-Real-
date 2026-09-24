@@ -768,3 +768,68 @@ for the copilot lane, which will multiply call volume through it.
 
 **Action:** consolidate the Anthropic clients first (its own lane); then the decision-maker sets the
 number; then wire it to the existing guard.
+
+---
+
+## From the Action→Effect graph audit (2026-09-24, `docs/audits/ACTION_EFFECT_*`)
+
+Read-only lane. These items were found but deliberately not absorbed. In-scope traveler findings live in
+the audit's gap register instead.
+
+### FU-AE-1 — 3DS / redirect return never calls confirm-payment (P1 CANDIDATE, money: observe only)
+
+`StripeCheckout` sets `return_url` to `/booking/confirmation?bookings=<ids>`
+(`client/src/components/booking/StripeCheckout.tsx:64`) and confirms with `redirect: 'if_required'` (`:66`).
+
+On a redirect return, `BookingConfirmationPage` only reads:
+- the redirect status: `redirect_status=succeeded` → shows "success" (`client/src/pages/BookingConfirmationPage.tsx:79-82`);
+- the PaymentIntent via `stripe.retrievePaymentIntent` (`:96-124`);
+- the owner-scoped bulk status (`:53-60`).
+
+It **never calls `POST /api/bookings/confirm-payment`**. That is the client-fallback half of §15c's "one promotion,
+two callers" (the cart's in-page success path does call it, `client/src/pages/cart.tsx:586`, `:3015-3047`). A
+booking that returns this way therefore promotes only through the **webhook**, or later through the §15b TTL sweep
+reconciling against Stripe. Until then the screen says "success" while the row can still be `payment_pending`.
+
+`/my-events` passes **no** `bookingIds` to `StripeCheckout`. So a redirect return there lands on
+`/booking/confirmation` with no params, `setState('no_params')` runs (`:73`), the user is sent to `/dashboard` after 2 seconds (`:135`), and
+`…/pay/confirm` is never called.
+
+**Reachability today is doubtful, and this is why it is a candidate.** Every platform PaymentIntent the audit
+found sets `automatic_payment_methods: { enabled: true, allow_redirects: 'never' }` (LD 43(c):
+`server/services/stripe-payment.service.ts:304, :566, :1717`; `server/services/proposal-charge.service.ts:215`;
+`server/routes.ts:10892`; `server/routes/optimization.routes.ts:507`; `server/routes/ready-made.routes.ts:1321`;
+`server/routes/trip-pass.routes.ts:102`). Card 3DS then completes in-page and no redirect happens.
+
+The exposure is any **future** PaymentIntent created without that flag, or a dashboard method change.
+
+**NOT PROVEN behaviourally.** The audit ran with a stub Stripe key, so no PaymentIntent and no 3DS challenge could
+be exercised. Proving it needs a Stripe test key plus test card `4000 0027 6000 3184` on a flow whose PaymentIntent
+lacks `allow_redirects: 'never'` (if any), then a diff of `service_bookings.status` before and after the return.
+
+**Not fixed:** money path, and the ruling for this lane is observe-only.
+
+### FU-AE-2 — Expert / provider / EA surfaces: pass two
+
+Out of scope for this pass (dispatch: traveler surfaces only). The Phase 0 inventory lists their routes
+(`App.tsx:714-1100`). The traveler-side rails they share are traced from the traveler end only: advisors,
+suggestions, workspace, the expert-request queue, and `affiliate_booking_requests` claim.
+
+### FU-AE-3 — `EscalationCTA` records a concierge lead on every Trip Card mount
+
+`client/src/components/plancard/EscalationCTA.tsx:72-100` calls `POST /api/concierge/quote` in a mount effect. The
+`/concierge` page describes that endpoint as recording a lead (`client/src/pages/concierge/index.tsx:42`). Each view
+of a full-stage Trip Card may therefore write a lead row. This is static reading only: the server write and any
+dedupe were not diffed.
+
+### FU-AE-4 — The AI generate path cannot be exercised off-platform
+
+`server/services/grok.service.ts:35` hardcodes `baseURL: "https://api.x.ai/v1"`, so no local mock can stand in. Every
+audit claim about a *successful* AI generation (trip minted at `server/routes/content.routes.ts:4957`, the client pen
+afterwards) is NOT PROVEN until a run against a real key or an overridable base URL.
+
+### FU-AE-5 — The guest AI "Sign In" goes to the Replit-only `/api/login`
+
+`client/src/components/EnhancedPlanningModal.tsx:416` does `window.location.href = "/api/login"`, which returned 404
+off-Replit (J1 R2). Every other guest gate opens the in-app `SignInModal`. Whether the route works on Replit was not
+verified.

@@ -1,0 +1,207 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/hero",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/moments",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/travelpulse/cities",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/platform/stats",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"a30c2196-1eeb-4180-bbc3-fa0ddd06a933\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/trips",
+  "status": 201,
+  "body": "{\"title\":\"Kyoto trip\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\"}",
+  "response": "{\"id\":\"63fde7aa-5d7e-47b0-9615-8a164f36948e\",\"userId\":\"dd16bb76-688b-4200-b17b-66be1850d603\",\"trackingNumber\":\"TRV-202609-00023\",\"title\":\"Kyoto trip\",\"eventType\":\"vacation\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"destination\":\"Kyoto, Japan\",\"status\":\"draft\",\"numberOfTravelers\":null,\"adults\":null,\"kids\":null,\"budget\":null,\"preferences\":{},\"experienceType\":null,\"momentKey\":null,\"travelers\":"
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[]}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "PATCH",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e/occasion",
+  "status": 200,
+  "body": "{\"eventType\":\"vacation\"}",
+  "response": "{\"ok\":true,\"eventType\":\"vacation\"}"
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e/destinations",
+  "status": 200,
+  "body": "{\"stops\":[{\"name\":\"Kyoto, Japan\"}]}",
+  "response": "{\"destinations\":[{\"id\":\"f1099bf8-aa96-41e8-bbad-33c9d38912f7\",\"tripId\":\"63fde7aa-5d7e-47b0-9615-8a164f36948e\",\"position\":0,\"name\":\"Kyoto, Japan\",\"city\":null,\"country\":null,\"lat\":null,\"lng\":null,\"createdAt\":\"2026-09-24T22:24:39.074Z\"}]}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/landing/moments/event",
+  "status": 204,
+  "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"a7db95b9-f3cd-4f11-bd75-816b57123a03\"}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e/plancard",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/ready-made/purchases/by-clone/63fde7aa-5d7e-47b0-9615-8a164f36948e",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e/suggestions",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/coordination-states",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e/trip-pass",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e/proposals",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e/expert-advisor",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e/guests",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context?tripId=63fde7aa-5d7e-47b0-9615-8a164f36948e",
+  "status": 200,
+  "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[],\"tripId\":\"63fde7aa-5d7e-47b0-9615-8a164f36948e\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[]}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/services/0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86/reviews",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/services/0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86/availability?month=2026-09",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/services/0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86/provider-verification",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/services/0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86?locale=en",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/trips/63fde7aa-5d7e-47b0-9615-8a164f36948e/itinerary-items",
+  "status": 201,
+  "body": "{\"title\":\"Temple Garden Wedding Coordination\",\"description\":\"End-to-end coordination of an intimate garden or Shinto ceremony at one of Kyoto's licensed venues. Includes shrine liaison, rehearsal, officiant arrangement, ceremony script translation, guest seating, and day-of coordination for up to 30 guests.\",\"itemType\":\"activity\",\"providerServiceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"estimate",
+  "response": "{\"id\":\"4637f84e-ba8b-43ec-891b-f601e901e13e\",\"tripId\":\"63fde7aa-5d7e-47b0-9615-8a164f36948e\",\"title\":\"Temple Garden Wedding Coordination\",\"description\":\"End-to-end coordination of an intimate garden or Shinto ceremony at one of Kyoto's licensed venues. Includes shrine liaison, rehearsal, officiant arrangement, ceremony script translation, guest seating, and day-of coordination for up to 30 guests."
+ }
+]

@@ -1,0 +1,5 @@
+{
+ "rowId": "plan-modal:dialog-on-open-change",
+ "verdict": "CONFIRMED",
+ "observed": "Escape: toasts=[], writes=0; reopened at step 1 empty=true"
+}

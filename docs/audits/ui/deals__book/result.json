@@ -1,0 +1,5 @@
+{
+ "rowId": "deals:book",
+ "verdict": "BLOCKED",
+ "observed": "GET /api/deals → 200 {\"deals\":[],\"total\":0}; no deal card to click. Needs partner deal feeds."
+}

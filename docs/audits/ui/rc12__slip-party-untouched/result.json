@@ -1,0 +1,5 @@
+{
+ "rowId": "rc12:slip-party-untouched",
+ "verdict": "CONFIRMED",
+ "observed": "mint body {\"title\":\"Kyoto trip\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\"}; DB trips(adults,kids,number_of_travelers)={\"adults\":null,\"kids\":null,\"number_of_travelers\":null}; plancard trip.travelers=1; slip header party text=\"1 traveler\""
+}

@@ -1,0 +1,5371 @@
+[
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "app-shell:capture-acquisition-ref",
+  "intent": "record_analytics",
+  "surface": "app-shell",
+  "route": "global",
+  "component": {
+   "name": "App",
+   "loc": "client/src/App.tsx:1310"
+  },
+  "label": {
+   "text": "(mount) ?ref= capture",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "url-consumer",
+   "loc": "client/src/App.tsx:1313"
+  },
+  "chain": {
+   "handler": "captureAcquisitionRef @ client/src/lib/acquisition.ts:13",
+   "clientWrites": [
+    "sessionStorage acquisition ref key (first-write-wins) @ client/src/lib/acquisition.ts:21"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "checkout relays captured ref (client/src/lib/acquisition.ts:28 getter)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "invisible; referral attribution carried to checkout",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "stores normalized ?ref once per session; no API",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "no-op"
+   },
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "POST /api/cart/migrate with localStorage traveloure_guest_session; invalidate ['/api/cart']"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "on every fresh page load wasAuthenticated=false→true, so POST re-fires while the key exists (key never removed)"
+   }
+  ],
+  "id": "app-shell:guest-cart-migrator",
+  "intent": "claim_guest_state",
+  "surface": "app-shell",
+  "route": "global",
+  "component": {
+   "name": "GuestCartMigrator",
+   "loc": "client/src/App.tsx:1266"
+  },
+  "label": {
+   "text": "(effect) guest cart migrate on auth",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "auth-resume",
+   "loc": "client/src/App.tsx:1271"
+  },
+  "chain": {
+   "handler": "GuestCartMigrator effect @ client/src/App.tsx:1271",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/cart/migrate",
+    "callLoc": "client/src/App.tsx:1277"
+   },
+   "serverLoc": "server/routes.ts:9442",
+   "dbWrites": [
+    "cart_items(user_id, guest_session_id) reassign/delete orphans via storage.migrateGuestCart (server/storage.ts:4333)"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "['/api/cart']"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "cart page / cart header ['/api/cart']"
+   ]
+  },
+  "ui": {
+   "uiPromise": "items I picked as a guest are in my cart after sign-in",
+   "feedback": {
+    "success": "none",
+    "failure": "console.warn only (client/src/App.tsx:1283)",
+    "loading": "none"
+   },
+   "resultLocation": "/cart",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "POST on auth transition; key never cleared; SignInModal.tsx:63 also migrates",
+   "gaps": [
+    {
+     "class": "SILENT_FAILURE",
+     "severity": "P3",
+     "note": "failure only console.warn; user never told cart merge failed"
+    },
+    {
+     "class": "INCONSISTENT_AFFORDANCE",
+     "severity": "P3",
+     "note": "duplicate migration author: SignInModal.tsx:63 and App.tsx:1275; key traveloure_guest_session never removed so migrate re-POSTs every authed cold load; J1 shows guest adds land in localStorage traveloure_guest_cart_pending, not guest cart_items, so this migrates nothing for that path"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "no-op"
+   },
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "OAuth round-trip: reads+removes sessionStorage traveloure_return_to, navigate(dest,{replace})"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "first authed render only (ref guard); no stored key → no-op"
+   }
+  ],
+  "id": "app-shell:auth-return-to-restorer",
+  "intent": "resume_after_sign_in",
+  "surface": "app-shell",
+  "route": "global",
+  "component": {
+   "name": "AuthReturnToRestorer",
+   "loc": "client/src/App.tsx:304"
+  },
+  "label": {
+   "text": "(effect) restore traveloure_return_to",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "auth-resume",
+   "loc": "client/src/App.tsx:309"
+  },
+  "chain": {
+   "handler": "AuthReturnToRestorer effect @ client/src/App.tsx:309",
+   "clientWrites": [
+    "sessionStorage.removeItem('traveloure_return_to') @ client/src/App.tsx:314"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "sanitizeReturnTo(stored) @ client/src/App.tsx:317",
+   "downstreamReaders": [
+    "useClaimGuestConcierge reads same key (client/src/hooks/use-claim-guest-concierge.ts:30)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "after signing in I land where I was headed",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "stored path",
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "navigates to stored path; plan-modal sign-in (PlanningContext.tsx:283) stores no return-to so a planning journey is never resumed",
+   "gaps": [
+    {
+     "class": "KEY_MISMATCH",
+     "severity": "P3",
+     "note": "same key also consumed by use-claim-guest-concierge.ts:30 and SignInModal.tsx:146; restorer runs first in sibling order and removes it, so concierge's /my-events branch reads null (restorer navigates there anyway)"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "claimTrips(user.id) iff guestTrips non-empty"
+   },
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "no-op"
+   }
+  ],
+  "id": "app-shell:use-claim-guest-trips",
+  "intent": "claim_guest_state",
+  "surface": "app-shell",
+  "route": "global",
+  "component": {
+   "name": "Router",
+   "loc": "client/src/App.tsx:354"
+  },
+  "label": {
+   "text": "(effect) useClaimGuestTrips",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "auth-resume",
+   "loc": "client/src/App.tsx:356"
+  },
+  "chain": {
+   "handler": "useClaimGuestTrips @ client/src/hooks/use-claim-guest-trips.ts:13 → claimTrips @ client/src/contexts/GuestTripContext.tsx:52",
+   "clientWrites": [
+    "GuestTripContext guestTrips (remove) → localStorage guestTrips"
+   ],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:id/claim",
+    "callLoc": "client/src/contexts/GuestTripContext.tsx:57"
+   },
+   "serverLoc": "server/routes.ts:1561",
+   "dbWrites": [
+    "trips(user_id)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "trips I made as a guest become mine",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "/my-trips",
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "effectively never fires: guestTrips only populated by useCreateTrip onSuccess for !user (hooks/use-trips.ts:80), but anonymous POST /api/trips is refused 401 (server/routes.ts:1405)",
+   "gaps": [
+    {
+     "class": "DEAD_TRIGGER",
+     "severity": "P3",
+     "note": "guest-trip claim chain unreachable since anonymous mint refusal; no invalidation of ['/api/trips'] after claim either"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "POST claim with sessionStorage guestConciergeClaimToken; on ok remove keys; navigate('/my-events') if return_to==='/my-events'"
+   },
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "no-op"
+   }
+  ],
+  "id": "app-shell:use-claim-guest-concierge",
+  "intent": "claim_guest_state",
+  "surface": "app-shell",
+  "route": "global",
+  "component": {
+   "name": "Router",
+   "loc": "client/src/App.tsx:354"
+  },
+  "label": {
+   "text": "(effect) useClaimGuestConcierge",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "auth-resume",
+   "loc": "client/src/App.tsx:357"
+  },
+  "chain": {
+   "handler": "useClaimGuestConcierge @ client/src/hooks/use-claim-guest-concierge.ts:21",
+   "clientWrites": [
+    "sessionStorage.removeItem guestConciergeRequestId/guestConciergeClaimToken @ :42-43",
+    "sessionStorage.removeItem traveloure_return_to @ :58"
+   ],
+   "api": {
+    "method": "POST",
+    "route": "/api/concierge/requests/:id/claim",
+    "callLoc": "client/src/hooks/use-claim-guest-concierge.ts:35"
+   },
+   "serverLoc": "server/routes/concierge.routes.ts:437",
+   "dbWrites": [
+    "concierge_requests(user_id, status='selected', chosen_tier)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "/my-events (conditional) @ client/src/hooks/use-claim-guest-concierge.ts:59",
+   "downstreamReaders": [
+    "/my-events concierge list"
+   ]
+  },
+  "ui": {
+   "uiPromise": "my concierge request is attached to my new account",
+   "feedback": {
+    "success": "navigation only",
+    "failure": "console.warn (:47/:51)",
+    "loading": "none"
+   },
+   "resultLocation": "/my-events",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "claims then maybe navigates; no query invalidation",
+   "gaps": [
+    {
+     "class": "STALE_CACHE",
+     "severity": "P3",
+     "note": "no invalidateQueries after claim; a cached /my-events concierge list may not show the claimed request"
+    },
+    {
+     "class": "SILENT_FAILURE",
+     "severity": "P3",
+     "note": "claim failure only console.warn"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "store return_to, open sign-in modal, navigate('/')"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "renders page"
+   }
+  ],
+  "id": "app-shell:protected-route-gate",
+  "intent": "sign_in",
+  "surface": "app-shell",
+  "route": "protected routes (ProtectedRoute)",
+  "component": {
+   "name": "ProtectedRoute",
+   "loc": "client/src/App.tsx:216"
+  },
+  "label": {
+   "text": "(effect) unauthenticated gate",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "auth-resume",
+   "loc": "client/src/App.tsx:221"
+  },
+  "chain": {
+   "handler": "ProtectedRoute effect @ client/src/App.tsx:221",
+   "clientWrites": [
+    "sessionStorage traveloure_return_to @ client/src/App.tsx:225",
+    "SignInModalContext open+options @ client/src/contexts/SignInModalContext.tsx:22"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "/",
+   "downstreamReaders": [
+    "AuthReturnToRestorer client/src/App.tsx:312",
+    "SignInModal client/src/components/SignInModal.tsx:146"
+   ]
+  },
+  "ui": {
+   "uiPromise": "sign in and come back here",
+   "feedback": {
+    "success": "sign-in modal",
+    "failure": "none",
+    "loading": "Loader2 spinner client/src/App.tsx:239"
+   },
+   "resultLocation": "original path after sign-in",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "guest bounced to / with modal; return-to stored",
+   "gaps": []
+  }
+ },
+ {
+  "id": "app-shell:protected-route-accept-terms",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "app-shell",
+  "route": "protected routes (ProtectedRoute)",
+  "component": {
+   "name": "ProtectedRoute",
+   "loc": "client/src/App.tsx:216"
+  },
+  "label": {
+   "text": "(render) terms not accepted",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/App.tsx:246"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/accept-terms (window.location.href)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "store sanitized returnTo, navigate('/',replace), open sign-in modal"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "navigate(returnTo ?? '/')"
+   }
+  ],
+  "id": "app-shell:login-route",
+  "intent": "sign_in",
+  "surface": "app-shell",
+  "route": "/login",
+  "component": {
+   "name": "LoginRoute",
+   "loc": "client/src/App.tsx:267"
+  },
+  "label": {
+   "text": "(url) /login?returnTo=",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "url-consumer",
+   "loc": "client/src/App.tsx:272"
+  },
+  "chain": {
+   "handler": "LoginRoute effect @ client/src/App.tsx:272",
+   "clientWrites": [
+    "sessionStorage traveloure_return_to @ client/src/App.tsx:286",
+    "SignInModalContext open @ client/src/App.tsx:289"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "/ or returnTo",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "login link opens sign-in and returns me",
+   "feedback": {
+    "success": "sign-in modal",
+    "failure": "none",
+    "loading": "PageLoader"
+   },
+   "resultLocation": "returnTo path",
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "as described",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "claimTrips iff guestTrips non-empty (never, see gap)"
+   }
+  ],
+  "id": "hooks:use-claim-guest-trips-effect",
+  "intent": "claim_guest_state",
+  "surface": "app-shell-hooks",
+  "route": "global",
+  "component": {
+   "name": "useClaimGuestTrips",
+   "loc": "client/src/hooks/use-claim-guest-trips.ts:9"
+  },
+  "label": {
+   "text": "(effect) user + guestTrips",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "auth-resume",
+   "loc": "client/src/hooks/use-claim-guest-trips.ts:13"
+  },
+  "chain": {
+   "handler": "claimTrips @ client/src/contexts/GuestTripContext.tsx:52",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:id/claim",
+    "callLoc": "client/src/contexts/GuestTripContext.tsx:57"
+   },
+   "serverLoc": "server/routes.ts:1561",
+   "dbWrites": [
+    "trips(user_id)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "guest trips become mine",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "unreachable in practice",
+   "gaps": [
+    {
+     "class": "DEAD_TRIGGER",
+     "severity": "P3",
+     "note": "guestTrips never populated (anonymous mint 401 at server/routes.ts:1405)"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "POST claim; navigate /my-events if return_to matches"
+   }
+  ],
+  "id": "hooks:use-claim-guest-concierge-effect",
+  "intent": "claim_guest_state",
+  "surface": "app-shell-hooks",
+  "route": "global",
+  "component": {
+   "name": "useClaimGuestConcierge",
+   "loc": "client/src/hooks/use-claim-guest-concierge.ts:16"
+  },
+  "label": {
+   "text": "(effect) user + guestConciergeRequestId",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "auth-resume",
+   "loc": "client/src/hooks/use-claim-guest-concierge.ts:21"
+  },
+  "chain": {
+   "handler": "effect @ client/src/hooks/use-claim-guest-concierge.ts:21",
+   "clientWrites": [
+    "sessionStorage remove guestConciergeRequestId/ClaimToken/traveloure_return_to"
+   ],
+   "api": {
+    "method": "POST",
+    "route": "/api/concierge/requests/:id/claim",
+    "callLoc": "client/src/hooks/use-claim-guest-concierge.ts:35"
+   },
+   "serverLoc": "server/routes/concierge.routes.ts:437",
+   "dbWrites": [
+    "concierge_requests(user_id, status, chosen_tier)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "/my-events (conditional)",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "request attached to account",
+   "feedback": {
+    "success": "navigation",
+    "failure": "console.warn",
+    "loading": "none"
+   },
+   "resultLocation": "/my-events",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "see app-shell:use-claim-guest-concierge",
+   "gaps": []
+  }
+ },
+ {
+  "id": "maintenance:maintenance-event",
+  "tier": 2,
+  "intent": "show_maintenance",
+  "surface": "maintenance",
+  "route": "global",
+  "component": {
+   "name": "MaintenanceGate",
+   "loc": "client/src/components/maintenance-screen.tsx:16"
+  },
+  "label": {
+   "text": "(effect) MAINTENANCE_EVENT listener",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/maintenance-screen.tsx:19"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "maintenance:button-maintenance-retry",
+  "tier": 2,
+  "intent": "reload_page",
+  "surface": "maintenance",
+  "route": "global",
+  "component": {
+   "name": "MaintenanceGate",
+   "loc": "client/src/components/maintenance-screen.tsx:16"
+  },
+  "label": {
+   "text": "Try again",
+   "ariaLabel": null,
+   "testId": "button-maintenance-retry"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/maintenance-screen.tsx:47"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "window.location.reload()"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "guest-trip-context:load",
+  "intent": "restore_guest_state",
+  "surface": "guest-trip-context",
+  "route": "global",
+  "component": {
+   "name": "GuestTripProvider",
+   "loc": "client/src/contexts/GuestTripContext.tsx:16"
+  },
+  "label": {
+   "text": "(mount) load guestTrips",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/GuestTripContext.tsx:20"
+  },
+  "chain": {
+   "handler": "effect @ client/src/contexts/GuestTripContext.tsx:20",
+   "clientWrites": [
+    "GuestTripContext.guestTrips ← localStorage guestTrips"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "useClaimGuestTrips",
+    "useTrips getShareToken (client/src/hooks/use-trips.ts:24)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "invisible",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "hydrates context from localStorage",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "guest-trip-context:persist",
+  "intent": "persist_guest_state",
+  "surface": "guest-trip-context",
+  "route": "global",
+  "component": {
+   "name": "GuestTripProvider",
+   "loc": "client/src/contexts/GuestTripContext.tsx:16"
+  },
+  "label": {
+   "text": "(effect) persist guestTrips",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/GuestTripContext.tsx:32"
+  },
+  "chain": {
+   "handler": "effect @ client/src/contexts/GuestTripContext.tsx:32",
+   "clientWrites": [
+    "localStorage.setItem('guestTrips') @ client/src/contexts/GuestTripContext.tsx:33"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "invisible",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "writes on every change incl. first render with {} before load effect's setState lands",
+   "gaps": [
+    {
+     "class": "LIFECYCLE_LOSS",
+     "severity": "P3",
+     "note": "persist effect runs on mount with initial {} and overwrites localStorage before the load effect's setState re-renders; load reads first (same commit order) so data survives, but the ordering is fragile"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "guest-trip-context:add-guest-trip",
+  "intent": "add_guest_trip",
+  "surface": "guest-trip-context",
+  "route": "global",
+  "component": {
+   "name": "GuestTripProvider",
+   "loc": "client/src/contexts/GuestTripContext.tsx:16"
+  },
+  "label": {
+   "text": "addGuestTrip()",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/GuestTripContext.tsx:36"
+  },
+  "chain": {
+   "handler": "addGuestTrip @ client/src/contexts/GuestTripContext.tsx:36",
+   "clientWrites": [
+    "GuestTripContext.guestTrips[tripId]=shareToken → localStorage guestTrips"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "claimTrips"
+   ]
+  },
+  "ui": {
+   "uiPromise": "invisible",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "only caller hooks/use-trips.ts:80 (guest mint success) is unreachable",
+   "gaps": [
+    {
+     "class": "DEAD_TRIGGER",
+     "severity": "P3",
+     "note": "sole caller gated on anonymous mint success, which the server refuses"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "guest-trip-context:remove-guest-trip",
+  "intent": "remove_guest_trip",
+  "surface": "guest-trip-context",
+  "route": "global",
+  "component": {
+   "name": "GuestTripProvider",
+   "loc": "client/src/contexts/GuestTripContext.tsx:16"
+  },
+  "label": {
+   "text": "removeGuestTrip()",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/GuestTripContext.tsx:40"
+  },
+  "chain": {
+   "handler": "removeGuestTrip @ client/src/contexts/GuestTripContext.tsx:40",
+   "clientWrites": [
+    "GuestTripContext.guestTrips delete → localStorage guestTrips"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "invisible",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "setState + persist",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "guest-trip-context:claim-trips",
+  "intent": "claim_guest_state",
+  "surface": "guest-trip-context",
+  "route": "global",
+  "component": {
+   "name": "GuestTripProvider",
+   "loc": "client/src/contexts/GuestTripContext.tsx:16"
+  },
+  "label": {
+   "text": "claimTrips(userId)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "auth-resume",
+   "loc": "client/src/contexts/GuestTripContext.tsx:52"
+  },
+  "chain": {
+   "handler": "claimTrips @ client/src/contexts/GuestTripContext.tsx:52",
+   "clientWrites": [
+    "removeGuestTrip per trip"
+   ],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:id/claim",
+    "callLoc": "client/src/contexts/GuestTripContext.tsx:57"
+   },
+   "serverLoc": "server/routes.ts:1561",
+   "dbWrites": [
+    "trips(user_id)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "My Plans ['/api/trips'] (not invalidated)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "guest trips become mine",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "/my-trips",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "removes local entry after any non-throwing fetch regardless of status; no invalidation",
+   "gaps": [
+    {
+     "class": "SILENT_FAILURE",
+     "severity": "P3",
+     "note": "res.ok never checked (401/404/409 still removes the token)"
+    },
+    {
+     "class": "STALE_CACHE",
+     "severity": "P3",
+     "note": "['/api/trips'] not invalidated after claim"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "trip-queue-context:add-city",
+  "intent": "add_city",
+  "surface": "trip-queue-context",
+  "route": "global",
+  "component": {
+   "name": "TripQueueProvider",
+   "loc": "client/src/contexts/TripQueueContext.tsx:25"
+  },
+  "label": {
+   "text": "addCity()",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/TripQueueContext.tsx:28"
+  },
+  "chain": {
+   "handler": "addCity() @ client/src/contexts/TripQueueContext.tsx:28",
+   "clientWrites": [
+    "TripQueueContext.queuedCities (in-memory)"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "city queue updates",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "in-memory context only; lost on reload",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "trip-queue-context:remove-city",
+  "intent": "remove_city",
+  "surface": "trip-queue-context",
+  "route": "global",
+  "component": {
+   "name": "TripQueueProvider",
+   "loc": "client/src/contexts/TripQueueContext.tsx:25"
+  },
+  "label": {
+   "text": "removeCity()",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/TripQueueContext.tsx:35"
+  },
+  "chain": {
+   "handler": "removeCity() @ client/src/contexts/TripQueueContext.tsx:35",
+   "clientWrites": [
+    "TripQueueContext.queuedCities (in-memory)"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "city queue updates",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "in-memory context only; lost on reload",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "trip-queue-context:clear-queue",
+  "intent": "clear_queue",
+  "surface": "trip-queue-context",
+  "route": "global",
+  "component": {
+   "name": "TripQueueProvider",
+   "loc": "client/src/contexts/TripQueueContext.tsx:25"
+  },
+  "label": {
+   "text": "clearQueue()",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/TripQueueContext.tsx:39"
+  },
+  "chain": {
+   "handler": "clearQueue() @ client/src/contexts/TripQueueContext.tsx:39",
+   "clientWrites": [
+    "TripQueueContext.queuedCities (in-memory)"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "city queue updates",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "in-memory context only; lost on reload",
+   "gaps": []
+  }
+ },
+ {
+  "id": "sign-in-modal-context:open-sign-in-modal",
+  "tier": 2,
+  "intent": "open_sign_in",
+  "surface": "sign-in-modal-context",
+  "route": "global",
+  "component": {
+   "name": "SignInModalProvider",
+   "loc": "client/src/contexts/SignInModalContext.tsx:18"
+  },
+  "label": {
+   "text": "openSignInModal()",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/SignInModalContext.tsx:22"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "sign-in-modal-context:close-sign-in-modal",
+  "tier": 2,
+  "intent": "dismiss_sign_in",
+  "surface": "sign-in-modal-context",
+  "route": "global",
+  "component": {
+   "name": "SignInModalProvider",
+   "loc": "client/src/contexts/SignInModalContext.tsx:18"
+  },
+  "label": {
+   "text": "closeSignInModal()",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/SignInModalContext.tsx:27"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "sign-in-modal-context:on-open-change",
+  "tier": 2,
+  "intent": "dismiss_sign_in",
+  "surface": "sign-in-modal-context",
+  "route": "global",
+  "component": {
+   "name": "SignInModal",
+   "loc": "client/src/contexts/SignInModalContext.tsx:34"
+  },
+  "label": {
+   "text": "SignInModal onOpenChange",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/contexts/SignInModalContext.tsx:36"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "consoleRole='user'; localStorage.removeItem(traveloure_active_console)"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "consoleRole=derive(role); localStorage.setItem"
+   }
+  ],
+  "id": "active-console-context:derive-role",
+  "intent": "sync_console_role",
+  "surface": "active-console-context",
+  "route": "global",
+  "component": {
+   "name": "ActiveConsoleProvider",
+   "loc": "client/src/contexts/ActiveConsoleContext.tsx:32"
+  },
+  "label": {
+   "text": "(effect) user.role",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/ActiveConsoleContext.tsx:43"
+  },
+  "chain": {
+   "handler": "effect @ client/src/contexts/ActiveConsoleContext.tsx:43",
+   "clientWrites": [
+    "ActiveConsoleContext.consoleRole",
+    "localStorage traveloure_active_console"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "ConsoleAwareLayout (client/src/components/console-aware-layout.tsx)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "right console chrome for my role",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "guest render during auth loading also clears the key (user undefined)",
+   "gaps": [
+    {
+     "class": "LIFECYCLE_LOSS",
+     "severity": "P3",
+     "note": "while auth is loading user is undefined so the stored role is removed and chrome renders as 'user' until auth resolves"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "none",
+    "value": "source.experienceSlug set",
+    "outcome": "updateTripContext({experienceSlug}) → sessionStorage + debounced PUT /api/trip-context; modal opens at step 2"
+   },
+   {
+    "axis": "none",
+    "value": "no source",
+    "outcome": "setSource(null), modal opens at step 1; no write"
+   }
+  ],
+  "id": "planning-provider:open",
+  "intent": "open_planner",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanningProvider",
+   "loc": "client/src/contexts/PlanningContext.tsx:220"
+  },
+  "label": {
+   "text": "usePlanning().open(source)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/PlanningContext.tsx:240"
+  },
+  "chain": {
+   "handler": "open @ client/src/contexts/PlanningContext.tsx:240",
+   "clientWrites": [
+    "PlanningProvider source/committed/modalOpen",
+    "trip-context experienceSlug (conditional) @ client/src/contexts/PlanningContext.tsx:247 → sessionStorage experienceContext[:u:<id>] (trip-context.ts:229)"
+   ],
+   "api": {
+    "method": "PUT",
+    "route": "/api/trip-context",
+    "callLoc": "client/src/lib/trip-context.ts:412 (debounced)"
+   },
+   "serverLoc": "server/routes/trip-context.routes.ts:247",
+   "dbWrites": [
+    "trip_contexts(user_id, trip_id, context, updated_at) upsert"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "PlanModal door table resolvePlanSteps (client/src/lib/plan-steps.ts:168)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "the plan modal opens",
+   "feedback": {
+    "success": "modal visible",
+    "failure": "none",
+    "loading": "'Loading occasions…' plan-modal.tsx:1469"
+   },
+   "resultLocation": "PlanModal",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "WIREFRAMES_v2 › CREATE NEW PLAN › Step 1: Event Type Selection"
+  },
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "J1/R3/step-2",
+   "actual": "opens modal; guest slug write gets 401 on server push silently",
+   "gaps": []
+  }
+ },
+ {
+  "id": "planning-provider:close",
+  "tier": 2,
+  "intent": "dismiss_planner",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanningProvider",
+   "loc": "client/src/contexts/PlanningContext.tsx:220"
+  },
+  "label": {
+   "text": "usePlanning().close()",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/contexts/PlanningContext.tsx:251"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "setModalOpen(false) + openSignInModal() with no returnTo; returns {ok:false} (no message)"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "mintTripSlip → POST /api/trips 201 → {ok,tripId}"
+   },
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "modal not reopened; answers not committed; user lands on SignInModal default redirect"
+   }
+  ],
+  "id": "planning-provider:mint-plan",
+  "intent": "create_plan",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanningProvider",
+   "loc": "client/src/contexts/PlanningContext.tsx:220"
+  },
+  "label": {
+   "text": "mintPlan (finish mint door)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/contexts/PlanningContext.tsx:274"
+  },
+  "chain": {
+   "handler": "mintPlan @ client/src/contexts/PlanningContext.tsx:274 → mintTripSlip @ client/src/lib/trip-slip.ts:162 → buildTripMintBody @ client/src/lib/trip-slip.ts:136",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips",
+    "callLoc": "client/src/lib/trip-slip.ts:154"
+   },
+   "serverLoc": "server/routes.ts:1401 (monolith; shadows server/routes/trips.routes.ts:521)",
+   "dbWrites": [
+    "trips(title, destination, start_date, end_date, user_id, market_slug, timezone) via storage.createTrip",
+    "trip_collaborators(owner)",
+    "user_experiences via drainPendingEventsIntoTrip (server/storage.ts:1617) from pen"
+   ],
+   "sideEffects": [
+    "server pen drain of pendingEvents"
+   ],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "My Plans / Home useTrips ['/api/trips'] (client/src/hooks/use-trips.ts:13) — NOT invalidated",
+    "/plans/:tripId slip"
+   ]
+  },
+  "ui": {
+   "uiPromise": "my plan is created",
+   "feedback": {
+    "success": "navigation to /plans/:id (runBranch)",
+    "failure": "text-planning-create-error plan-modal.tsx:2242 (refusal message)",
+    "loading": "finish buttons disabled={saving} plan-modal.tsx:2209/2225"
+   },
+   "resultLocation": "/plans/:tripId and /my-trips",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "WIREFRAMES_v2 › CREATE NEW PLAN › Step 4: Review & Create"
+  },
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "J1/R1,R3,R5",
+   "actual": "guest refused client-side; authed mints; no cache invalidation",
+   "gaps": [
+    {
+     "class": "STALE_CACHE",
+     "severity": "P1",
+     "note": "J1-F3: mintTripSlip invalidates nothing; a pre-cached My Plans ['/api/trips'] shows 'No plans yet' for the rest of the session (J1/R5 step 13)"
+    },
+    {
+     "class": "AUTH_DROP",
+     "severity": "P1",
+     "note": "J1-F4: guest gets openSignInModal() with no returnTo and the plan modal never reopens"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "planning-provider:run-branch-door-override",
+  "intent": "finish_plan",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanningProvider",
+   "loc": "client/src/contexts/PlanningContext.tsx:220"
+  },
+  "label": {
+   "text": "source.onFinish override",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/contexts/PlanningContext.tsx:304"
+  },
+  "chain": {
+   "handler": "runBranch @ client/src/contexts/PlanningContext.tsx:298 → source.onFinish (door-owned, e.g. concierge page)",
+   "clientWrites": [
+    "modalOpen=false @ client/src/contexts/PlanningContext.tsx:305"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "the door's own next step",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "delegates to door; runs after commitPlan",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "planning-provider:run-branch-ai",
+  "intent": "open_ai_planner",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanningProvider",
+   "loc": "client/src/contexts/PlanningContext.tsx:220"
+  },
+  "label": {
+   "text": "runBranch('ai')",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/contexts/PlanningContext.tsx:308"
+  },
+  "chain": {
+   "handler": "runBranch @ client/src/contexts/PlanningContext.tsx:308",
+   "clientWrites": [
+    "PlanningProvider committed=plan, modalOpen=false, aiOpen=true"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "EnhancedPlanningModal initial* props (client/src/contexts/PlanningContext.tsx:414)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "AI builds my itinerary",
+   "feedback": {
+    "success": "EnhancedPlanningModal opens",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "EnhancedPlanningModal",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "WIREFRAMES_v2 › AI TRIP PLANNER › AI Planner Initial Screen"
+  },
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "J1/R4",
+   "actual": "opens AI modal with no trip",
+   "gaps": [
+    {
+     "class": "INCONSISTENT_AFFORDANCE",
+     "severity": "P2",
+     "note": "J1-F8: EnhancedPlanningModal is a custom overlay; Escape does not close it and it persists across route changes, unlike PlanModal"
+    }
+   ]
+  }
+ },
+ {
+  "id": "planning-provider:run-branch-myself",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanningProvider",
+   "loc": "client/src/contexts/PlanningContext.tsx:220"
+  },
+  "label": {
+   "text": "runBranch('myself')",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/contexts/PlanningContext.tsx:315"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/plans/:tripId (only if plan.tripId)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "planning-provider:run-branch-local",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanningProvider",
+   "loc": "client/src/contexts/PlanningContext.tsx:220"
+  },
+  "label": {
+   "text": "runBranch('local')",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/contexts/PlanningContext.tsx:321"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/s/:handle?tripId= or /experts?destination=&tripId="
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "401 → openSignInModal({returnTo:'/pricing'}) — returns to pricing, not the plan"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "Stripe checkout session → window.location.assign(url)"
+   }
+  ],
+  "id": "planning-provider:run-branch-occasion",
+  "intent": "checkout_membership",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanningProvider",
+   "loc": "client/src/contexts/PlanningContext.tsx:220"
+  },
+  "label": {
+   "text": "runBranch('occasion')",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/contexts/PlanningContext.tsx:354"
+  },
+  "chain": {
+   "handler": "startMembershipCheckout @ client/src/lib/membership-checkout.ts:74",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/memberships/checkout",
+    "callLoc": "client/src/lib/membership-checkout.ts:82"
+   },
+   "serverLoc": "server/routes/payments.routes.ts:3172",
+   "dbWrites": [
+    "(none at session create; membership written by Stripe webhook — not traced)"
+   ],
+   "sideEffects": [
+    "Stripe checkout session created"
+   ],
+   "invalidates": [],
+   "navigates": "Stripe url (client/src/lib/membership-checkout.ts:123)",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "join Plus for my occasion",
+   "feedback": {
+    "success": "redirect to Stripe",
+    "failure": "toast(notice) client/src/contexts/PlanningContext.tsx:362",
+    "loading": "none"
+   },
+   "resultLocation": "Stripe checkout",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "only offered when plusSalesEnabled; no trip minted",
+   "gaps": [
+    {
+     "class": "AUTH_DROP",
+     "severity": "P2",
+     "note": "guest sign-in returns to /pricing, dropping the plan just described"
+    }
+   ]
+  }
+ },
+ {
+  "id": "planning-provider:plan-modal-on-open-change",
+  "tier": 2,
+  "intent": "dismiss_planner",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/contexts/PlanningContext.tsx:398"
+  },
+  "label": {
+   "text": "PlanModal onOpenChange",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/contexts/PlanningContext.tsx:400"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "planning-provider:on-continue",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/contexts/PlanningContext.tsx:398"
+  },
+  "label": {
+   "text": "onContinue(href)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/contexts/PlanningContext.tsx:408"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/plans/:tripId or /trip/:tripId"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "planning-provider:on-finish-wire",
+  "intent": "finish_plan",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/contexts/PlanningContext.tsx:398"
+  },
+  "label": {
+   "text": "onFinish=runBranch",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/contexts/PlanningContext.tsx:410"
+  },
+  "chain": {
+   "handler": "runBranch @ client/src/contexts/PlanningContext.tsx:298",
+   "clientWrites": [
+    "see run-branch-* rows"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "my choice of how to build runs",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "J1 H6 (R3 vs R7)",
+   "actual": "wires finish → branch runner; completion path distinct from dismissal (J1 H6)",
+   "gaps": []
+  }
+ },
+ {
+  "id": "planning-provider:ai-modal-on-close",
+  "tier": 2,
+  "intent": "dismiss_ai_planner",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "EnhancedPlanningModal",
+   "loc": "client/src/contexts/PlanningContext.tsx:414"
+  },
+  "label": {
+   "text": "EnhancedPlanningModal onClose",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/contexts/PlanningContext.tsx:416"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "planning-provider:on-change-basics",
+  "intent": "open_planner",
+  "surface": "planning-provider",
+  "route": "global",
+  "component": {
+   "name": "EnhancedPlanningModal",
+   "loc": "client/src/contexts/PlanningContext.tsx:414"
+  },
+  "label": {
+   "text": "change (AI summary)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/contexts/PlanningContext.tsx:433"
+  },
+  "chain": {
+   "handler": "onChangeBasics @ client/src/contexts/PlanningContext.tsx:433 → open(source) @ client/src/contexts/PlanningContext.tsx:240",
+   "clientWrites": [
+    "aiOpen=false",
+    "source/committed reset; trip-context experienceSlug if source carries it"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "edit my basics",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "re-opens PlanModal with same door; committed plan reset",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:seed-on-open",
+  "tier": 2,
+  "intent": "seed_form",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "(effect) seed form on open",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/trip/plan-modal.tsx:486"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:resolve-start-step",
+  "tier": 2,
+  "intent": "seed_form",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "(effect) resolve start step",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/trip/plan-modal.tsx:516"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:seed-stops-from-trip",
+  "tier": 2,
+  "intent": "seed_form",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "(effect) seed stops from bound trip",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/trip/plan-modal.tsx:608"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:home-city-suggestion",
+  "tier": 2,
+  "intent": "seed_form",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "(effect) home-city suggestion",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/trip/plan-modal.tsx:648"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:clamp-step",
+  "tier": 2,
+  "intent": "navigate_step",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "(effect) clamp step to visible",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/trip/plan-modal.tsx:682"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:dialog-on-open-change",
+  "tier": 2,
+  "intent": "dismiss_planner",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Dialog onOpenChange (Esc/backdrop/✕)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/trip/plan-modal.tsx:1380"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:plan-modal-occasion-pill",
+  "tier": 2,
+  "intent": "navigate_step",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "change (occasion pill)",
+   "ariaLabel": null,
+   "testId": "plan-modal-occasion-pill"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:1406"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:plan-step-rail",
+  "tier": 2,
+  "intent": "navigate_step",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "step rail",
+   "ariaLabel": null,
+   "testId": "plan-step-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:1437"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:option-occasion",
+  "tier": 2,
+  "intent": "select_occasion",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "occasion tile",
+   "ariaLabel": null,
+   "testId": "option-occasion-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:1483"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-destination",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "destination",
+   "ariaLabel": null,
+   "testId": "input-etp-destination"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1540"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-plan-stop",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "stop name",
+   "ariaLabel": null,
+   "testId": "input-plan-stop-*"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1591"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:button-plan-stop-up",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "move stop up",
+   "ariaLabel": null,
+   "testId": "button-plan-stop-up-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:1615"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:button-plan-stop-down",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "move stop down",
+   "ariaLabel": null,
+   "testId": "button-plan-stop-down-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:1628"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:button-plan-stop-remove",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "remove stop",
+   "ariaLabel": null,
+   "testId": "button-plan-stop-remove-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:1640"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:button-plan-add-stop",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Add another stop",
+   "ariaLabel": null,
+   "testId": "button-plan-add-stop"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:1657"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-start-date-day",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "date (day shape)",
+   "ariaLabel": null,
+   "testId": "input-etp-start-date"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1707"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-main-moment-day",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "main moment time (day)",
+   "ariaLabel": null,
+   "testId": "input-etp-main-moment"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1720"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-start-date-range",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "start date",
+   "ariaLabel": null,
+   "testId": "input-etp-start-date"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1747"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-end-date",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "end date",
+   "ariaLabel": null,
+   "testId": "input-etp-end-date"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1758"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-main-moment-date",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "main moment date",
+   "ariaLabel": null,
+   "testId": "input-etp-main-moment-date"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1789"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-main-moment-range",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "main moment time (range)",
+   "ariaLabel": null,
+   "testId": "input-etp-main-moment"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1796"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:button-etp-minus",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "party minus",
+   "ariaLabel": null,
+   "testId": "button-etp-*-minus"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:1845"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-plan-party",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "party count",
+   "ariaLabel": null,
+   "testId": "input-plan-*"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1875"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:button-etp-plus",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "party plus",
+   "ariaLabel": null,
+   "testId": "button-etp-*-plus"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:1886"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-budget-approver-name",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "budget approver name",
+   "ariaLabel": null,
+   "testId": "input-etp-budget-approver-name"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1911"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-budget-approver-email",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "budget approver email",
+   "ariaLabel": null,
+   "testId": "input-etp-budget-approver-email"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1922"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-accessibility-note",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "accessibility note",
+   "ariaLabel": null,
+   "testId": "input-etp-accessibility-note"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:1945"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:chip-etp-event",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "event chip",
+   "ariaLabel": null,
+   "testId": "chip-etp-event-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:1989"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:chip-etp-event-something-else",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Something else",
+   "ariaLabel": null,
+   "testId": "chip-etp-event-something-else"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:2004"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-custom-event",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "custom event text",
+   "ariaLabel": null,
+   "testId": "input-etp-custom-event"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:2029"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-custom-event-blur",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "custom event (blur commit)",
+   "ariaLabel": null,
+   "testId": "input-etp-custom-event"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:2030"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-custom-event-enter",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "custom event (Enter commit)",
+   "ariaLabel": null,
+   "testId": "input-etp-custom-event"
+  },
+  "trigger": {
+   "kind": "keyboard",
+   "loc": "client/src/components/trip/plan-modal.tsx:2031"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:select-etp-event-day",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "event day",
+   "ariaLabel": null,
+   "testId": "select-etp-event-day-*"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:2086"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-event-time",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "event time",
+   "ariaLabel": null,
+   "testId": "input-etp-event-time-*"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:2112"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-event-place",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "event place",
+   "ariaLabel": null,
+   "testId": "input-etp-event-place-*"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:2124"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:input-etp-title",
+  "tier": 2,
+  "intent": "edit_plan_field",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Plan name (optional)",
+   "ariaLabel": null,
+   "testId": "input-etp-title"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/components/trip/plan-modal.tsx:2178"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:planning-option-continue",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Continue {trip}",
+   "ariaLabel": null,
+   "testId": "planning-option-continue"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/trip/plan-modal.tsx:2187"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/plans/:tripId or /trip/:tripId"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:button-planning-back",
+  "tier": 2,
+  "intent": "navigate_step",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Back",
+   "ariaLabel": null,
+   "testId": "button-planning-back"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:2279"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "plan-modal:button-planning-next",
+  "tier": 2,
+  "intent": "navigate_step",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Next: {step}",
+   "ariaLabel": null,
+   "testId": "button-planning-next"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:2302"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "commitPlan → sessionStorage only (PUT /api/trip-context 401 swallowed); AI modal opens; no trip"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "commitPlan → PUT trip-context 200 (trip_id NULL); AI modal; no trip until AI generation succeeds server-side"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "commit also PATCHes occasion/anchors/events on the bound trip"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "no trip-row writes; events held in pen"
+   }
+  ],
+  "id": "plan-modal:planning-option-ai",
+  "intent": "open_ai_planner",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Plan with AI",
+   "ariaLabel": null,
+   "testId": "planning-option-ai"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:2211"
+  },
+  "chain": {
+   "handler": "finish('ai') @ client/src/components/trip/plan-modal.tsx:1167 → commitPlan @ client/src/components/trip/plan-modal.tsx:822 → onFinish → runBranch @ client/src/contexts/PlanningContext.tsx:308",
+   "clientWrites": [
+    "switchTripContext {title,destination,startDate,endDate,travelers,experienceType,tripId} @ client/src/components/trip/plan-modal.tsx:883 → sessionStorage experienceContext[:u:<id>] (trip-context.ts:229)",
+    "updateTripContext adults/kids @ :908, budgetApprover*/accessibilityNote @ :932, experienceSlug/eventType @ :935",
+    "pen pendingEvents/mainMoment* @ :1071 (no trip) or cleared @ :1051 (trip)",
+    "stops via savePlanStops → context (no trip) client/src/lib/plan-stops-writer.ts:48"
+   ],
+   "api": {
+    "method": "PUT",
+    "route": "/api/trip-context (+ PATCH /api/trips/:id/occasion, anchors, POST /api/user-experiences, PUT destinations if tripId bound)",
+    "callLoc": "client/src/lib/trip-context.ts:412; client/src/components/trip/plan-modal.tsx:974,:803,:1036"
+   },
+   "serverLoc": "server/routes/trip-context.routes.ts:247",
+   "dbWrites": [
+    "trip_contexts(user_id, trip_id, context) upsert (server/routes/trip-context.routes.ts:271-290)",
+    "trips(event_type, adults, kids, budget_approver_name, budget_approver_email, accessibility_note) via storage.updateTrip [if tripId] (server/routes/trips.routes.ts:3391)",
+    "temporal_anchors(anchor_type='custom', anchor_datetime, description, is_immovable) [if tripId+moment] (server/routes/trips.routes.ts:1647/1682)",
+    "user_experiences(trip_id, title, event_date, start_time, location, experience_type_id) [if tripId+events] (server/routes/content.routes.ts:1842)",
+    "trip_destinations(replace list) [if tripId & many-stops] (server/routes/trips.routes.ts:478)"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "['/api/user-experiences']",
+    "['/api/trips/:id/plancard']",
+    "['/api/trips/:id/guests'] (only if tripId; client/src/components/trip/plan-modal.tsx:1133-1135)"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "Trip Strip (useTripContext)",
+    "Discover add target resolveTargetTripId (client/src/lib/trip-target.ts:42)",
+    "/plans/:id slip (plancard)",
+    "EnhancedPlanningModal initial props"
+   ]
+  },
+  "ui": {
+   "uiPromise": "AI drafts my plan (and I have a plan)",
+   "feedback": {
+    "success": "EnhancedPlanningModal opens",
+    "failure": "none",
+    "loading": "disabled={saving} client/src/components/trip/plan-modal.tsx:2209"
+   },
+   "resultLocation": "EnhancedPlanningModal; no plan in /my-trips",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "WIREFRAMES_v2 › CREATE NEW PLAN › Step 3: Planning Approach"
+  },
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "J1/R4, R4b, R6",
+   "actual": "only writes client state + trip_contexts(trip_id NULL); no POST /api/trips",
+   "gaps": [
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P1",
+     "note": "J1-F1: finishing with 'Plan with AI' resolves to no tripId (R-1 / UNIFIED_PLANNING_FLOW_SPEC_v2 §1-2); later Discover adds become trip-less cart lines"
+    },
+    {
+     "class": "WIREFRAME_DIVERGENCE",
+     "severity": "P2",
+     "note": "Step 3 wireframe: '[Start with AI]' is followed by Step 4 '[Create My Plan →]' which creates the plan for every approach; landed: 'Plan with AI' skips any create step and mints nothing (plan-steps.ts:77 BRANCHES_THAT_MINT excludes ai)"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "myself: releasePendingEventsPen wipes pen events, mintPlan closes modal + sign-in (no returnTo), finish returns before commitPlan → answers lost; local: no mint, commitPlan, /experts?destination=; occasion: commit, checkout 401 → sign-in returnTo /pricing"
+   },
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "myself: modal not reopened; no trip; plan answers not restored"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "myself/local (authed): release pen → POST /api/trips → commitPlan(bound) → navigate /plans/:id or /experts?tripId="
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "same destination: no mint, commit to bound trip, navigate /plans/:boundId; changed destination: no mint, commitPlan clears tripId (:851) → myself navigates nowhere, strip shows phantom plan (J2 R3)"
+   }
+  ],
+  "id": "plan-modal:planning-option-branch",
+  "intent": "create_plan",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Build it myself / Get a local expert / For an occasion",
+   "ariaLabel": null,
+   "testId": "planning-option-{myself,local,occasion}"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:2227"
+  },
+  "chain": {
+   "handler": "finish(b) @ client/src/components/trip/plan-modal.tsx:1167 → releasePendingEventsPen @ client/src/lib/trip-context.ts:448 → mintPlan @ client/src/contexts/PlanningContext.tsx:274 → mintTripSlip @ client/src/lib/trip-slip.ts:162 → commitPlan @ client/src/components/trip/plan-modal.tsx:822 → runBranch @ client/src/contexts/PlanningContext.tsx:298",
+   "clientWrites": [
+    "pen pendingEvents=[] + immediate PUT @ client/src/lib/trip-context.ts:450-465",
+    "switchTripContext {title,destination,startDate,endDate,travelers,experienceType,tripId} @ client/src/components/trip/plan-modal.tsx:883 → sessionStorage experienceContext[:u:<id>] (trip-context.ts:229)",
+    "updateTripContext adults/kids @ :908, budgetApprover*/accessibilityNote @ :932, experienceSlug/eventType @ :935",
+    "pen pendingEvents/mainMoment* @ :1071 (no trip) or cleared @ :1051 (trip)",
+    "stops via savePlanStops → context (no trip) client/src/lib/plan-stops-writer.ts:48"
+   ],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips (+ PUT /api/trip-context, PATCH occasion, anchors, POST /api/user-experiences, PUT destinations; occasion: POST /api/memberships/checkout)",
+    "callLoc": "client/src/lib/trip-slip.ts:154"
+   },
+   "serverLoc": "server/routes.ts:1401",
+   "dbWrites": [
+    "trips(title, destination, start_date, end_date, user_id, …) + trip_collaborators via storage.createTrip; pen drain → user_experiences",
+    "trip_contexts(user_id, trip_id, context) upsert (server/routes/trip-context.routes.ts:271-290)",
+    "trips(event_type, adults, kids, budget_approver_name, budget_approver_email, accessibility_note) via storage.updateTrip [if tripId] (server/routes/trips.routes.ts:3391)",
+    "temporal_anchors(anchor_type='custom', anchor_datetime, description, is_immovable) [if tripId+moment] (server/routes/trips.routes.ts:1647/1682)",
+    "user_experiences(trip_id, title, event_date, start_time, location, experience_type_id) [if tripId+events] (server/routes/content.routes.ts:1842)",
+    "trip_destinations(replace list) [if tripId & many-stops] (server/routes/trips.routes.ts:478)"
+   ],
+   "sideEffects": [
+    "server pen drain (server/services/pending-events.service.ts)"
+   ],
+   "invalidates": [
+    "['/api/user-experiences']",
+    "['/api/trips/:id/plancard']",
+    "['/api/trips/:id/guests'] (only if tripId; client/src/components/trip/plan-modal.tsx:1133-1135)"
+   ],
+   "navigates": "/plans/:tripId (myself) | /experts?destination=&tripId= or /s/:handle (local) | Stripe (occasion)",
+   "downstreamReaders": [
+    "My Plans / Home ['/api/trips'] (not invalidated)",
+    "Trip Strip (useTripContext)",
+    "Discover add target resolveTargetTripId (client/src/lib/trip-target.ts:42)",
+    "/plans/:id slip (plancard)",
+    "EnhancedPlanningModal initial props"
+   ]
+  },
+  "ui": {
+   "uiPromise": "my plan is created and I land on it",
+   "feedback": {
+    "success": "navigation",
+    "failure": "text-planning-create-error client/src/components/trip/plan-modal.tsx:2242",
+    "loading": "disabled={saving} client/src/components/trip/plan-modal.tsx:2225"
+   },
+   "resultLocation": "/plans/:tripId; /my-trips",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "WIREFRAMES_v2 › CREATE NEW PLAN › Step 3: Planning Approach"
+  },
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "J1/R1,R3,R5; J2/R3",
+   "actual": "authed+unbound mints and navigates; guest loses answers; bound+changed city is a dead click",
+   "gaps": [
+    {
+     "class": "AUTH_DROP",
+     "severity": "P1",
+     "note": "J1-F4: guest 'Build it myself' → sign-in without returnTo; plan modal never reopens"
+    },
+    {
+     "class": "LIFECYCLE_LOSS",
+     "severity": "P1",
+     "note": "J1-F4: releasePendingEventsPen (plan-modal.tsx:1201) runs before the auth refusal (PlanningContext.tsx:281) and finish returns before commitPlan (:1214) → guest pen wiped, answers lost (J1/R1 step 9)"
+    },
+    {
+     "class": "DEAD_TRIGGER",
+     "severity": "P1",
+     "note": "J2-F3: pen-bound + changed destination → no mint (:1182), commitPlan drops tripId (:851-852), runBranch myself has no id (PlanningContext.tsx:318) → nothing happens, no message; trip strip shows a plan that doesn't exist"
+    },
+    {
+     "class": "STALE_CACHE",
+     "severity": "P1",
+     "note": "J1-F3: new trip invisible on a pre-cached My Plans (['/api/trips'] never invalidated; J1/R5 step 13)"
+    },
+    {
+     "class": "WIREFRAME_DIVERGENCE",
+     "severity": "P3",
+     "note": "Step 3 wireframe offers AI / Hybrid (AI + Expert) / Expert-led then Step 4 'Create My Plan'; landed finish offers Build it myself / Plan with AI / Get a local expert / For an occasion with no review step"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "pushClear PUT /api/trip-context?tripId= with {}; trips row NOT deleted"
+   },
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "sessionStorage cleared; server PUT 401 swallowed"
+   }
+  ],
+  "id": "plan-modal:button-etp-clear",
+  "intent": "clear_plan",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Clear plan",
+   "ariaLabel": null,
+   "testId": "button-etp-clear"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:2269"
+  },
+  "chain": {
+   "handler": "clearAll @ client/src/components/trip/plan-modal.tsx:1248 → clearTripContext @ client/src/lib/trip-context.ts:741",
+   "clientWrites": [
+    "sessionStorage pen key removed + all searchSettings_* @ client/src/lib/trip-context.ts:752-764",
+    "PlanModal form reseeded empty"
+   ],
+   "api": {
+    "method": "PUT",
+    "route": "/api/trip-context",
+    "callLoc": "client/src/lib/trip-context.ts:702"
+   },
+   "serverLoc": "server/routes/trip-context.routes.ts:247",
+   "dbWrites": [
+    "trip_contexts(context={}) upsert"
+   ],
+   "sideEffects": [
+    "CHANGE_EVENT + TRIP_CONTEXT_CLEARED_EVENT"
+   ],
+   "invalidates": [
+    "removeQueries ['/api/trip-context'], ['/api/trips', tripId] client/src/components/trip/plan-modal.tsx:1251-1252"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "Trip Strip",
+    "Discover add target"
+   ]
+  },
+  "ui": {
+   "uiPromise": "my plan details are cleared",
+   "feedback": {
+    "success": "modal closes",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "Trip Strip empties",
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "clears context; closes modal; no confirmation",
+   "gaps": [
+    {
+     "class": "LIFECYCLE_LOSS",
+     "severity": "P3",
+     "note": "no confirmation before discarding every answer"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "context + pen only; no trip"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "also PATCH occasion, anchors, events, destinations on bound trip; destination change clears tripId"
+   },
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "sessionStorage only; PUT 401 swallowed"
+   }
+  ],
+  "id": "plan-modal:button-etp-save",
+  "intent": "save_plan_draft",
+  "surface": "plan-modal",
+  "route": "global",
+  "component": {
+   "name": "PlanModal",
+   "loc": "client/src/components/trip/plan-modal.tsx:305"
+  },
+  "label": {
+   "text": "Save",
+   "ariaLabel": null,
+   "testId": "button-etp-save"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/trip/plan-modal.tsx:2292"
+  },
+  "chain": {
+   "handler": "save @ client/src/components/trip/plan-modal.tsx:1151 → commitPlan @ client/src/components/trip/plan-modal.tsx:822 → onOpenChange(false) → close @ client/src/contexts/PlanningContext.tsx:251",
+   "clientWrites": [
+    "switchTripContext {title,destination,startDate,endDate,travelers,experienceType,tripId} @ client/src/components/trip/plan-modal.tsx:883 → sessionStorage experienceContext[:u:<id>] (trip-context.ts:229)",
+    "updateTripContext adults/kids @ :908, budgetApprover*/accessibilityNote @ :932, experienceSlug/eventType @ :935",
+    "pen pendingEvents/mainMoment* @ :1071 (no trip) or cleared @ :1051 (trip)",
+    "stops via savePlanStops → context (no trip) client/src/lib/plan-stops-writer.ts:48"
+   ],
+   "api": {
+    "method": "PUT",
+    "route": "/api/trip-context (+ trip-row writes if bound)",
+    "callLoc": "client/src/lib/trip-context.ts:412"
+   },
+   "serverLoc": "server/routes/trip-context.routes.ts:247",
+   "dbWrites": [
+    "trip_contexts(user_id, trip_id, context) upsert (server/routes/trip-context.routes.ts:271-290)",
+    "trips(event_type, adults, kids, budget_approver_name, budget_approver_email, accessibility_note) via storage.updateTrip [if tripId] (server/routes/trips.routes.ts:3391)",
+    "temporal_anchors(anchor_type='custom', anchor_datetime, description, is_immovable) [if tripId+moment] (server/routes/trips.routes.ts:1647/1682)",
+    "user_experiences(trip_id, title, event_date, start_time, location, experience_type_id) [if tripId+events] (server/routes/content.routes.ts:1842)",
+    "trip_destinations(replace list) [if tripId & many-stops] (server/routes/trips.routes.ts:478)"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "['/api/user-experiences']",
+    "['/api/trips/:id/plancard']",
+    "['/api/trips/:id/guests'] (only if tripId; client/src/components/trip/plan-modal.tsx:1133-1135)"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "Trip Strip (useTripContext)",
+    "Discover add target resolveTargetTripId (client/src/lib/trip-target.ts:42)",
+    "/plans/:id slip (plancard)",
+    "EnhancedPlanningModal initial props"
+   ]
+  },
+  "ui": {
+   "uiPromise": "my plan is saved (as a draft plan I can find)",
+   "feedback": {
+    "success": "modal closes (no toast)",
+    "failure": "none",
+    "loading": "'Saving…' client/src/components/trip/plan-modal.tsx:2296"
+   },
+   "resultLocation": "Trip Strip only; nothing in /my-trips",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "WIREFRAMES_v2 › CREATE NEW PLAN › Step 2: Basic Details"
+  },
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "J1/R8",
+   "actual": "PUT trip-context only; no trips row",
+   "gaps": [
+    {
+     "class": "ORPHAN_WRITE",
+     "severity": "P1",
+     "note": "J1-F1: Save writes the pen (trip_contexts trip_id NULL) but no canonical Trip; My Plans empty (J1/R8)"
+    },
+    {
+     "class": "SILENT_SUCCESS",
+     "severity": "P2",
+     "note": "no confirmation of what was saved or where"
+    },
+    {
+     "class": "WIREFRAME_DIVERGENCE",
+     "severity": "P2",
+     "note": "Step 2/3 wireframe '[Save Draft]' implies a draft plan record; landed 'Save' writes only the planning context"
+    }
+   ]
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "bind guest key experienceContext"
+   },
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "handOffGuestPen: GET then PUT /api/trip-context if account row empty; switch to user key; hydrate"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "bind user key; hydrate from server row"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "console-shell cold load never mounts the binder → reads guest key (J2-F1)"
+   }
+  ],
+  "id": "trip-context:use-trip-context-sync",
+  "intent": "bind_planning_pen",
+  "surface": "trip-context",
+  "route": "global (called from public Layout only)",
+  "component": {
+   "name": "useTripContextSync",
+   "loc": "client/src/lib/trip-context.ts:543"
+  },
+  "label": {
+   "text": "(effect) bind pen principal",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "auth-resume",
+   "loc": "client/src/lib/trip-context.ts:547"
+  },
+  "chain": {
+   "handler": "bindPenPrincipal @ client/src/lib/trip-context.ts:637 → handOffGuestPen / hydrateTripContextFromServer @ :506",
+   "clientWrites": [
+    "sessionStorage pen key switch; guest key removed; sign-out clears all pen keys @ :652-665"
+   ],
+   "api": {
+    "method": "PUT",
+    "route": "/api/trip-context (and GET)",
+    "callLoc": "client/src/lib/trip-context.ts:603,608,513"
+   },
+   "serverLoc": "server/routes/trip-context.routes.ts:225 (GET), :247 (PUT)",
+   "dbWrites": [
+    "trip_contexts(user_id, trip_id NULL, context) upsert (handoff only)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "useTripContext everywhere",
+    "Discover add target"
+   ]
+  },
+  "ui": {
+   "uiPromise": "my in-progress plan follows my account",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "J2/R2b, R4",
+   "actual": "binder only mounted by public Layout (layout.tsx:596)",
+   "gaps": [
+    {
+     "class": "KEY_MISMATCH",
+     "severity": "P1",
+     "note": "J2-F1: console shells never bind; signed-in cold load reads the guest pen key"
+    },
+    {
+     "class": "ORPHAN_READ",
+     "severity": "P1",
+     "note": "J2-F2: hydrate reads legacy trip_id NULL row, never the user's owned active trip"
+    }
+   ]
+  }
+ },
+ {
+  "id": "trip-context:use-trip-context-listeners",
+  "tier": 2,
+  "intent": "sync_planning_pen",
+  "surface": "trip-context",
+  "route": "global",
+  "component": {
+   "name": "useTripContext",
+   "loc": "client/src/lib/trip-context.ts:784"
+  },
+  "label": {
+   "text": "(effect) change/storage listeners",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/lib/trip-context.ts:787"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "guest pen handed to account"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "any route not wrapped in public Layout (console/browse shells) never binds"
+   }
+  ],
+  "id": "layout-header:use-trip-context-sync",
+  "intent": "bind_planning_pen",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "(effect) useTripContextSync(principal)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "auth-resume",
+   "loc": "client/src/components/layout.tsx:596"
+  },
+  "chain": {
+   "handler": "useTripContextSync @ client/src/lib/trip-context.ts:543",
+   "clientWrites": [
+    "sessionStorage pen key"
+   ],
+   "api": {
+    "method": "PUT",
+    "route": "/api/trip-context",
+    "callLoc": "client/src/lib/trip-context.ts:608"
+   },
+   "serverLoc": "server/routes/trip-context.routes.ts:247",
+   "dbWrites": [
+    "trip_contexts(user_id, context)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "useTripContext",
+    "trip-target"
+   ]
+  },
+  "ui": {
+   "uiPromise": "invisible",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "J2/R4",
+   "actual": "single binder, public Layout only",
+   "gaps": [
+    {
+     "class": "KEY_MISMATCH",
+     "severity": "P1",
+     "note": "J2-F1: binder lives only here; browse-shell/console pages (components/browse-shell.tsx:19-21) never bind"
+    }
+   ]
+  }
+ },
+ {
+  "id": "layout-header:escape-outside-close",
+  "tier": 2,
+  "intent": "dismiss_menu",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "(effect) Esc / outside click",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/layout.tsx:599"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:dropdown-close-on-route",
+  "tier": 2,
+  "intent": "dismiss_menu",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "(effect) close on location",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/layout.tsx:278"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:dropdown-hover-focus",
+  "tier": 2,
+  "intent": "open_menu",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "dropdown hover/focus",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:316"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:dropdown-keydown",
+  "tier": 2,
+  "intent": "open_menu",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "dropdown trigger keys",
+   "ariaLabel": null,
+   "testId": "button-nav-dropdown-*"
+  },
+  "trigger": {
+   "kind": "keyboard",
+   "loc": "client/src/components/layout.tsx:334"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-nav",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "top-level nav link",
+   "ariaLabel": null,
+   "testId": "link-nav-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:291"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "item.href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:panel-close",
+  "tier": 2,
+  "intent": "dismiss_menu",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "panel pointerdown/click",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:373"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-nav-featured-row",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "featured row link",
+   "ariaLabel": null,
+   "testId": "link-nav-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:437"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "child.href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "layout-header:button-nav-featured",
+  "intent": "open_planner",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "Start a plan (Wedding)",
+   "ariaLabel": null,
+   "testId": "button-nav-featured-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:474"
+  },
+  "chain": {
+   "handler": "onClick @ client/src/components/layout.tsx:474 → planning.open(featured.source) @ client/src/contexts/PlanningContext.tsx:240; source {experienceType:'wedding',experienceSlug:'wedding'} client/src/lib/nav-config.ts:200",
+   "clientWrites": [
+    "dropdown closed",
+    "PlanningProvider source",
+    "trip-context experienceSlug='wedding' → sessionStorage experienceContext[:u:<id>] (trip-context.ts:229)"
+   ],
+   "api": {
+    "method": "PUT",
+    "route": "/api/trip-context",
+    "callLoc": "client/src/lib/trip-context.ts:412 (debounced)"
+   },
+   "serverLoc": "server/routes/trip-context.routes.ts:247",
+   "dbWrites": [
+    "trip_contexts(context.experienceSlug)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "PlanModal opens at step 2 with wedding pill"
+   ]
+  },
+  "ui": {
+   "uiPromise": "start planning my wedding",
+   "feedback": {
+    "success": "plan modal opens",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "PlanModal",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "WIREFRAMES_v2 › NAVIGATION STRUCTURE › Features Dropdown Menu"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "opens modal and writes occasion slug to the pen before the user commits anything",
+   "gaps": [
+    {
+     "class": "ORPHAN_WRITE",
+     "severity": "P3",
+     "note": "slug persisted to pen/server on open even if the user dismisses (Escape writes nothing else)"
+    }
+   ]
+  }
+ },
+ {
+  "id": "layout-header:link-nav-sign-in-gated",
+  "tier": 2,
+  "intent": "sign_in",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "requiresAuth item (guest)",
+   "ariaLabel": null,
+   "testId": "link-nav-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:496"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-nav-child",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "child link",
+   "ariaLabel": null,
+   "testId": "link-nav-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:503"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "child.href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-nav-footer",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "menu footer link",
+   "ariaLabel": null,
+   "testId": "link-nav-footer-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:523"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "item.footer.href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-recent-city",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "DesktopDropdown",
+   "loc": "client/src/components/layout.tsx:181"
+  },
+  "label": {
+   "text": "recent city",
+   "ariaLabel": null,
+   "testId": "link-recent-city-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:548"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/discover/location/:slug"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-logo",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "Traveloure logo",
+   "ariaLabel": null,
+   "testId": "link-logo"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:707"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "choice persisted to localStorage (per comment client/src/components/layout.tsx:743)"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "not traced (likely user preference write)"
+   }
+  ],
+  "id": "layout-header:language-menu",
+  "intent": "set_locale",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "LanguageMenu",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:745"
+  },
+  "chain": {
+   "handler": "LanguageMenu (not traced)",
+   "clientWrites": [
+    "localStorage locale (per comment client/src/components/layout.tsx:743; not traced)"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "site switches language",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "NOT TRACED — classification from comment only",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:button-become-expert-nav",
+  "tier": 2,
+  "intent": "open_menu",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "Join as Partner",
+   "ariaLabel": null,
+   "testId": "button-become-expert-nav"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:770"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-partner",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "partner link",
+   "ariaLabel": null,
+   "testId": "link-partner-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:796"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:button-sign-in",
+  "tier": 2,
+  "intent": "sign_in",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "Sign In",
+   "ariaLabel": null,
+   "testId": "button-sign-in"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:814"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:notification-bell",
+  "tier": 2,
+  "intent": "open_notifications",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "NotificationBell (untraced)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:824"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:user-menu",
+  "tier": 2,
+  "intent": "open_menu",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "UserMenu (untraced)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:826"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:button-mobile-menu",
+  "tier": 2,
+  "intent": "open_menu",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "menu toggle",
+   "ariaLabel": null,
+   "testId": "button-mobile-menu"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:835"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:button-mobile-sign-in-top",
+  "tier": 2,
+  "intent": "sign_in",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "Sign In (mobile top)",
+   "ariaLabel": null,
+   "testId": "button-mobile-sign-in-top"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:878"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-mobile-sign-in-gated",
+  "tier": 2,
+  "intent": "sign_in",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "requiresAuth item (mobile guest)",
+   "ariaLabel": null,
+   "testId": "link-mobile-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:916"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-mobile-child",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "mobile child link",
+   "ariaLabel": null,
+   "testId": "link-mobile-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:924"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "child.href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-mobile",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "mobile top link",
+   "ariaLabel": null,
+   "testId": "link-mobile-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:941"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "item.href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "POST /api/auth/logout; pen binder then clears client pen (server pen kept)"
+   }
+  ],
+  "id": "layout-header:button-mobile-logout",
+  "intent": "sign_out",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "(icon) Log out",
+   "ariaLabel": "logout",
+   "testId": "button-mobile-logout"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:975"
+  },
+  "chain": {
+   "handler": "useAuth().logout @ client/src/hooks/use-auth.ts:21",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/auth/logout",
+    "callLoc": "client/src/hooks/use-auth.ts:31"
+   },
+   "serverLoc": "server/replit_integrations/auth/emailAuth.ts:530",
+   "dbWrites": [
+    "session store (session destroyed)"
+   ],
+   "sideEffects": [
+    "bindPenPrincipal(null) clears client pen keys"
+   ],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "['/api/auth/user']"
+   ]
+  },
+  "ui": {
+   "uiPromise": "I'm signed out",
+   "feedback": {
+    "success": "header switches to Sign In",
+    "failure": "not traced",
+    "loading": "isLoggingOut (use-auth.ts:82)"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "WIREFRAMES_v2 › NAVIGATION STRUCTURE › Mobile Navigation (Hamburger Menu)"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "logout mutation",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:button-mobile-partner",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "mobile partner link",
+   "ariaLabel": null,
+   "testId": "button-mobile-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:994"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:button-mobile-sign-in",
+  "tier": 2,
+  "intent": "sign_in",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "Sign In (mobile)",
+   "ariaLabel": null,
+   "testId": "button-mobile-sign-in"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/layout.tsx:1003"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:link-footer",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "footer link",
+   "ariaLabel": null,
+   "testId": "link-footer-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:1087"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "link.href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "layout-header:social-links",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "layout-header",
+  "route": "global (public Layout)",
+  "component": {
+   "name": "Layout",
+   "loc": "client/src/components/layout.tsx:573"
+  },
+  "label": {
+   "text": "Facebook / X / Instagram",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/layout.tsx:1043"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "external"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:hero-on-plan-trip",
+  "tier": 2,
+  "intent": "open_planner",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "LandingPage",
+   "loc": "client/src/pages/landing.tsx:12"
+  },
+  "label": {
+   "text": "hero onPlanTrip → open()",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/landing.tsx:32"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:final-on-plan-trip",
+  "tier": 2,
+  "intent": "open_planner",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "LandingPage",
+   "loc": "client/src/pages/landing.tsx:12"
+  },
+  "label": {
+   "text": "final CTA onPlanTrip → open()",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/landing.tsx:46"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:hero-typed-search",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "LandingHeroContent",
+   "loc": "client/src/components/landing/landing-hero.tsx:125"
+  },
+  "label": {
+   "text": "Search services (Enter)",
+   "ariaLabel": null,
+   "testId": "hero-typed-search"
+  },
+  "trigger": {
+   "kind": "keyboard",
+   "loc": "client/src/components/landing/landing-hero.tsx:223"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/services?q=&location="
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:button-plan-trip",
+  "tier": 2,
+  "intent": "open_planner",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "LandingHeroContent",
+   "loc": "client/src/components/landing/landing-hero.tsx:125"
+  },
+  "label": {
+   "text": "Plan my trip",
+   "ariaLabel": null,
+   "testId": "button-plan-trip"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/landing/landing-hero.tsx:250"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:button-browse-experts",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "LandingHeroContent",
+   "loc": "client/src/components/landing/landing-hero.tsx:125"
+  },
+  "label": {
+   "text": "Browse local experts",
+   "ariaLabel": null,
+   "testId": "button-browse-experts"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/landing-hero.tsx:258"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/experts"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:hero-anchor-cta",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "LandingHeroContent",
+   "loc": "client/src/components/landing/landing-hero.tsx:125"
+  },
+  "label": {
+   "text": "anchor expert CTA",
+   "ariaLabel": null,
+   "testId": "hero-anchor-cta"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/landing-hero.tsx:312"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/s/:handle"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:hero-anchor-browse",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "LandingHeroContent",
+   "loc": "client/src/components/landing/landing-hero.tsx:125"
+  },
+  "label": {
+   "text": "anchor browse",
+   "ariaLabel": null,
+   "testId": "hero-anchor-browse"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/landing-hero.tsx:329"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "city discover href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:hero-wanted-cta",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "LandingHeroContent",
+   "loc": "client/src/components/landing/landing-hero.tsx:125"
+  },
+  "label": {
+   "text": "wanted CTA",
+   "ariaLabel": null,
+   "testId": "hero-wanted-cta"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/landing-hero.tsx:431"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/earn"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:hero-market-link",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "LandingHeroContent",
+   "loc": "client/src/components/landing/landing-hero.tsx:125"
+  },
+  "label": {
+   "text": "market ticker link",
+   "ariaLabel": null,
+   "testId": "hero-market-link-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/landing-hero.tsx:463"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "city discover href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:button-final-plan-trip",
+  "tier": 2,
+  "intent": "open_planner",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "FinalCta",
+   "loc": "client/src/components/landing/final-cta.tsx:14"
+  },
+  "label": {
+   "text": "Plan my trip",
+   "ariaLabel": null,
+   "testId": "button-final-plan-trip"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/landing/final-cta.tsx:44"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:button-final-browse-experts",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "FinalCta",
+   "loc": "client/src/components/landing/final-cta.tsx:14"
+  },
+  "label": {
+   "text": "Browse local experts",
+   "ariaLabel": null,
+   "testId": "button-final-browse-experts"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/final-cta.tsx:52"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/experts"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:button-final-see-pricing",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "FinalCta",
+   "loc": "client/src/components/landing/final-cta.tsx:14"
+  },
+  "label": {
+   "text": "See pricing",
+   "ariaLabel": null,
+   "testId": "button-final-see-pricing"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/final-cta.tsx:60"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/pricing"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "landing:moment-impression",
+  "intent": "record_analytics",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "MomentsSection",
+   "loc": "client/src/components/landing/moments-section.tsx:78"
+  },
+  "label": {
+   "text": "(timer) moment impression",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/landing/moments-section.tsx:117"
+  },
+  "chain": {
+   "handler": "postEvent @ client/src/components/landing/moments-section.tsx:65",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/landing/moments/event",
+    "callLoc": "client/src/components/landing/moments-section.tsx:67"
+   },
+   "serverLoc": "server/routes/landing.routes.ts:180",
+   "dbWrites": [
+    "landing_moment_events(moment_key, kind='impression', position)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "invisible analytics",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "fire-and-forget event insert",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "landing:moment-dot",
+  "intent": "record_analytics",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "MomentsSection",
+   "loc": "client/src/components/landing/moments-section.tsx:78"
+  },
+  "label": {
+   "text": "carousel dot",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/landing/moments-section.tsx:208"
+  },
+  "chain": {
+   "handler": "postEvent @ client/src/components/landing/moments-section.tsx:65",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/landing/moments/event",
+    "callLoc": "client/src/components/landing/moments-section.tsx:67"
+   },
+   "serverLoc": "server/routes/landing.routes.ts:180",
+   "dbWrites": [
+    "landing_moment_events(moment_key, kind='dot', position)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "invisible analytics",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "fire-and-forget event insert",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [],
+  "id": "landing:moment-tab",
+  "intent": "record_analytics",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "MomentsSection",
+   "loc": "client/src/components/landing/moments-section.tsx:78"
+  },
+  "label": {
+   "text": "moment tab",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/landing/moments-section.tsx:311"
+  },
+  "chain": {
+   "handler": "postEvent @ client/src/components/landing/moments-section.tsx:65",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/landing/moments/event",
+    "callLoc": "client/src/components/landing/moments-section.tsx:67"
+   },
+   "serverLoc": "server/routes/landing.routes.ts:180",
+   "dbWrites": [
+    "landing_moment_events(moment_key, kind='tab', position)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "invisible analytics",
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "fire-and-forget event insert",
+   "gaps": []
+  }
+ },
+ {
+  "tier": 1,
+  "conditions": [
+   {
+    "axis": "none",
+    "value": "moment.experienceSlug set",
+    "outcome": "updateTripContext(experienceSlug); modal opens at step 2; finish narrowed to AI only"
+   },
+   {
+    "axis": "none",
+    "value": "no seeded slug",
+    "outcome": "modal opens at step 1; finish narrowed to AI only"
+   }
+  ],
+  "id": "landing:moment-cta",
+  "intent": "open_planner",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "MomentsSection",
+   "loc": "client/src/components/landing/moments-section.tsx:78"
+  },
+  "label": {
+   "text": "Plan this moment",
+   "ariaLabel": null,
+   "testId": "moment-cta"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/landing/moments-section.tsx:251"
+  },
+  "chain": {
+   "handler": "onClick @ client/src/components/landing/moments-section.tsx:251 → postEvent + open({branch:'ai',experienceType,experienceSlug,momentKey}) @ client/src/contexts/PlanningContext.tsx:240",
+   "clientWrites": [
+    "PlanningProvider source (branch 'ai')",
+    "trip-context experienceSlug (conditional)"
+   ],
+   "api": {
+    "method": "POST",
+    "route": "/api/landing/moments/event",
+    "callLoc": "client/src/components/landing/moments-section.tsx:67"
+   },
+   "serverLoc": "server/routes/landing.routes.ts:180",
+   "dbWrites": [
+    "landing_moment_events(kind='cta')",
+    "trip_contexts(context.experienceSlug) via debounced PUT"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "PlanModal branches=['ai'] (client/src/contexts/PlanningContext.tsx:383)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "start planning this moment (and get a plan)",
+   "feedback": {
+    "success": "plan modal opens",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "PlanModal → EnhancedPlanningModal",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": "deep-opens AI-only finish",
+   "gaps": [
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P1",
+     "note": "door narrows the finish to 'Plan with AI' only (PlanningContext.tsx:383), the one CTA that mints no trip (J1-F1); this door therefore can never produce a canonical Trip unless the AI generation succeeds server-side"
+    }
+   ]
+  }
+ },
+ {
+  "id": "landing:link-event-planner-track",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "MomentsSection",
+   "loc": "client/src/components/landing/moments-section.tsx:78"
+  },
+  "label": {
+   "text": "event planner track",
+   "ariaLabel": null,
+   "testId": "link-event-planner-track"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/moments-section.tsx:361"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/start/events"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:entry-strip",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "EntryStrips",
+   "loc": "client/src/components/landing/entry-strips.tsx:1"
+  },
+  "label": {
+   "text": "entry strip link",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/entry-strips.tsx:47"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "item.href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:cities-rail-card",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "CitiesRail",
+   "loc": "client/src/components/landing/cities-rail.tsx:1"
+  },
+  "label": {
+   "text": "city card",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/landing/cities-rail.tsx:103"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "city discover href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:earn-section-cta",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "EarnSection",
+   "loc": "client/src/components/landing/earn-section.tsx:1"
+  },
+  "label": {
+   "text": "earn CTA",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/earn-section.tsx:63"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/earn"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "landing:earn-section-role",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "landing",
+  "route": "/",
+  "component": {
+   "name": "EarnSection",
+   "loc": "client/src/components/landing/earn-section.tsx:1"
+  },
+  "label": {
+   "text": "earn role link",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/landing/earn-section.tsx:74"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "r.href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ }
+]

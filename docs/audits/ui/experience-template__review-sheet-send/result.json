@@ -1,0 +1,5 @@
+{
+ "rowId": "experience-template:review-sheet-send",
+ "verdict": "CONFIRMED",
+ "observed": "sheet basics \"Destination Kyoto, Japan Dates Not set Travelers 2 travelers\", Send enabled=true; after Send toast [\"Your plan needs a few basics first Pick your dates — the plan needs a start and an end.\",\"Notification Your plan needs a few basics firstPick your dates — the plan needs a start and an end.\"]"
+}

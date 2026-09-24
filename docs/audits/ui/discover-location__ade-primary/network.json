@@ -1,0 +1,475 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/travelpulse/cities",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/hero",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/platform/stats",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/moments",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"784685a5-b69b-4337-9076-b142fb560e00\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/trips",
+  "status": 201,
+  "body": "{\"title\":\"Kyoto trip\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\"}",
+  "response": "{\"id\":\"3aab7262-f350-4282-bb3e-992301dcf7b2\",\"userId\":\"309cfef5-0d88-4875-b29e-101967590f5d\",\"trackingNumber\":\"TRV-202609-00022\",\"title\":\"Kyoto trip\",\"eventType\":\"vacation\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"destination\":\"Kyoto, Japan\",\"status\":\"draft\",\"numberOfTravelers\":null,\"adults\":null,\"kids\":null,\"budget\":null,\"preferences\":{},\"experienceType\":null,\"momentKey\":null,\"travelers\":"
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/3aab7262-f350-4282-bb3e-992301dcf7b2",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trips/3aab7262-f350-4282-bb3e-992301dcf7b2/destinations",
+  "status": 200,
+  "body": "{\"stops\":[{\"name\":\"Kyoto, Japan\"}]}",
+  "response": "{\"destinations\":[{\"id\":\"d3d401d8-9abe-41df-ae5d-4cf1f122c6b3\",\"tripId\":\"3aab7262-f350-4282-bb3e-992301dcf7b2\",\"position\":0,\"name\":\"Kyoto, Japan\",\"city\":null,\"country\":null,\"lat\":null,\"lng\":null,\"createdAt\":\"2026-09-24T22:23:49.933Z\"}]}"
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[]}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "PATCH",
+  "url": "/api/trips/3aab7262-f350-4282-bb3e-992301dcf7b2/occasion",
+  "status": 200,
+  "body": "{\"eventType\":\"vacation\"}",
+  "response": "{\"ok\":true,\"eventType\":\"vacation\"}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/3aab7262-f350-4282-bb3e-992301dcf7b2/plancard",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/ready-made/purchases/by-clone/3aab7262-f350-4282-bb3e-992301dcf7b2",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/3aab7262-f350-4282-bb3e-992301dcf7b2/trip-pass",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/coordination-states",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/3aab7262-f350-4282-bb3e-992301dcf7b2/suggestions",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/3aab7262-f350-4282-bb3e-992301dcf7b2",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/3aab7262-f350-4282-bb3e-992301dcf7b2/guests",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/3aab7262-f350-4282-bb3e-992301dcf7b2/expert-advisor",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/3aab7262-f350-4282-bb3e-992301dcf7b2/proposals",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context?tripId=3aab7262-f350-4282-bb3e-992301dcf7b2",
+  "status": 200,
+  "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[],\"tripId\":\"3aab7262-f350-4282-bb3e-992301dcf7b2\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[]}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/feed-composition-config",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/offering-types/experts",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/discover/location/kyoto",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experts?location=kyoto",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Tofuku-ji+Temple&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kagurazaka+Ishikawa&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Sannenzaka+%26+Ninenzaka&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kurama-dera+Temple&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kishiwada&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Tetsugaku-no-Michi+%28Philosopher%27s+Path%29&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kibune&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Nishiki+Market+alley+stalls&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kibune+Shrine&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Pontocho+Alley&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Otagi+Nenbutsu-ji&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kishiwada+Cafe&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/services/demand?city=kyoto&offeringTypeKeys=local_city_itinerary%2Clocal_perfect_day%2Clocal_neighbourhood_plan%2Cask_me_anything%2Creality_check",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Tofuku-ji+Temple+during+autumn&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/upsell/discover-location",
+  "status": 200,
+  "body": "{\"surface\":\"discover_location\",\"neighborhoodId\":\"1a78f893-108e-48e5-9892-fb6a2aabb02d\",\"expertEndorsedKeys\":[]}",
+  "response": "{\"candidates\":[{\"offeringId\":\"aff_guided_tour\",\"categoryKey\":\"aff_activities\",\"sourceType\":\"affiliate\",\"relevanceScore\":0.485,\"revenueScore\":1,\"finalScore\":0.635,\"reason\":\"recommended for this trip type\",\"expertEndorsed\":false,\"rank\":1,\"displayName\":\"Guided City Tour\",\"tagline\":\"A local expert shows the highlights.\"},{\"offeringId\":\"aff_cultural_class\",\"categoryKey\":\"aff_activities\",\"sourceType\":\"a"
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Tofuku-ji+Temple&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Sannenzaka+%26+Ninenzaka&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kagurazaka+Ishikawa&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kurama-dera+Temple&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kishiwada&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Tetsugaku-no-Michi+%28Philosopher%27s+Path%29&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kibune&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Nishiki+Market+alley+stalls&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kibune+Shrine&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Pontocho+Alley&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Otagi+Nenbutsu-ji&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kishiwada+Cafe&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Tofuku-ji+Temple+during+autumn&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Tetsugaku-no-Michi+%28Philosopher%27s+Path%29&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kibune+Shrine&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/tracking/impression",
+  "status": 200,
+  "body": "{\"contentType\":\"gem\",\"contentId\":\"32da036a-8eea-464b-8882-389872cedf83\",\"city\":\"kyoto\",\"cardPosition\":0,\"sessionId\":\"7561a966-e7cd-403b-9fc2-0d80bf0337ad\"}",
+  "response": "{\"impressionId\":\"842ea9d1-92dc-423d-a61d-26e07f7b42a2\"}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/tracking/impression",
+  "status": 200,
+  "body": "{\"contentType\":\"gem\",\"contentId\":\"7859f685-dcf2-4873-b5ce-5670bb804108\",\"city\":\"kyoto\",\"cardPosition\":2,\"sessionId\":\"7561a966-e7cd-403b-9fc2-0d80bf0337ad\"}",
+  "response": "{\"impressionId\":\"4faeb594-ae66-4ead-a360-d5d0479bf0c1\"}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/tracking/impression",
+  "status": 200,
+  "body": "{\"contentType\":\"gem\",\"contentId\":\"132ab7f7-9c45-4307-9432-c44f468baedd\",\"city\":\"kyoto\",\"cardPosition\":1,\"sessionId\":\"7561a966-e7cd-403b-9fc2-0d80bf0337ad\"}",
+  "response": "{\"impressionId\":\"527cd065-01a8-4997-ae4e-b05627275269\"}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/tracking/impression",
+  "status": 200,
+  "body": "{\"contentType\":\"gem\",\"contentId\":\"281cd73d-f2e5-45df-946b-affd39a0b97d\",\"city\":\"kyoto\",\"cardPosition\":1,\"sessionId\":\"7561a966-e7cd-403b-9fc2-0d80bf0337ad\"}",
+  "response": "{\"impressionId\":\"a766aa2d-a694-42c5-bbdf-21caede27a56\"}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/tracking/impression",
+  "status": 200,
+  "body": "{\"contentType\":\"gem\",\"contentId\":\"64a234a9-5222-427b-8bd0-fd677fedca1f\",\"city\":\"kyoto\",\"cardPosition\":0,\"sessionId\":\"7561a966-e7cd-403b-9fc2-0d80bf0337ad\"}",
+  "response": "{\"impressionId\":\"7c8761bf-4836-4bcf-aaba-6c536979b22b\"}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/tracking/impression",
+  "status": 200,
+  "body": "{\"contentType\":\"gem\",\"contentId\":\"dff8c6dd-22d3-41b1-899c-35482ae9f774\",\"city\":\"kyoto\",\"cardPosition\":3,\"sessionId\":\"7561a966-e7cd-403b-9fc2-0d80bf0337ad\"}",
+  "response": "{\"impressionId\":\"4ca527a5-8bfc-4646-ba7a-f042f20bd254\"}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/upsell/discover-location",
+  "status": 200,
+  "body": "{\"surface\":\"discover_location\",\"neighborhoodId\":\"1a78f893-108e-48e5-9892-fb6a2aabb02d\",\"expertEndorsedKeys\":[\"00000000-0000-4000-a000-0000636e6367\",\"cc70babc-2862-4213-bfa7-d788a7190acb\",\"b15d700e-1c14-4659-b65b-fdde8468bd85\",\"b0f70cbd-2d1f-4dfe-b253-dc4926e5a061\"]}",
+  "response": "{\"candidates\":[{\"offeringId\":\"aff_guided_tour\",\"categoryKey\":\"aff_activities\",\"sourceType\":\"affiliate\",\"relevanceScore\":0.485,\"revenueScore\":1,\"finalScore\":0.635,\"reason\":\"recommended for this trip type\",\"expertEndorsed\":false,\"rank\":1,\"displayName\":\"Guided City Tour\",\"tagline\":\"A local expert shows the highlights.\"},{\"offeringId\":\"aff_cultural_class\",\"categoryKey\":\"aff_activities\",\"sourceType\":\"a"
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Tetsugaku-no-Michi+%28Philosopher%27s+Path%29&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Kibune+Shrine&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Cultural+Class+or+Workshop&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Guided+City+Tour&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Day+Trip+or+Excursion&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Adventure+Activity&city=kyoto&source=google",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Cultural+Class+or+Workshop&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Day+Trip+or+Excursion&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Guided+City+Tour&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/media/place-photo?q=Adventure+Activity&city=kyoto&source=unsplash",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/upsell/impression",
+  "status": 200,
+  "body": "{\"surface\":\"discover_location\",\"offeringIds\":[\"aff_guided_tour\"]}",
+  "response": "{\"ok\":true,\"logged\":1}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/upsell/impression",
+  "status": 200,
+  "body": "{\"surface\":\"discover_location\",\"offeringIds\":[\"aff_cultural_class\"]}",
+  "response": "{\"ok\":true,\"logged\":1}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/upsell/impression",
+  "status": 200,
+  "body": "{\"surface\":\"discover_location\",\"offeringIds\":[\"aff_day_trip\"]}",
+  "response": "{\"ok\":true,\"logged\":1}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/upsell/impression",
+  "status": 200,
+  "body": "{\"surface\":\"discover_location\",\"offeringIds\":[\"aff_adventure_activity\"]}",
+  "response": "{\"ok\":true,\"logged\":1}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/upsell/impression",
+  "status": 200,
+  "body": "{\"surface\":\"discover_location\",\"offeringIds\":[\"aff_guided_tour\",\"aff_cultural_class\",\"aff_day_trip\",\"aff_adventure_activity\"]}",
+  "response": "{\"ok\":true,\"logged\":4}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips",
+  "status": 200
+ }
+]

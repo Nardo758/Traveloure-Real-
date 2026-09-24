@@ -1,0 +1,145 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types/proposal",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/service-categories",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/itinerary-comparisons",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/provider-services",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/custom-venues?experienceType=proposal",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/geocode",
+  "status": 404,
+  "body": "{\"address\":\"Kyoto, Japan\"}",
+  "response": "{\"message\":\"Location not found\"}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/venues/search?location=Kyoto%2C+Japan&type=venue&keyword=event+venues",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/amadeus/locations?keyword=Kyoto%2C+Japan&subType=CITY",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=venue&surface=experience-template",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types/77bdd584-dc4d-49c3-bbee-87591317b5ea/tabs",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/venues/search?location=Kyoto%2C+Japan&type=venue&keyword=event+venues",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"48cb25d9-3b7d-4d63-b31a-818ee5a4c800\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/venues/search?location=Kyoto%2C+Japan",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=plan_secrecy&surface=experience-template",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"experienceSlug\":\"proposal\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Proposal\"}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/discover?location=Kyoto%2C+Japan&sortBy=rating&limit=12&offset=0",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=services&surface=experience-template",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"experienceSlug\":\"proposal\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Proposal\"}}",
+  "response": "{\"ok\":true}"
+ }
+]

@@ -1,0 +1,5 @@
+{
+ "rowId": "experience-template:add-to-cart",
+ "verdict": "CONFIRMED",
+ "observed": "SPA path, pen bound to 21e5e3a9-4888-470e-9194-f5de1850c8fb: button \"Add to Cart\" → POST itinerary-items 201, landed on /plans/21e5e3a9-4888-470e-9194-f5de1850c8fb. (First-pass full-load variant: the pen was unbound (H8 D6) and the same button went to /cart — so the label is right on one path and wrong on the other.)"
+}

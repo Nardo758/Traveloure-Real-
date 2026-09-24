@@ -1,0 +1,238 @@
+{
+  "name": "R2b-one-trip-prior-session-from-landing",
+  "user": {
+    "id": "2213b899-13c5-48a2-976e-c2462ed83092",
+    "email": "j2-oneb-1790286585571@traveloure.test",
+    "password": "<redacted>"
+  },
+  "tripId": "a7aede53-e679-477a-9768-ed00dc5a069f",
+  "steps": [
+    {
+      "step": 1,
+      "label": "session 2: landing (public Layout → pen bound + hydrated)",
+      "note": "",
+      "url": "/",
+      "screenshot": "R2b-one-trip-prior-session-from-landing/step-1.png",
+      "network": [
+        {
+          "t": 1790286586292,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790286586417,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790286586422,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790286586422,
+          "method": "GET",
+          "url": "/api/travelpulse/cities",
+          "status": 200
+        },
+        {
+          "t": 1790286586422,
+          "method": "GET",
+          "url": "/api/landing/moments",
+          "status": 200
+        },
+        {
+          "t": 1790286586422,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790286586426,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790286586426,
+          "method": "GET",
+          "url": "/api/landing/hero",
+          "status": 200
+        },
+        {
+          "t": 1790286586426,
+          "method": "GET",
+          "url": "/api/platform/stats",
+          "status": 200
+        },
+        {
+          "t": 1790286586430,
+          "method": "GET",
+          "url": "/api/trip-context",
+          "status": 200
+        },
+        {
+          "t": 1790286586421,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"6872caef-aed6-4f44-93ca-756fb89f3717\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        },
+        {
+          "t": 1790286588495,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"f06a4f86-fa2c-4cb3-83e1-a8710501ef3b\"}"
+        }
+      ],
+      "dbDiff": {
+        "trips": {
+          "added": [
+            {
+              "id": "a7aede53-e679-477a-9768-ed00dc5a069f",
+              "user_id": "2213b899-13c5-48a2-976e-c2462ed83092",
+              "title": "Kyoto spring",
+              "destination": "Kyoto, Japan",
+              "start_date": "2026-11-13T00:00:00.000Z",
+              "end_date": "2026-11-18T00:00:00.000Z",
+              "status": "draft"
+            }
+          ],
+          "removed": [],
+          "changed": []
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "6872caef-aed6-4f44-93ca-756fb89f3717",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 2,
+      "label": "on Discover (/services)",
+      "note": "",
+      "url": "/services?location=Kyoto%2C+Japan",
+      "screenshot": "R2b-one-trip-prior-session-from-landing/step-2.png",
+      "network": [
+        {
+          "t": 1790286588904,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790286588904,
+          "method": "GET",
+          "url": "/api/content/discover?destination=Kyoto%2C+Japan&surface=travelpulse-discover",
+          "status": 200
+        },
+        {
+          "t": 1790286588929,
+          "method": "GET",
+          "url": "/api/service-categories",
+          "status": 200
+        },
+        {
+          "t": 1790286588929,
+          "method": "GET",
+          "url": "/api/ready-made",
+          "status": 200
+        },
+        {
+          "t": 1790286588930,
+          "method": "GET",
+          "url": "/api/catalog/activities-gyg?destination=Kyoto%2C+Japan&limit=8",
+          "status": 200
+        },
+        {
+          "t": 1790286588930,
+          "method": "GET",
+          "url": "/api/discover?location=Kyoto%2C+Japan&sortBy=rating&limit=12&offset=0",
+          "status": 200
+        },
+        {
+          "t": 1790286588927,
+          "method": "POST",
+          "url": "/api/analytics/search-event",
+          "status": 202,
+          "body": "",
+          "response": "{\"received\":true}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "6872caef-aed6-4f44-93ca-756fb89f3717",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 3,
+      "label": "clicked first 'Add to plan'",
+      "note": "",
+      "url": "/services?location=Kyoto%2C+Japan",
+      "screenshot": "R2b-one-trip-prior-session-from-landing/step-3.png",
+      "network": [
+        {
+          "t": 1790286592718,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790286592698,
+          "method": "POST",
+          "url": "/api/cart",
+          "status": 201,
+          "body": "{\"serviceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"quantity\":1}",
+          "response": "{\"id\":\"c9afcbad-3eae-4357-8170-27297a7b88dc\",\"userId\":\"2213b899-13c5-48a2-976e-c2462ed83092\",\"guestSessionId\":null,\"serviceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"customVenueId\":null,\"contentType\":null,\"contentId\":null,\"contentMeta\":{},\"experienceSlug\":null,\"quantity\":1,\"tripId\":null,\"scheduledDate\":null,\"slotId\":null,\"itineraryItemId\":null,\"notes\":null,\"pickupLocation\":null,\"partySize\":null,\"createdAt\":\"2026-09-24T21:49:52.689Z\"}"
+        }
+      ],
+      "dbDiff": {
+        "cart_items": {
+          "added": [
+            {
+              "id": "c9afcbad-3eae-4357-8170-27297a7b88dc",
+              "user_id": "2213b899-13c5-48a2-976e-c2462ed83092",
+              "guest_session_id": null,
+              "service_id": "0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86",
+              "trip_id": null,
+              "content_type": null,
+              "quantity": 1
+            }
+          ],
+          "removed": [],
+          "changed": []
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "6872caef-aed6-4f44-93ca-756fb89f3717",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID"
+  ]
+}

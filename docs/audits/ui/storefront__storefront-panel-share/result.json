@@ -1,0 +1,5 @@
+{
+ "rowId": "storefront:storefront-panel-share",
+ "verdict": "REFUTED",
+ "observed": "POST advisors forced 500 → toasts [], inline error (storefront-panel-share-error) visible=true"
+}

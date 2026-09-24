@@ -1,0 +1,10 @@
+{
+ "rowId": "u1-controls:wedding:vendors",
+ "verdict": "OBSERVED",
+ "observed": "/experiences/wedding tab vendors: 3 selection-control option(s) rendered [\"selection-vendor-focus-focus-photography=\\\"Photography\\\"\",\"selection-vendor-focus-focus-floral=\\\"Florals\\\"\",\"selection-vendor-focus-focus-music=\\\"Music\\\"\"]",
+ "options": [
+  "selection-vendor-focus-focus-photography=\"Photography\"",
+  "selection-vendor-focus-focus-floral=\"Florals\"",
+  "selection-vendor-focus-focus-music=\"Music\""
+ ]
+}
