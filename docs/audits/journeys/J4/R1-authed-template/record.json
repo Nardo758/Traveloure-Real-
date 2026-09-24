@@ -1,0 +1,724 @@
+{
+  "name": "R1-authed-template",
+  "user": {
+    "id": "ab671b40-549d-4515-876d-d6677423eef6",
+    "email": "j4-1790286907845@traveloure.test",
+    "password": "TestPassword123!"
+  },
+  "servicesTab": "tab-services",
+  "steps": [
+    {
+      "step": 1,
+      "label": "/experiences",
+      "note": "",
+      "url": "/experiences",
+      "screenshot": "R1-authed-template/step-1.png",
+      "network": [
+        {
+          "t": 1790286908388,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790286908404,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790286908477,
+          "method": "GET",
+          "url": "/api/experience-types",
+          "status": 200
+        },
+        {
+          "t": 1790286908480,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790286908480,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790286908480,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790286908480,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"d1e718a2-f42a-4d3c-b947-b2be7960afbf\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "d1e718a2-f42a-4d3c-b947-b2be7960afbf",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 2,
+      "label": "/experiences/travel/new?destination=Kyoto",
+      "note": "",
+      "url": "/experiences/travel/new?destination=Kyoto%2C%20Japan",
+      "screenshot": "R1-authed-template/step-2.png",
+      "network": [
+        {
+          "t": 1790286910886,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790286910892,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790286910967,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790286910971,
+          "method": "GET",
+          "url": "/api/experience-types/travel",
+          "status": 200
+        },
+        {
+          "t": 1790286910977,
+          "method": "GET",
+          "url": "/api/itinerary-comparisons",
+          "status": 200
+        },
+        {
+          "t": 1790286910991,
+          "method": "GET",
+          "url": "/api/provider-services",
+          "status": 200
+        },
+        {
+          "t": 1790286910993,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790286910993,
+          "method": "GET",
+          "url": "/api/user-experiences",
+          "status": 200
+        },
+        {
+          "t": 1790286911000,
+          "method": "GET",
+          "url": "/api/trip-context",
+          "status": 200
+        },
+        {
+          "t": 1790286911006,
+          "method": "GET",
+          "url": "/api/service-categories",
+          "status": 200
+        },
+        {
+          "t": 1790286911007,
+          "method": "GET",
+          "url": "/api/custom-venues?experienceType=travel",
+          "status": 200
+        },
+        {
+          "t": 1790286911018,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790286911080,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790286911081,
+          "method": "GET",
+          "url": "/api/experience-types",
+          "status": 200
+        },
+        {
+          "t": 1790286911081,
+          "method": "GET",
+          "url": "/api/venues/search?location=Kyoto%2C+Japan&type=venue&keyword=event+venues",
+          "status": 200
+        },
+        {
+          "t": 1790286911118,
+          "method": "GET",
+          "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=venue&surface=experience-template",
+          "status": 200
+        },
+        {
+          "t": 1790286911119,
+          "method": "GET",
+          "url": "/api/amadeus/locations?keyword=Kyoto%2C+Japan&subType=CITY",
+          "status": 200
+        },
+        {
+          "t": 1790286911119,
+          "method": "GET",
+          "url": "/api/venues/search?location=Kyoto%2C+Japan&type=venue&keyword=event+venues",
+          "status": 200
+        },
+        {
+          "t": 1790286910974,
+          "method": "POST",
+          "url": "/api/geocode",
+          "status": 404,
+          "body": "{\"address\":\"Kyoto, Japan\"}",
+          "response": "{\"message\":\"Location not found\"}"
+        },
+        {
+          "t": 1790286911009,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"d1e718a2-f42a-4d3c-b947-b2be7960afbf\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        },
+        {
+          "t": 1790286911139,
+          "method": "GET",
+          "url": "/api/experience-types/ce20482c-8116-4665-98d6-9e0717b9d592/tabs",
+          "status": 200
+        },
+        {
+          "t": 1790286911197,
+          "method": "GET",
+          "url": "/api/catalog/tiqets/Kyoto,%20Japan",
+          "status": 404
+        },
+        {
+          "t": 1790286911197,
+          "method": "GET",
+          "url": "/api/cache/activities?destination=Kyoto%2C+Japan&count=30",
+          "status": 200
+        },
+        {
+          "t": 1790286911197,
+          "method": "GET",
+          "url": "/api/catalog/activities-gyg/Kyoto,%20Japan",
+          "status": 404
+        },
+        {
+          "t": 1790286911197,
+          "method": "GET",
+          "url": "/api/catalog/wegotrip/Kyoto,%20Japan",
+          "status": 404
+        },
+        {
+          "t": 1790286911197,
+          "method": "GET",
+          "url": "/api/catalog/viator-feed/Kyoto,%20Japan",
+          "status": 404
+        },
+        {
+          "t": 1790286911207,
+          "method": "GET",
+          "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=activities&surface=experience-template",
+          "status": 200
+        },
+        {
+          "t": 1790286911207,
+          "method": "GET",
+          "url": "/api/catalog/klook/Kyoto,%20Japan",
+          "status": 404
+        },
+        {
+          "t": 1790286912694,
+          "method": "PUT",
+          "url": "/api/trip-context",
+          "status": 200,
+          "body": "{\"context\":{\"experienceSlug\":\"travel\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Travel\"}}",
+          "response": "{\"ok\":true}"
+        }
+      ],
+      "dbDiff": {
+        "trip_contexts": {
+          "added": [
+            {
+              "id": "a3ecca83-5c7c-4fa3-b420-d99f75e537ad",
+              "user_id": "ab671b40-549d-4515-876d-d6677423eef6",
+              "trip_id": null,
+              "context": {
+                "travelers": 2,
+                "destination": "Kyoto, Japan",
+                "experienceSlug": "travel",
+                "experienceType": "Travel"
+              }
+            }
+          ],
+          "removed": [],
+          "changed": []
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "d1e718a2-f42a-4d3c-b947-b2be7960afbf",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "searchSettings_travel": "{\"destination\":\"Kyoto, Japan\",\"originCity\":\"\",\"originCode\":\"\",\"activeTab\":\"activities\",\"searchQuery\":\"\",\"priceRange\":[0,500],\"minRating\":0,\"sortBy\":\"popular\",\"selectedFilters\":[],\"selectedInterests\":[],\"hotelMaxPrice\":5000,\"hotelStarRating\":0,\"hotelSortBy\":\"price\",\"adults\":2,\"kids\":0,\"detailsSubmitted\":false}",
+          "experienceContext:u:ab671b40-549d-4515-876d-d6677423eef6": "{\"experienceSlug\":\"travel\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 3,
+      "label": "services tab: tab-services",
+      "note": "",
+      "url": "/experiences/travel/new?destination=Kyoto%2C%20Japan",
+      "screenshot": "R1-authed-template/step-3.png",
+      "network": [
+        {
+          "t": 1790286917636,
+          "method": "GET",
+          "url": "/api/catalog/booking?destination=Kyoto%2C+Japan&limit=5",
+          "status": 200
+        },
+        {
+          "t": 1790286917647,
+          "method": "GET",
+          "url": "/api/catalog/esim?country=Japan",
+          "status": 200
+        },
+        {
+          "t": 1790286917647,
+          "method": "GET",
+          "url": "/api/amadeus/locations?keyword=Kyoto%2C+Japan&subType=CITY",
+          "status": 200
+        },
+        {
+          "t": 1790286919138,
+          "method": "PUT",
+          "url": "/api/trip-context",
+          "status": 200,
+          "body": "{\"context\":{\"experienceSlug\":\"travel\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Travel\"}}",
+          "response": "{\"ok\":true}"
+        },
+        {
+          "t": 1790286919731,
+          "method": "GET",
+          "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=services&surface=experience-template",
+          "status": 200
+        },
+        {
+          "t": 1790286919731,
+          "method": "GET",
+          "url": "/api/discover?location=Kyoto%2C+Japan&sortBy=rating&limit=12&offset=0",
+          "status": 200
+        },
+        {
+          "t": 1790286921240,
+          "method": "PUT",
+          "url": "/api/trip-context",
+          "status": 200,
+          "body": "{\"context\":{\"experienceSlug\":\"travel\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Travel\"}}",
+          "response": "{\"ok\":true}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "d1e718a2-f42a-4d3c-b947-b2be7960afbf",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "searchSettings_travel": "{\"destination\":\"Kyoto, Japan\",\"originCity\":\"\",\"originCode\":\"\",\"activeTab\":\"services\",\"searchQuery\":\"\",\"priceRange\":[0,500],\"minRating\":0,\"sortBy\":\"popular\",\"selectedFilters\":[],\"selectedInterests\":[],\"hotelMaxPrice\":5000,\"hotelStarRating\":0,\"hotelSortBy\":\"price\",\"adults\":2,\"kids\":0,\"detailsSubmitted\":false}",
+          "experienceContext:u:ab671b40-549d-4515-876d-d6677423eef6": "{\"experienceSlug\":\"travel\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 4,
+      "label": "clicked a service 'Add'",
+      "note": "",
+      "url": "/cart",
+      "screenshot": "R1-authed-template/step-4.png",
+      "network": [
+        {
+          "t": 1790286923119,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790286923086,
+          "method": "POST",
+          "url": "/api/cart",
+          "status": 201,
+          "body": "{\"quantity\":1,\"experienceSlug\":\"travel\",\"serviceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\"}",
+          "response": "{\"id\":\"d5598694-279a-4786-b57b-608f9df337b2\",\"userId\":\"ab671b40-549d-4515-876d-d6677423eef6\",\"guestSessionId\":null,\"serviceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"customVenueId\":null,\"contentType\":null,\"contentId\":null,\"contentMeta\":{},\"experienceSlug\":\"travel\",\"quantity\":1,\"tripId\":null,\"scheduledDate\":null,\"slotId\":null,\"itineraryItemId\":null,\"notes\":null,\"pickupLocation\":null,\"partySize\":null,\"createdAt\":\"2026-09-24T21:55:23.077Z\"}"
+        },
+        {
+          "t": 1790286923207,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790286923207,
+          "method": "GET",
+          "url": "/api/exchange-rates",
+          "status": 200
+        },
+        {
+          "t": 1790286923207,
+          "method": "POST",
+          "url": "/api/upsell/cart",
+          "status": 200,
+          "body": "{\"surface\":\"cart\",\"cartItems\":[{\"offeringId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"categoryKey\":\"general\"}],\"userProfile\":{}}",
+          "response": "{\"candidates\":[],\"suppressed\":[]}"
+        },
+        {
+          "t": 1790286923208,
+          "method": "POST",
+          "url": "/api/optimization-preview",
+          "status": 200,
+          "body": "{\"items\":[{\"serviceType\":\"experience\",\"price\":2800,\"duration\":90,\"dayNumber\":1}],\"eventType\":\"Travel\"}",
+          "response": "{\"estimatedSavingsPct\":21,\"estimatedCostDelta\":-588,\"estimatedScheduleTighteningPct\":14,\"currentScore\":15,\"complexityTier\":\"simple\",\"feeCents\":599,\"currency\":\"USD\",\"freeRerun\":false,\"aiDisabled\":false,\"creditTowardCoordination\":false,\"metrics\":{\"balanceScore\":25,\"wellnessScore\":0,\"paceScore\":25,\"diversityScore\":13}}"
+        },
+        {
+          "t": 1790286923299,
+          "method": "GET",
+          "url": "/api/me/payment-methods",
+          "status": 200
+        },
+        {
+          "t": 1790286924595,
+          "method": "PUT",
+          "url": "/api/trip-context",
+          "status": 200,
+          "body": "{\"context\":{\"experienceSlug\":\"travel\",\"destination\":\"Kyoto, Japan\",\"title\":\"Travel Experience\",\"travelers\":2,\"experienceType\":\"Travel\"}}",
+          "response": "{\"ok\":true}"
+        }
+      ],
+      "dbDiff": {
+        "cart_items": {
+          "added": [
+            {
+              "id": "d5598694-279a-4786-b57b-608f9df337b2",
+              "user_id": "ab671b40-549d-4515-876d-d6677423eef6",
+              "guest_session_id": null,
+              "service_id": "0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86",
+              "trip_id": null,
+              "content_type": null,
+              "quantity": 1
+            }
+          ],
+          "removed": [],
+          "changed": []
+        },
+        "trip_contexts": {
+          "added": [],
+          "removed": [],
+          "changed": [
+            {
+              "before": {
+                "id": "a3ecca83-5c7c-4fa3-b420-d99f75e537ad",
+                "user_id": "ab671b40-549d-4515-876d-d6677423eef6",
+                "trip_id": null,
+                "context": {
+                  "travelers": 2,
+                  "destination": "Kyoto, Japan",
+                  "experienceSlug": "travel",
+                  "experienceType": "Travel"
+                }
+              },
+              "after": {
+                "id": "a3ecca83-5c7c-4fa3-b420-d99f75e537ad",
+                "user_id": "ab671b40-549d-4515-876d-d6677423eef6",
+                "trip_id": null,
+                "context": {
+                  "title": "Travel Experience",
+                  "travelers": 2,
+                  "destination": "Kyoto, Japan",
+                  "experienceSlug": "travel",
+                  "experienceType": "Travel"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "d1e718a2-f42a-4d3c-b947-b2be7960afbf",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "searchSettings_travel": "{\"destination\":\"Kyoto, Japan\",\"originCity\":\"\",\"originCode\":\"\",\"activeTab\":\"services\",\"searchQuery\":\"\",\"priceRange\":[0,500],\"minRating\":0,\"sortBy\":\"popular\",\"selectedFilters\":[],\"selectedInterests\":[],\"hotelMaxPrice\":5000,\"hotelStarRating\":0,\"hotelSortBy\":\"price\",\"adults\":2,\"kids\":0,\"detailsSubmitted\":false}",
+          "experienceContext:u:ab671b40-549d-4515-876d-d6677423eef6": "{\"experienceSlug\":\"travel\",\"destination\":\"Kyoto, Japan\",\"title\":\"Travel Experience\",\"travelers\":2,\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 5,
+      "label": "clicked the expert-help ribbon",
+      "note": "",
+      "url": "/experiences/travel/new?destination=Kyoto%2C%20Japan",
+      "screenshot": "R1-authed-template/step-5.png",
+      "network": [
+        {
+          "t": 1790286928302,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790286928302,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790286928365,
+          "method": "GET",
+          "url": "/api/experience-types/travel",
+          "status": 200
+        },
+        {
+          "t": 1790286928385,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790286928385,
+          "method": "GET",
+          "url": "/api/trip-context",
+          "status": 200
+        },
+        {
+          "t": 1790286928385,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790286928385,
+          "method": "GET",
+          "url": "/api/provider-services",
+          "status": 200
+        },
+        {
+          "t": 1790286928385,
+          "method": "GET",
+          "url": "/api/itinerary-comparisons",
+          "status": 200
+        },
+        {
+          "t": 1790286928385,
+          "method": "GET",
+          "url": "/api/custom-venues?experienceType=travel",
+          "status": 200
+        },
+        {
+          "t": 1790286928386,
+          "method": "GET",
+          "url": "/api/service-categories",
+          "status": 200
+        },
+        {
+          "t": 1790286928386,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790286928387,
+          "method": "GET",
+          "url": "/api/user-experiences",
+          "status": 200
+        },
+        {
+          "t": 1790286928393,
+          "method": "GET",
+          "url": "/api/experience-types",
+          "status": 200
+        },
+        {
+          "t": 1790286928506,
+          "method": "GET",
+          "url": "/api/amadeus/locations?keyword=Kyoto%2C+Japan&subType=CITY",
+          "status": 200
+        },
+        {
+          "t": 1790286928507,
+          "method": "GET",
+          "url": "/api/experience-types/ce20482c-8116-4665-98d6-9e0717b9d592/tabs",
+          "status": 200
+        },
+        {
+          "t": 1790286928508,
+          "method": "GET",
+          "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=services&surface=experience-template",
+          "status": 200
+        },
+        {
+          "t": 1790286928508,
+          "method": "GET",
+          "url": "/api/discover?location=Kyoto%2C+Japan&sortBy=rating&limit=12&offset=0",
+          "status": 200
+        },
+        {
+          "t": 1790286928364,
+          "method": "POST",
+          "url": "/api/geocode",
+          "status": 404,
+          "body": "{\"address\":\"Kyoto, Japan\"}",
+          "response": "{\"message\":\"Location not found\"}"
+        },
+        {
+          "t": 1790286928385,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"d1e718a2-f42a-4d3c-b947-b2be7960afbf\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        },
+        {
+          "t": 1790286929938,
+          "method": "PUT",
+          "url": "/api/trip-context",
+          "status": 200,
+          "body": "{\"context\":{\"experienceSlug\":\"travel\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Travel\"}}",
+          "response": "{\"ok\":true}"
+        }
+      ],
+      "dbDiff": {
+        "trip_contexts": {
+          "added": [],
+          "removed": [],
+          "changed": [
+            {
+              "before": {
+                "id": "a3ecca83-5c7c-4fa3-b420-d99f75e537ad",
+                "user_id": "ab671b40-549d-4515-876d-d6677423eef6",
+                "trip_id": null,
+                "context": {
+                  "title": "Travel Experience",
+                  "travelers": 2,
+                  "destination": "Kyoto, Japan",
+                  "experienceSlug": "travel",
+                  "experienceType": "Travel"
+                }
+              },
+              "after": {
+                "id": "a3ecca83-5c7c-4fa3-b420-d99f75e537ad",
+                "user_id": "ab671b40-549d-4515-876d-d6677423eef6",
+                "trip_id": null,
+                "context": {
+                  "travelers": 2,
+                  "destination": "Kyoto, Japan",
+                  "experienceSlug": "travel",
+                  "experienceType": "Travel"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "d1e718a2-f42a-4d3c-b947-b2be7960afbf",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "searchSettings_travel": "{\"destination\":\"Kyoto, Japan\",\"originCity\":\"\",\"originCode\":\"\",\"activeTab\":\"services\",\"searchQuery\":\"\",\"priceRange\":[0,500],\"minRating\":0,\"sortBy\":\"popular\",\"selectedFilters\":[],\"selectedInterests\":[],\"hotelMaxPrice\":5000,\"hotelStarRating\":0,\"hotelSortBy\":\"price\",\"adults\":2,\"kids\":0,\"detailsSubmitted\":false}",
+          "experienceContext:u:ab671b40-549d-4515-876d-d6677423eef6": "{\"title\":\"Travel Experience\",\"travelers\":2,\"destination\":\"Kyoto, Japan\",\"experienceSlug\":\"travel\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 6,
+      "label": "review sheet → 'Send'",
+      "note": "",
+      "url": "/experiences/travel/new?destination=Kyoto%2C%20Japan",
+      "screenshot": "R1-authed-template/step-6.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "d1e718a2-f42a-4d3c-b947-b2be7960afbf",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "searchSettings_travel": "{\"destination\":\"Kyoto, Japan\",\"originCity\":\"\",\"originCode\":\"\",\"activeTab\":\"services\",\"searchQuery\":\"\",\"priceRange\":[0,500],\"minRating\":0,\"sortBy\":\"popular\",\"selectedFilters\":[],\"selectedInterests\":[],\"hotelMaxPrice\":5000,\"hotelStarRating\":0,\"hotelSortBy\":\"price\",\"adults\":2,\"kids\":0,\"detailsSubmitted\":false}",
+          "experienceContext:u:ab671b40-549d-4515-876d-d6677423eef6": "{\"title\":\"Travel Experience\",\"travelers\":2,\"destination\":\"Kyoto, Japan\",\"experienceSlug\":\"travel\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 7,
+      "label": "My Plans",
+      "note": "cards=0",
+      "url": "/my-trips",
+      "screenshot": "R1-authed-template/step-7.png",
+      "network": [
+        {
+          "t": 1790286939802,
+          "method": "GET",
+          "url": "/api/trips",
+          "status": 200
+        },
+        {
+          "t": 1790286939803,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "d1e718a2-f42a-4d3c-b947-b2be7960afbf",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "searchSettings_travel": "{\"destination\":\"Kyoto, Japan\",\"originCity\":\"\",\"originCode\":\"\",\"activeTab\":\"services\",\"searchQuery\":\"\",\"priceRange\":[0,500],\"minRating\":0,\"sortBy\":\"popular\",\"selectedFilters\":[],\"selectedInterests\":[],\"hotelMaxPrice\":5000,\"hotelStarRating\":0,\"hotelSortBy\":\"price\",\"adults\":2,\"kids\":0,\"detailsSubmitted\":false}",
+          "experienceContext:u:ab671b40-549d-4515-876d-d6677423eef6": "{\"title\":\"Travel Experience\",\"travelers\":2,\"destination\":\"Kyoto, Japan\",\"experienceSlug\":\"travel\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

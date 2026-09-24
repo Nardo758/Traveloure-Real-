@@ -6,7 +6,7 @@
 - Production bundle (`npm run build` → `node dist/index.cjs`, `NODE_ENV=production`).
 - Local Postgres 16 with all 322 migrations applied and the boot seed loaded (28 approved services, 1 seed trip). No other test data.
 - Stub Stripe and AI keys, matching the CI journey suite.
-- Chromium through Playwright, viewport 1360×900. Screenshots were downscaled 75% and quantized to save repo space.
+- Chromium through Playwright, viewport 1360×900. Screenshots were downscaled to about 56% (765 px wide) and quantized to save repo space.
 
 **Harness:** `docs/audits/journeys/harness/j1.mjs`, reproducible with the command in its header. Each run uses a fresh browser context and a freshly registered user.
 For every step it captures three things:
