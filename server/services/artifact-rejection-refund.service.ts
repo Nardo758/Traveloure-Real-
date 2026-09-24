@@ -74,7 +74,11 @@ import { ARTIFACT_REJECTION_REFUND_FROM_STATUSES } from "../utils/booking-from-s
 import { travelerChargeForRow } from "./traveler-charge";
 import { stripePaymentService } from "./stripe-payment.service";
 import { storage } from "../storage";
-import { checkRefundAgainstLostChargebacks, type LostChargebackGuardResult } from "./lost-chargeback-guard.service";
+import {
+  checkRefundAgainstLostChargebacks,
+  openChargebacksOnBooking,
+  type LostChargebackGuardResult,
+} from "./lost-chargeback-guard.service";
 
 /** The internal reason recorded on the `refunds` row and the fee-ledger reversal for this outcome. */
 export const ARTIFACT_REJECTION_REFUND_REASON = "artifact_rejected_resolved_for_traveler";
@@ -120,11 +124,14 @@ export type ArtifactRejectionRefundResult =
         /** Stripe refused or was unreachable; the claim was reverted and an admin may retry. */
         | "stripe_refund_failed"
         /** PR #1066: a lost chargeback already returned this money; nothing was changed. */
-        | "lost_chargeback";
+        | "lost_chargeback"
+        /** PR #1066: a chargeback is still open on the payment; the bank decides; nothing was changed. */
+        | "open_chargeback";
       currentStatus?: string | null;
       detail?: string;
       message?: string;
       guard?: Extract<LostChargebackGuardResult, { allowed: false }>;
+      openChargebacks?: string[];
     };
 
 /**
@@ -188,6 +195,14 @@ export async function refundRejectedArtifact(input: {
     feeSnap && feeSnap.waived !== true ? Math.max(0, Math.round((Number(feeSnap.charged) || 0) * 100)) : 0;
   const amountCents = Math.max(0, Math.round(charged * 100)) + travelerServiceFeeRefundCents;
   if (amountCents <= 0) return { refunded: false, bookingId, reason: "nothing_charged" };
+
+  // ── PR #1066: AN OPEN CHARGEBACK — THE BANK IS DECIDING THE MONEY ─────────────────────────────
+  // (decision-maker, Sep 24, 2026). A chargebacked booking is also `disputed`, so this resolution could
+  // reach it; refused before anything moves.
+  const openChargebacks = await openChargebacksOnBooking(bookingId);
+  if (openChargebacks.length > 0) {
+    return { refunded: false, bookingId, reason: "open_chargeback", openChargebacks };
+  }
 
   // ── PR #1066: A LOST CHARGEBACK ALREADY RETURNED THE MONEY ────────────────────────────────────
   // Refused BEFORE the ledger moves when this refund would reach into money the bank already gave

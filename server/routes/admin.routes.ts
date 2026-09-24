@@ -1615,9 +1615,15 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
 
     // PR #1066: a lost chargeback already returned the disputed money. Refuse BEFORE the ledger moves
     // when this make-whole refund would reach into it — same options the refund below is given.
-    const { checkServiceBookingRefundPreflight, lostChargebackRefusalBody } = await import(
-      "../services/lost-chargeback-guard.service"
-    );
+    const {
+      checkServiceBookingRefundPreflight,
+      lostChargebackRefusalBody,
+      openChargebacksOnBooking,
+      openChargebackRefusalBody,
+    } = await import("../services/lost-chargeback-guard.service");
+    // And while a chargeback is still OPEN the bank decides the money: refuse before anything moves.
+    const openChargebacks = await openChargebacksOnBooking(bookingId);
+    if (openChargebacks.length > 0) return res.status(409).json(openChargebackRefusalBody(openChargebacks));
     const chargebackGuard = await checkServiceBookingRefundPreflight(bookingId, {
       feeRefundPercent: 100, // fee-literal-ok: 100 = full make-whole refund %, not a fee_bands rate
     });
@@ -1742,6 +1748,10 @@ router.post("/api/admin/disputes/:bookingId/refund-rejected-artifact", isAuthent
         case "lost_chargeback": {
           const { lostChargebackRefusalBody } = await import("../services/lost-chargeback-guard.service");
           return res.status(409).json(lostChargebackRefusalBody(outcome.guard!));
+        }
+        case "open_chargeback": {
+          const { openChargebackRefusalBody } = await import("../services/lost-chargeback-guard.service");
+          return res.status(409).json(openChargebackRefusalBody(outcome.openChargebacks ?? []));
         }
         case "stripe_refund_failed":
           return res.status(502).json({

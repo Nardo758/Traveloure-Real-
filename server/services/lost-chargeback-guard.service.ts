@@ -303,3 +303,29 @@ export async function reconcileLostChargeback(input: {
     reversedRevenueRows,
   };
 }
+
+/**
+ * OPEN chargebacks on a booking (decision-maker, Sep 24, 2026). PR #1066 marks a chargebacked booking
+ * `disputed`, the same status a traveler's own dispute uses, so the admin dispute-resolution actions
+ * could reach it — reverse the ledger, then be refused by Stripe, which will not refund a charge under
+ * dispute. While a chargeback is open the card network decides the money, so the two refunding
+ * resolutions (uphold, and the rejected-artifact refund) refuse before they touch anything.
+ * Returns the ids of disputes whose lifecycle row names this booking and has no terminal outcome yet.
+ */
+export async function openChargebacksOnBooking(bookingId: string): Promise<string[]> {
+  const r = await db.execute(sql`
+    SELECT dispute_id FROM stripe_dispute_lifecycle
+     WHERE terminal_outcome IS NULL AND booking_status ? ${bookingId}
+     ORDER BY dispute_id
+  `);
+  return ((r.rows ?? []) as Array<{ dispute_id: string }>).map((x) => x.dispute_id);
+}
+
+/** The 409 body for a refunding resolution refused while a chargeback is open. */
+export function openChargebackRefusalBody(disputeIds: string[]) {
+  const message =
+    "A card chargeback is open on this booking's payment, so the bank — not this platform — is deciding the " +
+    "money. Nothing was refunded and nothing was changed. Wait for Stripe's outcome: a won chargeback " +
+    "restores the booking, and a lost one can be closed out with \"reconcile lost chargeback\".";
+  return { error: message, message, reason: "open_chargeback" as const, disputeIds };
+}

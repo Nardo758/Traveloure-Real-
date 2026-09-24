@@ -20,6 +20,9 @@
  *       Stripe cannot be reached.
  *   L12 Static pins: every ledger-first refund entry point checks BEFORE it reverses the ledger, and
  *       the reconcile route takes a `.strict()` note only.
+ *   L13 An OPEN chargeback is reported for its bookings until Stripe closes it (won or lost).
+ *   L14 The rejected-artifact refund refuses while a chargeback is open: no Stripe call, earnings and
+ *       revenue untouched, status untouched. The uphold route checks it before the ledger (pinned).
  *
  * NO FEE LITERALS (§8): fixture amounts are arbitrary and asserted only as money in/out.
  * DISPOSABLE DB ONLY. The Stripe lookup is injected; `stripe.refunds.create` is replaced and counted.
@@ -40,9 +43,11 @@ import {
   checkBookingRefundAgainstLostChargebacks,
   checkRefundAgainstLostChargebacks,
   checkServiceBookingRefundPreflight,
+  openChargebacksOnBooking,
   reconcileLostChargeback,
   type PaymentIntentLedger,
 } from "../services/lost-chargeback-guard.service";
+import { refundRejectedArtifact } from "../services/artifact-rejection-refund.service";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = { provider: `lcb-${RUN}-prov`, traveler: `lcb-${RUN}-trav`, service: `lcb-${RUN}-svc` };
@@ -350,4 +355,59 @@ test("L12: every ledger-first refund entry point checks before it reverses the l
   before(artifact, "checkRefundAgainstLostChargebacks({ paymentIntentId", "storage.reverseEarningsForBooking(bookingId)");
   const pay = read("server/services/stripe-payment.service.ts");
   before(pay, "if (!guard.allowed) throw new LostChargebackRefundBlockedError(guard);", "return stripe.refunds.create(");
+});
+
+async function openChargeback(pi: string) {
+  const disputeId = `dp_lcb_${RUN}_${crypto.randomUUID().slice(0, 6)}`;
+  disputeIds.push(disputeId);
+  const charge = { id: `ch_lcb_${RUN}_${disputeId}`, payment_intent: pi, metadata: {} };
+  const fake = { charges: { retrieve: async () => charge } } as any;
+  const dispute = { id: disputeId, charge, status: "needs_response", reason: "fraudulent", amount: 10000 } as any;
+  await handleStripeDispute(dispute, fake, { closed: false, eventId: `evt_lcb_open_${disputeId}` });
+  return { disputeId, dispute, fake };
+}
+
+test("L13: an open chargeback is reported until Stripe closes it", async () => {
+  const pi = `pi_lcb_${RUN}_l13`;
+  const id = await seedBooking(pi);
+  const other = await seedBooking(`pi_lcb_${RUN}_l13other`);
+  const { disputeId, dispute, fake } = await openChargeback(pi);
+  assert.deepEqual(await openChargebacksOnBooking(id), [disputeId]);
+  assert.deepEqual(await openChargebacksOnBooking(other), [], "another payment's booking is not affected");
+  await handleStripeDispute({ ...dispute, status: "won" }, fake, { closed: true, eventId: `evt_lcb_won_${disputeId}` });
+  assert.deepEqual(await openChargebacksOnBooking(id), [], "closed ⇒ no longer open");
+});
+
+test("L14: the rejected-artifact refund refuses while a chargeback is open", async () => {
+  const pi = `pi_lcb_${RUN}_l14`;
+  const id = await seedBooking(pi);
+  await db.execute(sql`UPDATE service_bookings SET platform_fee = '20.00' WHERE id = ${id}`);
+  await storage.updateServiceBookingStatus(id, "completed", undefined, ["confirmed"]);
+  await openChargeback(pi);
+  assert.equal((await row(id)).status, "disputed");
+  let issued = 0;
+  const out = await refundRejectedArtifact({
+    bookingId: id,
+    actorUserId: "admin-lcb",
+    refundIssuer: async () => {
+      issued++;
+      return { id: "re_should_not_exist", status: "succeeded" } as any;
+    },
+  });
+  assert.equal(out.refunded, false);
+  if (!out.refunded) {
+    assert.equal(out.reason, "open_chargeback");
+    assert.equal(out.openChargebacks?.length, 1);
+  }
+  assert.equal(issued, 0, "no Stripe call");
+  assert.equal((await row(id)).status, "disputed", "status untouched");
+  assert.ok((await earningStates(id)).every((e) => e.status === "held"), "earnings untouched");
+  assert.equal((await revenueRows(id)).length, 1, "revenue untouched");
+
+  const root = path.resolve(import.meta.dirname, "../..");
+  const admin = fs.readFileSync(path.join(root, "server/routes/admin.routes.ts"), "utf8");
+  const uphold = admin.indexOf('router.post("/api/admin/disputes/:bookingId/uphold"');
+  const check = admin.indexOf("openChargebacksOnBooking(bookingId)", uphold);
+  const reverse = admin.indexOf("storage.reverseEarningsForBooking(bookingId)", uphold);
+  assert.ok(check > uphold && reverse > check, "the uphold route checks for an open chargeback before the ledger");
 });
