@@ -56,6 +56,24 @@ export async function handleStripeDispute(
   if (ids.length) {
     for (const id of ids) {
       await conn.update(serviceBookings).set({ status: won ? (priorStatuses[id] ?? "confirmed") : status }).where(eq(serviceBookings.id, id));
+      if (manualReview) {
+        // Records the lost chargeback on the booking, keyed by dispute id (idempotent on redelivery).
+        // The refund guard (lost-chargeback-guard.service.ts) reads it so no refund path can send the
+        // disputed money a second time; it survives a later status change, which `dispute_lost` does not.
+        await conn.execute(sql`
+          UPDATE service_bookings
+             SET booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(
+                   'lostChargebacks',
+                   COALESCE(booking_details -> 'lostChargebacks', '{}'::jsonb) || jsonb_build_object(
+                     ${dispute.id}::text, jsonb_build_object(
+                       'amountCents', ${dispute.amount ?? null}::int,
+                       'chargeId', ${chargeId}::text,
+                       'paymentIntentId', ${paymentIntent ?? null}::text,
+                       'eventId', ${options.eventId ?? null}::text,
+                       'closedAt', NOW()::text)))
+           WHERE id = ${id}
+        `);
+      }
     }
     for (const id of ids) {
       if (open) {

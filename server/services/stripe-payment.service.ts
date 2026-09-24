@@ -1137,43 +1137,14 @@ class StripePaymentService {
   // idempotent on both layers (§15).
 
   /**
-   * Refund a SERVICE booking (escrow Phase 4 / docs/design/escrow-spine.md).
-   *
-   * Unlike the deleted legacy createRefund (which read the legacy `bookings` table), this refunds against
-   * service_bookings' OWN stripe_payment_intent_id + total_amount — the real booking rail where
-   * disputes live. Amount is server-derived from the row (never client-supplied — §14).
-   *
-   * Idempotent (§15) on BOTH layers: (a) an atomic status claim (WHERE status <> 'refunded') so two
-   * concurrent callers can't both proceed — reverted if the Stripe call then fails; (b) a
-   * deterministic Stripe idempotencyKey so even a cross-process retry returns the same refund rather
-   * than issuing a second one.
+   * THE amount a service-booking refund sends, server-derived from the row (§14). One computation,
+   * two callers: `refundServiceBooking` and `previewServiceBookingRefundCents`, which the refund
+   * entry points use to check a lost chargeback BEFORE they touch the ledger (PR #1066).
    */
-  async refundServiceBooking(
-    bookingId: string,
-    reason?: string,
-    options?: {
-      /**
-       * Policy-derived partial refund (cancellation-policy.service.ts). Still SERVER-derived —
-       * never client-supplied (§14). Clamped to [0, total_amount]; undefined = full refund.
-       */
-      amountOverride?: number;
-      /**
-       * Ruling 2026-09-02-traveler-fee-refundability: the percentage (0–100) of the assessed
-       * traveler service fee to refund. SERVER-derived by the caller (§14): the cancellation-tier %
-       * for a traveler cancellation, 100 for a provider/expert cancellation or a made-whole refund.
-       * Omitted → a full booking refund (no `amountOverride`) refunds the full fee; a policy-scaled
-       * refund refunds none (conservative — never over-refund without an explicit percent).
-       */
-      feeRefundPercent?: number;
-    },
-  ) {
-    const rows = await db.execute(sql`
-      SELECT id, total_amount, platform_fee, insurance_fee, stripe_payment_intent_id, status, slot_id, booking_details
-      FROM service_bookings WHERE id = ${bookingId} LIMIT 1
-    `);
-    const row = rows.rows?.[0] as any;
-    if (!row) throw new Error('Service booking not found');
-
+  private computeServiceBookingRefund(
+    row: any,
+    options?: { amountOverride?: number; feeRefundPercent?: number },
+  ): { amount: number; amountCharged: number; feeRefund: number; totalRefund: number } {
     const totalAmount = parseFloat(row.total_amount || '0');
     // The clamp ceiling is what the traveler was actually CHARGED — read through the ONE
     // `travelerChargeForRow` (§18 rule 1, ledger 2026-09-08-cart-fee-line), never re-composed here.
@@ -1212,6 +1183,62 @@ class StripePaymentService {
     const feeRefund = feeCharged > 0 ? Math.round(feeCharged * (feeRefundPct / 100) * 100) / 100 : 0;
     // The total Stripe refund = the booking share + the fee share. Both server-derived (§14).
     const totalRefund = Math.round((amount + feeRefund) * 100) / 100;
+    return { amount, amountCharged, feeRefund, totalRefund };
+  }
+
+  /** The cents `refundServiceBooking` would send for these options, with no side effects. */
+  async previewServiceBookingRefundCents(
+    bookingId: string,
+    options?: { amountOverride?: number; feeRefundPercent?: number },
+  ): Promise<number | null> {
+    const rows = await db.execute(sql`
+      SELECT total_amount, platform_fee, insurance_fee, booking_details
+      FROM service_bookings WHERE id = ${bookingId} LIMIT 1
+    `);
+    const row = rows.rows?.[0] as any;
+    if (!row) return null;
+    return Math.round(this.computeServiceBookingRefund(row, options).totalRefund * 100);
+  }
+
+  /**
+   * Refund a SERVICE booking (escrow Phase 4 / docs/design/escrow-spine.md).
+   *
+   * Unlike the deleted legacy createRefund (which read the legacy `bookings` table), this refunds against
+   * service_bookings' OWN stripe_payment_intent_id + total_amount — the real booking rail where
+   * disputes live. Amount is server-derived from the row (never client-supplied — §14).
+   *
+   * Idempotent (§15) on BOTH layers: (a) an atomic status claim (WHERE status <> 'refunded') so two
+   * concurrent callers can't both proceed — reverted if the Stripe call then fails; (b) a
+   * deterministic Stripe idempotencyKey so even a cross-process retry returns the same refund rather
+   * than issuing a second one.
+   */
+  async refundServiceBooking(
+    bookingId: string,
+    reason?: string,
+    options?: {
+      /**
+       * Policy-derived partial refund (cancellation-policy.service.ts). Still SERVER-derived —
+       * never client-supplied (§14). Clamped to [0, total_amount]; undefined = full refund.
+       */
+      amountOverride?: number;
+      /**
+       * Ruling 2026-09-02-traveler-fee-refundability: the percentage (0–100) of the assessed
+       * traveler service fee to refund. SERVER-derived by the caller (§14): the cancellation-tier %
+       * for a traveler cancellation, 100 for a provider/expert cancellation or a made-whole refund.
+       * Omitted → a full booking refund (no `amountOverride`) refunds the full fee; a policy-scaled
+       * refund refunds none (conservative — never over-refund without an explicit percent).
+       */
+      feeRefundPercent?: number;
+    },
+  ) {
+    const rows = await db.execute(sql`
+      SELECT id, total_amount, platform_fee, insurance_fee, stripe_payment_intent_id, status, slot_id, booking_details
+      FROM service_bookings WHERE id = ${bookingId} LIMIT 1
+    `);
+    const row = rows.rows?.[0] as any;
+    if (!row) throw new Error('Service booking not found');
+
+    const { amount, amountCharged, feeRefund, totalRefund } = this.computeServiceBookingRefund(row, options);
 
     if (options?.amountOverride !== undefined && totalRefund <= 0) {
       throw new Error('Refund amount must be greater than zero');
@@ -1270,6 +1297,8 @@ class StripePaymentService {
       // Stripe failed — revert the optimistic status claim so a later retry can proceed cleanly.
       await db.execute(sql`UPDATE service_bookings SET status = ${priorStatus}, updated_at = NOW() WHERE id = ${bookingId}`);
       console.error('Service-booking refund error:', err);
+      // A lost-chargeback refusal keeps its type so the caller can answer 409 with the reason.
+      if (err?.name === 'LostChargebackRefundBlockedError') throw err;
       throw new Error(`Refund failed: ${err.message}`);
     }
 
@@ -1363,6 +1392,17 @@ class StripePaymentService {
     idempotencyKey: string;
     metadata: Record<string, string>;
   }): Promise<Stripe.Refund> {
+    // PR #1066: the second layer of the lost-chargeback guard. A route that skipped its pre-ledger
+    // check still cannot send money the bank already returned. Throws before any Stripe call.
+    const { checkRefundAgainstLostChargebacks, LostChargebackRefundBlockedError } = await import(
+      './lost-chargeback-guard.service'
+    );
+    const guard = await checkRefundAgainstLostChargebacks({
+      paymentIntentId: input.paymentIntentId,
+      requestedCents: input.amountCents,
+      replay: { source: input.metadata.source, bookingId: input.metadata.bookingId },
+    });
+    if (!guard.allowed) throw new LostChargebackRefundBlockedError(guard);
     return stripe.refunds.create(
       {
         payment_intent: input.paymentIntentId,

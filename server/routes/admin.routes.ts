@@ -681,6 +681,70 @@ router.post("/api/admin/bookings/:bookingId/out-of-band-refund/clear", isAuthent
 });
 
 /**
+ * PR #1066 (decision-maker, Sep 24, 2026): the LEDGER-ONLY way to close a lost chargeback. The bank
+ * already returned the money, so this sends nothing: it reverses the platform revenue in the share the
+ * bank took back, reverses the seller's in-escrow earnings when that share is the whole payment, and
+ * records who did it and why. The refund actions refuse a lost chargeback's money; this is the path
+ * they point to. `.strict()` body of ONE required note (§19); one 404 for a booking that has no lost
+ * chargeback on record (Locked Decision 40's posture).
+ */
+const lostChargebackReconcileBody = z.object({ note: z.string().trim().min(10).max(2000) }).strict();
+router.post("/api/admin/bookings/:bookingId/lost-chargeback/reconcile", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const parsed = lostChargebackReconcileBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Say how this lost chargeback was resolved (note, at least 10 characters); nothing else is accepted.",
+      issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+    });
+  }
+  try {
+    const { bookingId } = req.params;
+    const { reconcileLostChargeback } = await import("../services/lost-chargeback-guard.service");
+    const outcome = await reconcileLostChargeback({ bookingId, actorId: user.id, note: parsed.data.note });
+    if (!outcome.reconciled) {
+      if (outcome.reason === "not_found") {
+        return res.status(404).json({ message: "No lost chargeback on record for this booking" });
+      }
+      return res.status(409).json({ message: outcome.message, reason: outcome.reason });
+    }
+    const auditWarning = outcome.alreadyReconciled
+      ? undefined
+      : await recordAdminAudit({
+          actorId: user.id,
+          actorRole: user.role,
+          action: "lost_chargeback_reconciled",
+          resourceType: "service_booking",
+          resourceId: bookingId,
+          metadata: {
+            note: parsed.data.note,
+            fraction: outcome.fraction,
+            reversedEarnings: outcome.reversedEarnings,
+            skippedPaidOut: outcome.skippedPaidOut,
+            earningsLeftOnHold: outcome.earningsLeftOnHold,
+            reversedRevenueRows: outcome.reversedRevenueRows,
+            ledgerOnly: true,
+          },
+          ipAddress: req.ip ?? null,
+          userAgent: req.get("user-agent") ?? null,
+        });
+    res.json({
+      ...outcome,
+      ...(outcome.skippedPaidOut > 0
+        ? { note: `${outcome.skippedPaidOut} earning(s) were already paid out and were NOT reversed — reconcile those with the seller manually.` }
+        : {}),
+      ...(auditWarning ? { auditWarning } : {}),
+    });
+  } catch (err: any) {
+    console.error("Admin lost chargeback reconcile error:", err);
+    res.status(500).json({ message: "Failed to reconcile the lost chargeback" });
+  }
+});
+
+/**
  * GET /api/admin/webhooks/unprocessed
  * Returns webhook_events rows where processed=false.
  * Covers two cases: events that never arrived (gap vs Stripe API)
@@ -1549,6 +1613,16 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     const { bookingId } = req.params;
     const { reason } = req.body ?? {};
 
+    // PR #1066: a lost chargeback already returned the disputed money. Refuse BEFORE the ledger moves
+    // when this make-whole refund would reach into it — same options the refund below is given.
+    const { checkServiceBookingRefundPreflight, lostChargebackRefusalBody } = await import(
+      "../services/lost-chargeback-guard.service"
+    );
+    const chargebackGuard = await checkServiceBookingRefundPreflight(bookingId, {
+      feeRefundPercent: 100, // fee-literal-ok: 100 = full make-whole refund %, not a fee_bands rate
+    });
+    if (!chargebackGuard.allowed) return res.status(409).json(lostChargebackRefusalBody(chargebackGuard));
+
     // 1+2: reverse the ledger (idempotent atomic flips). Runs before the external refund so a
     // Stripe failure leaves a fully-reversed ledger that a retry simply re-confirms (no-ops).
     const earnings = await storage.reverseEarningsForBooking(bookingId);
@@ -1603,6 +1677,10 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     });
   } catch (err: any) {
     console.error("Admin dispute uphold error:", err);
+    if (err?.name === "LostChargebackRefundBlockedError") {
+      const { lostChargebackRefusalBody } = await import("../services/lost-chargeback-guard.service");
+      return res.status(409).json(lostChargebackRefusalBody(err.result));
+    }
     res.status(500).json({ message: `Failed to uphold dispute: ${err.message}` });
   }
 });
@@ -1661,6 +1739,10 @@ router.post("/api/admin/disputes/:bookingId/refund-rejected-artifact", isAuthent
             message: "This booking records no traveler charge, so there is nothing to refund.",
             reason: outcome.reason,
           });
+        case "lost_chargeback": {
+          const { lostChargebackRefusalBody } = await import("../services/lost-chargeback-guard.service");
+          return res.status(409).json(lostChargebackRefusalBody(outcome.guard!));
+        }
         case "stripe_refund_failed":
           return res.status(502).json({
             message: "Stripe refused the refund; the booking was left disputed and can be retried.",

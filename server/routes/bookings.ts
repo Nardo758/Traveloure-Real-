@@ -658,6 +658,19 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       }
     }
 
+    // PR #1066: a lost chargeback already returned the disputed money. Refuse BEFORE the ledger moves
+    // when this refund would reach into it — same options the refund below is given.
+    {
+      const { checkServiceBookingRefundPreflight, lostChargebackRefusalBody } = await import(
+        '../services/lost-chargeback-guard.service'
+      );
+      const guard = await checkServiceBookingRefundPreflight(bookingId, {
+        ...(amountOverride !== undefined ? { amountOverride } : {}),
+        ...(feeRefundPercent !== undefined ? { feeRefundPercent } : {}),
+      });
+      if (!guard.allowed) return res.status(409).json({ success: false, ...lostChargebackRefusalBody(guard) });
+    }
+
     // Escrow Phase 4 (closes §14 A2): a refund also reverses the linked earnings ledger + the
     // recognised platform revenue, so a refunded booking doesn't leave the provider/expert
     // credited. Both are idempotent no-ops when the booking has no in-escrow earnings, so this
@@ -714,6 +727,10 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     });
   } catch (error: any) {
     console.error('Refund error:', error);
+    if (error?.name === 'LostChargebackRefundBlockedError') {
+      const { lostChargebackRefusalBody } = await import('../services/lost-chargeback-guard.service');
+      return res.status(409).json({ success: false, ...lostChargebackRefusalBody(error.result) });
+    }
     res.status(500).json({
       success: false,
       error: error.message,

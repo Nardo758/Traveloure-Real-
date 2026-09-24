@@ -74,6 +74,7 @@ import { ARTIFACT_REJECTION_REFUND_FROM_STATUSES } from "../utils/booking-from-s
 import { travelerChargeForRow } from "./traveler-charge";
 import { stripePaymentService } from "./stripe-payment.service";
 import { storage } from "../storage";
+import { checkRefundAgainstLostChargebacks, type LostChargebackGuardResult } from "./lost-chargeback-guard.service";
 
 /** The internal reason recorded on the `refunds` row and the fee-ledger reversal for this outcome. */
 export const ARTIFACT_REJECTION_REFUND_REASON = "artifact_rejected_resolved_for_traveler";
@@ -117,9 +118,13 @@ export type ArtifactRejectionRefundResult =
         /** The row records no traveler charge, so there is nothing to refund (§13 — never a $0 refund). */
         | "nothing_charged"
         /** Stripe refused or was unreachable; the claim was reverted and an admin may retry. */
-        | "stripe_refund_failed";
+        | "stripe_refund_failed"
+        /** PR #1066: a lost chargeback already returned this money; nothing was changed. */
+        | "lost_chargeback";
       currentStatus?: string | null;
       detail?: string;
+      message?: string;
+      guard?: Extract<LostChargebackGuardResult, { allowed: false }>;
     };
 
 /**
@@ -183,6 +188,14 @@ export async function refundRejectedArtifact(input: {
     feeSnap && feeSnap.waived !== true ? Math.max(0, Math.round((Number(feeSnap.charged) || 0) * 100)) : 0;
   const amountCents = Math.max(0, Math.round(charged * 100)) + travelerServiceFeeRefundCents;
   if (amountCents <= 0) return { refunded: false, bookingId, reason: "nothing_charged" };
+
+  // ── PR #1066: A LOST CHARGEBACK ALREADY RETURNED THE MONEY ────────────────────────────────────
+  // Refused BEFORE the ledger moves when this refund would reach into money the bank already gave
+  // back. No Stripe call, no ledger change, no claim.
+  const chargebackGuard = await checkRefundAgainstLostChargebacks({ paymentIntentId, requestedCents: amountCents });
+  if (!chargebackGuard.allowed) {
+    return { refunded: false, bookingId, reason: "lost_chargeback", message: chargebackGuard.message, guard: chargebackGuard };
+  }
 
   // ── LEDGER FIRST (the `/uphold` order) ───────────────────────────────────────────────────────
   // Internal and idempotent, so a Stripe failure leaves a fully reversed ledger that a retry simply
