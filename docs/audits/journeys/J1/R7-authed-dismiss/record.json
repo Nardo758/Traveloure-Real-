@@ -1,0 +1,425 @@
+{
+  "name": "R7-authed-dismiss",
+  "auth": true,
+  "branch": "dismiss",
+  "precache": false,
+  "aiAction": "cancel",
+  "user": {
+    "id": "acdbcbb9-151c-45c1-b467-af810822b01a",
+    "email": "j1-R7-authed-dismiss-1790284257919@traveloure.test",
+    "status": 201
+  },
+  "steps": [
+    {
+      "step": 1,
+      "label": "landing loaded",
+      "note": "",
+      "url": "/",
+      "screenshot": "R7-authed-dismiss/step-1.png",
+      "network": [
+        {
+          "t": 1790284258584,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790284258639,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790284258667,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790284258685,
+          "method": "GET",
+          "url": "/api/landing/moments",
+          "status": 200
+        },
+        {
+          "t": 1790284258695,
+          "method": "GET",
+          "url": "/api/travelpulse/cities",
+          "status": 200
+        },
+        {
+          "t": 1790284258697,
+          "method": "GET",
+          "url": "/api/landing/hero",
+          "status": 200
+        },
+        {
+          "t": 1790284258711,
+          "method": "GET",
+          "url": "/api/platform/stats",
+          "status": 200
+        },
+        {
+          "t": 1790284258738,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790284258738,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790284258743,
+          "method": "GET",
+          "url": "/api/trip-context",
+          "status": 200
+        },
+        {
+          "t": 1790284258743,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790284258695,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"0ac1c31b-2db9-4edf-8e48-d1ed21989f7a\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        },
+        {
+          "t": 1790284260766,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"11908bb6-cb85-4fe2-b0b9-5ad4e9aa265c\"}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 2,
+      "label": "clicked 'Plan my trip' — modal open",
+      "note": "",
+      "url": "/",
+      "screenshot": "R7-authed-dismiss/step-2.png",
+      "network": [
+        {
+          "t": 1790284261123,
+          "method": "GET",
+          "url": "/api/experience-types",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 3,
+      "label": "modal step 1 filled",
+      "note": "",
+      "url": "/",
+      "screenshot": "R7-authed-dismiss/step-3.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 4,
+      "label": "modal step 2 filled",
+      "note": "",
+      "url": "/",
+      "screenshot": "R7-authed-dismiss/step-4.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 5,
+      "label": "modal step 3 filled",
+      "note": "",
+      "url": "/",
+      "screenshot": "R7-authed-dismiss/step-5.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 6,
+      "label": "finish CTAs visible",
+      "note": "",
+      "url": "/",
+      "screenshot": "R7-authed-dismiss/step-6.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 7,
+      "label": "pressed Escape on the plan modal (dismissal)",
+      "note": "",
+      "url": "/",
+      "screenshot": "R7-authed-dismiss/step-7.png",
+      "network": [
+        {
+          "t": 1790284268712,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"proposal\",\"kind\":\"impression\",\"position\":1,\"sessionId\":\"11908bb6-cb85-4fe2-b0b9-5ad4e9aa265c\"}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 8,
+      "label": "dismissed any open dialog (modal closed)",
+      "note": "",
+      "url": "/",
+      "screenshot": "R7-authed-dismiss/step-8.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 9,
+      "label": "on Discover (/services)",
+      "note": "",
+      "url": "/services",
+      "screenshot": "R7-authed-dismiss/step-9.png",
+      "network": [
+        {
+          "t": 1790284273815,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790284273824,
+          "method": "GET",
+          "url": "/api/service-categories",
+          "status": 200
+        },
+        {
+          "t": 1790284273826,
+          "method": "GET",
+          "url": "/api/ready-made",
+          "status": 200
+        },
+        {
+          "t": 1790284273839,
+          "method": "GET",
+          "url": "/api/discover?sortBy=rating&limit=12&offset=0",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 10,
+      "label": "clicked first 'Add to plan'",
+      "note": "",
+      "url": "/services",
+      "screenshot": "R7-authed-dismiss/step-10.png",
+      "network": [
+        {
+          "t": 1790284277597,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790284277582,
+          "method": "POST",
+          "url": "/api/cart",
+          "status": 201,
+          "body": "{\"serviceId\":\"00000000-0000-4000-c000-0000636e6367\",\"quantity\":1}",
+          "response": "{\"id\":\"35113954-8183-4dcd-b3e9-61d91fc7363b\",\"userId\":\"acdbcbb9-151c-45c1-b467-af810822b01a\",\"guestSessionId\":null,\"serviceId\":\"00000000-0000-4000-c000-0000636e6367\",\"customVenueId\":null,\"contentType\":null,\"contentId\":null,\"contentMeta\":{},\"experienceSlug\":null,\"quantity\":1,\"tripId\":null,\"scheduledDate\":null,\"slotId\":null,\"itineraryItemId\":null,\"notes\":null,\"pickupLocation\":null,\"partySize\":null,\"createdAt\":\"2026-09-24T21:11:17.575Z\"}"
+        }
+      ],
+      "dbDiff": {
+        "cart_items": {
+          "added": [
+            {
+              "id": "35113954-8183-4dcd-b3e9-61d91fc7363b",
+              "user_id": "acdbcbb9-151c-45c1-b467-af810822b01a",
+              "guest_session_id": null,
+              "service_id": "00000000-0000-4000-c000-0000636e6367",
+              "trip_id": null,
+              "content_type": null,
+              "quantity": 1
+            }
+          ],
+          "removed": [],
+          "changed": []
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 11,
+      "label": "My Plans (/my-trips) via SPA navigation",
+      "note": "trip-card count in DOM: 0",
+      "url": "/my-trips",
+      "screenshot": "R7-authed-dismiss/step-11.png",
+      "network": [
+        {
+          "t": 1790284281425,
+          "method": "GET",
+          "url": "/api/trips",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 12,
+      "label": "My Plans after FULL reload",
+      "note": "trip-card count in DOM: 0",
+      "url": "/my-trips",
+      "screenshot": "R7-authed-dismiss/step-12.png",
+      "network": [
+        {
+          "t": 1790284287630,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790284287630,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790284287690,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790284287697,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790284287707,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790284287707,
+          "method": "GET",
+          "url": "/api/trips",
+          "status": 200
+        },
+        {
+          "t": 1790284287653,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"0ac1c31b-2db9-4edf-8e48-d1ed21989f7a\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "0ac1c31b-2db9-4edf-8e48-d1ed21989f7a",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID"
+  ]
+}

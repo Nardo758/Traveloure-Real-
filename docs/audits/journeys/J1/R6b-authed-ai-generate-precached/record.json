@@ -1,0 +1,628 @@
+{
+  "name": "R6b-authed-ai-generate-precached",
+  "auth": true,
+  "branch": "ai",
+  "precache": true,
+  "aiAction": "generate",
+  "user": {
+    "id": "3409c837-f1c3-4afa-8a00-6aab86ba72f5",
+    "email": "j1-R6b-authed-ai-generate-precached-1790284150900@traveloure.test",
+    "status": 201
+  },
+  "steps": [
+    {
+      "step": 1,
+      "label": "landing loaded",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-1.png",
+      "network": [
+        {
+          "t": 1790284151516,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790284151592,
+          "method": "GET",
+          "url": "/api/travelpulse/cities",
+          "status": 200
+        },
+        {
+          "t": 1790284151595,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790284151596,
+          "method": "GET",
+          "url": "/api/landing/hero",
+          "status": 200
+        },
+        {
+          "t": 1790284151596,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790284151598,
+          "method": "GET",
+          "url": "/api/landing/moments",
+          "status": 200
+        },
+        {
+          "t": 1790284151598,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790284151600,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790284151600,
+          "method": "GET",
+          "url": "/api/trip-context",
+          "status": 200
+        },
+        {
+          "t": 1790284151600,
+          "method": "GET",
+          "url": "/api/platform/stats",
+          "status": 200
+        },
+        {
+          "t": 1790284151597,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"b4951c92-4d32-42f6-a6a9-a58773ee5670\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        },
+        {
+          "t": 1790284153659,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"7c289401-1d32-4cb2-b2ab-bee68d4ea86f\"}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 2,
+      "label": "pre-visit My Plans (primes the [\"/api/trips\"] cache)",
+      "note": "",
+      "url": "/my-trips",
+      "screenshot": "R6b-authed-ai-generate-precached/step-2.png",
+      "network": [
+        {
+          "t": 1790284154040,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790284154040,
+          "method": "GET",
+          "url": "/api/trips",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 3,
+      "label": "back to landing (SPA)",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-3.png",
+      "network": [
+        {
+          "t": 1790284159793,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"7c289401-1d32-4cb2-b2ab-bee68d4ea86f\"}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 4,
+      "label": "clicked 'Plan my trip' — modal open",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-4.png",
+      "network": [
+        {
+          "t": 1790284161730,
+          "method": "GET",
+          "url": "/api/experience-types",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 5,
+      "label": "modal step 1 filled",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-5.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 6,
+      "label": "modal step 2 filled",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-6.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 7,
+      "label": "modal step 3 filled",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-7.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 8,
+      "label": "finish CTAs visible",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-8.png",
+      "network": [
+        {
+          "t": 1790284167777,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"proposal\",\"kind\":\"impression\",\"position\":1,\"sessionId\":\"7c289401-1d32-4cb2-b2ab-bee68d4ea86f\"}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 9,
+      "label": "clicked finish 'ai'",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-9.png",
+      "network": [
+        {
+          "t": 1790284168651,
+          "method": "GET",
+          "url": "/api/cities/neighborhoods?city=Kyoto",
+          "status": 200
+        },
+        {
+          "t": 1790284168651,
+          "method": "GET",
+          "url": "/api/cities/gems?city=Kyoto&limit=5",
+          "status": 200
+        },
+        {
+          "t": 1790284170132,
+          "method": "PUT",
+          "url": "/api/trip-context",
+          "status": 200,
+          "body": "{\"context\":{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}}",
+          "response": "{\"ok\":true}"
+        }
+      ],
+      "dbDiff": {
+        "trip_contexts": {
+          "added": [
+            {
+              "id": "24b7e900-f6e2-4d29-be35-d62dabebb1ab",
+              "user_id": "3409c837-f1c3-4afa-8a00-6aab86ba72f5",
+              "trip_id": null,
+              "context": {
+                "stops": [
+                  {
+                    "name": "Kyoto, Japan"
+                  }
+                ],
+                "endDate": "2026-11-08",
+                "eventType": "vacation",
+                "startDate": "2026-11-03",
+                "destination": "Kyoto, Japan",
+                "pendingEvents": [],
+                "experienceSlug": "travel",
+                "experienceType": "Travel",
+                "pendingEventTitles": []
+              }
+            }
+          ],
+          "removed": [],
+          "changed": []
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:3409c837-f1c3-4afa-8a00-6aab86ba72f5": "{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}"
+        }
+      }
+    },
+    {
+      "step": 10,
+      "label": "AI modal → clicked 'Generate Itineraries'",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-10.png",
+      "network": [
+        {
+          "t": 1790284173374,
+          "method": "POST",
+          "url": "/api/ai/generate-itinerary",
+          "status": 503,
+          "body": "{\"destination\":\"Kyoto, Japan\",\"dates\":{\"start\":\"2026-11-03\",\"end\":\"2026-11-08\"},\"travelers\":2,\"eventType\":\"travel\",\"pacePreference\":\"moderate\",\"budget\":\"moderate\"}",
+          "response": "{\"message\":\"Our AI is experiencing high demand. Please try again in a moment.\",\"retryable\":true,\"retryAfterSeconds\":5}"
+        },
+        {
+          "t": 1790284175778,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"golf\",\"kind\":\"impression\",\"position\":2,\"sessionId\":\"7c289401-1d32-4cb2-b2ab-bee68d4ea86f\"}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:3409c837-f1c3-4afa-8a00-6aab86ba72f5": "{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}"
+        }
+      }
+    },
+    {
+      "step": 11,
+      "label": "AI modal → clicked 'Cancel'",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-11.png",
+      "network": [
+        {
+          "t": 1790284183809,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"girls_trip\",\"kind\":\"impression\",\"position\":3,\"sessionId\":\"7c289401-1d32-4cb2-b2ab-bee68d4ea86f\"}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:3409c837-f1c3-4afa-8a00-6aab86ba72f5": "{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}"
+        }
+      }
+    },
+    {
+      "step": 12,
+      "label": "dismissed any open dialog (modal closed)",
+      "note": "",
+      "url": "/",
+      "screenshot": "R6b-authed-ai-generate-precached/step-12.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:3409c837-f1c3-4afa-8a00-6aab86ba72f5": "{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}"
+        }
+      }
+    },
+    {
+      "step": 13,
+      "label": "on Discover (/services)",
+      "note": "",
+      "url": "/services?location=Kyoto%2C+Japan",
+      "screenshot": "R6b-authed-ai-generate-precached/step-13.png",
+      "network": [
+        {
+          "t": 1790284186449,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790284186452,
+          "method": "GET",
+          "url": "/api/content/discover?destination=Kyoto%2C+Japan&surface=travelpulse-discover",
+          "status": 200
+        },
+        {
+          "t": 1790284186456,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790284186484,
+          "method": "GET",
+          "url": "/api/catalog/activities-gyg?destination=Kyoto%2C+Japan&limit=8",
+          "status": 200
+        },
+        {
+          "t": 1790284186484,
+          "method": "GET",
+          "url": "/api/service-categories",
+          "status": 200
+        },
+        {
+          "t": 1790284186484,
+          "method": "GET",
+          "url": "/api/ready-made",
+          "status": 200
+        },
+        {
+          "t": 1790284186485,
+          "method": "GET",
+          "url": "/api/discover?location=Kyoto%2C+Japan&sortBy=rating&limit=12&offset=0",
+          "status": 200
+        },
+        {
+          "t": 1790284186486,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790284186485,
+          "method": "POST",
+          "url": "/api/analytics/search-event",
+          "status": 202,
+          "body": "",
+          "response": "{\"received\":true}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:3409c837-f1c3-4afa-8a00-6aab86ba72f5": "{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}"
+        }
+      }
+    },
+    {
+      "step": 14,
+      "label": "clicked first 'Add to plan'",
+      "note": "",
+      "url": "/services?location=Kyoto%2C+Japan",
+      "screenshot": "R6b-authed-ai-generate-precached/step-14.png",
+      "network": [
+        {
+          "t": 1790284190223,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790284190202,
+          "method": "POST",
+          "url": "/api/cart",
+          "status": 201,
+          "body": "{\"serviceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"quantity\":1}",
+          "response": "{\"id\":\"81a3b5f5-b7ef-4965-90bc-f6e55a933f52\",\"userId\":\"3409c837-f1c3-4afa-8a00-6aab86ba72f5\",\"guestSessionId\":null,\"serviceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"customVenueId\":null,\"contentType\":null,\"contentId\":null,\"contentMeta\":{},\"experienceSlug\":null,\"quantity\":1,\"tripId\":null,\"scheduledDate\":null,\"slotId\":null,\"itineraryItemId\":null,\"notes\":null,\"pickupLocation\":null,\"partySize\":null,\"createdAt\":\"2026-09-24T21:09:50.196Z\"}"
+        }
+      ],
+      "dbDiff": {
+        "cart_items": {
+          "added": [
+            {
+              "id": "81a3b5f5-b7ef-4965-90bc-f6e55a933f52",
+              "user_id": "3409c837-f1c3-4afa-8a00-6aab86ba72f5",
+              "guest_session_id": null,
+              "service_id": "0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86",
+              "trip_id": null,
+              "content_type": null,
+              "quantity": 1
+            }
+          ],
+          "removed": [],
+          "changed": []
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:3409c837-f1c3-4afa-8a00-6aab86ba72f5": "{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}"
+        }
+      }
+    },
+    {
+      "step": 15,
+      "label": "My Plans (/my-trips) via SPA navigation",
+      "note": "trip-card count in DOM: 0",
+      "url": "/my-trips",
+      "screenshot": "R6b-authed-ai-generate-precached/step-15.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:3409c837-f1c3-4afa-8a00-6aab86ba72f5": "{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}"
+        }
+      }
+    },
+    {
+      "step": 16,
+      "label": "My Plans after FULL reload",
+      "note": "trip-card count in DOM: 0",
+      "url": "/my-trips",
+      "screenshot": "R6b-authed-ai-generate-precached/step-16.png",
+      "network": [
+        {
+          "t": 1790284200191,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790284200207,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790284200251,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790284200251,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790284200257,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790284200257,
+          "method": "GET",
+          "url": "/api/trips",
+          "status": 200
+        },
+        {
+          "t": 1790284200213,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"b4951c92-4d32-42f6-a6a9-a58773ee5670\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "b4951c92-4d32-42f6-a6a9-a58773ee5670",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:3409c837-f1c3-4afa-8a00-6aab86ba72f5": "{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}"
+        }
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Error generating itinerary: Error: Our AI is experiencing high demand. Please try again in a moment.\n    at onClick (http://127.0.0.1:5000/assets/PlanningContext-_I0kfnK7.js:2:23713)",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID"
+  ]
+}
