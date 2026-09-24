@@ -15,9 +15,16 @@
  * What this cannot tell (§13): WHICH booking a partial dashboard refund was meant for, when one
  * PaymentIntent paid several. So every booking on that PaymentIntent is stamped, and none is
  * guessed. The stamp names the refund ids and the cents Stripe reported, never an amount of ours.
+ *
+ * AN ADMIN MAY CLEAR A STAMP (decision-maker, Sep 24, 2026 — a goodwill partial refund whose seller
+ * should still be paid). The clear moves the stamp into the append-only history
+ * `booking_details.outOfBandRefundCleared` with who, when and a required note. A refund id in that
+ * history is never stamped again on the same booking, so a webhook redelivery cannot undo a clear;
+ * a NEW refund on the same payment still is.
  */
 
 export const OUT_OF_BAND_REFUND_KEY = "outOfBandRefund" as const;
+export const OUT_OF_BAND_REFUND_CLEARED_KEY = "outOfBandRefundCleared" as const;
 
 export interface StripeRefundLike {
   id: string;
@@ -52,4 +59,17 @@ export function outOfBandRefundOf(bookingDetails: unknown): OutOfBandRefundMarke
   const marker = (bookingDetails as Record<string, unknown>)[OUT_OF_BAND_REFUND_KEY];
   if (!marker || typeof marker !== "object") return null;
   return marker as OutOfBandRefundMarker;
+}
+
+/** Refund ids an admin already cleared on this booking. Never throws on a malformed row. */
+export function clearedOutOfBandRefundIds(bookingDetails: unknown): Set<string> {
+  const ids = new Set<string>();
+  if (!bookingDetails || typeof bookingDetails !== "object") return ids;
+  const history = (bookingDetails as Record<string, unknown>)[OUT_OF_BAND_REFUND_CLEARED_KEY];
+  if (!Array.isArray(history)) return ids;
+  for (const entry of history) {
+    const refundIds = entry && typeof entry === "object" ? (entry as Record<string, unknown>).refundIds : null;
+    if (Array.isArray(refundIds)) for (const id of refundIds) if (typeof id === "string") ids.add(id);
+  }
+  return ids;
 }

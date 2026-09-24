@@ -9,6 +9,11 @@
  *       while an unstamped booking on another PaymentIntent completes and mints as before.
  *   O4  Earnings minted BEFORE the refund was seen are put on hold (`dispute_state='open'`), and the
  *       reconciliation caller's direct mint refuses a stamped completed booking.
+ *   O5  An admin clear (decision-maker, Sep 24, 2026) moves the stamp into the history with the note,
+ *       releases the hold, lets the booking complete, answers a second clear `not_found`, and a
+ *       redelivery does NOT re-stamp the cleared refund — while a NEW refund on the payment does.
+ *   O6  On a `disputed` booking the clear keeps the hold: it may be the traveler's own dispute's.
+ *   O7  The admin route takes a `.strict()` note only.
  *
  * NO FEE LITERALS (§8): fixture amounts are asserted only for presence/absence of a mint.
  *
@@ -23,6 +28,9 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { stripePaymentService } from "../services/stripe-payment.service";
+import { clearOutOfBandRefund } from "../services/out-of-band-refund.service";
+import fs from "node:fs";
+import path from "node:path";
 import {
   isPlatformIssuedRefund,
   outOfBandRefundOf,
@@ -38,6 +46,8 @@ const ids = {
 const PI_SHARED = `pi_oob_${RUN}_shared`;
 const PI_CLEAN = `pi_oob_${RUN}_clean`;
 const PI_LATE = `pi_oob_${RUN}_late`;
+const PI_CLEAR = `pi_oob_${RUN}_clear`;
+const PI_DISPUTED = `pi_oob_${RUN}_disputed`;
 const bookingIds: string[] = [];
 
 async function seedBooking(status: string, paymentIntentId: string): Promise<string> {
@@ -110,7 +120,7 @@ after(async () => {
     await db.execute(sql`DELETE FROM content_registry WHERE content_id = ${id}`).catch(() => {});
     await db.execute(sql`DELETE FROM service_bookings WHERE id = ${id}`).catch(() => {});
   }
-  for (const pi of [PI_SHARED, PI_CLEAN, PI_LATE]) {
+  for (const pi of [PI_SHARED, PI_CLEAN, PI_LATE, PI_CLEAR, PI_DISPUTED]) {
     await db.execute(sql`DELETE FROM refunds WHERE stripe_payment_intent_id = ${pi}`).catch(() => {});
     await db.execute(sql`DELETE FROM admin_notifications WHERE metadata->>'paymentIntentId' = ${pi}`).catch(() => {});
   }
@@ -211,4 +221,87 @@ test("O4: earnings minted before the refund was seen are held, and the reconcili
   const current = await storage.getServiceBooking(late);
   assert.equal(await storage.mintCompletionEarningsForBooking(current!), false);
   assert.equal(await minted(late), 0);
+});
+
+async function earningStates(id: string): Promise<string[]> {
+  const r = await db.execute(sql`SELECT dispute_state FROM provider_earnings WHERE source_id = ${id}`);
+  return (r.rows as any[]).map((e) => e.dispute_state);
+}
+
+test("O5: an admin clear releases the hold and survives a redelivery; a new refund still stamps", async () => {
+  // Minted first, then refunded in the dashboard: the earning is held.
+  const minted1 = await seedBooking("confirmed", PI_CLEAR);
+  await storage.updateServiceBookingStatus(minted1, "completed", undefined, ["confirmed"]);
+  // A second booking on the same payment, still confirmed.
+  const pending1 = await seedBooking("confirmed", PI_CLEAR);
+  const event = chargeRefundedEvent(PI_CLEAR, [{ id: `re_${RUN}_goodwill`, amount: 500 }]);
+  await stripePaymentService.handleWebhook(event);
+  assert.deepEqual(await earningStates(minted1), ["open"]);
+
+  const note = "Goodwill discount for a late start; seller delivered in full.";
+  const out = await clearOutOfBandRefund({ bookingId: minted1, actorId: "admin-oob-test", note });
+  assert.equal(out.cleared, true);
+  if (!out.cleared) return;
+  assert.deepEqual(out.refundIds, [`re_${RUN}_goodwill`]);
+  assert.equal(out.holdKeptForDispute, false);
+  assert.ok(out.releasedEarnings >= 1);
+  assert.deepEqual(await earningStates(minted1), ["none"], "the hold is released");
+
+  const details = (await row(minted1)).booking_details;
+  assert.equal(outOfBandRefundOf(details), null, "the stamp is gone");
+  const history = details.outOfBandRefundCleared;
+  assert.equal(history.length, 1);
+  assert.equal(history[0].note, note);
+  assert.equal(history[0].clearedBy, "admin-oob-test");
+  assert.deepEqual(history[0].refundIds, [`re_${RUN}_goodwill`], "the record of what was cleared is kept");
+
+  assert.deepEqual(await clearOutOfBandRefund({ bookingId: minted1, actorId: "admin-oob-test", note }), {
+    cleared: false,
+    reason: "not_found",
+  });
+
+  // Clearing the confirmed one lets it complete and mint as normal.
+  await clearOutOfBandRefund({ bookingId: pending1, actorId: "admin-oob-test", note });
+  const done = await storage.updateServiceBookingStatus(pending1, "completed", undefined, ["confirmed"]);
+  assert.equal(done?.status, "completed");
+  assert.ok((await minted(pending1)) > 0);
+
+  // A redelivery names the same refund: nothing is re-stamped, no second alert.
+  const alertsBefore = (await alerts(PI_CLEAR)).length;
+  await stripePaymentService.handleWebhook(event);
+  assert.equal(outOfBandRefundOf((await row(minted1)).booking_details), null);
+  assert.equal(outOfBandRefundOf((await row(pending1)).booking_details), null);
+  assert.equal((await alerts(PI_CLEAR)).length, alertsBefore);
+
+  // A NEW refund on the same payment is a new fact: it stamps, naming only the new refund.
+  await stripePaymentService.handleWebhook(
+    chargeRefundedEvent(PI_CLEAR, [
+      { id: `re_${RUN}_goodwill`, amount: 500 },
+      { id: `re_${RUN}_second`, amount: 700 },
+    ]),
+  );
+  const again = outOfBandRefundOf((await row(minted1)).booking_details)!;
+  assert.deepEqual(again.refundIds, [`re_${RUN}_second`]);
+  assert.equal(again.amountCents, 700);
+  assert.deepEqual(await earningStates(minted1), ["open"], "held again");
+});
+
+test("O6: on a disputed booking the clear keeps the hold", async () => {
+  const id = await seedBooking("confirmed", PI_DISPUTED);
+  await storage.updateServiceBookingStatus(id, "completed", undefined, ["confirmed"]);
+  await stripePaymentService.handleWebhook(chargeRefundedEvent(PI_DISPUTED, [{ id: `re_${RUN}_disp`, amount: 900 }]));
+  await db.execute(sql`UPDATE service_bookings SET status = 'disputed' WHERE id = ${id}`);
+  const out = await clearOutOfBandRefund({ bookingId: id, actorId: "admin-oob-test", note: "Handled with the dispute." });
+  assert.equal(out.cleared, true);
+  if (!out.cleared) return;
+  assert.equal(out.holdKeptForDispute, true);
+  assert.equal(out.releasedEarnings, 0);
+  assert.deepEqual(await earningStates(id), ["open"], "the dispute decides the hold");
+});
+
+test("O7: the admin clear route takes a strict, required note and nothing else", () => {
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, "../routes/admin.routes.ts"), "utf8");
+  assert.match(src, /const outOfBandRefundClearBody = z\.object\(\{ note: z\.string\(\)\.trim\(\)\.min\(10\)\.max\(2000\) \}\)\.strict\(\);/);
+  assert.match(src, /router\.post\("\/api\/admin\/bookings\/:bookingId\/out-of-band-refund\/clear"/);
+  assert.match(src, /action: "out_of_band_refund_cleared"/);
 });

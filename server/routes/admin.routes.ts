@@ -616,6 +616,71 @@ router.get("/api/admin/bookings/reconciliation-exceptions", isAuthenticated, asy
 });
 
 /**
+ * #1288 (ledger `2026-09-24-out-of-band-refund-blocks-mint`): bookings stamped by a refund we did
+ * not issue (a Stripe dashboard refund). They cannot complete or mint earnings until resolved:
+ * refund or cancel the booking through its normal rail, or — for a goodwill partial refund whose
+ * seller should still be paid — clear the stamp below with a note (decision-maker, Sep 24, 2026).
+ */
+router.get("/api/admin/bookings/out-of-band-refunds", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { listOutOfBandRefundBookings } = await import("../services/out-of-band-refund.service");
+    const bookings = await listOutOfBandRefundBookings();
+    res.json({ bookings, count: bookings.length });
+  } catch (err: any) {
+    console.error("Admin out-of-band refunds list error:", err);
+    res.status(500).json({ message: "Failed to load bookings refunded outside the platform" });
+  }
+});
+
+// The body is a `.strict()` pick of ONE required note (§19): it is recorded on the booking's clear
+// history and in the audit log, and nothing money-related is read from it.
+const outOfBandRefundClearBody = z.object({ note: z.string().trim().min(10).max(2000) }).strict();
+router.post("/api/admin/bookings/:bookingId/out-of-band-refund/clear", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const parsed = outOfBandRefundClearBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Say why the seller should still be paid (note, at least 10 characters); nothing else is accepted.",
+      issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+    });
+  }
+  try {
+    const { bookingId } = req.params;
+    const { clearOutOfBandRefund } = await import("../services/out-of-band-refund.service");
+    const outcome = await clearOutOfBandRefund({ bookingId, actorId: user.id, note: parsed.data.note });
+    if (!outcome.cleared) {
+      return res.status(404).json({ message: "No refund-outside-the-platform mark on this booking" });
+    }
+    const auditWarning = await recordAdminAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "out_of_band_refund_cleared",
+      resourceType: "service_booking",
+      resourceId: bookingId,
+      metadata: {
+        note: parsed.data.note,
+        refundIds: outcome.refundIds,
+        releasedEarnings: outcome.releasedEarnings,
+        holdKeptForDispute: outcome.holdKeptForDispute,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+    res.json({ ...outcome, ...(auditWarning ? { auditWarning } : {}) });
+  } catch (err: any) {
+    console.error("Admin out-of-band refund clear error:", err);
+    res.status(500).json({ message: "Failed to clear the mark" });
+  }
+});
+
+/**
  * GET /api/admin/webhooks/unprocessed
  * Returns webhook_events rows where processed=false.
  * Covers two cases: events that never arrived (gap vs Stripe API)
