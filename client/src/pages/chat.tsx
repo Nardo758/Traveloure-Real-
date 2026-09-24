@@ -795,12 +795,10 @@ export default function Chat() {
 
     // For demo experts (numeric IDs), use HTTP fallback which doesn't enforce FK
     // WebSocket real-time only works with actual platform users
-    if (isConnected && recipientId.length > 10) {
-      // Real user ID (UUID format), try WebSocket
-      const success = wsSendMessage(recipientId, currentMessage);
-      if (success) {
-        setMessage("");
-      }
+    // Real user id (UUID format): try the socket first. A socket that is not open right now
+    // returns false, and the message then goes over HTTP instead of being dropped silently.
+    if (isConnected && recipientId.length > 10 && wsSendMessage(recipientId, currentMessage)) {
+      setMessage("");
     } else {
       // Demo mode or WebSocket failed - use HTTP mutation
       sendMessageMutation.mutate(

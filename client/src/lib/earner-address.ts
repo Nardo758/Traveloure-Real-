@@ -174,6 +174,38 @@ export function earnerProfilePath(row: { handle?: string | null; id?: string | n
 }
 
 /**
+ * What the storefront page's "message" buttons address, given what the page holds.
+ *
+ * The storefront renders two ways: `/s/:handle` for an earner with a claimed handle, and the
+ * id routes `/experts/:id` / `/local-experts/:id` for an EXPERT who has claimed none (the by-id
+ * loader waives the inventory gate for exactly that case, so a zero-listing expert still has a
+ * page). A handle is the address wherever one exists (LD 40). On the id route there is no handle
+ * to send, so the page falls back to the SAME deprecated `?expertId=` rail every expert card uses
+ * for a handle-less row — the id it sends is the one already in the page's own URL, so nothing new
+ * is published. Before this, the id route sent an empty handle, `useAskExpert` resolved no address
+ * and dropped the traveler on the experts directory instead of a thread.
+ *
+ * `returnTo` is where sign-in brings the traveler back: the canonical `/s/:handle` when there is a
+ * handle, else the id route they are on — never `/s/` with nothing after it.
+ */
+export function storefrontContactInput(page: {
+  earnerHandle?: string | null;
+  urlHandle?: string | null;
+  profileId?: string | null;
+  profilePath?: string | null;
+}): { handle?: string; expertId?: string; returnTo: string | null } | null {
+  const handle = present(page.earnerHandle ?? null) ?? present(page.urlHandle ?? null);
+  if (handle) {
+    const normalized = normalizeHandle(handle.replace(/^@/, ""));
+    return { handle: normalized, returnTo: `/s/${normalized}` };
+  }
+  // LD 40 lane 2: still id-addressed — a handle-less expert's only public page is the id route.
+  const profileId = present(page.profileId ?? null);
+  if (profileId) return { expertId: profileId, returnTo: present(page.profilePath ?? null) };
+  return null;
+}
+
+/**
  * Which thread a `/chat` URL names.
  *
  * CANONICAL: `?conversation=<opaque id>` (Locked Decision 40, lane 3).

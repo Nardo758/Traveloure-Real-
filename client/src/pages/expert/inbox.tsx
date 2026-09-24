@@ -71,6 +71,7 @@ import { useAuth } from "@/hooks/use-auth";
 // control and read-out. `/api/expert/bookings` carries the SERVER's own `completionDeclaration`,
 // so the traveler's review window is never counted out on this page.
 import { SellerCompletionPanel } from "@/components/bookings/SellerCompletionPanel";
+import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
 import { QaSessionPanel } from "@/components/live/QaSessionPanel";
 
 // ─── Shared shapes ──────────────────────────────────────────────────────────
@@ -1261,6 +1262,14 @@ function HistorySection() {
                             invalidateKeys={[["/api/expert/bookings"]]}
                           />
                         </div>
+                        {/* LD 48/50 (ledger `2026-09-17-surfaces-quotes-settlement`): a purchased
+                            BUNDLE's parts, with the seller's "will not be delivered" calling the
+                            EXISTING `/api/expert/bookings/:id/component-failed` rail. The panel
+                            draws nothing for a booking with no component rows, so no client-side
+                            "is this a bundle?" guess is made here. It lived only on the retired
+                            /expert/bookings page, whose route had long since redirected here, so
+                            no expert could reach it (the provider Inbox has always mounted it). */}
+                        <BundleComponentsPanel bookingId={booking.id} audience="seller" sellerRail="expert" />
                         {/* LD 54: a Q&A Session's Start / countdown / chat. Draws nothing unless the
                             server says this booking is one. */}
                         <QaSessionPanel bookingId={booking.id} />
