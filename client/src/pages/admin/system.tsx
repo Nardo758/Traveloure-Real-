@@ -24,6 +24,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { deliveryDisplay } from "@/lib/email-delivery-status";
 
 interface PlatformSettingRow {
   setting_key: string;
@@ -48,6 +49,10 @@ interface TestEmailResult {
   error?: string;
 }
 
+/** #1426: poll Resend's own record this many times, this far apart, before giving up. */
+const DELIVERY_POLL_ATTEMPTS = 6;
+const DELIVERY_POLL_INTERVAL_MS = 3_000;
+
 export default function AdminSystem() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -64,6 +69,37 @@ export default function AdminSystem() {
 
   const [testEmailTo, setTestEmailTo] = React.useState("");
   const [testEmailResult, setTestEmailResult] = React.useState<TestEmailResult | null>(null);
+  // #1426: undefined = not checked yet; null = Resend reported no event; else its `last_event`.
+  const [deliveryEvent, setDeliveryEvent] = React.useState<string | null | undefined>(undefined);
+  const [deliveryCheckError, setDeliveryCheckError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setDeliveryEvent(undefined);
+    setDeliveryCheckError(null);
+    if (!testEmailResult?.ok || !testEmailResult.id) return;
+    let cancelled = false;
+    let attempt = 0;
+    const check = async () => {
+      attempt += 1;
+      try {
+        const res = await fetch(`/api/admin/system/test-email/${encodeURIComponent(testEmailResult.id!)}`, { credentials: "include" });
+        const body = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (!res.ok || !body?.ok) {
+          setDeliveryCheckError(body?.error ?? "Could not read the delivery status");
+          return;
+        }
+        setDeliveryEvent(body.lastEvent ?? null);
+        if (deliveryDisplay(body.lastEvent).terminal) return;
+      } catch {
+        if (!cancelled) setDeliveryCheckError("Could not read the delivery status");
+        return;
+      }
+      if (attempt < DELIVERY_POLL_ATTEMPTS && !cancelled) setTimeout(check, DELIVERY_POLL_INTERVAL_MS);
+    };
+    const t = setTimeout(check, DELIVERY_POLL_INTERVAL_MS);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [testEmailResult]);
+  const delivery = deliveryDisplay(deliveryEvent);
   const SEND_TIMEOUT_MS = 15_000;
 
   const sendTestEmail = useMutation({
@@ -303,25 +339,34 @@ export default function AdminSystem() {
                 {testEmailResult && (
                   <div
                     className={`mt-3 flex items-start gap-2 rounded-md p-3 text-sm ${
-                      testEmailResult.ok
-                        ? "bg-green-50 border border-green-200 text-green-800"
-                        : "bg-red-50 border border-red-200 text-red-800"
+                      !testEmailResult.ok || delivery.tone === "error"
+                        ? "bg-red-50 border border-red-200 text-red-800"
+                        : delivery.tone === "success"
+                          ? "bg-green-50 border border-green-200 text-green-800"
+                          : "bg-amber-50 border border-amber-200 text-amber-900"
                     }`}
                     data-testid="test-email-result"
+                    data-delivery={testEmailResult.ok ? delivery.tone : "error"}
                   >
-                    {testEmailResult.ok ? (
-                      <CheckCircle className="w-4 h-4 mt-0.5 shrink-0 text-green-600" />
+                    {testEmailResult.ok && delivery.tone !== "error" ? (
+                      <CheckCircle className={`w-4 h-4 mt-0.5 shrink-0 ${delivery.tone === "success" ? "text-green-600" : "text-amber-600"}`} />
                     ) : (
                       <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" />
                     )}
                     <div>
                       {testEmailResult.ok ? (
                         <>
-                          <p className="font-medium">Delivered successfully</p>
+                          {/* #1426: acceptance is not delivery — the title follows Resend's own record. */}
+                          <p className="font-medium" data-testid="text-test-email-delivery">{delivery.title}</p>
                           <p className="text-xs mt-0.5 opacity-80">
                             Sent to {testEmailResult.to}
                             {testEmailResult.id ? ` · Resend ID: ${testEmailResult.id}` : ""}
                           </p>
+                          {deliveryCheckError && (
+                            <p className="text-xs mt-0.5 opacity-80" data-testid="text-test-email-delivery-error">
+                              Delivery status unavailable: {deliveryCheckError}
+                            </p>
+                          )}
                         </>
                       ) : (
                         <>

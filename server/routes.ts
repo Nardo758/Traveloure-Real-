@@ -338,6 +338,7 @@ import { authorizeTripLogistics } from "./utils/trip-logistics-auth";
 // checked ONLY on the advisor/assigned-expert path, never for the owner or an authored-build author.
 import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./utils/plan-approval";
 import { sanitizeInput } from "./utils/sanitize";
+import { locationQueryMatches } from "@shared/location-match";
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
@@ -2934,10 +2935,32 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         },
       ];
 
+      // #924: a resubmission creates a NEW row, and the current row outranks the rejected one, so
+      // the reason the applicant was asked to address vanished the moment they resubmitted. The
+      // most recent earlier rejection that carries a message is returned alongside — NULL when there
+      // is none (never an invented "no feedback", §13).
+      let previousRejection: { message: string; submittedAt: string | null } | null = null;
+      if (form && form.status !== "rejected") {
+        const [prior] = await db
+          .select({ message: serviceProviderForms.rejectionMessage, createdAt: serviceProviderForms.createdAt })
+          .from(serviceProviderForms)
+          .where(and(
+            eq(serviceProviderForms.userId, userId),
+            eq(serviceProviderForms.status, "rejected"),
+            ne(serviceProviderForms.id, form.id),
+          ))
+          .orderBy(desc(serviceProviderForms.createdAt))
+          .limit(1);
+        if (prior?.message?.trim()) {
+          previousRejection = { message: prior.message, submittedAt: prior.createdAt ? new Date(prior.createdAt).toISOString() : null };
+        }
+      }
+
       res.json({
         steps,
         overallStatus: form?.status ?? "pending",
         rejectionMessage: form?.status === "rejected" ? (form.rejectionMessage ?? null) : null,
+        previousRejection,
         identityVerificationStatus: identityStatus,
         identityVerifiedAt: (form as any)?.identityVerifiedAt,
         businessVerificationStatus: bizStatus,
@@ -4957,16 +4980,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     let filtered = experts as any[];
 
     if (location) {
-      const loc = location.toLowerCase();
       filtered = filtered.filter((expert: any) => {
         const form = expert.expertForm;
         if (!form) return false;
-        const destinations = (form.destinations || []).map((d: string) => d.toLowerCase());
-        const city = (form.city || "").toLowerCase();
-        const country = (form.country || "").toLowerCase();
-        return destinations.some((d: string) => d.includes(loc) || loc.includes(d)) ||
-          city.includes(loc) || loc.includes(city) ||
-          country.includes(loc) || loc.includes(country);
+        // #1385: exact city (or single-word country) match — the ONE rule in shared/location-match.ts.
+        return locationQueryMatches(location, {
+          destinations: form.destinations || [],
+          city: form.city,
+          country: form.country,
+        });
       });
     }
 
@@ -5024,16 +5046,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
     // Filter by location (match against expert form destinations, city, or country)
     if (location) {
-      const loc = location.toLowerCase();
       filtered = filtered.filter((expert: any) => {
         const form = expert.expertForm;
         if (!form) return false;
-        const destinations = (form.destinations || []).map((d: string) => d.toLowerCase());
-        const city = (form.city || "").toLowerCase();
-        const country = (form.country || "").toLowerCase();
-        return destinations.some((d: string) => d.includes(loc) || loc.includes(d)) ||
-          city.includes(loc) || loc.includes(city) ||
-          country.includes(loc) || loc.includes(country);
+        // #1385: exact city (or single-word country) match — the ONE rule in shared/location-match.ts.
+        return locationQueryMatches(location, {
+          destinations: form.destinations || [],
+          city: form.city,
+          country: form.country,
+        });
       });
     }
 
@@ -6302,6 +6323,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const completionDeclaration = describeCompletionDeclaration(booking, declaredCompletionWindowDays());
       return {
         ...booking,
+        // #533: a service booking's reference is its `tracking_number`, minted at birth — the
+        // same value `POST /api/bookings/bulk-status` already answers as `confirmationCode`. My
+        // Bookings read a `confirmationCode` field this row never had, so every confirmed booking
+        // said "Confirmation code not yet available". NULL only on a row that has none (§13).
+        confirmationCode: (booking as any).confirmationCode ?? booking.trackingNumber ?? null,
         hasReview: reviews.length > 0,
         service: toBookingService(serviceRow),
         provider: toBookingProvider(providerRow),
@@ -6593,6 +6619,76 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       console.error("Cover image serve error:", err);
       res.status(500).json({ message: "Failed to serve cover image" });
+    }
+  });
+
+  // ── #159: gallery photo upload. The gallery was paste-a-URL only, so a provider with photos on
+  // their phone had nowhere to put them. Same rail as the cover photo above — owner-gated write,
+  // JPEG/PNG by magic bytes, 5 MB, private bucket served through a proxy — but it only UPLOADS and
+  // returns the proxy URL. The form adds that URL to `galleryImages` and the listing's normal save
+  // persists it (gallery changes are a SAFE edit, CLAUDE.md Locked Decision 23), so there is one
+  // writer of the gallery array and a later form save can never drop an image this route wrote.
+  const GALLERY_FILE_RE = /^[a-f0-9]{32}\.(jpg|png)$/;
+  app.post(
+    "/api/provider/services/:id/gallery-photo",
+    isAuthenticated,
+    express.raw({ type: ["image/jpeg", "image/png", "application/octet-stream"], limit: "5mb" }) as RequestHandler,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req)!;
+        const service = await storage.getProviderServiceByIdRaw(req.params.id);
+        if (!service || service.userId !== userId) {
+          return res.status(404).json({ message: "Service not found or not owned by you" });
+        }
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          return res.status(400).json({ message: "Send the image as a raw request body (JPEG or PNG)", code: "GALLERY_PHOTO_REQUIRED" });
+        }
+        const buffer: Buffer = req.body;
+        if (buffer.length > COVER_MAX_BYTES) {
+          return res.status(400).json({ message: "Image exceeds the 5 MB size limit", code: "GALLERY_PHOTO_TOO_LARGE" });
+        }
+        let ext: "jpg" | "png";
+        if (buffer.subarray(0, 3).equals(JPEG_MAGIC)) ext = "jpg";
+        else if (buffer.subarray(0, 4).equals(PNG_MAGIC)) ext = "png";
+        else return res.status(400).json({ message: "Only JPEG and PNG images are accepted", code: "GALLERY_PHOTO_INVALID_FORMAT" });
+
+        const file = `${randomBytes(16).toString("hex")}.${ext}`;
+        const { uploadBuffer } = await import("./infrastructure/object-storage");
+        try {
+          await uploadBuffer(`gallery/${service.id}/${file}`, buffer);
+        } catch (storageErr) {
+          console.error("Gallery photo upload failed:", storageErr);
+          return res.status(503).json({ message: "Object storage is not available right now. Try again shortly.", code: "OBJECT_STORAGE_UNAVAILABLE" });
+        }
+        res.json({ message: "Gallery photo uploaded", imageUrl: `/api/services/${service.id}/gallery-image/${file}` });
+      } catch (err) {
+        console.error("Gallery photo upload error:", err);
+        res.status(500).json({ message: "Failed to upload gallery photo" });
+      }
+    },
+  );
+
+  // Public gallery-image proxy (listing photos are public marketing images, like the cover). The
+  // file name is checked against the exact shape the upload mints, so no other key is reachable.
+  app.get("/api/services/:id/gallery-image/:file", async (req, res) => {
+    const file = String(req.params.file ?? "");
+    if (!GALLERY_FILE_RE.test(file)) return res.status(404).json({ message: "Gallery image not found" });
+    try {
+      const service = await storage.getProviderServiceByIdRaw(req.params.id);
+      if (!service) return res.status(404).json({ message: "Gallery image not found" });
+      const { downloadBytes } = await import("./infrastructure/object-storage");
+      let bytes: Buffer;
+      try {
+        bytes = await downloadBytes(`gallery/${service.id}/${file}`);
+      } catch {
+        return res.status(404).json({ message: "Gallery image not found" });
+      }
+      res.setHeader("Content-Type", file.endsWith(".png") ? "image/png" : "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.send(bytes);
+    } catch (err) {
+      console.error("Gallery image serve error:", err);
+      res.status(500).json({ message: "Failed to serve gallery image" });
     }
   });
 

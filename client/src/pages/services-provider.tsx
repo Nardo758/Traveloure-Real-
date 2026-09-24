@@ -108,6 +108,11 @@ export default function ServicesProviderPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { user: signedInUser, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  // #924: the application status carries the reviewer's feedback (current or previous rejection).
+  const { data: appStatus } = useQuery<{ rejectionMessage?: string | null; previousRejection?: { message: string } | null }>({
+    queryKey: ["/api/provider/application-status"],
+    enabled: isAuthenticated,
+  });
   const { openSignInModal } = useSignInModal();
   // Restored below (with formData) from a saved draft, if a guest sign-in
   // redirect (or an expired-session retry) brought them back mid-wizard.
@@ -436,6 +441,16 @@ export default function ServicesProviderPage() {
       </div>
 
       <main className="container mx-auto px-4 max-w-2xl py-8">
+        {/* #924: the reviewer's feedback stays visible while the applicant edits and resubmits —
+            the current rejection, or the most recent earlier one after a resubmission. */}
+        {(appStatus?.rejectionMessage || appStatus?.previousRejection?.message) && (
+          <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4" data-testid="banner-review-feedback">
+            <p className="text-sm font-semibold text-amber-900">Feedback from our review</p>
+            <p className="text-sm text-amber-800 mt-1 whitespace-pre-line" data-testid="text-review-feedback">
+              {appStatus?.rejectionMessage || appStatus?.previousRejection?.message}
+            </p>
+          </div>
+        )}
         {/* Ask up front, not after the work: a guest sees this the moment they
             land, before filling anything in. Non-blocking — they can still fill
             out the form as a guest, but submit routes through sign-in either way. */}

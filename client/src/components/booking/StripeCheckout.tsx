@@ -60,7 +60,8 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError }: 
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/booking/confirmation`,
+          // #533: the bank-redirect return carries the booking ids so the page can show their references.
+          return_url: `${window.location.origin}/booking/confirmation${bookingIds.length > 0 ? `?bookings=${encodeURIComponent(bookingIds.join(","))}` : ""}`,
         },
         redirect: 'if_required',
       });

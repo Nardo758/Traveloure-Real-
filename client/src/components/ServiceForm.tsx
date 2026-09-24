@@ -659,6 +659,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // objstore: key" — it is what keeps the subsequent save from clobbering that key with an empty
   // URL box, and what satisfies the publish gate without the owner having to paste anything.
   const [deliverableUploading, setDeliverableUploading] = useState(false);
+  const [galleryUploading, setGalleryUploading] = useState(false);
   const [deliverableUploaded, setDeliverableUploaded] = useState(false);
   // L27-P3 (§13): only an explicit Confirm/Remove in the picker sends `locationPoint`.
   // Untouched ⇒ the key is omitted entirely ⇒ the server leaves latitude/longitude/
@@ -1262,6 +1263,31 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       toast({ title: "Upload failed", description: err?.message ?? "Please try again.", variant: "destructive" });
     } finally {
       setDeliverableUploading(false);
+    }
+  };
+
+  // #159: upload a gallery photo from the device. The route stores the bytes privately and returns
+  // the public proxy URL; it is added to the gallery list here and persisted by the listing's normal
+  // save, exactly like a pasted URL — one writer of the gallery array. Edit mode only: the upload
+  // needs a saved listing to hang the file on, and the UI says so rather than inventing a draft.
+  const uploadGalleryPhoto = async (file: File) => {
+    if (!id) return;
+    setGalleryUploading(true);
+    try {
+      const res = await fetch(`/api/provider/services/${id}/gallery-photo`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": file.type === "image/png" ? "image/png" : "image/jpeg" },
+        body: file,
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.imageUrl) throw new Error(body?.message ?? `Upload failed (${res.status})`);
+      set("galleryImages", [...formData.galleryImages, body.imageUrl]);
+      toast({ title: "Photo added", description: "Save the listing to keep it in your gallery." });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message ?? "Please try again.", variant: "destructive" });
+    } finally {
+      setGalleryUploading(false);
     }
   };
 
@@ -4821,6 +4847,29 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
+            {isEditMode ? (
+              <div className="mt-2">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-secondary file:px-3 file:py-1.5 file:text-sm"
+                  disabled={galleryUploading}
+                  data-testid="input-gallery-upload"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) uploadGalleryPhoto(file);
+                  }}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {galleryUploading ? "Uploading…" : "Or upload a photo from your device — JPEG or PNG, up to 5 MB."}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-2" data-testid="text-gallery-upload-after-save">
+                Photo uploads open once this listing first saves. Or paste an image link above now.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

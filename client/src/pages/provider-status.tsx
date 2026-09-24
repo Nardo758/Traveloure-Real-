@@ -37,6 +37,8 @@ interface ApplicationStatus {
   steps: ApplicationStep[];
   overallStatus: string;
   rejectionMessage?: string | null;
+  /** #924: the most recent EARLIER rejection's feedback, kept visible after a resubmission. */
+  previousRejection?: { message: string; submittedAt: string | null } | null;
   identityVerificationStatus: string;
   identityVerifiedAt?: string;
   businessVerificationStatus: string;
@@ -181,6 +183,20 @@ export default function ProviderStatusPage() {
             {overallBadge}
           </div>
         </div>
+
+        {overallStatus !== "rejected" && appStatus?.previousRejection?.message && (
+          <Card className="border border-amber-300 bg-amber-50 dark:bg-amber-900/20" data-testid="card-previous-rejection">
+            <CardContent className="p-4">
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Feedback on your earlier application</p>
+              <p className="text-sm text-amber-800 dark:text-amber-300 mt-1 leading-relaxed whitespace-pre-line" data-testid="text-previous-rejection">
+                {appStatus.previousRejection.message}
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+                Kept here so you can check your resubmission addresses it.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {overallStatus === "rejected" && (
           <Card className="border-2 border-red-300 bg-red-50 dark:bg-red-900/20" data-testid="card-rejection-feedback">

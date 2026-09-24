@@ -19,6 +19,8 @@ import { useLocation } from 'wouter';
 import { loadStripe } from '@stripe/stripe-js';
 import { CheckCircle, AlertCircle, Clock, ArrowRight, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { apiRequest } from '@/lib/queryClient';
+import { bookingStatusSentence, parseBookingIdsParam } from '@/lib/booking-confirmation';
 
 // Key selection mirrors the server resolver: in dev, prefer the TEST publishable key.
 const _confirmPagePublishableKey = import.meta.env.DEV
@@ -42,6 +44,21 @@ export default function BookingConfirmationPage() {
   const [state, setState] = useState<PageState>('loading');
   const [paymentIntentId, setPaymentIntentId] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  // #533: the bookings this payment covered, with the reference and status the SERVER holds —
+  // read from bulk-status (owner-scoped), never assumed from the payment having succeeded.
+  const [bookingRefs, setBookingRefs] = useState<{ id: string; code: string | null; status: string }[] | null>(null);
+  useEffect(() => {
+    const ids = parseBookingIdsParam(new URLSearchParams(window.location.search).get('bookings'));
+    if (ids.length === 0) return;
+    apiRequest('POST', '/api/bookings/bulk-status', { bookingIds: ids })
+      .then((r) => r.json())
+      .then((body: { statuses?: Record<string, { status: string; confirmationCode: string | null }> }) => {
+        setBookingRefs(ids.filter((id) => body.statuses?.[id]).map((id) => ({
+          id, code: body.statuses![id].confirmationCode ?? null, status: body.statuses![id].status,
+        })));
+      })
+      .catch(() => setBookingRefs(null));
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -50,7 +67,9 @@ export default function BookingConfirmationPage() {
     const clientSecret = params.get('payment_intent_client_secret');
 
     if (!redirectStatus && !piId) {
-      // No Stripe params — user navigated here directly
+      // No Stripe params — user navigated here directly. A `bookings` list alone (the one-click
+      // saved-card path, whose charge already succeeded server-side) still shows its references.
+      if (params.get('bookings')) { setState('success'); return; }
       setState('no_params');
       return;
     }
@@ -137,15 +156,32 @@ export default function BookingConfirmationPage() {
             <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-6">
               <CheckCircle className="w-10 h-10 text-green-600" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Booking Confirmed!</h1>
+            {/* #533 / #1293: "confirmed" only when the server says so — a request-to-book listing is
+                paid but still waiting on the provider. */}
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              {bookingRefs && bookingRefs.length > 0 && bookingRefs.every((b) => b.status === 'confirmed') ? 'Booking Confirmed!' : 'Payment received'}
+            </h1>
             <p className="text-gray-600 mb-2">
-              Your payment was successful and your booking is confirmed.
+              Your payment was successful.
             </p>
-            {paymentIntentId && (
+            {bookingRefs && bookingRefs.length > 0 ? (
+              <ul className="text-left space-y-2 my-4" data-testid="list-booking-references">
+                {bookingRefs.map((b) => (
+                  <li key={b.id} className="rounded-lg border border-gray-200 px-3 py-2" data-testid={`booking-ref-${b.id}`}>
+                    <p className="text-sm text-gray-700">{bookingStatusSentence(b.status)}</p>
+                    {b.code ? (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Reference <span className="font-mono font-semibold text-gray-900" data-testid={`booking-code-${b.id}`}>{b.code}</span>
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : paymentIntentId ? (
               <p className="text-xs text-gray-400 font-mono mb-6">
-                Ref: {paymentIntentId.substring(0, 24)}…
+                Payment ref: {paymentIntentId.substring(0, 24)}…
               </p>
-            )}
+            ) : null}
             <p className="text-sm text-gray-500 mb-8">
               A confirmation email has been sent to you. Check your inbox for vouchers and next steps.
             </p>

@@ -237,6 +237,7 @@ export interface TripMintOptions {
 }
 
 import type { FormStatusWriteResult } from "./utils/form-status-transition";
+import { listingLocationMatches } from "./utils/location-filter-sql";
 
 export interface IStorage {
   // Trips
@@ -2240,7 +2241,8 @@ export class DatabaseStorage implements IStorage {
       conditions.push(ilike(providerServices.serviceType, `%${filters.category}%`));
     }
     if (filters?.destination) {
-      conditions.push(ilike(providerServices.location, `%${filters.destination}%`));
+      const match = listingLocationMatches(filters.destination, providerServices.city, providerServices.location);
+      if (match) conditions.push(match);
     }
     const rows = await db.select().from(providerServices)
       .where(and(...conditions))
@@ -3096,7 +3098,9 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(providerServices.categoryId, categoryId));
     }
     if (location) {
-      conditions.push(ilike(providerServices.location, `%${location}%`));
+      // #1385: whole-city match, never a substring (server/utils/location-filter-sql.ts).
+      const match = listingLocationMatches(location, providerServices.city, providerServices.location);
+      if (match) conditions.push(match);
     }
     const rows = await db.select().from(providerServices)
       .where(and(...conditions))
@@ -3915,7 +3919,9 @@ export class DatabaseStorage implements IStorage {
       baseConditions.push(eq(providerServices.categoryId, filters.categoryId));
     }
     if (filters.location) {
-      baseConditions.push(ilike(providerServices.location, `%${filters.location}%`));
+      // #1385: whole-city match, never a substring (server/utils/location-filter-sql.ts).
+      const match = listingLocationMatches(filters.location, providerServices.city, providerServices.location);
+      if (match) baseConditions.push(match);
     }
     if (filters.minPrice) {
       baseConditions.push(sqlOp`${providerServices.price} >= ${filters.minPrice}`);

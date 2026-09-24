@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatedBy": "scripts/run-mutation-auth-live-audit.ts",
-  "manifestSha256": "027f2c45ed31281497d39d739d28c3f293d1dc4bedd0d2b5e06ba366aa4d84b7",
-  "timestamp": "2026-09-24T14:11:52.953Z",
+  "manifestSha256": "d4423df172e9b90fccdea9a618c5b148cc27fee9f38142d12d5d3c71786263c0",
+  "timestamp": "2026-09-24T15:13:49.597Z",
   "passed": true,
   "suites": [
     {
@@ -334,6 +334,7 @@
         "POST /api/provider/services/:id/cover-photo",
         "POST /api/provider/services/:id/deliverable-file",
         "POST /api/provider/services/:id/duplicate",
+        "POST /api/provider/services/:id/gallery-photo",
         "POST /api/provider/services/:id/submit",
         "POST /api/provider/services/:id/translations/:locale/approve",
         "POST /api/provider/services/:id/translations/:locale/draft",
@@ -454,6 +455,7 @@
         "POST /api/provider/services/:id/cover-photo",
         "POST /api/provider/services/:id/deliverable-file",
         "POST /api/provider/services/:id/duplicate",
+        "POST /api/provider/services/:id/gallery-photo",
         "POST /api/provider/services/:id/submit",
         "POST /api/provider/services/:id/translations/:locale/approve",
         "POST /api/provider/services/:id/translations/:locale/draft",

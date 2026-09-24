@@ -39,6 +39,7 @@ import {
   claimBookingRequest,
 } from "../services/booking-agent-claim.service";
 import { z } from "zod";
+import { trackFunnelEvent } from "../utils/funnelTracker";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
@@ -2908,6 +2909,35 @@ router.get("/api/analytics/destination-metrics/:destination", isAuthenticated, a
     searchContext: z.string().optional(), // "discover" | "experience-template" | "quick-start"
   });
 
+
+// #323: recruitment clicks (the /earn door on Discover, the "wanted" slots, the /earn role picks).
+// Fire-and-forget like the other analytics beacons: answers 202 before any work, never fails the
+// click, and admits only a strict allowlist of short fields (§19) — no identity from the body; the
+// user id, when there is one, is the session's.
+const recruitmentClickSchema = z
+  .object({
+    source: z.enum(["discover_earn_card", "discover_wanted_slot", "earn_offering"]),
+    target: z.string().trim().max(120).optional(),
+    city: z.string().trim().max(100).optional(),
+  })
+  .strict();
+
+router.post("/api/analytics/recruitment-click", (req, res) => {
+  res.status(202).json({ received: true });
+  const parsed = recruitmentClickSchema.safeParse(req.body);
+  if (!parsed.success) return;
+  const userId = getUserId(req) ?? undefined;
+  void trackFunnelEvent({
+    userId,
+    eventType: "recruitment_click",
+    funnelStage: "T0",
+    source: parsed.data.source,
+    eventData: {
+      ...(parsed.data.target ? { target: parsed.data.target } : {}),
+      ...(parsed.data.city ? { city: parsed.data.city } : {}),
+    },
+  });
+});
 
 router.post("/api/analytics/search-event", async (req, res) => {
     // Fire-and-forget - respond immediately, process async

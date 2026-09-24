@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { trackRecruitmentClick } from "@/lib/analytics";
 import {
   EARN_ROLES,
   EA_SIGNUP,
@@ -327,6 +328,8 @@ export default function EarnPage() {
   // params to the door you pick. That is why the key may be shared between the two
   // catalogs: each door resolves it against its own table.
   const handleSelect = (role: EarnRole, offeringKey: string, displayName: string) => {
+    // #323: every offering pick on /earn is a recruitment click, recorded before the navigation.
+    trackRecruitmentClick({ source: "earn_offering", target: `${role.key}:${offeringKey}` });
     const sep = role.signupPath.includes("?") ? "&" : "?";
     navigate(
       `${role.signupPath}${sep}offeringTypeKey=${encodeURIComponent(offeringKey)}&offeringName=${encodeURIComponent(displayName)}`

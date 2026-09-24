@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
+import { bookingConfirmationPath } from "@/lib/booking-confirmation";
 import { requestOptimizationGate, confirmOptimizationPayment } from "@/lib/optimization-gate";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
@@ -697,13 +698,17 @@ export default function CartPage() {
   // "travel_paris" which caused the server to exclude items stored under real
   // experience slugs, making the cart appear empty even though the TripStrip
   // (which fetches without a slug) correctly showed a non-zero count.
+  // #1188: read the slug from the LIVE trip context, not a one-time snapshot at mount. On a hard
+  // refresh the page mounts before sign-in has bound the member's own context, so the snapshot
+  // read the guest entry, found no slug, and never loaded the events and transfers held under it —
+  // they looked gone after every refresh. Re-running when the live value arrives restores them.
+  const liveExperienceSlug = liveTripCtx.experienceSlug;
   useEffect(() => {
-    const context = getTripContext();
-    if (context.experienceSlug) {
-      setExperienceSlug(context.experienceSlug);
+    if (liveExperienceSlug) {
+      setExperienceSlug(liveExperienceSlug);
     }
     // No slug → experienceSlug stays null → fetches all items unfiltered.
-  }, []);
+  }, [liveExperienceSlug]);
 
   // Header title + the optimize/payment/comparison request assembly's `comparisonContext.destination`
   // BOTH derive from this ONE live selector (liveTripCtx, the useTripContext() hook above) — never a
@@ -1068,7 +1073,8 @@ export default function CartPage() {
         });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
         queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
-        setLocation("/bookings");
+        // #533: land on the confirmation page, which shows each booking's reference and status.
+        setLocation(bookingConfirmationPath(data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || []));
         return;
       }
       // B2: `oneClick && requiresAction` (declined / bank demands 3DS) deliberately falls
@@ -2989,8 +2995,11 @@ export default function CartPage() {
                               });
                             }
                             queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
-                            toast({ title: "Payment successful!", description: "Your booking has been confirmed." });
-                            setLocation("/bookings");
+                            toast({ title: "Payment successful!" });
+                            // #533: the confirmation page shows each booking's reference and whether
+                            // it is confirmed or still waiting on the provider — the toast no longer
+                            // claims "confirmed" for a request-to-book listing.
+                            setLocation(bookingConfirmationPath(checkoutBookingIds));
                           }}
                           onError={(error) => {
                             toast({ variant: "destructive", title: "Payment failed", description: error });
