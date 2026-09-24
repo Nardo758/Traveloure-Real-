@@ -21,7 +21,8 @@ test("evaluateMoneySecretPresence: all absent → no gap flagged (nothing to ver
 
 test("evaluateMoneySecretPresence: STRIPE_SECRET_KEY set + all webhook secrets set → no gap", () => {
   const report = evaluateMoneySecretPresence({
-    STRIPE_SECRET_KEY: "sk_test_x",
+    NODE_ENV: "production",
+    STRIPE_SECRET_KEY: "sk_live_x",
     STRIPE_WEBHOOK_SECRET: "whsec_a",
     STRIPE_CONNECT_WEBHOOK_SECRET: "whsec_b",
     STRIPE_IDENTITY_WEBHOOK_SECRET: "whsec_c",
@@ -32,7 +33,8 @@ test("evaluateMoneySecretPresence: STRIPE_SECRET_KEY set + all webhook secrets s
 
 test("evaluateMoneySecretPresence: STRIPE_SECRET_KEY set but ONE webhook secret missing → FAILS (the F-2 lesson)", () => {
   const report = evaluateMoneySecretPresence({
-    STRIPE_SECRET_KEY: "sk_test_x",
+    NODE_ENV: "production",
+    STRIPE_SECRET_KEY: "sk_live_x",
     STRIPE_WEBHOOK_SECRET: "whsec_a",
     STRIPE_CONNECT_WEBHOOK_SECRET: "whsec_b",
     // STRIPE_IDENTITY_WEBHOOK_SECRET intentionally absent
@@ -42,7 +44,7 @@ test("evaluateMoneySecretPresence: STRIPE_SECRET_KEY set but ONE webhook secret 
 });
 
 test("evaluateMoneySecretPresence: STRIPE_SECRET_KEY set but ALL webhook secrets missing → FAILS", () => {
-  const report = evaluateMoneySecretPresence({ STRIPE_SECRET_KEY: "sk_live_x" });
+  const report = evaluateMoneySecretPresence({ NODE_ENV: "production", STRIPE_SECRET_KEY: "sk_live_x" });
   assert.equal(report.hasUnverifiableWebhookGap, true);
   assert.equal(report.missingWebhookSecrets.length, 3);
 });
@@ -57,9 +59,9 @@ test("evaluateMoneySecretPresence: STRIPE_SECRET_KEY absent, webhook secrets abs
 
 test("evaluateMoneySecretPresence: informational vars are reported present/absent but never affect the gap flag", () => {
   const withInfo = evaluateMoneySecretPresence({
-    STRIPE_SECRET_KEY: "sk_test_x",
-    STRIPE_WEBHOOK_SECRET: "a",
-    STRIPE_CONNECT_WEBHOOK_SECRET: "b",
+    STRIPE_SECRET_KEY_TEST: "sk_test_x",
+    STRIPE_WEBHOOK_SECRET_TEST: "a",
+    STRIPE_CONNECT_WEBHOOK_SECRET_TEST: "b",
     STRIPE_IDENTITY_WEBHOOK_SECRET: "c",
     TAVILY_API_KEY: "tvly_x",
   });
@@ -68,13 +70,29 @@ test("evaluateMoneySecretPresence: informational vars are reported present/absen
   assert.equal(withInfo.hasUnverifiableWebhookGap, false);
 
   const withoutInfo = evaluateMoneySecretPresence({
-    STRIPE_SECRET_KEY: "sk_test_x",
-    STRIPE_WEBHOOK_SECRET: "a",
-    STRIPE_CONNECT_WEBHOOK_SECRET: "b",
+    STRIPE_SECRET_KEY_TEST: "sk_test_x",
+    STRIPE_WEBHOOK_SECRET_TEST: "a",
+    STRIPE_CONNECT_WEBHOOK_SECRET_TEST: "b",
     STRIPE_IDENTITY_WEBHOOK_SECRET: "c",
   });
   // Missing informational vars never flip hasUnverifiableWebhookGap.
   assert.equal(withoutInfo.hasUnverifiableWebhookGap, false);
+});
+
+test("development does not mistake shared live webhook secrets for sandbox signing secrets", () => {
+  const report = evaluateMoneySecretPresence({
+    NODE_ENV: "development",
+    STRIPE_SECRET_KEY_TEST: "sk_test_x",
+    STRIPE_SECRET_KEY: "sk_live_x",
+    STRIPE_WEBHOOK_SECRET: "whsec_live_platform",
+    STRIPE_CONNECT_WEBHOOK_SECRET: "whsec_live_connect",
+    STRIPE_IDENTITY_WEBHOOK_SECRET: "whsec_identity",
+  });
+  assert.equal(report.hasUnverifiableWebhookGap, true);
+  assert.deepEqual(report.missingWebhookSecrets, [
+    "STRIPE_WEBHOOK_SECRET_TEST",
+    "STRIPE_CONNECT_WEBHOOK_SECRET_TEST",
+  ]);
 });
 
 test("evaluateMoneySecretPresence: never includes a secret VALUE, only booleans", () => {

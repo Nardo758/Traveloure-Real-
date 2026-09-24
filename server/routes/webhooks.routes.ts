@@ -16,7 +16,7 @@ import { activateVerificationHeldListings } from "../services/publish-verificati
 import { db } from "../db";
 import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, adminNotifications, users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
-import { getStripeSecretKey } from "../utils/stripe-key";
+import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key";
 import { handleStripeDispute } from "../services/stripe-dispute.service";
 
 const router = Router();
@@ -504,31 +504,23 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
 // No auth middleware — verified via Stripe-Signature header using raw body.
 router.post("/stripe", async (req: any, res) => {
   const sig = req.headers["stripe-signature"] as string | undefined;
-  const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+  const webhookSecret = getStripeWebhookSecret("connect");
   let event: Stripe.Event;
 
-  if (webhookSecret) {
-    if (!sig) {
-      return res.status(400).json({ message: "Missing Stripe-Signature header" });
-    }
-    if (!req.rawBody) {
-      return res.status(500).json({ message: "Raw body unavailable for signature verification" });
-    }
-    try {
-      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
-    } catch (err: any) {
-      console.error("Stripe Connect webhook signature verification failed:", err.message);
-      return res.status(400).json({ message: `Webhook signature error: ${err.message}` });
-    }
-  } else {
-    if (process.env.NODE_ENV === "production") {
-      return res.status(400).json({ message: "STRIPE_CONNECT_WEBHOOK_SECRET must be set in production" });
-    }
-    try {
-      event = typeof req.body === "object" ? req.body : JSON.parse(req.rawBody?.toString() ?? "{}");
-    } catch (err: any) {
-      return res.status(400).json({ message: "Invalid JSON body" });
-    }
+  if (!webhookSecret) {
+    return res.status(503).json({ message: "Stripe Connect webhook not configured for this environment" });
+  }
+  if (!sig) {
+    return res.status(400).json({ message: "Missing Stripe-Signature header" });
+  }
+  if (!req.rawBody) {
+    return res.status(500).json({ message: "Raw body unavailable for signature verification" });
+  }
+  try {
+    event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+  } catch (err: any) {
+    console.error("Stripe Connect webhook signature verification failed:", err.message);
+    return res.status(400).json({ message: `Webhook signature error: ${err.message}` });
   }
 
   try {

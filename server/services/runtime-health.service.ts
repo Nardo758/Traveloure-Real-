@@ -26,7 +26,7 @@
  */
 
 import { isProdStrictEnv, checkStripeKeyPrefix } from "../utils/stripe-key-policy";
-import { getStripeSecretKey } from "../utils/stripe-key";
+import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key";
 import type { QAResults } from "./qa-verify.service";
 
 function baseUrl(): string {
@@ -208,8 +208,18 @@ export function evaluateMoneySecretPresence(env: NodeJS.ProcessEnv): SecretPrese
   present["STRIPE_SECRET_KEY_TEST"] = !!env.STRIPE_SECRET_KEY_TEST;
   present["_effective_stripe_key"] = !!effectiveStripeKey;
 
-  const webhookVars = ["STRIPE_WEBHOOK_SECRET", "STRIPE_CONNECT_WEBHOOK_SECRET", "STRIPE_IDENTITY_WEBHOOK_SECRET"];
-  const missingWebhookSecrets = webhookVars.filter((v) => !env[v]);
+  const isProdStrict =
+    (env.NODE_ENV === "production" || env.ENVIRONMENT === "PROD") &&
+    env.ALLOW_TEST_ACCOUNTS !== "1";
+  const missingWebhookSecrets = [
+    ...(!getStripeWebhookSecret("platform", env)
+      ? [isProdStrict ? "STRIPE_WEBHOOK_SECRET" : "STRIPE_WEBHOOK_SECRET_TEST"]
+      : []),
+    ...(!getStripeWebhookSecret("connect", env)
+      ? [isProdStrict ? "STRIPE_CONNECT_WEBHOOK_SECRET" : "STRIPE_CONNECT_WEBHOOK_SECRET_TEST"]
+      : []),
+    ...(!env.STRIPE_IDENTITY_WEBHOOK_SECRET ? ["STRIPE_IDENTITY_WEBHOOK_SECRET"] : []),
+  ];
   const hasUnverifiableWebhookGap = !!effectiveStripeKey && missingWebhookSecrets.length > 0;
 
   return { present, hasUnverifiableWebhookGap, missingWebhookSecrets };

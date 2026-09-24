@@ -13,7 +13,7 @@ test("signed platform charge.refunded reaches #1288 and blocks booking earnings"
   assert.ok(process.env.DATABASE_URL);
   assert.notEqual(process.env.DATABASE_URL, process.env.PROD_DATABASE_URL);
   assert.ok(process.env.REPLIT_DEV_DOMAIN?.endsWith(".replit.dev"));
-  assert.ok(process.env.STRIPE_WEBHOOK_SECRET);
+  assert.ok(process.env.STRIPE_WEBHOOK_SECRET_TEST);
 
   const chargeId = `ch_signed_refund_${crypto.randomUUID().replaceAll("-", "")}`;
   const eventId = `evt_signed_refund_${crypto.randomUUID().replaceAll("-", "")}`;
@@ -39,7 +39,7 @@ test("signed platform charge.refunded reaches #1288 and blocks booking earnings"
   });
   const signature = Stripe.webhooks.generateTestHeaderString({
     payload,
-    secret: process.env.STRIPE_WEBHOOK_SECRET!,
+    secret: process.env.STRIPE_WEBHOOK_SECRET_TEST!,
   });
 
   try {

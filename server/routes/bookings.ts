@@ -35,7 +35,7 @@ import {
 } from '../config/legacy-bookings.config';
 import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
 import Stripe from 'stripe';
-import { getStripeSecretKey } from '../utils/stripe-key';
+import { getStripeSecretKey, getStripeWebhookSecret } from '../utils/stripe-key';
 import { processPlatformWebhookEvent, PLATFORM_EVENT_TYPES } from '../services/stripe-dispute.service';
 
 const router = Router();
@@ -534,11 +534,11 @@ let loggedMissingWebhookSecretOnce = false;
 // this route now mirrors that established pattern — no new middleware, no change to body parsing
 // for any other route.
 router.post('/webhooks/stripe', async (req: any, res) => {
-  if (process.env.NODE_ENV === 'production' && !process.env.STRIPE_WEBHOOK_SECRET) {
+  const webhookSecret = getStripeWebhookSecret("platform");
+  if (!webhookSecret) {
     if (!loggedMissingWebhookSecretOnce) {
       console.error(
-        '[bookings webhook] STRIPE_WEBHOOK_SECRET is not set in production — refusing webhook deliveries ' +
-          'rather than attempting signature verification with an empty secret.'
+        '[bookings webhook] Stripe platform webhook signing secret is missing for this environment — refusing deliveries.'
       );
       loggedMissingWebhookSecretOnce = true;
     }
@@ -563,7 +563,7 @@ router.post('/webhooks/stripe', async (req: any, res) => {
     event = stripe.webhooks.constructEvent(
       req.rawBody,
       sig,
-      process.env.STRIPE_WEBHOOK_SECRET || ''
+      webhookSecret
     );
   } catch (error: any) {
     console.warn('Webhook signature error:', error.message);

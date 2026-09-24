@@ -22,8 +22,11 @@ import { Button } from '@/components/ui/button';
 
 // Key selection mirrors the server resolver: in dev, prefer the TEST publishable key.
 const _confirmPagePublishableKey = import.meta.env.DEV
-  ? (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
+  ? (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST || '')
   : (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+if (import.meta.env.DEV && _confirmPagePublishableKey && !_confirmPagePublishableKey.startsWith('pk_test_')) {
+  throw new Error('Development confirmation requires a Stripe test publishable key');
+}
 let _stripePromise: ReturnType<typeof loadStripe> | undefined;
 const getStripe = () => {
   if (!_stripePromise) {

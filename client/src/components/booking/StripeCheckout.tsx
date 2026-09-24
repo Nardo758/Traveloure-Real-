@@ -18,8 +18,11 @@ import { CreditCard, Lock, AlertCircle } from 'lucide-react';
 // Key selection mirrors the server resolver: in dev, prefer the TEST publishable key so the
 // client key always matches the server's effective secret key (STRIPE_SECRET_KEY_TEST).
 const _stripePublishableKey = import.meta.env.DEV
-  ? (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
+  ? (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST || '')
   : (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+if (import.meta.env.DEV && _stripePublishableKey && !_stripePublishableKey.startsWith('pk_test_')) {
+  throw new Error('Development checkout requires a Stripe test publishable key');
+}
 let _stripePromise: ReturnType<typeof loadStripe> | undefined;
 const getStripePromise = () => {
   if (!_stripePromise) {
