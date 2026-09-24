@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatedBy": "scripts/run-mutation-auth-live-audit.ts",
-  "manifestSha256": "37c3998a820393018e13fa9b80fd1da464fcd7a3c422c40b134f5fe617917f70",
-  "timestamp": "2026-09-24T00:16:30.248Z",
+  "manifestSha256": "c4d5a08c33a973f44b93cbf3cffbd2a725b6c98e8e9c8056f2005088dd2f65c9",
+  "timestamp": "2026-09-24T01:25:13.303Z",
   "passed": true,
   "suites": [
     {
@@ -81,6 +81,7 @@
         "POST /api/admin/affiliate/partners/:id/approve",
         "POST /api/admin/affiliate/partners/:id/reject",
         "POST /api/admin/affiliate/partners/:id/scrape",
+        "POST /api/admin/bookings/:bookingId/out-of-band-refund/clear",
         "POST /api/admin/bookings/auto-cancel/run",
         "POST /api/admin/catalog/ingest",
         "POST /api/admin/categories",

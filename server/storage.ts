@@ -18,6 +18,7 @@ import { isPlatformConciergeUserId } from "./services/platform-concierge.service
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
 import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
 import { PARTIALLY_COMPLETED_STATUS, reducedBundleFigures } from "@shared/bundle-component-states";
+import { OUT_OF_BAND_REFUND_KEY, outOfBandRefundOf } from "@shared/out-of-band-refund";
 import { isProviderRole } from "@shared/roles";
 import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
@@ -3474,9 +3475,16 @@ export class DatabaseStorage implements IStorage {
       if (reason) updates.cancellationReason = reason;
     }
 
-    const guard = expectedFromStatuses && expectedFromStatuses.length > 0
+    const baseGuard = expectedFromStatuses && expectedFromStatuses.length > 0
       ? and(eq(serviceBookings.id, id), inArray(serviceBookings.status, expectedFromStatuses as string[]))
       : eq(serviceBookings.id, id);
+    // #1288 (ledger `2026-09-24-out-of-band-refund-blocks-mint`): a booking stamped with a refund we
+    // did not issue may not become `completed`/`partially_completed` — the two transitions that mint.
+    // In the WHERE, not a pre-check, so a stamp committed while this flip waits on the row lock is
+    // still seen (§15: the UPDATE is the guard). A refused flip returns undefined, like a lost race.
+    const guard = status === "completed" || status === PARTIALLY_COMPLETED_STATUS
+      ? and(baseGuard, sql`(COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) -> ${OUT_OF_BAND_REFUND_KEY}::text) IS NULL`)
+      : baseGuard;
 
     // ONE transaction for the status flip and every same-commit side-effect (ruling 80's
     // "flip-and-mint in one transaction" precedent, generalized): the completion earnings mint,
@@ -3605,6 +3613,12 @@ export class DatabaseStorage implements IStorage {
     const { providerId, serviceId } = booking;
     if (!providerId || !serviceId) {
       console.error(`[mintCompletionEarnings] booking ${booking.id} missing providerId/serviceId — cannot mint`);
+      return false;
+    }
+    // #1288, second layer: the status writer already refuses to complete a stamped booking; this
+    // covers the reconciliation caller, which mints for a row that is ALREADY completed.
+    if (outOfBandRefundOf(booking.bookingDetails)) {
+      console.error(`[mintCompletionEarnings] booking ${booking.id} carries a refund we did not issue — refusing to mint`);
       return false;
     }
     let grossAmount = parseFloat(booking.totalAmount || '0');
