@@ -154,6 +154,10 @@ import {
   type HumanPurchaseBookingAgentStatus,
 } from "@shared/booking-agent-vocabulary";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp, getTableColumns } from "drizzle-orm";
+type PayoutClaimResult<T> = {
+  payout?: T;
+  reason?: 'insufficient_releasable_earnings' | 'already_processing' | 'terminal';
+};
 import type {
   NeighborhoodRow as MarketNeighborhoodRow,
   CoverageTargetRow as MarketCoverageTargetRow,
@@ -981,9 +985,9 @@ export interface IStorage {
 
   updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout>;
 
-  claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined>;
+  claimExpertPayoutForProcessing(id: string): Promise<PayoutClaimResult<ExpertPayout>>;
 
-  claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined>;
+  claimProviderPayoutForProcessing(id: string): Promise<PayoutClaimResult<ProviderPayout>>;
 
   markEarningsPaidOutForPayout(
     earnerType: 'expert' | 'provider',
@@ -6427,6 +6431,22 @@ export class DatabaseStorage implements IStorage {
     if (notes) updates.failureReason = notes;
     if (transactionId) updates.transactionId = transactionId;
 
+    if (status === 'failed') {
+      return db.transaction(async (tx) => {
+        const [updated] = await tx.update(expertPayouts).set(updates)
+          // A processing row may already have been sent to Stripe. Only a
+          // pre-transfer request can be rejected and have its reservation freed.
+          .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} IN ('pending','approved')`))
+          .returning();
+        if (updated) {
+          await tx.update(expertEarnings).set({ payoutId: null })
+            .where(and(eq(expertEarnings.payoutId, id), eq(expertEarnings.status, 'releasable')));
+          return updated;
+        }
+        const [existing] = await tx.select().from(expertPayouts).where(eq(expertPayouts.id, id));
+        return existing as ExpertPayout;
+      });
+    }
     if (status !== 'completed') {
       const [updated] = await db.update(expertPayouts).set(updates).where(eq(expertPayouts.id, id)).returning();
       return updated;
@@ -6450,24 +6470,74 @@ export class DatabaseStorage implements IStorage {
   // Atomic claim before a Stripe transfer (money-safety idempotency): flip to 'processing' ONLY
   // if not already completed/processing. Returns undefined if another caller already claimed/
   // completed it — the transition IS the concurrency guard, so a double-invocation transfers once.
-  async claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined> {
-    // Guard: only claim rows that are in a pre-transfer state. 'completed' is already done;
-    // 'processing' is already claimed by another concurrent call; 'failed' is a terminal state
-    // (an admin rejection OR a stale-supersession) and must never be re-driven to Stripe.
-    const [row] = await db.update(expertPayouts)
-      .set({ status: 'processing', processedAt: new Date() })
-      .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} NOT IN ('completed','processing','failed')`))
-      .returning();
-    return row;
+  /**
+   * Claim and reserve the ledger rows in one transaction.  payoutId is a reservation while the
+   * rows remain releasable (it is changed to paid_out only after Stripe succeeds).  This avoids
+   * the aggregate-payout check-then-send race without adding a migration/column.
+   */
+  private async claimPayoutForProcessing(
+    id: string,
+    earnerType: 'expert' | 'provider',
+  ): Promise<PayoutClaimResult<ExpertPayout | ProviderPayout>> {
+    return db.transaction(async (tx) => {
+      const payoutTable = earnerType === 'expert' ? expertPayouts : providerPayouts;
+      const [row] = await tx.update(payoutTable)
+        .set({ status: 'processing', processedAt: new Date() })
+        .where(and(eq(payoutTable.id, id), sqlOp`${payoutTable.status} NOT IN ('completed','processing','failed')`))
+        .returning();
+      if (!row) {
+        const [existing] = await tx.select({ status: payoutTable.status }).from(payoutTable).where(eq(payoutTable.id, id));
+        return { reason: existing?.status === 'processing' ? 'already_processing' as const : 'terminal' as const };
+      }
+
+      const amount = parseFloat(row.amount || '0');
+      const earningsTable = earnerType === 'expert' ? expertEarnings : providerEarnings;
+      const ownerColumn = earnerType === 'expert' ? expertEarnings.expertId : providerEarnings.providerId;
+      const ownerId = earnerType === 'expert' ? (row as any).expertId : (row as any).providerId;
+      const candidates = await tx.select({
+        id: earningsTable.id,
+        amount: earningsTable.amount,
+      }).from(earningsTable).where(and(
+        eq(ownerColumn, ownerId),
+        eq(earningsTable.status, 'releasable'),
+        sqlOp`${earningsTable.disputeState} IS DISTINCT FROM 'open'`,
+        isNull(earningsTable.payoutId),
+      )).orderBy(asc(earningsTable.createdAt));
+
+      let running = 0;
+      const ids: string[] = [];
+      for (const candidate of candidates) {
+        const value = parseFloat(candidate.amount || '0');
+        if (running + value - amount > 0.01) break;
+        ids.push(candidate.id);
+        running += value;
+        if (amount - running <= 0.01) break;
+      }
+      if (amount - running > 0.01) {
+        // Throwing rolls back the processing transition, leaving the request pending.
+        throw Object.assign(new Error('insufficient_releasable_earnings'), { payoutClaimReason: 'insufficient_releasable_earnings' });
+      }
+      if (ids.length) {
+        const reservedRows = await tx.update(earningsTable).set({ payoutId: id })
+          .where(and(inArray(earningsTable.id, ids), eq(earningsTable.status, 'releasable'), isNull(earningsTable.payoutId)))
+          .returning({ id: earningsTable.id });
+        if (reservedRows.length !== ids.length) {
+          throw Object.assign(new Error('insufficient_releasable_earnings'), { payoutClaimReason: 'insufficient_releasable_earnings' });
+        }
+      }
+      return { payout: row };
+  }).catch((error: any): PayoutClaimResult<ExpertPayout | ProviderPayout> => {
+      if (error?.payoutClaimReason) return { reason: error.payoutClaimReason };
+      throw error;
+    });
   }
 
-  async claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined> {
-    // Same guard as claimExpertPayoutForProcessing — 'failed' must not be re-claimable.
-    const [row] = await db.update(providerPayouts)
-      .set({ status: 'processing', processedAt: new Date() })
-      .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} NOT IN ('completed','processing','failed')`))
-      .returning();
-    return row;
+  async claimExpertPayoutForProcessing(id: string): Promise<PayoutClaimResult<ExpertPayout>> {
+    return this.claimPayoutForProcessing(id, 'expert') as Promise<PayoutClaimResult<ExpertPayout>>;
+  }
+
+  async claimProviderPayoutForProcessing(id: string): Promise<PayoutClaimResult<ProviderPayout>> {
+    return this.claimPayoutForProcessing(id, 'provider') as Promise<PayoutClaimResult<ProviderPayout>>;
   }
 
   async updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout> {
@@ -6477,6 +6547,20 @@ export class DatabaseStorage implements IStorage {
     if (notes) updates.notes = notes;
     if (payoutReference) updates.payoutReference = payoutReference;
 
+    if (status === 'failed') {
+      return db.transaction(async (tx) => {
+        const [updated] = await tx.update(providerPayouts).set(updates)
+          .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} IN ('pending','approved')`))
+          .returning();
+        if (updated) {
+          await tx.update(providerEarnings).set({ payoutId: null })
+            .where(and(eq(providerEarnings.payoutId, id), eq(providerEarnings.status, 'releasable')));
+          return updated;
+        }
+        const [existing] = await tx.select().from(providerPayouts).where(eq(providerPayouts.id, id));
+        return existing as ProviderPayout;
+      });
+    }
     if (status !== 'completed') {
       const [updated] = await db.update(providerPayouts).set(updates).where(eq(providerPayouts.id, id)).returning();
       return updated;
@@ -6524,16 +6608,38 @@ export class DatabaseStorage implements IStorage {
     const TOLERANCE = 0.01;
     const now = new Date();
 
-    const candidates = earnerType === 'expert'
+    // A processing claim reserves rows with payoutId while they remain releasable. Prefer those
+    // rows exclusively; otherwise retain the legacy completion behavior for unreserved payouts.
+    const linkedReservations = earnerType === 'expert'
+      ? await tx.select({ id: expertEarnings.id }).from(expertEarnings)
+          .where(and(eq(expertEarnings.expertId, earnerId), eq(expertEarnings.payoutId, payoutId)))
+      : await tx.select({ id: providerEarnings.id }).from(providerEarnings)
+          .where(and(eq(providerEarnings.providerId, earnerId), eq(providerEarnings.payoutId, payoutId)));
+    const hasReservation = linkedReservations.length > 0;
+    const reserved = earnerType === 'expert'
       ? await tx.select({ id: expertEarnings.id, amount: expertEarnings.amount })
           .from(expertEarnings)
-          .where(and(eq(expertEarnings.expertId, earnerId), eq(expertEarnings.status, 'releasable')))
+          .where(and(eq(expertEarnings.expertId, earnerId), eq(expertEarnings.payoutId, payoutId),
+            sqlOp`${expertEarnings.status} IN ('held','releasable')`))
           .orderBy(asc(expertEarnings.createdAt))
       : await tx.select({ id: providerEarnings.id, amount: providerEarnings.amount })
           .from(providerEarnings)
-          .where(and(eq(providerEarnings.providerId, earnerId), eq(providerEarnings.status, 'releasable')))
+          .where(and(eq(providerEarnings.providerId, earnerId), eq(providerEarnings.payoutId, payoutId),
+            sqlOp`${providerEarnings.status} IN ('held','releasable')`))
           .orderBy(asc(providerEarnings.createdAt));
+    const candidates = hasReservation ? reserved : (earnerType === 'expert'
+      ? await tx.select({ id: expertEarnings.id, amount: expertEarnings.amount })
+          .from(expertEarnings)
+          .where(and(eq(expertEarnings.expertId, earnerId), eq(expertEarnings.status, 'releasable'), isNull(expertEarnings.payoutId)))
+          .orderBy(asc(expertEarnings.createdAt))
+      : await tx.select({ id: providerEarnings.id, amount: providerEarnings.amount })
+          .from(providerEarnings)
+          .where(and(eq(providerEarnings.providerId, earnerId), eq(providerEarnings.status, 'releasable'), isNull(providerEarnings.payoutId)))
+          .orderBy(asc(providerEarnings.createdAt)));
 
+    // If this payout has a reservation, never fall back to unrelated rows: a dispute may have
+    // moved its reserved rows to held after Stripe was called. That is a shortfall/manual-review
+    // condition, not permission to consume another booking's earnings.
     // Oldest-first greedy walk: include a row only while doing so stays within tolerance of the
     // payout amount. Never skip ahead / never split a row.
     let running = 0;
@@ -6552,11 +6658,13 @@ export class DatabaseStorage implements IStorage {
       const flipped = earnerType === 'expert'
         ? await tx.update(expertEarnings)
             .set({ status: 'paid_out', paidOutAt: now, payoutId })
-            .where(and(inArray(expertEarnings.id, idsToFlip), eq(expertEarnings.status, 'releasable')))
+            .where(and(inArray(expertEarnings.id, idsToFlip), eq(expertEarnings.status, 'releasable'),
+              hasReservation ? eq(expertEarnings.payoutId, payoutId) : isNull(expertEarnings.payoutId)))
             .returning({ id: expertEarnings.id, amount: expertEarnings.amount })
         : await tx.update(providerEarnings)
             .set({ status: 'paid_out', paidAt: now, payoutId, updatedAt: now })
-            .where(and(inArray(providerEarnings.id, idsToFlip), eq(providerEarnings.status, 'releasable')))
+            .where(and(inArray(providerEarnings.id, idsToFlip), eq(providerEarnings.status, 'releasable'),
+              hasReservation ? eq(providerEarnings.payoutId, payoutId) : isNull(providerEarnings.payoutId)))
             .returning({ id: providerEarnings.id, amount: providerEarnings.amount });
       flippedCount = flipped.length;
       flippedAmount = flipped.reduce((sum: number, r: { amount: string | null }) => sum + parseFloat(r.amount || '0'), 0);

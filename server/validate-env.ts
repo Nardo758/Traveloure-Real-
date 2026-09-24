@@ -36,7 +36,7 @@
  */
 
 import { isProdStrictEnv, checkStripeKeyPrefix } from "./utils/stripe-key-policy";
-import { getStripeSecretKey } from "./utils/stripe-key";
+import { getStripeSecretKey, getStripeWebhookSecret } from "./utils/stripe-key";
 
 // Object storage bucket — non-fatal warn. Vendor-document uploads (and any
 // future file uploads) will throw at call-time if this is missing, which is
@@ -72,17 +72,18 @@ if (key) {
    * three webhook ROUTES themselves already refuse unsafely (bookings.ts's
    * production guard below; webhooks.routes.ts's existing non-prod fallback).
    */
-  const webhookSecretVars = [
-    "STRIPE_WEBHOOK_SECRET",
-    "STRIPE_CONNECT_WEBHOOK_SECRET",
-    "STRIPE_IDENTITY_WEBHOOK_SECRET",
-  ];
-  for (const varName of webhookSecretVars) {
-    if (!process.env[varName]) {
+  for (const [kind, varName] of [
+    ["platform", isProdStrict ? "STRIPE_WEBHOOK_SECRET" : "STRIPE_WEBHOOK_SECRET_TEST"],
+    ["connect", isProdStrict ? "STRIPE_CONNECT_WEBHOOK_SECRET" : "STRIPE_CONNECT_WEBHOOK_SECRET_TEST"],
+  ] as const) {
+    if (!getStripeWebhookSecret(kind)) {
       console.warn(
-        `[validate-env] WARN: STRIPE_SECRET_KEY is set but ${varName} is not — its webhook ` +
+        `[validate-env] WARN: Stripe key is set but ${varName} is not — its webhook ` +
           `cannot verify signed deliveries until it's configured. See .env.example.`
       );
     }
+  }
+  if (!process.env.STRIPE_IDENTITY_WEBHOOK_SECRET) {
+    console.warn("[validate-env] WARN: STRIPE_IDENTITY_WEBHOOK_SECRET is not set — identity webhooks cannot be verified.");
   }
 }

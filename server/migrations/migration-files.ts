@@ -1811,4 +1811,6 @@ export const MIGRATION_FILES = [
   // on the four category keys 289's COALESCE left at their `false` DEFAULT. DATA ONLY — no ALTER,
   // no CHECK, no index — so the deploy push has nothing to offer. Idempotent.
   "319_background_check_flags_repair.sql",
+  // 320 — platform webhook per-consumer event claims. Separate from shared webhook_events.
+  "320_platform_webhook_consumer_idempotency.sql",
 ] as const;

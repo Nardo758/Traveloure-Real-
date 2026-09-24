@@ -35,7 +35,8 @@ import {
 } from '../config/legacy-bookings.config';
 import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
 import Stripe from 'stripe';
-import { getStripeSecretKey } from '../utils/stripe-key';
+import { getStripeSecretKey, getStripeWebhookSecret } from '../utils/stripe-key';
+import { processPlatformWebhookEvent, PLATFORM_EVENT_TYPES } from '../services/stripe-dispute.service';
 
 const router = Router();
 
@@ -533,11 +534,11 @@ let loggedMissingWebhookSecretOnce = false;
 // this route now mirrors that established pattern — no new middleware, no change to body parsing
 // for any other route.
 router.post('/webhooks/stripe', async (req: any, res) => {
-  if (process.env.NODE_ENV === 'production' && !process.env.STRIPE_WEBHOOK_SECRET) {
+  const webhookSecret = getStripeWebhookSecret("platform");
+  if (!webhookSecret) {
     if (!loggedMissingWebhookSecretOnce) {
       console.error(
-        '[bookings webhook] STRIPE_WEBHOOK_SECRET is not set in production — refusing webhook deliveries ' +
-          'rather than attempting signature verification with an empty secret.'
+        '[bookings webhook] Stripe platform webhook signing secret is missing for this environment — refusing deliveries.'
       );
       loggedMissingWebhookSecretOnce = true;
     }
@@ -554,25 +555,34 @@ router.post('/webhooks/stripe', async (req: any, res) => {
     return res.status(500).json({ error: 'Raw body unavailable for signature verification' });
   }
 
+  const stripe = new Stripe(getStripeSecretKey() || '', {
+    apiVersion: '2024-12-18.acacia' as any,
+  });
+  let event: Stripe.Event;
   try {
-    const stripe = new Stripe(getStripeSecretKey() || '', {
-      apiVersion: '2024-12-18.acacia' as any,
-    });
-
-    const event = stripe.webhooks.constructEvent(
+    event = stripe.webhooks.constructEvent(
       req.rawBody,
       sig,
-      process.env.STRIPE_WEBHOOK_SECRET || ''
+      webhookSecret
     );
-
-    await stripePaymentService.handleWebhook(event);
+  } catch (error: any) {
+    console.warn('Webhook signature error:', error.message);
+    return res.status(400).json({ error: 'Invalid webhook signature' });
+  }
+  try {
+    // Platform disputes and bank payouts have a separate consumer claim. Do not
+    // use webhook_events.processed: the Connect rail legitimately sees the
+    // same Stripe event ID for different work.
+    if (PLATFORM_EVENT_TYPES.has(event.type)) {
+      await processPlatformWebhookEvent(event, stripe);
+    } else {
+      await stripePaymentService.handleWebhook(event);
+    }
 
     res.json({ received: true });
   } catch (error: any) {
-    console.error('Webhook error:', error);
-    res.status(400).json({
-      error: `Webhook Error: ${error.message}`,
-    });
+    console.error('Webhook processing error:', error);
+    res.status(500).json({ error: 'Webhook processing failed; delivery can be retried' });
   }
 });
 
@@ -648,6 +658,19 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       }
     }
 
+    // PR #1066: a lost chargeback already returned the disputed money. Refuse BEFORE the ledger moves
+    // when this refund would reach into it — same options the refund below is given.
+    {
+      const { checkServiceBookingRefundPreflight, lostChargebackRefusalBody } = await import(
+        '../services/lost-chargeback-guard.service'
+      );
+      const guard = await checkServiceBookingRefundPreflight(bookingId, {
+        ...(amountOverride !== undefined ? { amountOverride } : {}),
+        ...(feeRefundPercent !== undefined ? { feeRefundPercent } : {}),
+      });
+      if (!guard.allowed) return res.status(409).json({ success: false, ...lostChargebackRefusalBody(guard) });
+    }
+
     // Escrow Phase 4 (closes §14 A2): a refund also reverses the linked earnings ledger + the
     // recognised platform revenue, so a refunded booking doesn't leave the provider/expert
     // credited. Both are idempotent no-ops when the booking has no in-escrow earnings, so this
@@ -704,6 +727,10 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     });
   } catch (error: any) {
     console.error('Refund error:', error);
+    if (error?.name === 'LostChargebackRefundBlockedError') {
+      const { lostChargebackRefusalBody } = await import('../services/lost-chargeback-guard.service');
+      return res.status(409).json({ success: false, ...lostChargebackRefusalBody(error.result) });
+    }
     res.status(500).json({
       success: false,
       error: error.message,

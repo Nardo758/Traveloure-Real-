@@ -33,8 +33,11 @@ import { Loader2, Plus, AlertCircle, Lock } from "lucide-react";
 // dialog has no dependency on that (PaymentIntent-shaped) component.
 // Key selection mirrors the server resolver: in dev, prefer the TEST publishable key.
 const _addCardPublishableKey = import.meta.env.DEV
-  ? (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "")
+  ? (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST || "")
   : (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "");
+if (import.meta.env.DEV && _addCardPublishableKey && !_addCardPublishableKey.startsWith("pk_test_")) {
+  throw new Error("Development card setup requires a Stripe test publishable key");
+}
 let _stripePromise: ReturnType<typeof loadStripe> | undefined;
 function getStripePromise() {
   if (!_stripePromise) {

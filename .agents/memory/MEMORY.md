@@ -72,3 +72,5 @@
 - [Stripe Stage 2 activation](stripe-stage2-subscription-hold.md) — approved events were activated in three windows; success is Connect-only, with the first live day requiring reconciliation.
 - [Provider fee parity](provider-fee-parity.md) — production display and charge resolution agree across all gated contexts; current split is 25% platform / 75% provider.
 - [Storefront plan handoff](storefront-plan-handoff.md) — a trip-scoped expert browse is return navigation only; preserve tripId but never create or share a booking implicitly.
+- [Dispute-scoped aggregate payouts](dispute-scoped-aggregate-payouts.md) — hold the booking's earnings, not the earner; reserve exact eligible rows before transfer and treat processing as possibly sent.
+- [Stripe CLI sandbox verification](stripe-cli-sandbox-webhook-verification.md) — CLI dispute fixtures can be warnings; use a full test-card dispute for won/lost evidence and verify forwarded webhooks.

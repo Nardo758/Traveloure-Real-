@@ -48,7 +48,7 @@ import { occasionDraftsScheduler } from "./services/occasion-drafts-scheduler.se
 import { evidenceScorerScheduler } from "./services/evidence-scorer-scheduler.service";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
-import { getStripeSecretKey } from "./utils/stripe-key";
+import { getStripeSecretKey, getStripeWebhookSecret } from "./utils/stripe-key";
 import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
 import { runDemandRollup } from "./jobs/demandRollup";
 import { runOnepagerRevalidation } from "./jobs/onepagerRevalidation";
@@ -220,12 +220,12 @@ app.get("/api/ready", (_req: Request, res: Response) => {
       : "RESEND_API_KEY missing — digest emails will not send",
   };
 
-  const webhookPresent = Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+  const webhookPresent = Boolean(getStripeWebhookSecret("platform"));
   checks.webhook = {
     status: webhookPresent ? "ok" : "fail",
     message: webhookPresent
-      ? "STRIPE_WEBHOOK_SECRET present"
-      : "STRIPE_WEBHOOK_SECRET missing — webhooks will be rejected",
+      ? "Stripe platform webhook signing secret present for this environment"
+      : "Stripe platform webhook signing secret missing for this environment — webhooks will be rejected",
   };
 
   const hasFail = Object.values(checks).some((c) => c.status === "fail");

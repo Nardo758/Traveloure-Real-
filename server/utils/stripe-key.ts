@@ -6,9 +6,10 @@
  *     ALLOW_TEST_ACCOUNTS !== "1"): always returns `STRIPE_SECRET_KEY`.
  *     `STRIPE_SECRET_KEY_TEST` is intentionally ignored so a stray test key
  *     in a production environment cannot silently override the live key.
- *   - **dev / CI**: returns `STRIPE_SECRET_KEY_TEST ?? STRIPE_SECRET_KEY`,
- *     so the server picks up the test key automatically without any env-var
- *     rename needed.
+ *   - **dev / CI**: returns `STRIPE_SECRET_KEY_TEST`; without it, returns `STRIPE_SECRET_KEY`
+ *     ONLY when that value is itself a test-mode key (`sk_test_` / `rk_test_`). A live
+ *     credential is never returned in a development process. CI sets only
+ *     `STRIPE_SECRET_KEY` to a stub test key, which is why the test-mode fallback exists.
  *
  * This is the SINGLE place the fallback logic lives — all Stripe
  * initialisations and the validate-env guard must call this function rather
@@ -26,6 +27,25 @@ export function getStripeSecretKey(env: NodeJS.ProcessEnv = process.env): string
     return env.STRIPE_SECRET_KEY;
   }
 
-  // Dev / CI: prefer the dedicated test key, fall back to the main secret.
-  return env.STRIPE_SECRET_KEY_TEST ?? env.STRIPE_SECRET_KEY;
+  // Dev / CI: the dedicated test key; otherwise a test-mode key under the shared name; never live.
+  if (env.STRIPE_SECRET_KEY_TEST) return env.STRIPE_SECRET_KEY_TEST;
+  return isTestModeStripeKey(env.STRIPE_SECRET_KEY) ? env.STRIPE_SECRET_KEY : undefined;
+}
+
+/** True only for a Stripe test-mode secret or restricted key. */
+export function isTestModeStripeKey(key: string | undefined): key is string {
+  return typeof key === "string" && (key.startsWith("sk_test_") || key.startsWith("rk_test_"));
+}
+
+export function getStripeWebhookSecret(
+  kind: "platform" | "connect",
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const isProdStrict =
+    (env.NODE_ENV === "production" || env.ENVIRONMENT === "PROD") &&
+    env.ALLOW_TEST_ACCOUNTS !== "1";
+  if (kind === "platform") {
+    return isProdStrict ? env.STRIPE_WEBHOOK_SECRET : env.STRIPE_WEBHOOK_SECRET_TEST;
+  }
+  return isProdStrict ? env.STRIPE_CONNECT_WEBHOOK_SECRET : env.STRIPE_CONNECT_WEBHOOK_SECRET_TEST;
 }

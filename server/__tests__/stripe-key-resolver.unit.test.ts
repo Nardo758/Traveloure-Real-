@@ -3,7 +3,8 @@
  *
  * Covers:
  *   R1  Dev: STRIPE_SECRET_KEY_TEST present → resolver returns it, ignores live key
- *   R2  Dev: only STRIPE_SECRET_KEY present → resolver returns it
+ *   R2  Dev: only a LIVE STRIPE_SECRET_KEY present → resolver refuses it
+ *   R2b Dev/CI: only a TEST-mode STRIPE_SECRET_KEY present → resolver returns it (CI's stub)
  *   R3  Dev: neither key present → resolver returns undefined
  *   R4  Prod (NODE_ENV=production): ignores STRIPE_SECRET_KEY_TEST, returns live key
  *   R5  Prod (ENVIRONMENT=PROD): same as R4
@@ -14,7 +15,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { getStripeSecretKey } from "../utils/stripe-key";
+import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key";
 
 type Env = Partial<NodeJS.ProcessEnv>;
 
@@ -39,9 +40,16 @@ describe("getStripeSecretKey — key-selection rules", () => {
     assert.equal(getStripeSecretKey(env), "sk_test_abc");
   });
 
-  it("R2: dev with only live key → returns STRIPE_SECRET_KEY", () => {
+  it("R2: dev with only live key → refuses the fallback", () => {
     const env = devEnv({ STRIPE_SECRET_KEY: "sk_live_xyz" });
-    assert.equal(getStripeSecretKey(env), "sk_live_xyz");
+    assert.equal(getStripeSecretKey(env), undefined);
+  });
+
+  it("R2b: dev/CI with only a test-mode STRIPE_SECRET_KEY → returns it; never a live one", () => {
+    assert.equal(getStripeSecretKey(devEnv({ STRIPE_SECRET_KEY: "sk_test_ci_stub" })), "sk_test_ci_stub");
+    assert.equal(getStripeSecretKey(devEnv({ STRIPE_SECRET_KEY: "rk_test_ci_stub" })), "rk_test_ci_stub");
+    assert.equal(getStripeSecretKey(devEnv({ STRIPE_SECRET_KEY: "rk_live_xyz" })), undefined);
+    assert.equal(getStripeSecretKey(devEnv({ STRIPE_SECRET_KEY: "" })), undefined);
   });
 
   it("R3: dev with neither key → returns undefined", () => {
@@ -97,5 +105,31 @@ describe("getStripeSecretKey — key-selection rules", () => {
 
   it("no-arg call uses process.env (smoke — no throw)", () => {
     assert.doesNotThrow(() => getStripeSecretKey());
+  });
+});
+
+describe("getStripeWebhookSecret — environment separation", () => {
+  it("uses only sandbox platform and Connect signing secrets in development", () => {
+    const env = devEnv({
+      STRIPE_WEBHOOK_SECRET: "whsec_live_platform",
+      STRIPE_CONNECT_WEBHOOK_SECRET: "whsec_live_connect",
+      STRIPE_WEBHOOK_SECRET_TEST: "whsec_test_platform",
+      STRIPE_CONNECT_WEBHOOK_SECRET_TEST: "whsec_test_connect",
+    });
+    assert.equal(getStripeWebhookSecret("platform", env), "whsec_test_platform");
+    assert.equal(getStripeWebhookSecret("connect", env), "whsec_test_connect");
+    assert.equal(getStripeWebhookSecret("platform", devEnv({ STRIPE_WEBHOOK_SECRET: "whsec_live" })), undefined);
+    assert.equal(getStripeWebhookSecret("connect", devEnv({ STRIPE_CONNECT_WEBHOOK_SECRET: "whsec_live" })), undefined);
+  });
+
+  it("uses only the existing live signing secrets in production", () => {
+    const env = prodEnv({
+      STRIPE_WEBHOOK_SECRET: "whsec_live_platform",
+      STRIPE_CONNECT_WEBHOOK_SECRET: "whsec_live_connect",
+      STRIPE_WEBHOOK_SECRET_TEST: "whsec_test_platform",
+      STRIPE_CONNECT_WEBHOOK_SECRET_TEST: "whsec_test_connect",
+    });
+    assert.equal(getStripeWebhookSecret("platform", env), "whsec_live_platform");
+    assert.equal(getStripeWebhookSecret("connect", env), "whsec_live_connect");
   });
 });

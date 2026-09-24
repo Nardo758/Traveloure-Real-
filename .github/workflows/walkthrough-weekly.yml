@@ -127,6 +127,8 @@ jobs:
           # A walk stops at confirm regardless, so no real charge is ever possible here.
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY || 'sk_test_ci_stub_no_real_calls' }}
           STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
           XAI_API_KEY: xai-ci-stub-no-real-calls
           # The APP's own AI key is a stub — the site under test must not make real model
           # calls. The AGENT DRIVING the walk uses ANTHROPIC_API_KEY (below), a different

@@ -7221,6 +7221,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             });
           } catch (refundErr: any) {
             console.error("Provider cancellation refund error:", refundErr);
+            // PR #1066: refused at the Stripe boundary because a lost chargeback on this payment
+            // already returned the money. No Stripe call was made and nothing was changed.
+            if (refundErr?.name === "LostChargebackRefundBlockedError") {
+              const { lostChargebackRefusalBody } = await import("./services/lost-chargeback-guard.service");
+              return res.status(409).json(lostChargebackRefusalBody(refundErr.result));
+            }
             return res.status(502).json({
               message: "The refund could not be issued, so the booking was NOT cancelled. Please try again.",
               error: refundErr?.message,
@@ -7861,6 +7867,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // pending/confirmed booking don't exist yet (they are created at completion), so a
         // full-fraction earnings reversal is only run for 100% refunds as a safety net —
         // never on a partial refund, where it would wrongly zero any retained share.
+        // PR #1066: refuse BEFORE the ledger moves when a lost chargeback on this payment already
+        // returned the money this refund would send — same options the refund below is given.
+        {
+          const { checkServiceBookingRefundPreflight, lostChargebackRefusalBody } = await import(
+            "./services/lost-chargeback-guard.service"
+          );
+          const guard = await checkServiceBookingRefundPreflight(req.params.id, {
+            amountOverride: quote.refundAmount,
+            feeRefundPercent: quote.refundPercent,
+          });
+          if (!guard.allowed) return res.status(409).json(lostChargebackRefusalBody(guard));
+        }
         const refundFraction = quote.refundPercent / 100;
         if (quote.refundPercent === 100) {
           await storage.reverseEarningsForBooking(req.params.id);
