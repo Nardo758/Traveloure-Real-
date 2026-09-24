@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
@@ -539,6 +540,38 @@ export default function ServiceDetailPage() {
   // server-side from the listing/slot rows (§14).
   const planRoute = targetTripId ? planningRouteForTrip(targetTripId, tripCtx.endDate) : "/cart";
 
+  // Ledger 2026-09-24-cart-two-paths: Book is the PURCHASE path. A trip-less add is already a cart
+  // line; a plan add lands `in_planning`, so it is routed to `ready_for_checkout` through the ONE
+  // routing rail (the same call the Finalize chooser makes) — the cart line is then the item's
+  // projection (LD 39), so the purchase still shows on the plan. Either way the traveler lands on
+  // the payment step, never on the optimize flow. If the routing is refused the item is still on
+  // the plan, and the traveler is sent there and told, rather than to a cart without it (§13).
+  const completeBuyNow = async (created: Response | undefined) => {
+    if (!targetTripId) {
+      navigate(BUY_NOW_CART_PATH);
+      return;
+    }
+    try {
+      const item = (await created?.json()) as { id?: string } | undefined;
+      if (!item?.id) throw new Error("no item id");
+      const routed = await apiRequest("POST", `/api/trips/${targetTripId}/items/${item.id}/route`, {
+        to: "ready_for_checkout",
+      });
+      const body = (await routed.json().catch(() => null)) as { projection?: { action?: string } } | null;
+      // The transition never fails on a projection error (routing.routes.ts safeSync) — so a cart
+      // line that was not written is caught here, not assumed.
+      if (body?.projection?.action === "error") throw new Error("projection failed");
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      navigate(BUY_NOW_CART_PATH);
+    } catch {
+      toast({
+        title: "Added to your plan",
+        description: "It couldn't be moved to checkout automatically — send it to checkout from your plan.",
+      });
+      navigate(planRoute);
+    }
+  };
+
   // D-30 (ledger `2026-09-15-d28-d31-service-quotes`): the request store. The traveler prices
   // nothing and names nothing but the listing in the path (§14/§19). The server hands back the
   // open quote when one already exists (`created: false`), so a second press is not a second
@@ -616,10 +649,7 @@ export default function ServiceDetailPage() {
       }
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       if (vars.proceed) {
-        // The plan item lands `in_planning`, NOT in the cart — sending the traveler to /cart
-        // would show them an empty cart and break the promise the button just made. The slip is
-        // where they route it to checkout.
-        navigate(planRoute);
+        void completeBuyNow(_data as Response | undefined);
       } else {
         const when = selectedSlot
           ? `Slot held at checkout: ${format(new Date(`${selectedSlot.date}T00:00:00`), "MMM d, yyyy")}${selectedSlot.startTime ? ` at ${selectedSlot.startTime}` : ""}`
@@ -805,7 +835,7 @@ export default function ServiceDetailPage() {
       }
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       if (vars.proceed) {
-        navigate(planRoute);
+        void completeBuyNow(_data as Response | undefined);
       } else {
         const nights = `${roomNights} night${roomNights === 1 ? "" : "s"} — ${format(new Date(`${roomCheckIn}T00:00:00`), "MMM d")} to ${format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")}`;
         toast({

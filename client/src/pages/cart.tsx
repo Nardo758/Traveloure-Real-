@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
+import { canRemoveBeforePayment, readCartIntentParam, resolveCartIntent } from "@/lib/cart-intent";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
@@ -88,6 +89,8 @@ const SUPPORTED_CURRENCIES = [
 interface CartItem {
   id: string;
   serviceId: string | null;
+  /** Set when the line is the `ready_for_checkout` projection of a plan item (LD 39). */
+  itineraryItemId?: string | null;
   contentType: string | null;
   contentId: string | null;
   contentMeta: Record<string, any> | null;
@@ -925,6 +928,23 @@ export default function CartPage() {
     onError: () => {
       toast({ variant: "destructive", title: "Failed to add items to trip" });
     },
+  });
+
+  // Ledger 2026-09-24-cart-two-paths: BUYING or PLANNING, decided once (cart-intent.ts). A Book
+  // button lands here with `?intent=buy` and goes straight to the payment step, where every line
+  // is listed and removable until payment starts (option A: the whole cart is checked out).
+  const urlCartIntent = readCartIntentParam(searchString);
+  const cartIntent = resolveCartIntent({ urlIntent: urlCartIntent, items: cart?.items ?? [] });
+  const buyNowAppliedRef = useRef(false);
+  useEffect(() => {
+    if (urlCartIntent !== "buy" || buyNowAppliedRef.current) return;
+    if (isLoading || (cart?.items?.length || 0) === 0) return;
+    buyNowAppliedRef.current = true;
+    setFlowStep((step) => (step === "cart" ? "payment" : step));
+  }, [urlCartIntent, isLoading, cart?.items?.length]);
+  const orderLinesRemovable = canRemoveBeforePayment({
+    paymentStarted: !!checkoutPaymentIntent,
+    orderSnapshotted: !!checkoutOrderSnapshot,
   });
 
   // Redirect payment step to cart if no platform items exist (external-only carts cannot checkout)
@@ -1970,7 +1990,7 @@ export default function CartPage() {
                       hidden when the preview finds no room to improve, or when the
                       optimizer is disabled (feeCents 0 without a free re-run). Fee is
                       the config-resolved amount the preview returned. */}
-                  {cartNudge && !optimizationResult &&
+                  {cartIntent === "plan" && cartNudge && !optimizationResult &&
                     (cartNudge.estimatedSavingsPct > 0 || cartNudge.estimatedScheduleTighteningPct > 0) &&
                     (cartNudge.feeCents > 0 || cartNudge.freeRerun) && (
                     <button
@@ -2455,7 +2475,11 @@ export default function CartPage() {
                     </div>
                     <CardFooter className="flex flex-col gap-3">
                       {planCandidateItems.length > 0 && (
-                        <div className="w-full p-3 rounded-lg bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20">
+                        <div
+                          className={`w-full p-3 rounded-lg bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 ${
+                            cartIntent === "buy" ? "order-last" : ""
+                          }`}
+                        >
                           <div className="flex items-start gap-2 mb-2">
                             <Route className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
                             <div>
@@ -2481,19 +2505,34 @@ export default function CartPage() {
                           details and the optimize step first — so the "Generate
                           Itinerary" label lives on the step where generation
                           actually fires, not in the cart. */}
-                      <div className="w-full p-3 rounded-lg bg-gradient-to-r from-[#FF385C]/10 to-purple-500/10 border border-primary/20">
+                      {/* Ledger 2026-09-24-cart-two-paths: a BUYING cart puts checkout first and
+                          offers planning after it; a PLANNING cart keeps optimize first. Both
+                          controls render either way — only their order and weight change. */}
+                      <div
+                        className={`w-full p-3 rounded-lg border ${
+                          cartIntent === "buy"
+                            ? "order-last border-border"
+                            : "bg-gradient-to-r from-[#FF385C]/10 to-purple-500/10 border-primary/20"
+                        }`}
+                        data-testid={`cart-optimize-card-${cartIntent}`}
+                      >
                         <div className="flex items-start gap-2 mb-2">
                           <Sparkles className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
                           <div>
-                            <h4 className="text-sm font-medium">Plan &amp; optimize this trip</h4>
+                            <h4 className="text-sm font-medium">
+                              {cartIntent === "buy" ? "Planning a trip around these?" : <>Plan &amp; optimize this trip</>}
+                            </h4>
                             <p className="text-xs text-muted-foreground mt-1">
-                              Next: our AI organizes your selections into an itinerary with optimized alternatives. Trip details live in the strip above — edit anytime.
+                              {cartIntent === "buy"
+                                ? "Optional: our AI can organize these into an itinerary with optimized alternatives. You don't need it to buy."
+                                : "Next: our AI organizes your selections into an itinerary with optimized alternatives. Trip details live in the strip above — edit anytime."}
                             </p>
                           </div>
                         </div>
                         <Button
-                          className="w-full bg-primary hover:bg-primary/90"
-                          size="lg"
+                          className={cartIntent === "buy" ? "w-full" : "w-full bg-primary hover:bg-primary/90"}
+                          variant={cartIntent === "buy" ? "outline" : "default"}
+                          size={cartIntent === "buy" ? "default" : "lg"}
                           onClick={handleOptimizeClick}
                           disabled={
                             previewLoading ||
@@ -2508,23 +2547,29 @@ export default function CartPage() {
                           ) : (
                             <MapPin className="w-4 h-4 mr-2" />
                           )}
-                          {resolvingTrip ? "Preparing trip..." : previewLoading ? "Analyzing your cart..." : "Continue — Optimize"}
+                          {resolvingTrip
+                            ? "Preparing trip..."
+                            : previewLoading
+                              ? "Analyzing your cart..."
+                              : cartIntent === "buy"
+                                ? "Plan & optimize instead"
+                                : "Continue — Optimize"}
                         </Button>
                       </div>
                       {(cart?.items?.length || 0) > 0 && (
-                        <>
-                          <Separator />
+                        <div className={`w-full flex flex-col gap-3 ${cartIntent === "buy" ? "order-first" : ""}`}>
+                          {cartIntent === "plan" && <Separator />}
                           <Button
-                            variant="outline"
-                            className="w-full border-2"
+                            variant={cartIntent === "buy" ? "default" : "outline"}
+                            className={cartIntent === "buy" ? "w-full bg-primary hover:bg-primary/90" : "w-full border-2"}
                             size="lg"
                             onClick={() => setFlowStep("payment")}
                             data-testid="button-skip-to-payment"
                           >
                             <CreditCard className="w-5 h-5 mr-2" />
-                            Proceed to Payment
+                            {cartIntent === "buy" ? "Checkout" : "Proceed to Payment"}
                           </Button>
-                        </>
+                        </div>
                       )}
                     </CardFooter>
                   </Card>
@@ -3045,6 +3090,11 @@ export default function CartPage() {
                       <CardTitle>Order Review</CardTitle>
                     </CardHeader>
                     <CardContent>
+                      {orderLinesRemovable && (cart?.items?.length || 0) > 1 && (
+                        <p className="text-sm text-muted-foreground mb-3" data-testid="text-order-review-whole-cart">
+                          Everything below is checked out together. Remove anything you don't want to buy now.
+                        </p>
+                      )}
                       <div className="space-y-3">
                         {(checkoutOrderSnapshot ? checkoutOrderSnapshot.items : (cart?.items || [])).map((item) => {
                           // L1: same nights × rate math as the cart step — the Order Review
@@ -3055,15 +3105,35 @@ export default function CartPage() {
                           return (
                             <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
                               <div>
-                                <div className="font-medium">{item.service?.serviceName}</div>
+                                <div className="font-medium">
+                                  {item.service?.serviceName ??
+                                    item.contentDisplay?.name ??
+                                    (item.contentMeta as { name?: string } | null)?.name ??
+                                    "Item"}
+                                </div>
                                 <div className="text-sm text-muted-foreground">
                                   {roomStay
                                     ? `${format(parseISO(roomStay.checkIn), "MMM d")} → ${format(parseISO(roomStay.checkOut), "MMM d")} · ${roomStay.nights} night${roomStay.nights !== 1 ? "s" : ""}`
                                     : `Qty: ${item.quantity}`}
                                 </div>
                               </div>
-                              <div className="font-medium">
-                                {formatPrice(lineTotal)}
+                              <div className="flex items-center gap-2">
+                                <div className="font-medium">
+                                  {formatPrice(lineTotal)}
+                                </div>
+                                {orderLinesRemovable && !checkoutMutation.isPending && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-destructive"
+                                    onClick={() => removeItemMutation.mutate(item.id)}
+                                    disabled={removeItemMutation.isPending}
+                                    aria-label={`Remove ${item.service?.serviceName ?? "item"}`}
+                                    data-testid={`button-remove-review-${item.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           );
