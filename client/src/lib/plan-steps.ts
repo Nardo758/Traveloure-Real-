@@ -67,14 +67,21 @@ import type { PlanningBranch } from "@/contexts/PlanningContext";
  * because `POST /api/expert-booking-requests` REQUIRES a `tripId` and the expert-detail CTA
  * re-opens this very modal without one (`docs/briefs/EXPERT_HANDOFF_IS_A_LOOP.md`).
  *
- * `ai` is absent deliberately — it opens the AI drawer on the committed plan and mints on its own
- * rail. `occasion` is absent because it goes to Stripe checkout and plans nothing.
+ * `ai` needs one since RC-1 (decision-maker ruled Sep 24, 2026 — ledger
+ * `2026-09-24-rc1-finish-mints`, amending `2026-09-23-local-finish-mints`, whose M3 pinned it OUT).
+ * It used to mint "on its own rail" — the AI generation, and ONLY if that model call succeeded — so
+ * the landing's primary button, a failed or closed AI run, and every door that offers AI alone left
+ * the traveler with answers and no plan (audit RC-1, `docs/audits/GAP_REGISTER.md`). Locked
+ * Decision 45 already drew the line: before the mint the AI Planner is a door, after it a drawer on
+ * that plan — so the finish mints first and the free draft then runs on the new, EMPTY slip (LD 41
+ * (b)), and a plan whose draft fails or is abandoned still exists and offers "Draft it with AI".
+ * `occasion` is still absent because it goes to Stripe checkout and plans nothing.
  *
  * It lives in THIS leaf module rather than beside `PlanningBranch`: `PlanningContext` imports
  * `PlanModal`, so a runtime constant read by the modal and declared there would be a circular
  * value import. The `import type` above is erased and carries no cycle.
  */
-export const BRANCHES_THAT_MINT: readonly PlanningBranch[] = ["myself", "local"];
+export const BRANCHES_THAT_MINT: readonly PlanningBranch[] = ["myself", "local", "ai"];
 
 /**
  * OF THOSE, THE ONES THAT CANNOT RUN WITHOUT THE ROW.
@@ -95,6 +102,32 @@ export const BRANCHES_THAT_MINT: readonly PlanningBranch[] = ["myself", "local"]
  * missing.
  */
 export const BRANCHES_THAT_REQUIRE_THE_MINT: readonly PlanningBranch[] = ["myself"];
+
+/**
+ * "SAVE" MINTS A PLAN WHEN THERE IS NONE YET, AND ONLY THEN (ledger `2026-09-24-rc1-finish-mints`).
+ *
+ * Save was an EDIT-door affordance ("correct a detail and leave") and never minted, so on a
+ * brand-new plan it closed the modal with nothing created and no word said — the audit's
+ * `button-etp-save` ORPHAN_WRITE. The decision-maker ruled that Save on a new plan creates it.
+ * Three conditions, and each one is a reason NOT to mint, never a guess:
+ *   · a plan is already bound — Save is then the edit it always was;
+ *   · no signed-in member — a guest's Save is never turned into a sign-in wall (the same posture
+ *     `BRANCHES_THAT_REQUIRE_THE_MINT` takes for the public `local` browse);
+ *   · the basics are incomplete — `trips.destination` / `start_date` / `end_date` are NOT NULL and
+ *     no mint may invent one (Locked Decision 42 D12), so an unfinished answer stays in the pen.
+ * Pure — the caller reads the live context and the form and hands them in.
+ */
+export function saveMintsPlan(input: {
+  boundTripId?: string | null;
+  signedIn: boolean;
+  destination?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+}): boolean {
+  if (input.boundTripId) return false;
+  if (!input.signedIn) return false;
+  return !!input.destination?.trim() && !!input.startDate && !!input.endDate;
+}
 
 /** The five ratified steps, in flow order. `where` is step 2 — the artboard filename hides it. */
 export type PlanStepId = "occasion" | "where" | "when" | "who" | "events";

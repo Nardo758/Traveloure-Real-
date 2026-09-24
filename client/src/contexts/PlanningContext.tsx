@@ -423,6 +423,12 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
           initialStartDate={committed?.startDate}
           initialEndDate={committed?.endDate}
           initialTravelers={committed?.travelers}
+          // RC-1 (ledger `2026-09-24-rc1-finish-mints`): the finish MINTED this plan before it
+          // opened the AI form (`ai` is in `BRANCHES_THAT_MINT`), so the free draft is written INTO
+          // it — onto an empty slip, which is the only place LD 41 (b) lets the free draft run.
+          // Absent (a guest, or a mint that was refused) ⇒ the form keeps its old behaviour and
+          // the server mints on a successful generation, exactly as before.
+          tripId={committed?.tripId}
           momentKey={source?.momentKey}
           userId={user?.id || ""}
           // "change" on that summary. THE OPENER IS THE OPENER: this closes the AI form and calls

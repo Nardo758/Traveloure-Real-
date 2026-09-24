@@ -2867,6 +2867,12 @@ jobs:
       # a blank id is DROPPED, never sent as `tripId=undefined`.
       - name: local-expert finish mints (LD 42 D5)
         run: npx tsx --test client/src/lib/__tests__/local-finish-mints.test.ts
+      # RC-1 (ledger `2026-09-24-rc1-finish-mints`): "Plan with AI" mints first and drafts INTO the
+      # new plan; "Save" on a plan that does not exist yet creates it. R1 fails if `ai` leaves
+      # `BRANCHES_THAT_MINT`; R2-R5 pin `saveMintsPlan`'s three reasons NOT to mint; R10 that a home-city suggestion is never minted; R8 pins that a
+      # door naming a plan is never minted a second one.
+      - name: planning-modal exits mint (audit RC-1)
+        run: npx tsx --test client/src/lib/__tests__/rc1-finish-mints.test.ts
 
   extraction-date-anchor:
     name: extraction-date-anchor (Console & AI Concierge brief F5 — 2026-09-07-extraction-date-anchor)
