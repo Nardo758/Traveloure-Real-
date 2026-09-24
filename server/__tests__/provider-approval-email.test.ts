@@ -372,6 +372,32 @@ describe('PATCH /api/admin/provider-applications/:id/status — approval email',
     assert.strictEqual(res.captured.data.id, 'application-1');
     assert.strictEqual(res.captured.data.status, 'approved');
   });
+  it('(E) a re-save of an already-approved application sends NO second email (board #905)', async () => {
+    const routeHandler = getStatusRouteHandler();
+
+    const capturedEmailCalls: any[] = [];
+    _emailTestHooks.sendProviderApplicationApprovalEmail = async (params) => {
+      capturedEmailCalls.push(params);
+    };
+
+    (db as any).select = (_fields?: any) => makeChain([FAKE_ADMIN_USER]);
+    (db as any).insert = (_table: any) => makeChain([]);
+    (db as any).update = (_table: any) => makeChain([]);
+    installTransactionMock();
+
+    // The writer reports the status the row held under its lock: it was already approved.
+    storage.updateServiceProviderFormStatus = async () =>
+      ({ ...makeApprovedApplication(FAKE_PROVIDER_USER_WITH_EMAIL.id), priorStatus: 'approved' }) as any;
+    storage.getUser = async () => FAKE_PROVIDER_USER_WITH_EMAIL as any;
+
+    const req = makeReq({ body: { status: 'approved' } });
+    const res = makeRes();
+    await routeHandler(req, res, () => {});
+
+    assert.strictEqual(capturedEmailCalls.length, 0, 'a re-save must not congratulate the provider again');
+    assert.strictEqual(res.captured.data.status, 'approved');
+    assert.ok(!('priorStatus' in res.captured.data), 'the lock bookkeeping never reaches the response');
+  });
 });
 
 // ─── Email-service unit tests (graceful null/undefined handling) ──────────────

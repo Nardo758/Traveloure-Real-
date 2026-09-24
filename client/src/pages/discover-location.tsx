@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import { resolveCoverPhoto, type CoverPhotoCredit } from "@/lib/cover-photo";
 import { useParams, useSearch, useLocation, Link } from "wouter";
 import { trackCityView } from "@/hooks/use-recently-viewed";
 import { useQuery } from "@tanstack/react-query";
@@ -104,25 +105,6 @@ function formatTripDates(start?: string, end?: string): string | null {
   return `${sMonth} ${sDay} – ${eMonth} ${eDay}`;
 }
 
-/**
- * Curated hero images for popular cities — used when no gem photo is available.
- * Keys are lowercase city names.
- */
-const CURATED_HERO_IMAGES: Record<string, string> = {
-  tokyo: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1200&q=80",
-  kyoto: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1200&q=80",
-  paris: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1200&q=80",
-  london: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=80",
-  "new york": "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&w=1200&q=80",
-  barcelona: "https://images.unsplash.com/photo-1583422409516-2895a77efded?auto=format&fit=crop&w=1200&q=80",
-  rome: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=1200&q=80",
-  amsterdam: "https://images.unsplash.com/photo-1534351590666-13e3e96b5017?auto=format&fit=crop&w=1200&q=80",
-  bali: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=1200&q=80",
-  bangkok: "https://images.unsplash.com/photo-1508009603885-50cf7c8dd0d5?auto=format&fit=crop&w=1200&q=80",
-  singapore: "https://images.unsplash.com/photo-1525625293386-3f8f99389edd?auto=format&fit=crop&w=1200&q=80",
-  dubai: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1200&q=80",
-};
-
 function toTitleCase(str: string): string {
   return str
     .split(/[\s-]+/)
@@ -130,7 +112,6 @@ function toTitleCase(str: string): string {
     .join(" ");
 }
 
-type CoverPhotoCredit = { name: string; url: string } | null;
 
 function PhotoCreditBadge({ credit }: { credit: CoverPhotoCredit }) {
   if (!credit) return null;
@@ -2059,31 +2040,10 @@ export default function DiscoverLocationPage() {
 
   const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
 
-  // ── Cover photo: highest-scored gem imageUrl → curated map → null ───────
-  const coverPhotoUrl: string | null = (() => {
-    if (allGems.length > 0) {
-      const sorted = [...allGems]
-        .filter((g: any) => !!g.imageUrl)
-        .sort((a: any, b: any) => (b.gemScore ?? 0) - (a.gemScore ?? 0));
-      if (sorted.length > 0) {
-        return sorted[0].imageUrl as string;
-      }
-    }
-    return CURATED_HERO_IMAGES[city.toLowerCase()] ?? null;
-  })();
-
-  const coverPhotoCredit: CoverPhotoCredit = (() => {
-    if (allGems.length > 0) {
-      const sorted = [...allGems]
-        .filter((g: any) => !!g.imageUrl)
-        .sort((a: any, b: any) => (b.gemScore ?? 0) - (a.gemScore ?? 0));
-      if (sorted.length > 0) {
-        const gem = sorted[0];
-        if (gem.imageAttribution) return { name: gem.imageAttribution as string, url: gem.imageUrl as string };
-      }
-    }
-    return null;
-  })();
+  // ── Cover photo: highest-scored gem imageUrl → curated map → null (board #437) ──
+  const coverPhoto = resolveCoverPhoto(allGems, city);
+  const coverPhotoUrl = coverPhoto.url;
+  const coverPhotoCredit = coverPhoto.credit;
 
   if (!city) {
     return (

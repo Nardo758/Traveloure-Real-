@@ -19,16 +19,16 @@ export async function searchKlook(params: KlookSearchParams): Promise<CatalogIte
   const isAsia = ASIA_KEYWORDS.some(k => city.toLowerCase().includes(k));
 
   const categories = isAsia ? [
-    { cat: "Attraction Tickets", icon: "🎫", basePrice: 18, desc: `Skip-the-line entry to top attractions in ${city}` },
-    { cat: "Day Tours", icon: "🚌", basePrice: 55, desc: `Guided full-day tours from ${city}` },
-    { cat: "Transport Passes", icon: "🚇", basePrice: 12, desc: `Transit cards & airport transfers in ${city}` },
-    { cat: "Food Experiences", icon: "🍜", basePrice: 35, desc: `Street food tours & cooking classes in ${city}` },
-    { cat: "Cultural Shows", icon: "🎎", basePrice: 40, desc: `Cultural performances & shows in ${city}` },
-    { cat: "Theme Parks", icon: "🎡", basePrice: 65, desc: `Theme park & entertainment tickets in ${city}` },
+    { cat: "Attraction Tickets", icon: "🎫", desc: `Skip-the-line entry to top attractions in ${city}` },
+    { cat: "Day Tours", icon: "🚌", desc: `Guided full-day tours from ${city}` },
+    { cat: "Transport Passes", icon: "🚇", desc: `Transit cards & airport transfers in ${city}` },
+    { cat: "Food Experiences", icon: "🍜", desc: `Street food tours & cooking classes in ${city}` },
+    { cat: "Cultural Shows", icon: "🎎", desc: `Cultural performances & shows in ${city}` },
+    { cat: "Theme Parks", icon: "🎡", desc: `Theme park & entertainment tickets in ${city}` },
   ] : [
-    { cat: "Attraction Tickets", icon: "🎫", basePrice: 22, desc: `Tickets & experiences in ${city}` },
-    { cat: "Day Tours", icon: "🚌", basePrice: 60, desc: `Guided day tours from ${city}` },
-    { cat: "City Experiences", icon: "🌆", basePrice: 35, desc: `Unique city experiences in ${city}` },
+    { cat: "Attraction Tickets", icon: "🎫", desc: `Tickets & experiences in ${city}` },
+    { cat: "Day Tours", icon: "🚌", desc: `Guided day tours from ${city}` },
+    { cat: "City Experiences", icon: "🌆", desc: `Unique city experiences in ${city}` },
   ];
 
   return categories.slice(0, params.limit || 6).map((c, i): CatalogItem => ({
@@ -37,11 +37,12 @@ export async function searchKlook(params: KlookSearchParams): Promise<CatalogIte
     provider: "klook",
     externalId: `klook-${city}-${i}`,
     title: `${c.icon} ${c.cat} — ${city}`,
-    description: `${c.desc} · Instant booking on Klook · Mobile voucher`,
+    description: `${c.desc} · Search on Klook`,
     imageUrl: null,
-    price: c.basePrice,
+    // §13 (board #1200, ledger `2026-09-23-phase2-honesty`): this card is a search entry point, not a quote — no price or rating was fetched, so none is shown.
+    price: null,
     currency: params.currency || "USD",
-    rating: 4.6,
+    rating: null,
     reviewCount: null,
     destination: params.destination,
     location: null,

@@ -372,6 +372,34 @@ describe('PATCH /api/admin/provider-applications/:id/status — rejection email'
     assert.strictEqual(res.captured.data.id, 'application-1');
     assert.strictEqual(res.captured.data.status, 'rejected');
   });
+  it('(E) a re-save of an already-rejected application sends NO second notice or email (board #905)', async () => {
+    const routeHandler = getStatusRouteHandler();
+
+    const capturedEmailCalls: any[] = [];
+    _emailTestHooks.sendProviderApplicationRejectionEmail = async (params) => {
+      capturedEmailCalls.push(params);
+    };
+
+    (db as any).select = (_fields?: any) => makeChain([FAKE_ADMIN_USER]);
+    let notificationInserts = 0;
+    (db as any).insert = (_table: any) => {
+      notificationInserts += 1;
+      return makeChain([]);
+    };
+    (db as any).update = (_table: any) => makeChain([]);
+
+    storage.updateServiceProviderFormStatus = async () =>
+      ({ ...makeRejectedApplication(FAKE_PROVIDER_USER_WITH_EMAIL.id), priorStatus: 'rejected' }) as any;
+    storage.getUser = async () => FAKE_PROVIDER_USER_WITH_EMAIL as any;
+
+    const req = makeReq({ body: { status: 'rejected', rejectionMessage: null } });
+    const res = makeRes();
+    await routeHandler(req, res, () => {});
+
+    assert.strictEqual(capturedEmailCalls.length, 0, 'a re-save must not re-send the rejection email');
+    assert.strictEqual(notificationInserts, 0, 'nor the in-app rejection notice');
+    assert.ok(!('priorStatus' in res.captured.data), 'the lock bookkeeping never reaches the response');
+  });
 });
 
 // ─── Email-service unit tests (graceful null/undefined handling) ──────────────

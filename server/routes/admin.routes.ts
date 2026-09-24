@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
 import { assertReadyMadeComplete } from "./ready-made.routes";
@@ -135,7 +136,7 @@ import { calculateCommission, BookingType } from "../utils/commissionCalculator"
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
 import { RoleTransitionError } from "../services/role-transition";
 import {
-  getAdminRole, getFullAdminUser, insertAccessAuditLog, getContactSubmissions,
+  getAdminRole, getFullAdminUser, insertAccessAuditLog, recordAdminAudit, getContactSubmissions,
   updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
   updateUserRole, assertUserRoleTransitionAllowed, getUserVerificationStatus, getUserCommissionOverride,
   setUserCommissionOverride, insertNotification, getAdminNotifications,
@@ -895,7 +896,11 @@ router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthentic
 
     // F5 (workstation-flows audit): the assignment previously happened in silence — the expert
     // found out only if they visited Assigned Trips. Best-effort notification, never fails the assign.
+    // Honours the expert's own "Booking Request" in-app toggle (board #1230) — the same key and
+    // channel as the trip-assignment notice.
     try {
+      const { isNotificationChannelEnabled } = await import("../services/notification-preferences.service");
+      if (await isNotificationChannelEnabled(expertId, "bookingRequest", "push"))
       await db.insert(notifications).values({
         userId: expertId,
         type: "booking_request",
@@ -1081,7 +1086,7 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
     if (!updated) {
       return res.status(409).json({ message: "Listing is not awaiting review" });
     }
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: user.id,
       actorRole: user.role,
       action: "ready_made_approve",
@@ -1090,7 +1095,7 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
       metadata: { insideCounts },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error("[admin/ready-made] audit log failed (non-fatal):", err));
+    });
     res.json({ success: true, listing: updated });
   } catch (err: any) {
     console.error("Admin ready-made approve error:", err);
@@ -1164,7 +1169,7 @@ router.post("/api/admin/ready-made/:id/reject", isAuthenticated, async (req, res
     if (!updated) {
       return res.status(409).json({ message: "Listing is not awaiting review" });
     }
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: user.id,
       actorRole: user.role,
       action: "ready_made_reject",
@@ -1173,7 +1178,7 @@ router.post("/api/admin/ready-made/:id/reject", isAuthenticated, async (req, res
       metadata: { reason: reason.slice(0, 2000) },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error("[admin/ready-made] audit log failed (non-fatal):", err));
+    });
     res.json({ success: true, listing: updated });
   } catch (err: any) {
     console.error("Admin ready-made reject error:", err);
@@ -1321,7 +1326,7 @@ router.post("/api/admin/ready-made/disputes/:purchaseId/refund", isAuthenticated
       }).catch(() => {});
     }
 
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: user.id,
       actorRole: user.role,
       action: "ready_made_dispute_refunded",
@@ -1335,7 +1340,7 @@ router.post("/api/admin/ready-made/disputes/:purchaseId/refund", isAuthenticated
       },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error("[admin/concierge-disputes] audit log failed (non-fatal):", err));
+    });
 
     res.json({ success: true, refundId, purchase: resolved ?? ledger.purchase });
   } catch (err: any) {
@@ -1379,7 +1384,7 @@ router.post("/api/admin/ready-made/disputes/:purchaseId/dismiss", isAuthenticate
       data: { purchaseId, outcome: "dismissed" },
     }).catch(() => {});
 
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: user.id,
       actorRole: user.role,
       action: "ready_made_dispute_dismissed",
@@ -1388,7 +1393,7 @@ router.post("/api/admin/ready-made/disputes/:purchaseId/dismiss", isAuthenticate
       metadata: { note: note || null, reason: String(resolved.disputeReason ?? "").slice(0, 2000) },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error("[admin/concierge-disputes] audit log failed (non-fatal):", err));
+    });
 
     res.json({ success: true, purchase: resolved });
   } catch (err: any) {
@@ -1440,8 +1445,7 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
         currentStatus: existing.status,
       });
     }
-    let auditWarning: string | undefined;
-    await insertAccessAuditLog({
+    const auditWarning = await recordAdminAudit({
       actorId: user.id,
       actorRole: user.role,
       action: "dispute_rejected",
@@ -1450,9 +1454,6 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
       metadata: { reason: String(req.body?.reason ?? "").slice(0, 2000) || null, clearedEarnings: cleared },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => {
-      console.error("[admin/disputes] audit log failed (non-fatal):", err);
-      auditWarning = `Audit log write failed for dispute_rejected on booking ${bookingId}: ${err?.message ?? "unknown error"}. Status change was applied but this action has no audit trail.`;
     });
     res.json({
       success: true,
@@ -1506,8 +1507,7 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // bought. After the refund, atomic, idempotent, never throws.
     const routingReversal = await revertPurchasedItemsForBooking(bookingId);
 
-    let auditWarning: string | undefined;
-    await insertAccessAuditLog({
+    const auditWarning = await recordAdminAudit({
       actorId: user.id,
       actorRole: user.role,
       action: "dispute_refunded",
@@ -1522,9 +1522,6 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
       },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => {
-      console.error("[admin/disputes] audit log failed (non-fatal):", err);
-      auditWarning = `Audit log write failed for dispute_refunded on booking ${bookingId}: ${err?.message ?? "unknown error"}. Ledger reversal and Stripe refund were applied but this action has no audit trail.`;
     });
 
     res.json({
@@ -1611,8 +1608,7 @@ router.post("/api/admin/disputes/:bookingId/refund-rejected-artifact", isAuthent
     // to `in_planning` so the Trip Card stops showing it as bought. ONE helper, one more caller.
     const routingReversal = await revertPurchasedItemsForBooking(bookingId);
 
-    let auditWarning: string | undefined;
-    await insertAccessAuditLog({
+    const auditWarning = await recordAdminAudit({
       actorId: user.id,
       actorRole: user.role,
       action: "dispute_artifact_rejection_refunded",
@@ -1631,9 +1627,6 @@ router.post("/api/admin/disputes/:bookingId/refund-rejected-artifact", isAuthent
       },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => {
-      console.error("[admin/disputes] audit log failed (non-fatal):", err);
-      auditWarning = `Audit log write failed for dispute_artifact_rejection_refunded on booking ${bookingId}: ${err?.message ?? "unknown error"}. The refund was applied but this action has no audit trail.`;
     });
 
     // §13: "refund issued" is said only with a refund id in hand. A retry that found the booking already
@@ -2381,7 +2374,7 @@ router.post("/api/admin/dmo/publish/:id", isAuthenticated, async (req, res) => {
         message: "Not eligible to publish (must be reviewed into the expert library, unpublished, and not rejected)",
       });
     }
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: user.id,
       actorRole: user.role,
       action: "dmo_discover_publish",
@@ -2390,7 +2383,7 @@ router.post("/api/admin/dmo/publish/:id", isAuthenticated, async (req, res) => {
       metadata: { city: updated.city, country: updated.country, contentType: updated.contentType, inventoryClass: updated.inventoryClass },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error("[admin/dmo/publish] audit log failed (non-fatal):", err));
+    });
     res.json({ message: "Published to Discover", item: updated });
   } catch (err: any) {
     console.error("DMO publish error:", err);
@@ -2427,7 +2420,7 @@ router.post("/api/admin/dmo/publish-batch", isAuthenticated, async (req, res) =>
         .returning();
       if (updated) {
         publishedIds.push(updated.id);
-        await insertAccessAuditLog({
+        await recordAdminAudit({
           actorId: user.id,
           actorRole: user.role,
           action: "dmo_discover_publish",
@@ -2436,7 +2429,7 @@ router.post("/api/admin/dmo/publish-batch", isAuthenticated, async (req, res) =>
           metadata: { city: updated.city, country: updated.country, contentType: updated.contentType, inventoryClass: updated.inventoryClass, batch: true },
           ipAddress: req.ip ?? null,
           userAgent: req.get("user-agent") ?? null,
-        }).catch((err: any) => console.error("[admin/dmo/publish-batch] audit log failed (non-fatal):", err));
+        });
       } else {
         skippedIds.push(id);
       }
@@ -2466,7 +2459,7 @@ router.post("/api/admin/dmo/resolve", isAuthenticated, async (req, res) => {
   try {
     const { runResolutionPass } = await import("../services/stub-resolution.service");
     const result = await runResolutionPass({ mode, city });
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: user.id,
       actorRole: user.role,
       action: "dmo_resolution_pass",
@@ -2475,7 +2468,7 @@ router.post("/api/admin/dmo/resolve", isAuthenticated, async (req, res) => {
       metadata: { mode, city: city ?? null, scanned: result.scanned, changed: result.changed, upgrades: result.upgrades, downgrades: result.downgrades, byClass: result.byClass },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error("[admin/dmo/resolve] audit log failed (non-fatal):", err));
+    });
     res.json({ message: `Resolution pass complete (${mode})`, result });
   } catch (err: any) {
     console.error("DMO resolution pass error:", err);
@@ -2689,6 +2682,10 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
         return res.status(500).json({ message: "Role update failed; application status was reverted" });
       }
 
+      // The role write above is idempotent and always re-asserted; the one-time messages below go
+      // out only when this save ENTERED `approved` — a re-save of an approved application must not
+      // congratulate the applicant again (board #905, ledger `2026-09-23-phase2-messages`).
+      if (enteredStatus(updated, "approved")) {
       // Notify the user to complete Stripe Connect setup
       await insertNotification({
         userId: updated.userId,
@@ -2714,11 +2711,12 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
           console.error("[admin] Failed to send expert approval email (non-fatal):", err);
         }
       }
+      }
     }
 
     // If rejected, send the applicant an email with the rejection reason (if any).
-    // Guard: only send when actually transitioning TO rejected — not on re-saves of the same status.
-    if (status === "rejected" && priorStatus !== "rejected") {
+    // Guard: only when this save ENTERED `rejected` (read under the row lock) — not on re-saves.
+    if (status === "rejected" && enteredStatus(updated, "rejected")) {
       const [applicant] = await db
         .select({ email: users.email, firstName: users.firstName })
         .from(users)
@@ -2737,7 +2735,8 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
       }
     }
 
-    res.json(updated);
+    const { priorStatus: _expertPriorStatus, ...expertForm } = updated;
+    res.json(expertForm);
   });
 
   // Admin: Update rejection reason only (without changing status)
@@ -2989,6 +2988,8 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
         }
         return res.status(500).json({ message: "Role update failed; application status was reverted" });
       }
+      // One-time messages only on ENTRY into `approved` (board #905) — the role write stays.
+      if (enteredStatus(updated, "approved")) {
       // Notify the user to complete Stripe Connect setup
       await insertNotification({
         userId: updated.userId,
@@ -3007,9 +3008,13 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
           firstName: providerUser.firstName ?? null,
         });
       }
+      }
     }
 
-    if (status === "rejected") {
+    // Only on ENTRY into `rejected` (board #905): a re-save must not re-send the notice or the email.
+    // Changing the feedback on an already-rejected application is the separate rejection-reason
+    // route, which re-sends by design.
+    if (status === "rejected" && enteredStatus(updated, "rejected")) {
       // Notify the user in-app
       await insertNotification({
         userId: updated.userId,
@@ -3031,8 +3036,9 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
         });
       }
     }
-    
-    res.json(updated);
+
+    const { priorStatus: _providerPriorStatus, ...providerForm } = updated;
+    res.json(providerForm);
   });
 
   // Admin: Update provider application rejection reason only (without changing status)
@@ -3406,7 +3412,7 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
         ? billingFields.filter(f => (input as any)[f] !== undefined && (before as any)[f] !== (input as any)[f])
         : [];
       if (changedBilling.length > 0) {
-        await insertAccessAuditLog({
+        await recordAdminAudit({
           actorId: userId,
           actorRole: user.role,
           action: "service_category_billing_update",
@@ -3419,7 +3425,7 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
           },
           ipAddress: req.ip ?? null,
           userAgent: req.get("user-agent") ?? null,
-        }).catch((err: any) => console.error("[service-category] audit log failed (non-fatal):", err));
+        });
       }
 
       res.json(updated);
@@ -3628,7 +3634,7 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
       const fullRow = await storage.getProviderServiceById(req.params.id);
       if (fullRow && (fullRow as any).editReviewStatus === "pending") {
         const applied = await storage.applyPendingChanges(req.params.id, adminId);
-        await insertAccessAuditLog({
+        await recordAdminAudit({
           actorId: adminId,
           actorRole: user.role,
           action: "provider_service_edit_review_approve",
@@ -3637,7 +3643,7 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
           metadata: { appliedKeys: Object.keys(((fullRow as any).pendingChanges ?? {}) as object) },
           ipAddress: req.ip ?? null,
           userAgent: req.get("user-agent") ?? null,
-        }).catch((err: any) => console.error("[admin/provider-services] audit log failed (non-fatal):", err));
+        });
         await notifyListingDecision({
           userId: (fullRow as any).userId,
           type: "listing_edit_approved",
@@ -3678,7 +3684,7 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
       // ESO promotion was using expert_id / external_id columns dropped in migration 013.
       // Expert-owned services now live in provider_services; no ESO write needed here.
 
-      await insertAccessAuditLog({
+      await recordAdminAudit({
         actorId: adminId,
         actorRole: user.role,
         action: "provider_service_approve",
@@ -3687,7 +3693,7 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
         metadata: {},
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
-      }).catch((err: any) => console.error("[admin/provider-services] audit log failed (non-fatal):", err));
+      });
 
       res.json(approved);
     } catch (err) {
@@ -3721,7 +3727,7 @@ router.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (r
       const fullRowReject = await storage.getProviderServiceById(req.params.id);
       if (fullRowReject && (fullRowReject as any).editReviewStatus === "pending") {
         const discarded = await storage.discardPendingChanges(req.params.id);
-        await insertAccessAuditLog({
+        await recordAdminAudit({
           actorId: adminId,
           actorRole: user.role,
           action: "provider_service_edit_review_reject",
@@ -3730,7 +3736,7 @@ router.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (r
           metadata: { reason, discardedKeys: Object.keys(((fullRowReject as any).pendingChanges ?? {}) as object) },
           ipAddress: req.ip ?? null,
           userAgent: req.get("user-agent") ?? null,
-        }).catch((err: any) => console.error("[admin/provider-services] audit log failed (non-fatal):", err));
+        });
         await notifyListingDecision({
           userId: (fullRowReject as any).userId,
           type: "listing_edit_rejected",
@@ -3758,7 +3764,7 @@ router.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (r
         dedupeKey: `service:${req.params.id}:rejected`,
       });
 
-      await insertAccessAuditLog({
+      await recordAdminAudit({
         actorId: adminId,
         actorRole: user.role,
         action: "provider_service_reject",
@@ -3767,7 +3773,7 @@ router.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (r
         metadata: { reason },
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
-      }).catch((err: any) => console.error("[admin/provider-services] audit log failed (non-fatal):", err));
+      });
 
       res.json(rejected);
     } catch (err) {
@@ -5400,7 +5406,7 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
             }
 
             // Audit-log the approve (this is the money-moving branch — a real Stripe transfer just fired).
-            await insertAccessAuditLog({
+            await recordAdminAudit({
               actorId: userId,
               actorRole: user.role,
               action: "payout_approve",
@@ -5410,7 +5416,7 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
               metadata: { requesterType, amountDollars: payoutAmountNum, transferId: transfer.transferId, notes: notes ?? null },
               ipAddress: req.ip ?? null,
               userAgent: req.get("user-agent") ?? null,
-            }).catch((err: any) => console.error("[admin-payouts] audit log failed (non-fatal):", err));
+            });
 
             // Send in-app notification to the recipient
             try {
@@ -5431,7 +5437,7 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
             } else {
               updated = await storage.updateProviderPayoutStatus(id, 'failed', `Stripe transfer failed: ${stripeError.message}`);
             }
-            await insertAccessAuditLog({
+            await recordAdminAudit({
               actorId: userId,
               actorRole: user.role,
               action: "payout_approve_failed",
@@ -5441,7 +5447,7 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
               metadata: { requesterType, amountDollars: payoutAmountNum, stripeError: stripeError.message },
               ipAddress: req.ip ?? null,
               userAgent: req.get("user-agent") ?? null,
-            }).catch((err: any) => console.error("[admin-payouts] audit log failed (non-fatal):", err));
+            });
             return res.json({ ...updated, stripeError: stripeError.message });
           }
         } else {
@@ -5461,7 +5467,7 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
         // status is 'processing' or 'failed' here (the 'completed' branch is handled above).
         // 'failed' at this stage is an admin explicitly rejecting the payout request (no transfer attempted).
         if (updated) {
-          await insertAccessAuditLog({
+          await recordAdminAudit({
             actorId: userId,
             actorRole: user.role,
             action: status === 'failed' ? "payout_reject" : "payout_status_update",
@@ -5470,7 +5476,7 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
             metadata: { requesterType, status, notes: notes ?? null },
             ipAddress: req.ip ?? null,
             userAgent: req.get("user-agent") ?? null,
-          }).catch((err: any) => console.error("[admin-payouts] audit log failed (non-fatal):", err));
+          });
         }
       }
       if (!updated) {
@@ -7202,7 +7208,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
           // A REFUSED deactivation is audit-logged under its own action, so the log distinguishes
           // it from a successful edit — an attempt to switch off a live charge path is itself the
           // event worth keeping.
-          await insertAccessAuditLog({
+          await recordAdminAudit({
             actorId: userId,
             actorRole: user.role,
             action: "fee_band_deactivation_refused",
@@ -7211,7 +7217,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
             metadata: { reason: ruling.reason, owner: ruling.owner, consequence: ruling.consequence },
             ipAddress: req.ip ?? null,
             userAgent: req.get("user-agent") ?? null,
-          }).catch(err => console.error("[fee-bands] audit log failed (non-fatal):", err));
+          });
           return res.status(409).json({
             error: "Band cannot be deactivated",
             bandKey,
@@ -7286,7 +7292,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       }
 
       // Audit-log every fee_bands edit. Critical: these rows drive live billing.
-      await insertAccessAuditLog({
+      await recordAdminAudit({
         actorId: userId,
         actorRole: user.role,
         action: "fee_band_update",
@@ -7299,7 +7305,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
         },
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
-      }).catch(err => console.error("[fee-bands] audit log failed (non-fatal):", err));
+      });
 
       res.json({
         ok: true,
@@ -7336,7 +7342,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
   };
 
   const auditOfferingWrite = (admin: { userId: string; role: string }, req: any, action: string, resourceType: string, resourceId: string, metadata: any) =>
-    insertAccessAuditLog({
+    recordAdminAudit({
       actorId: admin.userId,
       actorRole: admin.role,
       action,
@@ -7345,7 +7351,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       metadata,
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error(`[offering-types] audit log failed (non-fatal):`, err));
+    });
 
   /** Map a Postgres write error to a client-meaningful status. */
   const offeringWriteError = (error: any, res: any) => {
@@ -7535,7 +7541,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
           updated_at    = NOW()
       `);
 
-      await insertAccessAuditLog({
+      await recordAdminAudit({
         actorId: userId,
         actorRole: user.role,
         action: "platform_setting_update",
@@ -7544,7 +7550,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
         metadata: { before: beforeValue, after: settingValue },
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
-      }).catch(err => console.error("[platform-settings] audit log failed (non-fatal):", err));
+      });
 
       // Apply toggles immediately in-process (flag reads are otherwise TTL-cached).
       invalidatePlatformFlagCache(settingKey);
@@ -7884,7 +7890,7 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
       });
       if (!result.ok) return res.status(result.status).json({ message: result.message });
 
-      await insertAccessAuditLog({
+      await recordAdminAudit({
         actorId: user.id,
         actorRole: user.role,
         action: "gem_candidate_approve",
@@ -7899,7 +7905,7 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
         },
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
-      }).catch((err: any) => console.error("[admin/gem-candidates] audit log failed (non-fatal):", err));
+      });
 
       res.json({ success: true, gem: result.gem, candidateId: req.params.id });
     } catch (err) {
@@ -7921,7 +7927,7 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
         reason: String(req.body?.reason ?? ""),
       });
       if (!result.ok) return res.status(result.status).json({ message: result.message });
-      await insertAccessAuditLog({
+      await recordAdminAudit({
         actorId: user.id,
         actorRole: user.role,
         action: "gem_candidate_reject",
@@ -7930,7 +7936,7 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
         metadata: { reason: result.candidate.promotionReviewNote },
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
-      }).catch((err: any) => console.error("[admin/gem-candidates] audit log failed (non-fatal):", err));
+      });
       res.json({ success: true, candidate: result.candidate });
     } catch (err) {
       console.error("[Gem Candidates] reject error:", err);
@@ -8404,7 +8410,7 @@ router.post("/api/admin/neighborhoods/:id/coverage-targets", isAuthenticated, as
         updated_at = NOW()
     `);
 
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: auth.userId,
       actorRole: "admin",
       action: "neighborhood_coverage_target_upsert",
@@ -8413,7 +8419,7 @@ router.post("/api/admin/neighborhoods/:id/coverage-targets", isAuthenticated, as
       metadata: { neighborhoodId: id, categoryKey, targetCount: count },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch(err => console.error("[neighborhoods] audit failed:", err));
+    });
 
     res.json({ ok: true, neighborhoodId: id, categoryKey, targetCount: count });
   } catch (error: any) {
@@ -8428,7 +8434,7 @@ router.delete("/api/admin/neighborhoods/:id/coverage-targets/:categoryKey", isAu
   try {
     const { id, categoryKey } = req.params;
     await deleteNeighborhoodCoverageTarget(id, categoryKey);
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: auth.userId,
       actorRole: "admin",
       action: "neighborhood_coverage_target_delete",
@@ -8437,7 +8443,7 @@ router.delete("/api/admin/neighborhoods/:id/coverage-targets/:categoryKey", isAu
       metadata: { neighborhoodId: id, categoryKey },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch(err => console.error("[neighborhoods] audit failed:", err));
+    });
     res.json({ ok: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -8464,7 +8470,7 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
           .set({ isLead: false, updatedAt: new Date() })
           .where(and(eq(expertNeighborhoods.neighborhoodId, id), eq(expertNeighborhoods.isLead, true)));
       });
-      await insertAccessAuditLog({
+      await recordAdminAudit({
         actorId: auth.userId,
         actorRole: "admin",
         action: "neighborhood_lead_clear",
@@ -8473,7 +8479,7 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
         metadata: { neighborhoodId: id },
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
-      }).catch(err => console.error("[neighborhoods] audit failed:", err));
+      });
       return res.json({ ok: true, cleared: true });
     }
 
@@ -8519,7 +8525,7 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
       });
     }
 
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: auth.userId,
       actorRole: "admin",
       action: "neighborhood_lead_assigned",
@@ -8533,7 +8539,7 @@ router.put("/api/admin/neighborhoods/:id/lead", isAuthenticated, async (req, res
       },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch(err => console.error("[neighborhoods] audit failed:", err));
+    });
 
     res.json({
       ok: true,
@@ -8615,7 +8621,7 @@ router.patch("/api/admin/neighborhoods/:id/adjacency", isAuthenticated, async (r
       }
     });
 
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: auth.userId,
       actorRole: "admin",
       action: "neighborhood_adjacency_update",
@@ -8624,7 +8630,7 @@ router.patch("/api/admin/neighborhoods/:id/adjacency", isAuthenticated, async (r
       metadata: { neighborhoodId: id, before: oldKeys, after: newKeys, added, removed, symmetric: true },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch(err => console.error("[neighborhoods] audit failed:", err));
+    });
 
     res.json({ ok: true, neighborhoodId: id, adjacentKeys: newKeys, added, removed });
   } catch (error: any) {
@@ -8745,7 +8751,7 @@ router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) =
       console.warn("[admin/suspend] WebSocket disconnect failed (non-fatal):", (wsErr as any)?.message);
     }
 
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: adminUserId,
       actorRole: adminUser.role,
       action: "user_suspend",
@@ -8755,7 +8761,7 @@ router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) =
       metadata: { reason },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error("[admin/suspend] audit log failed (non-fatal):", err));
+    });
 
     res.json({ message: "Account suspended", user: { id: updated.id, isSuspended: updated.isSuspended, suspendedAt: updated.suspendedAt, suspensionReason: updated.suspensionReason } });
   } catch (error: any) {
@@ -8859,7 +8865,7 @@ router.patch("/api/admin/users/:id/unsuspend", isAuthenticated, async (req, res)
       .where(eq(users.id, id))
       .returning();
 
-    await insertAccessAuditLog({
+    await recordAdminAudit({
       actorId: adminUserId,
       actorRole: adminUser.role,
       action: "user_unsuspend",
@@ -8869,7 +8875,7 @@ router.patch("/api/admin/users/:id/unsuspend", isAuthenticated, async (req, res)
       metadata: { previousReason: target.suspensionReason ?? null },
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
-    }).catch((err: any) => console.error("[admin/unsuspend] audit log failed (non-fatal):", err));
+    });
 
     res.json({ message: "Account reinstated", user: { id: updated.id, isSuspended: updated.isSuspended } });
   } catch (error: any) {

@@ -842,6 +842,11 @@ export async function createExpertAssignmentNotification(
   tripId: string,
   tripLabel: string,
 ): Promise<void> {
+  // The expert's own "Booking Request" in-app toggle (board #1230, ledger
+  // `2026-09-23-phase2-messages`). Turning it off stops this notice; the assignment itself and its
+  // place in Assigned Trips / the Inbox are unchanged.
+  const { isNotificationChannelEnabled } = await import("./notification-preferences.service");
+  if (!(await isNotificationChannelEnabled(expertUserId, "bookingRequest", "push"))) return;
   await db.execute(sql`
     INSERT INTO notifications (id, user_id, type, title, message, data, is_read, created_at)
     VALUES (

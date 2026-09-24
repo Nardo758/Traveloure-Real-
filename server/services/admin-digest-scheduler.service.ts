@@ -7,11 +7,14 @@
  *   b) Active experts who have not completed Stripe Connect onboarding
  *   c) Stripe events visible in the API that never arrived at the webhook endpoint
  *      (gap detection: compares Stripe's last-100 events against webhook_events table)
+ *   d) Reconciliation mismatches recorded in the last 24 hours
+ *   e) Emails that exhausted every retry and were never delivered (board #1566)
  *
  * Recipients: ADMIN_EMAIL env var (falls back to no-op if unset).
  * Email: sent via Resend through email.service.ts.
  */
 
+import { loadDeadEmailSummary, type DeadEmailSummary } from "./email-outbox.service";
 import Stripe from "stripe";
 import { db } from "../db";
 import { adminNotifications, users, webhookEvents } from "@shared/schema";
@@ -162,12 +165,22 @@ class AdminDigestSchedulerService {
         console.error("[AdminDigest] Failed to load reconciliation notifications:", err);
       }
 
+      // ── Section E: emails that exhausted every retry (board #1566) ──────────
+      // Every row CURRENTLY dead, not only today's: it keeps appearing until someone retries it.
+      let deadEmails: DeadEmailSummary | undefined;
+      try {
+        deadEmails = await loadDeadEmailSummary();
+      } catch (err) {
+        console.error("[AdminDigest] Failed to load dead outbox emails:", err);
+      }
+
       // ── Send digest if anything needs attention ─────────────────────────────
       if (
         unresolvedNotifications.length === 0 &&
         expertsWithoutPayout.length === 0 &&
         missedWebhooks.length === 0 &&
-        reconciliationMismatches.length === 0
+        reconciliationMismatches.length === 0 &&
+        (deadEmails?.total ?? 0) === 0
       ) {
         console.log("[AdminDigest] Nothing to report — skipping email");
         return;
@@ -179,10 +192,11 @@ class AdminDigestSchedulerService {
         expertsWithoutPayout,
         missedWebhooks,
         reconciliationMismatches: reconciliationMismatches as any,
+        deadEmails,
       });
 
       console.log(
-        `[AdminDigest] Digest sent — ${unresolvedNotifications.length} unresolved alerts, ${expertsWithoutPayout.length} experts without payout, ${missedWebhooks.length} missed webhooks, ${reconciliationMismatches.length} reconciliation mismatch(es)`
+        `[AdminDigest] Digest sent — ${unresolvedNotifications.length} unresolved alerts, ${expertsWithoutPayout.length} experts without payout, ${missedWebhooks.length} missed webhooks, ${reconciliationMismatches.length} reconciliation mismatch(es), ${deadEmails?.total ?? 0} undelivered email(s)`
       );
     } catch (err) {
       console.error("[AdminDigest] Failed to run digest:", err);

@@ -137,7 +137,7 @@ export async function getAuditLogsForResource(opts: {
   };
 }
 
-export async function insertAccessAuditLog(values: {
+export interface AccessAuditLogValues {
   actorId: string;
   actorRole: string;
   action: string;
@@ -147,8 +147,46 @@ export async function insertAccessAuditLog(values: {
   metadata?: any;
   ipAddress?: string | null;
   userAgent?: string | null;
-}) {
+}
+
+export async function insertAccessAuditLog(values: AccessAuditLogValues) {
   return db.insert(accessAuditLogs).values(values as any);
+}
+
+/**
+ * Record an admin action's audit row AFTER the action itself has been applied (board task #1172,
+ * ledger `2026-09-23-phase2-messages`).
+ *
+ * These routes deliberately do not fail the admin's action when the audit write fails — the change
+ * is already made. But a failure used to be a `console.error` nobody reads, leaving an admin action
+ * with no trail and no one told. Now it raises an ops alert (admin notifications list + the daily
+ * digest) and returns a warning sentence the route can pass back. NEVER THROWS.
+ *
+ * Returns undefined when the audit row was written.
+ */
+export async function recordAdminAudit(values: AccessAuditLogValues): Promise<string | undefined> {
+  try {
+    await insertAccessAuditLog(values);
+    return undefined;
+  } catch (err: any) {
+    const warning =
+      `Audit log write failed for ${values.action} on ${values.resourceType} ${values.resourceId}: ` +
+      `${err?.message ?? "unknown error"}. The change was applied but this action has no audit trail.`;
+    const { raiseOpsAlert } = await import("./ops-alert.service");
+    await raiseOpsAlert({
+      type: "admin_audit_write_failed",
+      reason: values.action,
+      message: warning,
+      metadata: {
+        actorId: values.actorId,
+        action: values.action,
+        resourceType: values.resourceType,
+        resourceId: values.resourceId,
+      },
+      error: err,
+    });
+    return warning;
+  }
 }
 
 // ─── Contact Submissions ──────────────────────────────────────────────────────

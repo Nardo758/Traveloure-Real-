@@ -46,7 +46,8 @@ export async function searchStasher(params: StasherSearchParams): Promise<Catalo
           title: `🧳 Luggage Storage — ${l.name || l.venue_name || city}`,
           description: `${l.address || l.vicinity || city} · Stasher certified · ${bags} bag${bags > 1 ? "s" : ""} · ${days} day${days > 1 ? "s" : ""}`,
           imageUrl: null,
-          price: (l.daily_rate || 6) * bags * days,
+          // §13 (board #1200): only a rate the API returned is priced; no fallback rate is invented.
+          price: l.daily_rate ? l.daily_rate * bags * days : null,
           currency: "USD",
           rating: l.rating ? parseFloat(l.rating) : null, // §13: no invented rating when the API omits one
           reviewCount: l.review_count || null,
