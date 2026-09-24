@@ -221,7 +221,7 @@ export async function sendMessage(
   const senderName =
     [sender?.firstName, sender?.lastName].filter(Boolean).join(" ") || "Someone";
 
-  await db.insert(notifications).values({
+  const [notice] = await db.insert(notifications).values({
     userId: recipientId,
     type: "message_received",
     title: "New message",
@@ -231,7 +231,12 @@ export async function sendMessage(
     // F4 (workstation-flows audit): carry the sender so the notification can deep-link straight
     // into the right chat thread (/chat?clientId=…) instead of the chat lobby.
     data: { clientId: senderId },
-  });
+  }).returning({ id: notifications.id });
+  // Locked Decision 53: the phone twin, claimed once and consent-gated (never throws).
+  if (notice?.id) {
+    const noticeId = notice.id;
+    void import("./web-push.service").then(({ dispatchPushForNotification }) => dispatchPushForNotification(noticeId)).catch(() => undefined);
+  }
 
   // Ledger 2026-09-24-earner-email-notifications: an earner also gets ONE email per sender per
   // hour (consent, address and throttle decided in the ONE sender). Fire-and-forget — the message

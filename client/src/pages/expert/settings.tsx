@@ -1,3 +1,4 @@
+import { PhoneNotificationsCard } from "@/components/settings/phone-notifications-card";
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { NOTIFICATION_PREFERENCE_DEFAULTS, NOTIFICATION_PREFERENCE_KEYS } from "@shared/notification-preferences";
 import { Link, useSearch } from "wouter";
@@ -415,6 +416,7 @@ export default function ExpertSettings() {
 
           {/* Notifications Tab */}
           <TabsContent value="notifications" className="mt-6 space-y-4">
+            <PhoneNotificationsCard />
             {/* Booking alert email opt-out (migration 223) */}
             <Card>
               <CardHeader>
@@ -448,7 +450,7 @@ export default function ExpertSettings() {
                   <div key={notification.name} className="flex items-center justify-between pb-4 border-b last:border-0 last:pb-0">
                     <div>
                       <p className="font-semibold text-console-darkest">{notification.name}</p>
-                      <p className="text-sm text-console-mid mt-1">Receive via email and push notifications</p>
+                      <p className="text-sm text-console-mid mt-1">Email, and Push to your Inbox and any device with phone notifications on</p>
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">

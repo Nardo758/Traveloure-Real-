@@ -1948,7 +1948,15 @@ export const notifications = pgTable("notifications", {
   // crash-retry of the SAME transition inserts zero duplicate rows. Declared here AND in migration
   // SQL (publish-trap rule — the migration-155/203 precedent).
   dedupeKey: varchar("dedupe_key", { length: 255 }),
+  // Migration 322 (Locked Decision 53 — ledger `2026-09-24-web-push`): the at-most-once PHONE PUSH
+  // claim, taken by an atomic conditional before the send (§15). NULL = never claimed; existing rows
+  // stay NULL and are never pushed (the sweep only reads recent rows). Server-written only.
+  pushClaimedAt: timestamp("push_claimed_at"),
 }, (table) => ({
+  // Migration 322: the push sweep's "recent, unclaimed" read.
+  notificationsPushUnclaimedIdx: index("idx_notifications_push_unclaimed")
+    .on(table.createdAt)
+    .where(sql`push_claimed_at IS NULL`),
   // Migration 209 (QA-2): partial so legacy NULL rows (and any caller that never opts in) never
   // collide with each other — only two ACTUAL dedupe keys colliding is a conflict.
   dedupeKeyUniq: uniqueIndex("notifications_dedupe_key_uniq")
@@ -1957,6 +1965,27 @@ export const notifications = pgTable("notifications", {
   // Migration 217 — user-scoped unread reads ordered by recency (deploy-push durability rule).
   notificationsUserReadCreatedIdx: index("idx_notifications_user_id_is_read_created_at").on(table.userId, table.isRead, table.createdAt),
 }));
+
+// === Phone push subscriptions (migration 322, Locked Decision 53 — ledger `2026-09-24-web-push`) ===
+// One row per browser/device a signed-in person turned phone notifications on for. Written ONLY by
+// the session-scoped subscribe rail (§14); `endpoint` is UNIQUE so a re-subscribe replaces its own
+// row. A subscription the push service reports gone is deleted by the sender.
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: varchar("user_agent", { length: 300 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastSuccessAt: timestamp("last_success_at"),
+  failureCount: integer("failure_count").notNull().default(0),
+}, (table) => ({
+  pushSubscriptionsEndpointUniq: uniqueIndex("push_subscriptions_endpoint_uniq").on(table.endpoint),
+  pushSubscriptionsUserIdx: index("idx_push_subscriptions_user_id").on(table.userId),
+}));
+
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 
 // === Contact Submissions (landing page / contact page) ===
 

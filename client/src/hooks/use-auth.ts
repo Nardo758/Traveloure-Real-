@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
+import { forgetPhonePushOnSignOut } from "@/lib/web-push";
 
 async function fetchUser(): Promise<User | null> {
   const response = await fetch("/api/auth/user", {
@@ -25,6 +26,8 @@ async function logout(): Promise<void> {
   // POST /api/auth/logout (emailAuth.ts) is registered in EVERY environment and
   // destroys any passport session (email or OIDC). Redirect only on success —
   // redirecting on failure would show a logged-out UI over a live session.
+  // LD 53: a shared device stops receiving this account's phone notices (bounded, never fails).
+  await forgetPhonePushOnSignOut();
   const response = await fetch("/api/auth/logout", {
     method: "POST",
     credentials: "include",

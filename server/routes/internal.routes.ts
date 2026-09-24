@@ -34,7 +34,7 @@ import { materializeAllServicesWithPatterns } from "../services/availability-mat
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "../services/itinerary-generation-sweep-scheduler.service";
-import { drainOutbox } from "../services/email-outbox.service";
+import { drainOutboxAndSweepPush } from "../services/email-outbox.service";
 import { scorePendingClaims } from "../services/evidence-scorer.service";
 import { EVIDENCE_SCORER_JOB_NAME } from "../services/evidence-scorer-scheduler.service";
 import {
@@ -275,7 +275,7 @@ router.post("/internal/jobs/itinerary-generation-sweep", requireInternalSecret, 
 });
 
 router.post("/internal/jobs/email-outbox", requireInternalSecret, async (_req, res) => {
-  const { status, body } = await runJob("email-outbox", () => drainOutbox(), (r) => !!r?.error);
+  const { status, body } = await runJob("email-outbox", () => drainOutboxAndSweepPush(), (r) => !!r?.error);
   res.status(status).json(body);
 });
 

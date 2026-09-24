@@ -144,6 +144,7 @@ import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
 import conversationsRoutes from "./routes/conversations.routes";
 import serviceQuotesRoutes from "./routes/service-quotes.routes";
+import pushRoutes from "./routes/push.routes";
 import bookingComponentsRoutes from "./routes/booking-components.routes";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -1104,6 +1105,7 @@ export async function registerRoutes(
   // atomic claim that mints through the EXISTING birth-rail writer with the quote's amount as the
   // server-derived total (§14/§15). Declares full `/api/...` paths; mounted without a prefix.
   app.use(serviceQuotesRoutes);
+  app.use(pushRoutes);
   // ledger `2026-09-17-surfaces-quotes-settlement`: the ONE read of a purchased bundle's
   // components + its settlement (GET /api/bookings/:id/components). Read-only; every action on
   // those surfaces still calls the existing component rails.

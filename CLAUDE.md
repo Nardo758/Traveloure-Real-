@@ -2035,6 +2035,29 @@ This document captures architectural decisions to maintain consistency across co
     "acting for the owner" render role on the slip, and lands as its own lane with its own amendment
     here.
 
+53. **PHONE PUSH: EVERY NOTICE MAY REACH A DEVICE, AT MOST ONCE, UNDER THE PERSON'S OWN PUSH SWITCH
+    (decision-maker, Sep 24, 2026: "letting experts and providers receive push notifications on their
+    phones" — ledger `2026-09-24-web-push`; migration 322).** Web Push (VAPID) through a service worker
+    (`client/public/sw.js`, push + click only: NO fetch handler, nothing cached — offline is a different
+    decision) and a web-app manifest. Two additive objects, both declared in `shared/schema.ts`:
+    **`push_subscriptions`** (one row per browser endpoint, UNIQUE endpoint, FK → users ON DELETE
+    CASCADE) and **`notifications.push_claimed_at`** (nullable, NO DEFAULT, NO BACKFILL, with a partial
+    index on unclaimed rows). **ONE sender, `server/services/web-push.service.ts`:** a notice is CLAIMED
+    by an atomic conditional (`… WHERE push_claimed_at IS NULL`) BEFORE the external call (§15), so the
+    immediate dispatch after a write and the periodic sweep (riding the existing email-outbox job) can
+    race and a device still buzzes once; only notices from the last 15 minutes whose owner has a device
+    are ever claimed, so a deploy never sends a backlog. **Consent is the EXISTING `push` switch** of the
+    notice's preference key, through ONE type→key table (`shared/push-notifications.ts`); a type the table
+    does not name is never pushed (§13 — a phone buzz is not sent under a guessed key). A tap opens an
+    in-app path only. The device rails (`/api/push/*`) act on the SESSION account only (§14) with
+    `.strict()` bodies (§19); the status check takes a SHA-256 of the endpoint, never the endpoint, in
+    its query string. Sign-out forgets the device, so a shared device stops receiving that account's
+    notices. **CONFIGURED OR SILENT:** without `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` (operator secrets;
+    `VAPID_SUBJECT` optional) nothing is claimed, the card says phone notifications are not available,
+    and no test is reported as sent. **iPhone/iPad receive push only from the installed Home Screen app
+    (iOS 16.4+)**, and the card says so rather than offering a button that cannot work. Push never fails
+    the write that caused it (§15b).
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

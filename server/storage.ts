@@ -4462,6 +4462,12 @@ export class DatabaseStorage implements IStorage {
 
   async createNotification(notification: InsertNotification): Promise<Notification> {
     const [newNotification] = await db.insert(notifications).values(notification).returning();
+    // Locked Decision 53: the phone twin of the bell row — claimed once, consent-gated, never
+    // throws (web-push.service.ts). The sweep covers any writer that does not come through here.
+    if (newNotification?.id) {
+      const id = newNotification.id;
+      void import("./services/web-push.service").then(({ dispatchPushForNotification }) => dispatchPushForNotification(id)).catch(() => undefined);
+    }
     return newNotification;
   }
 
@@ -4479,6 +4485,11 @@ export class DatabaseStorage implements IStorage {
         where: sql`dedupe_key IS NOT NULL`,
       })
       .returning({ id: notifications.id });
+    // Locked Decision 53: push only the row this call actually inserted (a dedupe hit pushes nothing).
+    if (rows[0]?.id) {
+      const id = rows[0].id;
+      void import("./services/web-push.service").then(({ dispatchPushForNotification }) => dispatchPushForNotification(id)).catch(() => undefined);
+    }
     return { inserted: rows.length > 0 };
   }
 
