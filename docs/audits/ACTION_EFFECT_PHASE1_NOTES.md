@@ -4,7 +4,7 @@
 
 **PASS. No route is dead because of ordering.**
 
-The only **pathless `<Route>`** in the router is the 404 at `client/src/App.tsx:1258`:
+The only **pathless `<Route>`** in the router is the 404 at `client/src/App.tsx:1257`:
 
 ```tsx
 <Route>

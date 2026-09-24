@@ -1,0 +1,873 @@
+{
+  "name": "R3-two-trips-in-session",
+  "user": {
+    "id": "058790ab-0e55-4895-8002-060484ccccaa",
+    "email": "j2-two-1790286420249@traveloure.test",
+    "password": "TestPassword123!"
+  },
+  "tripA": "f7cf82c7-9499-4455-92d3-bb75068bc361",
+  "tripB": "16e83909-a3cf-4f54-91dd-9a58e75da263",
+  "itemsByTrip": [],
+  "steps": [
+    {
+      "step": 1,
+      "label": "plan A minted via modal 'Build it myself' (Kyoto)",
+      "note": "",
+      "url": "/plans/f7cf82c7-9499-4455-92d3-bb75068bc361",
+      "screenshot": "R3-two-trips-in-session/step-1.png",
+      "network": [
+        {
+          "t": 1790286420991,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790286421172,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790286421172,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790286421173,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790286421173,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790286421173,
+          "method": "GET",
+          "url": "/api/landing/moments",
+          "status": 200
+        },
+        {
+          "t": 1790286421173,
+          "method": "GET",
+          "url": "/api/travelpulse/cities",
+          "status": 200
+        },
+        {
+          "t": 1790286421173,
+          "method": "GET",
+          "url": "/api/trip-context",
+          "status": 200
+        },
+        {
+          "t": 1790286421201,
+          "method": "GET",
+          "url": "/api/platform/stats",
+          "status": 200
+        },
+        {
+          "t": 1790286421220,
+          "method": "GET",
+          "url": "/api/landing/hero",
+          "status": 200
+        },
+        {
+          "t": 1790286421171,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"46dcba35-f737-4fc4-bc7f-c26a57d812a6\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        },
+        {
+          "t": 1790286422420,
+          "method": "GET",
+          "url": "/api/experience-types",
+          "status": 200
+        },
+        {
+          "t": 1790286422994,
+          "method": "POST",
+          "url": "/api/trips",
+          "status": 201,
+          "body": "{\"title\":\"Kyoto trip\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\"}",
+          "response": "{\"id\":\"f7cf82c7-9499-4455-92d3-bb75068bc361\",\"userId\":\"058790ab-0e55-4895-8002-060484ccccaa\",\"trackingNumber\":\"TRV-202609-00009\",\"title\":\"Kyoto trip\",\"eventType\":\"vacation\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"destination\":\"Kyoto, Japan\",\"status\":\"draft\",\"numberOfTravelers\":null,\"adults\":null,\"kids\":null,\"budget\":null,\"preferences\":{},\"experienceType\":null,\"momentKey\":null,\"travelers\":null,\"specialRequests\":null,\"expertId\":null,\"expertNotes\":null,\"expertTravelerNote\":null,\"expertModifiedAt\":null,\"primaryExpertId\":null,\"neighborhoodIds\":null,\"bookingReference\":null,\"isPublic\":false,\"shareToken\":null,\"managedByEaId\":null,\"eaClientRelationshipId\":null,\"authorId\":null,\"finalizedAt\":null,\"originMarket\":null,\"marketSlug\":\"kyoto\",\"timezone\":\"Asia/Tokyo\",\"budgetApproverName\":null,\"budg"
+        },
+        {
+          "t": 1790286422972,
+          "method": "PUT",
+          "url": "/api/trip-context",
+          "status": 200,
+          "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[]}}",
+          "response": "{\"ok\":true}"
+        },
+        {
+          "t": 1790286423036,
+          "method": "GET",
+          "url": "/api/user-experiences",
+          "status": 200
+        },
+        {
+          "t": 1790286423037,
+          "method": "GET",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361",
+          "status": 200
+        },
+        {
+          "t": 1790286423048,
+          "method": "PUT",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361/destinations",
+          "status": 200,
+          "body": "{\"stops\":[{\"name\":\"Kyoto, Japan\"}]}",
+          "response": "{\"destinations\":[{\"id\":\"51b6ea64-1eb7-4ad9-a165-1d9c8e98f777\",\"tripId\":\"f7cf82c7-9499-4455-92d3-bb75068bc361\",\"position\":0,\"name\":\"Kyoto, Japan\",\"city\":null,\"country\":null,\"lat\":null,\"lng\":null,\"createdAt\":\"2026-09-24T21:47:03.006Z\"}]}"
+        },
+        {
+          "t": 1790286423016,
+          "method": "PATCH",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361/occasion",
+          "status": 200,
+          "body": "{\"eventType\":\"vacation\"}",
+          "response": "{\"ok\":true,\"eventType\":\"vacation\"}"
+        },
+        {
+          "t": 1790286423263,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790286423245,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"061df1cc-9dc9-415d-9b3c-689bdf979912\"}"
+        },
+        {
+          "t": 1790286423273,
+          "method": "GET",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361/plancard",
+          "status": 200
+        },
+        {
+          "t": 1790286423315,
+          "method": "GET",
+          "url": "/api/ready-made/purchases/by-clone/f7cf82c7-9499-4455-92d3-bb75068bc361",
+          "status": 200
+        },
+        {
+          "t": 1790286423318,
+          "method": "GET",
+          "url": "/api/coordination-states",
+          "status": 200
+        },
+        {
+          "t": 1790286423320,
+          "method": "GET",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361/suggestions",
+          "status": 200
+        },
+        {
+          "t": 1790286423326,
+          "method": "GET",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361/trip-pass",
+          "status": 200
+        },
+        {
+          "t": 1790286423328,
+          "method": "GET",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361",
+          "status": 200
+        },
+        {
+          "t": 1790286423330,
+          "method": "GET",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361/proposals",
+          "status": 200
+        },
+        {
+          "t": 1790286423332,
+          "method": "GET",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361/expert-advisor",
+          "status": 200
+        },
+        {
+          "t": 1790286423340,
+          "method": "GET",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361/guests",
+          "status": 200
+        },
+        {
+          "t": 1790286424545,
+          "method": "PUT",
+          "url": "/api/trip-context?tripId=f7cf82c7-9499-4455-92d3-bb75068bc361",
+          "status": 200,
+          "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[],\"tripId\":\"f7cf82c7-9499-4455-92d3-bb75068bc361\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[]}}",
+          "response": "{\"ok\":true}"
+        }
+      ],
+      "dbDiff": {
+        "trips": {
+          "added": [
+            {
+              "id": "f7cf82c7-9499-4455-92d3-bb75068bc361",
+              "user_id": "058790ab-0e55-4895-8002-060484ccccaa",
+              "title": "Kyoto trip",
+              "destination": "Kyoto, Japan",
+              "start_date": "2026-11-03T00:00:00.000Z",
+              "end_date": "2026-11-08T00:00:00.000Z",
+              "status": "draft"
+            }
+          ],
+          "removed": [],
+          "changed": []
+        },
+        "trip_contexts": {
+          "added": [
+            {
+              "id": "5648d37a-6ad1-4774-ab3d-3fad893057ab",
+              "user_id": "058790ab-0e55-4895-8002-060484ccccaa",
+              "trip_id": null,
+              "context": {}
+            },
+            {
+              "id": "f41d1299-b540-4afb-a54c-626ccedd3b4e",
+              "user_id": "058790ab-0e55-4895-8002-060484ccccaa",
+              "trip_id": "f7cf82c7-9499-4455-92d3-bb75068bc361",
+              "context": {
+                "stops": [],
+                "tripId": "f7cf82c7-9499-4455-92d3-bb75068bc361",
+                "endDate": "2026-11-08",
+                "eventType": "vacation",
+                "startDate": "2026-11-03",
+                "destination": "Kyoto, Japan",
+                "pendingEvents": [],
+                "experienceSlug": "travel",
+                "experienceType": "Travel",
+                "pendingEventTitles": []
+              }
+            }
+          ],
+          "removed": [],
+          "changed": []
+        },
+        "trip_destinations": {
+          "added": [
+            {
+              "id": "51b6ea64-1eb7-4ad9-a165-1d9c8e98f777",
+              "trip_id": "f7cf82c7-9499-4455-92d3-bb75068bc361",
+              "position": 0,
+              "name": "Kyoto, Japan"
+            }
+          ],
+          "removed": [],
+          "changed": []
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"tripId\":\"f7cf82c7-9499-4455-92d3-bb75068bc361\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[]}"
+        }
+      }
+    },
+    {
+      "step": 2,
+      "label": "reopened the plan modal while plan A is in the pen",
+      "note": "",
+      "url": "/",
+      "screenshot": "R3-two-trips-in-session/step-2.png",
+      "network": [
+        {
+          "t": 1790286429400,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"061df1cc-9dc9-415d-9b3c-689bdf979912\"}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"tripId\":\"f7cf82c7-9499-4455-92d3-bb75068bc361\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[]}"
+        }
+      }
+    },
+    {
+      "step": 3,
+      "label": "modal refilled with Osaka — finish CTAs",
+      "note": "",
+      "url": "/",
+      "screenshot": "R3-two-trips-in-session/step-3.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"tripId\":\"f7cf82c7-9499-4455-92d3-bb75068bc361\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[]}"
+        }
+      }
+    },
+    {
+      "step": 4,
+      "label": "clicked 'Build it myself' for Osaka",
+      "note": "",
+      "url": "/",
+      "screenshot": "R3-two-trips-in-session/step-4.png",
+      "network": [
+        {
+          "t": 1790286434237,
+          "method": "PUT",
+          "url": "/api/trip-context",
+          "status": 200,
+          "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[],\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[{\"name\":\"Osaka, Japan\"}],\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"experienceType\":\"Travel\"}}",
+          "response": "{\"ok\":true}"
+        },
+        {
+          "t": 1790286437363,
+          "method": "POST",
+          "url": "/api/landing/moments/event",
+          "status": 204,
+          "body": "{\"momentKey\":\"proposal\",\"kind\":\"impression\",\"position\":1,\"sessionId\":\"061df1cc-9dc9-415d-9b3c-689bdf979912\"}"
+        }
+      ],
+      "dbDiff": {
+        "trip_contexts": {
+          "added": [],
+          "removed": [],
+          "changed": [
+            {
+              "before": {
+                "id": "5648d37a-6ad1-4774-ab3d-3fad893057ab",
+                "user_id": "058790ab-0e55-4895-8002-060484ccccaa",
+                "trip_id": null,
+                "context": {}
+              },
+              "after": {
+                "id": "5648d37a-6ad1-4774-ab3d-3fad893057ab",
+                "user_id": "058790ab-0e55-4895-8002-060484ccccaa",
+                "trip_id": null,
+                "context": {
+                  "stops": [
+                    {
+                      "name": "Osaka, Japan"
+                    }
+                  ],
+                  "endDate": "2026-11-28",
+                  "eventType": "vacation",
+                  "startDate": "2026-11-23",
+                  "destination": "Osaka, Japan",
+                  "pendingEvents": [],
+                  "experienceSlug": "travel",
+                  "experienceType": "Travel",
+                  "pendingEventTitles": []
+                }
+              }
+            }
+          ]
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[{\"name\":\"Osaka, Japan\"}],\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 5,
+      "label": "My Plans before Create New",
+      "note": "cards=1",
+      "url": "/my-trips",
+      "screenshot": "R3-two-trips-in-session/step-5.png",
+      "network": [
+        {
+          "t": 1790286437623,
+          "method": "GET",
+          "url": "/api/trips",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[{\"name\":\"Osaka, Japan\"}],\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 6,
+      "label": "IntakePanel filled (Tokyo)",
+      "note": "",
+      "url": "/my-trips",
+      "screenshot": "R3-two-trips-in-session/step-6.png",
+      "network": [],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[{\"name\":\"Osaka, Japan\"}],\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 7,
+      "label": "IntakePanel 'Create' → plan B slip",
+      "note": "",
+      "url": "/plans/16e83909-a3cf-4f54-91dd-9a58e75da263",
+      "screenshot": "R3-two-trips-in-session/step-7.png",
+      "network": [
+        {
+          "t": 1790286444599,
+          "method": "POST",
+          "url": "/api/trips",
+          "status": 201,
+          "body": "{\"title\":\"Tokyo, Japan Trip\",\"destination\":\"Tokyo, Japan\",\"startDate\":\"2026-12-23\",\"endDate\":\"2026-12-28\",\"numberOfTravelers\":2,\"eventType\":\"vacation\"}",
+          "response": "{\"id\":\"16e83909-a3cf-4f54-91dd-9a58e75da263\",\"userId\":\"058790ab-0e55-4895-8002-060484ccccaa\",\"trackingNumber\":\"TRV-202609-00010\",\"title\":\"Tokyo, Japan Trip\",\"eventType\":\"vacation\",\"startDate\":\"2026-12-23\",\"endDate\":\"2026-12-28\",\"destination\":\"Tokyo, Japan\",\"status\":\"draft\",\"numberOfTravelers\":2,\"adults\":null,\"kids\":null,\"budget\":null,\"preferences\":{},\"experienceType\":null,\"momentKey\":null,\"travelers\":null,\"specialRequests\":null,\"expertId\":null,\"expertNotes\":null,\"expertTravelerNote\":null,\"expertModifiedAt\":null,\"primaryExpertId\":null,\"neighborhoodIds\":null,\"bookingReference\":null,\"isPublic\":false,\"shareToken\":null,\"managedByEaId\":null,\"eaClientRelationshipId\":null,\"authorId\":null,\"finalizedAt\":null,\"originMarket\":null,\"marketSlug\":null,\"timezone\":null,\"budgetApproverName\":null,\"budgetAppro"
+        },
+        {
+          "t": 1790286444624,
+          "method": "GET",
+          "url": "/api/trips",
+          "status": 200
+        },
+        {
+          "t": 1790286444627,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790286444638,
+          "method": "GET",
+          "url": "/api/trips/16e83909-a3cf-4f54-91dd-9a58e75da263/plancard",
+          "status": 200
+        },
+        {
+          "t": 1790286444675,
+          "method": "GET",
+          "url": "/api/ready-made/purchases/by-clone/16e83909-a3cf-4f54-91dd-9a58e75da263",
+          "status": 200
+        },
+        {
+          "t": 1790286444686,
+          "method": "GET",
+          "url": "/api/trips/16e83909-a3cf-4f54-91dd-9a58e75da263/suggestions",
+          "status": 200
+        },
+        {
+          "t": 1790286444686,
+          "method": "GET",
+          "url": "/api/trips/16e83909-a3cf-4f54-91dd-9a58e75da263/trip-pass",
+          "status": 200
+        },
+        {
+          "t": 1790286444706,
+          "method": "GET",
+          "url": "/api/trips/16e83909-a3cf-4f54-91dd-9a58e75da263/proposals",
+          "status": 200
+        },
+        {
+          "t": 1790286444706,
+          "method": "GET",
+          "url": "/api/trips/16e83909-a3cf-4f54-91dd-9a58e75da263/guests",
+          "status": 200
+        },
+        {
+          "t": 1790286444715,
+          "method": "GET",
+          "url": "/api/trips/16e83909-a3cf-4f54-91dd-9a58e75da263",
+          "status": 200
+        },
+        {
+          "t": 1790286444717,
+          "method": "GET",
+          "url": "/api/trips/16e83909-a3cf-4f54-91dd-9a58e75da263/expert-advisor",
+          "status": 200
+        }
+      ],
+      "dbDiff": {
+        "trips": {
+          "added": [
+            {
+              "id": "16e83909-a3cf-4f54-91dd-9a58e75da263",
+              "user_id": "058790ab-0e55-4895-8002-060484ccccaa",
+              "title": "Tokyo, Japan Trip",
+              "destination": "Tokyo, Japan",
+              "start_date": "2026-12-23T00:00:00.000Z",
+              "end_date": "2026-12-28T00:00:00.000Z",
+              "status": "draft"
+            }
+          ],
+          "removed": [],
+          "changed": []
+        },
+        "trip_contexts": {
+          "added": [],
+          "removed": [],
+          "changed": [
+            {
+              "before": {
+                "id": "5648d37a-6ad1-4774-ab3d-3fad893057ab",
+                "user_id": "058790ab-0e55-4895-8002-060484ccccaa",
+                "trip_id": null,
+                "context": {
+                  "stops": [
+                    {
+                      "name": "Osaka, Japan"
+                    }
+                  ],
+                  "endDate": "2026-11-28",
+                  "eventType": "vacation",
+                  "startDate": "2026-11-23",
+                  "destination": "Osaka, Japan",
+                  "pendingEvents": [],
+                  "experienceSlug": "travel",
+                  "experienceType": "Travel",
+                  "pendingEventTitles": []
+                }
+              },
+              "after": {
+                "id": "5648d37a-6ad1-4774-ab3d-3fad893057ab",
+                "user_id": "058790ab-0e55-4895-8002-060484ccccaa",
+                "trip_id": null,
+                "context": {
+                  "stops": [
+                    {
+                      "name": "Osaka, Japan"
+                    }
+                  ],
+                  "endDate": "2026-11-28",
+                  "eventType": "vacation",
+                  "startDate": "2026-11-23",
+                  "destination": "Osaka, Japan",
+                  "experienceSlug": "travel",
+                  "experienceType": "Travel"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[{\"name\":\"Osaka, Japan\"}],\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 8,
+      "label": "sidebar 'Discover' from plan B's slip",
+      "note": "",
+      "url": "/destinations?location=Osaka%2C+Japan",
+      "screenshot": "R3-two-trips-in-session/step-8.png",
+      "network": [
+        {
+          "t": 1790286449008,
+          "method": "GET",
+          "url": "/api/saved-trips",
+          "status": 200
+        },
+        {
+          "t": 1790286449012,
+          "method": "GET",
+          "url": "/api/saved-items",
+          "status": 200
+        },
+        {
+          "t": 1790286449012,
+          "method": "GET",
+          "url": "/api/service-categories",
+          "status": 200
+        },
+        {
+          "t": 1790286449012,
+          "method": "GET",
+          "url": "/api/discover?location=Osaka%2C+Japan&sortBy=rating&limit=12&offset=0",
+          "status": 200
+        },
+        {
+          "t": 1790286449012,
+          "method": "GET",
+          "url": "/api/ready-made",
+          "status": 200
+        },
+        {
+          "t": 1790286449012,
+          "method": "POST",
+          "url": "/api/analytics/search-event",
+          "status": 202,
+          "body": "",
+          "response": "{\"received\":true}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[{\"name\":\"Osaka, Japan\"}],\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 9,
+      "label": "on Discover (/services)",
+      "note": "",
+      "url": "/services?location=Kyoto%2C+Japan",
+      "screenshot": "R3-two-trips-in-session/step-9.png",
+      "network": [
+        {
+          "t": 1790286453120,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790286453123,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790286453217,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790286453219,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790286453219,
+          "method": "GET",
+          "url": "/api/content/discover?destination=Kyoto%2C+Japan&surface=travelpulse-discover",
+          "status": 200
+        },
+        {
+          "t": 1790286453219,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790286453223,
+          "method": "GET",
+          "url": "/api/catalog/activities-gyg?destination=Kyoto%2C+Japan&limit=8",
+          "status": 200
+        },
+        {
+          "t": 1790286453224,
+          "method": "GET",
+          "url": "/api/discover?location=Kyoto%2C+Japan&sortBy=rating&limit=12&offset=0",
+          "status": 200
+        },
+        {
+          "t": 1790286453224,
+          "method": "GET",
+          "url": "/api/service-categories",
+          "status": 200
+        },
+        {
+          "t": 1790286453224,
+          "method": "GET",
+          "url": "/api/ready-made",
+          "status": 200
+        },
+        {
+          "t": 1790286453224,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790286453223,
+          "method": "POST",
+          "url": "/api/analytics/search-event",
+          "status": 202,
+          "body": "",
+          "response": "{\"received\":true}"
+        },
+        {
+          "t": 1790286453151,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"46dcba35-f737-4fc4-bc7f-c26a57d812a6\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[{\"name\":\"Osaka, Japan\"}],\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 10,
+      "label": "clicked first 'Add to plan'",
+      "note": "",
+      "url": "/services?location=Kyoto%2C+Japan",
+      "screenshot": "R3-two-trips-in-session/step-10.png",
+      "network": [
+        {
+          "t": 1790286455213,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790286455195,
+          "method": "POST",
+          "url": "/api/cart",
+          "status": 201,
+          "body": "{\"serviceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"quantity\":1}",
+          "response": "{\"id\":\"50c0aba0-94cb-4e6d-a925-7c1074f675f3\",\"userId\":\"058790ab-0e55-4895-8002-060484ccccaa\",\"guestSessionId\":null,\"serviceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"customVenueId\":null,\"contentType\":null,\"contentId\":null,\"contentMeta\":{},\"experienceSlug\":null,\"quantity\":1,\"tripId\":null,\"scheduledDate\":null,\"slotId\":null,\"itineraryItemId\":null,\"notes\":null,\"pickupLocation\":null,\"partySize\":null,\"createdAt\":\"2026-09-24T21:47:35.157Z\"}"
+        }
+      ],
+      "dbDiff": {
+        "cart_items": {
+          "added": [
+            {
+              "id": "50c0aba0-94cb-4e6d-a925-7c1074f675f3",
+              "user_id": "058790ab-0e55-4895-8002-060484ccccaa",
+              "guest_session_id": null,
+              "service_id": "0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86",
+              "trip_id": null,
+              "content_type": null,
+              "quantity": 1
+            }
+          ],
+          "removed": [],
+          "changed": []
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[{\"name\":\"Osaka, Japan\"}],\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    },
+    {
+      "step": 11,
+      "label": "My Plans after",
+      "note": "cards=2",
+      "url": "/my-trips",
+      "screenshot": "R3-two-trips-in-session/step-11.png",
+      "network": [
+        {
+          "t": 1790286459023,
+          "method": "GET",
+          "url": "/api/trips",
+          "status": 200
+        },
+        {
+          "t": 1790286459054,
+          "method": "GET",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361/expert-advisor",
+          "status": 200
+        },
+        {
+          "t": 1790286459058,
+          "method": "GET",
+          "url": "/api/trips/16e83909-a3cf-4f54-91dd-9a58e75da263/expert-advisor",
+          "status": 200
+        },
+        {
+          "t": 1790286459068,
+          "method": "GET",
+          "url": "/api/trips/16e83909-a3cf-4f54-91dd-9a58e75da263/plancard",
+          "status": 200
+        },
+        {
+          "t": 1790286459076,
+          "method": "GET",
+          "url": "/api/trips/f7cf82c7-9499-4455-92d3-bb75068bc361/plancard",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "46dcba35-f737-4fc4-bc7f-c26a57d812a6",
+          "guestTrips": "{}"
+        },
+        "session": {
+          "experienceContext:u:058790ab-0e55-4895-8002-060484ccccaa": "{\"pendingEvents\":[],\"pendingEventTitles\":[],\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[{\"name\":\"Osaka, Japan\"}],\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"experienceType\":\"Travel\"}"
+        }
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID"
+  ]
+}
