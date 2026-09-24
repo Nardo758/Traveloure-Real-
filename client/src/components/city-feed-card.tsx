@@ -17,6 +17,7 @@ import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
 import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import { SaveToggle } from "@/components/SaveToggle";
+import type { SaveItemBody } from "@shared/saved-items";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -481,6 +482,9 @@ interface MoreInfoSheetProps {
   onClose: () => void;
   cardType: MoreInfoCardType;
   data: any;
+  /** #330: when set, the sheet offers Save. A compact card is ruled to two buttons, so its
+   *  save lives here, on the detail path its tap opens. */
+  saveItem?: SaveItemBody | null;
 }
 
 // C3 / R4 (cosmetic-public-surfaces dispatch): at desktop widths the details sheet opened as a
@@ -500,7 +504,7 @@ function useIsDesktopPanel(): boolean {
   return isDesktop;
 }
 
-function MoreInfoSheet({ open, onClose, cardType, data }: MoreInfoSheetProps) {
+function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoSheetProps) {
   const isDesktopPanel = useIsDesktopPanel();
   // Thin gem detail (2026-08-29 Replit-audit ruling 3): the sheet renders the
   // ruled TEASER set only. Address, the locals-vs-tourists popularity ratio,
@@ -509,6 +513,9 @@ function MoreInfoSheet({ open, onClose, cardType, data }: MoreInfoSheetProps) {
   // must not resurrect them from a stale or hand-built payload.
   const renderGemContent = () => (
     <div className="flex flex-col gap-4 pt-2">
+      {saveItem?.contentName && (
+        <SaveToggle item={saveItem} showLabel testId={`btn-save-gem-sheet-${data.id}`} className="self-start" />
+      )}
       {/* Byline (2026-08-29 Replit-audit ruling 1): server-resolved curator only —
           no curatedBy ⇒ no byline, never a fabricated attribution (§13). */}
       {gemCuratorFullName(data) && (
@@ -1163,7 +1170,6 @@ export function CityFeedCardGem({
             {!loading && photoUrl && isReferencePhoto({ url: photoUrl }) && (
               <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
             )}
-            {gemSaveItem.contentName && <SaveToggle item={gemSaveItem} className="absolute bottom-2 left-2 z-10" testId={`btn-save-gem-${gem.id}`} />}
           </div>
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">
@@ -1244,7 +1250,7 @@ export function CityFeedCardGem({
             </div>
           </div>
         </div>
-        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} />
+        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} />
       </>
     );
   }
@@ -1265,7 +1271,7 @@ export function CityFeedCardGem({
         {photoArea}
         {cardBody}
       </div>
-      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} />
+      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} />
     </>
   );
 }

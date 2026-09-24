@@ -21,10 +21,13 @@ export function SaveToggle({
   item,
   className,
   testId,
+  showLabel = false,
 }: {
   item: SaveItemBody;
   className?: string;
   testId?: string;
+  /** Icon-only on a card photo; with a "Save"/"Saved" label inside a detail sheet. */
+  showLabel?: boolean;
 }) {
   const { user } = useAuth();
   const { openSignInModal } = useSignInModal();
@@ -54,7 +57,9 @@ export function SaveToggle({
     <button
       type="button"
       className={cn(
-        "rounded-full bg-white/90 p-1.5 shadow-sm transition-colors hover:bg-white disabled:opacity-60",
+        showLabel
+          ? "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-60"
+          : "rounded-full bg-white/90 p-1.5 shadow-sm transition-colors hover:bg-white disabled:opacity-60",
         className,
       )}
       aria-label={label}
@@ -78,6 +83,7 @@ export function SaveToggle({
       ) : (
         <Heart className={cn("h-3.5 w-3.5", existing ? "fill-rose-500 text-rose-500" : "text-gray-600")} />
       )}
+      {showLabel && <span>{existing ? "Saved" : "Save"}</span>}
     </button>
   );
 }
