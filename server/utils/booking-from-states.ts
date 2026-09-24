@@ -64,6 +64,22 @@ export const OWNER_BOOKING_TRANSITIONS: Record<string, readonly string[]> = {
 };
 
 /**
+ * ── ACCEPT NEEDS A PAYMENT ON RECORD (ledger `2026-09-24-request-rail-unpaid`) ─────────────────────
+ * The owner rail's Accept (`pending → confirmed`) is for a request the traveler has already PAID —
+ * the checkout stamps its PaymentIntent before the provider ever sees the row. A `pending` row with
+ * NO PaymentIntent is a request nobody paid for (an expert-booking-request, or a quote-born booking
+ * still awaiting its charge), and accepting it would confirm a booking around the checkout. Returns
+ * the refusal reason, or null when the transition may proceed. It decides nothing about a DECLINE.
+ */
+export function ownerTransitionRefusal(
+  targetStatus: string,
+  booking: { stripePaymentIntentId?: string | null },
+): "unpaid" | null {
+  if (targetStatus === "confirmed" && !booking.stripePaymentIntentId) return "unpaid";
+  return null;
+}
+
+/**
  * ── V-23 (punchlist §2; ledger `2026-09-15-v23-v25-from-state-guards`) ────────────────────────────
  * WHICH BOOKINGS THE TRAVELER MAY DISPUTE. `POST /api/bookings/:id/dispute` called the writer with
  * THREE arguments, so its guard fell back to `eq(id)` — an unconditional UPDATE. Every status was

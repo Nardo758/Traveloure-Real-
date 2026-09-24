@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Link, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import {
   Globe,
   FileText,
@@ -130,19 +131,22 @@ export default function VisaHelpPage() {
   const [intakeVisaType, setIntakeVisaType] = useState("tourist");
   const [intakeCircumstances, setIntakeCircumstances] = useState("");
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [, navigate] = useLocation();
 
+  // Ledger 2026-09-24-request-rail-unpaid: this used to POST /api/expert-booking-requests, which
+  // wrote a priced `pending` booking with NO payment and no way for the traveler to pay it. A visa
+  // service is a purchase, so it takes the purchase path: a cart line (the intake details ride as
+  // its notes, which checkout copies onto the booking) and the payment step. The price is the
+  // listing's own, server-derived at checkout (§14).
   const bookingMutation = useMutation({
-    mutationFn: async (data: { serviceId: string; bookingMetadata: Record<string, any> }) => {
-      const res = await apiRequest("POST", "/api/expert-booking-requests", data);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as any).message || "Booking failed");
-      }
+    mutationFn: async (data: { serviceId: string; notes: string }) => {
+      const res = await apiRequest("POST", "/api/cart", { serviceId: data.serviceId, quantity: 1, notes: data.notes });
       return res.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       setBookingSuccess(true);
-      toast({ title: "Booking submitted!", description: "The expert will contact you shortly." });
+      navigate(BUY_NOW_CART_PATH);
     },
     onError: (err: Error) => {
       toast({ variant: "destructive", title: "Booking failed", description: err.message });
@@ -162,16 +166,17 @@ export default function VisaHelpPage() {
 
   const handleSubmitBooking = () => {
     if (!bookingService) return;
+    // Only answered fields are written — an unanswered one is omitted, never "N/A" (§13).
+    const lines = [
+      intakePassport && `Passport: ${intakePassport}`,
+      intakeDestination && `Destination: ${intakeDestination}`,
+      (intakeStartDate || intakeEndDate) && `Travel dates: ${intakeStartDate || "?"} to ${intakeEndDate || "?"}`,
+      intakeVisaType && `Visa type: ${intakeVisaType}`,
+      intakeCircumstances.trim() && `Circumstances: ${intakeCircumstances.trim()}`,
+    ].filter(Boolean);
     bookingMutation.mutate({
       serviceId: bookingService.id,
-      bookingMetadata: {
-        passportNationality: intakePassport,
-        destinationCountry: intakeDestination,
-        travelStartDate: intakeStartDate,
-        travelEndDate: intakeEndDate,
-        visaType: intakeVisaType,
-        specialCircumstances: intakeCircumstances,
-      },
+      notes: ["Visa assistance request", ...lines].join("\n"),
     });
   };
 
@@ -275,9 +280,9 @@ export default function VisaHelpPage() {
                   <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto">
                     <CheckCircle className="w-8 h-8 text-green-600" />
                   </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white text-lg">Booking Submitted!</h3>
+                  <h3 className="font-semibold text-gray-900 dark:text-white text-lg">Added to checkout</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Your visa assistance request has been sent. The expert will reach out to you shortly.
+                    Your details are attached. Pay at checkout to send the request to the expert.
                   </p>
                   <Button className="mt-2 bg-primary hover:bg-primary/90 text-white" onClick={() => setBookingService(null)}>
                     Done
@@ -368,7 +373,7 @@ export default function VisaHelpPage() {
                       {bookingMutation.isPending ? (
                         <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting…</>
                       ) : (
-                        "Submit Booking Request"
+                        "Continue to payment"
                       )}
                     </Button>
                   </div>
