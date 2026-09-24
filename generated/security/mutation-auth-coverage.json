@@ -6,15 +6,15 @@
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "fresh",
-    "timestamp": "2026-09-23T21:53:07.453Z"
+    "timestamp": "2026-09-24T00:16:30.248Z"
   },
   "totals": {
-    "tested": 307,
+    "tested": 317,
     "total": 592,
-    "remaining": 285,
+    "remaining": 275,
     "categories": {
       "payments": {
-        "tested": 19,
+        "tested": 29,
         "total": 31
       },
       "admin": {
@@ -6557,8 +6557,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/contracts/:id/milestone",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
     },
     {
       "method": "POST",
@@ -6577,8 +6577,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/contracts/:id/payment",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
     },
     {
       "method": "POST",
@@ -6717,8 +6717,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/coordination-states/:id/pay",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
     },
     {
       "method": "POST",
@@ -6737,8 +6737,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/coordination-states/:id/pay/confirm",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
     },
     {
       "method": "POST",
@@ -6757,8 +6757,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/coordination-states/:id/refund",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
     },
     {
       "method": "POST",
@@ -7217,8 +7217,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert-requests/payment-intent",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
     },
     {
       "method": "POST",
@@ -8917,8 +8917,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/participants/:id/payment",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
     },
     {
       "method": "POST",
@@ -9477,8 +9477,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ready-made/purchases/:id/concern",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
     },
     {
       "method": "POST",
@@ -9497,8 +9497,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ready-made/purchases/:id/request-revision",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
     },
     {
       "method": "POST",
@@ -12105,8 +12105,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/provider/services/:id/surcharge-tiers",
-      "tested": false,
-      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
+      "tested": true,
+      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
     },
     {
       "method": "PUT",
