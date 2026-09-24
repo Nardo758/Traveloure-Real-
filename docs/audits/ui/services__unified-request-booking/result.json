@@ -1,0 +1,6 @@
+{
+ "rowId": "services:unified-request-booking",
+ "verdict": "CONFIRMED",
+ "gap": "INVISIBLE_RESULT",
+ "observed": "fixture feed card (real vault token) → POST /api/affiliate-booking-requests 200; toasts [\"Booking requested! An expert will handle this for you.\"]; DB affiliate_booking_requests [{\"id\":\"fad27238-7c19-4d2b-9292-6dc448434159\",\"trip_id\":null,\"status\":\"pending\",\"expert_id\":null,\"item_name\":\"Audit Kyoto Tea Walk\"}]; after reload of /services the card reads \"No image Traveloure Partner Audit Kyoto Tea Walk New Fixture feed row (audit harness) Kyoto, Japan $89 Request booking\"; request state shown on the surface=false"
+}

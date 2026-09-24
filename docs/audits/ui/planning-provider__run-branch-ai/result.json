@@ -1,0 +1,5 @@
+{
+ "rowId": "planning-provider:run-branch-ai",
+ "verdict": "CONFIRMED",
+ "observed": "after Escape + client-side navigation to /services the AI modal is STILL visible over the page"
+}

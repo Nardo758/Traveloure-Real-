@@ -1,0 +1,5 @@
+{
+ "rowId": "planning-provider:ai-modal-on-close",
+ "verdict": "CONFIRMED",
+ "observed": "backdrop click + Escape: AI modal remains open (only its own Cancel/✕ close it)"
+}

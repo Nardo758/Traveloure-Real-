@@ -1,0 +1,140 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types/wedding",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/service-categories",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/itinerary-comparisons",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/provider-services",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/custom-venues?experienceType=wedding",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/venues/search?location=Kyoto%2C+Japan&type=venue&keyword=event+venues",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/amadeus/locations?keyword=Kyoto%2C+Japan&subType=CITY",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=venue&surface=experience-template",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types/8bf5e249-9f68-4205-938d-f0c2b3e51125/tabs",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/geocode",
+  "status": 404,
+  "body": "{\"address\":\"Kyoto, Japan\"}",
+  "response": "{\"message\":\"Location not found\"}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"748c6095-7b74-46a2-8a87-52329d99e3f8\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/venues/search?location=Kyoto%2C+Japan&type=venue&keyword=event+venues",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/venues/search?location=Kyoto%2C+Japan",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=ceremony&surface=experience-template",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"experienceSlug\":\"wedding\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Wedding\"}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/venues/wedding-vendors?location=Kyoto%2C+Japan&vendorType=photographer",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&tab=vendors&surface=experience-template",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"experienceSlug\":\"wedding\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Wedding\"}}",
+  "response": "{\"ok\":true}"
+ }
+]

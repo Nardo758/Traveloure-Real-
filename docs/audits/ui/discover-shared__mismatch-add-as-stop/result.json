@@ -1,0 +1,5 @@
+{
+ "rowId": "discover-shared:mismatch-add-as-stop",
+ "verdict": "CONFIRMED",
+ "observed": "PUT destinations forced 500 → toasts [\"Added to your plan Find it on your plan.\",\"Notification Added to your planFind it on your plan.\"]"
+}

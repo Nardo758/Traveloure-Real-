@@ -1,0 +1,5 @@
+{
+ "rowId": "discover-location:addon-agent",
+ "verdict": "CONFIRMED",
+ "observed": "request → 200 {\"id\":\"84476780-6cb5-41fb-be2d-187be4279641\",\"userId\":\"6ac1907e-1d29-40d1-8e07-3b9e995969d2\",\"expertId\":null,\"tripId\":nu; 'Request sent' badge survives reload=false; request carries no tripId (body {\"itemName\":\"Airport transfer — Kyoto\",\"itemDescription\":\"Trains, buses, ferries and transfers via 12Go Asia\",\"partnerNa)"
+}

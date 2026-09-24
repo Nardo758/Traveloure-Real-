@@ -1,0 +1,5 @@
+{
+ "rowId": "service-detail:add-to-plan",
+ "verdict": "CONFIRMED",
+ "observed": "banner \"Booking for your trip.\" · toast [\"Added to your plan Find it on your plan — check out when you're ready.\",\"Notification Added to your planFind it on your plan — check out when you're ready.\"] — plan named=false"
+}

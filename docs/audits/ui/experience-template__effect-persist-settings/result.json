@@ -1,0 +1,5 @@
+{
+ "rowId": "experience-template:effect-persist-settings",
+ "verdict": "CONFIRMED",
+ "observed": "PUT /api/trip-context carried travelers:2 with no user input: {\"context\":{\"experienceSlug\":\"travel\",\"destination\":\"Kyoto, Japan\",\"travelers\":2,\"experienceType\":\"Travel\"}}"
+}

@@ -1,0 +1,6 @@
+{
+ "rowId": "services:unified-request-booking-failure",
+ "verdict": "CONFIRMED",
+ "gap": "SILENT_FAILURE_UI",
+ "observed": "signed in (GET /api/auth/user 200)=true; POST affiliate-booking-requests forced 500 → toasts [\"Sign in required Please sign in to request a booking.\",\"Notification Sign in requiredPlease sign in to request a booking.\"]"
+}

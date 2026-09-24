@@ -1,0 +1,5 @@
+{
+ "rowId": "rc12:ai-modal-body",
+ "verdict": "CONFIRMED",
+ "observed": "summary label \"2 travelers (not stated)\"; generate-itinerary request body travelers=2 (response forced 500 so nothing is minted)"
+}

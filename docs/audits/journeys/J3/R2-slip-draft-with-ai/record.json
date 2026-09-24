@@ -1,0 +1,179 @@
+{
+  "name": "R2-slip-draft-with-ai",
+  "user": {
+    "id": "c7d31f33-13f8-4612-ac7e-e7d098e2cb3a",
+    "email": "j3b-1790286894331@traveloure.test",
+    "password": "<redacted>"
+  },
+  "tripId": "e228c3ec-ec90-4385-a451-4d917de49a29",
+  "steps": [
+    {
+      "step": 1,
+      "label": "slip of an empty plan",
+      "note": "",
+      "url": "/plans/e228c3ec-ec90-4385-a451-4d917de49a29",
+      "screenshot": "R2-slip-draft-with-ai/step-1.png",
+      "network": [
+        {
+          "t": 1790286894939,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790286894941,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790286895175,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790286895178,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790286895131,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"07482097-af7b-4b6e-a859-9586cacfc00f\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        },
+        {
+          "t": 1790286895180,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790286895208,
+          "method": "GET",
+          "url": "/api/trips/e228c3ec-ec90-4385-a451-4d917de49a29/plancard",
+          "status": 200
+        },
+        {
+          "t": 1790286895269,
+          "method": "GET",
+          "url": "/api/ready-made/purchases/by-clone/e228c3ec-ec90-4385-a451-4d917de49a29",
+          "status": 200
+        },
+        {
+          "t": 1790286895280,
+          "method": "GET",
+          "url": "/api/trips/e228c3ec-ec90-4385-a451-4d917de49a29/suggestions",
+          "status": 200
+        },
+        {
+          "t": 1790286895281,
+          "method": "GET",
+          "url": "/api/coordination-states",
+          "status": 200
+        },
+        {
+          "t": 1790286895284,
+          "method": "GET",
+          "url": "/api/trips/e228c3ec-ec90-4385-a451-4d917de49a29",
+          "status": 200
+        },
+        {
+          "t": 1790286895296,
+          "method": "GET",
+          "url": "/api/user-experiences",
+          "status": 200
+        },
+        {
+          "t": 1790286895299,
+          "method": "GET",
+          "url": "/api/trips/e228c3ec-ec90-4385-a451-4d917de49a29/trip-pass",
+          "status": 200
+        },
+        {
+          "t": 1790286895299,
+          "method": "GET",
+          "url": "/api/trips/e228c3ec-ec90-4385-a451-4d917de49a29/expert-advisor",
+          "status": 200
+        },
+        {
+          "t": 1790286895316,
+          "method": "GET",
+          "url": "/api/experience-types",
+          "status": 200
+        },
+        {
+          "t": 1790286895316,
+          "method": "GET",
+          "url": "/api/trips/e228c3ec-ec90-4385-a451-4d917de49a29/guests",
+          "status": 200
+        },
+        {
+          "t": 1790286895318,
+          "method": "GET",
+          "url": "/api/trips/e228c3ec-ec90-4385-a451-4d917de49a29/proposals",
+          "status": 200
+        }
+      ],
+      "dbDiff": {
+        "trips": {
+          "added": [
+            {
+              "id": "e228c3ec-ec90-4385-a451-4d917de49a29",
+              "user_id": "c7d31f33-13f8-4612-ac7e-e7d098e2cb3a",
+              "title": "Kyoto",
+              "destination": "Kyoto, Japan",
+              "start_date": "2026-11-03T00:00:00.000Z",
+              "end_date": "2026-11-08T00:00:00.000Z",
+              "status": "draft"
+            }
+          ],
+          "removed": [],
+          "changed": []
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "07482097-af7b-4b6e-a859-9586cacfc00f",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 2,
+      "label": "clicked 'Draft it with AI' (AI provider stubbed)",
+      "note": "",
+      "url": "/plans/e228c3ec-ec90-4385-a451-4d917de49a29",
+      "screenshot": "R2-slip-draft-with-ai/step-2.png",
+      "network": [
+        {
+          "t": 1790286897501,
+          "method": "POST",
+          "url": "/api/ai/generate-itinerary",
+          "status": 503,
+          "body": "{\"tripId\":\"e228c3ec-ec90-4385-a451-4d917de49a29\",\"destination\":\"Kyoto, Japan\",\"dates\":{\"start\":\"2026-11-03\",\"end\":\"2026-11-08\"},\"travelers\":1}",
+          "response": "{\"message\":\"Our AI is experiencing high demand. Please try again in a moment.\",\"retryable\":true,\"retryAfterSeconds\":5}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "07482097-af7b-4b6e-a859-9586cacfc00f",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+  ]
+}

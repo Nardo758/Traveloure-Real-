@@ -1,0 +1,5 @@
+{
+ "rowId": "ai-assistant:button-send-message",
+ "verdict": "CONFIRMED",
+ "observed": "after a 500 from the provider: toasts [], inline error visible=false"
+}

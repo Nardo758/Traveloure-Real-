@@ -1,0 +1,5 @@
+{
+ "rowId": "experiences:button-intake-create",
+ "verdict": "REFUTED",
+ "observed": "POST /api/trips forced 500 → toasts [\"Error Failed to create trip\",\"Notification ErrorFailed to create trip\"]"
+}

@@ -1,0 +1,5 @@
+{
+ "rowId": "rc12:intake-panel-default",
+ "verdict": "CONFIRMED",
+ "observed": "Travelers field pre-filled with \"2\" before any input; create body {\"title\":\"Kyoto, Japan Trip\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"numberOfTravelers\":2,\"eventType\":\"vacation\"}"
+}

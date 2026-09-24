@@ -1,0 +1,94 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/travelpulse/cities",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/hero",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/moments",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/platform/stats",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"39260af0-d16c-477c-a69e-5f62b7e3b621\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cities/neighborhoods?city=Kyoto",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cities/gems?city=Kyoto&limit=5",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/landing/moments/event",
+  "status": 204,
+  "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"e8fc2e3f-f8c0-4901-a135-8406fe965bf1\"}"
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/ai/generate-itinerary",
+  "status": 500,
+  "body": "{\"destination\":\"Kyoto, Japan\",\"dates\":{\"start\":\"2026-11-03\",\"end\":\"2026-11-08\"},\"travelers\":2,\"eventType\":\"travel\",\"pacePreference\":\"moderate\",\"budget\":\"moderate\"}",
+  "response": "{\"message\":\"forced failure (audit): request body captured only\"}"
+ }
+]

@@ -1,0 +1,5 @@
+{
+ "rowId": "slip:button-slip-dates-save",
+ "verdict": "CONFIRMED",
+ "observed": "PATCH trip forced 500 → toasts []; dialog still open=true"
+}

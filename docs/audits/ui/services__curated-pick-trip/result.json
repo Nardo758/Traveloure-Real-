@@ -1,0 +1,5 @@
+{
+ "rowId": "services:curated-pick-trip",
+ "verdict": "CONFIRMED",
+ "observed": "curated label \"Add to Plan\" opened a trip picker=true; ServiceCard label on the same page \"Add to Plan\" adds directly to the pen target (J1 R3)"
+}

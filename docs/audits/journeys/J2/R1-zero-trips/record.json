@@ -1,0 +1,209 @@
+{
+  "name": "R1-zero-trips",
+  "user": {
+    "id": "edd2ba49-7afc-4322-9ad2-6bcc8acfec09",
+    "email": "j2-zero-1790284701073@traveloure.test",
+    "password": "<redacted>"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "label": "on Discover (/services)",
+      "note": "",
+      "url": "/services",
+      "screenshot": "R1-zero-trips/step-1.png",
+      "network": [
+        {
+          "t": 1790284701753,
+          "method": "GET",
+          "url": "/api/auth/user",
+          "status": 200
+        },
+        {
+          "t": 1790284701913,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790284701913,
+          "method": "GET",
+          "url": "/api/service-categories",
+          "status": 200
+        },
+        {
+          "t": 1790284701913,
+          "method": "GET",
+          "url": "/api/ready-made",
+          "status": 200
+        },
+        {
+          "t": 1790284701914,
+          "method": "GET",
+          "url": "/api/discover?sortBy=rating&limit=12&offset=0",
+          "status": 200
+        },
+        {
+          "t": 1790284701914,
+          "method": "GET",
+          "url": "/api/pricing",
+          "status": 200
+        },
+        {
+          "t": 1790284701916,
+          "method": "GET",
+          "url": "/api/notifications/unread-count",
+          "status": 200
+        },
+        {
+          "t": 1790284701916,
+          "method": "GET",
+          "url": "/api/notifications",
+          "status": 200
+        },
+        {
+          "t": 1790284701916,
+          "method": "GET",
+          "url": "/api/messages/unread/count",
+          "status": 200
+        },
+        {
+          "t": 1790284701935,
+          "method": "POST",
+          "url": "/api/cart/migrate",
+          "status": 200,
+          "body": "{\"guestSessionId\":\"1fed3efb-2fdb-4acc-b2c2-ae23ec070f27\"}",
+          "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "1fed3efb-2fdb-4acc-b2c2-ae23ec070f27",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 2,
+      "label": "clicked first 'Add to plan'",
+      "note": "",
+      "url": "/services",
+      "screenshot": "R1-zero-trips/step-2.png",
+      "network": [
+        {
+          "t": 1790284703873,
+          "method": "GET",
+          "url": "/api/cart",
+          "status": 200
+        },
+        {
+          "t": 1790284703854,
+          "method": "POST",
+          "url": "/api/cart",
+          "status": 201,
+          "body": "{\"serviceId\":\"00000000-0000-4000-c000-0000636e6367\",\"quantity\":1}",
+          "response": "{\"id\":\"a7547a38-85f9-4915-8c39-fba5e1801a7f\",\"userId\":\"edd2ba49-7afc-4322-9ad2-6bcc8acfec09\",\"guestSessionId\":null,\"serviceId\":\"00000000-0000-4000-c000-0000636e6367\",\"customVenueId\":null,\"contentType\":null,\"contentId\":null,\"contentMeta\":{},\"experienceSlug\":null,\"quantity\":1,\"tripId\":null,\"scheduledDate\":null,\"slotId\":null,\"itineraryItemId\":null,\"notes\":null,\"pickupLocation\":null,\"partySize\":null,\"createdAt\":\"2026-09-24T21:18:23.847Z\"}"
+        }
+      ],
+      "dbDiff": {
+        "cart_items": {
+          "added": [
+            {
+              "id": "a7547a38-85f9-4915-8c39-fba5e1801a7f",
+              "user_id": "edd2ba49-7afc-4322-9ad2-6bcc8acfec09",
+              "guest_session_id": null,
+              "service_id": "00000000-0000-4000-c000-0000636e6367",
+              "trip_id": null,
+              "content_type": null,
+              "quantity": 1
+            }
+          ],
+          "removed": [],
+          "changed": []
+        }
+      },
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "1fed3efb-2fdb-4acc-b2c2-ae23ec070f27",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 3,
+      "label": "My Plans",
+      "note": "cards=0",
+      "url": "/my-trips",
+      "screenshot": "R1-zero-trips/step-3.png",
+      "network": [
+        {
+          "t": 1790284707715,
+          "method": "GET",
+          "url": "/api/trips",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "1fed3efb-2fdb-4acc-b2c2-ae23ec070f27",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    },
+    {
+      "step": 4,
+      "label": "Trip Cart",
+      "note": "",
+      "url": "/cart",
+      "screenshot": "R1-zero-trips/step-4.png",
+      "network": [
+        {
+          "t": 1790284711538,
+          "method": "POST",
+          "url": "/api/optimization-preview",
+          "status": 200,
+          "body": "{\"items\":[{\"serviceType\":\"concierge\",\"price\":35,\"duration\":90,\"dayNumber\":1}]}",
+          "response": "{\"estimatedSavingsPct\":21,\"estimatedCostDelta\":-7,\"estimatedScheduleTighteningPct\":14,\"currentScore\":15,\"complexityTier\":\"simple\",\"feeCents\":599,\"currency\":\"USD\",\"freeRerun\":false,\"aiDisabled\":false,\"creditTowardCoordination\":false,\"metrics\":{\"balanceScore\":25,\"wellnessScore\":0,\"paceScore\":25,\"diversityScore\":13}}"
+        },
+        {
+          "t": 1790284711543,
+          "method": "POST",
+          "url": "/api/upsell/cart",
+          "status": 200,
+          "body": "{\"surface\":\"cart\",\"cartItems\":[{\"offeringId\":\"00000000-0000-4000-c000-0000636e6367\",\"categoryKey\":\"general\"}],\"userProfile\":{}}",
+          "response": "{\"candidates\":[],\"suppressed\":[]}"
+        },
+        {
+          "t": 1790284711684,
+          "method": "GET",
+          "url": "/api/me/payment-methods",
+          "status": 200
+        },
+        {
+          "t": 1790284711724,
+          "method": "GET",
+          "url": "/api/exchange-rates",
+          "status": 200
+        }
+      ],
+      "dbDiff": {},
+      "storage": {
+        "local": {
+          "traveloure_guest_session": "1fed3efb-2fdb-4acc-b2c2-ae23ec070f27",
+          "guestTrips": "{}"
+        },
+        "session": {}
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID",
+    "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID"
+  ]
+}

@@ -1,0 +1,142 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/me/home-city",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/me/travel-preferences",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/me/ea-invitations",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"a69cf8ee-2b4e-4f55-b692-fff6bec8b90e\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/me/payment-methods",
+  "status": 200
+ },
+ {
+  "method": "PATCH",
+  "url": "/api/profile",
+  "status": 200,
+  "body": "{\"firstName\":\"U2\",\"lastName\":\"photo\"}",
+  "response": "{\"id\":\"404ccdb4-1774-4a09-8081-1823646fb16b\",\"email\":\"u2-photo-1790288745128@traveloure.test\",\"emailVerified\":null,\"firstName\":\"U2\",\"lastName\":\"photo\",\"profileImageUrl\":null,\"role\":\"user\",\"bio\":null,\"specialties\":[],\"preferences\":{},\"termsAcceptedAt\":\"2026-09-24T22:25:45.195Z\",\"privacyAcceptedAt\":\"2026-09-24T22:25:45.195Z\",\"termsVersion\":\"1.0\",\"privacyVersion\":\"1.0\",\"instagramUserId\":null,\"authPro"
+ },
+ {
+  "method": "PATCH",
+  "url": "/api/me/travel-preferences",
+  "status": 200,
+  "body": "{\"travelStyles\":[],\"budgetPreference\":null}",
+  "response": "{\"travelStyles\":[],\"budgetPreference\":null}"
+ },
+ {
+  "method": "PATCH",
+  "url": "/api/me/home-city",
+  "status": 200,
+  "body": "{\"homeCity\":null}",
+  "response": "{\"homeCity\":null,\"markets\":[\"Kyoto\",\"Goa\",\"Mumbai\",\"Jaipur\",\"Edinburgh\",\"Porto\",\"Bogotá\",\"Cartagena\"]}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/me/travel-preferences",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/me/home-city",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/me/home-city",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/me/ea-invitations",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/me/travel-preferences",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"a69cf8ee-2b4e-4f55-b692-fff6bec8b90e\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/me/payment-methods",
+  "status": 200
+ }
+]

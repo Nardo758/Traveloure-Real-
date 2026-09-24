@@ -1,0 +1,46 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"c895d9eb-9b2f-487d-82b5-7a84e165fa8a\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/affiliate-booking-requests",
+  "status": 200,
+  "body": "{\"itemName\":\"Ground transport: Bangkok → Chiang Mai\",\"itemDescription\":\"Trains, buses, ferries via 12Go Asia\",\"partnerName\":\"12Go Asia\",\"partnerCategory\":\"ground-transport\",\"partnerRoute\":{\"partner\":\"12go\",\"origin\":\"bangkok\",\"destination\":\"chiang-mai\"},\"travelers\":1}",
+  "response": "{\"id\":\"1c12489c-daed-47a2-b389-2ee9a07a8604\",\"userId\":\"c4a6150a-acf2-41cc-b4ae-0c24e5eb5698\",\"expertId\":null,\"tripId\":null,\"itemName\":\"Ground transport: Bangkok → Chiang Mai\",\"itemDescription\":\"Trains, buses, ferries via 12Go Asia\",\"partnerName\":\"12Go\",\"partnerCategory\":\"ground-transport\",\"travelDate\":null,\"travelers\":1,\"userNotes\":null,\"expertNotes\":null,\"confirmationRef\":null,\"price\":null,\"statu"
+ }
+]
