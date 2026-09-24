@@ -92,7 +92,7 @@ export default function EATravel() {
     mutationFn: (id: string) => apiRequest("PATCH", `/api/ea/travel/${id}`, { status: "confirmed" }).then((r) => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ea/travel"] });
-      toast({ title: "Trip confirmed" });
+      toast({ title: "Marked confirmed", description: "This updates the arrangement's status only — it doesn't book anything." });
     },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
@@ -353,7 +353,6 @@ export default function EATravel() {
                 <li>• Search optimal flight routes and times</li>
                 <li>• Find hotels matching executive preferences</li>
                 <li>• Coordinate multi-city itineraries</li>
-                <li>• Handle booking modifications</li>
                 <li>• Track frequent flyer programs</li>
               </ul>
               <Textarea

@@ -6,6 +6,7 @@
  * Route: /provider/services/:id  (before /:id/edit so it matches first)
  * Faithful to the ListingHome mockup (provider-console/ListingHome.tsx).
  */
+import { ListingReviewFeedback } from "@/components/ListingReviewFeedback";
 import { useMemo, useState } from "react";
 import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -56,6 +57,8 @@ interface ServiceDetail {
   price: string | number | null;
   categoryId: number | null;
   approvalStatus: string | null;
+  /** The admin review's reason when `approvalStatus` is `rejected` (owner read only). */
+  rejectionReason?: string | null;
   status: string | null;
   latitude: string | number | null;
   longitude: string | number | null;
@@ -533,6 +536,10 @@ export default function ProviderListingHome() {
             </p>
           </div>
           <StatusChip status={isLive ? "active" : (service.approvalStatus ?? "draft")} />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <ListingReviewFeedback approvalStatus={service.approvalStatus} rejectionReason={service.rejectionReason} />
         </div>
 
         {/* ── 2-column body ─────────────────────────────────────────────── */}

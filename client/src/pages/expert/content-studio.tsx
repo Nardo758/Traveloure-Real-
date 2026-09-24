@@ -488,7 +488,18 @@ export default function ContentStudio() {
           caption: caption,
         });
       } else {
-        toast({ title: "Content created!", description: "Saved as draft." });
+        // §13: this form has no draft store — nothing is saved on Traveloure. Say so and keep the
+        // dialog open rather than claim a draft exists.
+        toast({
+          title: "Nothing was saved",
+          description: !isInstagramConnected
+            ? "Drafts aren't stored yet. Connect Instagram to publish this post."
+            : !data.coverImageUrl
+              ? "Add a cover image to publish to Instagram. Drafts aren't stored yet."
+              : "Turn on Publish to Instagram to post this. Drafts aren't stored yet.",
+          variant: "destructive",
+        });
+        return;
       }
       setIsCreateOpen(false);
       form.reset();
@@ -1111,7 +1122,7 @@ export default function ContentStudio() {
             <DialogHeader>
               <DialogTitle>Create New Content</DialogTitle>
               <DialogDescription>
-                Create travel content and optionally publish to Instagram
+                Publish a post to Instagram. Drafts aren't saved on Traveloure yet.
               </DialogDescription>
             </DialogHeader>
 
@@ -1360,18 +1371,9 @@ export default function ContentStudio() {
                   <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} data-testid="button-cancel">
                     Cancel
                   </Button>
-                  <Button type="submit" data-testid="button-save-content">
-                    {watchPublishToInstagram ? (
-                      <>
-                        <Send className="w-4 h-4 mr-2" />
-                        Save & Publish
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="w-4 h-4 mr-2" />
-                        Save Draft
-                      </>
-                    )}
+                  <Button type="submit" disabled={!watchPublishToInstagram} data-testid="button-save-content">
+                    <Send className="w-4 h-4 mr-2" />
+                    Publish
                   </Button>
                 </DialogFooter>
               </form>

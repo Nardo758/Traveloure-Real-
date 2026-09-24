@@ -82,6 +82,25 @@ export function resolveInstagramPublishTokenError(
   };
 }
 
+/**
+ * The Graph API container body for one publish. A 1080×1920 story frame is NOT a valid feed post
+ * (feed accepts 4:5 to 1.91:1), so the story frame must be created with `media_type: "STORIES"`
+ * — without it Meta refuses the container and the share kit's story button could only fail.
+ * Stories carry no caption (the Graph API ignores one), so none is sent. Exported for testing.
+ */
+export type InstagramPublishFormat = "feed" | "story";
+export function buildInstagramContainerBody(input: {
+  imageUrl: string;
+  caption?: string | null;
+  format?: InstagramPublishFormat;
+  accessToken: string;
+}): Record<string, string> {
+  if (input.format === "story") {
+    return { image_url: input.imageUrl, media_type: "STORIES", access_token: input.accessToken };
+  }
+  return { image_url: input.imageUrl, caption: input.caption || "", access_token: input.accessToken };
+}
+
 const INSTAGRAM_APP_ID = process.env.INSTAGRAM_APP_ID;
 const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET;
 const GRAPH_API_VERSION = "v21.0";
@@ -299,6 +318,11 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
     }
 
     const { imageUrl, caption } = req.body;
+    const rawFormat = req.body?.format;
+    if (rawFormat !== undefined && rawFormat !== "feed" && rawFormat !== "story") {
+      return res.status(400).json({ error: "format must be feed or story" });
+    }
+    const format: InstagramPublishFormat = rawFormat === "story" ? "story" : "feed";
 
     if (!imageUrl) {
       return res.status(400).json({ error: "Image URL required" });
@@ -309,11 +333,9 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image_url: imageUrl,
-          caption: caption || "",
-          access_token: user.instagramAccessToken,
-        }),
+        body: JSON.stringify(
+          buildInstagramContainerBody({ imageUrl, caption, format, accessToken: user.instagramAccessToken }),
+        ),
       }
     );
 
@@ -371,7 +393,8 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
     res.json({
       success: true,
       mediaId: publishData.id,
-      message: "Successfully published to Instagram",
+      format,
+      message: format === "story" ? "Successfully published your Instagram story" : "Successfully published to Instagram",
     });
   } catch (error) {
     console.error("Instagram publish error:", error);

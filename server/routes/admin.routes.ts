@@ -1021,6 +1021,24 @@ router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthentic
       return res.status(404).json({ message: "Coordination engagement not found" });
     }
 
+    // Phase 3 batch 2: the notice below sends the coordinator to the plan's workspace, but the
+    // assignment wrote no advisor row, so that workspace refused them (403) — a dead end. The
+    // coordinator is given `assigned` standing on the plan through the ONE advisor-row author
+    // (Locked Decision 32; a conflict never downgrades). No plan on the engagement ⇒ nothing to
+    // grant; the notice then points at the Inbox, as before.
+    if (updated.tripId) {
+      try {
+        await upsertTripAdvisorRow({
+          tripId: updated.tripId,
+          localExpertId: expertId,
+          status: "assigned",
+          message: "Assigned as event coordinator by the Traveloure team",
+        });
+      } catch (grantErr) {
+        console.error("Admin assign-coordinator advisor grant failed (non-fatal):", grantErr);
+      }
+    }
+
     // F5 (workstation-flows audit): the assignment previously happened in silence — the expert
     // found out only if they visited Assigned Trips. Best-effort notification, never fails the assign.
     // Honours the expert's own "Booking Request" in-app toggle (board #1230) — the same key and

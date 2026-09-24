@@ -135,7 +135,10 @@ export function InstagramPublishButton({
   available,
   unavailableReason,
   idPrefix,
+  format = "feed",
 }: {
+  /** "story" publishes the 1080×1920 frame as an Instagram STORY (a feed post refuses 9:16). */
+  format?: "feed" | "story";
   /** Path (relative or absolute) to the share-image render this button publishes. */
   imageUrl: string;
   caption: string;
@@ -208,13 +211,16 @@ export function InstagramPublishButton({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ imageUrl: absoluteUrl, caption }),
+        body: JSON.stringify({ imageUrl: absoluteUrl, caption, format }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.error || `Publish failed (${res.status})`);
       }
-      toast({ title: "Published to Instagram", description: "Your post is now live." });
+      toast({
+        title: format === "story" ? "Story published" : "Published to Instagram",
+        description: format === "story" ? "Your story is now live on Instagram." : "Your post is now live.",
+      });
     } catch (err: any) {
       toast({
         title: "Publish failed",
@@ -234,7 +240,7 @@ export function InstagramPublishButton({
       data-testid={`button-${idPrefix}-publish-ig`}
     >
       <Instagram className="w-3.5 h-3.5 mr-1.5" />
-      {publishing ? "Publishing…" : "Publish to Instagram"}
+      {publishing ? "Publishing…" : format === "story" ? "Publish as Instagram story" : "Publish to Instagram"}
     </Button>
   );
 }
@@ -407,6 +413,7 @@ export function OfferingShareDetail({
             <InstagramPublishButton
               imageUrl={`/api/share-image/service/${offering.id}.png?format=story`}
               caption={caption}
+              format="story"
               available
               idPrefix={`offering-story-${offering.id}`}
             />

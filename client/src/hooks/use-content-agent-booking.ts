@@ -27,6 +27,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
+import { AGENT_REQUEST_SENT_TITLE, AGENT_REQUEST_SENT_DESCRIPTION } from "@shared/booking-agent-vocabulary";
 
 export interface AgentBookingDescriptor {
   itemName: string;
@@ -73,8 +74,8 @@ export function useContentAgentBooking(descriptor: AgentBookingDescriptor) {
     onSuccess: () => {
       setRequested(true);
       toast({
-        title: "Booking request sent",
-        description: "Our booking agent will handle this and add it to your trip.",
+        title: AGENT_REQUEST_SENT_TITLE,
+        description: AGENT_REQUEST_SENT_DESCRIPTION,
       });
     },
     onError: (err: any) => {

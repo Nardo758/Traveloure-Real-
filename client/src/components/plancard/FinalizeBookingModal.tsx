@@ -10,7 +10,7 @@
  *   • Booking agent    → POST /api/affiliate-booking-requests per partner-bookable stop, by
  *                        opaque bookingToken only (§16 — the affiliate URL never leaves the
  *                        server). Available only when the plan has partner-bookable stops.
- *   • Travel expert    → POST /api/expert-requests (routes the trip to an expert to refine + book).
+ *   • Travel expert    → POST /api/expert-requests (routes the trip to an expert to refine; the owner still books and pays at checkout — LD 42 D19).
  *   • Concierge        → hand off to the concierge surface (/concierge), which owns the quote.
  *
  * Guarantees drawn in the mock and enforced here: choosing a person gives them ACCESS to the
@@ -118,12 +118,13 @@ export function FinalizeBookingModal({
           requestType: "ai_plan_polish",
           tripId: trip.id,
           destination: trip.destination ?? undefined,
-          notes: "Refine my finalized plan, then book it for me.",
+          notes: "Please review and refine my finalized plan.",
         });
         onOpenChange(false);
         toast({
           title: "Sent to a travel expert",
-          description: "An expert will refine your plan and book it. Nothing is charged until you or they confirm.",
+          description:
+            "An expert will review and refine your plan. You book and pay for each item yourself at checkout — nothing is charged until you do.",
         });
       } else if (lane === "concierge") {
         onOpenChange(false);
@@ -145,8 +146,8 @@ export function FinalizeBookingModal({
       icon: Handshake,
       disabled: !agentAvailable,
     },
-    { id: "expert", label: "Travel expert", blurb: "Refines, then books", icon: UserCheck },
-    { id: "concierge", label: "Concierge", blurb: "Handles end-to-end", icon: Sparkles },
+    { id: "expert", label: "Travel expert", blurb: "Reviews and refines — you book at checkout", icon: UserCheck },
+    { id: "concierge", label: "Concierge", blurb: "Ask about full-service help", icon: Sparkles },
   ];
 
   return (
@@ -233,8 +234,8 @@ export function FinalizeBookingModal({
           </p>
         )}
         <p className="text-[12px] text-muted-foreground">
-          Choosing a person gives them access to your finalized plan to book on your behalf — you keep ownership,
-          and nothing is charged until you or they confirm a booking.
+          Choosing a person gives them access to your finalized plan — you keep ownership. Platform bookings are
+          paid by you at checkout; nothing is charged until you confirm a booking.
         </p>
 
         <div className="flex justify-end gap-2">

@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
 import { resolveAffiliateBooking, type AffiliateGroundable } from "./affiliate-booking";
+import { AGENT_REQUEST_SENT_TITLE, AGENT_REQUEST_SENT_DESCRIPTION } from "@shared/booking-agent-vocabulary";
 
 export function AffiliateBookButton({
   activity,
@@ -41,7 +42,7 @@ export function AffiliateBookButton({
         travelers: 1,
       }),
     onSuccess: () => {
-      toast({ title: "Booking request sent", description: "Our booking agent will handle this and add it to your trip." });
+      toast({ title: AGENT_REQUEST_SENT_TITLE, description: AGENT_REQUEST_SENT_DESCRIPTION });
     },
     onError: (err: any) => {
       toast({ variant: "destructive", title: "Couldn't send request", description: err?.message || "Please try again." });

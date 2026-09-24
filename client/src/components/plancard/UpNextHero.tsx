@@ -17,6 +17,7 @@ import { openInMaps } from "@/lib/navigate";
 import type { PlanCardDay, PlanCardLegData } from "./plancard-types";
 import { useLiveNow, useVisitedActivities, getUpNextInfo, formatCountdown } from "./plancard-temporal";
 import { resolvePrimaryAction } from "./primary-action";
+import { AGENT_REQUEST_SENT_TITLE, AGENT_REQUEST_SENT_DESCRIPTION } from "@shared/booking-agent-vocabulary";
 
 interface UpNextHeroProps {
   tripId: string;
@@ -57,7 +58,7 @@ function BookRideButton({ leg, activityName }: { leg: PlanCardLegData; activityN
         travelers: 1,
       }),
     onSuccess: () => {
-      toast({ title: "Booking request sent", description: "Our booking agent will handle this and add it to your trip." });
+      toast({ title: AGENT_REQUEST_SENT_TITLE, description: AGENT_REQUEST_SENT_DESCRIPTION });
     },
     onError: (err: any) => {
       toast({ variant: "destructive", title: "Couldn't send request", description: err?.message || "Please try again." });

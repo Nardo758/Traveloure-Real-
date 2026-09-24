@@ -13,6 +13,8 @@ interface AutoCancelConfig {
 
 interface AutoCancelStats {
   cancelledCount: number;
+  /** Phase 3 (decision-maker Sep 24, 2026): the 48-hour "no response yet" notices this pass sent. */
+  noResponse?: { candidates: number; notified: number; emailed: number; errors: string[] } | { error: string };
   bookingIds: string[];
   errors: string[];
   ranAt: Date;
@@ -102,6 +104,16 @@ class BookingExpirySchedulerService {
     };
 
     console.log(`[BookingExpiry] Running auto-cancel sweep (threshold: ${this.config.staleThresholdHours}h)`);
+
+    // The "no response yet" notices ride this four-hourly pass (server/services/earner-no-response
+    // .service.ts). Independent of the legacy cancel sweep below: its failure is recorded, never fatal.
+    try {
+      const { runEarnerNoResponseNotices } = await import("./earner-no-response.service");
+      stats.noResponse = await runEarnerNoResponseNotices();
+    } catch (err) {
+      console.error("[BookingExpiry] no-response notices failed:", err);
+      stats.noResponse = { error: String((err as Error)?.message ?? err) };
+    }
 
     try {
       // Find stale bookings

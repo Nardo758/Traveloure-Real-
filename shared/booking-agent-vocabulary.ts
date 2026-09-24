@@ -220,3 +220,13 @@ export function bookingAgentStatusRefusal(value: unknown): string {
   }
   return `"${raw}" is not a booking-request status a booking agent can set.`;
 }
+
+/**
+ * What a traveler is told the moment a booking-agent request is sent (Phase 3 batch 2, §13).
+ * It used to say "Our booking agent will handle this and add it to your trip" — a promise with
+ * nothing behind it: the request lands in a pool an agent may or may not claim, and no rail funds
+ * the partner purchase. The ONE sentence every surface shows; it claims only what is true.
+ */
+export const AGENT_REQUEST_SENT_TITLE = "Request sent";
+export const AGENT_REQUEST_SENT_DESCRIPTION =
+  "A booking agent will review your request. It isn't booked yet — nothing is booked or charged until you're told it is.";

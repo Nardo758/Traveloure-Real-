@@ -1,3 +1,4 @@
+import { deriveBundleCity } from "@shared/bundle-city";
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
@@ -269,6 +270,7 @@ router.post("/api/provider/bundles", isAuthenticated, async (req, res) => {
           price: body.price,
           productShape: "bundle",
           ...(bundleDeliveryMethod ? { deliveryMethod: bundleDeliveryMethod } : {}),
+          city: deriveBundleCity(components),
           // D1a: born-submitted, server-clamped — approvalStatus is never read from the body.
           approvalStatus: "submitted",
           submittedAt: new Date(),
@@ -388,6 +390,7 @@ router.patch("/api/provider/bundles/:id", isAuthenticated, async (req, res) => {
       if (components) {
         const rederived = deriveBundleDeliveryMethod(components);
         if (rederived) patch.deliveryMethod = rederived;
+        patch.city = deriveBundleCity(components);
       }
       if (reenteredReview) {
         patch.approvalStatus = "submitted";
