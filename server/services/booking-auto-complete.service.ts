@@ -115,6 +115,9 @@ class BookingAutoCompleteService {
             AND sb.stripe_payment_intent_id IS NOT NULL
             AND COALESCE(vas.date::timestamp + interval '1 day', sb.confirmed_at, sb.created_at)
                 + (${days} || ' days')::interval < ${nowIso}::timestamptz
+            -- #1288: a booking stamped with a refund we did not issue cannot complete (the status
+            -- writer refuses it), so it is not worth a Stripe lookup every pass.
+            AND (COALESCE(sb.booking_details, '{}'::jsonb) -> 'outOfBandRefund') IS NULL
             AND (
               sb.booking_metadata->>'autoCompleteUnpaidRecheckAt' IS NULL
               OR (sb.booking_metadata->>'autoCompleteUnpaidRecheckAt')::timestamptz <= ${nowIso}::timestamptz

@@ -1079,6 +1079,21 @@ class StripePaymentService {
     const paymentIntentId = charge.payment_intent as string;
     const refundAmount = charge.amount_refunded / 100;
 
+    // ── #1288 (ledger `2026-09-24-out-of-band-refund-blocks-mint`): A REFUND WE DID NOT ISSUE ──
+    // Runs FIRST and is allowed to throw: it is idempotent, so a failure answers the delivery with an
+    // error and Stripe's retry re-runs it. Since API 2022-11-15 the charge in this event does not
+    // carry its refund list, so it is fetched when absent or truncated.
+    let chargeRefunds = ((charge as any).refunds?.data ?? null) as Stripe.Refund[] | null;
+    if (!chargeRefunds || (charge as any).refunds?.has_more) {
+      chargeRefunds = (await stripe.refunds.list({ charge: charge.id, limit: 100 })).data;
+    }
+    const { recordOutOfBandRefund } = await import('./out-of-band-refund.service');
+    await recordOutOfBandRefund({
+      paymentIntentId,
+      chargeId: charge.id,
+      refunds: chargeRefunds.map((r) => ({ id: r.id, amount: r.amount, metadata: r.metadata as Record<string, string> | null })),
+    });
+
     // Create refund record
     await db.execute(sql`
       INSERT INTO refunds (
@@ -1097,7 +1112,8 @@ class StripePaymentService {
     // zero rows. This rescues the process-died-between-Stripe-and-promote window; it never issues a
     // refund and never touches the booking's status. Dynamic import: the settlement service imports
     // this module statically. Best-effort — a promoter failure must not fail the webhook.
-    const refundsOnCharge = ((charge as any).refunds?.data ?? []) as Stripe.Refund[];
+    // The list fetched above (#1288) — the event's own charge omits it on this API version.
+    const refundsOnCharge = chargeRefunds;
     for (const r of refundsOnCharge) {
       const md = (r && typeof r === 'object' ? r.metadata : null) as Record<string, string> | null;
       if (!r?.id || md?.source !== BUNDLE_SETTLEMENT_REFUND_SOURCE || typeof md?.bookingId !== 'string') continue;
