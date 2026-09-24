@@ -425,6 +425,14 @@ This document captures architectural decisions to maintain consistency across co
     `scripts/preview-category-key-repair.cjs`, run against the real database BEFORE publishing. It
     does no fuzzy matching and offers no suggestions: a guess presented as a finding is how the wrong
     row gets keyed.
+    **289's OWN SAFETY FLAGS NEEDED A SECOND REPAIR (ledger `2026-09-24-background-check-flags-repair`;
+    migration 319; board #550; decision-maker approved Sep 24, 2026).** 289 wrote
+    `requires_background_check` as `COALESCE(existing, intended)`, but the column DEFAULTS to `false`,
+    so a legacy row kept `false`: production was read (read-only) with private_transportation,
+    tour_guide, private_chef and childcare_family all `false`, which let those listings publish with
+    no background-check confirmation. 319 sets exactly those four to `true` where they are not
+    already — DATA ONLY, no key assigned (so not a registry entry), idempotent. **A `COALESCE` over a
+    column with a non-NULL DEFAULT is not a "keep what an admin set" guard; it is a no-op.**
 
 32. **NO EXPERT TOUCHPOINT EXISTS WITHOUT A SLIP; the slip is the intake, and the expert reads it
     LIVE (decision-maker ratified Sep 4, 2026 — ledger `2026-09-04-slip-precondition`).** The
