@@ -1807,9 +1807,10 @@ export const MIGRATION_FILES = [
   // DEFAULT, NO CHECK, NO BACKFILL, on the migration-301 precedent: NULL = that pass never tallied
   // this rail, never "it examined zero". Column-only, so it IS §20's one approvable publish prompt.
   "318_reconciliation_runs_checked_subscriptions.sql",
-  // 319 — approved data-only correction: these four platform-provider categories require
-  // background checks. The guarded UPDATE changes no category metadata or other fields.
-  "319_background_check_required_categories.sql",
+  // 2026-09-24-background-check-flags-repair (board #550): sets `requires_background_check = true`
+  // on the four category keys 289's COALESCE left at their `false` DEFAULT. DATA ONLY — no ALTER,
+  // no CHECK, no index — so the deploy push has nothing to offer. Idempotent.
+  "319_background_check_flags_repair.sql",
   // 320 — platform webhook per-consumer event claims. Separate from shared webhook_events.
   "320_platform_webhook_consumer_idempotency.sql",
 ] as const;

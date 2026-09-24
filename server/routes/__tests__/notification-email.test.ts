@@ -191,7 +191,7 @@ describe("PATCH /api/me/notification-email — source-code wiring", () => {
 //
 // Confirms that the booking request path (submitBookingRequests) AND the
 // post-confirmation path both query p.notification_email and use the fallback
-// expression `notification_email || email` when calling sendBookingAlertEmail.
+// expression `notification_email || email` when calling enqueueBookingAlertEmail.
 
 describe("booking.service.ts — notification_email wiring", () => {
   const bookingSrc = fs.readFileSync(
@@ -215,17 +215,17 @@ describe("booking.service.ts — notification_email wiring", () => {
     );
   });
 
-  it("sendBookingAlertEmail is called with resolved providerEmail", () => {
+  it("enqueueBookingAlertEmail is called with resolved providerEmail", () => {
     assert.ok(
-      bookingSrc.includes("sendBookingAlertEmail({"),
-      "booking.service.ts must call sendBookingAlertEmail"
+      bookingSrc.includes("enqueueBookingAlertEmail({"),
+      "booking.service.ts must call enqueueBookingAlertEmail"
     );
     // The call must use providerEmail (which holds the resolved value)
-    const alertIdx = bookingSrc.indexOf("sendBookingAlertEmail({");
+    const alertIdx = bookingSrc.indexOf("enqueueBookingAlertEmail({");
     const alertBlock = bookingSrc.slice(alertIdx, alertIdx + 300);
     assert.ok(
       alertBlock.includes("providerEmail"),
-      "sendBookingAlertEmail call must pass providerEmail argument"
+      "enqueueBookingAlertEmail call must pass providerEmail argument"
     );
   });
 
@@ -252,7 +252,7 @@ describe("payments.routes.ts — notification_email wiring at checkout", () => {
     "utf-8"
   );
 
-  it("sendBookingAlertEmail call uses notificationEmail || email fallback", () => {
+  it("enqueueBookingAlertEmail call uses notificationEmail || email fallback", () => {
     // The expression used in payments.routes.ts is:
     //   providerEmail: (provider as any).notificationEmail || provider.email
     assert.ok(

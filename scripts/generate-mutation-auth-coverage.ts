@@ -98,6 +98,10 @@ function disposition(endpoint: Endpoint, contexts: Map<string, Set<string>>, evi
   // claim a rail the suite had quietly stopped probing.
   if (has("payments-resource-owner"))
     return { tested: true, reason: "Fresh real-booking User A \u2192 User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate." };
+  // The non-`/api/bookings` payments suite's own context, on the same no-key-list rule as above:
+  // the passing suite's probe lines ARE the list (board task #1679).
+  if (has("payments-other-rails-owner"))
+    return { tested: true, reason: "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate." };
   if ((endpoint.risk === "payments" || endpoint.risk === "user-data") && endpoint.expectedBoundary === "signature")
     return has("unauthenticated")
       ? { tested: true, reason: "Fresh unsigned-request evidence for the payment/user-data signature boundary." }

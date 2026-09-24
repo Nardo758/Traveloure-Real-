@@ -11,8 +11,7 @@ import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
 import { affiliateService } from './affiliate.service';
-import { enqueueBookingConfirmationEmail } from './email-outbox.service';
-import { sendBookingAlertEmail } from './email.service';
+import { enqueueBookingAlertEmail, enqueueBookingConfirmationEmail } from './email-outbox.service';
 import { getStripeSecretKey } from '../utils/stripe-key';
 // Ruling 2026-09-02-traveler-fee-applies-everywhere (path 3 — the legacy `bookings` rail is
 // reachable, so billed for parity). ONE band-driven resolver (§8/§14), Trip-Pass suppression via
@@ -681,16 +680,15 @@ class BookingService {
               });
 
               if (providerEmail && providerEmailBookingAlerts) {
-                sendBookingAlertEmail({
+                // Through the retrying outbox (board #1564): never throws, retried on a Resend outage.
+                void enqueueBookingAlertEmail({
                   providerEmail,
                   providerName,
                   bookingId: reqId || '',
                   serviceName: title,
                   travelerName,
                   amount: String(price ?? 0),
-                }).catch(err =>
-                  console.error(`[BookingService] Provider booking request email failed for request ${reqId}:`, err)
-                );
+                });
               }
             } catch (notifErr) {
               console.error(`[BookingService] Failed to notify provider ${providerId} of booking request:`, notifErr);
@@ -1012,16 +1010,15 @@ class BookingService {
         });
 
         if (providerEmail && providerEmailBookingAlerts) {
-          sendBookingAlertEmail({
+          // Through the retrying outbox (board #1564): never throws, retried on a Resend outage.
+          void enqueueBookingAlertEmail({
             providerEmail,
             providerName,
             bookingId,
             serviceName: booking.title || 'Service booking',
             travelerName,
             amount: String(booking.total_amount || providerPayoutAmt),
-          }).catch(err =>
-            console.error(`[BookingService] Provider booking confirmed email failed for booking ${bookingId}:`, err)
-          );
+          });
         }
       } catch (notifErr) {
         console.error(`[BookingService] Post-confirmation notifications failed for booking ${bookingId}:`, notifErr);

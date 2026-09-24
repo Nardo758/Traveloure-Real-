@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { NOTIFICATION_PREFERENCE_DEFAULTS, NOTIFICATION_PREFERENCE_KEYS } from "@shared/notification-preferences";
 import { Link, useSearch } from "wouter";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
@@ -283,13 +284,11 @@ export default function ExpertSettings() {
   // Notification + language/timezone settings — PERSISTED via GET/PATCH /api/me/preferences
   // (users.preferences.settings, migration 150). Defaults below are the born state for a user
   // who has never saved; the query hydrates real saved values once on load.
-  const [notifications, setNotifications] = useState<NotificationSetting[]>([
-    { name: "New Message", key: "newMessage", email: true, push: true },
-    { name: "Booking Request", key: "bookingRequest", email: true, push: true },
-    { name: "Itinerary Update", key: "itineraryUpdate", email: false, push: true },
-    { name: "Payment Received", key: "paymentReceived", email: true, push: true },
-    { name: "Platform Announcements", key: "platformAnnouncements", email: true, push: false },
-  ]);
+  // Born defaults come from the ONE shared table the server also reads (board #1230), so the page
+  // can never show a default the server does not apply.
+  const [notifications, setNotifications] = useState<NotificationSetting[]>(() =>
+    NOTIFICATION_PREFERENCE_KEYS.map((key) => ({ key, ...NOTIFICATION_PREFERENCE_DEFAULTS[key] })),
+  );
   const [language, setLanguage] = useState("en");
   const [timezone, setTimezone] = useState("UTC+9");
 

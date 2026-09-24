@@ -891,9 +891,10 @@ async function promoteAuthorizedCheckout(
         // Migration 225: skip alert email when provider has opted out (emailBookingAlerts
         // defaults to true — existing providers are unaffected until they toggle it off).
         if (provider?.email && provider.emailBookingAlerts !== false) {
-          const { sendBookingAlertEmail } = await import("../services/email.service");
+          const { enqueueBookingAlertEmail } = await import("../services/email-outbox.service");
           const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
-          await sendBookingAlertEmail({
+          // Through the retrying outbox (board #1564) — never throws, retried on a Resend outage.
+          await enqueueBookingAlertEmail({
             // Migration 224: route alerts to the dedicated notification email when set.
             providerEmail: provider.notificationEmail || provider.email,
             providerName,

@@ -13,6 +13,7 @@
  * - Affiliate tracking for commission via Impact.com
  */
 
+import { demoSeedsAllowed } from "../seeds/lib/demo-seed-gate";
 import { db } from "../db";
 import { feverEventCache } from "@shared/schema";
 import { and, eq, lt } from "drizzle-orm";
@@ -241,7 +242,8 @@ class FeverService {
 
   /**
    * Returns true only when both credentials AND a live Fever catalog ID are
-   * available.  When false, searchEvents falls back to mock data — never call
+   * available.  When false, searchEvents falls back to generated events outside production and
+   * to an empty list in production — never call
    * upsertEventsToCache in that state.
    */
   public isCatalogReady(): boolean {
@@ -484,10 +486,10 @@ class FeverService {
       return null;
     }
 
-    // If not configured or no Fever catalog found, return mock data
+    // Not configured or no Fever catalog: generated events in development, NONE in production.
     if (!this.isConfigured || !this.feverCatalogId) {
-      console.warn('[Fever/Impact] Returning mock data - API not configured or Fever catalog not found');
-      return this.getMockSearchResponse(params);
+      console.warn('[Fever/Impact] API not configured or Fever catalog not found — no live events');
+      return this.unavailableSearchResponse(params, city);
     }
 
     // Search for events in the city
@@ -500,7 +502,7 @@ class FeverService {
     });
 
     if (!items) {
-      return this.getMockSearchResponse(params);
+      return this.unavailableSearchResponse(params, city);
     }
 
     const events = items.map(item => this.transformCatalogItemToEvent(item, city));
@@ -519,14 +521,14 @@ class FeverService {
    */
   public async getEventById(eventId: string): Promise<FeverEvent | null> {
     if (!this.isConfigured || !this.feverCatalogId) {
-      return this.getMockEvent(eventId);
+      return demoSeedsAllowed() ? this.getMockEvent(eventId) : null;
     }
 
     const response = await this.makeRequest<ImpactCatalogItem>(
       `/Mediapartners/${this.config.accountSid}/Catalogs/${this.feverCatalogId}/Items/${eventId}`
     );
     
-    if (!response) return this.getMockEvent(eventId);
+    if (!response) return demoSeedsAllowed() ? this.getMockEvent(eventId) : null;
 
     // Use a default city for single event lookups
     const defaultCity = FeverService.SUPPORTED_CITIES[0];
@@ -757,6 +759,19 @@ class FeverService {
     });
 
     return result?.events || [];
+  }
+
+  /**
+   * What a search answers when Fever cannot be read — not configured, no catalog, or the API
+   * failed (board #317, ledger `2026-09-23-phase2-honesty`). In PRODUCTION it is an honest empty
+   * list: generated events with made-up names, dates and prices used to be served there, and a
+   * traveler could plan around an event that does not exist (§13). Outside production the
+   * generated set is kept for development, under the same predicate that gates every other piece
+   * of demo content (`demoSeedsAllowed`).
+   */
+  private unavailableSearchResponse(params: FeverSearchParams, city: FeverCity): FeverSearchResponse {
+    if (demoSeedsAllowed()) return this.getMockSearchResponse(params);
+    return { events: [], total: 0, page: params.page || 1, totalPages: 0, city };
   }
 
   /**

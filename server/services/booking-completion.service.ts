@@ -149,6 +149,7 @@ import { storage } from "../storage";
 // list, and a client cannot import this module. Every existing caller is unchanged. Read that
 // file's NEGATIVE SPACE note before using it on a surface — status is not the whole eligibility.
 import { COMPLETION_ALLOWED_FROM_STATUSES } from "@shared/declared-completion-window";
+import { outOfBandRefundOf } from "@shared/out-of-band-refund";
 export { COMPLETION_ALLOWED_FROM_STATUSES };
 
 /** Who drove this completion. Recorded on the booking row; mapped to a diary actorType below. */
@@ -273,6 +274,12 @@ export type IneligibleReason =
    * snapshotted price. The parent stays `confirmed` for a human — never a guessed share.
    */
   | "component_prices_unknown"
+  /**
+   * #1288 (ledger `2026-09-24-out-of-band-refund-blocks-mint`): the booking carries a refund we did
+   * not issue (`booking_details.outOfBandRefund`), so the status writer refuses to complete it and
+   * nothing mints. Named rather than reported as `lost_race`, which would say a competitor won (§13).
+   */
+  | "out_of_band_refund"
   /**
    * D-6/D-40: the traveler accepted, but this listing's acceptance does NOT complete the booking.
    * Either it takes no acceptance at all, or it is a `hybrid` with a DECLARED artifact, whose
@@ -854,11 +861,13 @@ export async function completeBooking(input: {
   if (!updated) {
     // Lost the atomic race (or the row vanished). Exactly one caller wins; the loser mints no
     // earnings, writes no diary row and performs no compensation. Re-running is safe.
+    // #1288: the writer also refuses a row stamped with a refund we did not issue — say so.
+    const current = await storage.getServiceBooking(input.bookingId);
     return {
       completed: false,
       bookingId: input.bookingId,
       rule: eligibility.rule,
-      reason: "lost_race",
+      reason: current && outOfBandRefundOf(current.bookingDetails) ? "out_of_band_refund" : "lost_race",
       evidence: eligibility.evidence,
     };
   }

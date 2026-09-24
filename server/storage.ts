@@ -18,6 +18,7 @@ import { isPlatformConciergeUserId } from "./services/platform-concierge.service
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
 import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
 import { PARTIALLY_COMPLETED_STATUS, reducedBundleFigures } from "@shared/bundle-component-states";
+import { OUT_OF_BAND_REFUND_KEY, outOfBandRefundOf } from "@shared/out-of-band-refund";
 import { isProviderRole } from "@shared/roles";
 import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
@@ -235,6 +236,8 @@ export interface TripMintOptions {
   datesChosenByTraveler?: boolean;
 }
 
+import type { FormStatusWriteResult } from "./utils/form-status-transition";
+
 export interface IStorage {
   // Trips
   getTrips(userId?: string, status?: string): Promise<TripListItem[]>;
@@ -312,7 +315,7 @@ export interface IStorage {
 
   updateLocalExpertForm(id: string, form: Partial<InsertLocalExpertForm> & { status?: string; rejectionMessage?: string | null }): Promise<LocalExpertForm | undefined>;
 
-  updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined>;
+  updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<(LocalExpertForm & FormStatusWriteResult) | undefined>;
 
   updateLocalExpertFormRejectionMessage(id: string, rejectionMessage: string): Promise<LocalExpertForm | undefined>;
 
@@ -338,7 +341,7 @@ export interface IStorage {
 
   createServiceProviderForm(form: InsertServiceProviderForm & { userId: string }): Promise<ServiceProviderForm>;
 
-  updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined>;
+  updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<(ServiceProviderForm & FormStatusWriteResult) | undefined>;
 
   updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined>;
   // Ruling 85: owner-gated (by userId, never a body id) set/update/clear of the account-level
@@ -1947,11 +1950,23 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined> {
-    const [updated] = await db.update(localExpertForms)
-      .set({ status, rejectionMessage })
-      .where(eq(localExpertForms.id, id))
-      .returning();
+  async updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<(LocalExpertForm & FormStatusWriteResult) | undefined> {
+    // The row is LOCKED while its prior status is read, so two concurrent saves of the same status
+    // are serialized and exactly one of them reports that it ENTERED that status (board #905,
+    // ledger `2026-09-23-phase2-messages`). Callers send the one-time approval/rejection messages
+    // only on entry — a re-save must not re-send them.
+    const updated = await db.transaction(async (tx) => {
+      const [prior] = await tx.select({ status: localExpertForms.status })
+        .from(localExpertForms)
+        .where(eq(localExpertForms.id, id))
+        .for("update");
+      if (!prior) return undefined;
+      const [row] = await tx.update(localExpertForms)
+        .set({ status, rejectionMessage })
+        .where(eq(localExpertForms.id, id))
+        .returning();
+      return row ? { ...row, priorStatus: prior.status ?? null } : undefined;
+    });
     // expert_neighborhoods is NO LONGER written here (ruling 2026-08-29-neighborhood-claims;
     // Phase 0 D1 ratified). Approval used to name-match the free-text `neighborhoods` chips into
     // rows — platform assignment, not an expert's claim. Rows are now born only by claim
@@ -2131,12 +2146,21 @@ export class DatabaseStorage implements IStorage {
     return newForm;
   }
 
-  async updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined> {
-    const [updated] = await db.update(serviceProviderForms)
-      .set({ status, rejectionMessage })
-      .where(eq(serviceProviderForms.id, id))
-      .returning();
-    return updated;
+  async updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<(ServiceProviderForm & FormStatusWriteResult) | undefined> {
+    // Same shape as updateLocalExpertFormStatus: the prior status is read under the row lock, so
+    // the caller can tell a real transition from a re-save (board #905).
+    return db.transaction(async (tx) => {
+      const [prior] = await tx.select({ status: serviceProviderForms.status })
+        .from(serviceProviderForms)
+        .where(eq(serviceProviderForms.id, id))
+        .for("update");
+      if (!prior) return undefined;
+      const [row] = await tx.update(serviceProviderForms)
+        .set({ status, rejectionMessage })
+        .where(eq(serviceProviderForms.id, id))
+        .returning();
+      return row ? { ...row, priorStatus: prior.status ?? null } : undefined;
+    });
   }
 
   async updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined> {
@@ -3455,9 +3479,16 @@ export class DatabaseStorage implements IStorage {
       if (reason) updates.cancellationReason = reason;
     }
 
-    const guard = expectedFromStatuses && expectedFromStatuses.length > 0
+    const baseGuard = expectedFromStatuses && expectedFromStatuses.length > 0
       ? and(eq(serviceBookings.id, id), inArray(serviceBookings.status, expectedFromStatuses as string[]))
       : eq(serviceBookings.id, id);
+    // #1288 (ledger `2026-09-24-out-of-band-refund-blocks-mint`): a booking stamped with a refund we
+    // did not issue may not become `completed`/`partially_completed` — the two transitions that mint.
+    // In the WHERE, not a pre-check, so a stamp committed while this flip waits on the row lock is
+    // still seen (§15: the UPDATE is the guard). A refused flip returns undefined, like a lost race.
+    const guard = status === "completed" || status === PARTIALLY_COMPLETED_STATUS
+      ? and(baseGuard, sql`(COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) -> ${OUT_OF_BAND_REFUND_KEY}::text) IS NULL`)
+      : baseGuard;
 
     // ONE transaction for the status flip and every same-commit side-effect (ruling 80's
     // "flip-and-mint in one transaction" precedent, generalized): the completion earnings mint,
@@ -3586,6 +3617,12 @@ export class DatabaseStorage implements IStorage {
     const { providerId, serviceId } = booking;
     if (!providerId || !serviceId) {
       console.error(`[mintCompletionEarnings] booking ${booking.id} missing providerId/serviceId — cannot mint`);
+      return false;
+    }
+    // #1288, second layer: the status writer already refuses to complete a stamped booking; this
+    // covers the reconciliation caller, which mints for a row that is ALREADY completed.
+    if (outOfBandRefundOf(booking.bookingDetails)) {
+      console.error(`[mintCompletionEarnings] booking ${booking.id} carries a refund we did not issue — refusing to mint`);
       return false;
     }
     let grossAmount = parseFloat(booking.totalAmount || '0');
