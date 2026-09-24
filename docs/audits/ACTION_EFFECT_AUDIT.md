@@ -19,7 +19,7 @@ decision-maker accepted for this lane.
 | 1 | **Matrix**: 818 triggers, 314 Tier-1 traced in full | [`ACTION_EFFECT_MATRIX.md`](ACTION_EFFECT_MATRIX.md) |
 | 2 | **Machine-readable** (schema v1, stable, CI-gate input) | [`action-effect.json`](action-effect.json), [`action-effect.schema.json`](action-effect.schema.json) |
 | 3 | **Journeys J1–J6**: a Mermaid flowchart each, broken edges red and dashed; screenshots, network log and DB diff per step | [`journeys/J1`](journeys/J1/README.md) · [`J2`](journeys/J2/README.md) · [`J3`](journeys/J3/README.md) · [`J4`](journeys/J4/README.md) · [`J5`](journeys/J5/README.md) · [`J6`](journeys/J6/README.md) |
-| 4 | **Gap register**, sorted by severity and grouped by root cause | [`GAP_REGISTER.md`](GAP_REGISTER.md) |
+| 4 | **Gap register**, sorted by severity and grouped by root cause (Addendum 2: 163 open, 31 P1 across 11 root causes) | [`GAP_REGISTER.md`](GAP_REGISTER.md) |
 | 5 | **NOT PROVEN** | §NOT PROVEN below |
 | 6 | **Intent → component map** | [`INTENT_COMPONENT_MAP.md`](INTENT_COMPONENT_MAP.md) |
 | A4 | H7: query-key fragmentation | [`H7_TRIP_QUERY_KEYS.md`](H7_TRIP_QUERY_KEYS.md) |
@@ -94,6 +94,19 @@ Every claim below was **not** confirmed in the browser. Each entry says what wou
 15. **WIREFRAME_DIVERGENCE rows** compare against WIREFRAMES_COMPLETE_v2 and COMMERCE_WIREFRAMES_v4 as written in
     `attached_assets/`. **SELECTION_CONTROL_MODEL_SPEC_v2 was not in the repo**, at the base or on `origin/main`
     when checked. The rows that should cite it (experience-template selection controls) need a re-check once it lands.
+
+## Addendum 2: UI sync pass (read-only)
+
+| Item | Status | Where |
+|---|---|---|
+| **U1**: re-audit `plan-modal:*` against SELECTION_CONTROL_MODEL_SPEC_v2 | **BLOCKED: the spec is not in the repository.** I checked `attached_assets/`, `origin/main` (which advanced to `da1abc7` during the lane) and all 1,486 remote branches with `git ls-tree`, and searched the entire history with `git log --all --name-only`. The only matches are the code-side `shared/selection-control-seed.ts`, `shared/selection-controls.ts` and the gate files. No SPEC_DIVERGENCE row cites the document, because citing text I haven't read would be invented. The `{{BASE}}` placeholder in `GAP_REGISTER.md` **is fixed**. | this section |
+| **U2**: screenshot every P1/P2 UI-class row | **Done.** 31 gap entries: **26 CONFIRMED, 2 REFUTED, 3 BLOCKED** (environment, each with a screenshot of the absence), plus **1 new P1** found while probing (RC-11, first chat message 404s). No P1/P2 UI row is static-only. | [`ui/U2_RESULTS.md`](ui/U2_RESULTS.md), `ui/<row-id>/` |
+| **U3**: empty UI fields | Before: **592 of 818** rows had at least one empty field, **88 of them Tier 1**. After: **0 of 314 Tier-1 rows**. The 504 Tier-2 rows are one-liners by A2's definition and carry no UI contract fields. | `action-effect.json` (`ui.*`); patches in `journeys/harness/matrix-src/patches.json` |
+| **U4**: traveler-path contact sheet | **Done.** 21 frames covering landing → each modal step and each exit → Discover → add → `/my-trips` → the slip, each annotated with the gap row ids visible in it | [`ui/CONTACT_SHEET.md`](ui/CONTACT_SHEET.md) |
+
+**The matrix is now reproducible from the repo:**
+- `node docs/audits/journeys/harness/build-matrix.mjs docs/audits/journeys/harness/matrix-src docs/audits/journeys/harness/matrix-src/patches.json 858d28f`
+- then `node docs/audits/journeys/harness/build-gap-register.mjs`
 
 ## Out of scope, filed
 

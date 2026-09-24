@@ -1,7 +1,7 @@
 # Action → Effect Matrix (traveler surfaces)
 
 Generated from `docs/audits/action-effect.json` (schema v1, `docs/audits/action-effect.schema.json`) at base `858d28f` by `docs/audits/journeys/harness/build-matrix.mjs`.
-**818 triggers** (314 Tier 1 fully traced, 504 Tier 2 one-liners). Evidence: **24 behavioural** (journey step cited), the rest static (file:line). Rows are grouped by surface; within a surface, worst severity first. Columns follow the dispatch; long cells are truncated here — the JSON carries the full chain.
+**818 triggers** (314 Tier 1 fully traced, 504 Tier 2 one-liners). Evidence: **25 behavioural** (journey step cited), the rest static (file:line). Rows are grouped by surface; within a surface, worst severity first. Columns follow the dispatch; long cells are truncated here — the JSON carries the full chain.
 
 
 ## / — landing
@@ -127,7 +127,7 @@ Generated from `docs/audits/action-effect.json` (schema v1, `docs/audits/action-
 
 | Tier | Element (label) | file:line | Condition | Handler | Client writes | API call | Server file:line | DB writes | Invalidates | Navigates | Downstream readers | Expected | Actual (evidence) | Gap class | Sev |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | Send | `client/src/pages/chat.tsx:1285` | none=thread has opaque id: HTTP POST /api/chats {conversationId}; none=no opaque id, WS connected, UUID recipient: WebS… | handleSend @ client/src/pages/chat.tsx:753 |  | `POST /api/chats` | server/routes.ts:2259 (monolith; twin server/rout… | user_and_expert_chats via storage.createChat | [api.chats.list.path] |  | /inbox; recipient /chat |  |  (static) | SILENT_FAILURE | P3 |
+| 1 | Send | `client/src/pages/chat.tsx:1285` | none=thread has opaque id: HTTP POST /api/chats {conversationId}; none=no opaque id, WS connected, UUID recipient: WebS… | handleSend @ client/src/pages/chat.tsx:753 |  | `POST /api/chats` | server/routes.ts:2259 (monolith; twin server/rout… | user_and_expert_chats via storage.createChat | [api.chats.list.path] |  | /inbox; recipient /chat |  |  (**docs/audits/ui/chat__first-message/ (storefront Message → /chat → first send → POST /api/chats 404 Conversation not found)**) | SILENT_FAILURE, DEAD_TRIGGER | P1 |
 | 1 | mark conversation read | `client/src/pages/chat.tsx:693-697,712-713` |  | useMarkConversationRead @ client/src/hooks/use-me… |  | `PATCH /api/messages/conversation/:conversationId/read-a…` | server/routes/messages.ts:258 | user_and_expert_chats(read flags) via markConversationRead | ["/api/messages/unread/count"]; [CHATS_LIST_PATH] |  |  |  |  (static) |  |  |
 | 1 | Typing indicator | `client/src/pages/chat.tsx:820-826` |  | handleInputChange @ client/src/pages/chat.tsx:820 |  |  |  |  |  |  |  |  |  (static) |  |  |
 | 1 | Report user / message `button-report-user` | `client/src/pages/chat.tsx:1160,1242,1399` |  | reportMutation @ client/src/pages/chat.tsx:476 |  | `POST /api/messages/report/user/:id \| /api/messages/re…` | server/routes/messages.ts:380 \| :356 | message_reports insert |  |  |  |  |  (static) |  |  |

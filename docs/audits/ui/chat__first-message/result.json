@@ -1,0 +1,8 @@
+{
+ "rowId": "chat:send-message#first-message",
+ "url": "/chat?conversation=2643a149cd30e602e8d45a06f31863d0&name=Satoshi&avatar=https%3A%2F%2Fimages.unsplash.com%2Fphoto-1521791136064-7986c2920216%3Fw%3D800",
+ "toasts": [
+  "Message failed Failed to send message. Please try again."
+ ],
+ "inputAfterSend": "Hello, is the Kyoto interpreter available in November?"
+}

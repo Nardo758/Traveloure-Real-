@@ -1,0 +1,51 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"f9dcd2b6-01b7-4980-864b-d804d69bbdcb\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/trips",
+  "status": 500,
+  "body": "{\"title\":\"Kyoto, Japan Trip\",\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-23\",\"endDate\":\"2026-11-28\",\"numberOfTravelers\":2,\"eventType\":\"vacation\"}",
+  "response": "{\"message\":\"forced failure (audit)\"}"
+ }
+]

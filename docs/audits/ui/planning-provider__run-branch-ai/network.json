@@ -1,0 +1,124 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/travelpulse/cities",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/moments",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/platform/stats",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/hero",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"e72c6a26-4c5a-4a41-a02f-747282caf19d\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/landing/moments/event",
+  "status": 204,
+  "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"aa411028-51cc-4014-9c84-faad07cdd2f8\"}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cities/neighborhoods?city=Kyoto",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cities/gems?city=Kyoto&limit=5",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"destination\":\"Kyoto, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"pendingEvents\":[],\"pendingEventTitles\":[],\"stops\":[{\"name\":\"Kyoto, Japan\"}]}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/service-categories",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/catalog/activities-gyg?destination=Kyoto%2C+Japan&limit=8",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/ready-made",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/content/discover?destination=Kyoto%2C+Japan&surface=travelpulse-discover",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/discover?location=Kyoto%2C+Japan&sortBy=rating&limit=12&offset=0",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/analytics/search-event",
+  "status": 202,
+  "body": "",
+  "response": "{\"received\":true}"
+ }
+]

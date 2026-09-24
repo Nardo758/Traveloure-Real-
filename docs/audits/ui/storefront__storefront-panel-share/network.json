@@ -1,0 +1,41 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/storefront/by-id/7cb0a2a1-f263-4650-8c24-701578257cee?locale=en",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/7e85ef0c-aaaf-4ec3-a4db-aeb290ed23e6/expert-advisor",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/7e85ef0c-aaaf-4ec3-a4db-aeb290ed23e6",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"a2c7face-1d9b-4de6-a0e5-b005ccd89bcb\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/trips/7e85ef0c-aaaf-4ec3-a4db-aeb290ed23e6/advisors",
+  "status": 500,
+  "body": "{\"handle\":\"\"}",
+  "response": "{\"message\":\"forced failure (audit)\"}"
+ }
+]

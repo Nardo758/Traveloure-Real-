@@ -1,0 +1,58 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/conversations",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"c48f9040-a4b0-4869-a575-497f012c5bc8\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/conversations",
+  "status": 201,
+  "body": "{\"title\":\"Plan 3 days in Kyoto\"}",
+  "response": "{\"id\":2,\"title\":\"Plan 3 days in Kyoto\",\"userId\":\"6694ee8d-1644-4372-ad1c-83f4d87e1ea9\",\"tripId\":null,\"createdAt\":\"2026-09-24T22:26:13.063Z\"}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/conversations",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/conversations/2/messages",
+  "status": 500,
+  "body": "{\"content\":\"Plan 3 days in Kyoto\"}",
+  "response": "{\"error\":\"Failed to send message\"}"
+ }
+]

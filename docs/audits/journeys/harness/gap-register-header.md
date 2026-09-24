@@ -1,6 +1,6 @@
 # Gap register: Action → Effect audit (traveler surfaces)
 
-**Base:** `{{BASE}}`. **{{TOTAL}} gaps** across 818 matrix rows: **{{P1}} P1**, **{{P2}} P2**, **{{P3}} P3**.
+**Base:** `{{BASE}}`. **{{TOTAL}} open gaps** across 818 matrix rows (REFUTED gaps are listed but not counted): **{{P1}} P1**, **{{P2}} P2**, **{{P3}} P3**.
 
 **Severity**
 - **P1:** the user loses work, or a canonical Trip is never created.
@@ -28,7 +28,8 @@ The IDs refer to the journey reports.
 | **RC-7** | **A new plan is invisible on My Plans once the list has loaded.** No trip mint except IntakePanel, ready-made and saved-trip invalidates `["/api/trips"]`, and `staleTime` is `Infinity`. | J1-F3, J3-F3 (static) | **J1 R5 step 13** | `lib/trip-slip.ts:151-176`; `lib/queryClient.ts:98`; H7 §C |
 | **RC-8** | **Guest state is dropped on auth.** Guest "Build it myself" wipes the pen and opens sign-in without a return. A guest template add redirects to `/`. A guest concierge Send opens sign-in without a return. `/signup` ignores return-to, cart migration and concierge claim. | J1-F4, J4-F1, `concierge:review-sheet-send`, `signup:submit` | **J1 R1; J4 R2**; static for concierge and signup | `plan-modal.tsx:1201-1214`; `experience-template.tsx:1725-1727`; `pages/Signup.tsx:26-45` |
 | **RC-9** | **Client-only state is lost on tab or device change.** External/affiliate template cart lines live only in `sessionStorage externalCart_<slug>`. | `experience-template:effect-external-cart-storage` | static | `experience-template.tsx:826-833` |
-| **RC-10** | **The profile photo is never saved,** yet the toast says it was. | `profile:button-save-profile` | static | `pages/profile.tsx:211-231` |
+| **RC-10** | **The profile photo is never saved,** yet the toast says it was. | `profile:button-save-profile` | **U2 CONFIRMED** (`ui/profile__button-save-profile/`) | `pages/profile.tsx:211-231` |
+| **RC-11** | **A traveler cannot send a first message to an earner.** Storefront "Message" opens `/chat` with an opaque id that the send rail can resolve only once the thread already has messages, so the first send is a 404. *New in Addendum 2.* | `chat:send-message` | **U2** (`ui/chat__first-message/`) | `server/services/messages.service.ts:378-389`; `server/routes.ts:2268-2276` |
 
 **Money:** FU-AE-1 is the 3DS return that never calls confirm-payment. It is a **P1 candidate**, observe-only, and
 currently unreachable because every platform PaymentIntent sets `allow_redirects:'never'`. It lives in

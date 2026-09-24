@@ -1,0 +1,5 @@
+{
+ "rowId": "plan-modal:button-etp-save",
+ "verdict": "CONFIRMED",
+ "observed": "after Save: toasts=[] (the only visible change is the trip strip)"
+}

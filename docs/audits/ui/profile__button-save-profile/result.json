@@ -1,0 +1,5 @@
+{
+ "rowId": "profile:button-save-profile",
+ "verdict": "CONFIRMED",
+ "observed": "toasts [\"Photo updated Your profile photo has been updated.\",\"Notification Photo updatedYour profile photo has been updated.\",\"Profile updated Your profile has been saved successfully.\"]; image sent to server=false; after reload see after.png"
+}

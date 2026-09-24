@@ -1,0 +1,6392 @@
+[
+ {
+  "id": "discover-shared:url-tripid",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:928"
+  },
+  "label": {
+   "text": "?tripId (URL handoff)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "url-consumer",
+   "loc": "client/src/pages/discover.tsx:939"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:url-filters",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:928"
+  },
+  "label": {
+   "text": "?q/location/categoryId/sortBy/minPrice/maxPrice/minRating/page/showExperts/destination/source",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "url-consumer",
+   "loc": "client/src/pages/discover.tsx:950"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:url-categorykey",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:928"
+  },
+  "label": {
+   "text": "?categoryKey deep link",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "url-consumer",
+   "loc": "client/src/pages/discover.tsx:1073"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:url-city",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:928"
+  },
+  "label": {
+   "text": "?city deep link (CityGrid selectedCityName is unused, CityGrid.tsx:367)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "url-consumer",
+   "loc": "client/src/pages/discover.tsx:999"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:url-sync",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:928"
+  },
+  "label": {
+   "text": "filter state → history.replaceState",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/pages/discover.tsx:1014"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:track-search-event",
+  "tier": 1,
+  "intent": "record_analytics",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:928"
+  },
+  "label": {
+   "text": "locationFilter change (analytics)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/pages/discover.tsx:1037"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "trackSearchEvent @ client/src/lib/analytics.ts:68",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/analytics/search-event",
+    "callLoc": "client/src/lib/analytics.ts:69"
+   },
+   "serverLoc": "server/routes/content.routes.ts:2952",
+   "dbWrites": [
+    "destination_search_patterns via storage.createDestinationSearchPattern"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": null,
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:marketplace-route",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:1515"
+  },
+  "label": {
+   "text": "Marketplace rail (Destinations/Ready-Made/Events/Services)",
+   "ariaLabel": null,
+   "testId": "marketplace-route-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover.tsx:1518"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/destinations | /ready-made | /events | /services"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:plan-entry",
+  "tier": 2,
+  "intent": "open_planner",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "PlanEntryCta",
+   "loc": "client/src/components/planning/plan-entry-cta.tsx:60"
+  },
+  "label": {
+   "text": "Start a plan",
+   "ariaLabel": null,
+   "testId": "button-plan-entry-marketplace"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:1541"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "PlanningContext modal (no route change) — client/src/contexts/PlanningContext.tsx:240"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:plan-chip",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "PlanBrowseContext",
+   "loc": "client/src/pages/discover.tsx:859"
+  },
+  "label": {
+   "text": "Adding to <plan name>",
+   "ariaLabel": null,
+   "testId": "discover-plan-chip"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover.tsx:896"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/plans/:tripId"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:plan-role-chip",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "PlanBrowseContext",
+   "loc": "client/src/pages/discover.tsx:859"
+  },
+  "label": {
+   "text": "For your plan: <role>",
+   "ariaLabel": null,
+   "testId": "discover-plan-role-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover.tsx:913"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "chip.href (role-filtered /services)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:two-field-search",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /services",
+  "component": {
+   "name": "TwoFieldSearch",
+   "loc": "client/src/pages/discover.tsx:675"
+  },
+  "label": {
+   "text": "What / Where inputs",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/pages/discover.tsx:703"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "URL via replaceState (discover.tsx:1031)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:dismiss-handoff-banner",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:1582"
+  },
+  "label": {
+   "text": "Dismiss handoff banner",
+   "ariaLabel": null,
+   "testId": "button-dismiss-handoff-banner"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:1609"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:ai-matched-experts-mount",
+  "tier": 1,
+  "intent": "match_experts",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services (?showExperts=true)",
+  "component": {
+   "name": "AIMatchedExpertsSection",
+   "loc": "client/src/components/ai-matched-experts-section.tsx:68"
+  },
+  "label": {
+   "text": "AI-matched experts (auto-run on mount)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/ai-matched-experts-section.tsx:154"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "POST 401 (isAuthenticated) → silent fallback to generic /api/experts list"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "Grok-ranked matches"
+   }
+  ],
+  "chain": {
+   "handler": "matchExpertsMutation @ client/src/components/ai-matched-experts-section.tsx:77",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/grok/match-experts",
+    "callLoc": "client/src/components/ai-matched-experts-section.tsx:84"
+   },
+   "serverLoc": "server/routes/content.routes.ts:4332",
+   "dbWrites": [],
+   "sideEffects": [
+    "Grok model call (aiRateLimiter)",
+    "fallback GET /api/experts on failure (ai-matched-experts-section.tsx:116)"
+   ],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Experts matched to my destination appear",
+   "feedback": {
+    "success": "matched list renders (ai-matched-experts-section.tsx)",
+    "failure": "silent fallback to unfiltered /api/experts (ai-matched-experts-section.tsx:116)",
+    "loading": "skeletons"
+   },
+   "resultLocation": "inline section on the same page",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "SILENT_FAILURE_UI",
+     "severity": "P3",
+     "note": "Guest 401 falls back to an unfiltered expert list under an 'AI-matched' heading with no notice"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-shared:ai-matched-experts-retry",
+  "tier": 1,
+  "intent": "match_experts",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services (?showExperts=true)",
+  "component": {
+   "name": "AIMatchedExpertsSection",
+   "loc": "client/src/components/ai-matched-experts-section.tsx:68"
+  },
+  "label": {
+   "text": "Retry / Try again (×3), Show all, View all experts",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/ai-matched-experts-section.tsx:186"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "401 → fallback list"
+   }
+  ],
+  "chain": {
+   "handler": "matchExpertsMutation.mutate @ client/src/components/ai-matched-experts-section.tsx:186/198/240",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/grok/match-experts",
+    "callLoc": "client/src/components/ai-matched-experts-section.tsx:84"
+   },
+   "serverLoc": "server/routes/content.routes.ts:4332",
+   "dbWrites": [],
+   "sideEffects": [
+    "Grok model call"
+   ],
+   "invalidates": [],
+   "navigates": "/experts (Link :314)",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Re-run the match",
+   "feedback": {
+    "success": "list re-renders",
+    "failure": "silent fallback list",
+    "loading": "isPending state"
+   },
+   "resultLocation": "same section",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:connect-expert",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:1707"
+  },
+  "label": {
+   "text": "Connect",
+   "ariaLabel": null,
+   "testId": "button-connect-expert-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:1710"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "earnerProfilePath(expert)?tripId=&source=quick-start"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:browse-all-experts",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:1736"
+  },
+  "label": {
+   "text": "Browse All Experts",
+   "ariaLabel": null,
+   "testId": "button-browse-all-experts"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:1736"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/experts"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:view-all-experts",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:1745"
+  },
+  "label": {
+   "text": "View All N Experts",
+   "ariaLabel": null,
+   "testId": "button-view-all-experts"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover.tsx:1745"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/experts?destination="
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:mismatch-add-anyway",
+  "tier": 1,
+  "intent": "add_to_plan",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "LocationMismatchDialog",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:60"
+  },
+  "label": {
+   "text": "Add anyway",
+   "ariaLabel": null,
+   "testId": "button-mismatch-add-anyway"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:106"
+  },
+  "conditions": [
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "gate never opens (no trip row read) — add runs straight through"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "dialog only if listing city ∉ plan stops"
+   }
+  ],
+  "chain": {
+   "handler": "confirm @ client/src/hooks/use-location-mismatch-gate.ts:166 → held runAddToCart @ client/src/pages/discover.tsx:1350",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items",
+    "callLoc": "client/src/pages/discover.tsx:1304"
+   },
+   "serverLoc": "server/routes.ts:12597",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "`/api/trips/${targetTripId}/itinerary-items`",
+    "`/api/trips/${targetTripId}/plancard`"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/plancard/SlipItemTools.tsx:251 ([`/api/trips/${id}/itinerary-items`])",
+    "client/src/components/plancard/PlanCard.tsx:774, client/src/components/dashboard/PlanSlipStrip.tsx:32 ([`/api/trips/${id}/plancard`])"
+   ]
+  },
+  "ui": {
+   "uiPromise": "The item goes on my plan despite the city mismatch",
+   "feedback": {
+    "success": "toast ADDED_TO_PLAN_TITLE (client/src/pages/discover.tsx:1318)",
+    "failure": "toast ADD_TO_PLAN_FAILED_TITLE (client/src/pages/discover.tsx:1323)",
+    "loading": "button 'Adding…' (client/src/pages/discover.tsx:596)"
+   },
+   "resultLocation": "/plans/:tripId slip",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "INVISIBLE_RESULT",
+     "severity": "P2",
+     "note": "Pen-derived target plan is never named on the grid (banner only for URL ?tripId, discover.tsx:1550)"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-shared:mismatch-add-as-stop",
+  "tier": 1,
+  "intent": "add_stop",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "LocationMismatchDialog",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:60"
+  },
+  "label": {
+   "text": "Add <city> as a stop",
+   "ariaLabel": null,
+   "testId": "button-mismatch-add-as-stop"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:115"
+  },
+  "conditions": [
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "gate never opens (no trip row read) — add runs straight through"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "dialog only if listing city ∉ plan stops"
+   }
+  ],
+  "chain": {
+   "handler": "addAsStop @ client/src/hooks/use-location-mismatch-gate.ts:193 → savePlanStops @ client/src/lib/plan-stops-writer.ts:54, then held add",
+   "clientWrites": [],
+   "api": {
+    "method": "PUT",
+    "route": "/api/trips/:tripId/destinations",
+    "callLoc": "client/src/lib/plan-stops-writer.ts:54"
+   },
+   "serverLoc": "server/routes/trips.routes.ts:478",
+   "dbWrites": [
+    "trip_destinations(delete+insert, ordered stops) + trips.destination mirror via replaceTripDestinations @ server/services/trip-destinations.service.ts:95",
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733"
+   ],
+   "sideEffects": [
+    "failed stop write only console.warn (client/src/hooks/use-location-mismatch-gate.ts:213), add still runs"
+   ],
+   "invalidates": [
+    "[\"/api/trips\", tripId]",
+    "[\"/api/trips\"]",
+    "`/api/trips/${targetTripId}/itinerary-items`",
+    "`/api/trips/${targetTripId}/plancard`"
+   ],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "City becomes a stop and the item is added",
+   "feedback": {
+    "success": "add toast only (client/src/pages/discover.tsx:1318); no stop-added feedback",
+    "failure": "console.warn only for the stop; add toast on add failure",
+    "loading": "none"
+   },
+   "resultLocation": "/plans/:tripId stops + item",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "SILENT_FAILURE_UI",
+     "severity": "P2",
+     "note": "Stop write failure is console-only (client/src/hooks/use-location-mismatch-gate.ts:213)"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-shared:mismatch-cancel",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "LocationMismatchDialog",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:60"
+  },
+  "label": {
+   "text": "Cancel / close",
+   "ariaLabel": null,
+   "testId": "button-mismatch-cancel"
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:124"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:footer-links",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:2136"
+  },
+  "label": {
+   "text": "Talk to an Expert / Plan Your Experience / Workstation / Become an expert",
+   "ariaLabel": null,
+   "testId": "button-talk-to-expert"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover.tsx:2146"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/experts | /experiences | /expert/workspace | /expert-status"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:trip-queue-plan",
+  "tier": 1,
+  "intent": "open_planner",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "TripQueueIndicator",
+   "loc": "client/src/components/TripQueueIndicator.tsx:25"
+  },
+  "label": {
+   "text": "Plan (Multi-City) Trip with AI",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/TripQueueIndicator.tsx:146"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "handlePlanTrip @ client/src/components/TripQueueIndicator.tsx:27",
+   "clientWrites": [
+    "sessionStorage: tripQueueDestinations @ client/src/components/TripQueueIndicator.tsx:32"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "/experiences?destinations=…&multiCity=true",
+   "downstreamReaders": [
+    "client/src/pages/experience-template.tsx:1012 (reads + removes tripQueueDestinations)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Start planning a trip with my queued cities",
+   "feedback": {
+    "success": "navigation",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "/experiences",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-shared:trip-queue-remove-clear",
+  "tier": 1,
+  "intent": "edit_queue",
+  "surface": "discover-shared",
+  "route": "/destinations | /ready-made | /events | /services",
+  "component": {
+   "name": "TripQueueIndicator",
+   "loc": "client/src/components/TripQueueIndicator.tsx:25"
+  },
+  "label": {
+   "text": "Remove city / Clear queue",
+   "ariaLabel": null,
+   "testId": "button-clear-queue"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/TripQueueIndicator.tsx:155"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "removeCity / clearQueue @ client/src/contexts/TripQueueContext.tsx:35/39",
+   "clientWrites": [
+    "TripQueueContext useState queuedCities (in-memory, lost on reload) @ client/src/contexts/TripQueueContext.tsx:26"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "City removed from my multi-city queue",
+   "feedback": {
+    "success": "list updates",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "TripQueueIndicator sheet",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "LIFECYCLE_LOSS",
+     "severity": "P2",
+     "note": "Queue is in-memory React state (TripQueueContext.tsx:26); any reload drops it"
+    }
+   ]
+  }
+ },
+ {
+  "id": "services:filters-popover",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "ServiceFiltersPopover",
+   "loc": "client/src/pages/discover.tsx:724"
+  },
+  "label": {
+   "text": "Min/Max price, Min rating, Sort, Clear (5 controls)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/pages/discover.tsx:775"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "URL via replaceState"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:quick-category",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:1772"
+  },
+  "label": {
+   "text": "All / category chips",
+   "ariaLabel": null,
+   "testId": "button-quick-cat-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:1792"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "URL via replaceState"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:card-image",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "ServiceCard",
+   "loc": "client/src/pages/discover.tsx:403"
+  },
+  "label": {
+   "text": "service photo",
+   "ariaLabel": null,
+   "testId": "link-service-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover.tsx:470"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/services/:id[?tripId=]"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:provider-storefront",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "ServiceCard",
+   "loc": "client/src/pages/discover.tsx:403"
+  },
+  "label": {
+   "text": "More from <provider>",
+   "ariaLabel": null,
+   "testId": "link-provider-storefront-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover.tsx:545"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/s/:handle | /experts/:id | /providers"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:book-now",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "ServiceCard",
+   "loc": "client/src/pages/discover.tsx:403"
+  },
+  "label": {
+   "text": "Book now",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:581"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/services/:id[?tripId=]"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:add-to-plan",
+  "tier": 1,
+  "intent": "add_to_plan",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "ServiceCard",
+   "loc": "client/src/pages/discover.tsx:403"
+  },
+  "label": {
+   "text": "Add to plan",
+   "ariaLabel": null,
+   "testId": "button-add-to-cart-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:592"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "localStorage traveloure_guest_cart_pending + toast 'Saved!' (J1 R1 step 10)"
+   },
+   {
+    "axis": "auth",
+    "value": "signs-in-mid-flow",
+    "outcome": "auth still loading → POST /api/cart → 401 → guest localStorage fallback (client/src/pages/discover.tsx:1279)"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "branch on tripContext"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "POST /api/cart, trip_id NULL, toast 'Added to cart!' (J1 R4 step 11; J2 R4 console cold load)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "0",
+    "outcome": "same as pen-unbound: cart_items trip_id NULL"
+   },
+   {
+    "axis": "tripContext",
+    "value": "1",
+    "outcome": "cart unless pen/URL holds that trip id (J2 R2/R2b: new session → cart despite owning 1 plan)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "2+",
+    "outcome": "pen trip wins regardless of the plan being viewed (J2 R4b: viewing B, add lands on A)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "POST itinerary-items on pen trip; toast 'Added to your plan'; no banner naming the plan (J1 R3 step 10)"
+   },
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "with URL ?tripId: itinerary POST → 401 → error toast; no guest-cart fallback (client/src/pages/discover.tsx:1321)"
+   }
+  ],
+  "chain": {
+   "handler": "handleAddToCart @ client/src/pages/discover.tsx:1334 → mismatchGate.guardAdd @ client/src/hooks/use-location-mismatch-gate.ts:137 → runAddToCart @ client/src/pages/discover.tsx:1350",
+   "clientWrites": [
+    "localStorage: traveloure_guest_cart_pending (guest) @ client/src/pages/discover.tsx:1255",
+    "reads sessionStorage pen experienceContext | experienceContext:u:<id> via useTripContext @ client/src/pages/discover.tsx:943"
+   ],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items (target resolved) | /api/cart (no target)",
+    "callLoc": "client/src/pages/discover.tsx:1304 | client/src/pages/discover.tsx:1265"
+   },
+   "serverLoc": "server/routes.ts:12597 | server/routes.ts:9154",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733",
+    "notifications(type 'itinerary_item_added' to assigned advisor, owner writes only) @ server/routes.ts:12747",
+    "cart_items(user_id, service_id|content_type/content_id/content_meta, quantity, trip_id NULL unless body.tripId, scheduled_date, slot_id, experience_slug) via cartProjection.addToCart @ server/services/cart-projection.service.ts:65 → storage.addToCart @ server/storage.ts:4247"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "`/api/trips/${targetTripId}/itinerary-items`",
+    "`/api/trips/${targetTripId}/plancard`",
+    "[\"/api/cart\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/plancard/SlipItemTools.tsx:251 ([`/api/trips/${id}/itinerary-items`])",
+    "client/src/components/plancard/PlanCard.tsx:774, client/src/components/dashboard/PlanSlipStrip.tsx:32 ([`/api/trips/${id}/plancard`])",
+    "client/src/pages/cart.tsx (GET /api/cart)",
+    "client/src/pages/cart.tsx:651 (reads traveloure_guest_cart_pending, migrates on sign-in :682-685)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "This service is added to my plan (the trip I'm planning)",
+   "feedback": {
+    "success": "toast 'Added to cart!' (client/src/pages/discover.tsx:1270) | ADDED_TO_PLAN_TITLE 'Find it on your plan.' (client/src/pages/discover.tsx:1318) | guest 'Saved!' (client/src/pages/discover.tsx:1258); button → 'Added'",
+    "failure": "toast 'Failed to add to cart' (client/src/pages/discover.tsx:1285) | ADD_TO_PLAN_FAILED_TITLE (client/src/pages/discover.tsx:1323)",
+    "loading": "button 'Adding…' (client/src/pages/discover.tsx:596)"
+   },
+   "resultLocation": "cart_items (trip_id NULL) → /cart; or itinerary_items on the pen/URL trip → /plans/:tripId",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "### Services Tab (Transportation, Photographers, etc.)"
+  },
+  "expected": "Every entry path resolves to a tripId (J1 spec R-1); target = trip being viewed (J2 R-2)",
+  "verdict": {
+   "evidence": "behavioral",
+   "evidenceRef": "J1/R4 step 11; J1/R1 step 10; J1/R3 step 10; J2/R4, R4b, R2, R2b",
+   "actual": "Target = URL ?tripId, else pen tripId, else cart; trip count never consulted; no picker",
+   "gaps": [
+    {
+     "class": "FALSE_PROMISE",
+     "severity": "P1",
+     "note": "'Add to plan' with no pen tripId writes cart_items trip_id NULL and toasts 'Added to cart!' (J1-F2, R4 step 11)"
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P1",
+     "note": "Viewing plan B, add lands on plan A — target is the pen, not the viewed plan (J2-F4, R4b)"
+    },
+    {
+     "class": "LIFECYCLE_LOSS",
+     "severity": "P1",
+     "note": "Console-shell cold load leaves pen unbound (binder only in public Layout) → every add falls to cart (J2-F1, R4)"
+    },
+    {
+     "class": "ORPHAN_READ",
+     "severity": "P1",
+     "note": "New session never recovers the active trip; add → cart though user owns a plan (J2-F2, R2/R2b)"
+    },
+    {
+     "class": "INVISIBLE_RESULT",
+     "severity": "P2",
+     "note": "Pen-targeted add never names the plan; banner only for URL ?tripId (discover.tsx:1550) (J1-F7, J2-F5)"
+    },
+    {
+     "class": "FALSE_PROMISE",
+     "severity": "P2",
+     "note": "Guest: 'Saved!' for localStorage-only then asks to sign in to save (J1-F6)"
+    },
+    {
+     "class": "AUTH_DROP",
+     "severity": "P2",
+     "note": "Guest + ?tripId: 401 on itinerary rail has no guest fallback (discover.tsx:1321)"
+    },
+    {
+     "class": "WIREFRAME_DIVERGENCE",
+     "severity": "P3",
+     "note": "Wireframe 'Services Tab': header 'PARIS, FRANCE • Jan 2-9, 2026 🛒 Cart: $1,852 (4 items)' and button '[Add to Cart]'; landed: button 'Add to plan', no trip/cart header naming where the add goes"
+    }
+   ]
+  }
+ },
+ {
+  "id": "services:ask-expert",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "ServiceCard",
+   "loc": "client/src/pages/discover.tsx:403"
+  },
+  "label": {
+   "text": "Ask an expert",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:603"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/services?showExperts=true&destination="
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:pagination",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:1878"
+  },
+  "label": {
+   "text": "Prev / Next page",
+   "ariaLabel": null,
+   "testId": "button-prev-page"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:1884"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "URL via replaceState"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:search-suggestion",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:1905"
+  },
+  "label": {
+   "text": "Did you mean <suggestion>",
+   "ariaLabel": null,
+   "testId": "button-search-suggestion"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:1914"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:curated-add-open",
+  "tier": 2,
+  "intent": "add_to_plan",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "CuratedCard",
+   "loc": "client/src/components/curated-content-section.tsx:182"
+  },
+  "label": {
+   "text": "Add to plan (opens trip picker)",
+   "ariaLabel": null,
+   "testId": "button-add-trip-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/curated-content-section.tsx:364"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "AddToTripDialog (no route) — guest: silent no-op (client/src/components/curated-content-section.tsx:474)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": [
+    {
+     "class": "DEAD_TRIGGER",
+     "severity": "P2",
+     "note": "Guest click returns silently (curated-content-section.tsx:474): no sign-in prompt, no feedback"
+    }
+   ]
+  }
+ },
+ {
+  "id": "services:curated-pick-trip",
+  "tier": 1,
+  "intent": "add_to_plan",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "AddToTripDialog",
+   "loc": "client/src/components/curated-content-section.tsx:79"
+  },
+  "label": {
+   "text": "<trip title> (pick trip)",
+   "ariaLabel": null,
+   "testId": "button-select-trip-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/curated-content-section.tsx:155"
+  },
+  "conditions": [
+   {
+    "axis": "tripContext",
+    "value": "0",
+    "outcome": "'No active trips found. Create a trip first' — no CTA (client/src/components/curated-content-section.tsx:143)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "1",
+    "outcome": "single row; still requires a pick"
+   },
+   {
+    "axis": "tripContext",
+    "value": "2+",
+    "outcome": "list of trips with endDate >= now; ignores pen/URL target"
+   },
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "dialog never opens (client/src/components/curated-content-section.tsx:474)"
+   }
+  ],
+  "chain": {
+   "handler": "addItemMutation @ client/src/components/curated-content-section.tsx:95",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items",
+    "callLoc": "client/src/components/curated-content-section.tsx:98"
+   },
+   "serverLoc": "server/routes.ts:12597",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733 (body buildDiscoverAddBody @ client/src/lib/discover-add-body.ts)",
+    "notifications(type 'itinerary_item_added' to assigned advisor, owner writes only) @ server/routes.ts:12747"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/trips\", tripId, \"itinerary-items\"] (array key)"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/plancard/SlipItemTools.tsx:251 ([`/api/trips/${id}/itinerary-items`]) — string key, NOT invalidated"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Item added to the trip I picked",
+   "feedback": {
+    "success": "toast ADDED_TO_PLAN_TITLE (client/src/components/curated-content-section.tsx:106), dialog closes",
+    "failure": "toast 'Failed to add' (client/src/components/curated-content-section.tsx:113)",
+    "loading": "spinner per row (client/src/components/curated-content-section.tsx:167)"
+   },
+   "resultLocation": "/plans/:tripId",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "### Travel Module - Activities Tab (Showing Affiliate Inventory)"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "KEY_MISMATCH",
+     "severity": "P2",
+     "note": "Invalidates array key [\"/api/trips\",id,\"itinerary-items\"]; readers use string key `/api/trips/${id}/itinerary-items` (SlipItemTools.tsx:251) → stale plan"
+    },
+    {
+     "class": "INCONSISTENT_AFFORDANCE",
+     "severity": "P2",
+     "note": "Same 'Add to plan' label as the ServiceCard on the same page, but this one opens a picker and ignores the pen/URL target"
+    },
+    {
+     "class": "DEAD_TRIGGER",
+     "severity": "P2",
+     "note": "0 trips: dead-end message with no create-plan CTA (client/src/components/curated-content-section.tsx:143)"
+    },
+    {
+     "class": "WIREFRAME_DIVERGENCE",
+     "severity": "P3",
+     "note": "Wireframe 'Activities Tab': '[+ Add $89]' / '[Add to Cart]' one-click add; landed: 'Add to plan' → trip-picker modal"
+    }
+   ]
+  }
+ },
+ {
+  "id": "services:curated-dialog-close",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "AddToTripDialog",
+   "loc": "client/src/components/curated-content-section.tsx:79"
+  },
+  "label": {
+   "text": "dialog close",
+   "ariaLabel": null,
+   "testId": "dialog-add-to-trip"
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/curated-content-section.tsx:129"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:curated-book-via-traveloure",
+  "tier": 1,
+  "intent": "book_via_partner",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "CuratedCard",
+   "loc": "client/src/components/curated-content-section.tsx:182"
+  },
+  "label": {
+   "text": "Book via Traveloure",
+   "ariaLabel": null,
+   "testId": "button-book-via-traveloure-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/curated-content-section.tsx:375"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "handleBookViaTraveloure @ client/src/components/curated-content-section.tsx:205",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/content/affiliate-redirect",
+    "callLoc": "client/src/components/curated-content-section.tsx:197"
+   },
+   "serverLoc": "server/routes/content.routes.ts:9139",
+   "dbWrites": [
+    "affiliate click via affiliateScraperService.trackClick → affiliate_clicks"
+   ],
+   "sideEffects": [
+    "window.open(partner url) (client/src/components/curated-content-section.tsx:214)"
+   ],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Book this through Traveloure",
+   "feedback": {
+    "success": "toast 'Opening booking page…' (client/src/components/curated-content-section.tsx:206) + new tab",
+    "failure": "toast \"Couldn't open booking\" (client/src/components/curated-content-section.tsx:220)",
+    "loading": "spinner (client/src/components/curated-content-section.tsx:379)"
+   },
+   "resultLocation": "partner site (off-platform)",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "### Travel Module - Activities Tab (Showing Affiliate Inventory)"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "FALSE_PROMISE",
+     "severity": "P3",
+     "note": "Label 'Book via Traveloure' but opens partner site; nothing lands on the plan or cart"
+    }
+   ]
+  }
+ },
+ {
+  "id": "services:curated-book-now",
+  "tier": 2,
+  "intent": "open_planner",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "CuratedCard",
+   "loc": "client/src/components/curated-content-section.tsx:182"
+  },
+  "label": {
+   "text": "Book Now (no-price curated item)",
+   "ariaLabel": null,
+   "testId": "button-book-now-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/curated-content-section.tsx:406"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/experiences/travel/new?destination="
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:unified-card-click",
+  "tier": 1,
+  "intent": "record_analytics",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "UnifiedResultCard",
+   "loc": "client/src/components/unified-result-card.tsx:100"
+  },
+  "label": {
+   "text": "partner activity card click (serp only)",
+   "ariaLabel": null,
+   "testId": "card-result-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/unified-result-card.tsx:253"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "handleCardClick @ client/src/components/unified-result-card.tsx:167",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/serp/track-click",
+    "callLoc": "client/src/components/unified-result-card.tsx:131"
+   },
+   "serverLoc": "server/routes/content.routes.ts:6428",
+   "dbWrites": [
+    "serp_provider_tracking via serpService.trackClick @ server/services/serp.service.ts:197"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": null,
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:unified-view",
+  "tier": 2,
+  "intent": "book_via_agent",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "UnifiedResultCard",
+   "loc": "client/src/components/unified-result-card.tsx:100"
+  },
+  "label": {
+   "text": "Request booking / Book / View",
+   "ariaLabel": null,
+   "testId": "button-view-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/unified-result-card.tsx:333"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "opens booking modal or window.open(websiteUrl)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "services:unified-request-booking",
+  "tier": 1,
+  "intent": "book_via_agent",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "UnifiedResultCard",
+   "loc": "client/src/components/unified-result-card.tsx:100"
+  },
+  "label": {
+   "text": "Request booking (submit)",
+   "ariaLabel": null,
+   "testId": "button-submit-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/unified-result-card.tsx:384"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "401 → toast 'Sign in required'; no sign-in modal opened"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "affiliate_booking_requests row, no trip link"
+   }
+  ],
+  "chain": {
+   "handler": "bookingRequestMutation @ client/src/components/unified-result-card.tsx:144",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/affiliate-booking-requests",
+    "callLoc": "client/src/components/unified-result-card.tsx:146"
+   },
+   "serverLoc": "server/routes/content.routes.ts:7638",
+   "dbWrites": [
+    "affiliate_booking_requests(item_name, partner_name, partner_category, booking token/product/route ref, travel_date, travelers, user_notes, user_id) via storage.createAffiliateBookingRequest"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "An expert books this partner item for me",
+   "feedback": {
+    "success": "toast 'Booking requested!' (client/src/components/unified-result-card.tsx:158)",
+    "failure": "toast 'Sign in required' for ANY error (client/src/components/unified-result-card.tsx:163)",
+    "loading": "spinner (client/src/components/unified-result-card.tsx:385)"
+   },
+   "resultLocation": "agent request queue — not on plan or cart",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "### Travel Module - Activities Tab (Showing Affiliate Inventory)"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "AUTH_DROP",
+     "severity": "P2",
+     "note": "Guest gets a toast, no sign-in modal, form input discarded on close"
+    },
+    {
+     "class": "SILENT_FAILURE_UI",
+     "severity": "P2",
+     "note": "Every failure is reported as 'Sign in required' (client/src/components/unified-result-card.tsx:163)"
+    },
+    {
+     "class": "INVISIBLE_RESULT",
+     "severity": "P2",
+     "note": "Request not tied to any trip/plan; no place to see it from this surface"
+    },
+    {
+     "class": "WIREFRAME_DIVERGENCE",
+     "severity": "P3",
+     "note": "Wireframe 'Activities Tab' shows '[Add to Cart]' on partner inventory; landed: no add, only 'Request booking' modal"
+    }
+   ]
+  }
+ },
+ {
+  "id": "services:unified-modal-close",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "services",
+  "route": "/services",
+  "component": {
+   "name": "UnifiedResultCard",
+   "loc": "client/src/components/unified-result-card.tsx:100"
+  },
+  "label": {
+   "text": "Cancel / close booking modal",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/unified-result-card.tsx:353"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made:card-photo",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "ready-made",
+  "route": "/ready-made",
+  "component": {
+   "name": "ReadyMadeThemeCard",
+   "loc": "client/src/pages/discover.tsx:200"
+  },
+  "label": {
+   "text": "listing photo",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover.tsx:217"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/ready-made/:id"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made:card-title",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "ready-made",
+  "route": "/ready-made",
+  "component": {
+   "name": "ReadyMadeThemeCard",
+   "loc": "client/src/pages/discover.tsx:200"
+  },
+  "label": {
+   "text": "listing title",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover.tsx:255"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/ready-made/:id"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made:author",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "ready-made",
+  "route": "/ready-made",
+  "component": {
+   "name": "ReadyMadeThemeCard",
+   "loc": "client/src/pages/discover.tsx:200"
+  },
+  "label": {
+   "text": "by <author>",
+   "ariaLabel": null,
+   "testId": "link-rm-author-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover.tsx:263"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/s/:handle | expert profile"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made:get-this-trip",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "ready-made",
+  "route": "/ready-made",
+  "component": {
+   "name": "ReadyMadeThemeCard",
+   "loc": "client/src/pages/discover.tsx:200"
+  },
+  "label": {
+   "text": "Get this trip",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:311"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/ready-made/:id"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made:theme-chips",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "ready-made",
+  "route": "/ready-made",
+  "component": {
+   "name": "DiscoverPage",
+   "loc": "client/src/pages/discover.tsx:1975"
+  },
+  "label": {
+   "text": "Theme chips / See all / Show all (local-UI group)",
+   "ariaLabel": null,
+   "testId": "button-theme-chip-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover.tsx:2004"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "events:city-card",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "events",
+  "route": "/events",
+  "component": {
+   "name": "GlobalCalendar CityCard",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:945"
+  },
+  "label": {
+   "text": "city card / primary",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:1044"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/discover/location/:city?country=&date="
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "events:modal-see-city",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "events",
+  "route": "/events",
+  "component": {
+   "name": "GlobalCalendar CityCard",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:945"
+  },
+  "label": {
+   "text": "See <city> in <month>",
+   "ariaLabel": null,
+   "testId": "button-modal-see-city-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:1107"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/discover/location/:city?country=&date="
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "events:plan-event",
+  "tier": 2,
+  "intent": "open_planner",
+  "surface": "events",
+  "route": "/events",
+  "component": {
+   "name": "GlobalCalendar",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:223"
+  },
+  "label": {
+   "text": "Plan event",
+   "ariaLabel": null,
+   "testId": "button-plan-event-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:824"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/experiences/travel?destination=&event="
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "events:view-packages",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "events",
+  "route": "/events",
+  "component": {
+   "name": "GlobalCalendar CityCard",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:945"
+  },
+  "label": {
+   "text": "View packages",
+   "ariaLabel": null,
+   "testId": "button-modal-view-packages-*"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:1113"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/ready-made"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "events:more-info",
+  "tier": 2,
+  "intent": "open_details",
+  "surface": "events",
+  "route": "/events",
+  "component": {
+   "name": "GlobalCalendar CityCard",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:945"
+  },
+  "label": {
+   "text": "More info dialog open/close",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:1046"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "events:retry",
+  "tier": 2,
+  "intent": "refetch",
+  "surface": "events",
+  "route": "/events",
+  "component": {
+   "name": "GlobalCalendar",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:223"
+  },
+  "label": {
+   "text": "Retry",
+   "ariaLabel": null,
+   "testId": "button-retry"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:418"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "events:local-toggles",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "events",
+  "route": "/events",
+  "component": {
+   "name": "GlobalCalendar",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:223"
+  },
+  "label": {
+   "text": "view / calendar toggle / vibe / clear / show-all (8 local-UI toggles)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/travelpulse/GlobalCalendar.tsx:462"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "destinations:city-card",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "CityGrid CityCard",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:112"
+  },
+  "label": {
+   "text": "city card",
+   "ariaLabel": null,
+   "testId": "card-city-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:441"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/discover/location/:city?country="
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "destinations:take-me-here",
+  "tier": 2,
+  "intent": "pick_trip",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "CityGrid CityCard",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:112"
+  },
+  "label": {
+   "text": "Take me Here",
+   "ariaLabel": null,
+   "testId": "button-plan-now-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:219"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "opens 'Take me to <city>' dialog"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "destinations:take-me-dialog-close",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "CityGrid CityCard",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:112"
+  },
+  "label": {
+   "text": "dialog close",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:224"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "destinations:select-trip-add-city",
+  "tier": 1,
+  "intent": "add_stop",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "CityGrid CityCard",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:112"
+  },
+  "label": {
+   "text": "<trip title> (Add to an existing trip)",
+   "ariaLabel": null,
+   "testId": "button-select-trip-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:254"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "no trip list; Sign In button → /auth (unregistered route)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "0",
+    "outcome": "'No trips yet — start one below.' (client/src/components/travelpulse/CityGrid.tsx:279)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "1",
+    "outcome": "single row; pick required"
+   },
+   {
+    "axis": "tripContext",
+    "value": "2+",
+    "outcome": "all /api/trips rows (no endDate filter, unlike other pickers)"
+   }
+  ],
+  "chain": {
+   "handler": "handleSelectTrip @ client/src/components/travelpulse/CityGrid.tsx:140 → savePlanStops @ client/src/lib/plan-stops-writer.ts:54",
+   "clientWrites": [],
+   "api": {
+    "method": "PUT",
+    "route": "/api/trips/:tripId/destinations",
+    "callLoc": "client/src/lib/plan-stops-writer.ts:54"
+   },
+   "serverLoc": "server/routes/trips.routes.ts:478",
+   "dbWrites": [
+    "trip_destinations(delete+insert, ordered stops) + trips.destination mirror via replaceTripDestinations @ server/services/trip-destinations.service.ts:95"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/trips\", tripId]",
+    "[\"/api/trips\"]"
+   ],
+   "navigates": "/plans/:tripId (always, even on failure) (client/src/components/travelpulse/CityGrid.tsx:165)",
+   "downstreamReaders": [
+    "useTrip / slip stops readers of [\"/api/trips\", id]"
+   ]
+  },
+  "ui": {
+   "uiPromise": "This city is added to the trip I pick",
+   "feedback": {
+    "success": "toast 'Added <city> to your plan' (client/src/components/travelpulse/CityGrid.tsx:153) + navigate",
+    "failure": "toast \"Couldn't add <city>\" (client/src/components/travelpulse/CityGrid.tsx:155/163) + navigate anyway",
+    "loading": "none"
+   },
+   "resultLocation": "/plans/:tripId",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "INCONSISTENT_AFFORDANCE",
+     "severity": "P3",
+     "note": "Trip picker lists ALL trips here, but only active (endDate>=now) trips in curated/AddToExperience pickers"
+    }
+   ]
+  }
+ },
+ {
+  "id": "destinations:sign-in",
+  "tier": 2,
+  "intent": "sign_in",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "CityGrid CityCard",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:112"
+  },
+  "label": {
+   "text": "Sign In",
+   "ariaLabel": null,
+   "testId": "button-sign-in-prompt"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:294"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/auth (NOT a registered route)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": [
+    {
+     "class": "DEAD_TRIGGER",
+     "severity": "P2",
+     "note": "navigate('/auth') — no /auth route in App.tsx (add-to-experience-dialog.tsx:217 documents /auth 404)"
+    }
+   ]
+  }
+ },
+ {
+  "id": "destinations:plan-new-trip-ai",
+  "tier": 2,
+  "intent": "open_planner",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "CityGrid CityCard",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:112"
+  },
+  "label": {
+   "text": "Plan New Trip with AI",
+   "ariaLabel": null,
+   "testId": "button-plan-now-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:307"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "PlanningContext modal with {city,country}"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "destinations:multi-city-queue",
+  "tier": 1,
+  "intent": "edit_queue",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "CityGrid CityCard",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:112"
+  },
+  "label": {
+   "text": "Add to / Remove from Multi-City Queue",
+   "ariaLabel": null,
+   "testId": "button-add-to-queue-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/travelpulse/CityGrid.tsx:318"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "handleAddToQueue @ client/src/components/travelpulse/CityGrid.tsx:168",
+   "clientWrites": [
+    "TripQueueContext queuedCities (in-memory) @ client/src/contexts/TripQueueContext.tsx:28/35"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/TripQueueIndicator.tsx:25"
+   ]
+  },
+  "ui": {
+   "uiPromise": "City saved to a multi-city trip queue",
+   "feedback": {
+    "success": "toast 'Added to trip queue' (client/src/components/travelpulse/CityGrid.tsx:188)",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "TripQueueIndicator sheet",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "LIFECYCLE_LOSS",
+     "severity": "P2",
+     "note": "Queue is in-memory; reload loses it despite toast suggesting it is saved"
+    }
+   ]
+  }
+ },
+ {
+  "id": "destinations:saved-trip-convert",
+  "tier": 1,
+  "intent": "create_plan",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "SavedTripsSection",
+   "loc": "client/src/components/dashboard/SavedTripsSection.tsx:50"
+  },
+  "label": {
+   "text": "Convert saved trip to plan",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/dashboard/SavedTripsSection.tsx:128"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "section renders nothing (query 401)"
+   }
+  ],
+  "chain": {
+   "handler": "convertMutation @ client/src/components/dashboard/SavedTripsSection.tsx:60",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/saved-trips/:id/convert",
+    "callLoc": "client/src/components/dashboard/SavedTripsSection.tsx:62"
+   },
+   "serverLoc": "server/routes/booking-actions.ts:488 (mounted at /api, server/routes.ts:1092)",
+   "dbWrites": [
+    "trips INSERT + saved_trips UPDATE via bookingService.convertSavedTrip @ server/services/booking.service.ts:1167"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/saved-trips\"]",
+    "[\"/api/trips\"]"
+   ],
+   "navigates": "/plans/:tripId",
+   "downstreamReaders": [
+    "client/src/pages/my-trips.tsx (useTrips [\"/api/trips\"])"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Turn this saved trip into a real plan",
+   "feedback": {
+    "success": "toast 'Trip created!' (SavedTripsSection.tsx:68) + navigate",
+    "failure": "toast 'Something went wrong' (SavedTripsSection.tsx:72)",
+    "loading": "button pending"
+   },
+   "resultLocation": "/plans/:tripId",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "destinations:wishlist-remove",
+  "tier": 1,
+  "intent": "save_item",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "WishlistSection",
+   "loc": "client/src/components/dashboard/WishlistSection.tsx:14"
+  },
+  "label": {
+   "text": "Remove saved item",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/dashboard/WishlistSection.tsx:80"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "removeMutation @ client/src/components/dashboard/WishlistSection.tsx:21",
+   "clientWrites": [],
+   "api": {
+    "method": "DELETE",
+    "route": "/api/saved-items/:id",
+    "callLoc": "client/src/components/dashboard/WishlistSection.tsx:23"
+   },
+   "serverLoc": "server/routes/saved-items.routes.ts:71",
+   "dbWrites": [
+    "saved_items DELETE"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/saved-items\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/SaveToggle.tsx:36"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Remove from saved",
+   "feedback": {
+    "success": "toast 'Removed from saved' (WishlistSection.tsx:27)",
+    "failure": "toast 'Failed to remove item' (WishlistSection.tsx:30)",
+    "loading": "none"
+   },
+   "resultLocation": "same section",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "destinations:wishlist-add-open",
+  "tier": 2,
+  "intent": "add_to_plan",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "WishlistSection",
+   "loc": "client/src/components/dashboard/WishlistSection.tsx:14"
+  },
+  "label": {
+   "text": "+ Trip (opens AddToExperienceDialog)",
+   "ariaLabel": null,
+   "testId": "button-add-to-trip-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/dashboard/WishlistSection.tsx:107"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "AddToExperienceDialog"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "destinations:wishlist-explore",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "WishlistSection",
+   "loc": "client/src/components/dashboard/WishlistSection.tsx:14"
+  },
+  "label": {
+   "text": "→ explore city",
+   "ariaLabel": null,
+   "testId": "button-explore-city-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/dashboard/WishlistSection.tsx:124"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/discover/location/:city"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "destinations:ade-primary",
+  "tier": 1,
+  "intent": "add_to_plan",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "AddToExperienceDialog",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:52"
+  },
+  "label": {
+   "text": "Add to my trip plan / Add to my trip cart",
+   "ariaLabel": null,
+   "testId": "button-add-content-to-cart"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:255"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "'Sign In Required' dialog instead (client/src/components/add-to-experience-dialog.tsx:202)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "POST /api/cart {contentType,contentId,contentMeta}, toast 'Added to your cart'"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "POST itinerary-items on pen trip, label 'Add to my trip plan'"
+   },
+   {
+    "axis": "tripContext",
+    "value": "2+",
+    "outcome": "pen trip, not the viewed plan (same resolver as /services)"
+   }
+  ],
+  "chain": {
+   "handler": "addToCartMutation @ client/src/components/add-to-experience-dialog.tsx:75 (resolveTargetTripId @ client/src/components/add-to-experience-dialog.tsx:73)",
+   "clientWrites": [
+    "reads sessionStorage pen experienceContext[:u:<id>]"
+   ],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items | /api/cart",
+    "callLoc": "client/src/components/add-to-experience-dialog.tsx:80 | client/src/components/add-to-experience-dialog.tsx:101"
+   },
+   "serverLoc": "server/routes.ts:12597 | server/routes.ts:9154",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733",
+    "cart_items(user_id, service_id|content_type/content_id/content_meta, quantity, trip_id NULL unless body.tripId, scheduled_date, slot_id, experience_slug) via cartProjection.addToCart @ server/services/cart-projection.service.ts:65 → storage.addToCart @ server/storage.ts:4247"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "`/api/trips/${targetTripId}/itinerary-items`",
+    "`/api/trips/${targetTripId}/plancard`",
+    "[\"/api/cart\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/plancard/SlipItemTools.tsx:251 ([`/api/trips/${id}/itinerary-items`])",
+    "client/src/components/plancard/PlanCard.tsx:774, client/src/components/dashboard/PlanSlipStrip.tsx:32 ([`/api/trips/${id}/plancard`])",
+    "client/src/pages/cart.tsx (GET /api/cart)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "This goes onto my trip",
+   "feedback": {
+    "success": "toast ADDED_TO_PLAN_TITLE | 'Added to your cart' (client/src/components/add-to-experience-dialog.tsx:124)",
+    "failure": "toast 'Could not add to your trip/cart' (client/src/components/add-to-experience-dialog.tsx:133)",
+    "loading": "spinner (client/src/components/add-to-experience-dialog.tsx:261)"
+   },
+   "resultLocation": "plan slip (pen trip) or /cart (trip_id NULL)",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "### Travel Module - Activities Tab (Showing Affiliate Inventory)"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "INVISIBLE_RESULT",
+     "severity": "P2",
+     "note": "Button says 'Add to my trip plan' but never names which plan (pen-derived)"
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P1",
+     "note": "Same pen resolver as /services: viewing plan B adds to plan A; pen unbound → trip-less cart_items (J2-F1/F4 mechanism, trip-target.ts:42)"
+    },
+    {
+     "class": "WIREFRAME_DIVERGENCE",
+     "severity": "P3",
+     "note": "Wireframe 'Activities Tab': one-click '[Add to Cart]'; landed: modal with primary 'Add to my trip plan/cart' + trip list"
+    }
+   ]
+  }
+ },
+ {
+  "id": "destinations:ade-pick-trip",
+  "tier": 1,
+  "intent": "add_to_plan",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "AddToExperienceDialog",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:52"
+  },
+  "label": {
+   "text": "<trip title> (or add to a specific trip)",
+   "ariaLabel": null,
+   "testId": "button-select-trip-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:318"
+  },
+  "conditions": [
+   {
+    "axis": "tripContext",
+    "value": "0",
+    "outcome": "'No active trips found' + 'Go to My Plans' (client/src/components/add-to-experience-dialog.tsx:293)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "2+",
+    "outcome": "list of trips with no endDate or endDate >= now"
+   }
+  ],
+  "chain": {
+   "handler": "addToTripMutation @ client/src/components/add-to-experience-dialog.tsx:146",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items",
+    "callLoc": "client/src/components/add-to-experience-dialog.tsx:162"
+   },
+   "serverLoc": "server/routes.ts:12597",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/trips\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/plancard/SlipItemTools.tsx:251 ([`/api/trips/${id}/itinerary-items`]) — not invalidated"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Item added to the trip I picked",
+   "feedback": {
+    "success": "toast ADDED_TO_PLAN_TITLE (client/src/components/add-to-experience-dialog.tsx:181)",
+    "failure": "toast 'Failed to add' (client/src/components/add-to-experience-dialog.tsx:188)",
+    "loading": "spinner (client/src/components/add-to-experience-dialog.tsx:332)"
+   },
+   "resultLocation": "/plans/:tripId",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "### Travel Module - Activities Tab (Showing Affiliate Inventory)"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "STALE_CACHE",
+     "severity": "P2",
+     "note": "Invalidates only [\"/api/trips\"]; slip reads `/api/trips/${id}/itinerary-items` (staleTime Infinity per J1 H3) → item not shown until reload"
+    },
+    {
+     "class": "INCONSISTENT_AFFORDANCE",
+     "severity": "P3",
+     "note": "Two add buttons in one dialog with different rails and invalidations"
+    }
+   ]
+  }
+ },
+ {
+  "id": "destinations:ade-go-to-my-plans",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "AddToExperienceDialog",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:52"
+  },
+  "label": {
+   "text": "Go to My Plans",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:304"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/my-trips (window.location.href full reload)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "destinations:ade-sign-in",
+  "tier": 2,
+  "intent": "sign_in",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "AddToExperienceDialog",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:52"
+  },
+  "label": {
+   "text": "Sign In (guest)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:215"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "openSignInModal() — no returnTo, no resume"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": [
+    {
+     "class": "AUTH_DROP",
+     "severity": "P2",
+     "note": "Sign-in has no returnTo and the pending add is not resumed (client/src/components/add-to-experience-dialog.tsx:219)"
+    }
+   ]
+  }
+ },
+ {
+  "id": "destinations:ade-cancel",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "destinations",
+  "route": "/destinations",
+  "component": {
+   "name": "AddToExperienceDialog",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:52"
+  },
+  "label": {
+   "text": "Cancel / close",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:228"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:url-params",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "DiscoverLocationPage",
+   "loc": "client/src/pages/discover-location.tsx:1606"
+  },
+  "label": {
+   "text": ":city ?country ?date ?neighborhood (no ?tripId read)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "url-consumer",
+   "loc": "client/src/pages/discover-location.tsx:1611"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:track-city-view",
+  "tier": 1,
+  "intent": "record_recently_viewed",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "DiscoverLocationPage",
+   "loc": "client/src/pages/discover-location.tsx:1606"
+  },
+  "label": {
+   "text": "city view (mount)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/pages/discover-location.tsx:1621"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "trackCityView @ client/src/hooks/use-recently-viewed.ts",
+   "clientWrites": [
+    "sessionStorage recently-viewed key @ client/src/hooks/use-recently-viewed.ts:19"
+   ],
+   "api": null,
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": null,
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:track-download",
+  "tier": 1,
+  "intent": "record_analytics",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "DiscoverLocationPage",
+   "loc": "client/src/pages/discover-location.tsx:1606"
+  },
+  "label": {
+   "text": "Unsplash download tracking (effect)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/pages/discover-location.tsx:1738"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": null,
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/travelpulse/media/track-download",
+    "callLoc": "client/src/pages/discover-location.tsx:1749"
+   },
+   "serverLoc": "server/routes/content.routes.ts:5829",
+   "dbWrites": [],
+   "sideEffects": [
+    "unsplashService.trackDownload (external Unsplash API)"
+   ],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": null,
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:upsell-slot",
+  "tier": 1,
+  "intent": "record_analytics",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "useUpsellSlot",
+   "loc": "client/src/components/UpsellSlot.tsx:140"
+  },
+  "label": {
+   "text": "recommendation ranking + impressions (mount)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/UpsellSlot.tsx:152"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": null,
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/upsell/discover-location | /api/upsell/discover-date (+ /api/upsell/impression)",
+    "callLoc": "client/src/components/UpsellSlot.tsx:152 / :167"
+   },
+   "serverLoc": "server/routes/upsell.routes.ts:231 | :276 | :936",
+   "dbWrites": [
+    "ranking log via rankAndLog @ server/services/upsell-query.service.ts:284",
+    "upsell_impressions INSERT via insertImpression @ server/services/upsell-query.service.ts:585"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": null,
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:dismiss-date",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "HeroBand",
+   "loc": "client/src/pages/discover-location.tsx:132"
+  },
+  "label": {
+   "text": "dismiss date chip",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover-location.tsx:237"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/discover/location/:city (without ?date)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:events-link",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "HeroBand",
+   "loc": "client/src/pages/discover-location.tsx:132"
+  },
+  "label": {
+   "text": "events link",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover-location.tsx:230"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/events"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:marketplace-rail",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "HeroBand",
+   "loc": "client/src/pages/discover-location.tsx:132"
+  },
+  "label": {
+   "text": "Marketplace rail",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover-location.tsx:259"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/destinations | /ready-made | /events | /services"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:local-ui",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "DiscoverLocationPage",
+   "loc": "client/src/pages/discover-location.tsx:2119"
+  },
+  "label": {
+   "text": "search input, price/sort popover, spine chips (3 local-UI groups)",
+   "ariaLabel": null,
+   "testId": "input-search"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/pages/discover-location.tsx:2125"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:neighbourhood-filter",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "FeedRenderer",
+   "loc": "client/src/pages/discover-location.tsx:979"
+  },
+  "label": {
+   "text": "See all / neighbourhood tabs",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover-location.tsx:893"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "?neighborhood=<slug>"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:bento-anchor",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "FeedRenderer",
+   "loc": "client/src/pages/discover-location.tsx:979"
+  },
+  "label": {
+   "text": "#bento-nb anchor",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover-location.tsx:1183"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "#bento-nb-<slug>"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:date-tickets",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "DateHighlightStrip",
+   "loc": "client/src/pages/discover-location.tsx:1257"
+  },
+  "label": {
+   "text": "Tickets",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover-location.tsx:1337"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/events"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:date-add",
+  "tier": 2,
+  "intent": "add_to_plan",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "DateHighlightStrip",
+   "loc": "client/src/pages/discover-location.tsx:1257"
+  },
+  "label": {
+   "text": "Add to <Mon> <d>",
+   "ariaLabel": null,
+   "testId": "button-date-event-add"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover-location.tsx:1343"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "opens AddToExperienceDialog (handleAdd client/src/pages/discover-location.tsx:1659)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:date-companion-book",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "DateHighlightStrip",
+   "loc": "client/src/pages/discover-location.tsx:1257"
+  },
+  "label": {
+   "text": "Book (companion service)",
+   "ariaLabel": null,
+   "testId": "button-date-companion-book"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover-location.tsx:1384"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "companionService.href"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:feed-add",
+  "tier": 2,
+  "intent": "add_to_plan",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "CityFeedCard* (gem/event/supply/vendor/recommendation)",
+   "loc": "client/src/components/city-feed-card.tsx:822"
+  },
+  "label": {
+   "text": "Add to plan (all feed tiles)",
+   "ariaLabel": null,
+   "testId": "btn-add-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/city-feed-card.tsx:1063/1210/1410/1549/1728/1856/2042/2181; client/src/components/city-feed-card-recommendation.tsx:248/325/425/504"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "opens AddToExperienceDialog (handleAdd client/src/pages/discover-location.tsx:1659)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": [
+    {
+     "class": "ORPHAN_WRITE",
+     "severity": "P2",
+     "note": "Vendor-service tile passes type 'service' with sourceContentId but no providerServiceId; ADE body drops it → plan item not linked to the provider service (city-feed-card.tsx:1728, add-to-experience-dialog.tsx:84)"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-location:ask-expert",
+  "tier": 1,
+  "intent": "ask_expert",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "CityFeedCard*",
+   "loc": "client/src/components/city-feed-card.tsx:822"
+  },
+  "label": {
+   "text": "Ask (feed tiles)",
+   "ariaLabel": null,
+   "testId": "btn-ask-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/city-feed-card.tsx:1084/1235/1433/1569/1899/2062/2201; client/src/components/city-feed-card-recommendation.tsx:267/446"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "openSignInModal(returnTo?) (client/src/lib/use-ask-expert.ts:104)"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "POST /api/conversations/start → /chat, else /chat?expertId= or /local-experts"
+   }
+  ],
+  "chain": {
+   "handler": "askExpert @ client/src/lib/use-ask-expert.ts:90",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/conversations/start",
+    "callLoc": "client/src/lib/earner-address.ts:116"
+   },
+   "serverLoc": "server/routes/conversations.routes.ts:65",
+   "dbWrites": [
+    "user_and_expert_chats insert via sendMessage @ server/services/messages.service.ts:196 (+ conversation context via recordConversationContext)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "/chat… | /chat?expertId= | /local-experts?location=",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Ask a local expert about this",
+   "feedback": {
+    "success": "navigation to chat",
+    "failure": "falls back to directory",
+    "loading": "none"
+   },
+   "resultLocation": "/chat",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:affiliate-book",
+  "tier": 1,
+  "intent": "book_via_partner",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "CityFeedCard*",
+   "loc": "client/src/components/city-feed-card.tsx:822"
+  },
+  "label": {
+   "text": "Book now / Reserve (affiliate)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/city-feed-card.tsx:756/1042/1193/1390/1529/1880"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": null,
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/affiliates/track",
+    "callLoc": "client/src/components/city-feed-card.tsx:1042"
+   },
+   "serverLoc": "server/routes/content.routes.ts:9253",
+   "dbWrites": [
+    "affiliate_clicks via insertAffiliateClick @ server/services/content-query.service.ts:796"
+   ],
+   "sideEffects": [
+    "outbound partner link / window.open (client/src/components/city-feed-card.tsx:1886)"
+   ],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Book this",
+   "feedback": {
+    "success": "new tab / navigation",
+    "failure": "none (fire-and-forget)",
+    "loading": "none"
+   },
+   "resultLocation": "partner site",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "### Travel Module - Activities Tab (Showing Affiliate Inventory)"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "WIREFRAME_DIVERGENCE",
+     "severity": "P3",
+     "note": "Wireframe 'Activities Tab': partner items '[Add to Cart]'; landed: outbound 'Book now' link"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-location:save-toggle",
+  "tier": 1,
+  "intent": "save_item",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "SaveToggle",
+   "loc": "client/src/components/SaveToggle.tsx:20"
+  },
+  "label": {
+   "text": "Save / Saved (heart)",
+   "ariaLabel": null,
+   "testId": "btn-save-gem-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/city-feed-card.tsx:953 / client/src/components/city-feed-card.tsx:517"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "openSignInModal (SaveToggle.tsx:73)"
+   }
+  ],
+  "chain": {
+   "handler": "SaveToggle mutation @ client/src/components/SaveToggle.tsx:43",
+   "clientWrites": [],
+   "api": {
+    "method": "POST|DELETE",
+    "route": "/api/saved-items | /api/saved-items/:id",
+    "callLoc": "client/src/components/SaveToggle.tsx:43-44"
+   },
+   "serverLoc": "server/routes/saved-items.routes.ts:32 | server/routes/saved-items.routes.ts:71",
+   "dbWrites": [
+    "saved_items INSERT/DELETE"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/saved-items\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/dashboard/WishlistSection.tsx:18 (on /destinations)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Save this place",
+   "feedback": {
+    "success": "toggle state",
+    "failure": "none located",
+    "loading": "none"
+   },
+   "resultLocation": "/destinations Saved shelf",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:more-info-sheet",
+  "tier": 2,
+  "intent": "open_details",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "CityFeedCard*",
+   "loc": "client/src/components/city-feed-card.tsx:822"
+  },
+  "label": {
+   "text": "card click → More info sheet open/close",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/city-feed-card.tsx:1129"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:vendor-service-open",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "CityFeedCardVendorService",
+   "loc": "client/src/components/city-feed-card.tsx:1598"
+  },
+  "label": {
+   "text": "vendor service card / View",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/city-feed-card.tsx:1666"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/services/:id (window.location.href full reload)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:impression-tracker",
+  "tier": 1,
+  "intent": "record_analytics",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "useImpressionTracker",
+   "loc": "client/src/hooks/use-impression-tracker.ts:37"
+  },
+  "label": {
+   "text": "feed card visible (IntersectionObserver)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/hooks/use-impression-tracker.ts:44"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": null,
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/tracking/impression",
+    "callLoc": "client/src/hooks/use-impression-tracker.ts:44"
+   },
+   "serverLoc": "server/routes/content.routes.ts:9375",
+   "dbWrites": [
+    "content_impressions via insertContentImpression @ server/services/content-query.service.ts:929"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": null,
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:matched-service-request",
+  "tier": 1,
+  "intent": "request_service",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "MatchedServiceStrip",
+   "loc": "client/src/components/city-feed-card.tsx:377"
+  },
+  "label": {
+   "text": "Request (matched service strip)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/city-feed-card.tsx:453"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "handleRequest @ client/src/components/city-feed-card.tsx:391",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/services/request",
+    "callLoc": "client/src/components/city-feed-card.tsx:395"
+   },
+   "serverLoc": null,
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Ask Traveloure to source this service",
+   "feedback": {
+    "success": "toast + 'Requested' (client/src/components/city-feed-card.tsx:409)",
+    "failure": "toast 'Could not send request' (client/src/components/city-feed-card.tsx:414)",
+    "loading": "submitting state"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "DEAD_TRIGGER",
+     "severity": "P2",
+     "note": "No server handler for POST /api/services/request in server/routes.ts or server/routes/*.ts → Vite catch-all → always 'Could not send request'"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-location:rec-book",
+  "tier": 1,
+  "intent": "record_analytics",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "CityFeedCardRecommendation",
+   "loc": "client/src/components/city-feed-card-recommendation.tsx:113"
+  },
+  "label": {
+   "text": "Book (recommendation)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/city-feed-card-recommendation.tsx:233/315/412/494"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "handleBookRecommendation @ client/src/pages/discover-location.tsx:1805",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/upsell/click",
+    "callLoc": "client/src/components/UpsellSlot.tsx:162"
+   },
+   "serverLoc": "server/routes/upsell.routes.ts:972",
+   "dbWrites": [
+    "upsell_impressions UPDATE (clicked) via markImpressionClicked @ server/services/upsell-query.service.ts:597"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "/services?categoryKey=&location=<city> (no tripId, client/src/pages/discover-location.tsx:1815)",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": null,
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:rec-impression",
+  "tier": 1,
+  "intent": "record_analytics",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "CityFeedCardRecommendation",
+   "loc": "client/src/components/city-feed-card-recommendation.tsx:113"
+  },
+  "label": {
+   "text": "recommendation impression (mount)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "effect",
+   "loc": "client/src/components/city-feed-card-recommendation.tsx:151"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": null,
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/upsell/impression",
+    "callLoc": "client/src/components/city-feed-card-recommendation.tsx:154"
+   },
+   "serverLoc": "server/routes/upsell.routes.ts:936",
+   "dbWrites": [
+    "upsell_impressions INSERT via insertImpression @ server/services/upsell-query.service.ts:585"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": null,
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:rec-info-dialog",
+  "tier": 2,
+  "intent": "open_details",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "CityFeedCardRecommendation",
+   "loc": "client/src/components/city-feed-card-recommendation.tsx:113"
+  },
+  "label": {
+   "text": "info dialog open/close",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/city-feed-card-recommendation.tsx:278"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:expert-card",
+  "tier": 1,
+  "intent": "ask_expert",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "CityFeedCardExpert / ExpertCard",
+   "loc": "client/src/components/city-feed-card-expert.tsx:80"
+  },
+  "label": {
+   "text": "expert profile / Ask",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/city-feed-card-expert.tsx:150/315; client/src/components/expert-card.tsx:542"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "openSignInModal(returnTo?) (client/src/lib/use-ask-expert.ts:104)"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "POST /api/conversations/start → /chat, else /chat?expertId= or /local-experts"
+   }
+  ],
+  "chain": {
+   "handler": "askExpert @ client/src/lib/use-ask-expert.ts:90",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/conversations/start",
+    "callLoc": "client/src/lib/earner-address.ts:116"
+   },
+   "serverLoc": "server/routes/conversations.routes.ts:65",
+   "dbWrites": [
+    "user_and_expert_chats insert via sendMessage @ server/services/messages.service.ts:196 (+ conversation context via recordConversationContext)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "profile (window.location.href) | /chat",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Contact this expert",
+   "feedback": {
+    "success": "navigation",
+    "failure": "directory fallback",
+    "loading": "none"
+   },
+   "resultLocation": "/chat",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:wanted-slot",
+  "tier": 1,
+  "intent": "record_analytics",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "FeedWantedSlotCard",
+   "loc": "client/src/components/feed/wanted-slot-card.tsx:40"
+  },
+  "label": {
+   "text": "More info / Sign up / Ask",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/feed/wanted-slot-card.tsx:79/95/101"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "trackRecruitmentClick @ client/src/lib/analytics.ts:82 (+ askExpert :101)",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/analytics/recruitment-click",
+    "callLoc": "client/src/lib/analytics.ts:83"
+   },
+   "serverLoc": "server/routes/content.routes.ts:2935",
+   "dbWrites": [],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "/earn | become-expert signup href | /chat",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": null,
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:ready-made-card",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "FeedReadyMadeCard",
+   "loc": "client/src/components/feed/ready-made-card.tsx:80"
+  },
+  "label": {
+   "text": "ready-made card / Get this trip",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/feed/ready-made-card.tsx:85"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/ready-made/:id (window.location.href)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:external-stub",
+  "tier": 1,
+  "intent": "book_via_partner",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "CityFeedCardExternalStub",
+   "loc": "client/src/components/city-feed-card-external-stub.tsx:60"
+  },
+  "label": {
+   "text": "affiliate CTA / View source",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/city-feed-card-external-stub.tsx:181/192"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": null,
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/affiliates/track",
+    "callLoc": "client/src/components/city-feed-card-external-stub.tsx:94/110"
+   },
+   "serverLoc": "server/routes/content.routes.ts:9253",
+   "dbWrites": [
+    "affiliate_clicks via insertAffiliateClick @ server/services/content-query.service.ts:796"
+   ],
+   "sideEffects": [
+    "window.open(stub.sourceUrl)"
+   ],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Open the source / book",
+   "feedback": {
+    "success": "new tab",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "external site",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:complement-addon",
+  "tier": 1,
+  "intent": "record_analytics",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "TripComplementsStrip",
+   "loc": "client/src/pages/discover-location.tsx:1513"
+  },
+  "label": {
+   "text": "complement add-on link",
+   "ariaLabel": null,
+   "testId": "addon-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover-location.tsx:1539"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "trackAddonClick @ client/src/pages/discover-location.tsx:1412",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/affiliates/track",
+    "callLoc": "client/src/pages/discover-location.tsx:1413"
+   },
+   "serverLoc": "server/routes/content.routes.ts:9253",
+   "dbWrites": [
+    "affiliate_clicks via insertAffiliateClick @ server/services/content-query.service.ts:796"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "addon.href (external or internal)",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": null,
+   "feedback": {
+    "success": "none",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": null,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:addon-agent",
+  "tier": 1,
+  "intent": "book_via_agent",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "AddOnAgentCard",
+   "loc": "client/src/pages/discover-location.tsx:1577"
+  },
+  "label": {
+   "text": "Ground transport add-on (12Go agent)",
+   "ariaLabel": null,
+   "testId": "addon-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/discover-location.tsx:1589"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "openSignInModal (use-content-agent-booking.ts:93); no resume"
+   }
+  ],
+  "chain": {
+   "handler": "useContentAgentBooking.book @ client/src/hooks/use-content-agent-booking.ts:90",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/affiliate-booking-requests",
+    "callLoc": "client/src/hooks/use-content-agent-booking.ts:63"
+   },
+   "serverLoc": "server/routes/content.routes.ts:7638",
+   "dbWrites": [
+    "affiliate_booking_requests(item_name, partner_name, partner_category, booking token/product/route ref, travel_date, travelers, user_notes, user_id) via storage.createAffiliateBookingRequest",
+    "affiliate_clicks via insertAffiliateClick @ server/services/content-query.service.ts:796 (trackAddonClick)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Have an agent book my transport",
+   "feedback": {
+    "success": "toast AGENT_REQUEST_SENT_TITLE + badge 'Request sent' (use-content-agent-booking.ts:76)",
+    "failure": "toast \"Couldn't send request\" (use-content-agent-booking.ts:82)",
+    "loading": "disabled while pending"
+   },
+   "resultLocation": "agent request queue — not on plan",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "INVISIBLE_RESULT",
+     "severity": "P2",
+     "note": "Request not linked to a trip; nothing on the plan or this page shows it after reload"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-location:become-expert",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "DiscoverLocationPage",
+   "loc": "client/src/pages/discover-location.tsx:2156"
+  },
+  "label": {
+   "text": "Start earning in <city>",
+   "ariaLabel": null,
+   "testId": "link-expert-recruitment-earn"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/discover-location.tsx:2171"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/become-expert?type=local_expert&city="
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:service-request-open",
+  "tier": 2,
+  "intent": "request_service",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "ServiceRequestDialog",
+   "loc": "client/src/components/service-request-dialog.tsx:40"
+  },
+  "label": {
+   "text": "Request a service (open/close)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/service-request-dialog.tsx:77"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:service-request-submit",
+  "tier": 1,
+  "intent": "request_service",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "ServiceRequestDialog",
+   "loc": "client/src/components/service-request-dialog.tsx:40"
+  },
+  "label": {
+   "text": "Submit request",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "submit",
+   "loc": "client/src/components/service-request-dialog.tsx:142"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "401 → failure toast"
+   }
+  ],
+  "chain": {
+   "handler": "submit @ client/src/components/service-request-dialog.tsx:43",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/service-requests",
+    "callLoc": "client/src/components/service-request-dialog.tsx:46"
+   },
+   "serverLoc": "server/routes/service-requests.routes.ts:38",
+   "dbWrites": [
+    "service_requests INSERT",
+    "admin_notifications INSERT"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Traveloure will try to source this for me",
+   "feedback": {
+    "success": "toast (service-request-dialog.tsx:56)",
+    "failure": "toast (service-request-dialog.tsx:66)",
+    "loading": "pending"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "INVISIBLE_RESULT",
+     "severity": "P3",
+     "note": "No traveler-facing place to see the request status"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-location:ade-primary",
+  "tier": 1,
+  "intent": "add_to_plan",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "AddToExperienceDialog",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:52"
+  },
+  "label": {
+   "text": "Add to my trip plan / Add to my trip cart",
+   "ariaLabel": null,
+   "testId": "button-add-content-to-cart"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:255"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "'Sign In Required' dialog instead (client/src/components/add-to-experience-dialog.tsx:202)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "POST /api/cart {contentType,contentId,contentMeta}, toast 'Added to your cart'"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "POST itinerary-items on pen trip, label 'Add to my trip plan'"
+   },
+   {
+    "axis": "tripContext",
+    "value": "2+",
+    "outcome": "pen trip, not the viewed plan (same resolver as /services)"
+   }
+  ],
+  "chain": {
+   "handler": "addToCartMutation @ client/src/components/add-to-experience-dialog.tsx:75 (resolveTargetTripId @ client/src/components/add-to-experience-dialog.tsx:73)",
+   "clientWrites": [
+    "reads sessionStorage pen experienceContext[:u:<id>]"
+   ],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items | /api/cart",
+    "callLoc": "client/src/components/add-to-experience-dialog.tsx:80 | client/src/components/add-to-experience-dialog.tsx:101"
+   },
+   "serverLoc": "server/routes.ts:12597 | server/routes.ts:9154",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733",
+    "cart_items(user_id, service_id|content_type/content_id/content_meta, quantity, trip_id NULL unless body.tripId, scheduled_date, slot_id, experience_slug) via cartProjection.addToCart @ server/services/cart-projection.service.ts:65 → storage.addToCart @ server/storage.ts:4247"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "`/api/trips/${targetTripId}/itinerary-items`",
+    "`/api/trips/${targetTripId}/plancard`",
+    "[\"/api/cart\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/plancard/SlipItemTools.tsx:251 ([`/api/trips/${id}/itinerary-items`])",
+    "client/src/components/plancard/PlanCard.tsx:774, client/src/components/dashboard/PlanSlipStrip.tsx:32 ([`/api/trips/${id}/plancard`])",
+    "client/src/pages/cart.tsx (GET /api/cart)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "This goes onto my trip",
+   "feedback": {
+    "success": "toast ADDED_TO_PLAN_TITLE | 'Added to your cart' (client/src/components/add-to-experience-dialog.tsx:124)",
+    "failure": "toast 'Could not add to your trip/cart' (client/src/components/add-to-experience-dialog.tsx:133)",
+    "loading": "spinner (client/src/components/add-to-experience-dialog.tsx:261)"
+   },
+   "resultLocation": "plan slip (pen trip) or /cart (trip_id NULL)",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "### Travel Module - Activities Tab (Showing Affiliate Inventory)"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "INVISIBLE_RESULT",
+     "severity": "P2",
+     "note": "Button says 'Add to my trip plan' but never names which plan (pen-derived)"
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P1",
+     "note": "Same pen resolver as /services: viewing plan B adds to plan A; pen unbound → trip-less cart_items (J2-F1/F4 mechanism, trip-target.ts:42)"
+    },
+    {
+     "class": "WIREFRAME_DIVERGENCE",
+     "severity": "P3",
+     "note": "Wireframe 'Activities Tab': one-click '[Add to Cart]'; landed: modal with primary 'Add to my trip plan/cart' + trip list"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-location:ade-pick-trip",
+  "tier": 1,
+  "intent": "add_to_plan",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "AddToExperienceDialog",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:52"
+  },
+  "label": {
+   "text": "<trip title> (or add to a specific trip)",
+   "ariaLabel": null,
+   "testId": "button-select-trip-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:318"
+  },
+  "conditions": [
+   {
+    "axis": "tripContext",
+    "value": "0",
+    "outcome": "'No active trips found' + 'Go to My Plans' (client/src/components/add-to-experience-dialog.tsx:293)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "2+",
+    "outcome": "list of trips with no endDate or endDate >= now"
+   }
+  ],
+  "chain": {
+   "handler": "addToTripMutation @ client/src/components/add-to-experience-dialog.tsx:146",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items",
+    "callLoc": "client/src/components/add-to-experience-dialog.tsx:162"
+   },
+   "serverLoc": "server/routes.ts:12597",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/trips\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/plancard/SlipItemTools.tsx:251 ([`/api/trips/${id}/itinerary-items`]) — not invalidated"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Item added to the trip I picked",
+   "feedback": {
+    "success": "toast ADDED_TO_PLAN_TITLE (client/src/components/add-to-experience-dialog.tsx:181)",
+    "failure": "toast 'Failed to add' (client/src/components/add-to-experience-dialog.tsx:188)",
+    "loading": "spinner (client/src/components/add-to-experience-dialog.tsx:332)"
+   },
+   "resultLocation": "/plans/:tripId",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "### Travel Module - Activities Tab (Showing Affiliate Inventory)"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "STALE_CACHE",
+     "severity": "P2",
+     "note": "Invalidates only [\"/api/trips\"]; slip reads `/api/trips/${id}/itinerary-items` (staleTime Infinity per J1 H3) → item not shown until reload"
+    },
+    {
+     "class": "INCONSISTENT_AFFORDANCE",
+     "severity": "P3",
+     "note": "Two add buttons in one dialog with different rails and invalidations"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-location:ade-go-to-my-plans",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "AddToExperienceDialog",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:52"
+  },
+  "label": {
+   "text": "Go to My Plans",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:304"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/my-trips (window.location.href full reload)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "discover-location:ade-sign-in",
+  "tier": 2,
+  "intent": "sign_in",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "AddToExperienceDialog",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:52"
+  },
+  "label": {
+   "text": "Sign In (guest)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:215"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "openSignInModal() — no returnTo, no resume"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": [
+    {
+     "class": "AUTH_DROP",
+     "severity": "P2",
+     "note": "Sign-in has no returnTo and the pending add is not resumed (client/src/components/add-to-experience-dialog.tsx:219)"
+    }
+   ]
+  }
+ },
+ {
+  "id": "discover-location:ade-cancel",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "discover-location",
+  "route": "/discover/location/:city",
+  "component": {
+   "name": "AddToExperienceDialog",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:52"
+  },
+  "label": {
+   "text": "Cancel / close",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/add-to-experience-dialog.tsx:228"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:url-params",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:415"
+  },
+  "label": {
+   "text": ":id + ?tripId (resolveTargetTripId)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "url-consumer",
+   "loc": "client/src/pages/service-detail.tsx:492"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:browse-services",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:885"
+  },
+  "label": {
+   "text": "Browse Services (not found)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/service-detail.tsx:890"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/services"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:breadcrumbs",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:1136"
+  },
+  "label": {
+   "text": "breadcrumb",
+   "ariaLabel": null,
+   "testId": "breadcrumb-home"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/service-detail.tsx:1144"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/discover → redirect /destinations"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:storefront",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:1150"
+  },
+  "label": {
+   "text": "provider storefront",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/service-detail.tsx:1150"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/s/:handle"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:related-listing",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:1264"
+  },
+  "label": {
+   "text": "property / bundle component / room",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/service-detail.tsx:1264"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/services/:id (drops ?tripId)"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:back-to-plan",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:1756"
+  },
+  "label": {
+   "text": "Back to your plan",
+   "ariaLabel": null,
+   "testId": "link-back-to-plan"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/service-detail.tsx:1764"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/plans/:tripId"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:book-now",
+  "tier": 1,
+  "intent": "checkout",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:1795"
+  },
+  "label": {
+   "text": "Book now",
+   "ariaLabel": null,
+   "testId": "button-book-now"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/service-detail.tsx:1805"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "openSignInModal() — no returnTo, add not resumed (client/src/pages/service-detail.tsx:1003)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "POST /api/cart {serviceId,quantity,scheduledDate,slotId}; trip_id NULL"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "POST itinerary-items on URL/pen trip (+ WhichEventDialog if plan has >1 event)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "2+",
+    "outcome": "pen trip, not the viewed plan (same resolver)"
+   }
+  ],
+  "chain": {
+   "handler": "beginAdd(kind,true) @ client/src/pages/service-detail.tsx:1001 → guardServiceAdd → addToCartMutation @ client/src/pages/service-detail.tsx:596 → completeBuyNow @ client/src/pages/service-detail.tsx:549",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items → POST /api/trips/:tripId/items/:itemId/route | /api/cart",
+    "callLoc": "client/src/pages/service-detail.tsx:599 → client/src/pages/service-detail.tsx:557 | client/src/pages/service-detail.tsx:631"
+   },
+   "serverLoc": "server/routes.ts:12597 → server/routes/routing.routes.ts:127 | server/routes.ts:9154",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733",
+    "itinerary_items status → ready_for_checkout + cart_items projection via safeSync (server/routes/routing.routes.ts:127)",
+    "cart_items(user_id, service_id|content_type/content_id/content_meta, quantity, trip_id NULL unless body.tripId, scheduled_date, slot_id, experience_slug) via cartProjection.addToCart @ server/services/cart-projection.service.ts:65 → storage.addToCart @ server/storage.ts:4247"
+   ],
+   "sideEffects": [
+    "trackEvent('service_added_to_cart') umami, trip-less only (client/src/pages/service-detail.tsx:640)"
+   ],
+   "invalidates": [
+    "`/api/trips/${targetTripId}/itinerary-items`",
+    "`/api/trips/${targetTripId}/plancard`",
+    "[\"/api/cart\"]"
+   ],
+   "navigates": "/cart?intent=buy (BUY_NOW_CART_PATH) | plan route on routing failure (client/src/pages/service-detail.tsx:571)",
+   "downstreamReaders": [
+    "client/src/pages/cart.tsx (GET /api/cart)",
+    "client/src/components/plancard/SlipItemTools.tsx:251 ([`/api/trips/${id}/itinerary-items`])"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Buy this service now",
+   "feedback": {
+    "success": "navigate to cart payment step",
+    "failure": "toast 'Failed to add…' (client/src/pages/service-detail.tsx:668) | 'Added to your plan… couldn't be moved to checkout' (client/src/pages/service-detail.tsx:567)",
+    "loading": "addBlocked disables button (client/src/pages/service-detail.tsx:1123)"
+   },
+   "resultLocation": "/cart?intent=buy",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "### Simplified Checkout Process"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "AUTH_DROP",
+     "severity": "P2",
+     "note": "Guest sign-in modal has no returnTo; date/slot selection and the add are lost (client/src/pages/service-detail.tsx:1003)"
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P1",
+     "note": "Same pen resolver as /services (trip-target.ts:42): no tripId → trip-less cart_items; wrong plan when pen ≠ viewed plan (J2-F1/F4 mechanism)"
+    }
+   ]
+  }
+ },
+ {
+  "id": "service-detail:request-to-book",
+  "tier": 1,
+  "intent": "request_quote",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:1836"
+  },
+  "label": {
+   "text": "Request to book",
+   "ariaLabel": null,
+   "testId": "button-request-to-book"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/service-detail.tsx:1838"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "no quote POST; askExpert opens sign-in modal with returnTo /services/:id"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "quote carries tripId"
+   }
+  ],
+  "chain": {
+   "handler": "requestQuoteMutation @ client/src/pages/service-detail.tsx:584 + askExpert",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/services/:id/quote-requests {tripId?}",
+    "callLoc": "client/src/pages/service-detail.tsx:586"
+   },
+   "serverLoc": "server/routes/service-quotes.routes.ts:82",
+   "dbWrites": [
+    "service_quotes INSERT via requestQuote @ server/services/service-quotes.service.ts:354",
+    "user_and_expert_chats insert via sendMessage @ server/services/messages.service.ts:196 (+ conversation context via recordConversationContext) (askExpert)"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/me/quotes\"]"
+   ],
+   "navigates": "/chat (askExpert)",
+   "downstreamReaders": [
+    "client/src/components/quotes/TravelerQuotesPanel.tsx:76"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Ask the provider for a price",
+   "feedback": {
+    "success": "toast 'Quote requested' (client/src/pages/service-detail.tsx:1842)",
+    "failure": "toast 'Quote request not recorded' (client/src/pages/service-detail.tsx:1848)",
+    "loading": "disabled while pending"
+   },
+   "resultLocation": "TravelerQuotesPanel + chat",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:add-to-plan",
+  "tier": 1,
+  "intent": "add_to_plan",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:1795"
+  },
+  "label": {
+   "text": "Add to plan",
+   "ariaLabel": null,
+   "testId": "button-add-to-cart"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/service-detail.tsx:1875"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "openSignInModal() — no returnTo, add not resumed (client/src/pages/service-detail.tsx:1003)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "POST /api/cart {serviceId,quantity,scheduledDate,slotId}; trip_id NULL"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "POST itinerary-items on URL/pen trip (+ WhichEventDialog if plan has >1 event)"
+   },
+   {
+    "axis": "tripContext",
+    "value": "2+",
+    "outcome": "pen trip, not the viewed plan (same resolver)"
+   }
+  ],
+  "chain": {
+   "handler": "beginAdd(kind,false) @ client/src/pages/service-detail.tsx:1001 → addToCartMutation @ client/src/pages/service-detail.tsx:596",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items | /api/cart",
+    "callLoc": "client/src/pages/service-detail.tsx:599 | client/src/pages/service-detail.tsx:631"
+   },
+   "serverLoc": "server/routes.ts:12597 | server/routes.ts:9154",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733",
+    "notifications(type 'itinerary_item_added' to assigned advisor, owner writes only) @ server/routes.ts:12747",
+    "cart_items(user_id, service_id|content_type/content_id/content_meta, quantity, trip_id NULL unless body.tripId, scheduled_date, slot_id, experience_slug) via cartProjection.addToCart @ server/services/cart-projection.service.ts:65 → storage.addToCart @ server/storage.ts:4247"
+   ],
+   "sideEffects": [
+    "trackEvent umami (trip-less)"
+   ],
+   "invalidates": [
+    "`/api/trips/${targetTripId}/itinerary-items`",
+    "`/api/trips/${targetTripId}/plancard`",
+    "[\"/api/cart\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": [
+    "client/src/components/plancard/SlipItemTools.tsx:251 ([`/api/trips/${id}/itinerary-items`])",
+    "client/src/components/plancard/PlanCard.tsx:774, client/src/components/dashboard/PlanSlipStrip.tsx:32 ([`/api/trips/${id}/plancard`])",
+    "client/src/pages/cart.tsx (GET /api/cart)"
+   ]
+  },
+  "ui": {
+   "uiPromise": "This service is added to my plan",
+   "feedback": {
+    "success": "toast addedTitle(!!targetTripId) (client/src/pages/service-detail.tsx:659)",
+    "failure": "toast 'Failed to add to your plan/cart' (client/src/pages/service-detail.tsx:668)",
+    "loading": "addBlocked (client/src/pages/service-detail.tsx:1123)"
+   },
+   "resultLocation": "plan slip or /cart",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "### Services Tab (Transportation, Photographers, etc.)"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "AUTH_DROP",
+     "severity": "P2",
+     "note": "Guest sign-in modal has no returnTo; date/slot selection and the add are lost (client/src/pages/service-detail.tsx:1003)"
+    },
+    {
+     "class": "SPEC_DIVERGENCE",
+     "severity": "P1",
+     "note": "Same pen resolver as /services (trip-target.ts:42): no tripId → trip-less cart_items; wrong plan when pen ≠ viewed plan (J2-F1/F4 mechanism)"
+    },
+    {
+     "class": "INVISIBLE_RESULT",
+     "severity": "P2",
+     "note": "Trip banner ('Booking for your trip', client/src/pages/service-detail.tsx:1756) shows only when a target resolves and never names the plan"
+    }
+   ]
+  }
+ },
+ {
+  "id": "service-detail:contact-provider",
+  "tier": 1,
+  "intent": "ask_expert",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:1930"
+  },
+  "label": {
+   "text": "Contact provider",
+   "ariaLabel": null,
+   "testId": "button-contact-provider"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/service-detail.tsx:1939"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "openSignInModal(returnTo?) (client/src/lib/use-ask-expert.ts:104)"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "POST /api/conversations/start → /chat, else /chat?expertId= or /local-experts"
+   }
+  ],
+  "chain": {
+   "handler": "askExpert({serviceId}) @ client/src/lib/use-ask-expert.ts:90",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/conversations/start",
+    "callLoc": "client/src/lib/earner-address.ts:116"
+   },
+   "serverLoc": "server/routes/conversations.routes.ts:65",
+   "dbWrites": [
+    "user_and_expert_chats insert via sendMessage @ server/services/messages.service.ts:196 (+ conversation context via recordConversationContext)"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": "/chat",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Message the provider",
+   "feedback": {
+    "success": "navigate to chat",
+    "failure": "directory fallback",
+    "loading": "none"
+   },
+   "resultLocation": "/chat",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:local-ui",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ServiceDetailPage",
+   "loc": "client/src/pages/service-detail.tsx:2037"
+  },
+  "label": {
+   "text": "availability month, slot pick, room check-in/out, date/time (local-UI group)",
+   "ariaLabel": null,
+   "testId": "button-availability-prev-month"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/service-detail.tsx:2148"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:which-event-confirm",
+  "tier": 1,
+  "intent": "add_to_plan",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "WhichEventDialog",
+   "loc": "client/src/pages/service-detail.tsx:2312"
+  },
+  "label": {
+   "text": "Confirm event",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/service-detail.tsx:2327"
+  },
+  "conditions": [
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "only asked when plan has >1 event"
+   }
+  ],
+  "chain": {
+   "handler": "confirmPendingAdd @ client/src/pages/service-detail.tsx:1017",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items {userExperienceId}",
+    "callLoc": "client/src/pages/service-detail.tsx:599"
+   },
+   "serverLoc": "server/routes.ts:12597",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "`/api/trips/${targetTripId}/itinerary-items`",
+    "`/api/trips/${targetTripId}/plancard`",
+    "[\"/api/cart\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Add under the event I picked",
+   "feedback": {
+    "success": "toast (client/src/pages/service-detail.tsx:659)",
+    "failure": "toast (client/src/pages/service-detail.tsx:668)",
+    "loading": "submitting (client/src/pages/service-detail.tsx:2326)"
+   },
+   "resultLocation": "plan slip",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:which-event-cancel",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "WhichEventDialog",
+   "loc": "client/src/pages/service-detail.tsx:2312"
+  },
+  "label": {
+   "text": "cancel / close",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/pages/service-detail.tsx:2314"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:mismatch-add-anyway",
+  "tier": 1,
+  "intent": "add_to_plan",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "LocationMismatchDialog",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:60"
+  },
+  "label": {
+   "text": "Add anyway",
+   "ariaLabel": null,
+   "testId": "button-mismatch-add-anyway"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:106"
+  },
+  "conditions": [
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "gate never opens (no trip row read) — add runs straight through"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "dialog only if listing city ∉ plan stops"
+   }
+  ],
+  "chain": {
+   "handler": "confirm @ client/src/hooks/use-location-mismatch-gate.ts:166 → held beginAdd continuation @ client/src/pages/service-detail.tsx:1006",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/trips/:tripId/itinerary-items",
+    "callLoc": "client/src/pages/service-detail.tsx:599"
+   },
+   "serverLoc": "server/routes.ts:12597",
+   "dbWrites": [
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "`/api/trips/${targetTripId}/itinerary-items`",
+    "`/api/trips/${targetTripId}/plancard`",
+    "[\"/api/cart\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Add despite the city mismatch",
+   "feedback": {
+    "success": "toast (client/src/pages/service-detail.tsx:659)",
+    "failure": "toast (client/src/pages/service-detail.tsx:668)",
+    "loading": "none"
+   },
+   "resultLocation": "plan slip",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:mismatch-add-as-stop",
+  "tier": 1,
+  "intent": "add_stop",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "LocationMismatchDialog",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:60"
+  },
+  "label": {
+   "text": "Add <city> as a stop",
+   "ariaLabel": null,
+   "testId": "button-mismatch-add-as-stop"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:115"
+  },
+  "conditions": [
+   {
+    "axis": "tripContext",
+    "value": "pen-unbound",
+    "outcome": "gate never opens (no trip row read) — add runs straight through"
+   },
+   {
+    "axis": "tripContext",
+    "value": "pen-bound",
+    "outcome": "dialog only if listing city ∉ plan stops"
+   }
+  ],
+  "chain": {
+   "handler": "addAsStop @ client/src/hooks/use-location-mismatch-gate.ts:193",
+   "clientWrites": [],
+   "api": {
+    "method": "PUT",
+    "route": "/api/trips/:tripId/destinations",
+    "callLoc": "client/src/lib/plan-stops-writer.ts:54"
+   },
+   "serverLoc": "server/routes/trips.routes.ts:478",
+   "dbWrites": [
+    "trip_destinations(delete+insert, ordered stops) + trips.destination mirror via replaceTripDestinations @ server/services/trip-destinations.service.ts:95",
+    "itinerary_items(trip_id, title, description, item_type, provider_service_id, estimated_cost, location_name, day_number, scheduled_date, start_time, slot_id, user_experience_id; origin/suggested_by server-derived) via storage.createItineraryItem @ server/routes.ts:12733"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/trips\", tripId]",
+    "[\"/api/trips\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "City added as a stop, then item added",
+   "feedback": {
+    "success": "add toast only",
+    "failure": "console.warn (client/src/hooks/use-location-mismatch-gate.ts:213)",
+    "loading": "none"
+   },
+   "resultLocation": "plan slip",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "SILENT_FAILURE_UI",
+     "severity": "P2",
+     "note": "Stop write failure is console-only (client/src/hooks/use-location-mismatch-gate.ts:213)"
+    }
+   ]
+  }
+ },
+ {
+  "id": "service-detail:mismatch-cancel",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "LocationMismatchDialog",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:60"
+  },
+  "label": {
+   "text": "Cancel / close",
+   "ariaLabel": null,
+   "testId": "button-mismatch-cancel"
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/components/location-mismatch-dialog.tsx:124"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:flag-open",
+  "tier": 2,
+  "intent": "report",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ReviewCard",
+   "loc": "client/src/pages/service-detail.tsx:2340"
+  },
+  "label": {
+   "text": "Flag review",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/service-detail.tsx:2415"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:flag-submit",
+  "tier": 1,
+  "intent": "report_review",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ReviewCard",
+   "loc": "client/src/pages/service-detail.tsx:2340"
+  },
+  "label": {
+   "text": "Submit flag",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "submit",
+   "loc": "client/src/pages/service-detail.tsx:2444"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "401"
+   }
+  ],
+  "chain": {
+   "handler": "flagMutation @ client/src/pages/service-detail.tsx:2348",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/reviews/:id/flag",
+    "callLoc": "client/src/pages/service-detail.tsx:2349"
+   },
+   "serverLoc": "server/routes/content.routes.ts:3182",
+   "dbWrites": [
+    "service_reviews UPDATE + review_moderation_logs INSERT via flagReviewSignal @ server/services/review-mutation.service.ts:135"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/services\", serviceId, \"reviews\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Report this review",
+   "feedback": {
+    "success": "dialog closes",
+    "failure": "none located",
+    "loading": "none"
+   },
+   "resultLocation": null,
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "service-detail:flag-cancel",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "service-detail",
+  "route": "/services/:id",
+  "component": {
+   "name": "ReviewCard",
+   "loc": "client/src/pages/service-detail.tsx:2340"
+  },
+  "label": {
+   "text": "Cancel / close flag dialog",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/pages/service-detail.tsx:2426"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made-detail:url-id",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "ReadyMadeDetailPage",
+   "loc": "client/src/pages/ready-made-detail.tsx:207"
+  },
+  "label": {
+   "text": ":id",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "url-consumer",
+   "loc": "client/src/pages/ready-made-detail.tsx:208"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made-detail:nav-links",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "ReadyMadeDetailPage",
+   "loc": "client/src/pages/ready-made-detail.tsx:330"
+  },
+  "label": {
+   "text": "logo / Browse Ready Made / back",
+   "ariaLabel": null,
+   "testId": "link-rm-logo"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/ready-made-detail.tsx:332"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/ | /ready-made"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made-detail:language-menu",
+  "tier": 1,
+  "intent": "set_locale",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "LanguageMenu",
+   "loc": "client/src/components/language-menu.tsx:35"
+  },
+  "label": {
+   "text": "language picker",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/language-menu.tsx:83"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "localStorage only"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "localStorage + PATCH /api/me/preferences"
+   }
+  ],
+  "chain": {
+   "handler": "setLocale @ client/src/hooks/use-locale.ts",
+   "clientWrites": [
+    "localStorage locale (client/src/hooks/use-locale.ts)"
+   ],
+   "api": {
+    "method": "PATCH",
+    "route": "/api/me/preferences",
+    "callLoc": "client/src/hooks/use-locale.ts:84"
+   },
+   "serverLoc": "server/routes/storefront.routes.ts:269",
+   "dbWrites": [
+    "users (preferences) via updateUserPreferences"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Page switches language",
+   "feedback": {
+    "success": "re-render in locale",
+    "failure": "none",
+    "loading": "none"
+   },
+   "resultLocation": "this page",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made-detail:photo-credit",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "ReadyMadeDetailPage",
+   "loc": "client/src/pages/ready-made-detail.tsx:478"
+  },
+  "label": {
+   "text": "photo credit",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/ready-made-detail.tsx:480"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "external photographer profile"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made-detail:storefront",
+  "tier": 2,
+  "intent": "navigate",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "StorefrontLink",
+   "loc": "client/src/components/marketplace/storefront-link.tsx:60"
+  },
+  "label": {
+   "text": "author storefront",
+   "ariaLabel": null,
+   "testId": "link-rm-storefront"
+  },
+  "trigger": {
+   "kind": "link",
+   "loc": "client/src/pages/ready-made-detail.tsx:605"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "/s/:handle"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made-detail:buy",
+  "tier": 1,
+  "intent": "checkout",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "ReadyMadeDetailPage",
+   "loc": "client/src/pages/ready-made-detail.tsx:600"
+  },
+  "label": {
+   "text": "Get this trip / Buy",
+   "ariaLabel": null,
+   "testId": "button-buy-rm"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/ready-made-detail.tsx:634"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "toast 'Sign in to buy this trip' only — no sign-in modal (client/src/pages/ready-made-detail.tsx:227)"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "202 → Stripe dialog; 409 already owned → /plans/:cloneTripId"
+   }
+  ],
+  "chain": {
+   "handler": "startPurchase @ client/src/pages/ready-made-detail.tsx:225",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/ready-made/:id/purchase",
+    "callLoc": "client/src/pages/ready-made-detail.tsx:230"
+   },
+   "serverLoc": "server/routes/ready-made.routes.ts:1267",
+   "dbWrites": [
+    "none at intent (ready_made_purchases read for dedupe)"
+   ],
+   "sideEffects": [
+    "Stripe paymentIntents.create"
+   ],
+   "invalidates": [],
+   "navigates": "409 → /plans/:cloneTripId",
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Buy this ready-made trip",
+   "feedback": {
+    "success": "Stripe payment dialog opens",
+    "failure": "toast 'Purchase unavailable' (client/src/pages/ready-made-detail.tsx:240)",
+    "loading": "none"
+   },
+   "resultLocation": "payment dialog",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "AUTH_DROP",
+     "severity": "P2",
+     "note": "Guest gets a toast with no sign-in action (client/src/pages/ready-made-detail.tsx:227)"
+    }
+   ]
+  }
+ },
+ {
+  "id": "ready-made-detail:payment-confirm",
+  "tier": 1,
+  "intent": "checkout",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "StripeCheckout",
+   "loc": "client/src/components/booking/StripeCheckout.tsx:42"
+  },
+  "label": {
+   "text": "Pay (Stripe success)",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "submit",
+   "loc": "client/src/pages/ready-made-detail.tsx:700"
+  },
+  "conditions": [],
+  "chain": {
+   "handler": "handleStripeSuccess @ client/src/pages/ready-made-detail.tsx:250",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/ready-made/:id/purchase/confirm",
+    "callLoc": "client/src/pages/ready-made-detail.tsx:253"
+   },
+   "serverLoc": "server/routes/ready-made.routes.ts:1347",
+   "dbWrites": [
+    "ready_made_purchases UPDATE (paid → cloned, clone_trip_id) + cloned trips/itinerary_items via server/services/ready-made-purchase.service"
+   ],
+   "sideEffects": [],
+   "invalidates": [
+    "[\"/api/trips\"]"
+   ],
+   "navigates": "body.redirect (/plans/:cloneTripId)",
+   "downstreamReaders": [
+    "client/src/pages/my-trips.tsx ([\"/api/trips\"])"
+   ]
+  },
+  "ui": {
+   "uiPromise": "Trip is copied into my plans",
+   "feedback": {
+    "success": "toast 'Trip is yours!' (client/src/pages/ready-made-detail.tsx:261)",
+    "failure": "toast 'Payment confirmed but delivery failed' (client/src/pages/ready-made-detail.tsx:264)",
+    "loading": "confirming blocks close (client/src/pages/ready-made-detail.tsx:688)"
+   },
+   "resultLocation": "/plans/:cloneTripId",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made-detail:payment-error",
+  "tier": 2,
+  "intent": "checkout",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "StripeCheckout",
+   "loc": "client/src/components/booking/StripeCheckout.tsx:42"
+  },
+  "label": {
+   "text": "payment error toast",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "submit",
+   "loc": "client/src/pages/ready-made-detail.tsx:701"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made-detail:payment-dialog-close",
+  "tier": 2,
+  "intent": "dismiss",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "ReadyMadeDetailPage",
+   "loc": "client/src/pages/ready-made-detail.tsx:688"
+  },
+  "label": {
+   "text": "payment dialog close",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "modal-lifecycle",
+   "loc": "client/src/pages/ready-made-detail.tsx:688"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made-detail:copy-link",
+  "tier": 2,
+  "intent": "share",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "ReadyMadeDetailPage",
+   "loc": "client/src/pages/ready-made-detail.tsx:655"
+  },
+  "label": {
+   "text": "Copy trip link",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/ready-made-detail.tsx:657"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "ready-made-detail:plan-entry",
+  "tier": 2,
+  "intent": "open_planner",
+  "surface": "ready-made-detail",
+  "route": "/ready-made/:id",
+  "component": {
+   "name": "PlanEntryCta",
+   "loc": "client/src/components/planning/plan-entry-cta.tsx:60"
+  },
+  "label": {
+   "text": "Start a plan",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/ready-made-detail.tsx:676"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": "PlanningContext modal {city: listing.market}"
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "hidden-gems:discover-scan",
+  "tier": 1,
+  "intent": "discover_gems",
+  "surface": "hidden-gems",
+  "route": "/hidden-gems",
+  "component": {
+   "name": "HiddenGemsPage",
+   "loc": "client/src/pages/hidden-gems.tsx:70"
+  },
+  "label": {
+   "text": "Discover (+ Enter key)",
+   "ariaLabel": null,
+   "testId": "button-discover"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/hidden-gems.tsx:186"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "401 → 'Discovery Failed'"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "non-admin traveler → 403 (requireAdmin) → 'Discovery Failed'"
+   }
+  ],
+  "chain": {
+   "handler": "handleDiscover @ client/src/pages/hidden-gems.tsx:126 → discoverMutation :95",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/discovery/scan",
+    "callLoc": "client/src/pages/hidden-gems.tsx:97"
+   },
+   "serverLoc": "server/routes/content.routes.ts:8530 (isAuthenticated + requireAdmin)",
+   "dbWrites": [
+    "hidden-gem rows via grokDiscoveryService.discoverGemsForDestination @ server/services/grok-discovery.service.ts:88"
+   ],
+   "sideEffects": [
+    "Grok model call"
+   ],
+   "invalidates": [
+    "/api/discovery/gems* (predicate)",
+    "[\"/api/discovery/destinations\"]"
+   ],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Find hidden gems for my destination",
+   "feedback": {
+    "success": "toast 'Discovery Complete' (hidden-gems.tsx:100)",
+    "failure": "toast 'Discovery Failed' (hidden-gems.tsx:114)",
+    "loading": "pending"
+   },
+   "resultLocation": "same page grid",
+   "resultReachableFromSurface": true,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "DEAD_TRIGGER",
+     "severity": "P2",
+     "note": "Public traveler page exposes an admin-only endpoint (requireAdmin at content.routes.ts:8530): always fails for travelers"
+    }
+   ]
+  }
+ },
+ {
+  "id": "hidden-gems:local-ui",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "hidden-gems",
+  "route": "/hidden-gems",
+  "component": {
+   "name": "HiddenGemsPage",
+   "loc": "client/src/pages/hidden-gems.tsx:70"
+  },
+  "label": {
+   "text": "destination input, destination chips, category tabs (local-UI group)",
+   "ariaLabel": null,
+   "testId": "input-discover-destination"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/pages/hidden-gems.tsx:220"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "deals:book",
+  "tier": 1,
+  "intent": "book_via_agent",
+  "surface": "deals",
+  "route": "/deals",
+  "component": {
+   "name": "DealCard",
+   "loc": "client/src/pages/deals.tsx:155"
+  },
+  "label": {
+   "text": "Book Now",
+   "ariaLabel": null,
+   "testId": "button-book-*"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/deals.tsx:269"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "openSignInModal (use-content-agent-booking.ts:93); not resumed"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "affiliate_booking_requests row"
+   }
+  ],
+  "chain": {
+   "handler": "useContentAgentBooking.book @ client/src/hooks/use-content-agent-booking.ts:90",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/affiliate-booking-requests",
+    "callLoc": "client/src/hooks/use-content-agent-booking.ts:63"
+   },
+   "serverLoc": "server/routes/content.routes.ts:7638",
+   "dbWrites": [
+    "affiliate_booking_requests(item_name, partner_name, partner_category, booking token/product/route ref, travel_date, travelers, user_notes, user_id) via storage.createAffiliateBookingRequest"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "Book this deal",
+   "feedback": {
+    "success": "toast AGENT_REQUEST_SENT_TITLE; label 'Requested'",
+    "failure": "toast \"Couldn't send request\"",
+    "loading": "disabled while pending"
+   },
+   "resultLocation": "agent request queue — not on plan/cart",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "FALSE_PROMISE",
+     "severity": "P3",
+     "note": "'Book Now' with external-link icon files an agent request; nothing is booked"
+    },
+    {
+     "class": "INVISIBLE_RESULT",
+     "severity": "P2",
+     "note": "Request not tied to a trip and not visible from this surface after reload"
+    }
+   ]
+  }
+ },
+ {
+  "id": "deals:local-ui",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "deals",
+  "route": "/deals",
+  "component": {
+   "name": "DealsPage",
+   "loc": "client/src/pages/deals.tsx:300"
+  },
+  "label": {
+   "text": "search (debounced), category chips, clear filters (local-UI group)",
+   "ariaLabel": null,
+   "testId": "button-clear-filters"
+  },
+  "trigger": {
+   "kind": "input",
+   "loc": "client/src/pages/deals.tsx:349"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "transportation:local-ui",
+  "tier": 2,
+  "intent": "filter",
+  "surface": "transportation",
+  "route": "/transportation",
+  "component": {
+   "name": "TransportationBookingPage",
+   "loc": "client/src/pages/transportation-booking.tsx:19"
+  },
+  "label": {
+   "text": "tabs, from/to inputs, Search (local-UI group)",
+   "ariaLabel": null,
+   "testId": "tab-search"
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/pages/transportation-booking.tsx:80"
+  },
+  "conditions": [],
+  "chain": {
+   "navigates": null
+  },
+  "ui": {},
+  "verdict": {
+   "evidence": "static",
+   "gaps": []
+  }
+ },
+ {
+  "id": "transportation:twelvego-widget-book",
+  "tier": 1,
+  "intent": "book_via_agent",
+  "surface": "transportation",
+  "route": "/transportation",
+  "component": {
+   "name": "TwelveGoWidget",
+   "loc": "client/src/components/widgets/TwelveGoWidget.tsx:27"
+  },
+  "label": {
+   "text": "Book via agent",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/widgets/TwelveGoWidget.tsx:66"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "openSignInModal (use-content-agent-booking.ts:93); not resumed"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "affiliate_booking_requests row"
+   }
+  ],
+  "chain": {
+   "handler": "useContentAgentBooking.book",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/affiliate-booking-requests",
+    "callLoc": "client/src/hooks/use-content-agent-booking.ts:63"
+   },
+   "serverLoc": "server/routes/content.routes.ts:7638",
+   "dbWrites": [
+    "affiliate_booking_requests(item_name, partner_name, partner_category, booking token/product/route ref, travel_date, travelers, user_notes, user_id) via storage.createAffiliateBookingRequest"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "An agent books this route",
+   "feedback": {
+    "success": "'Request sent' state (TwelveGoWidget.tsx:57)",
+    "failure": "toast",
+    "loading": "'Sending…' (TwelveGoWidget.tsx:71)"
+   },
+   "resultLocation": "agent request queue",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": []
+  }
+ },
+ {
+  "id": "transportation:twelvego-deeplink-book",
+  "tier": 1,
+  "intent": "book_via_agent",
+  "surface": "transportation",
+  "route": "/transportation",
+  "component": {
+   "name": "TwelveGoDeepLink",
+   "loc": "client/src/components/widgets/TwelveGoWidget.tsx:86"
+  },
+  "label": {
+   "text": "popular route card",
+   "ariaLabel": null,
+   "testId": null
+  },
+  "trigger": {
+   "kind": "click",
+   "loc": "client/src/components/widgets/TwelveGoWidget.tsx:108"
+  },
+  "conditions": [
+   {
+    "axis": "auth",
+    "value": "guest",
+    "outcome": "openSignInModal (use-content-agent-booking.ts:93); not resumed"
+   },
+   {
+    "axis": "auth",
+    "value": "authed",
+    "outcome": "affiliate_booking_requests row"
+   }
+  ],
+  "chain": {
+   "handler": "useContentAgentBooking.book",
+   "clientWrites": [],
+   "api": {
+    "method": "POST",
+    "route": "/api/affiliate-booking-requests",
+    "callLoc": "client/src/hooks/use-content-agent-booking.ts:63"
+   },
+   "serverLoc": "server/routes/content.routes.ts:7638",
+   "dbWrites": [
+    "affiliate_booking_requests(item_name, partner_name, partner_category, booking token/product/route ref, travel_date, travelers, user_notes, user_id) via storage.createAffiliateBookingRequest"
+   ],
+   "sideEffects": [],
+   "invalidates": [],
+   "navigates": null,
+   "downstreamReaders": []
+  },
+  "ui": {
+   "uiPromise": "'View schedules & prices' for this route",
+   "feedback": {
+    "success": "'Request sent' badge",
+    "failure": "toast",
+    "loading": "disabled while pending"
+   },
+   "resultLocation": "agent request queue",
+   "resultReachableFromSurface": false,
+   "wireframeRef": "not in wireframes"
+  },
+  "expected": null,
+  "verdict": {
+   "evidence": "static",
+   "evidenceRef": null,
+   "actual": null,
+   "gaps": [
+    {
+     "class": "FALSE_PROMISE",
+     "severity": "P2",
+     "note": "Card copy 'View schedules & prices' but click files an agent booking request (transportation-booking.tsx:118)"
+    }
+   ]
+  }
+ }
+]

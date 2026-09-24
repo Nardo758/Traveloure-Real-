@@ -1,0 +1,198 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/hero",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/platform/stats",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/moments",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/travelpulse/cities",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"330f8940-b006-4850-82ee-56d2aa2e021c\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/trips",
+  "status": 201,
+  "body": "{\"title\":\"Osaka trip\",\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\"}",
+  "response": "{\"id\":\"9fe67fb7-4362-429c-921f-09e6390e324f\",\"userId\":\"331b46c9-dfab-4d64-ab89-b2c34822e234\",\"trackingNumber\":\"TRV-202609-00024\",\"title\":\"Osaka trip\",\"eventType\":\"vacation\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"destination\":\"Osaka, Japan\",\"status\":\"draft\",\"numberOfTravelers\":null,\"adults\":null,\"kids\":null,\"budget\":null,\"preferences\":{},\"experienceType\":null,\"momentKey\":null,\"travelers\":"
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context",
+  "status": 200,
+  "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[]}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "PATCH",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f/occasion",
+  "status": 200,
+  "body": "{\"eventType\":\"vacation\"}",
+  "response": "{\"ok\":true,\"eventType\":\"vacation\"}"
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f/destinations",
+  "status": 200,
+  "body": "{\"stops\":[{\"name\":\"Osaka, Japan\"}]}",
+  "response": "{\"destinations\":[{\"id\":\"9bd952f3-da27-470c-a048-797a2d017deb\",\"tripId\":\"9fe67fb7-4362-429c-921f-09e6390e324f\",\"position\":0,\"name\":\"Osaka, Japan\",\"city\":null,\"country\":null,\"lat\":null,\"lng\":null,\"createdAt\":\"2026-09-24T22:24:51.757Z\"}]}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f/plancard",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/ready-made/purchases/by-clone/9fe67fb7-4362-429c-921f-09e6390e324f",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f/suggestions",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f/trip-pass",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/coordination-states",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f/proposals",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f/guests",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f/expert-advisor",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trip-context?tripId=9fe67fb7-4362-429c-921f-09e6390e324f",
+  "status": 200,
+  "body": "{\"context\":{\"pendingEvents\":[],\"pendingEventTitles\":[],\"tripId\":\"9fe67fb7-4362-429c-921f-09e6390e324f\",\"destination\":\"Osaka, Japan\",\"startDate\":\"2026-11-03\",\"endDate\":\"2026-11-08\",\"experienceType\":\"Travel\",\"experienceSlug\":\"travel\",\"eventType\":\"vacation\",\"stops\":[]}}",
+  "response": "{\"ok\":true}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/services/0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86/reviews",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/services/0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86/provider-verification",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/services/0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86/availability?month=2026-09",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/services/0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86?locale=en",
+  "status": 200
+ },
+ {
+  "method": "PUT",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f/destinations",
+  "status": 500,
+  "body": "{\"stops\":[{\"name\":\"Osaka, Japan\"},{\"name\":\"Higashiyama / Arashiyama\"}]}",
+  "response": "{\"message\":\"forced failure (audit)\"}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/trips/9fe67fb7-4362-429c-921f-09e6390e324f/itinerary-items",
+  "status": 201,
+  "body": "{\"title\":\"Temple Garden Wedding Coordination\",\"description\":\"End-to-end coordination of an intimate garden or Shinto ceremony at one of Kyoto's licensed venues. Includes shrine liaison, rehearsal, officiant arrangement, ceremony script translation, guest seating, and day-of coordination for up to 30 guests.\",\"itemType\":\"activity\",\"providerServiceId\":\"0027dbb3-cd1d-4020-8bfa-ee8dcdff0b86\",\"estimate",
+  "response": "{\"id\":\"eba93c8e-9444-45ec-a0bb-085a892cc9cf\",\"tripId\":\"9fe67fb7-4362-429c-921f-09e6390e324f\",\"title\":\"Temple Garden Wedding Coordination\",\"description\":\"End-to-end coordination of an intimate garden or Shinto ceremony at one of Kyoto's licensed venues. Includes shrine liaison, rehearsal, officiant arrangement, ceremony script translation, guest seating, and day-of coordination for up to 30 guests."
+ }
+]

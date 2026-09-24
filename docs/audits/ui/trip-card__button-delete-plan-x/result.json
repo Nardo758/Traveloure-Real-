@@ -1,0 +1,5 @@
+{
+ "rowId": "trip-card:button-delete-plan-x",
+ "verdict": "CONFIRMED",
+ "observed": "after delete the page is /trip/05623304-bcf0-4611-9663-c411c54e5b34"
+}

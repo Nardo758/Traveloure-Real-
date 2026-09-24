@@ -1,0 +1,70 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/cart",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/travelpulse/cities",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/hero",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/platform/stats",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/landing/moments",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trip-context",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"985543b6-2d41-467c-85fb-b5800a52047e\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/landing/moments/event",
+  "status": 204,
+  "body": "{\"momentKey\":\"wedding\",\"kind\":\"impression\",\"position\":0,\"sessionId\":\"096f8261-d479-4073-bfcd-beeac33c0b7d\"}"
+ }
+]

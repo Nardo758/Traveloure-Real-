@@ -1,0 +1,23 @@
+[
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"b96f3f02-ef96-4342-8efd-1adf017f8235\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/conversations/start",
+  "status": 201,
+  "body": "{\"handle\":\"kansai-bizlang\"}",
+  "response": "{\"conversationId\":\"2643a149cd30e602e8d45a06f31863d0\",\"context\":{\"kind\":\"storefront\",\"id\":\"kansai-bizlang\"},\"messageId\":null,\"recipient\":{\"handle\":\"kansai-bizlang\",\"displayName\":\"Satoshi\",\"avatarUrl\":\"https://images.unsplash.com/photo-1521791136064-7986c2920216?w=800\",\"verified\":false}}"
+ },
+ {
+  "method": "POST",
+  "url": "/api/chats",
+  "status": 404,
+  "body": "{\"message\":\"Hello, is the Kyoto interpreter available in November?\",\"conversationId\":\"2643a149cd30e602e8d45a06f31863d0\"}",
+  "response": "{\"message\":\"Conversation not found\"}"
+ }
+]

@@ -1,0 +1,5 @@
+{
+ "rowId": "transportation:twelvego-deeplink-book",
+ "verdict": "CONFIRMED",
+ "observed": "card text \"Bangkok → Chiang Mai View schedules & prices\" → POST /api/affiliate-booking-requests 200"
+}

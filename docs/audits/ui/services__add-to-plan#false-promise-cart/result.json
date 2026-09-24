@@ -1,0 +1,5 @@
+{
+ "rowId": "services:add-to-plan#false-promise-cart",
+ "verdict": "CONFIRMED",
+ "observed": "label \"Add to Plan\" → POST /api/cart 201; toast [\"Added to cart! Service has been added to your cart.\",\"Notification Added to cart!Service has been added to your cart.\"]"
+}

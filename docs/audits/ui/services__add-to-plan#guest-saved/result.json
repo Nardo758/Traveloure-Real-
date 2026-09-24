@@ -1,0 +1,5 @@
+{
+ "rowId": "services:add-to-plan#guest-saved",
+ "verdict": "CONFIRMED",
+ "observed": "guest toast [\"Saved! Sign in to checkout and save your selection.\",\"Notification Saved!Sign in to checkout and save your selection.\"]; server writes=0 (localStorage only)"
+}

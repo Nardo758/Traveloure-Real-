@@ -1,0 +1,94 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/05623304-bcf0-4611-9663-c411c54e5b34",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"b6b62128-0fbb-4a4f-b2e4-f5885349a678\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/05623304-bcf0-4611-9663-c411c54e5b34/plancard",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/offering-types/experts",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/05623304-bcf0-4611-9663-c411c54e5b34/items/61d29f3b-7c4f-4f65-bd6b-1c2252028f94/comments",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/05623304-bcf0-4611-9663-c411c54e5b34/expert-advisor",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/affiliate-booking-requests/user?tripId=05623304-bcf0-4611-9663-c411c54e5b34",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/upsell/plancard-pretrip",
+  "status": 200,
+  "body": "{\"surface\":\"plancard_pretrip\",\"templateKey\":\"vacation\",\"tripId\":\"05623304-bcf0-4611-9663-c411c54e5b34\"}",
+  "response": "{\"candidates\":[],\"suppressed\":[{\"offeringId\":\"aff_guided_tour\",\"reason\":\"outside_template_matrix\"},{\"offeringId\":\"aff_cultural_class\",\"reason\":\"outside_template_matrix\"},{\"offeringId\":\"aff_day_trip\",\"reason\":\"outside_template_matrix\"},{\"offeringId\":\"aff_adventure_activity\",\"reason\":\"outside_template_matrix\"},{\"offeringId\":\"aff_food_drink_tour\",\"reason\":\"outside_template_matrix\"},{\"offeringId\":\"aff"
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/05623304-bcf0-4611-9663-c411c54e5b34/proposals",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/05623304-bcf0-4611-9663-c411c54e5b34/suggestions",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/concierge/quote",
+  "status": 200,
+  "body": "{\"intent\":\"Polish my plan for Kyoto, Japan\",\"destination\":\"Kyoto, Japan\",\"eventType\":\"vacation\",\"tripId\":\"05623304-bcf0-4611-9663-c411c54e5b34\"}",
+  "response": "{\"requestId\":\"066e18bb-d420-4862-be1d-e78f940d02f8\",\"route\":{\"ai\":{\"priceCents\":599,\"currency\":\"USD\",\"available\":true,\"disabled\":false},\"expert\":{\"available\":false,\"commissionRate\":0.25,\"expertShareRate\":0.75},\"full\":{\"available\":false,\"note\":\"No packages configured for this event type and market yet.\"},\"recommended\":\"ai\",\"suggestVsAdd\":\"suggest\",\"branch\":\"trip\"}}"
+ },
+ {
+  "method": "DELETE",
+  "url": "/api/trips/05623304-bcf0-4611-9663-c411c54e5b34",
+  "status": 204,
+  "body": ""
+ }
+]

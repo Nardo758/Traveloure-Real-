@@ -197,7 +197,7 @@
           "method": "POST",
           "url": "/api/auth/register",
           "status": 201,
-          "body": "{\"email\":\"j5-1790286997237@traveloure.test\",\"password\":\"TestPassword123!\",\"firstName\":\"J5\",\"lastName\":\"Guest\"}",
+          "body": "{\"email\":\"j5-1790286997237@traveloure.test\",\"password\":\"<redacted>\",\"firstName\":\"J5\",\"lastName\":\"Guest\"}",
           "response": "{\"message\":\"Account created successfully\",\"user\":{\"id\":\"588e482a-39ea-4e10-ae49-99afe9105798\",\"email\":\"j5-1790286997237@traveloure.test\",\"firstName\":\"J5\",\"lastName\":\"Guest\",\"role\":\"user\"}}"
         },
         {

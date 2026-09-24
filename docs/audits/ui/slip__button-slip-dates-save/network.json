@@ -1,0 +1,96 @@
+[
+ {
+  "method": "GET",
+  "url": "/api/auth/user",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/pricing",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/notifications/unread-count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/messages/unread/count",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9622800c-6ccc-402e-a0ce-e50e2bc74f4e/plancard",
+  "status": 200
+ },
+ {
+  "method": "POST",
+  "url": "/api/cart/migrate",
+  "status": 200,
+  "body": "{\"guestSessionId\":\"ce08e313-75d2-4096-b31b-2a94489da1cf\"}",
+  "response": "{\"success\":true,\"migrated\":0,\"deduplicated\":0}"
+ },
+ {
+  "method": "GET",
+  "url": "/api/ready-made/purchases/by-clone/9622800c-6ccc-402e-a0ce-e50e2bc74f4e",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9622800c-6ccc-402e-a0ce-e50e2bc74f4e/suggestions",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/coordination-states",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/user-experiences",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9622800c-6ccc-402e-a0ce-e50e2bc74f4e/trip-pass",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9622800c-6ccc-402e-a0ce-e50e2bc74f4e/proposals",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9622800c-6ccc-402e-a0ce-e50e2bc74f4e/guests",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9622800c-6ccc-402e-a0ce-e50e2bc74f4e/expert-advisor",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/trips/9622800c-6ccc-402e-a0ce-e50e2bc74f4e",
+  "status": 200
+ },
+ {
+  "method": "GET",
+  "url": "/api/experience-types",
+  "status": 200
+ },
+ {
+  "method": "PATCH",
+  "url": "/api/trips/9622800c-6ccc-402e-a0ce-e50e2bc74f4e",
+  "status": 500,
+  "body": "{\"startDate\":\"2026-12-03\",\"endDate\":\"2026-12-08\"}",
+  "response": "{\"message\":\"forced failure (audit)\"}"
+ }
+]

@@ -48,6 +48,17 @@ for (const p of patches) {
       const have = new Set(r.verdict.gaps.map((g) => g.class + g.note));
       for (const g of p.addGaps) if (!have.has(g.class + g.note)) r.verdict.gaps.push(g);
     }
+    if (p.uiMerge) r.ui = { ...(r.ui || {}), ...p.uiMerge };
+    if (p.annotateGaps) {
+      for (const a of p.annotateGaps) {
+        for (const g of r.verdict.gaps) {
+          if (g.class !== a.class) continue;
+          if (a.severity && g.severity !== a.severity) continue;
+          if (a.noteMatch && !new RegExp(a.noteMatch, "i").test(g.note || "")) continue;
+          Object.assign(g, a.set);
+        }
+      }
+    }
     if (p.evidence) r.verdict.evidence = p.evidence;
     if (p.evidenceRef) r.verdict.evidenceRef = p.evidenceRef;
     if (p.actual) r.verdict.actual = p.actual;
