@@ -203,6 +203,7 @@ import {
   type PlatformConciergePriceSyncResult,
 } from "../services/platform-concierge-price.service";
 import { sanitizeInput } from "../utils/sanitize";
+import { escHtml } from "../utils/email-escape";
 
 const router = Router();
 
@@ -217,6 +218,11 @@ export const _adminTestEmailHooks: {
   }>;
   /** Override the Resend call timeout (ms). Defaults to 12 000 in production; set low in tests. */
   resendTimeoutMs?: number;
+  /** #1426: intercept the delivery-status read (`emails.get`) in tests. */
+  resendGet?: (id: string) => Promise<{
+    data: { last_event?: string } | null;
+    error: { message?: string } | null;
+  }>;
 } = {};
 
 const anthropic = new Anthropic({
@@ -6484,7 +6490,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
             <h2 style="color: #FF385C; margin-bottom: 8px;">Test Email</h2>
-            <p style="color: #374151;">Hi ${adminUser.firstName ?? adminUser.email},</p>
+            <p style="color: #374151;">Hi ${escHtml(adminUser.firstName ?? adminUser.email)},</p>
             <p style="color: #374151;">
               This is a test email sent from the Traveloure admin panel to confirm that email
               delivery is working correctly.
@@ -6492,7 +6498,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
             <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #F9FAFB; border-radius: 8px; overflow: hidden;">
               <tr>
                 <td style="padding: 12px 16px; color: #6B7280; width: 40%;">Sent to</td>
-                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${toEmail}</td>
+                <td style="padding: 12px 16px; color: #111827; font-weight: 600;">${escHtml(toEmail)}</td>
               </tr>
               <tr style="background: #F3F4F6;">
                 <td style="padding: 12px 16px; color: #6B7280;">Sent at</td>
@@ -6568,6 +6574,34 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("[admin/test-email] unexpected error:", err);
       return res.status(500).json({ ok: false, error: "Internal server error" });
+    }
+  });
+
+  // #1426: "sent" is not "delivered". The send call only proves Resend ACCEPTED the message; this
+  // reads Resend's own record of what happened to it (`last_event`: delivered, bounced, …) so the
+  // test panel can say which. Under the /api/admin blanket guard (§2). The id is Resend's, echoed
+  // back from the send; its shape is checked so nothing else is forwarded upstream.
+  router.get("/api/admin/system/test-email/:id", async (req, res) => {
+    const id = String(req.params.id ?? "");
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) {
+      return res.status(400).json({ ok: false, error: "Invalid message id" });
+    }
+    try {
+      let getter = _adminTestEmailHooks.resendGet;
+      if (!getter) {
+        const apiKey = process.env.RESEND_API_KEY;
+        if (!apiKey) return res.status(502).json({ ok: false, error: "RESEND_API_KEY is not configured" });
+        const { Resend } = await import("resend");
+        const client = new Resend(apiKey);
+        getter = (messageId: string) => client.emails.get(messageId) as any;
+      }
+      const { data, error } = await getter(id);
+      if (error) return res.status(502).json({ ok: false, error: String(error.message ?? error) });
+      // §13: an absent last_event is reported as unknown, never as delivered.
+      return res.json({ ok: true, id, lastEvent: data?.last_event ?? null });
+    } catch (err) {
+      console.error("[admin/test-email] status read failed:", (err as Error)?.message ?? err);
+      return res.status(502).json({ ok: false, error: "Could not read the delivery status" });
     }
   });
 

@@ -38,6 +38,8 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { ExpertCard } from "@/components/expert-card";
 import { SEOHead } from "@/components/seo-head";
+import { OPERATING_MARKET_DESTINATIONS } from "@shared/operating-markets";
+import { citySegment } from "@shared/location-match";
 import { expertFacetValues, expertSearchMatches } from "@/lib/expert-search";
 // One-source nav-icon map (ruling 2026-08-25-nav-icons) — the masthead tile reads it
 // rather than restating the role→glyph mapping; keyed by the nav leaf `name`.
@@ -76,17 +78,10 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
-const destinations = [
-  "All Destinations",
-  "Paris, France",
-  "Tokyo, Japan",
-  "Barcelona, Spain",
-  "Bali, Indonesia",
-  "New York, USA",
-  "Rome, Italy",
-  "Mumbai, India",
-  "Sydney, Australia",
-];
+// #190: the markets the platform OPERATES in, from the ONE ratified list (shared/operating-markets.ts)
+// — this was a hand-copied list of eight cities that left out Kyoto, the flagship launch market.
+// The picker says these are our markets, not every place an expert might know (§13).
+const destinations = ["All Destinations", ...OPERATING_MARKET_DESTINATIONS];
 
 const specialties = [
   "All Specialties",
@@ -182,9 +177,8 @@ export default function ExpertsPage() {
       // Where control and the server query; it is not free text for the What input.
       // Copying it into searchQuery caused valid destination-scoped experts to be
       // removed by the independent client-side text filter.
-      const match = destinations.find(d =>
-        d.toLowerCase().startsWith(destParam.toLowerCase().split(",")[0])
-      );
+      // #1385: the deep link names a city exactly — "Kyo" no longer selects Kyoto.
+      const match = destinations.find(d => d !== "All Destinations" && citySegment(d) === citySegment(destParam));
       if (match) setSelectedDestination(match);
     }
     if (topicParam) {
@@ -535,6 +529,9 @@ export default function ExpertsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <div className="px-2 py-1.5 text-[11px] text-muted-foreground" data-testid="text-destination-markets-note">
+                    The markets we operate in
+                  </div>
                   {destinations.map((dest) => (
                     <SelectItem key={dest} value={dest}>{dest}</SelectItem>
                   ))}

@@ -77,6 +77,12 @@ export const trackBookingEvent = (data: BookingEventData): void => {
   void sendAnalyticsEvent("/api/analytics/booking", data);
 };
 
+/** #323: a recruitment button was pressed. Beacon, fire-and-forget — never blocks the navigation. */
+export type RecruitmentClickSource = "discover_earn_card" | "discover_wanted_slot" | "earn_offering";
+export const trackRecruitmentClick = (data: { source: RecruitmentClickSource; target?: string; city?: string }): void => {
+  void sendAnalyticsEvent("/api/analytics/recruitment-click", data);
+};
+
 export type AnalyticsData = Record<string, string | number | boolean>;
 
 declare global {

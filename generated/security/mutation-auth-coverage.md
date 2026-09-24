@@ -4,16 +4,16 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 319/594**; remaining: **275**.
-- Admin: **145/150**; payments: **29/31**; user-data: **145/203**; other: **0/210**.
+- **Tested: 320/596**; remaining: **276**.
+- Admin: **145/150**; payments: **29/31**; user-data: **146/204**; other: **0/211**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **fresh**; manifest SHA-256: `027f2c45ed31281497d39d739d28c3f293d1dc4bedd0d2b5e06ba366aa4d84b7`; run timestamp: 2026-09-24T14:11:52.953Z.
+- Evidence state: **fresh**; manifest SHA-256: `d4423df172e9b90fccdea9a618c5b148cc27fee9f38142d12d5d3c71786263c0`; run timestamp: 2026-09-24T15:13:49.597Z.
 - `admin`: **passed**, 145 exact endpoint keys, context `admin`.
-- `highrisk-unauthenticated`: **passed**, 232 exact endpoint keys, context `unauthenticated`.
-- `expert-provider-wrong-role`: **passed**, 53 exact endpoint keys, context `wrong-role`.
+- `highrisk-unauthenticated`: **passed**, 233 exact endpoint keys, context `unauthenticated`.
+- `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
 - `resource-ownership`: **passed**, 34 exact endpoint keys, context `resource-owner`.
 - `payments-resource-ownership`: **passed**, 5 exact endpoint keys, context `payments-resource-owner`.
 - `payments-other-rails-ownership`: **passed**, 10 exact endpoint keys, context `payments-other-rails-owner`.
@@ -32,35 +32,35 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | Endpoint | Risk | Boundary | Source | Exact reason |
 | --- | --- | --- | --- | --- |
 | DELETE /api/anchors/:id | other | resource-owner | server/routes/trips.routes.ts:1707 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/coordination-bookings/:id | other | session-self | server/routes.ts:10523 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/coordination-states/:id | other | session-self | server/routes.ts:10421 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/custom-venues/:id | other | resource-owner | server/routes/content.routes.ts:1118 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/destination-calendar/events/:id | other | session-self | server/routes/content.routes.ts:2266 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/emergency-contacts/:id | other | session-self | server/routes/content.routes.ts:7322 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/coordination-bookings/:id | other | session-self | server/routes.ts:10619 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/coordination-states/:id | other | session-self | server/routes.ts:10517 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/custom-venues/:id | other | resource-owner | server/routes/content.routes.ts:1119 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/destination-calendar/events/:id | other | session-self | server/routes/content.routes.ts:2267 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/emergency-contacts/:id | other | session-self | server/routes/content.routes.ts:7352 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/expert-workspace/collections/:id/items/:itemId | other | public-or-system | server/routes/expert-workspace.routes.ts:789 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | DELETE /api/expert/vendors/:vendorId | user-data | session-self | server/routes/experts.routes.ts:420 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| DELETE /api/faqs/:id | other | session-self | server/routes/content.routes.ts:2071 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/faqs/:id | other | session-self | server/routes/content.routes.ts:2072 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/invites/:inviteId | other | session-self | server/routes/guest-invites.ts:422 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/me/slots/:slotId | user-data | resource-owner | server/routes/expert-console.routes.ts:286 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| DELETE /api/notifications/:id | user-data | resource-owner | server/routes/content.routes.ts:3113 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| DELETE /api/notifications/:id | user-data | resource-owner | server/routes/content.routes.ts:3143 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | DELETE /api/occasions/:id | other | session-self | server/routes/occasions.routes.ts:163 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/provider/availability/:id | user-data | session-self | server/routes.ts:10200 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| DELETE /api/provider/availability/:id | user-data | session-self | server/routes.ts:10296 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | DELETE /api/provider/blackout-dates/:id | user-data | resource-owner | server/routes/experts.routes.ts:483 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | DELETE /api/provider/bundles/:id | user-data | session-self | server/routes/provider.routes.ts:442 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | DELETE /api/provider/properties/:id | user-data | session-self | server/routes/provider.routes.ts:737 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | DELETE /api/provider/rooms/:id | user-data | session-self | server/routes/provider.routes.ts:872 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| DELETE /api/transactions/:id | other | session-self | server/routes/content.routes.ts:7284 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/transactions/:id | other | session-self | server/routes/content.routes.ts:7314 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/upsell/expert-review/endorse | other | session-self | server/routes/upsell.routes.ts:735 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/user-experience-items/:id | other | resource-owner | server/routes/content.routes.ts:2007 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/user-experiences/:id | other | session-self | server/routes/content.routes.ts:1923 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/user-experience-items/:id | other | resource-owner | server/routes/content.routes.ts:2008 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/user-experiences/:id | other | session-self | server/routes/content.routes.ts:1924 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/admin/evidence-thresholds/:key | admin | admin-role | server/routes/neighborhood-claims.routes.ts:310 | Not run: fresh admin live-matrix evidence for this endpoint is absent. |
-| PATCH /api/affiliate-booking-requests/:id | other | resource-owner | server/routes/content.routes.ts:7991 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/affiliate-booking-requests/:id | other | resource-owner | server/routes/content.routes.ts:8021 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/concierge/requests/:id | other | resource-owner | server/routes/concierge.routes.ts:316 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/coordination-bookings/:id | other | session-self | server/routes.ts:10481 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/coordination-states/:id | other | session-self | server/routes.ts:10316 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/coordination-states/:id/status | other | session-self | server/routes.ts:10344 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/custom-venues/:id | other | resource-owner | server/routes/content.routes.ts:1082 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/emergency-contacts/:id | other | session-self | server/routes/content.routes.ts:7304 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/coordination-bookings/:id | other | session-self | server/routes.ts:10577 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/coordination-states/:id | other | session-self | server/routes.ts:10412 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/coordination-states/:id/status | other | session-self | server/routes.ts:10440 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/custom-venues/:id | other | resource-owner | server/routes/content.routes.ts:1083 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/emergency-contacts/:id | other | session-self | server/routes/content.routes.ts:7334 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/expert-requests/:id/complete | other | session-self | server/routes/booking-actions.ts:433 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/expert-review/:shareToken/acknowledge | other | resource-owner | server/routes/trips.routes.ts:2861 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/expert-workspace/edits/:editId/submit | other | session-self | server/routes/expert-workspace.routes.ts:859 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -68,54 +68,55 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | PATCH /api/expert-workspace/gaps/:id/resolve | other | public-or-system | server/routes/expert-workspace.routes.ts:930 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | PATCH /api/expert-workspace/library/:id/extracted-places/:index | other | resource-owner | server/routes/expert-workspace.routes.ts:425 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/expert/assignments/:assignmentId/workspace-status | user-data | resource-owner | server/routes/booking-actions.ts:1323 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PATCH /api/expert/bookings/:id/status | user-data | session-self | server/routes.ts:7337 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| PATCH /api/expert/bookings/:id/status | user-data | session-self | server/routes.ts:7433 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | PATCH /api/expert/role | user-data | session-self | server/routes/expert-console.routes.ts:74 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/expert/services/:id/status | user-data | resource-owner | server/routes.ts:6035 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PATCH /api/faqs/:id | other | session-self | server/routes/content.routes.ts:2049 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/expert/services/:id/status | user-data | resource-owner | server/routes.ts:6056 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PATCH /api/faqs/:id | other | session-self | server/routes/content.routes.ts:2050 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/itinerary-share/:token/acknowledge | other | resource-owner | server/routes/trips.routes.ts:2691 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/me/handle | user-data | resource-owner | server/routes/storefront.routes.ts:94 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PATCH /api/me/reviews/:id/reply | user-data | resource-owner | server/routes/review-replies.routes.ts:116 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PATCH /api/notifications/:id/read | user-data | resource-owner | server/routes/content.routes.ts:3091 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PATCH /api/notifications/:id/read | user-data | resource-owner | server/routes/content.routes.ts:3121 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PATCH /api/occasions/:id | other | session-self | server/routes/occasions.routes.ts:123 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/participants/:id | user-data | resource-owner | server/routes/content.routes.ts:7159 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PATCH /api/provider-application | other | session-self | server/routes.ts:2755 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/provider/availability/:id | user-data | session-self | server/routes.ts:10176 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/provider/bookings/:id/status | user-data | session-self | server/routes.ts:7341 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| PATCH /api/participants/:id | user-data | resource-owner | server/routes/content.routes.ts:7189 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PATCH /api/provider-application | other | session-self | server/routes.ts:2756 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/provider/availability/:id | user-data | session-self | server/routes.ts:10272 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| PATCH /api/provider/bookings/:id/status | user-data | session-self | server/routes.ts:7437 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | PATCH /api/provider/bundles/:id | user-data | session-self | server/routes/provider.routes.ts:343 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | PATCH /api/provider/properties/:id | user-data | session-self | server/routes/provider.routes.ts:694 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | PATCH /api/provider/rooms/:id | user-data | session-self | server/routes/provider.routes.ts:825 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/provider/services/:id | user-data | resource-owner | server/routes.ts:4129 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PATCH /api/provider/services/:id | user-data | resource-owner | server/routes.ts:4152 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PATCH /api/provider/settings | user-data | resource-owner | server/routes/provider.routes.ts:124 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PATCH /api/service-bookings/:id/document-checklist | other | session-self | server/routes.ts:7785 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/service-bookings/:id/visa-status | other | session-self | server/routes.ts:7720 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/service-bookings/:id/document-checklist | other | session-self | server/routes.ts:7881 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/service-bookings/:id/visa-status | other | session-self | server/routes.ts:7816 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/short-links/:id | other | resource-owner | server/routes/short-links.routes.ts:188 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/transactions/:id | other | session-self | server/routes/content.routes.ts:7266 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/transactions/:id | other | session-self | server/routes/content.routes.ts:7296 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/transport-legs/:legId/mode | other | resource-owner | server/routes/trips.routes.ts:2245 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/transport-legs/:legId/status | other | resource-owner | server/routes/plancard.routes.ts:603 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/trips/:id/suggestions/:suggestionId | user-data | resource-owner | server/routes/booking-actions.ts:1151 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PATCH /api/user-experience-items/:id | other | resource-owner | server/routes/content.routes.ts:1984 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/user-experiences/:id | other | resource-owner | server/routes/content.routes.ts:1874 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/user-experience-items/:id | other | resource-owner | server/routes/content.routes.ts:1985 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/user-experiences/:id | other | resource-owner | server/routes/content.routes.ts:1875 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/admin/neighborhood-claims/:id/ratify | admin | admin-role | server/routes/neighborhood-claims.routes.ts:236 | Not run: fresh admin live-matrix evidence for this endpoint is absent. |
 | POST /api/admin/neighborhood-claims/:id/rescore | admin | admin-role | server/routes/neighborhood-claims.routes.ts:287 | Not run: fresh admin live-matrix evidence for this endpoint is absent. |
 | POST /api/admin/neighborhood-claims/:id/return | admin | admin-role | server/routes/neighborhood-claims.routes.ts:262 | Not run: fresh admin live-matrix evidence for this endpoint is absent. |
 | POST /api/admin/neighborhood-claims/manual-entry | admin | admin-role | server/routes/neighborhood-claims.routes.ts:160 | Not run: fresh admin live-matrix evidence for this endpoint is absent. |
-| POST /api/affiliate-booking-requests | other | resource-owner | server/routes/content.routes.ts:7564 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/affiliate-booking-requests/:id/claim | other | session-self | server/routes/content.routes.ts:7933 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/affiliate-booking-requests/:id/verify | other | session-self | server/routes/content.routes.ts:8273 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/affiliate-booking-requests/from-catalog | other | session-self | server/routes/content.routes.ts:7703 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/affiliate/track-click | other | session-self | server/routes/content.routes.ts:9113 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/affiliates/track | other | session-self | server/routes/content.routes.ts:9153 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/ai/chat | other | session-self | server/routes/content.routes.ts:737 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/ai/generate-blueprint | other | session-self | server/routes/content.routes.ts:666 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/ai/generate-itinerary | other | session-self | server/routes/content.routes.ts:4688 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/ai/generate-optimized-itineraries | other | session-self | server/routes/content.routes.ts:5110 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/ai/itineraries/:id/save-as-trip | other | resource-owner | server/routes/content.routes.ts:5239 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/ai/optimize-experience | other | session-self | server/routes/content.routes.ts:785 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/alerts/:id/acknowledge | other | session-self | server/routes/content.routes.ts:7340 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/alerts/:id/dismiss | other | session-self | server/routes/content.routes.ts:7358 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/analytics/booking | other | session-self | server/routes/content.routes.ts:3022 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/analytics/itinerary-generated | other | session-self | server/routes/content.routes.ts:2962 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/analytics/search-event | other | session-self | server/routes/content.routes.ts:2912 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/affiliate-booking-requests | other | resource-owner | server/routes/content.routes.ts:7594 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/affiliate-booking-requests/:id/claim | other | session-self | server/routes/content.routes.ts:7963 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/affiliate-booking-requests/:id/verify | other | session-self | server/routes/content.routes.ts:8303 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/affiliate-booking-requests/from-catalog | other | session-self | server/routes/content.routes.ts:7733 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/affiliate/track-click | other | session-self | server/routes/content.routes.ts:9143 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/affiliates/track | other | session-self | server/routes/content.routes.ts:9183 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/ai/chat | other | session-self | server/routes/content.routes.ts:738 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/ai/generate-blueprint | other | session-self | server/routes/content.routes.ts:667 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/ai/generate-itinerary | other | session-self | server/routes/content.routes.ts:4718 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/ai/generate-optimized-itineraries | other | session-self | server/routes/content.routes.ts:5140 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/ai/itineraries/:id/save-as-trip | other | resource-owner | server/routes/content.routes.ts:5269 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/ai/optimize-experience | other | session-self | server/routes/content.routes.ts:786 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/alerts/:id/acknowledge | other | session-self | server/routes/content.routes.ts:7370 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/alerts/:id/dismiss | other | session-self | server/routes/content.routes.ts:7388 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/analytics/booking | other | session-self | server/routes/content.routes.ts:3052 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/analytics/itinerary-generated | other | session-self | server/routes/content.routes.ts:2992 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/analytics/recruitment-click | other | session-self | server/routes/content.routes.ts:2925 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/analytics/search-event | other | session-self | server/routes/content.routes.ts:2942 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/auth/accept-terms | other | session-self | server/replit_integrations/auth/routes.ts:147 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/auth/forgot-password | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:310 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/auth/login | other | session-self | server/replit_integrations/auth/emailAuth.ts:188 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -125,41 +126,41 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/auth/send-verification | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:451 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/auth/verify-email | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:489 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/bookings/bulk-status | user-data | resource-owner | server/routes/bookings.ts:380 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/budget/calculate-tip | other | session-self | server/routes/content.routes.ts:7255 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/budget/convert-currency | other | session-self | server/routes/content.routes.ts:7241 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/cache/checkout-verify | other | session-self | server/routes/content.routes.ts:3757 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/cache/cleanup | other | session-self | server/routes/content.routes.ts:3564 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/cache/refresh | other | session-self | server/routes/content.routes.ts:3723 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/cache/verify-availability | other | session-self | server/routes/content.routes.ts:3514 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/cart | user-data | resource-owner | server/routes.ts:8998 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/cart/convert-to-itinerary | user-data | resource-owner | server/routes.ts:9310 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/cart/resolve-trip | user-data | resource-owner | server/routes.ts:8795 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/chat/start | other | session-self | server/routes/content.routes.ts:509 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/budget/calculate-tip | other | session-self | server/routes/content.routes.ts:7285 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/budget/convert-currency | other | session-self | server/routes/content.routes.ts:7271 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/cache/checkout-verify | other | session-self | server/routes/content.routes.ts:3787 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/cache/cleanup | other | session-self | server/routes/content.routes.ts:3594 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/cache/refresh | other | session-self | server/routes/content.routes.ts:3753 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/cache/verify-availability | other | session-self | server/routes/content.routes.ts:3544 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/cart | user-data | resource-owner | server/routes.ts:9094 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/cart/convert-to-itinerary | user-data | resource-owner | server/routes.ts:9406 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/cart/resolve-trip | user-data | resource-owner | server/routes.ts:8891 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/chat/start | other | session-self | server/routes/content.routes.ts:510 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/chats | other | session-self | server/routes/trips.routes.ts:680 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/claude/full-itinerary-graph | other | session-self | server/routes/content.routes.ts:4060 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/claude/optimize-itinerary | other | session-self | server/routes/content.routes.ts:3867 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/claude/recommendations | other | session-self | server/routes/content.routes.ts:4108 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/claude/transportation-analysis | other | session-self | server/routes/content.routes.ts:3901 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/claude/full-itinerary-graph | other | session-self | server/routes/content.routes.ts:4090 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/claude/optimize-itinerary | other | session-self | server/routes/content.routes.ts:3897 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/claude/recommendations | other | session-self | server/routes/content.routes.ts:4138 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/claude/transportation-analysis | other | session-self | server/routes/content.routes.ts:3931 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/concierge/escalations | other | resource-owner | server/routes/concierge.routes.ts:534 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/concierge/quote | other | session-self | server/routes/concierge.routes.ts:249 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/concierge/requests | other | resource-owner | server/routes/concierge.routes.ts:192 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/concierge/requests/:id/claim | other | session-self | server/routes/concierge.routes.ts:437 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/contact | other | public-or-system | server/routes/content.routes.ts:444 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/content/:trackingNumber/flag | other | session-self | server/routes/content.routes.ts:9209 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/content/affiliate-redirect | other | session-self | server/routes/content.routes.ts:9039 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/content/checkout | other | session-self | server/routes/content.routes.ts:9024 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/coordination-bookings/:id/confirm | other | session-self | server/routes.ts:10507 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/coordination-states | other | resource-owner | server/routes.ts:10264 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/coordination-states/:coordinationId/bookings | other | session-self | server/routes.ts:10450 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/contact | other | public-or-system | server/routes/content.routes.ts:445 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/content/:trackingNumber/flag | other | session-self | server/routes/content.routes.ts:9239 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/content/affiliate-redirect | other | session-self | server/routes/content.routes.ts:9069 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/content/checkout | other | session-self | server/routes/content.routes.ts:9054 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/coordination-bookings/:id/confirm | other | session-self | server/routes.ts:10603 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/coordination-states | other | resource-owner | server/routes.ts:10360 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/coordination-states/:coordinationId/bookings | other | session-self | server/routes.ts:10546 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/cross-sell-events | other | session-self | server/routes/cross-sell.routes.ts:38 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/custom-venues | other | resource-owner | server/routes/content.routes.ts:1056 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/destination-calendar/events | other | session-self | server/routes/content.routes.ts:2198 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/destination-calendar/events/:id/submit | other | session-self | server/routes/content.routes.ts:2241 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/custom-venues | other | resource-owner | server/routes/content.routes.ts:1057 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/destination-calendar/events | other | session-self | server/routes/content.routes.ts:2199 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/destination-calendar/events/:id/submit | other | session-self | server/routes/content.routes.ts:2242 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/events/:experienceId/invites | other | session-self | server/routes/guest-invites.ts:172 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/events/:experienceId/invites/send | other | session-self | server/routes/guest-invites.ts:329 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/expert-application | other | session-self | server/routes.ts:2487 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/expert-booking-requests | other | resource-owner | server/routes.ts:1885 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/expert-forms | other | session-self | server/routes.ts:2575 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/expert-application | other | session-self | server/routes.ts:2488 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/expert-booking-requests | other | resource-owner | server/routes.ts:1886 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/expert-forms | other | session-self | server/routes.ts:2576 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-requests | other | resource-owner | server/routes/booking-actions.ts:203 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-review/:shareToken/submit | other | resource-owner | server/routes/trips.routes.ts:2724 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-workspace/build-itinerary | other | resource-owner | server/routes/expert-workspace.routes.ts:583 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -168,25 +169,25 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/expert-workspace/content/:id/edit | other | session-self | server/routes/expert-workspace.routes.ts:804 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-workspace/library/:id/extract-places | other | session-self | server/routes/expert-workspace.routes.ts:379 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-workspace/scrape-jobs | other | public-or-system | server/routes/expert-workspace.routes.ts:958 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/expert/:expertId/tip | payments | resource-owner | server/routes.ts:5639 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/expert/ai-tasks/:taskId/approve | user-data | session-self | server/routes.ts:11642 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/ai-tasks/:taskId/regenerate | user-data | session-self | server/routes.ts:11705 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/ai-tasks/:taskId/reject | user-data | session-self | server/routes.ts:11675 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/ai-tasks/delegate | user-data | session-self | server/routes.ts:11543 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/:expertId/tip | payments | resource-owner | server/routes.ts:5660 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/expert/ai-tasks/:taskId/approve | user-data | session-self | server/routes.ts:11738 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/ai-tasks/:taskId/regenerate | user-data | session-self | server/routes.ts:11801 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/ai-tasks/:taskId/reject | user-data | session-self | server/routes.ts:11771 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/ai-tasks/delegate | user-data | session-self | server/routes.ts:11639 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/assignments/:assignmentId/accept | user-data | session-self | server/routes/booking-actions.ts:1305 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/bookings/:id/complete | user-data | session-self | server/routes.ts:7508 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/reviews/:id/respond | user-data | session-self | server/routes.ts:7972 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/bookings/:id/complete | user-data | session-self | server/routes.ts:7604 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/reviews/:id/respond | user-data | session-self | server/routes.ts:8068 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/trips/:tripId/vendors | user-data | session-self | server/routes/experts.routes.ts:343 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/faqs | other | session-self | server/routes/content.routes.ts:2030 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/fever/cache/refresh-all | other | session-self | server/routes/content.routes.ts:7044 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/fever/cache/refresh/:cityCode | other | session-self | server/routes/content.routes.ts:7027 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/generated-itineraries | other | session-self | server/routes/content.routes.ts:597 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/geocode | other | public-or-system | server/routes/content.routes.ts:4200 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/grok/chat | other | session-self | server/routes/content.routes.ts:4581 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/grok/content/generate | other | session-self | server/routes/content.routes.ts:4432 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/grok/intelligence | other | session-self | server/routes/content.routes.ts:4459 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/grok/itinerary/generate | other | session-self | server/routes/content.routes.ts:4519 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/grok/match-experts | other | session-self | server/routes/content.routes.ts:4258 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/faqs | other | session-self | server/routes/content.routes.ts:2031 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/fever/cache/refresh-all | other | session-self | server/routes/content.routes.ts:7074 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/fever/cache/refresh/:cityCode | other | session-self | server/routes/content.routes.ts:7057 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/generated-itineraries | other | session-self | server/routes/content.routes.ts:598 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/geocode | other | public-or-system | server/routes/content.routes.ts:4230 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/grok/chat | other | session-self | server/routes/content.routes.ts:4611 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/grok/content/generate | other | session-self | server/routes/content.routes.ts:4462 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/grok/intelligence | other | session-self | server/routes/content.routes.ts:4489 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/grok/itinerary/generate | other | session-self | server/routes/content.routes.ts:4549 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/grok/match-experts | other | session-self | server/routes/content.routes.ts:4288 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/identity/business/create-inquiry | user-data | public-or-system | server/routes/identity.routes.ts:64 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/instagram/data-deletion | other | public-or-system | server/routes/instagram.ts:613 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/instagram/deauthorize | other | public-or-system | server/routes/instagram.ts:575 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
@@ -196,11 +197,11 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/invites/:token/origin | other | public-or-system | server/routes/guest-invites.ts:484 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/invites/:token/rsvp | other | public-or-system | server/routes/guest-invites.ts:518 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/invites/:token/travel-plans | other | public-or-system | server/routes/guest-invites.ts:616 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/itinerary-comparisons | other | signature | server/routes.ts:9430 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/itinerary-comparisons | other | signature | server/routes.ts:9526 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-comparisons/:id/adopt-stop | other | session-self | server/routes/plancard.routes.ts:288 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-comparisons/:id/apply-to-cart | other | session-self | server/routes/trips.routes.ts:836 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-comparisons/:id/apply-to-trip | other | resource-owner | server/routes/plancard.routes.ts:50 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/itinerary-comparisons/:id/generate | other | resource-owner | server/routes.ts:9772 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/itinerary-comparisons/:id/generate | other | resource-owner | server/routes.ts:9868 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-comparisons/:id/select | other | session-self | server/routes/trips.routes.ts:807 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-items/:id/backup | other | resource-owner | server/routes/trips.routes.ts:1510 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-share/:token/suggest | other | resource-owner | server/routes/trips.routes.ts:2634 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -211,57 +212,57 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/memberships/checkout | other | session-self | server/routes/payments.routes.ts:3172 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/occasions | other | session-self | server/routes/occasions.routes.ts:85 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/optimization-preview | other | session-self | server/routes/optimization.routes.ts:59 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/provider-application | other | session-self | server/routes.ts:2716 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/provider-forms | other | session-self | server/routes.ts:2789 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/provider/availability | user-data | resource-owner | server/routes.ts:10148 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/provider-application | other | session-self | server/routes.ts:2717 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/provider-forms | other | session-self | server/routes.ts:2790 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/provider/availability | user-data | resource-owner | server/routes.ts:10244 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/provider/blackout-dates | user-data | session-self | server/routes/experts.routes.ts:456 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/provider/bookings/:id/complete | user-data | session-self | server/routes.ts:7507 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/provider/bookings/:id/complete | user-data | session-self | server/routes.ts:7603 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/provider/bundles | user-data | session-self | server/routes/provider.routes.ts:249 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/provider/properties | user-data | session-self | server/routes/provider.routes.ts:558 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/provider/properties/:id/rooms | user-data | session-self | server/routes/provider.routes.ts:759 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/provider/services | user-data | resource-owner | server/routes.ts:3797 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/provider/services/:id/deliverable-file | user-data | resource-owner | server/routes.ts:6392 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/provider/services | user-data | resource-owner | server/routes.ts:3820 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/provider/services/:id/deliverable-file | user-data | resource-owner | server/routes.ts:6418 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/quick-start-itinerary | other | session-self | server/routes/trips.routes.ts:876 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/quotes/:quoteId/accept | other | session-self | server/routes/service-quotes.routes.ts:82 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/quotes/:quoteId/decline | other | session-self | server/routes/service-quotes.routes.ts:94 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/ready-made/:id/purchase/confirm | payments | resource-owner | server/routes/ready-made.routes.ts:1347 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/recommendations/:id/convert | other | session-self | server/routes.ts:8451 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/recommendations/:id/dismiss | other | session-self | server/routes.ts:8481 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/recommendations/refresh/:city | other | session-self | server/routes.ts:8435 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/routes/transit | other | session-self | server/routes/content.routes.ts:4127 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/routes/transit-multi | other | session-self | server/routes/content.routes.ts:4163 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/recommendations/:id/convert | other | session-self | server/routes.ts:8547 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/recommendations/:id/dismiss | other | session-self | server/routes.ts:8577 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/recommendations/refresh/:city | other | session-self | server/routes.ts:8531 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/routes/transit | other | session-self | server/routes/content.routes.ts:4157 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/routes/transit-multi | other | session-self | server/routes/content.routes.ts:4193 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/saved-trips | other | session-self | server/routes/booking-actions.ts:455 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/saved-trips/:id/convert | other | session-self | server/routes/booking-actions.ts:487 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/serp/inquiry | other | session-self | server/routes/content.routes.ts:6382 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/serp/track-click | other | public-or-system | server/routes/content.routes.ts:6354 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/service-categories | other | session-self | server/routes/content.routes.ts:963 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/serp/inquiry | other | session-self | server/routes/content.routes.ts:6412 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/serp/track-click | other | public-or-system | server/routes/content.routes.ts:6384 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/service-categories | other | session-self | server/routes/content.routes.ts:964 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/service-requests | other | session-self | server/routes/service-requests.routes.ts:38 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/service-subcategories | other | session-self | server/routes/content.routes.ts:989 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/service-subcategories | other | session-self | server/routes/content.routes.ts:990 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/services/:id/quote-requests | other | session-self | server/routes/service-quotes.routes.ts:51 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/services/:serviceId/reviews | other | session-self | server/routes/content.routes.ts:3160 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/services/:serviceId/reviews | other | session-self | server/routes/content.routes.ts:3190 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/shared-trips | other | session-self | server/routes/booking-actions.ts:524 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/short-links | other | resource-owner | server/routes/short-links.routes.ts:82 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/spontaneous/:id/book | other | session-self | server/routes/content.routes.ts:7498 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/track/accommodation-preference | other | session-self | server/routes/content.routes.ts:9522 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/track/activity | other | session-self | server/routes/content.routes.ts:9405 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/track/destination-search | other | session-self | server/routes/content.routes.ts:9484 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/track/funnel | other | session-self | server/routes/content.routes.ts:9365 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/track/pageview | other | session-self | server/routes/content.routes.ts:9339 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/track/search | other | session-self | server/routes/content.routes.ts:9299 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/track/trip-enhanced | other | session-self | server/routes/content.routes.ts:9440 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/tracking/impression | other | session-self | server/routes/content.routes.ts:9275 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/spontaneous/:id/book | other | session-self | server/routes/content.routes.ts:7528 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/track/accommodation-preference | other | session-self | server/routes/content.routes.ts:9552 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/track/activity | other | session-self | server/routes/content.routes.ts:9435 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/track/destination-search | other | session-self | server/routes/content.routes.ts:9514 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/track/funnel | other | session-self | server/routes/content.routes.ts:9395 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/track/pageview | other | session-self | server/routes/content.routes.ts:9369 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/track/search | other | session-self | server/routes/content.routes.ts:9329 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/track/trip-enhanced | other | session-self | server/routes/content.routes.ts:9470 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/tracking/impression | other | session-self | server/routes/content.routes.ts:9305 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/transport-booking-options/:optionId/book | other | session-self | server/routes/transport-hub.routes.ts:324 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/transport-booking-options/:optionId/click | other | session-self | server/routes/transport-hub.routes.ts:422 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/transport-booking-options/seed/:variantId | other | session-self | server/routes/transport-hub.routes.ts:565 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/transport-booking-options/seed/test-variant | other | session-self | server/routes/transport-hub.routes.ts:531 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/transport-packages/generate | other | session-self | server/routes/content.routes.ts:3941 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/travelpulse/media/track-download | other | public-or-system | server/routes/content.routes.ts:5755 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/travelpulse/seed | other | session-self | server/routes/content.routes.ts:5612 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/travelpulse/truth-check | other | public-or-system | server/routes/content.routes.ts:5424 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/transport-packages/generate | other | session-self | server/routes/content.routes.ts:3971 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/travelpulse/media/track-download | other | public-or-system | server/routes/content.routes.ts:5785 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/travelpulse/seed | other | session-self | server/routes/content.routes.ts:5642 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/travelpulse/truth-check | other | public-or-system | server/routes/content.routes.ts:5454 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/trip-context/extract | other | signature | server/routes/trip-context.routes.ts:351 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/trips | user-data | public-or-system | server/routes/trips.routes.ts:519 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/trips/:id/expert-advisor | user-data | resource-owner | server/routes/booking-actions.ts:720 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/trips/:id/generate-itinerary | user-data | resource-owner | server/routes.ts:1590 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/trips/:id/generate-itinerary | user-data | resource-owner | server/routes.ts:1591 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/trips/:id/plan-review | user-data | resource-owner | server/routes/booking-actions.ts:1436 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/trips/:id/share | user-data | resource-owner | server/routes/booking-actions.ts:572 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/trips/:tripId/items/:itemId/comments | user-data | resource-owner | server/routes/booking-actions.ts:1639 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
@@ -282,10 +283,10 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/upsell/plancard-ontrip | other | session-self | server/routes/upsell.routes.ts:507 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/upsell/plancard-pretrip | other | session-self | server/routes/upsell.routes.ts:441 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/upsell/post-booking | other | session-self | server/routes/upsell.routes.ts:833 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/user-experiences | other | session-self | server/routes/content.routes.ts:1831 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/user-experiences/:id/items | other | resource-owner | server/routes/content.routes.ts:1961 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/vendors | other | session-self | server/routes.ts:2436 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/viator/availability | other | session-self | server/routes/content.routes.ts:3373 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/user-experiences | other | session-self | server/routes/content.routes.ts:1832 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/user-experiences/:id/items | other | resource-owner | server/routes/content.routes.ts:1962 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/vendors | other | session-self | server/routes.ts:2437 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/viator/availability | other | session-self | server/routes/content.routes.ts:3403 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/visa/requirements | other | public-or-system | server/routes/experts.routes.ts:645 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/webhooks/persona | other | signature | server/routes/webhooks.routes.ts:90 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/webhooks/stripe-identity | other | signature | server/routes/webhooks.routes.ts:30 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -301,8 +302,8 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /internal/jobs/travelpayouts-report-poll | other | public-or-system | server/routes/internal.routes.ts:255 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /internal/run-occasion-drafts | other | public-or-system | server/routes/internal.routes.ts:184 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | PUT /api/anchors/:id | other | resource-owner | server/routes/trips.routes.ts:1680 | Other-category endpoint is intentionally outside the strict tested set. |
-| PUT /api/destination-calendar/events/:id | other | session-self | server/routes/content.routes.ts:2216 | Other-category endpoint is intentionally outside the strict tested set. |
+| PUT /api/destination-calendar/events/:id | other | session-self | server/routes/content.routes.ts:2217 | Other-category endpoint is intentionally outside the strict tested set. |
 | PUT /api/expert/vendors/:vendorId | user-data | session-self | server/routes/experts.routes.ts:382 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | PUT /api/provider/booking-requests/:requestId/respond | user-data | resource-owner | server/routes/experts.routes.ts:538 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PUT /api/provider/services/:id/translations/:locale | user-data | resource-owner | server/routes.ts:3703 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PUT /api/provider/services/:id/translations/:locale | user-data | resource-owner | server/routes.ts:3726 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PUT /api/trip-context | other | session-self | server/routes/trip-context.routes.ts:247 | Other-category endpoint is intentionally outside the strict tested set. |

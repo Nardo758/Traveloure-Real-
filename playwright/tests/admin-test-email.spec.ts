@@ -119,6 +119,16 @@ async function mockSupportingRoutes(page: import('@playwright/test').Page) {
   await page.route('**/api/admin/slow-queries**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
   );
+
+  // #1426: the panel reads Resend's delivery record after a send. By default Resend has only
+  // accepted it ("sent"); a test that needs "delivered" registers its own route after this one.
+  await page.route('**/api/admin/system/test-email/*', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true, lastEvent: 'sent' }),
+    }),
+  );
 }
 
 /**
@@ -165,6 +175,15 @@ test.describe('Admin test-email — custom recipient address', () => {
         });
       });
 
+      // #1426: this message's delivery record says it arrived.
+      await page.route('**/api/admin/system/test-email/msg_test_abc123', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, id: 'msg_test_abc123', lastEvent: 'delivered' }),
+        }),
+      );
+
       await openSystemPage(page);
 
       // Enter the custom address.
@@ -178,7 +197,9 @@ test.describe('Admin test-email — custom recipient address', () => {
       const banner = page.getByTestId('test-email-result');
       await expect(banner).toBeVisible({ timeout: 10_000 });
       await expect(banner).toContainText(CUSTOM_ADDRESS);
-      await expect(banner).toContainText('Delivered successfully');
+      // #1426: acceptance first; "Delivered" only once Resend's record says so.
+      await expect(banner).toContainText('Accepted by Resend');
+      await expect(page.getByTestId('text-test-email-delivery')).toHaveText('Delivered', { timeout: 10_000 });
 
       // Confirm the route handler actually ran.
       expect(capturedTo, 'Interceptor must have been invoked').toBe(CUSTOM_ADDRESS);
@@ -236,7 +257,7 @@ test.describe('Admin test-email — invalid email format', () => {
       await expect(banner).toBeVisible({ timeout: 10_000 });
 
       // The banner must NOT claim success.
-      await expect(banner).not.toContainText('Delivered successfully');
+      await expect(banner).not.toContainText('Accepted by Resend');
 
       // Confirm the route handler actually ran (not short-circuited client-side).
       expect(interceptorCalled, 'Server interceptor must have been called').toBe(true);
@@ -276,7 +297,7 @@ test.describe('Admin test-email — Resend not configured (502)', () => {
       await expect(banner).toBeVisible({ timeout: 10_000 });
 
       // The banner must NOT claim success.
-      await expect(banner).not.toContainText('Delivered successfully');
+      await expect(banner).not.toContainText('Accepted by Resend');
 
       // The error text from the 502 body must be surfaced somewhere in the banner.
       await expect(banner).toContainText('RESEND_API_KEY');
@@ -319,7 +340,7 @@ test.describe('Admin test-email — EMAIL_FROM not configured (502)', () => {
       await expect(banner).toBeVisible({ timeout: 10_000 });
 
       // The banner must NOT claim success.
-      await expect(banner).not.toContainText('Delivered successfully');
+      await expect(banner).not.toContainText('Accepted by Resend');
 
       // The banner must tell the admin which env var to fix.
       await expect(banner).toContainText('EMAIL_FROM');
@@ -334,7 +355,7 @@ test.describe('Admin test-email — EMAIL_FROM not configured (502)', () => {
 
 test.describe('Admin test-email — EMAIL_FROM_NOREPLY absent, EMAIL_FROM present', () => {
   test(
-    'success banner shows "Delivered successfully" when server falls back to EMAIL_FROM',
+    'success banner shows "Accepted by Resend" when server falls back to EMAIL_FROM',
     async ({ page }) => {
       test.skip(!adminSessionOk, 'Admin session not authenticated — skipped in local dev');
 
@@ -376,7 +397,7 @@ test.describe('Admin test-email — EMAIL_FROM_NOREPLY absent, EMAIL_FROM presen
       // cause the send to fail when EMAIL_FROM is configured.
       const banner = page.getByTestId('test-email-result');
       await expect(banner).toBeVisible({ timeout: 10_000 });
-      await expect(banner).toContainText('Delivered successfully');
+      await expect(banner).toContainText('Accepted by Resend');
 
       // Confirm the interceptor ran (the request actually reached the mock).
       expect(interceptorCalled, 'Server interceptor must have been called').toBe(true);
@@ -433,7 +454,7 @@ test.describe('Admin test-email — empty field falls back to admin address', ()
       // Banner must show success with the admin's own address.
       const banner = page.getByTestId('test-email-result');
       await expect(banner).toBeVisible({ timeout: 10_000 });
-      await expect(banner).toContainText('Delivered successfully');
+      await expect(banner).toContainText('Accepted by Resend');
       await expect(banner).toContainText(ADMIN_EMAIL);
 
       // Confirm the route handler actually ran.

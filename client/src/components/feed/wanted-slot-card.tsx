@@ -17,6 +17,7 @@ import type { FeedItem } from "@/lib/feed-stream";
 import type { WantedSlotData } from "@/lib/feed-composition";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { buildWantedSlotSignupHref } from "@/lib/wanted-slot-link";
+import { trackRecruitmentClick } from "@/lib/analytics";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -75,6 +76,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
           className="mt-1 inline-flex w-fit text-[11px] hover:underline"
           style={{ color: "var(--earn-teal-ink)", fontFamily: EARN_MONO }}
           data-testid={`link-wanted-more-info-${neighborhoodId}`}
+          onClick={() => trackRecruitmentClick({ source: "discover_wanted_slot", target: "more_info", city: slotCity ?? undefined })}
         >
           More info →
         </a>
@@ -90,6 +92,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
           className="inline-flex items-center gap-0.5 rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
           style={{ background: "var(--earn-gold-ink)" }}
           data-testid="link-wanted-apply"
+          onClick={() => trackRecruitmentClick({ source: "discover_wanted_slot", target: offeringKey ?? offeringLabel, city: slotCity ?? undefined })}
         >
           Ways to earn <ChevronRight className="h-3 w-3" />
         </a>

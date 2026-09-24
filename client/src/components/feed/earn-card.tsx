@@ -10,6 +10,7 @@
  *   - `btn-earn-provider` (List a service → /earn)
  */
 import { Button } from "@/components/ui/button";
+import { trackRecruitmentClick } from "@/lib/analytics";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -54,6 +55,7 @@ export function FeedEarnCard({ city, density = "full" }: { city: string; density
         className="w-fit text-[11px] hover:underline"
         style={{ color: "var(--earn-teal-ink)", fontFamily: EARN_MONO }}
         data-testid="link-earn-more-info"
+        onClick={() => trackRecruitmentClick({ source: "discover_earn_card", target: "more_info", city })}
       >
         More info →
       </a>
@@ -65,10 +67,10 @@ export function FeedEarnCard({ city, density = "full" }: { city: string; density
           asChild
           data-testid="btn-earn-expert"
         >
-          <a href="/earn">Become an expert</a>
+          <a href="/earn" onClick={() => trackRecruitmentClick({ source: "discover_earn_card", target: "become_expert", city })}>Become an expert</a>
         </Button>
         <Button size="sm" variant="outline" className="h-7 px-3 text-xs" asChild data-testid="btn-earn-provider">
-          <a href="/earn">List a service</a>
+          <a href="/earn" onClick={() => trackRecruitmentClick({ source: "discover_earn_card", target: "list_service", city })}>List a service</a>
         </Button>
       </div>
     </div>
