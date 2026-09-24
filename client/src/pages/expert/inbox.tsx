@@ -71,6 +71,7 @@ import { useAuth } from "@/hooks/use-auth";
 // control and read-out. `/api/expert/bookings` carries the SERVER's own `completionDeclaration`,
 // so the traveler's review window is never counted out on this page.
 import { SellerCompletionPanel } from "@/components/bookings/SellerCompletionPanel";
+import { QaSessionPanel } from "@/components/live/QaSessionPanel";
 
 // ─── Shared shapes ──────────────────────────────────────────────────────────
 
@@ -1260,6 +1261,9 @@ function HistorySection() {
                             invalidateKeys={[["/api/expert/bookings"]]}
                           />
                         </div>
+                        {/* LD 54: a Q&A Session's Start / countdown / chat. Draws nothing unless the
+                            server says this booking is one. */}
+                        <QaSessionPanel bookingId={booking.id} />
                         {(() => {
                           // Two-sided fee disclosure (fields ride the booking payload —
                           // sanitizeBookingForExpert keeps totalAmount/platformFee/providerEarnings).

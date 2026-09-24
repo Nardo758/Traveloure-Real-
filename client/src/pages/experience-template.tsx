@@ -78,6 +78,7 @@ import { trackSearchEvent } from "@/lib/analytics";
 import { useAuth } from "@/hooks/use-auth";
 import { ExperienceMap } from "@/components/experience-map";
 import { ItineraryPreviewPanel } from "@/components/experience/itinerary-preview-panel";
+import { LiveChatExperts } from "@/components/live/LiveChatExperts";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -3524,22 +3525,13 @@ export default function ExperienceTemplatePage() {
                 )}
                 {expertHelpTab === "chat" && (
                   <div className="min-h-[400px]">
-                    <p className="text-center text-muted-foreground mb-4">
-                      Click the chat button in the bottom right corner to start a conversation with a travel advisor.
-                    </p>
-                    <div className="flex justify-center">
-                      <Button
-                        onClick={() => {
-                          setExpertHelpDialogOpen(false);
-                          setChatOpen(true);
-                        }}
-                        className="bg-primary"
-                        data-testid="button-start-chat"
-                      >
-                        <MessageCircle className="w-4 h-4 mr-2" />
-                        Start Chat with Expert
-                      </Button>
-                    </div>
+                    {/* LD 54: the Live Chat tab lists the destination's local experts, available
+                        now first, each with a real Message button — it no longer points at the AI
+                        widget in the corner. */}
+                    <LiveChatExperts
+                      destination={destination}
+                      subject={experienceType?.name ? `${experienceType.name} in ${destination}` : null}
+                    />
                   </div>
                 )}
               </div>

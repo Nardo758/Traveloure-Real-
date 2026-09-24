@@ -47,6 +47,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import {
   archetypeAsks,
+  cartCountLabel,
   cartUnitLabel,
   resolveCartLineCounts,
   PINNED_UNIT_QUANTITY,
@@ -294,4 +295,24 @@ test("Q8: no second copy of the archetype rule exists anywhere in the repo", () 
     if (speaksTheDecision && !importsTheOwner) offenders.push(path.relative(REPO, file));
   }
   assert.deepEqual(offenders, [], `a second archetype rule would drift from the server's: ${offenders.join(", ")}`);
+});
+
+// ── Q-D — Locked Decision 54: a per-day listing is sold by the day ──────────────────────────────
+
+test("Q-D: a per-day async listing asks for DAYS (not pinned like an artifact), and says so", () => {
+  const asks = archetypeAsks({ pricingUnit: "per_day", deliveryMethod: "async_messaging" });
+  assert.equal(asks.rule, "days");
+  assert.equal(asks.asksUnits, true);
+  assert.equal(asks.asksParty, false);
+  assert.equal(cartCountLabel(asks), "Days");
+  assert.equal(cartUnitLabel("days"), null, "a control is drawn, so no static label");
+  // The day count is admitted, not refused as it would be on a plain async listing.
+  const ok = resolveCartLineCounts({ pricingUnit: "per_day", deliveryMethod: "async_messaging" }, { quantity: 4 });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.ok && ok.quantity, 4);
+  const pinned = resolveCartLineCounts({ deliveryMethod: "async_messaging" }, { quantity: 4 });
+  assert.equal(pinned.ok, false);
+  // The other labels are unchanged.
+  assert.equal(cartCountLabel(archetypeAsks({ deliveryMethod: "in_person" })), "Seats");
+  assert.equal(cartCountLabel(archetypeAsks({ deliveryMethod: "video" })), "Quantity");
 });

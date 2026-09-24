@@ -80,6 +80,16 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * with them (admin / admin-role). The owner comes from the EA's own accepted relationship row,
  * never the body. 608 / 599 → 609 / 600; admin 150 → 151; admin-role 150 → 151.
  *
+ * 2026-09-24 (live help, Locked Decision 54, ledger `2026-09-24-live-chat-qa-sessions`): +2 reviewed
+ * routes (`live-help.routes.ts`). `PUT /api/me/available-now` writes only the SESSION earner's own
+ * switch (`.strict()` `{ on }`, no identity or time in the body) — user-data / session-self.
+ * `POST /api/qa-sessions/:bookingId/start` stamps a Q&A Session on a booking the session user is
+ * the traveler or seller of; a stranger and a non-Q&A booking are one 404 in the service
+ * (`server/__tests__/live-help.db.test.ts` Q1), and it classes with its booking-lifecycle peers
+ * (`accept-deliverable`, `request-revision`, component cancel — all session-self) — other /
+ * session-self. 609 / 600 → 611 / 602; user-data 204 → 205; other 214 → 215; session-self
+ * 311 → 313.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -87,8 +97,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 609);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 600);
+  assert.equal(result.mutations.length, 611);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 602);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -98,15 +108,15 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 600);
-  assert.equal(manifest.rawRegistrationCount, 609);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 600);
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 151, "user-data": 204, other: 214 });
+  assert.equal(endpointRows.length, 602);
+  assert.equal(manifest.rawRegistrationCount, 611);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 602);
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 151, "user-data": 205, other: 215 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 151, "session-self": 311, "resource-owner": 94,
+    "admin-role": 151, "session-self": 313, "resource-owner": 94,
     signature: 6, "public-or-system": 38, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [

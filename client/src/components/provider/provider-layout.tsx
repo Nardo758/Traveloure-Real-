@@ -1,4 +1,5 @@
 import { ProviderSidebar } from "./provider-sidebar";
+import { AvailableNowToggle } from "@/components/live/AvailableNowToggle";
 import { Star } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { BackofficeShell } from "@/components/backoffice/backoffice-shell";
@@ -58,6 +59,9 @@ export function ProviderLayout({ children, title, width = "contained" }: Provide
       notificationsTestId="button-provider-notifications"
       notificationsHref="/provider/inbox"
       statusBadge={
+        <div className="flex items-center gap-2">
+        {/* Locked Decision 54: the earner's own "Available now" switch. */}
+        <AvailableNowToggle />
         <div
           className="hidden sm:flex items-center gap-1.5 h-[28px] px-2.5 rounded-full"
           style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}
@@ -67,6 +71,7 @@ export function ProviderLayout({ children, title, width = "contained" }: Provide
           <span className="text-[11px] font-medium" style={{ color: "#B45309" }}>
             {t("shell.ratingNew")}
           </span>
+        </div>
         </div>
       }
     >

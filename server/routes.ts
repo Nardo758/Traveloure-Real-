@@ -145,6 +145,9 @@ import messagesRouter from "./routes/messages";
 import conversationsRoutes from "./routes/conversations.routes";
 import serviceQuotesRoutes from "./routes/service-quotes.routes";
 import pushRoutes from "./routes/push.routes";
+import liveHelpRoutes from "./routes/live-help.routes";
+import { loadLiveStatus } from "./services/live-status.service";
+import { liveListingTermsRefusal } from "@shared/live-availability";
 import bookingComponentsRoutes from "./routes/booking-components.routes";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -1107,6 +1110,7 @@ export async function registerRoutes(
   // server-derived total (§14/§15). Declares full `/api/...` paths; mounted without a prefix.
   app.use(serviceQuotesRoutes);
   app.use(pushRoutes);
+  app.use(liveHelpRoutes);
   // ledger `2026-09-17-surfaces-quotes-settlement`: the ONE read of a purchased bundle's
   // components + its settlement (GET /api/bookings/:id/components). Read-only; every action on
   // those surfaces still calls the existing component rails.
@@ -3939,6 +3943,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // Locked Decision 54: the live-help listing terms (per-day = messaging; a chat Q&A states its
+      // length) — ONE predicate shared with the PATCH rail, draft-exempt like the gates above.
+      if (input.status === "active") {
+        const liveRefusal = liveListingTermsRefusal({
+          deliveryMethod: (input as any).deliveryMethod,
+          pricingUnit: (input as any).pricingUnit,
+          expertOfferingTypeKey: (expertOfferingPatch as any).expertOfferingTypeKey ?? null,
+          durationMinutes: (input as any).durationMinutes,
+        });
+        if (liveRefusal) return res.status(400).json({ message: liveRefusal.message, code: liveRefusal.code });
+      }
+
       // FP-1 / B7 DELIVERABLE PUBLISH GATE (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) —
       // placed beside the price gate, on the same draft-exempt rule (ruling 56's placement
       // discipline). The wizard labels the field "Deliverable File URL *" and warns in amber, but
@@ -4255,6 +4271,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             code: priceGate.code,
           });
         }
+      }
+
+      // Locked Decision 54: same live-help terms as CREATE, resolved from the patch or the row.
+      if ((input.status ?? ownedService.status) === "active") {
+        const has = (k: string) => Object.prototype.hasOwnProperty.call(input, k);
+        const liveRefusal = liveListingTermsRefusal({
+          deliveryMethod: has("deliveryMethod") ? (input as any).deliveryMethod : ownedService.deliveryMethod,
+          pricingUnit: has("pricingUnit") ? (input as any).pricingUnit : (ownedService as any).pricingUnit,
+          expertOfferingTypeKey: expertOfferingAdmission.present
+            ? (expertOfferingPatch as any).expertOfferingTypeKey ?? null
+            : (ownedService as any).expertOfferingTypeKey ?? null,
+          durationMinutes: has("durationMinutes") ? (input as any).durationMinutes : (ownedService as any).durationMinutes,
+        });
+        if (liveRefusal) return res.status(400).json({ message: liveRefusal.message, code: liveRefusal.code });
       }
 
       // FP-1 / B7 DELIVERABLE PUBLISH GATE — same rule as CREATE above, resolved from the patch or
@@ -5137,6 +5167,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Non-fatal: experts list still returns without counts.
     }
 
+    // Locked Decision 54: "Available now" (the earner's own switch, vacation wins) and the MEASURED
+    // "Usually replies within …" bucket — ONE loader shared with the detail and the storefront.
+    // `?availableNow=1` narrows the list to earners who are available right now. Composed keys, not
+    // users columns, so the projector below passes them and never publishes the raw timestamp.
+    try {
+      const live = await loadLiveStatus(filtered.map((e: any) => String(e.id)));
+      filtered = filtered.map((e: any) => ({
+        ...e,
+        availableNow: live.get(String(e.id))?.availableNow ?? false,
+        replyTime: live.get(String(e.id))?.replyTime ?? null,
+      }));
+      if (req.query.availableNow === "1") filtered = filtered.filter((e: any) => e.availableNow);
+    } catch (err) {
+      console.error("Error attaching live status:", err);
+    }
+
     // SECOND LAYER (ledger `2026-09-05-experts-public-projection`). `storage.getExpertsWithProfiles`
     // already projected every row; this re-applies the SAME projector — §18's "so every caller is
     // covered" placement — because the block above rebuilds each row with `...e` while attaching
@@ -5156,6 +5202,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // `getExpertsWithProfiles`, under the names the profile reads (same as the list route).
     (expert as any).expertRating = expert.averageRating ?? null;
     (expert as any).expertReviewCount = expert.reviewCount ?? 0;
+    // Locked Decision 54 — same loader as the list route.
+    const live = (await loadLiveStatus([String(expert.id)])).get(String(expert.id));
+    (expert as any).availableNow = live?.availableNow ?? false;
+    (expert as any).replyTime = live?.replyTime ?? null;
     // SECOND LAYER — same projector as the list route and as storage (ledger
     // `2026-09-05-experts-public-projection`). This route `res.json`d the row verbatim, so it was
     // the widest of the three: the whole `users` row plus the whole `local_expert_forms` row for

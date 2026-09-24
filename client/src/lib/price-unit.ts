@@ -39,7 +39,7 @@
  * table so that surface's rendering is unchanged; they are not a claim that the column holds them.
  */
 
-export type PriceUnit = "night" | "person" | "hour" | "event" | "group";
+export type PriceUnit = "night" | "day" | "person" | "hour" | "event" | "group";
 
 export interface PriceUnitInput {
   priceType?: string | null;
@@ -51,6 +51,9 @@ export function resolvePriceUnit(input: PriceUnitInput): PriceUnit | null {
   switch (input.pricingUnit) {
     case "per_night":
       return "night";
+    // Locked Decision 54: "Text a Local" is sold by the day of cover.
+    case "per_day":
+      return "day";
     case "per_person":
       return "person";
     case "per_hour":
@@ -72,6 +75,7 @@ export function resolvePriceUnit(input: PriceUnitInput): PriceUnit | null {
 /** Short spelling, as the card/roster suffix registers use it ("/hr", not "/hour"). */
 const SHORT_WORD: Record<PriceUnit, string> = {
   night: "night",
+  day: "day",
   person: "person",
   hour: "hr",
   event: "event",
@@ -81,6 +85,7 @@ const SHORT_WORD: Record<PriceUnit, string> = {
 /** Long spelling, as the phrase register uses it ("per hour", not "per hr"). */
 const LONG_WORD: Record<PriceUnit, string> = {
   night: "night",
+  day: "day",
   person: "person",
   hour: "hour",
   event: "event",

@@ -17,6 +17,7 @@ const TYPE_TO_KEY: Record<string, NotificationPreferenceKey> = {
   message_received: "newMessage",
   new_chat: "newMessage",
   ea_message: "newMessage",
+  qa_session_started: "newMessage",
   // Requests and booking activity
   booking_request: "bookingRequest",
   booking_confirmed: "bookingRequest",
