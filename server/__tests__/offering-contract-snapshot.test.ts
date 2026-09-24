@@ -347,6 +347,10 @@ test("W2 · nothing UPDATEs the column; one module WRITES it and its readers are
       // `resolveSnapshottedCancellationTerms` reads `policy.cancellationPolicyType` off the purchase-time
       // snapshot; a missing tier is `policy_snapshot_missing`, never a defaulted one (§13).
       path.join("server", "services", "cancellation-policy.service.ts"),
+      // LD 54 (ledger `2026-09-24-live-chat-qa-sessions`): the Q&A Session start reads
+      // `terms.sessionLengthMinutes` — the length BOUGHT — so a later listing edit cannot shorten a
+      // session already sold. Read only; it stamps `booking_details.qaSession`, never the snapshot.
+      path.join("server", "services", "qa-session.service.ts"),
     ].sort(),
     "the one writer plus its named readers; an unlisted namer is a second place the terms can be written",
   );

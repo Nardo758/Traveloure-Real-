@@ -32,6 +32,7 @@
  * ─────────────────────────────────────────────────────────────────
  * All /expert/* routes require ProtectedRoute requiredRole="expert"
  */
+import { AvailableNowToggle } from "@/components/live/AvailableNowToggle";
 import { ExpertSidebar } from "@/components/expert/expert-sidebar";
 import { Bot } from "lucide-react";
 import { BackofficeShell } from "@/components/backoffice/backoffice-shell";
@@ -50,6 +51,9 @@ export function ExpertLayout({ children, title }: ExpertLayoutProps) {
       notificationsTestId="button-expert-notifications"
       notificationsHref="/expert/inbox"
       statusBadge={
+        <div className="flex items-center gap-2">
+        {/* Locked Decision 54: the earner's own "Available now" switch. */}
+        <AvailableNowToggle />
         <div
           className="hidden sm:flex items-center gap-1.5 h-[28px] px-2.5 rounded-full"
           style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}
@@ -59,6 +63,7 @@ export function ExpertLayout({ children, title }: ExpertLayoutProps) {
           <span className="text-[11px] font-medium" style={{ color: "#15803D" }}>
             AI: Active
           </span>
+        </div>
         </div>
       }
     >

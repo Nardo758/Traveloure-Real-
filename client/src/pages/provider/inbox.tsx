@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
 import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
+import { QaSessionPanel } from "@/components/live/QaSessionPanel";
 // Ledger 90 (FP-5, X1/I1): the ONE booking-visibility predicate, shared with Today, Customers,
 // the Money page and the server aggregations. See shared/booking-visibility.ts for why.
 import {
@@ -636,6 +637,8 @@ function BookingCard({
             a booking with no component rows renders nothing, so this page makes no client-side
             guess about which bookings are bundles. */}
         <BundleComponentsPanel bookingId={booking.id} audience="seller" sellerRail="provider" />
+        {/* LD 54: a Q&A Session's Start / countdown / chat. Draws nothing unless the server says this booking is one. */}
+        <QaSessionPanel bookingId={booking.id} />
       </CardContent>
     </Card>
   );

@@ -86,6 +86,8 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, LucideIcon> = {
   trip_card_ready: CheckCircle2,
   // LD 52 (C): an executive assistant started a plan on this account.
   assistant_plan_created: FileText,
+  // LD 54: the other person pressed Start on a paid Q&A Session.
+  qa_session_started: MessageSquare,
 };
 
 export function getNotificationIcon(type: string): LucideIcon {
@@ -145,6 +147,14 @@ export function resolveNotificationLink(n: ApiNotification): ResolvedNotificatio
     if (typeof path === "string" && (path.startsWith("/expert/") || path.startsWith("/provider/"))) {
       return { href: path, label: "Open" };
     }
+  }
+  // LD 54: a Q&A Session was started — open the bookings page that carries its panel.
+  if (n.type === "qa_session_started") {
+    const path = n.data?.workspacePath;
+    if (typeof path === "string" && (path === "/my-bookings" || path.startsWith("/expert/") || path.startsWith("/provider/"))) {
+      return { href: path, label: "Open session" };
+    }
+    return null;
   }
   if (n.data?.tripId) {
     const isTravelerTripLink = n.data.workspacePath?.startsWith("/trip/");

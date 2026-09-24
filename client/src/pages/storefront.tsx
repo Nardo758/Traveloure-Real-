@@ -71,6 +71,7 @@ import {
   useStorefrontPlanContext,
 } from "@/components/storefront/StorefrontBookingPanel";
 import { responseTimeFigure } from "@/lib/storefront-booking-panel";
+import { LiveStatusBadges } from "@/components/live/LiveStatusBadges";
 import { formatListingPrice, providerCardTitle } from "@/lib/provider-directory-presentation";
 import {
   Star,
@@ -131,6 +132,10 @@ interface StorefrontEarner {
   responseTime?: string | null;
   /** A provider form's self-declared insurance flag; "Insured" only when `true`. */
   hasInsurance?: boolean | null;
+  /** LD 54: the earner's own "Available now" switch, live (vacation wins). */
+  availableNow?: boolean;
+  /** LD 54: the MEASURED reply-time bucket; null when there are too few conversations to say (§13). */
+  replyTime?: string | null;
   /** Whether this earner can be invited onto a traveler's plan (server's `isExpertHireable`). */
   acceptsPlanShares?: boolean;
   /**
@@ -776,6 +781,13 @@ export default function StorefrontPage() {
                   </span>
                 )}
               </div>
+
+              <LiveStatusBadges
+                availableNow={!away && earner.availableNow}
+                replyTime={earner.replyTime}
+                testIdSuffix="-storefront"
+                className="mt-2"
+              />
 
               {away?.message && (
                 <p className="mt-1.5 text-sm text-[color:var(--earn-gold-ink)]" data-testid="storefront-away-message">

@@ -103,6 +103,9 @@ export const users = pgTable("users", {
   // (enforcement lands in the feature build, not here). Confirmed bookings are unaffected.
   vacationUntil: timestamp("vacation_until"),
   vacationMessage: varchar("vacation_message", { length: 200 }),
+  // Locked Decision 54 (migration 323): "Available now", switched on by the earner with an expiry.
+  // NULL/past = not available; vacation always overrides (shared/live-availability.ts).
+  availableNowUntil: timestamp("available_now_until"),
   // Migration 223: opt-out flag for booking-alert emails. Default true = send alerts. Experts
   // can disable this from Settings → Notifications so they rely on in-app notifications only.
   emailBookingAlerts: boolean("email_booking_alerts").default(true),

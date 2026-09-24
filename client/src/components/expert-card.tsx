@@ -19,6 +19,7 @@
  * initials avatar. All existing data-testid values and CTA wiring preserved
  * verbatim so playwright/tests/experts-flow.spec.ts stays green.
  */
+import { LiveStatusBadges } from "@/components/live/LiveStatusBadges";
 import { Badge } from "@/components/ui/badge";
 import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Briefcase, Heart, Home, Plane, PartyPopper, BookOpen, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -333,6 +334,13 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
               <span className="truncate">{location}</span>
             </div>
           )}
+          {/* Locked Decision 54: the server's live status; nothing when it has none. */}
+          <LiveStatusBadges
+            availableNow={(expert as any).availableNow}
+            replyTime={(expert as any).replyTime}
+            testIdSuffix={`-${expert.id}`}
+            className="mt-1"
+          />
         </div>
 
         <button

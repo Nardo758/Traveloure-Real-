@@ -136,6 +136,11 @@ export default function ExpertsPage() {
     return role && role in roleLabels ? role : "local_expert";
   });
   const [neighbourhoodQuery, setNeighbourhoodQuery] = useState("");
+  // LD 54: "Available now" filters on the SERVER's own switch read (`?availableNow=1`) — the page
+  // never decides who is available. Seeded from the URL so the Live Chat tab can link here.
+  const [availableNowOnly, setAvailableNowOnly] = useState<boolean>(
+    () => new URLSearchParams(window.location.search).get("availableNow") === "1",
+  );
   const [visibleCount, setVisibleCount] = useState(12);
   const [sortBy, setSortBy] = useState("recommended");
   const neighbourhoodInputRef = useRef<HTMLInputElement>(null);
@@ -244,13 +249,14 @@ export default function ExpertsPage() {
 
   // Fetch experts from API with optional experience type, destination, neighbourhood, and role filter
   const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
-    queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination, selectedRole],
+    queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination, selectedRole, availableNowOnly],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedExperienceType) params.set("experienceTypeId", selectedExperienceType);
       if (debouncedNeighbourhoodQuery.trim().length >= 2) params.set("neighbourhood", debouncedNeighbourhoodQuery.trim());
       if (selectedDestination !== "All Destinations") params.set("location", selectedDestination);
       if (selectedRole) params.set("role", selectedRole);
+      if (availableNowOnly) params.set("availableNow", "1");
       const url = params.toString() ? `/api/experts?${params.toString()}` : "/api/experts";
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch experts");
@@ -583,6 +589,18 @@ export default function ExpertsPage() {
               </div>
 
               <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAvailableNowOnly((v) => !v)}
+                  aria-pressed={availableNowOnly}
+                  className={`h-9 inline-flex items-center gap-1.5 rounded-md border px-3 text-sm whitespace-nowrap ${
+                    availableNowOnly ? "border-[#22C55E] bg-[rgba(34,197,94,0.10)] text-[#15803D]" : "border-border bg-[#F9FAFB] text-foreground"
+                  }`}
+                  data-testid="filter-available-now"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${availableNowOnly ? "bg-[#22C55E]" : "bg-gray-300"}`} aria-hidden />
+                  Available now
+                </button>
                 <span className="text-sm text-muted-foreground whitespace-nowrap">
                   {sortedExperts.length} found
                 </span>
@@ -785,14 +803,18 @@ export default function ExpertsPage() {
                 <Search className="w-8 h-8 text-[#9CA3AF]" />
               </div>
               <h3 className="text-lg font-semibold" style={{ color: "#111827" }} data-testid="experts-empty-heading">
-                {selectedRole === "event_planner"
+                {availableNowOnly
+                  ? "Nobody is available right now"
+                  : selectedRole === "event_planner"
                   ? "No event planners found"
                   : selectedRole === "local_expert"
                   ? `No local experts have published${selectedDestination !== "All Destinations" ? ` in ${selectedDestination}` : ""} yet`
                   : "No experts found"}
               </h3>
               <p className="text-muted-foreground">
-                {selectedRole === "event_planner"
+                {availableNowOnly
+                  ? "Turn off \"Available now\" to see everyone — you can still message them and they'll reply when they're back."
+                  : selectedRole === "event_planner"
                   ? "Try a trip planner instead, or adjust your filters."
                   : selectedRole === "local_expert"
                   ? fallbackRole

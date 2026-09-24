@@ -704,6 +704,8 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
       // server-derived component prices) and the legacy per-component completion map.
       "bundleComponents",
       "componentCompletions",
+      // LD 54: the Q&A Session stamp (ledger 2026-09-24-live-chat-qa-sessions).
+      "qaSession",
     ],
     "the server-authored key family — see shared/booking-details-admission.ts for each one's reader",
   );

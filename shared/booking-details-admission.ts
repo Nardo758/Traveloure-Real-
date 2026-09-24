@@ -113,6 +113,10 @@ export const SERVER_AUTHORED_BOOKING_DETAIL_KEYS = [
   // bookings born before migration 306; a body that could plant it would declare components
   // delivered on the traveler's behalf.
   "componentCompletions",
+  // Locked Decision 54 (ledger `2026-09-24-live-chat-qa-sessions`): a Q&A Session's start/end
+  // stamp, written only by the start rail's atomic conditional. A body that could plant it would
+  // start (or pre-end) a paid session nobody pressed Start on.
+  "qaSession",
 ] as const;
 
 export type ServerAuthoredBookingDetailKey = (typeof SERVER_AUTHORED_BOOKING_DETAIL_KEYS)[number];

@@ -21,6 +21,7 @@
  * approved items, so an unvetted earner has no public page. Filed follow-up (V.1, IMPLEMENTATION_MAP
  * Phase 0.5): additionally gate on identity/KYB verification status before any marketing push.
  */
+import { loadLiveStatus } from "../services/live-status.service";
 import { Router } from "express";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId, getDbRole } from "../utils/auth";
@@ -882,6 +883,9 @@ async function loadStorefrontFromOwner(
       ? { until: owner.vacationUntil.toISOString(), message: owner.vacationMessage ?? null }
       : null;
 
+  // Locked Decision 54: the same live status the /experts list shows (one loader, §18 rule 1).
+  const live = (await loadLiveStatus([owner.id])).get(owner.id);
+
   return {
     earner: {
       // NO `id`. CLAUDE.md Locked Decision 40 (ledger `2026-09-05-user-id-is-internal`), lane 2:
@@ -921,6 +925,10 @@ async function loadStorefrontFromOwner(
       // `hasInsurance` is a provider form's self-declared flag — rendered as "Insured" only when
       // `true`, never as "Not insured" (§13: absence of a declaration is not a denial).
       responseTime: expertProfile?.responseTime ?? null,
+      // Locked Decision 54: the earner's own "Available now" switch (vacation wins) and the
+      // MEASURED reply bucket — null when too few conversations or too slow to advertise (§13).
+      availableNow: live?.availableNow ?? false,
+      replyTime: live?.replyTime ?? null,
       hasInsurance: isProviderRole(owner.role) ? ownerForm?.hasInsurance ?? null : null,
       // The BUSINESS behind a provider storefront (ledger `2026-09-23-storefront-business-identity`),
       // the same three facts the /providers card shows so the card and the page it opens agree.

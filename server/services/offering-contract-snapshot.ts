@@ -112,6 +112,13 @@ export interface OfferingContractSnapshot {
    */
   policy: { cancellationPolicyType: string | null };
   /**
+   * Locked Decision 54 (ledger `2026-09-24-live-chat-qa-sessions`): the listing's
+   * `duration_minutes` AT COMMITMENT — the length a Q&A Session was bought at, so a later edit
+   * cannot shorten a session already sold. Absent on snapshots written before this field existed
+   * (the reader falls back to the listing and says so); NULL = the listing stated no length.
+   */
+  terms?: { sessionLengthMinutes: number | null };
+  /**
    * The resolver's answer, VERBATIM — either the contract and its findings, or the refusal and its
    * machine-readable reason. Stored whole so the snapshot round-trips and so a refusal is a
    * recorded fact rather than an absence someone later fills in (§13).
@@ -127,6 +134,7 @@ export interface OfferingContractSnapshot {
 export function composeOfferingContractSnapshot(args: {
   listing: OfferingListingInput;
   cancellationPolicyType: string | null;
+  sessionLengthMinutes?: number | null;
   at?: Date;
 }): OfferingContractSnapshot {
   const { kind: _kind, ...facts } = args.listing;
@@ -135,6 +143,9 @@ export function composeOfferingContractSnapshot(args: {
     snapshotAt: (args.at ?? new Date()).toISOString(),
     listing: facts,
     policy: { cancellationPolicyType: args.cancellationPolicyType },
+    ...(args.sessionLengthMinutes !== undefined
+      ? { terms: { sessionLengthMinutes: args.sessionLengthMinutes } }
+      : {}),
     // Never narrowed, never edited: a refusal is stored with the same weight as a contract.
     resolution: resolveOfferingCommerceContract(args.listing),
   };
@@ -162,13 +173,17 @@ export async function buildOfferingContractSnapshot(opts: {
   // policy changes no axis, it is a term the traveler bought under. Keeping it out of
   // `loadOfferingListingInput` keeps that function exactly the resolver's argument shape.
   const [row] = await db
-    .select({ cancellationPolicyType: providerServices.cancellationPolicyType })
+    .select({
+      cancellationPolicyType: providerServices.cancellationPolicyType,
+      durationMinutes: providerServices.durationMinutes,
+    })
     .from(providerServices)
     .where(eq(providerServices.id, opts.serviceId));
 
   return composeOfferingContractSnapshot({
     listing,
     cancellationPolicyType: row?.cancellationPolicyType ?? null,
+    sessionLengthMinutes: row?.durationMinutes ?? null,
     at: opts.at,
   });
 }
