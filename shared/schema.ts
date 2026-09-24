@@ -10057,6 +10057,28 @@ export const insertSavedItemSchema = createInsertSchema(savedItems).omit({ id: t
 export type SavedItem = typeof savedItems.$inferSelect;
 export type InsertSavedItem = z.infer<typeof insertSavedItemSchema>;
 
+// Board #329, ledger `2026-09-24-saved-places-plan-and-share` (migration 324): a read-only share
+// link for ONE city's saved places. Stores no place — the public read takes the owner's CURRENT
+// saved places for `city_key` (the shelf's own normalisation), so a removed place leaves the link
+// and a revoked row ends it. Written only by `server/services/saved-place-shares.service.ts`; no
+// client body reaches it (§19 — no insert schema is exported). Both indexes declared here
+// (deploy-push rule).
+export const savedPlaceShares = pgTable("saved_place_shares", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  cityKey: varchar("city_key", { length: 100 }).notNull(),
+  cityLabel: varchar("city_label", { length: 100 }).notNull(),
+  token: varchar("token", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at"),
+}, (table) => [
+  uniqueIndex("saved_place_shares_token_uniq").on(table.token),
+  uniqueIndex("saved_place_shares_one_active_uniq")
+    .on(table.userId, table.cityKey)
+    .where(sql`${table.revokedAt} IS NULL`),
+]);
+export type SavedPlaceShare = typeof savedPlaceShares.$inferSelect;
+
 // === Cross-Sell Conversion Tracking ===
 
 export const crossSellEvents = pgTable("cross_sell_events", {

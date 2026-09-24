@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "adad71bf467ee823c89dd3307476992950f039af78f1c2f2378288755c81c7b6",
+  "manifestSha256": "81caae8dfd80225f195c5f26be14432e27aa8e0a45c790f2d1ec2c026aa4fa8e",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "fresh",
-    "timestamp": "2026-09-24T23:28:33.391Z"
+    "timestamp": "2026-09-25T00:05:44.754Z"
   },
   "totals": {
-    "tested": 322,
-    "total": 602,
+    "tested": 324,
+    "total": 604,
     "remaining": 280,
     "categories": {
       "payments": {
@@ -22,8 +22,8 @@
         "total": 151
       },
       "user-data": {
-        "tested": 147,
-        "total": 205
+        "tested": 149,
+        "total": 207
       },
       "other": {
         "tested": 0,
@@ -1180,7 +1180,7 @@
       "path": "/api/saved-items/:id",
       "effectivePath": "/api/saved-items/:id",
       "source": "server/routes/saved-items.routes.ts",
-      "line": 71,
+      "line": 134,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -1191,6 +1191,26 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/saved-items/:id",
+      "tested": true,
+      "reason": "Fresh unauthenticated session-boundary evidence."
+    },
+    {
+      "method": "DELETE",
+      "rawPath": "/api/saved-items/shares/:shareId",
+      "path": "/api/saved-items/shares/:shareId",
+      "effectivePath": "/api/saved-items/shares/:shareId",
+      "source": "server/routes/saved-items.routes.ts",
+      "line": 108,
+      "risk": "user-data",
+      "expectedAuth": "required",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "session-self",
+      "ownershipApplies": true,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "DELETE /api/saved-items/shares/:shareId",
       "tested": true,
       "reason": "Fresh unauthenticated session-boundary evidence."
     },
@@ -9812,7 +9832,7 @@
       "path": "/api/saved-items",
       "effectivePath": "/api/saved-items",
       "source": "server/routes/saved-items.routes.ts",
-      "line": 32,
+      "line": 38,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9823,6 +9843,26 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/saved-items",
+      "tested": true,
+      "reason": "Fresh unauthenticated session-boundary evidence."
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/saved-items/shares",
+      "path": "/api/saved-items/shares",
+      "effectivePath": "/api/saved-items/shares",
+      "source": "server/routes/saved-items.routes.ts",
+      "line": 90,
+      "risk": "user-data",
+      "expectedAuth": "required",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "session-self",
+      "ownershipApplies": true,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/saved-items/shares",
       "tested": true,
       "reason": "Fresh unauthenticated session-boundary evidence."
     },

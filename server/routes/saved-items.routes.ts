@@ -4,7 +4,13 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { savedItems } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { saveItemBodySchema } from "@shared/saved-items";
+import { saveItemBodySchema, shareSavedCityBodySchema } from "@shared/saved-items";
+import {
+  listSavedCityShares,
+  readSharedSavedPlaces,
+  revokeSavedCityShare,
+  shareSavedCity,
+} from "../services/saved-place-shares.service";
 
 const router = Router();
 
@@ -65,6 +71,63 @@ router.post("/api/saved-items", isAuthenticated, async (req, res) => {
   } catch (err) {
     console.error("[saved-items] POST error:", err);
     return res.status(500).json({ error: "Failed to save item" });
+  }
+});
+
+// ── Board #329: share ONE city's saved places as a read-only link ─────────────────────────────
+// The owner is the session (§14); the body names only the city (§19). The link carries no place —
+// the public read takes the owner's CURRENT saved places for that city.
+router.get("/api/saved-items/shares", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    return res.json(await listSavedCityShares(userId));
+  } catch (err) {
+    console.error("[saved-items] shares GET error:", err);
+    return res.status(500).json({ error: "Failed to load shared links" });
+  }
+});
+
+router.post("/api/saved-items/shares", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const parsed = shareSavedCityBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid share request", issues: parsed.error.issues });
+    }
+    const result = await shareSavedCity(userId, parsed.data.city);
+    if (!result.ok) {
+      return res.status(404).json({ error: "You have no saved places in that city", code: result.reason });
+    }
+    return res.status(result.created ? 201 : 200).json(result.share);
+  } catch (err) {
+    console.error("[saved-items] shares POST error:", err);
+    return res.status(500).json({ error: "Failed to share saved places" });
+  }
+});
+
+router.delete("/api/saved-items/shares/:shareId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const revoked = await revokeSavedCityShare(userId, req.params.shareId);
+    // One 404 for "no such link", "already stopped" and "not yours" (LD 40 posture).
+    if (!revoked) return res.status(404).json({ error: "Shared link not found" });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("[saved-items] shares DELETE error:", err);
+    return res.status(500).json({ error: "Failed to stop sharing" });
+  }
+});
+
+// Public, read-only. No owner and no ids in the response; an unknown or stopped link is one 404.
+router.get("/api/saved-places/shared/:token", async (req, res) => {
+  try {
+    const shared = await readSharedSavedPlaces(req.params.token);
+    if (!shared) return res.status(404).json({ error: "This link is not active" });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json(shared);
+  } catch (err) {
+    console.error("[saved-items] shared read error:", err);
+    return res.status(500).json({ error: "Failed to load shared places" });
   }
 });
 

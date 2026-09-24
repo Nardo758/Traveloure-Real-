@@ -191,6 +191,7 @@ const HelpPage = lazy(() => import("@/pages/help"));
 const MyItineraryPage = lazy(() => import("@/pages/my-itinerary"));
 const ItineraryViewPage = lazy(() => import("@/pages/itinerary-view"));
 const SharedTripPage = lazy(() => import("@/pages/shared-trip"));
+const SharedSavedPlacesPage = lazy(() => import("@/pages/shared-saved-places"));
 const GuestInvitePage = lazy(() => import("@/pages/GuestInvitePage").then((m) => ({ default: m.GuestInvitePage })));
 const VisaHelpPage = lazy(() => import("@/pages/visa-help"));
 import { Loader2 } from "lucide-react";
@@ -493,6 +494,10 @@ function Router() {
       </Route>
       <Route path="/trips/shared/:token">
         <SharedTripPage />
+      </Route>
+      {/* Board #329 — one city's saved places, public and read-only by unguessable token. */}
+      <Route path="/saved/shared/:token">
+        <Layout><SharedSavedPlacesPage /></Layout>
       </Route>
       {/* Guest invite RSVP page — public by unguessable token (guests don't have accounts) */}
       <Route path="/invite/:token">
