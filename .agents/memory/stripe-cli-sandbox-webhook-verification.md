@@ -1,10 +1,12 @@
 ---
 name: Stripe CLI sandbox webhook verification
-description: Limits of CLI-generated webhook evidence in this workspace.
+description: Distinguish early-fraud warnings from full disputes and verify direct CLI forwarding.
 ---
 
-The installed Nix Stripe CLI version did not support direct triggers for `charge.dispute.closed` or `payout.paid`. An existing restricted test-mode key also could not create a platform external bank account, so `payout.created` could not produce a paid bank payout. A test-mode `account.updated` fixture with `--stripe-account` attempted to create an account *as* that account and was rejected; a platform-key CLI update to `/v1/account` using the connected-account header emitted the desired Connect event.
+The installed Nix Stripe CLI version does not support direct triggers for `charge.dispute.closed` or `payout.paid`. A restricted test-mode key cannot create a platform external bank account for a paid-payout test. A test-mode `account.updated` fixture with `--stripe-account` attempted to create an account *as* that account and was rejected; a platform-key CLI update to `/v1/account` using the connected-account header emitted the desired Connect event.
 
-**Why:** A signed local fixture proves the application route, but is not evidence of an actual Stripe CLI delivery. The running development app may use a live-mode API key while the CLI creates test-mode dispute charges, so a raw forwarded dispute can fail at the charge lookup despite valid signature handling.
+For a real full sandbox dispute, create a test payment with Stripe's `pm_card_createDispute` payment method. CLI `charge.dispute.created` fixtures produced `warning_needs_response` early-fraud warnings here; submitting `winning_evidence` closed one as `warning_closed`, not `won`. A full `needs_response` dispute accepted `winning_evidence` or `losing_evidence` in `uncategorized_text` and produced the respective terminal outcome. Both values need separate disputes because submission is terminal.
 
-**How to apply:** Clearly distinguish CLI-origin HTTP delivery from locally signed fixtures. For CLI tests against this dev app, keep test-mode Stripe changes isolated and use a loopback-only bridge to expand sandbox dispute charges and re-sign for the existing development webhook endpoints; never swap the app's live signing secrets to the CLI listener secret or claim that this bridge is direct CLI forwarding. Check CLI event support and test-key permissions before promising a four-event CLI pass.
+**Why:** A signed local fixture proves the application route but not a Stripe-origin outcome; an early-fraud warning's `warning_closed` status can make a supposedly successful won test look like a payout-hold bug.
+
+**How to apply:** Keep the application on a test API key and use the CLI listener's `whsec_` secret for its dedicated development webhook names, not the live secret names. Confirm both routes accept signatures from that listener before triggering sandbox events. Create two full disputes with `pm_card_createDispute`, link their sandbox payment intents to development-only bookings, submit each evidence value separately, and require the Stripe terminal status, CLI-forwarded HTTP response, and database state to agree. `payout.paid` can remain signed-fixture evidence, but label it as such.
