@@ -22,6 +22,7 @@
  * "Finalize without booking?" pre-gate is folded in here (adopt-finalize-conform row 13): when
  * staged-but-unbooked items exist, this chooser says so inline — finalize stays one press.
  */
+import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -84,7 +85,9 @@ export function FinalizeBookingModal({
         });
         onOpenChange(false);
         toast(summarizeBulkRoute(result));
-        setLocation("/cart");
+        // Ledger 2026-09-24-cart-two-paths: a finalized plan is done PLANNING — land on the
+        // payment step (a buying cart), not the optimize-first cart view.
+        setLocation(BUY_NOW_CART_PATH);
       } else if (lane === "agent") {
         // §16: one request per partner stop, by opaque bookingToken — never a URL, never a price.
         let ok = 0;

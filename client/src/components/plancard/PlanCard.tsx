@@ -1060,7 +1060,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             items 11+13) — owner-only, suppressed in the Workstation embed (that's the expert's
             OWN view of their build, not the customer's sign-off surface). */}
         {!embedded && isOwner && (
-          <PlanApprovalBanner tripId={trip.id} planApproval={plancardData?.meta?.planApproval} />
+          <PlanApprovalBanner
+            tripId={trip.id}
+            planApproval={plancardData?.meta?.planApproval}
+            activities={days.flatMap((d) => d.activities ?? [])}
+          />
         )}
 
         {/* CLAUDE.md §21 (ratified Aug 9, 2026) — trip-level "Expert Notes", DELIVERED to the

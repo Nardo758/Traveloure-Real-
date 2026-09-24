@@ -21,6 +21,7 @@ import {
   humanizeRouteError,
   runBulkRouteToCheckout,
   selectBulkCheckoutItems,
+  selectPlatformBookableItems,
   slipOptimizeDisabledReason,
   summarizeBulkRoute,
   type RoutableItemLike,
@@ -234,5 +235,19 @@ describe("summarizeBulkRoute (one honest toast)", () => {
     });
     assert.strictEqual(summary.title, "2 items couldn't be added");
     assert.strictEqual(summary.description, "reason one");
+  });
+});
+
+describe("selectPlatformBookableItems (approve & book, option A)", () => {
+  it("counts only un-booked in_planning rows that name a platform listing", () => {
+    const rows = [
+      { id: "svc", routingStatus: "in_planning", providerServiceId: "ps-1" },
+      { id: "free-text", routingStatus: "in_planning" },
+      { id: "blank", routingStatus: "in_planning", providerServiceId: "" },
+      { id: "staged", routingStatus: "ready_for_checkout", providerServiceId: "ps-2" },
+      { id: "booked", routingStatus: "in_planning", providerServiceId: "ps-3", booking: { id: "b1" } },
+      { id: "with-expert", routingStatus: "with_expert", providerServiceId: "ps-4" },
+    ];
+    assert.deepStrictEqual(selectPlatformBookableItems(rows).map((r) => r.id), ["svc"]);
   });
 });
