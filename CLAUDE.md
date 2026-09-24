@@ -2076,6 +2076,44 @@ This document captures architectural decisions to maintain consistency across co
     (iOS 16.4+)**, and the card says so rather than offering a button that cannot work. Push never fails
     the write that caused it (§15b).
 
+54. **LIVE HELP IS SOLD AS LISTINGS, NOT AS A NEW RAIL: "AVAILABLE NOW", A MEASURED REPLY TIME, TEXT A
+    LOCAL PER DAY, AND Q&A SESSIONS THE EXPERT TIMES (decision-maker, Sep 24, 2026: "Go with
+    recommendations and Change Pay per Question to something else, like Q&A Sessions and let the
+    experts set the session time limits 15mins, 30mins 1hour etc" — ledger
+    `2026-09-24-live-chat-qa-sessions`; migration 323).** Messaging an expert stays FREE; what is paid
+    is an ordinary `provider_services` listing bought through the ONE checkout at the ordinary
+    `fee_bands` commission (§8 — no new rate, no new fee). **No new delivery method** (LD 3's seven are
+    untouched), **no new table**, and no per-message or per-question charge. The pure rules live ONCE in
+    `shared/live-availability.ts` (§18 rule 1).
+    **(a) "AVAILABLE NOW" IS THE EARNER'S OWN SWITCH, AND IT EXPIRES.** `users.available_now_until`
+    (additive nullable TIMESTAMP, NO DEFAULT, NO CHECK, NO BACKFILL, declared in `shared/models/auth.ts`)
+    is written only by `PUT /api/me/available-now` (earner roles, `.strict()` `{ on }`, the SESSION
+    account — §14) for `availableNowWindowMinutes()` (config, default 120). Vacation always wins, a
+    lapsed window is simply off, and the raw timestamp is never published — surfaces read the derived
+    `availableNow` boolean. `/api/experts?availableNow=1` filters on it.
+    **(b) THE REPLY TIME IS MEASURED, NEVER STATED.** ONE loader (`server/services/live-status.service.ts`)
+    feeds the expert list, the expert detail and the storefront: the median minutes from a person's
+    first message of the day to the earner's next reply, over 90 days, an opening unanswered for 7 days
+    counting as never. Fewer than 5 conversations, or a median slower than a day, says NOTHING (§13) —
+    never an invented "< 2 hours". It is a DIFFERENT fact from the expert's own stated response time and
+    is labelled "Usually replies within …".
+    **(c) TEXT A LOCAL IS PRICED PER DAY OF COVER.** An `async_messaging` listing may carry
+    `pricing_unit = 'per_day'`; the cart asks "Days" through the existing D-14 archetype rule and the
+    price multiplies by that count on the existing path. Per-day pricing on any other method is refused
+    at publish.
+    **(d) A Q&A SESSION IS AN `ask_me_anything` LISTING DELIVERED AS `async_messaging`, AND ITS LENGTH IS
+    THE EXPERT'S CHOICE FROM A MENU (15, 30, 45, 60, 90 minutes).** The length is `duration_minutes`,
+    required at publish, and SNAPSHOTTED at purchase (`offering_contract_snapshot.terms.sessionLengthMinutes`)
+    so a later listing edit never shortens a session already sold; a booking from before the snapshot
+    field reads the listing and says so. Either party presses Start; `booking_details.qaSession` (a
+    §19d server-authored key) is stamped by ONE atomic conditional on a paid `confirmed` booking with no
+    stamp (§15), so concurrent presses make one session and the other person is told once. **Nothing is
+    cut off at zero** — the stamp records the paid window and the chat stays open; completion is the
+    EXISTING provider-declared rail for messaging listings (LD 47). A video Q&A keeps the existing slot
+    flow. A session that does not exist, is not yours or is not a Q&A Session is ONE 404 (LD 40).
+    **Not in this lane:** per-minute billing, locking the chat at the end of a session, and a traveler
+    "notify me when available" alert.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

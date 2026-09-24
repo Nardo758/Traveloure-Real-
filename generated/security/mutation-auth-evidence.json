@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatedBy": "scripts/run-mutation-auth-live-audit.ts",
-  "manifestSha256": "c99ad36ed5f657a1d4ccb966f485b08dfe7c0974e095c8aeaa78224aa335976d",
-  "timestamp": "2026-09-24T19:13:27.194Z",
+  "manifestSha256": "aa474b41408145e6a16f4c72de09f373a65efe01e3e9530c6c6c536c1f962033",
+  "timestamp": "2026-09-24T20:51:01.046Z",
   "passed": true,
   "suites": [
     {
@@ -394,6 +394,7 @@
         "POST /api/webhooks/stripe",
         "PUT /api/expert/neighborhood-claims/:id/capture",
         "PUT /api/expert/vendors/:vendorId",
+        "PUT /api/me/available-now",
         "PUT /api/provider/booking-requests/:requestId/respond",
         "PUT /api/provider/services/:id/availability-patterns",
         "PUT /api/provider/services/:id/blackouts",

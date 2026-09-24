@@ -1,7 +1,7 @@
 /**
  * Task: payout-parity — "You earn $X if you accept" must equal what actually mints.
  *
- * The accept cards (client/src/pages/expert/bookings.tsx, client/src/pages/provider/inbox.tsx)
+ * The accept cards (client/src/pages/expert/inbox.tsx, client/src/pages/provider/inbox.tsx)
  * display service_bookings.provider_earnings — the figure stamped at checkout by
  * server/routes/payments.routes.ts. The earnings mint path (updateServiceBookingStatus →
  * 'completed', server/storage.ts) must credit EXACTLY that figure to the provider_earnings and

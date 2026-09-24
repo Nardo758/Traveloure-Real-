@@ -61,6 +61,7 @@ import { CancelBookingDialog } from "@/components/booking/CancelBookingDialog";
 // rails; the components panel reads the one new read and calls the existing traveler-cancel rail.
 import { TravelerQuotesPanel } from "@/components/quotes/TravelerQuotesPanel";
 import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
+import { QaSessionPanel } from "@/components/live/QaSessionPanel";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { formatStartWindow, formatHours, formatMinutes, formatTransportProvision } from "@/lib/service-good-to-know";
 import {
@@ -1137,6 +1138,8 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 unconditionally rather than behind a client-side "is this a bundle?" guess — the
                 server's own read is the authority on that (§18 rule 1). */}
             <BundleComponentsPanel bookingId={booking.id} audience="traveler" />
+            {/* LD 54: a Q&A Session's Start / countdown / chat. Draws nothing unless the server says this booking is one. */}
+            <QaSessionPanel bookingId={booking.id} />
           </div>
           
           <div className="text-right">

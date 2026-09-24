@@ -63,7 +63,7 @@
  */
 
 /** Which of the ruled shapes a listing is. `unruled` is a real answer, not a fallback (§13). */
-export type CartQuantityRule = "stay" | "bundle" | "seats" | "artifact" | "unruled";
+export type CartQuantityRule = "stay" | "bundle" | "seats" | "days" | "artifact" | "unruled";
 
 /**
  * The listing facts this decision reads. Every key is an existing `provider_services` column and
@@ -104,6 +104,7 @@ const REASONS: Readonly<Record<CartQuantityRule, string>> = {
   stay: "A stay is ONE booking for the whole date range — it is priced by nights, not by units, and the number that varies is how many guests.",
   bundle: "A bundle is booked ONCE — its components carry their own counts, and the number that varies is the party size.",
   seats: "A scheduled place service is sold by the SEAT, so the seat count and the party count are the same answer.",
+  days: "This is priced per day — the count is how many days of cover, and the price multiplies by it.",
   artifact: "This is delivered once — it has no unit count and no party.",
   unruled: "This listing is neither a stay, a bundle, a seat-shaped place service nor an artifact, so D-14 states no rule for it and its unit count is unchanged.",
 };
@@ -130,6 +131,12 @@ export function archetypeAsks(
   if (shape === BUNDLE_SHAPE) {
     return { rule: "bundle", asksUnits: false, asksParty: true, unitsFollowParty: false, reason: REASONS.bundle };
   }
+  // Locked Decision 54 ("Text a Local"): a PER-DAY listing is sold by the day of cover. Checked
+  // BEFORE the artifact methods because such a listing is `async_messaging` — delivered as
+  // messaging, but priced per day, so the day count IS its unit count.
+  if (pricingUnit === "per_day") {
+    return { rule: "days", asksUnits: true, asksParty: false, unitsFollowParty: false, reason: REASONS.days };
+  }
   if (ARTIFACT_METHODS.has(method)) {
     return { rule: "artifact", asksUnits: false, asksParty: false, unitsFollowParty: false, reason: REASONS.artifact };
   }
@@ -155,6 +162,13 @@ export function cartUnitLabel(rule: CartQuantityRule): string | null {
     default:
       return null;
   }
+}
+
+/** The noun a unit control counts, for the rules that draw one (§18 rule 1 — cart reads this). */
+export function cartCountLabel(asks: Pick<CartQuantityAsks, "rule" | "unitsFollowParty">): string {
+  if (asks.unitsFollowParty) return "Seats";
+  if (asks.rule === "days") return "Days";
+  return "Quantity";
 }
 
 /** The count a units-pinned archetype always has. Never 0 — removing a line is `Remove`. */

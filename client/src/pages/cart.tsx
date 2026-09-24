@@ -75,7 +75,7 @@ import { itemKindChipFor } from "@shared/item-kind";
 // D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): which count control this
 // line draws — units, seats, or none — is the SERVER'S OWN derivation, read here rather than
 // restated. A second copy of "does a stay have a quantity?" is the drift class §18 rule 1 names.
-import { archetypeAsks, cartUnitLabel } from "@shared/cart-quantity";
+import { archetypeAsks, cartCountLabel, cartUnitLabel } from "@shared/cart-quantity";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -2239,7 +2239,7 @@ export default function CartPage() {
                                 item={item}
                                 pending={updateItemMutation.isPending}
                                 value={lineAsks.unitsFollowParty ? (item.partySize ?? item.quantity) : item.quantity}
-                                countLabel={lineAsks.unitsFollowParty ? "Seats" : "Quantity"}
+                                countLabel={cartCountLabel(lineAsks)}
                                 onCommit={(count) =>
                                   updateItemMutation.mutate({
                                     id: item.id,

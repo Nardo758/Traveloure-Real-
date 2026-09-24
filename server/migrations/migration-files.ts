@@ -1823,4 +1823,7 @@ export const MIGRATION_FILES = [
   // its partial index. NO CHECK. All declared in shared/schema.ts in the same commit; no
   // preflight-prod-constraints manifest entry is needed.
   "322_web_push.sql",
+  // Ledger `2026-09-24-live-chat-qa-sessions` (Locked Decision 54): `users.available_now_until`,
+  // additive NULLABLE, NO DEFAULT, NO CHECK, NO BACKFILL; declared in shared/models/auth.ts.
+  "323_available_now.sql",
 ] as const;

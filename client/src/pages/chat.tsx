@@ -1,4 +1,5 @@
 import { useChats, useSendMessage } from "@/hooks/use-chat";
+import { REPLY_TIME_PHRASES, type ReplyTimeBucket } from "@shared/live-availability";
 import { useConversationThreads } from "@/hooks/use-conversation-threads";
 import { useTrip } from "@/hooks/use-trips";
 import { useAuth } from "@/hooks/use-auth";
@@ -186,7 +187,9 @@ function mapExpertToDisplay(data: any): DisplayExpert {
         ? [data.expertForm.primarySpecialty, ...(data.specialties ?? [])]
         : data.specialties ?? [],
     languages: data.languages ?? ["English"],
-    responseTime: data.responseTime || "< 2 hours",
+    // Locked Decision 54: the MEASURED reply bucket, or nothing. This used to fall back to an
+    // invented "< 2 hours" for every expert (§13).
+    responseTime: data.replyTime && data.replyTime in REPLY_TIME_PHRASES ? REPLY_TIME_PHRASES[data.replyTime as ReplyTimeBucket] : "",
   };
 }
 
@@ -792,12 +795,10 @@ export default function Chat() {
 
     // For demo experts (numeric IDs), use HTTP fallback which doesn't enforce FK
     // WebSocket real-time only works with actual platform users
-    if (isConnected && recipientId.length > 10) {
-      // Real user ID (UUID format), try WebSocket
-      const success = wsSendMessage(recipientId, currentMessage);
-      if (success) {
-        setMessage("");
-      }
+    // Real user id (UUID format): try the socket first. A socket that is not open right now
+    // returns false, and the message then goes over HTTP instead of being dropped silently.
+    if (isConnected && recipientId.length > 10 && wsSendMessage(recipientId, currentMessage)) {
+      setMessage("");
     } else {
       // Demo mode or WebSocket failed - use HTTP mutation
       sendMessageMutation.mutate(
@@ -1126,7 +1127,7 @@ export default function Chat() {
                             {selectedExpert.responseTime && (
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
-                                Responds {selectedExpert.responseTime}
+                                Usually replies {selectedExpert.responseTime}
                               </span>
                             )}
                             {selectedExpert.reviews > 0 && (

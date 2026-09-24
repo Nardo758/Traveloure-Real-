@@ -108,6 +108,12 @@ import { ServicePhotosDrawer } from "@/components/provider/service-photos-drawer
 import { ServiceLanguagesCard } from "@/components/service-languages-card";
 import { pricingFeesFromService, pricingFeesSummary } from "@/lib/pricing-fees";
 import { trackEvent } from "@/lib/analytics";
+import {
+  QA_SESSION_LENGTHS,
+  QA_SESSION_OFFERING_KEY,
+  isQaSessionLength,
+  qaSessionLengthLabel,
+} from "@shared/live-availability";
 
 interface ServiceCategory {
   id: string;
@@ -270,6 +276,9 @@ interface ServiceFormData {
   // response time and an SLA/promise statement. "" = never captured (§13).
   responseWindowHours: string;
   scopeStatement: string;
+  // Locked Decision 54: the listing's price unit as stored ("" = flat). The form offers only
+  // "per_day" (Text a Local) on a messaging listing; any other stored value round-trips untouched.
+  pricingUnit: string;
   // Booking terms
   cancellationPolicy: string;
   // X1 (§13): structured policy TYPE — see CANCELLATION_POLICY_TYPE_OPTIONS. "" = not declared.
@@ -414,6 +423,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     joinLink: "",
     responseWindowHours: "",
     scopeStatement: "",
+    pricingUnit: "",
     depositEnabled: false,
     depositType: "",
     depositPercentage: "",
@@ -505,6 +515,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     joinLink: s.joinLink || "",
     responseWindowHours: s.responseWindowHours == null ? "" : String(s.responseWindowHours),
     scopeStatement: s.scopeStatement || "",
+    pricingUnit: (s as any).pricingUnit || "",
     depositEnabled: !!s.depositEnabled,
     depositType: ((s.depositType as any) === "percentage" || (s.depositType as any) === "flat") ? (s.depositType as any) : "",
     depositPercentage: s.depositPercentage == null ? "" : String(s.depositPercentage),
@@ -581,8 +592,10 @@ const fromCanonicalDelivery = (v: string | null | undefined): UiDelivery =>
 function tierFormatsToAllowedMethods(formats: string[]): Set<string> {
   const methodMap: Record<string, string[]> = {
     "video": ["video-call"],
-    "live_text": ["video-call"],
-    "chat": ["video-call", "in-person"],
+    // Locked Decision 54: live text and chat offerings (Text a Local, Q&A Sessions) are delivered
+    // as on-platform messaging, and may also run as a video call.
+    "live_text": ["async_messaging", "video-call"],
+    "chat": ["async_messaging", "video-call", "in-person"],
     "written": ["in-person"],
     "done_for_you": ["in-person", "hybrid"],
     "hybrid": ["hybrid"],
@@ -1519,6 +1532,18 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               scopeStatement: formData.scopeStatement.trim() || null,
             }
           : {}),
+        // Locked Decision 54: a messaging listing may be priced PER DAY (Text a Local), and a chat
+        // Q&A Session states its length in `durationMinutes` (the server refuses to publish one
+        // without it). A listing that stops being messaging clears a stored per-day unit, since the
+        // server will not publish per-day on any other method.
+        ...(formData.deliveryMethod === "async_messaging"
+          ? {
+              pricingUnit: isQaSessionListing ? null : formData.pricingUnit === "per_day" ? "per_day" : (formData.pricingUnit || null),
+              ...(isQaSessionListing ? { durationMinutes: intOrNull(formData.durationMinutes) } : {}),
+            }
+          : formData.pricingUnit === "per_day"
+            ? { pricingUnit: null }
+            : {}),
         cancellationPolicy: formData.cancellationPolicy || null,
         cancellationPolicyType: formData.cancellationPolicyType || null,
         // Deposits (Lane 7, ruling 72): provider opt-in. When off, everything is cleared to null so
@@ -1984,6 +2009,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // submit payload can read the same value.
   const isRemoteSessionListing = SESSION_END_METHODS.has(toCanonicalDelivery(formData.deliveryMethod));
   const isAsyncListing = formData.deliveryMethod === "voice_notes" || formData.deliveryMethod === "async_messaging";
+  // Locked Decision 54: a chat Q&A Session — the Q&A offering, delivered as messaging.
+  const isQaSessionListing =
+    formData.expertOfferingTypeKey === QA_SESSION_OFFERING_KEY && formData.deliveryMethod === "async_messaging";
   const pickupProvisionChosen = PICKUP_PROVISIONS.has(formData.transportProvision);
 
   // ── D9 (ruling 62's D9 clause, executed by ruling 67) ────────────────────────────────────
@@ -3307,7 +3335,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               { value: "call", label: "Phone call", meta: "Live, remote" },
               { value: "pdf", label: "PDF guide", meta: "Artifact" },
               { value: "voice_notes", label: "Voice notes", meta: "Async lane" },
-              { value: "async_messaging", label: "Async messaging", meta: "Async lane" },
+              { value: "async_messaging", label: "Messaging", meta: "Chat on Traveloure" },
               { value: "hybrid", label: "Hybrid", meta: "In person + video" },
             ];
             let visibleMethods = allowed
@@ -3787,6 +3815,47 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               SLA/disputable window that rule already enforces, not a second completion path. */}
           {isAsyncListing && (
             <div className="space-y-4 pt-2" data-testid="section-async-fields">
+              {/* Locked Decision 54: a Q&A Session's LENGTH is the product; Text a Local is priced
+                  per day of cover. Both only for messaging listings. */}
+              {isQaSessionListing && (
+                <div>
+                  <Label htmlFor="qaSessionLength">Session length *</Label>
+                  <Select
+                    value={formData.durationMinutes && isQaSessionLength(Number(formData.durationMinutes)) ? formData.durationMinutes : ""}
+                    onValueChange={(v) => set("durationMinutes", v)}
+                  >
+                    <SelectTrigger id="qaSessionLength" className="mt-1" data-testid="select-qa-session-length">
+                      <SelectValue placeholder="Choose a length" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {QA_SESSION_LENGTHS.map((m) => (
+                        <SelectItem key={m} value={String(m)} data-testid={`option-qa-length-${m}`}>
+                          {qaSessionLengthLabel(m)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    The traveler presses Start when you're both ready; the chat shows the time left. Sell a longer session as a separate listing.
+                  </p>
+                </div>
+              )}
+              {formData.deliveryMethod === "async_messaging" && !isQaSessionListing && (
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="pricePerDay">Price per day of cover</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      For on-call help during a trip (Text a Local). Travelers choose how many days.
+                    </p>
+                  </div>
+                  <Switch
+                    id="pricePerDay"
+                    checked={formData.pricingUnit === "per_day"}
+                    onCheckedChange={(on) => set("pricingUnit", on ? "per_day" : "")}
+                    data-testid="switch-price-per-day"
+                  />
+                </div>
+              )}
               <div>
                 <Label htmlFor="responseWindowHours">Response window (hours)</Label>
                 <Input

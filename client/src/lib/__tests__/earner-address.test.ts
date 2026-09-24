@@ -28,6 +28,12 @@
  *   U2  the legacy `?expertId=` and its `?provider=` alias still resolve (removed after lane 2).
  *   U3  precedence is STATED: an opaque id wins over a legacy id on the same URL.
  *   U4  a URL naming neither is `null`, and a blank param is not an address.
+ *   C1  the storefront's message buttons address a HANDLE wherever one exists, and sign-in
+ *       returns to `/s/:handle`.
+ *   C2  a handle-less expert's id-route page (the zero-listing profile) addresses the id already
+ *       in its own URL through the deprecated `?expertId=` rail, and sign-in returns to that page —
+ *       never an empty handle (which fell through to the experts directory) and never `/s/`.
+ *   C3  a page holding neither answers `null` rather than inventing an address.
  *
  * Pure unit: no DOM, no DB, no fetch.
  * Run: npx tsx --test client/src/lib/__tests__/earner-address.test.ts
@@ -39,6 +45,7 @@ import {
   earnerProfilePath,
   resolveChatUrlTarget,
   resolveContactAddress,
+  storefrontContactInput,
 } from "../earner-address";
 
 const USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
@@ -189,6 +196,35 @@ describe("resolveChatUrlTarget — which thread a /chat URL names", () => {
   });
 });
 
+describe("storefrontContactInput", () => {
+  it("C1 addresses the handle wherever one exists", () => {
+    assert.deepEqual(storefrontContactInput({ earnerHandle: "Yuki", urlHandle: "yuki" }), {
+      handle: "yuki",
+      returnTo: "/s/yuki",
+    });
+    // The page was opened by id but the earner has since claimed a handle: the handle wins.
+    assert.deepEqual(
+      storefrontContactInput({ earnerHandle: "yuki", profileId: USER_ID, profilePath: `/experts/${USER_ID}` }),
+      { handle: "yuki", returnTo: "/s/yuki" },
+    );
+  });
+
+  it("C2 a handle-less expert's page addresses the id in its own URL", () => {
+    const out = storefrontContactInput({
+      earnerHandle: null,
+      urlHandle: "",
+      profileId: USER_ID,
+      profilePath: `/local-experts/${USER_ID}`,
+    });
+    assert.deepEqual(out, { expertId: USER_ID, returnTo: `/local-experts/${USER_ID}` });
+    assert.ok(!("handle" in (out ?? {})), "an empty handle is never sent");
+  });
+
+  it("C3 a page holding neither answers null", () => {
+    assert.equal(storefrontContactInput({ earnerHandle: null, urlHandle: "  ", profileId: "" }), null);
+  });
+});
+
 /**
  * The SHIPPED wiring. A pure rule a call site can reach past is not a rule (the
  * `slip-first-paint` precedent), and every defect this lane fixes was a call site sending an id
@@ -214,8 +250,14 @@ describe("shipped wiring — the call sites actually switched", () => {
 
   it("S2 the storefront addresses the HANDLE and reads no earner id at all", () => {
     const src = read("pages/storefront.tsx");
-    assert.ok(/handle:\s*earner\.handle\s*\?\?\s*handle/.test(src), "Message CTA sends { handle }");
+    // The address is the ONE decision `storefrontContactInput` (C1–C3): the earner's handle, then
+    // the URL's, and only on a handle-less expert's id route the id already in that URL — never a
+    // user id read off the payload.
+    assert.ok(/earnerHandle:\s*earner\.handle/.test(src), "the earner's handle is the first address");
+    assert.ok(/profileId:\s*legacyId\b/.test(src), "the id fallback is the page's own URL id");
+    assert.ok(/handle:\s*contact\?\.handle/.test(src), "Message CTA sends the decided { handle }");
     assert.ok(!/expertId:\s*earner\.id/.test(src), "no user id on the contact rail");
+    assert.ok(!/earner\.id\b/.test(src), "the payload's user id is never read");
     assert.ok(
       !/String\(user\.id\)\s*===\s*String\(earner\.id\)/.test(src),
       "the own-storefront check compares handles, not ids",
@@ -243,6 +285,7 @@ describe("shipped wiring — the call sites actually switched", () => {
     // reason; the marker is what makes the remaining set countable rather than rediscovered.
     for (const rel of [
       "pages/expert-detail.tsx",
+      "pages/storefront.tsx",
       "pages/expert/client-detail.tsx",
       "components/marketplace/concierge-card.tsx",
       "components/city-feed-card.tsx",

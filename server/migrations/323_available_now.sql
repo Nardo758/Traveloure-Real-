@@ -1,0 +1,11 @@
+-- Migration 323: AN EARNER MAY SAY "I'M AVAILABLE NOW", WITH AN EXPIRY.
+--
+-- Ledger `2026-09-24-live-chat-qa-sessions`. CLAUDE.md Locked Decision 54 (live chat with local
+-- experts; decision-maker, Sep 24, 2026: "Go with recommendations"). §13, §20.
+--
+-- ONE column, additive, NULLABLE, NO DEFAULT, NO CHECK, NO BACKFILL — the publish-trap posture.
+-- NULL or a past instant = not available now; a future instant = the earner switched it on and
+-- the window has not lapsed. Written only by PUT /api/me/available-now (the session user's own
+-- row). Vacation mode (vacation_until, migration 189) always overrides it at read time.
+-- Declared in shared/models/auth.ts in the same commit.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS available_now_until TIMESTAMP;
