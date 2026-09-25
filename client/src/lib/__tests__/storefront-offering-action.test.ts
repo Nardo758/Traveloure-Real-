@@ -11,6 +11,9 @@ import type { BuyAction } from "../../../../shared/buy-action";
 import {
   storefrontOfferingActionLabel,
   formatNextAvailable,
+  storefrontActionCharges,
+  storefrontOfferingIntentHash,
+  buildStorefrontActionHref,
   type StorefrontOfferingActionRow,
 } from "../storefront-offering-action";
 
@@ -129,6 +132,54 @@ test("formatNextAvailable: date + time + a declared IANA zone", () => {
 
 test("formatNextAvailable: date with no time still renders (an untimed published slot)", () => {
   assert.equal(formatNextAvailable({ date: "2026-01-01", startTime: null }), "Next available: Jan 1");
+});
+
+test("storefrontActionCharges: only a checkout landing charges now", () => {
+  assert.equal(storefrontActionCharges(buyAction({ landing: { ...NO_LANDING, store: "checkout" } })), true);
+  assert.equal(storefrontActionCharges(buyAction({ landing: { ...NO_LANDING, store: "booking_request" } })), false);
+  assert.equal(storefrontActionCharges(undefined), false);
+});
+
+test("storefrontOfferingIntentHash: book/request-session -> #book, quote -> #quote, else none", () => {
+  assert.equal(storefrontOfferingIntentHash("Book a session"), "#book");
+  assert.equal(storefrontOfferingIntentHash("Request a session"), "#book");
+  assert.equal(storefrontOfferingIntentHash("Request a quote"), "#quote");
+  assert.equal(storefrontOfferingIntentHash("Start a Q&A Session"), "");
+  assert.equal(storefrontOfferingIntentHash("Add to my plan"), "");
+  assert.equal(storefrontOfferingIntentHash("View & book"), "");
+});
+
+test("buildStorefrontActionHref: a #book link with a known next-available slot carries its month", () => {
+  assert.equal(
+    buildStorefrontActionHref("/services/abc", "Book a session", { date: "2026-10-02", startTime: "14:00" }),
+    "/services/abc?month=2026-10#book",
+  );
+});
+
+test("buildStorefrontActionHref: an existing query string gets '&', never a second '?'", () => {
+  assert.equal(
+    buildStorefrontActionHref("/services/abc?tripId=t1", "Book a session", { date: "2026-10-02", startTime: null }),
+    "/services/abc?tripId=t1&month=2026-10#book",
+  );
+});
+
+test("buildStorefrontActionHref: 'Request a session' never invents a month — it has none by definition", () => {
+  assert.equal(buildStorefrontActionHref("/services/abc", "Request a session", null), "/services/abc#book");
+});
+
+test("buildStorefrontActionHref: no next-available slot yet — no month param, hash only", () => {
+  assert.equal(buildStorefrontActionHref("/services/abc", "Book a session", null), "/services/abc#book");
+});
+
+test("buildStorefrontActionHref: a non-#book label never carries a month param, even with a slot", () => {
+  assert.equal(
+    buildStorefrontActionHref("/services/abc", "Request a quote", { date: "2026-10-02", startTime: null }),
+    "/services/abc#quote",
+  );
+  assert.equal(
+    buildStorefrontActionHref("/services/abc", "Add to my plan", { date: "2026-10-02", startTime: null }),
+    "/services/abc",
+  );
 });
 
 test("a ready-made or advisor row (buy_ready_made / plan_with) keeps 'View & book' — not authored by this lane", () => {

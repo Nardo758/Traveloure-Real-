@@ -95,6 +95,44 @@ export interface NextAvailableLike {
 }
 
 /**
+ * Whether pressing the action button charges the traveler NOW (v2 fix, mockup review). "Book a
+ * session" / "Start a Q&A Session" land on `checkout`; "Request a session" / "Request a quote"
+ * never do — a request/quote mints no charge, so the card's "Secure checkout" badge must not sit
+ * beside it (§13). `undefined` buyAction (no resolved action at all) charges nothing either.
+ */
+export function storefrontActionCharges(buyAction: BuyAction | undefined): boolean {
+  return buyAction?.landing.store === "checkout";
+}
+
+/**
+ * The booking-intent hash `service-detail.tsx` reads to scroll/focus the right control
+ * (`#book` for a scheduled consult, `#quote` for a request-a-quote row, none otherwise).
+ */
+export function storefrontOfferingIntentHash(label: string): "#book" | "#quote" | "" {
+  if (label === "Book a session" || label === "Request a session") return "#book";
+  if (label === "Request a quote") return "#quote";
+  return "";
+}
+
+/**
+ * The full action-button href: the listing's own service-page href, plus a `?month=YYYY-MM`
+ * hint carrying the EARLIEST slot's month (v2 fix — the mockup walkthrough found the calendar
+ * opening on the current month while the button promised a later one), plus the intent hash.
+ * The month hint is added ONLY for the `#book` intent and ONLY when a slot is actually known —
+ * never invented for "Request a session", which by definition has none (§13).
+ */
+export function buildStorefrontActionHref(
+  serviceHref: string,
+  label: string,
+  nextAvailable?: NextAvailableLike | null,
+): string {
+  const intentHash = storefrontOfferingIntentHash(label);
+  const month = intentHash === "#book" && nextAvailable ? nextAvailable.date.slice(0, 7) : null;
+  const monthQuery = month ? `${serviceHref.includes("?") ? "&" : "?"}month=${month}` : "";
+  return `${serviceHref}${monthQuery}${intentHash}`;
+}
+
+/**
  * "Next available: Nov 8, 2:00 PM (Asia/Tokyo)" — the storefront card's own line. Mirrors the
  * service-detail zone convention (`formatStartWindow`, `service-good-to-know.ts`): a stated IANA
  * zone is appended, but — unlike that helper's "(provider's local time)" default — an UNKNOWN

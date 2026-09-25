@@ -62,7 +62,12 @@ import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { isPlaceAnchored } from "@shared/service-fundamentals";
 import type { BuyAction } from "@shared/buy-action";
-import { storefrontOfferingActionLabel, formatNextAvailable } from "@/lib/storefront-offering-action";
+import {
+  storefrontOfferingActionLabel,
+  formatNextAvailable,
+  buildStorefrontActionHref,
+  storefrontActionCharges,
+} from "@/lib/storefront-offering-action";
 // THE ONE price-unit derivation (§18 rule 1, ledger `2026-09-14-price-unit-one-derivation`).
 // This page used to carry its own `priceUnitLabel`; the phrases it returned are unchanged.
 import { priceUnitPhrase } from "@/lib/price-unit";
@@ -323,6 +328,7 @@ function StorefrontOfferingCard({
   actionId,
   actionLabel,
   actionHref,
+  actionCharges,
   nextAvailableText,
 }: {
   href: string;
@@ -353,6 +359,14 @@ function StorefrontOfferingCard({
   actionLabel?: string;
   actionHref?: string;
   nextAvailableText?: string | null;
+  /**
+   * Whether pressing `actionLabel` charges the card now (the resolver's `landing.store ===
+   * "checkout"`) — a real Stripe charge happens on "Book a session" / "Start a Q&A Session", but
+   * "Request a session" / "Request a quote" charge NOTHING (§13: "Secure checkout" beside a
+   * request is a claim the rail does not keep). Undefined when there is no `actionLabel` at all,
+   * in which case the footer badge keeps its pre-existing unconditional behaviour.
+   */
+  actionCharges?: boolean;
 }) {
   const priceHidden = showPrice === false;
   // ld23-buy-action-gap: THIS CARD STILL AUTHORS ITS OWN CTA — recorded, not decided. Ruling 9
@@ -386,6 +400,11 @@ function StorefrontOfferingCard({
     bookingMode === "request" ? "Request to book →"
     : bookingMode === "hidden" ? "Enquire →"
     : cta;
+  // The new action button (below) is the ONE buy affordance for a row that carries one — the
+  // old inline `ctaLabel` beside it duplicated the same decision in the card's own words and
+  // could disagree with it outright (a custom-quote row read "Request to book →" here while the
+  // resolver's own button read "Request a quote"). §18 rule 1: one button, one label.
+  const hasNewAction = Boolean(actionLabel && actionHref);
   const [, navigate] = useLocation();
   return (
     <Link
@@ -457,6 +476,11 @@ function StorefrontOfferingCard({
             >
               Enquire for pricing
             </span>
+          ) : hasNewAction && actionCharges === false ? (
+            // A request/quote row: the new button already says "Request …", and nothing is
+            // charged by pressing it — "Secure checkout" here would be a claim about a payment
+            // this row never takes (§13).
+            <span />
           ) : (
             <span
               className="inline-flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-[color:var(--earn-green-ink)]"
@@ -466,7 +490,11 @@ function StorefrontOfferingCard({
               Secure checkout
             </span>
           )}
-          <span className="whitespace-nowrap text-sm font-semibold text-[color:var(--earn-coral-ink)]">{ctaLabel}</span>
+          {/* The old inline CTA only renders when there is no new action button to say the same
+              thing — never both (see `hasNewAction` above). */}
+          {!hasNewAction && (
+            <span className="whitespace-nowrap text-sm font-semibold text-[color:var(--earn-coral-ink)]">{ctaLabel}</span>
+          )}
         </div>
         {/* The decision-maker's booking button — a server-resolved action (buyAction), never a
             second buy decision. It stops the click reaching the card's own Link so it can carry
@@ -1146,14 +1174,6 @@ export default function StorefrontPage() {
                         },
                         s.buyAction,
                       );
-                  // The intent that tells the service page which control to open/scroll to
-                  // (item 4: minimal hash handling there, no change to its buy logic).
-                  const intentHash =
-                    actionLabel === "Book a session" || actionLabel === "Request a session"
-                      ? "#book"
-                      : actionLabel === "Request a quote"
-                        ? "#quote"
-                        : "";
                   const nextAvailableText = formatNextAvailable(s.nextAvailable);
                   return (
                     <StorefrontOfferingCard
@@ -1175,7 +1195,8 @@ export default function StorefrontPage() {
                       bookingMode={s.bookingMode}
                       actionId={s.id}
                       actionLabel={actionLabel ?? undefined}
-                      actionHref={actionLabel ? `${serviceHref}${intentHash}` : undefined}
+                      actionHref={actionLabel ? buildStorefrontActionHref(serviceHref, actionLabel, s.nextAvailable) : undefined}
+                      actionCharges={actionLabel ? storefrontActionCharges(s.buyAction) : undefined}
                       nextAvailableText={nextAvailableText}
                     />
                   );

@@ -465,8 +465,22 @@ export default function ServiceDetailPage() {
   // 2026-09-03-expert-templates-consumer-sunset. The seller's other offerings are still
   // reachable through the storefront return path below.
 
+  // A storefront card's "Book a session" carries the month of the EARLIEST slot it already knows
+  // about (ledger `2026-09-25-storefront-booking-actions`, v2 fix) — read once on mount so the
+  // calendar opens on that month rather than the current one (found in the v1 mockup: a card
+  // promising "Next available: Oct 2" landed on a September calendar reading "No availability
+  // published yet"). No new server read: the month rides the existing `?month=` param the link
+  // already builds from the storefront's own `nextAvailable.date`.
+  const monthParamRef = useRef<string | null>(
+    (() => {
+      const raw = new URLSearchParams(window.location.search).get("month");
+      return raw && /^\d{4}-\d{2}$/.test(raw) ? raw : null;
+    })(),
+  );
   // C2: read-only availability calendar, month-scoped.
-  const [availabilityMonth, setAvailabilityMonth] = useState(() => format(new Date(), "yyyy-MM"));
+  const [availabilityMonth, setAvailabilityMonth] = useState(
+    () => monthParamRef.current ?? format(new Date(), "yyyy-MM"),
+  );
   const { data: availability, isLoading: availabilityLoading } = useQuery<AvailabilityResponse>({
     queryKey: ["/api/services", id, "availability", availabilityMonth],
     queryFn: async () => {
@@ -478,6 +492,21 @@ export default function ServiceDetailPage() {
     },
     enabled: !!id,
   });
+  // §13: the linked month is only a HINT — a slot can vanish between the storefront's read and
+  // this page's. If the month the URL named turns out to hold nothing, fall back to today's
+  // month rather than stranding the traveler on a confirmed-empty calendar; a REAL empty month
+  // the traveler navigated to themselves is untouched (the ref is cleared after the one retry).
+  useEffect(() => {
+    if (!monthParamRef.current) return;
+    if (availabilityLoading || !availability) return;
+    if (availability.month !== monthParamRef.current) return;
+    const linkedMonthEmpty = availability.days.length === 0;
+    monthParamRef.current = null;
+    if (linkedMonthEmpty) {
+      const currentMonth = format(new Date(), "yyyy-MM");
+      if (currentMonth !== availabilityMonth) setAvailabilityMonth(currentMonth);
+    }
+  }, [availability, availabilityLoading, availabilityMonth]);
   const todayIso = format(new Date(), "yyyy-MM-dd");
   const upcomingAvailability = (availability?.days || [])
     .filter((d) => d.date >= todayIso)
