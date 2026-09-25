@@ -40,6 +40,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery } from '@tanstack/react-query';
 import { getQueryFn } from '@/lib/queryClient';
 import { readSlipHasItemsRefusal, slipHref, type AiDraftRefusal } from '@/lib/ai-draft-refusal';
+import { refreshPlanLists } from "@/lib/plan-lists";
 
 /**
  * The five FROZEN coarse occasion keys the generator accepts (ruling `2026-09-01-moment-key`).
@@ -370,6 +371,9 @@ export default function EnhancedPlanningModal({
       }
 
       const data = await response.json();
+      // RC-7 (ledger `2026-09-25-rc7-new-plan-visible`): a generation without a plan in hand
+      // creates one server-side; either way the plan lists changed.
+      void refreshPlanLists();
 
       // The backend creates the comparison INSIDE the snapshot transaction
       // (saveGeneratedItinerarySnapshot, content-query.service.ts) and the
