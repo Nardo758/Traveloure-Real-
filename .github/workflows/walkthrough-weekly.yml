@@ -46,22 +46,10 @@ jobs:
     name: walk one persona, judge, file findings
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
 
       - name: Require an Anthropic API key (this workflow cannot walk without one)
         run: |

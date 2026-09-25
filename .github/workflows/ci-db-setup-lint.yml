@@ -25,10 +25,15 @@ name: CI DB Setup Lint
 #   create-sessions-table.ts — run: npx tsx scripts/create-sessions-table.ts
 #   seed-ci-test-users.ts    — run: npx tsx scripts/seed-ci-test-users.ts
 #
-# Discovery: every .github/workflows/*.yml file that declares a Postgres
-# service (matched by the presence of "image: postgres:") is automatically
-# included in this check. No manual list to maintain — adding a new Playwright
-# workflow with a Postgres service block will be caught automatically.
+# Discovery: every .github/workflows/*.yml file that starts Postgres (matched by
+# a reference to the ./.github/actions/start-postgres action, which starts the
+# runner-installed server — ledger 2026-09-25-ci-postgres-runner-local) is
+# automatically included in this check. No manual list to maintain.
+#
+# THIRD CHECK — no registry-pulled Postgres. A `services:` container with a
+# postgres image is refused outright: those anonymous pulls from
+# public.ecr.aws ran out of quota ("toomanyrequests") and failed jobs before
+# any test ran. Use the start-postgres action instead.
 #
 # Note: sessions-table-smoke.yml legitimately invokes create-sessions-table.ts
 # directly (it is the dedicated smoke test for that script); it is intentionally
@@ -181,8 +186,8 @@ jobs:
           echo "All excluded workflow files are present at their expected paths ✅"
 
       - name: Reject inline migration / session-table run steps in Playwright workflow files
-        # Auto-discovers every .github/workflows/*.yml file that declares a
-        # Postgres service (detected via "image: postgres:") and checks each one
+        # Auto-discovers every .github/workflows/*.yml file that starts Postgres
+        # (detected via "uses: ./.github/actions/start-postgres") and checks each one
         # for bare run: commands that invoke migrate-entry.ts,
         # create-sessions-table.ts, or seed-ci-test-users.ts directly.
         # Any such pattern indicates the DB setup was copied inline rather than
@@ -220,12 +225,12 @@ jobs:
             ".github/workflows/sessions-table-smoke.yml"
           )
 
-          # Auto-discover all workflow files that spin up a Postgres service.
-          # The presence of "image: postgres:" in a services block is the
-          # canonical indicator that the job needs a database — and therefore
-          # must delegate DB setup to the composite action rather than copying
-          # steps inline. New workflows with a Postgres service are caught
-          # automatically without updating any hardcoded list.
+          # Auto-discover all workflow files that start Postgres.
+          # A reference to ./.github/actions/start-postgres is the canonical
+          # indicator that the job needs a database — and therefore must
+          # delegate DB setup to the composite action rather than copying
+          # steps inline. (A registry `image: …postgres:` service is refused
+          # by the step after next, so it cannot be a way around this.)
           WORKFLOW_FILES=()
           for f in .github/workflows/*.yml; do
             skip=0
@@ -234,7 +239,7 @@ jobs:
             done
             [ "$skip" -eq 1 ] && continue
 
-            if grep -qE "image:.*postgres:" "$f"; then
+            if grep -qE "uses: \./\.github/actions/start-postgres" "$f"; then
               WORKFLOW_FILES+=("$f")
             fi
           done
@@ -329,7 +334,7 @@ jobs:
             ".github/workflows/sessions-table-smoke.yml"
           )
 
-          # Auto-discover all workflow files that spin up a Postgres service.
+          # Auto-discover all workflow files that start Postgres.
           WORKFLOW_FILES=()
           for f in .github/workflows/*.yml; do
             skip=0
@@ -338,7 +343,7 @@ jobs:
             done
             [ "$skip" -eq 1 ] && continue
 
-            if grep -qE "image:.*postgres:" "$f"; then
+            if grep -qE "uses: \./\.github/actions/start-postgres" "$f"; then
               WORKFLOW_FILES+=("$f")
             fi
           done
@@ -383,6 +388,32 @@ jobs:
 
           echo ""
           echo "All ${#WORKFLOW_FILES[@]} workflow file(s) correctly reference the composite action ✅"
+
+      - name: Reject registry-pulled Postgres service containers
+        # Ledger 2026-09-25-ci-postgres-runner-local. Every DB-backed job used
+        # to declare `services: postgres:` with an image pulled anonymously from
+        # public.ecr.aws; with ~64 such jobs and several PRs in CI at once the
+        # anonymous quota ran out and jobs died in "Initialize containers"
+        # before any test ran. The runner already has PostgreSQL installed, and
+        # ./.github/actions/start-postgres starts it with the same role,
+        # password, database and port the containers had. This step keeps the
+        # pull from coming back. No exclusions: there is no job that needs one.
+        #
+        # NEGATIVE SPACE: this matches an `image:` line naming postgres in any
+        # workflow file. It does not see a `docker run postgres` inside a run:
+        # script, and it does not look at composite actions.
+        run: |
+          set -euo pipefail
+          MATCHES=$(grep -nE "^[[:space:]]*image:.*postgres" .github/workflows/*.yml || true)
+          if [ -n "$MATCHES" ]; then
+            echo "$MATCHES"
+            echo "::error::A workflow declares a Postgres container image. Registry pulls hit anonymous rate limits and fail jobs before any test runs."
+            echo "  Remove the services: postgres: block and add, right after actions/checkout:"
+            echo "    - name: Start PostgreSQL (runner-installed; no registry pull)"
+            echo "      uses: ./.github/actions/start-postgres"
+            exit 1
+          fi
+          echo "No workflow pulls a Postgres image ✅"
 
   ci-db-setup-lint-self-test:
     name: ci-db-setup-lint-self-test (verify lint catches inline steps)

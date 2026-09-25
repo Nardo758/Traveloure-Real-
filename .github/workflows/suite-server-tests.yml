@@ -26,20 +26,6 @@ jobs:
     name: suite-server-tests (server/__tests__ as a class — DB + app)
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -56,6 +42,8 @@ jobs:
       TIER2_DEV_AUDIT_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

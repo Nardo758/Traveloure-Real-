@@ -1,0 +1,85 @@
+name: Start PostgreSQL (runner-installed)
+description: >
+  Starts the PostgreSQL server that GitHub's ubuntu-24.04 runner image already
+  ships, and gives it exactly the shape the old `services: postgres:` containers
+  had: role postgres / password postgres, database traveloure (UTF8, en_US.UTF-8),
+  on localhost:5432. Nothing is pulled from any registry.
+
+# WHY THIS EXISTS (ledger 2026-09-25-ci-postgres-runner-local).
+# Every DB-backed job used to declare a `services: postgres:` container pulled
+# anonymously from public.ecr.aws. With 64 such jobs and several PRs in CI at
+# once, the anonymous quota ran out ("toomanyrequests: Rate exceeded" / "Data
+# limit exceeded") and jobs died in "Initialize containers" before any test ran.
+# The runner already has PostgreSQL installed, so no pull is needed at all.
+#
+# THE VERSION IS ASSERTED, NEVER ASSUMED. The runner image decides which major
+# version is installed. If an image update changes it, this step fails loudly
+# naming both versions, instead of every suite silently running on a server
+# nobody chose. Raise `expected-major` deliberately when that happens.
+#
+# USAGE: put it immediately after actions/checkout, before anything that touches
+# the database. DB setup (migrations, sessions table, CI users) stays in
+# ./.github/actions/ci-db-setup — this action only provides the server.
+
+inputs:
+  expected-major:
+    description: PostgreSQL major version the runner must provide (fails otherwise).
+    required: false
+    default: '16'
+
+runs:
+  using: composite
+  steps:
+    - name: Start the runner's PostgreSQL and create role/database
+      shell: bash
+      env:
+        EXPECTED_MAJOR: ${{ inputs.expected-major }}
+      run: |
+        set -euo pipefail
+        cd /tmp  # sudo -u postgres cannot read the workspace; avoids a harmless-but-noisy warning
+
+        PG_USER=postgres
+        PG_PASSWORD=postgres
+        PG_DB=traveloure
+        # The old container ran initdb with en_US.utf8. Collation decides text
+        # ORDER BY results, so the database keeps that locale rather than the
+        # runner cluster's default (C.UTF-8).
+        PG_LOCALE=en_US.UTF-8
+
+        if ! command -v pg_isready >/dev/null 2>&1 || ! ls -d /usr/lib/postgresql/*/bin >/dev/null 2>&1; then
+          echo "::error::No PostgreSQL installation found on this runner. This action relies on the one GitHub's ubuntu-24.04 image ships."
+          exit 1
+        fi
+
+        if ! locale -a | grep -qiE '^en_US\.utf-?8$'; then
+          echo "Generating the ${PG_LOCALE} locale (not present on this runner)..."
+          sudo locale-gen "${PG_LOCALE}" >/dev/null
+        fi
+
+        sudo systemctl start postgresql.service
+
+        for i in $(seq 1 30); do
+          if pg_isready -h localhost -p 5432 -q; then break; fi
+          if [ "$i" -eq 30 ]; then
+            echo "::error::PostgreSQL did not accept connections on localhost:5432 within 30s."
+            sudo systemctl status postgresql.service --no-pager || true
+            exit 1
+          fi
+          sleep 1
+        done
+
+        ACTUAL_MAJOR=$(( $(sudo -u postgres psql -tAc "SHOW server_version_num") / 10000 ))
+        if [ "$ACTUAL_MAJOR" != "$EXPECTED_MAJOR" ]; then
+          echo "::error::The runner provides PostgreSQL ${ACTUAL_MAJOR}, but CI expects ${EXPECTED_MAJOR}. The runner image changed; raise expected-major in .github/actions/start-postgres/action.yml deliberately after checking the migrations pass on ${ACTUAL_MAJOR}."
+          exit 1
+        fi
+
+        sudo -u postgres psql -v ON_ERROR_STOP=1 -qc "ALTER ROLE ${PG_USER} WITH PASSWORD '${PG_PASSWORD}';"
+
+        if [ "$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = '${PG_DB}'")" != "1" ]; then
+          sudo -u postgres createdb -T template0 -E UTF8 --locale="${PG_LOCALE}" "${PG_DB}"
+        fi
+
+        # Prove the exact connection every job uses: TCP + password, not the peer socket.
+        PGPASSWORD="${PG_PASSWORD}" psql -h localhost -p 5432 -U "${PG_USER}" -d "${PG_DB}" -v ON_ERROR_STOP=1 -tAc \
+          "SELECT 'PostgreSQL ' || current_setting('server_version') || ' ready: ' || current_database() || ' (' || datcollate || ')' FROM pg_database WHERE datname = current_database();"
