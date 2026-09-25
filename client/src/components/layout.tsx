@@ -72,7 +72,6 @@ import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { navGroupsConfig, authNavConfig, footerSectionsConfig } from "@/lib/nav-config";
-import { useTripContextSync } from "@/lib/trip-context";
 import { TripStrip } from "@/components/trip/trip-strip";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
@@ -590,10 +589,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const wasOpenRef = useRef(false);
   const shouldReduceMotion = useReducedMotion();
   // THE PEN FOLLOWS THE ACCOUNT, NOT THE TAB (lane L18, ledger `2026-09-07-client-pen-scope`).
-  // The three-state principal is passed exactly as the header's own `isAuthLoading` reasoning
-  // above: `undefined` while auth is unresolved (bind nothing — an unresolved answer is not a
-  // negative one), `null` for a guest, the id for a signed-in traveler. This is the ONE binder.
-  useTripContextSync(isAuthLoading ? undefined : ((user as { id?: string } | null | undefined)?.id ?? null));
+  // The ONE binder (`useTripContextSync`) no longer mounts here: this layout is the PUBLIC chrome
+  // only, and a signed-in traveler on a console-shelled route never rendered it, so nothing bound
+  // (RC-3). It is `PenBinder` in `App.tsx`, above every shell — do not re-add a second one here.
 
   // Escape key + click-outside close
   useEffect(() => {

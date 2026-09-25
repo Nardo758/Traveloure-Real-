@@ -72,7 +72,8 @@ import {
   type SlipDestinationRow,
 } from "@/lib/slip-meta";
 import { usePlanning } from "@/contexts/PlanningContext";
-import { syncActiveTripToContext } from "@/lib/trip-selection";
+import { activateOpenedPlan, syncActiveTripToContext } from "@/lib/trip-selection";
+import { usePenPrincipal } from "@/lib/trip-context";
 import { TripExpertNote } from "./TripExpertNote";
 import { ItemComments } from "./ItemComments";
 // D6 (ledger `2026-09-06-slip-conformance`): the EVENT-level role question opens the PROVIDER
@@ -1300,6 +1301,31 @@ export function SlipView({
   const days: PlanCardDay[] = data.days ?? [];
   const isOwner = data.tripRole === "owner";
   const isExpertViewer = data.tripRole === "expert";
+  // RC-5 (ledger `2026-09-25-rc345-active-plan`): opening YOUR plan makes it the active plan — the
+  // one every "Add to plan" targets. ONE rule (`activateOpenedPlan`), shared with the Trip Card;
+  // it waits for the pen to be bound to this viewer and leaves a pen already naming this plan alone.
+  const penPrincipal = usePenPrincipal();
+  const openedTrip = data.trip;
+  useEffect(() => {
+    activateOpenedPlan(
+      openedTrip
+        ? {
+            id: openedTrip.id,
+            destination: openedTrip.destination,
+            startDate: openedTrip.startDate,
+            endDate: openedTrip.endDate,
+            title: openedTrip.title,
+            travelers: openedTrip.travelers,
+            // The slip DTO carries the total only; the pair and the occasion are not known here and
+            // are NOT carried (RC-12: another plan's answers never seed this one). The RC-12 door
+            // re-syncs with the resolved occasion when it opens the modal.
+            eventType: openedTrip.eventType ?? null,
+          }
+        : null,
+      data.tripRole,
+      penPrincipal,
+    );
+  }, [openedTrip, data.tripRole, penPrincipal]);
   // LD 52 (C): an executive assistant building this plan for its owner edits items, nothing more.
   const viewer = slipViewer(data.tripRole);
   const canEditItems = canEditPlanItems(viewer);

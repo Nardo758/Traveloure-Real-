@@ -169,8 +169,11 @@ export type TripContextPatch = Omit<Partial<TripContext>, "startDate" | "endDate
 // THE SHAPE OF THE FIX. There is one key per PRINCIPAL: the legacy key IS the guest pen (so an
 // in-flight guest session, and the two behavioural gates that seed it directly, are untouched), and
 // a signed-in traveler reads `experienceContext:u:<id>`. `activePrincipal` is module state bound by
-// exactly ONE function, `bindPenPrincipal`, called from `useTripContextSync` at the one layout
-// mount — a second binder is the derivation-drift class §18 rule 1 names.
+// exactly ONE function, `bindPenPrincipal`, called from `useTripContextSync` at ONE mount —
+// `PenBinder` in `App.tsx`, ABOVE the router and every shell (RC-3, ledger
+// `2026-09-25-rc345-active-plan`: it used to sit in the public `Layout` only, so a signed-in cold
+// load of a console-shelled page — `BrowseShell` renders `DashboardLayout` — never bound at all and
+// every add went to the cart) — a second binder is the derivation-drift class §18 rule 1 names.
 //
 // §13 — "WE DO NOT KNOW YET" IS NOT "GUEST". Until auth resolves, nothing binds and nothing is
 // cleared; the pen simply reads the guest key it has always read. An unresolved answer is never
@@ -200,6 +203,14 @@ function storageKey(): string {
   return penKeyFor(activePrincipal);
 }
 const CHANGE_EVENT = "trip-context-change";
+/**
+ * Fired by `bindPenPrincipal` ONLY, synchronously, the moment `activePrincipal` changes hands —
+ * BEFORE the hand-off and the hydrate it then awaits. A surface that makes a plan active on open
+ * (`activateOpenedPlan`, RC-5) must write into the VIEWER's pen and not the guest key it would hit
+ * if it wrote before the bind: React runs a child's effect before its parent's in the same commit,
+ * so the slip's effect can fire ahead of `PenBinder`'s. `usePenPrincipal` listens for this.
+ */
+export const PEN_BOUND_EVENT = "trip-context-pen-bound";
 /**
  * Fired by `clearTripContext` ONLY — "the traveler cleared the plan", which is a different fact
  * from "the context changed" (CHANGE_EVENT, which every merge fires). A surface holding its own
@@ -596,6 +607,13 @@ let clearGeneration = 0;
  * Discard it instead; the now-bound trip's own data already came from
  * whatever atomically set `tripId` in the first place.
  */
+// RC-4 (ledger `2026-09-25-rc345-active-plan`): when the local pen names NO trip, the bare
+// `GET /api/trip-context` no longer answers the legacy `trip_id IS NULL` row by fiat — it answers the
+// account's MOST RECENTLY WRITTEN pen row, legacy or trip-scoped (`server/routes/trip-context.routes.ts`).
+// A mint pushes the pen into the trip-scoped row and never into the legacy one, so a new tab or
+// device read an empty legacy row and lost the plan the traveler was just working on. The recovered
+// identity is the server's own record of the last write (`updated_at`), never a guess: an account
+// that never pushed a trip-scoped row still gets the legacy row, and one with no row gets nothing.
 export async function hydrateTripContextFromServer(): Promise<void> {
   if (hydrated) return;
   hydrated = true;
@@ -641,6 +659,23 @@ export function useTripContextSync(principal: PenPrincipal): void {
     if (principal === undefined) return;
     void bindPenPrincipal(principal);
   }, [principal]);
+}
+
+/**
+ * WHOSE PEN THIS TAB IS CURRENTLY READING, reactively. `null` until `bindPenPrincipal` names a
+ * signed-in traveler (and after sign-out). Reads the same module state `getPenPrincipal` does and
+ * re-renders on `PEN_BOUND_EVENT`, so an effect that writes a plan into the pen can wait for the
+ * bind instead of racing it (RC-5).
+ */
+export function usePenPrincipal(): string | null {
+  const [principal, setPrincipal] = useState<string | null>(getPenPrincipal);
+  useEffect(() => {
+    const refresh = () => setPrincipal(getPenPrincipal());
+    refresh();
+    window.addEventListener(PEN_BOUND_EVENT, refresh);
+    return () => window.removeEventListener(PEN_BOUND_EVENT, refresh);
+  }, []);
+  return principal;
 }
 
 // ── BINDING THE PRINCIPAL — the ONE place the pen changes hands ────────────────────────────────
@@ -705,7 +740,10 @@ async function handOffGuestPen(): Promise<void> {
       body: JSON.stringify({ context: answers }),
     });
     if (!put.ok) return;
-    sessionStorage.setItem(storageKey(), JSON.stringify(answers));
+    // RC-5: a plan the viewer opened WHILE this hand-off was in flight (`activateOpenedPlan`, which
+    // waits only for the bind, not for this) is already in the account's pen — the handed-over
+    // answers fill in around it and never replace it.
+    sessionStorage.setItem(storageKey(), JSON.stringify({ ...answers, ...getTripContext() }));
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
   } catch {
     /* offline — best-effort, exactly like every other write in this module */
@@ -739,6 +777,11 @@ export async function bindPenPrincipal(next: string | null): Promise<void> {
   // The next principal gets its own one-shot hydrate from its own server row.
   hydrated = false;
   activePrincipal = next;
+  try {
+    window.dispatchEvent(new CustomEvent(PEN_BOUND_EVENT));
+  } catch {
+    /* non-browser env */
+  }
 
   if (next === null) {
     // Sign-out: drop every pen this tab holds, guest key included. Collected first — removing
