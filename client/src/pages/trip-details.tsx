@@ -185,6 +185,19 @@ export default function TripDetails() {
   // Services for Your Trip" grid. Adding a service to this trip is now the /services grid's job —
   // its Add-to-trip targets the active trip via POST /api/trips/:tripId/itinerary-items.
 
+  // RC-5 (ledger `2026-09-25-rc345-active-plan`): opening YOUR Trip Card makes this the active plan,
+  // through the ONE rule the slip uses (`activateOpenedPlan`). The card is not a planning surface
+  // (LD 42 D8) but it IS the plan on screen, and an add from here must not land on another one.
+  // HOOKS BEFORE THE EARLY RETURNS BELOW (rules of hooks): this pair first shipped after them, so
+  // the loading render skipped it and the loaded render added it — React #310, and the error
+  // boundary drew "Trip Not Found" over a plan the server had just answered 200 for (found by the
+  // Sep 25 role walkthrough, traveler journey). `activateOpenedPlan` itself refuses a missing trip.
+  const penPrincipal = usePenPrincipal();
+  const openedRole = plancardData?.tripRole;
+  useEffect(() => {
+    activateOpenedPlan(trip, openedRole, penPrincipal);
+  }, [trip, openedRole, penPrincipal]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -257,14 +270,6 @@ export default function TripDetails() {
   // The page's own role reading: the plancard DTO's `tripRole` (the server's answer). The rail's
   // every read is owner-gated, so it mounts for the owner only.
   const isOwner = plancardData?.tripRole === "owner";
-  // RC-5 (ledger `2026-09-25-rc345-active-plan`): opening YOUR Trip Card makes this the active plan,
-  // through the ONE rule the slip uses (`activateOpenedPlan`). The card is not a planning surface
-  // (LD 42 D8) but it IS the plan on screen, and an add from here must not land on another one.
-  const penPrincipal = usePenPrincipal();
-  const openedRole = plancardData?.tripRole;
-  useEffect(() => {
-    activateOpenedPlan(trip, openedRole, penPrincipal);
-  }, [trip, openedRole, penPrincipal]);
 
   return (
     <div className="min-h-screen bg-background pb-20" data-testid="trip-card-page">
