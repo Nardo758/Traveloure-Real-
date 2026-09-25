@@ -1,0 +1,132 @@
+# Non-blocking until 5 consecutive green runs, then promote (dispatch D-6)
+#
+# Supply → Demand content-journey e2e harness (Pass 2). Builds and serves a
+# PR/main artifact locally on localhost:5000 (never a shared deployment),
+# seeds CI test users, runs the supply specs (s1-s3) then the demand specs
+# (d*-*.spec.ts) in one serial Playwright run so the demand specs can reuse
+# the Kyoto fixture content the supply specs mint. Stripe stays the CI stub
+# (sk_test_ci_stub…) — every Stripe-dependent step is `test.skip('HELD:stripe')`.
+#
+# NON-BLOCKING: continue-on-error at the job level, and NOT added to any
+# required-check list. Modeled on .github/workflows/selection-controls-gate.yml
+# (e2e-journey-2 job) for the local-server pattern.
+name: Supply-Demand E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'server/routes/**'
+      - 'server/routes.ts'
+      - 'server/services/**'
+      - 'client/src/pages/provider/**'
+      - 'client/src/pages/expert/**'
+      - 'client/src/pages/admin/service-approvals.tsx'
+      - 'client/src/components/trip/**'
+      - 'client/src/components/plancard/**'
+      - 'client/src/pages/discover*.tsx'
+      - 'shared/schema.ts'
+      - 'e2e/supply-demand/**'
+
+jobs:
+  supply-demand:
+    name: supply-demand-e2e (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Start server (built artifact — localhost only)
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # Stripe stub — every Stripe-dependent supply/demand step is test.skip('HELD:stripe').
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          E2E_AI_STUB: '1'
+          PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          exit 1
+
+      - name: Seed CI test accounts
+        run: npx tsx scripts/seed-ci-test-users.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Capture baseline row counts (post-seed)
+        run: npx tsx scripts/e2e/row-counts.ts > test-results/row-counts-baseline.txt
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Supply + demand E2E (s1-s3, then d*)
+        run: npx playwright test -c playwright.supply-demand.config.ts
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          NODE_ENV: production
+          CI: 'true'
+
+      - name: Upload evidence + findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-demand-e2e-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14

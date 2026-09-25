@@ -1,0 +1,61 @@
+/**
+ * ui.ts — small resilient helpers shared by the supply specs.
+ * Long multi-step forms (ServiceForm, the expert application) vary which
+ * fields render by role/offering/category, so these helpers are best-effort:
+ * they fill a field ONLY if it is present, and never fail the test for an
+ * absent optional field. A genuinely missing REQUIRED control is the spec's
+ * own job to assert and file as a finding.
+ */
+import type { Page, Locator } from '@playwright/test';
+
+export async function fillIfVisible(page: Page, testid: string, value: string): Promise<boolean> {
+  const loc = page.locator(`[data-testid="${testid}"]`);
+  if ((await loc.count()) === 0) return false;
+  const el = loc.first();
+  if (!(await el.isVisible().catch(() => false))) return false;
+  await el.fill(value).catch(() => {});
+  return true;
+}
+
+export async function clickIfVisible(page: Page, testid: string): Promise<boolean> {
+  const loc = page.locator(`[data-testid="${testid}"]`);
+  if ((await loc.count()) === 0) return false;
+  const el = loc.first();
+  if (!(await el.isVisible().catch(() => false))) return false;
+  await el.click().catch(() => {});
+  return true;
+}
+
+export async function checkIfVisible(page: Page, testid: string): Promise<boolean> {
+  const loc = page.locator(`[data-testid="${testid}"]`);
+  if ((await loc.count()) === 0) return false;
+  const el = loc.first();
+  if (!(await el.isVisible().catch(() => false))) return false;
+  const alreadyChecked = await el.getAttribute('data-state').then((s) => s === 'checked').catch(() => false);
+  if (!alreadyChecked) await el.click().catch(() => {});
+  return true;
+}
+
+export function testid(page: Page, id: string): Locator {
+  return page.locator(`[data-testid="${id}"]`);
+}
+
+/** Click a "next" control repeatedly (ServiceForm's button-step-next), up to `max` times, stopping when it disappears or a target testid appears. */
+export async function advanceWizard(
+  page: Page,
+  nextTestId: string,
+  stopWhenVisible: string,
+  max = 10,
+): Promise<number> {
+  let clicks = 0;
+  for (let i = 0; i < max; i++) {
+    if (await testid(page, stopWhenVisible).isVisible().catch(() => false)) break;
+    const btn = testid(page, nextTestId);
+    if (!(await btn.isVisible().catch(() => false))) break;
+    if (await btn.isDisabled().catch(() => false)) break;
+    await btn.click().catch(() => {});
+    clicks += 1;
+    await page.waitForTimeout(400);
+  }
+  return clicks;
+}
