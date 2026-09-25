@@ -67,6 +67,8 @@ import { readBookingAgentStatus } from "@/lib/booking-agent-status";
 import { VerifyRequestButton } from "@/components/booking-agent/VerifyRequestButton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useConversationThreads } from "@/hooks/use-conversation-threads";
+import { threadChatPath } from "@/lib/earner-address";
 // LD 47 (ledger `2026-09-17-surfaces-acceptance-completion`): the seller's declared-completion
 // control and read-out. `/api/expert/bookings` carries the SERVER's own `completionDeclaration`,
 // so the traveler's review window is never counted out on this page.
@@ -1513,41 +1515,20 @@ function AssignmentsSection() {
 
 // ─── Messages tab: recent-threads queue (C5 — /chat stays the thread home) ──
 
-// Row shape per GET /api/chats (user_and_expert_chats — the same endpoint /chat's
-// useChats consumes); this queue only groups it, it never writes.
-interface ChatRow {
-  id: string;
-  senderId: string;
-  receiverId: string | null;
-  message: string | null;
-  createdAt: string | null;
-}
+// The thread list is the shared `useConversationThreads` (the `/api/chats` rows grouped once,
+// joined with each thread's opaque id from `/api/messages`); this queue never writes.
 
 function MessageThreadsSection() {
-  const { user } = useAuth();
-  const { data: chats, isLoading } = useQuery<ChatRow[] | null>({
-    queryKey: ["/api/chats"],
-  });
+  // The SHARED thread list (ledger `2026-09-25-ld40-lane2-inboxes`) — the same grouping the
+  // traveler inbox and /chat read, carrying each thread's opaque conversation id. This inbox used
+  // to group `/api/chats` itself, which is why its links could only name a user id.
+  const { threads: allThreads, isLoading } = useConversationThreads();
+  const threads = useMemo(() => allThreads.slice(0, 8), [allThreads]);
   // Same client-side join chat.tsx uses: assigned trips carry traveler_user_id +
   // traveler_name, which is the only name source available for a chat counterpart.
   const { data: assignedTrips } = useQuery<AssignedTrip[]>({
     queryKey: ["/api/expert/assigned-trips"],
   });
-
-  const threads = useMemo(() => {
-    const byCounterpart = new Map<string, ChatRow>();
-    for (const c of chats ?? []) {
-      const counterpartId = c.senderId === user?.id ? c.receiverId : c.senderId;
-      if (!counterpartId) continue;
-      const existing = byCounterpart.get(counterpartId);
-      if (!existing || +new Date(c.createdAt ?? 0) > +new Date(existing.createdAt ?? 0)) {
-        byCounterpart.set(counterpartId, c);
-      }
-    }
-    return Array.from(byCounterpart.entries())
-      .sort((a, b) => +new Date(b[1].createdAt ?? 0) - +new Date(a[1].createdAt ?? 0))
-      .slice(0, 8);
-  }, [chats, user?.id]);
 
   const nameFor = (counterpartId: string) =>
     (assignedTrips ?? []).find((t) => t.traveler_user_id === counterpartId)?.traveler_name || null;
@@ -1582,16 +1563,13 @@ function MessageThreadsSection() {
         />
       ) : (
         <div className="space-y-2">
-          {threads.map(([counterpartId, last]) => {
-            const name = nameFor(counterpartId);
-            // LD 40 lane 2: still id-addressed — same as the provider inbox: this list has its
-            // own `/api/chats` grouping instead of the shared `useConversationThreads` hook that
-            // carries the opaque conversation id.
+          {threads.map((thread) => {
+            const name = nameFor(thread.counterpartId) || thread.displayName;
             return (
-              <Link key={counterpartId} href={`/chat?clientId=${counterpartId}`}>
+              <Link key={thread.counterpartId} href={threadChatPath(thread, "clientId")}>
                 <Card
                   className="border border-console-light hover-elevate cursor-pointer"
-                  data-testid={`inbox-thread-${counterpartId}`}
+                  data-testid={`inbox-thread-${thread.counterpartId}`}
                 >
                   <CardContent className="p-4 flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -1599,12 +1577,12 @@ function MessageThreadsSection() {
                         <User className="w-3.5 h-3.5 text-console-mid flex-shrink-0" />
                         {name || "Traveler"}
                       </p>
-                      {last.message && (
-                        <p className="text-xs text-console-mid truncate mt-0.5">{last.message}</p>
+                      {thread.lastMessage && (
+                        <p className="text-xs text-console-mid truncate mt-0.5">{thread.lastMessage}</p>
                       )}
                     </div>
                     <span className="text-xs text-console-mid flex-shrink-0">
-                      {last.createdAt ? new Date(last.createdAt).toLocaleDateString() : ""}
+                      {thread.lastMessageAt ? new Date(thread.lastMessageAt).toLocaleDateString() : ""}
                     </span>
                   </CardContent>
                 </Card>

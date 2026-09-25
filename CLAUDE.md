@@ -889,6 +889,21 @@ This document captures architectural decisions to maintain consistency across co
     which already carries the handle redirect, the `?tripId=` handoff and the cover image — so it is
     struck from the list above by §18c, not by a lane-2 removal; `storefront.tsx` keeps the
     `LD 40 lane 2: still id-addressed` marker for the handle-less earner the id route still serves.
+    **THE INBOXES AND THE EARNER'S MESSAGE BUTTONS NO LONGER NAME A USER ID (ledger
+    `2026-09-25-ld40-lane2-inboxes`).** Both earner inboxes read the shared `useConversationThreads`
+    (they had each grouped `/api/chats` themselves) and link every thread through ONE rule,
+    `threadChatPath` (`client/src/lib/earner-address.ts`), which the traveler inbox now calls too:
+    the opaque id, and the legacy `?clientId=`/`?expertId=` link ONLY for a thread the capped
+    `/api/messages` join did not cover (§13 — never an invented id). The provider's booking
+    "Message" opens a `{ bookingId }` thread and the Workstation "Chat" a D22 `{ tripId }` thread, so
+    no traveler id crosses the wire from either. **Still id-addressed, unchanged:**
+    `/expert/clients/:clientUserId`, the gem-curator and ready-made-purchase CTAs, the notification
+    `data.clientId`, the `App.tsx` legacy redirects, and `ConversationSummary.otherUserId` with the
+    WebSocket/block/read-all rails keyed on it. **AUDIT RC-11 IS FIXED in the same lane (ledger
+    `2026-09-25-rc11-first-message`):** a thread the start rail opened has a `conversation_contexts`
+    row and no message yet, and the public-id resolver walked messages only, so the traveler's FIRST
+    send was a 404; `listInternalConversationIds` now also counts the context rows the caller is a
+    party to (an exact party test, never the LIKE that narrows it).
 
 
 41. **THE FREE DRAFT IS A SKETCH; OPTIMIZE IS THE PLAN; THE MAP SHOWS THE COMPARISON

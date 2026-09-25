@@ -24,6 +24,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useConversationThreads } from "@/hooks/use-conversation-threads";
+import { threadChatPath } from "@/lib/earner-address";
 import { useUnreadMessageCount } from "@/hooks/use-message-read";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -140,11 +141,7 @@ function MessagesTab() {
                 deep-link is kept for exactly that case rather than dropping the link (§13: no
                 invented opaque id, and no dead card). */}
             <Link
-              href={
-                thread.publicId
-                  ? `/chat?conversation=${encodeURIComponent(thread.publicId)}`
-                  : `/chat?expertId=${thread.counterpartId}`
-              }
+              href={threadChatPath(thread, "expertId")}
               className="flex-1 min-w-0"
             >
               <Card
