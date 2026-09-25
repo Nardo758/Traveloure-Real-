@@ -25,6 +25,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LinkAnalyticsPanel } from "@/components/backoffice/link-analytics-panel";
+import { DiscoverImpressionsPanel } from "@/components/backoffice/discover-impressions-panel";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -172,6 +173,13 @@ export default function ExpertPerformance() {
                 Share-Link Analytics
               </h2>
               <LinkAnalyticsPanel />
+            </section>
+
+            <section data-testid="section-performance-discover">
+              <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
+                On Discover
+              </h2>
+              <DiscoverImpressionsPanel />
             </section>
 
             <OfferingPerformanceSection />
