@@ -106,6 +106,13 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * read and is not a mutation. Both user-data / session-self. 613 / 604 → 615 / 606; user-data
  * 207 → 209; session-self 315 → 317.
  *
+ * Ledger `2026-09-25-seller-booking-mode-prompt` mounts `booking-mode-prompt.routes.ts` with one
+ * session-scoped write: `POST /api/me/listings/booking-mode/decide` sets Instant/Request on the
+ * SESSION seller's own undecided listings (`.strict()` `{ mode }`, no identity in the body;
+ * anonymous is 401 — `server/__tests__/booking-mode-status.db.test.ts`). The status read and the
+ * admin summary are GETs, not mutations. user-data / session-self. 615 / 606 → 616 / 607;
+ * user-data 209 → 210; session-self 317 → 318.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -113,8 +120,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 615);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 606);
+  assert.equal(result.mutations.length, 616);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 607);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -124,15 +131,15 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 606);
-  assert.equal(manifest.rawRegistrationCount, 615);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 606);
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 151, "user-data": 209, other: 215 });
+  assert.equal(endpointRows.length, 607);
+  assert.equal(manifest.rawRegistrationCount, 616);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 607);
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 151, "user-data": 210, other: 215 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 151, "session-self": 317, "resource-owner": 94,
+    "admin-role": 151, "session-self": 318, "resource-owner": 94,
     signature: 6, "public-or-system": 38, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
