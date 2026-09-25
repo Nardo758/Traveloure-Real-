@@ -53,22 +53,10 @@ jobs:
     name: personas (supply-expert, supply-provider, journey-traveler, journey-guest, journey-handoff, journey-plus x2)
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
 
       - name: Fail closed on a live Stripe key (this workflow must never be able to charge a real card)
         run: |
