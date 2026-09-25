@@ -10796,10 +10796,19 @@
    },
    "expected": null,
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": null,
-    "actual": null,
-    "gaps": []
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-tier1.spec.ts T2 step 03 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "On a custom-quote listing, button-request-to-book POSTs /api/services/:id/quote-requests and births one service_quotes row, status requested.",
+    "gaps": [
+     {
+      "class": "INVISIBLE_RESULT",
+      "severity": "P1",
+      "note": "P3-T2-QUOTE-INVISIBLE-WITHOUT-BOOKINGS: the only reader (TravelerQuotesPanel) mounts under My Bookings' Quotes tab, which my-bookings.tsx:424 replaces with 'No bookings yet' when the traveler has no bookings: a quoted price cannot be seen or accepted by a first-time buyer",
+      "uiCheck": "CONFIRMED",
+      "uiEvidence": "docs/audits/pass3/img/T2-04t-traveler-my-bookings-while-quoted.jpg",
+      "uiObserved": "service_quotes status=quoted, /api/me/quotes lifecycle=quoted, page shows No bookings yet"
+     }
+    ]
    }
   },
   {
@@ -25308,10 +25317,19 @@
    },
    "expected": null,
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": "client/src/components/plancard/PlanApprovalBanner.tsx:177",
-    "actual": null,
-    "gaps": []
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-lifecycle.spec.ts step 14 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "Rendered on the FIRST delivery (L1-10). After request_changes and a re-delivery it is NOT rendered: plan_approval_status stays changes_requested, and PlanApprovalBanner returns null for any non-null status. The approve write itself was therefore not exercised this pass.",
+    "gaps": [
+     {
+      "class": "DEAD_TRIGGER",
+      "severity": "P1",
+      "note": "P3-L1-REDELIVERY-UNAPPROVABLE: after Request changes, a re-delivered plan can never be approved from the UI: the workspace-status advance never clears plan_approval_status='changes_requested' and PlanApprovalBanner.tsx:146 hides on any non-null status; Approve & book is unreachable for that plan",
+      "uiCheck": "CONFIRMED",
+      "uiEvidence": "docs/audits/pass3/img/L1-14-traveler-slip-after-redelivery.jpg",
+      "uiObserved": "workspace_status=delivered, plan_approval_status=changes_requested, no banner"
+     }
+    ]
    }
   },
   {
@@ -25455,9 +25473,9 @@
    },
    "expected": null,
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": "client/src/components/plancard/PlanApprovalBanner.tsx:220",
-    "actual": null,
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-lifecycle.spec.ts step 10 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "Sends plan-review request_changes: trip_expert_advisors.workspace_status delivered -> draft, plan_approval_status=changes_requested, plan_review_note stored; expert notified and sees the note in the workspace.",
     "gaps": []
    }
   },
@@ -25612,10 +25630,19 @@
    },
    "expected": null,
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": "client/src/components/plancard/ExpertSuggestionsPanel.tsx:159",
-    "actual": null,
-    "gaps": []
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-lifecycle.spec.ts step 06 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "Approve flips trip_suggestions pending -> approved and materializes one itinerary_items row with origin='expert'; the slip shows the 'from your expert' chip.",
+    "gaps": [
+     {
+      "class": "INVISIBLE_RESULT",
+      "severity": "P2",
+      "note": "P3-L1-NO-SUGGESTION-VERDICT-NOTICE: the expert gets no notification of the traveler's approve/decline; PATCH /api/trips/:id/suggestions/:suggestionId writes none (booking-actions.ts:1171-1270)",
+      "uiCheck": "CONFIRMED",
+      "uiEvidence": "docs/audits/pass3/img/L1-07-traveler-slip-after-reject-approve.jpg",
+      "uiObserved": "0 notifications rows for the expert across both decisions"
+     }
+    ]
    }
   },
   {
@@ -25748,10 +25775,19 @@
    },
    "expected": null,
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": "client/src/components/plancard/ExpertSuggestionsPanel.tsx:222",
-    "actual": null,
-    "gaps": []
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-lifecycle.spec.ts step 06 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "Decline (with note) flips trip_suggestions pending -> rejected with rejection_note; no itinerary item; the expert's suggestion log shows the note.",
+    "gaps": [
+     {
+      "class": "INVISIBLE_RESULT",
+      "severity": "P2",
+      "note": "P3-L1-NO-SUGGESTION-VERDICT-NOTICE: the expert gets no notification of the traveler's approve/decline; PATCH /api/trips/:id/suggestions/:suggestionId writes none (booking-actions.ts:1171-1270)",
+      "uiCheck": "CONFIRMED",
+      "uiEvidence": "docs/audits/pass3/img/L1-07-traveler-slip-after-reject-approve.jpg",
+      "uiObserved": "0 notifications rows for the expert across both decisions"
+     }
+    ]
    }
   },
   {
@@ -26945,9 +26981,9 @@
    },
    "expected": null,
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": "client/src/components/plancard/HireExpertDialog.tsx:250",
-    "actual": null,
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-lifecycle.spec.ts step 01 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "HireExpertDialog lists Expert E for a Kyoto plan; submit POSTs /api/trips/:tripId/advisors and births one trip_expert_advisors row, status pending; the expert gets a booking_request notification.",
     "gaps": []
    }
   },
@@ -28655,14 +28691,22 @@
    },
    "expected": null,
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": "client/src/components/plancard/SlipRail.tsx:1211",
-    "actual": null,
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-lifecycle.spec.ts step 16 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "Finalize on an expert-advised plan sets trips.finalized_at and writes trip_finals v1; the traveler gets trip_card_ready.",
     "gaps": [
      {
       "class": "STALE_CACHE",
       "severity": "P2",
       "note": "Finalize invalidates [plancard] only; My Plans derives the Final chip/section from trip.finalVersion in [\"/api/trips\"] (my-trips.tsx:101,150) which stays stale (staleTime Infinity)."
+     },
+     {
+      "class": "INVISIBLE_RESULT",
+      "severity": "P2",
+      "note": "P3-L1-EXPERT-BLIND-TO-FINALIZE: the advising expert is never told: no notification, and the workspace and Assigned Trips card are unchanged after finalize",
+      "uiCheck": "CONFIRMED",
+      "uiEvidence": "docs/audits/pass3/img/L1-18-expert-workspace-after-finalize.jpg",
+      "uiObserved": "workspace still reads Delivered + the old changes-requested note"
      }
     ]
    }
@@ -37090,9 +37134,9 @@
     "wireframeRef": null
    },
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": null,
-    "actual": null,
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-tier1.spec.ts T2 step 04 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "Issue (amount 420) flips service_quotes requested -> quoted with amount_cents=42000 and expires_at = now + platform default validity.",
     "gaps": []
    }
   },
@@ -37148,9 +37192,9 @@
     "wireframeRef": null
    },
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": null,
-    "actual": null,
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-tier1.spec.ts T2 step 05 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "Withdraw flips service_quotes quoted -> withdrawn (withdrawn_at set) through POST /api/provider/quotes/:id/withdraw; the seller card reads Withdrawn and loses the control; the traveler's own GET /api/me/quotes reports lifecycle=withdrawn.",
     "gaps": []
    }
   },
@@ -37264,10 +37308,27 @@
     "wireframeRef": null
    },
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": null,
-    "actual": null,
-    "gaps": []
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-tier1.spec.ts T3 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "On a seeded confirmed booking with no service date (R-1, HELD:stripe) the button moves confirmed -> completion_declared, stamps completion_declared_at and booking_details.completionDeclaration (fallback owner_declared_no_service_date, disputeBy +7d); no expert_earnings row minted. Toast states the window.",
+    "gaps": [
+     {
+      "class": "INVISIBLE_RESULT",
+      "severity": "P2",
+      "note": "P3-T3-DECLARED-VANISHES-FROM-SELLER: after declaring, the row disappears from the expert Inbox (History filters isHistoryBooking = RECORD u CLOSED, which omits completion_declared), so SellerCompletionPanel's seller-declared read-out never renders",
+      "uiCheck": "CONFIRMED",
+      "uiEvidence": "docs/audits/pass3/img/T3-02b-expert-history-after-reload.jpg",
+      "uiObserved": "No booking history yet; Total tile 1"
+     },
+     {
+      "class": "SPEC_DIVERGENCE",
+      "severity": "P2",
+      "note": "P3-T3-TRAVELER-COMPLETED-TAB: traveler My Bookings files the completion_declared row under Completed (n) (my-bookings.tsx:405-407) although LD 47 says 'Completed' is never rendered before the window closes",
+      "uiCheck": "CONFIRMED",
+      "uiEvidence": "docs/audits/pass3/img/T3-03b-traveler-completed-tab.jpg",
+      "uiObserved": "Completed (1) tab lists the card badged Completion Declared"
+     }
+    ]
    }
   },
   {
@@ -37284,7 +37345,7 @@
    "label": {
     "text": "Save (claim storefront handle)",
     "ariaLabel": null,
-    "testId": "button-save"
+    "testId": "button-save-handle"
    },
    "trigger": {
     "kind": "click",
@@ -37342,7 +37403,7 @@
    "label": {
     "text": "Save (claim storefront handle)",
     "ariaLabel": null,
-    "testId": "button-save"
+    "testId": "button-save-handle"
    },
    "trigger": {
     "kind": "click",
@@ -37380,10 +37441,19 @@
     "wireframeRef": null
    },
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": null,
-    "actual": null,
-    "gaps": []
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-tier1.spec.ts T1 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "HandleClaimCard on /expert/settings (input-handle + button-save-handle; this row's testId was recorded as 'button-save') PATCHes /api/me/handle and writes users.handle; the card shows /s/<handle>.",
+    "gaps": [
+     {
+      "class": "INVISIBLE_RESULT",
+      "severity": "P2",
+      "note": "P3-T1-HANDLE-HIDES-PROFILE: for an approved expert with no approved listing, claiming a handle removes the by-id inventory-gate waiver (storefront.routes.ts:970): /api/storefront/by-id 200 -> 404 and the /s/<handle> link the card offers renders Storefront not found; the card does not say so",
+      "uiCheck": "CONFIRMED",
+      "uiEvidence": "docs/audits/pass3/img/T1-03-public-storefront.jpg",
+      "uiObserved": "by-id 200 before, 404 after; /api/storefront/<handle> 404"
+     }
+    ]
    }
   },
   {
@@ -38134,9 +38204,9 @@
     "wireframeRef": null
    },
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": null,
-    "actual": null,
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-tier1.spec.ts T4 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "On a seeded pending booking (R-1: no client caller births one) the dialog moves pending -> cancelled with cancellation_reason and cancelled_at; the row leaves the Queue; the traveler sees the reason on My Bookings and gets a booking_cancelled notification.",
     "gaps": []
    }
   },
@@ -38154,7 +38224,7 @@
    "label": {
     "text": "Claim pooled booking-agent request",
     "ariaLabel": null,
-    "testId": "(claim control; badge/button id via `r.id`)"
+    "testId": "button-claim-${r.id}"
    },
    "trigger": {
     "kind": "click",
@@ -38192,9 +38262,9 @@
     "wireframeRef": null
    },
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": null,
-    "actual": null,
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-tier1.spec.ts T5 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "Traveler's 12Go agent request on /transportation births an unclaimed affiliate_booking_requests row (expert_id NULL); button-claim-<id> POSTs /api/affiliate-booking-requests/:id/claim, stamps expert_id = session expert, badge Unclaimed -> Claimed by you; a second expert no longer sees the row.",
     "gaps": []
    }
   },
@@ -38250,10 +38320,19 @@
     "wireframeRef": null
    },
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": null,
-    "actual": null,
-    "gaps": []
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-lifecycle.spec.ts step 04 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "button-accept-assignment-<tripId> POSTs /api/expert/assignments/:id/accept; trip_expert_advisors.status pending -> accepted.",
+    "gaps": [
+     {
+      "class": "DEAD_TRIGGER",
+      "severity": "P2",
+      "note": "P3-L1-NO-DECLINE: the pending assignment offers Accept only (queue card and Assigned Trips card); no UI or route writes trip_expert_advisors.status='rejected', though trip-advisor-status.ts:43 says it is 'reachable only by the expert's decline'",
+      "uiCheck": "CONFIRMED",
+      "uiEvidence": "docs/audits/pass3/img/L1-03-expert-inbox-invite.jpg",
+      "uiObserved": "buttons: [Accept] on both cards"
+     }
+    ]
    }
   },
   {
@@ -38308,10 +38387,19 @@
     "wireframeRef": null
    },
    "verdict": {
-    "evidence": "static",
-    "evidenceRef": null,
-    "actual": null,
-    "gaps": []
+    "evidence": "behavioral",
+    "evidenceRef": "e2e/supply-demand/p3-expert-lifecycle.spec.ts step 05 (Pass 3 run p3f2130, build 3304c1d; evidence docs/audits/pass3/)",
+    "actual": "Two submissions from the Distribute tab write two trip_suggestions rows (status pending) and one itinerary_update notification each for the traveler.",
+    "gaps": [
+     {
+      "class": "SPEC_DIVERGENCE",
+      "severity": "P3",
+      "note": "P3-L1-ONE-NOTIFICATION-TYPE: 7 of 9 lifecycle notifications (suggestion, review, delivered, changes requested) share type itinerary_update, so preference/push routing cannot tell them apart",
+      "uiCheck": "CONFIRMED",
+      "uiEvidence": "docs/audits/pass3/img/L1-07-traveler-slip-after-reject-approve.jpg",
+      "uiObserved": "types seen: booking_request, itinerary_update x7, trip_card_ready"
+     }
+    ]
    }
   },
   {

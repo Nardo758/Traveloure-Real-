@@ -84,5 +84,12 @@ export default defineConfig({
   projects: [
     { name: 'supply', testMatch: 's*-*.spec.ts', use: { ...devices['Desktop Chrome'] } },
     { name: 'demand', testMatch: 'd*-*.spec.ts', dependencies: ['supply'], use: { ...devices['Desktop Chrome'] } },
+    // Pass 3 (expert lifecycle + the uncovered expert Tier-1 rows). Depends on SUPPLY only — it
+    // reads Expert E and his offering from the shared state file — and deliberately NOT on
+    // `demand`: a dependency failure skips every dependent test, and nothing here reads what a
+    // demand spec wrote (its traveler, plan and bookings are its own). Listed last so a single
+    // worker runs it after demand. Iterating locally on an already-populated run id:
+    //   E2E_RUN_ID=<id> npx playwright test -c playwright.supply-demand.config.ts --project=lifecycle --no-deps
+    { name: 'lifecycle', testMatch: 'p3-*.spec.ts', dependencies: ['supply'], use: { ...devices['Desktop Chrome'] } },
   ],
 });
