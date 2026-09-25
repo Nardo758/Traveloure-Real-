@@ -31,8 +31,8 @@ import { QaSessionPanel } from "@/components/live/QaSessionPanel";
 // Ledger 90 (FP-5, X1/I1): the ONE booking-visibility predicate, shared with Today, Customers,
 // the Money page and the server aggregations. See shared/booking-visibility.ts for why.
 import {
+  bookingPayoutState,
   isActionableBooking,
-  isEarningBooking,
   isHistoryBooking,
   isProvisionalBooking,
   PROVISIONAL_BOOKING_LABEL,
@@ -474,24 +474,20 @@ function BookingCard({
   onOpenVisaDialog,
   showAcceptDecline,
   statusMutation,
-  moneyBanked = true,
 }: {
   booking: InboxBooking;
   onOpenVisaDialog: (b: InboxBooking) => void;
   showAcceptDecline: boolean;
   statusMutation: ReturnType<typeof useMutation<any, any, { id: string; status: "confirmed" | "cancelled" }>>;
-  /**
-   * False for a CLOSED (declined/cancelled/refunded) row (ledger 90 QA-1 follow-up). Defaults to
-   * `true` so every existing caller (Queue's actionable + awaiting-payment cards) renders exactly
-   * as before — only History passes `false`, and only for rows `isEarningBooking` already
-   * excludes. The FP-5 idiom: disclosed via the status badge, never implied payable.
-   */
-  moneyBanked?: boolean;
 }) {
   const [, navigate] = useLocation();
   const isVisa = isVisaBooking(booking);
   const total = booking.totalAmount != null ? Number(booking.totalAmount) : null;
   const fee = booking.platformFee != null ? Number(booking.platformFee) : null;
+  // What the card may say about money is the ROW's own answer (`bookingPayoutState`), never a
+  // caller's flag — the awaiting-payment list once inherited a `true` default and showed
+  // "You earn" on an unpaid claim (ledger `2026-09-25-provisional-claim-payout-line`).
+  const payoutState = bookingPayoutState(booking.status);
   const payout = booking.providerEarnings != null
     ? Number(booking.providerEarnings)
     : (total != null ? total - (fee ?? 0) : null);
@@ -536,8 +532,16 @@ function BookingCard({
                 )}
               </div>
             )}
-            {(payout != null || total != null) && (
-              moneyBanked ? (
+            {payoutState === "provisional" ? (
+              // PROVISIONAL (§15b): no figure at all — nothing is earned until the traveler pays.
+              <div
+                className="mt-3 rounded-md bg-console-hover border border-console-light px-3 py-2 text-xs text-console-mid"
+                data-testid={`booking-provisional-${booking.id}`}
+              >
+                {PROVISIONAL_BOOKING_HINT}
+              </div>
+            ) : (payout != null || total != null) && (
+              payoutState === "banked" ? (
                 <div
                   className="mt-3 rounded-md bg-green-50 border border-green-200 px-3 py-2"
                   data-testid={`booking-payout-${booking.id}`}
@@ -876,7 +880,6 @@ function HistorySection({
                 onOpenVisaDialog={onOpenVisaDialog}
                 showAcceptDecline={false}
                 statusMutation={noopMutation}
-                moneyBanked={isEarningBooking(booking.status)}
               />
             ))}
           </div>
