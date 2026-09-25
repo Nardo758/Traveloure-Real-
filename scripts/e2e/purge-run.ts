@@ -23,7 +23,14 @@ async function main() {
     console.error('Usage: npx tsx scripts/e2e/purge-run.ts <runid> [--apply]');
     process.exit(1);
   }
-  const emailPattern = `e2e-${runId}-%@traveloure.test`;
+  // lowercase, always: e2eEmail() (e2e/supply-demand/lib/run-id.ts) lowercases the
+  // WHOLE email string it mints, so a mixed-case runid (e.g. "finalX2") is stored as
+  // "e2e-finalx2-...@...". A mixed-case pattern here against a case-sensitive LIKE
+  // therefore matched zero rows — found live: a dry run against a real finalX2 DB
+  // reported "0 accounts" while `users` held 4 of them. Match ILIKE would also have
+  // fixed it, but lowercasing the pattern (matching the writer's own normalization)
+  // keeps the match exact rather than case-insensitive-and-therefore-broader.
+  const emailPattern = `e2e-${runId}-%@traveloure.test`.toLowerCase();
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
   try {
