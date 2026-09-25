@@ -5,6 +5,7 @@ import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { conversationChatPath, startConversation } from "@/lib/earner-address";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { DmoPickerCore } from "@/components/expert/dmo-picker-modal";
@@ -5165,11 +5166,26 @@ export default function ExpertWorkspace() {
                           {identityRevealed ? travelerName : `Client #${travelerCode}`}
                         </span>
                       </div>
-                      {/* F3: land in THIS client's thread, not the chat lobby — /chat already reads ?clientId. */}
+                      {/* F3: land in THIS client's thread, not the chat lobby. LD 40 lane 2 (ledger
+                          `2026-09-25-ld40-lane2-inboxes`): the thread is addressed by the PLAN —
+                          D22's `{ tripId }` kind, which resolves the plan's owner server-side for
+                          its advisor — so no traveler user id crosses the wire. A plan with no
+                          traveler (an authoring build) has nobody to message and opens the lobby. */}
                       <button
-                        // LD 40 lane 2: still id-addressed — the trip's traveler is named by id on
-                        // the assigned-trips payload, and a traveler has no handle to address.
-                        onClick={() => safeNavigate(trip?.traveler_user_id ? `/chat?clientId=${trip.traveler_user_id}` : "/chat")}
+                        onClick={async () => {
+                          if (!trip?.traveler_user_id || !tripId) return safeNavigate("/chat");
+                          const started = await startConversation({ tripId });
+                          if (!started) {
+                            toast({ title: "Couldn't open the conversation", description: "Please try again.", variant: "destructive" });
+                            return;
+                          }
+                          safeNavigate(
+                            conversationChatPath(started.conversationId, {
+                              name: started.recipient.displayName || null,
+                              avatar: started.recipient.avatarUrl,
+                            }),
+                          );
+                        }}
                         data-testid="button-open-chat"
                         style={{ ...btnQuietStyle, flexShrink: 0, padding: "5px 12px", fontSize: 12, display: "flex", alignItems: "center", gap: 5, color: MID }}
                       >

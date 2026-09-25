@@ -59,7 +59,8 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
+import { useConversationThreads } from "@/hooks/use-conversation-threads";
+import { conversationChatPath, startConversation, threadChatPath } from "@/lib/earner-address";
 // LD 47 (ledger `2026-09-17-surfaces-acceptance-completion`): the seller's declared-completion
 // control and read-out. `/api/provider/bookings` carries the SERVER's own `completionDeclaration`,
 // so the traveler's review window is never counted out on this page.
@@ -481,6 +482,7 @@ function BookingCard({
   statusMutation: ReturnType<typeof useMutation<any, any, { id: string; status: "confirmed" | "cancelled" }>>;
 }) {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const isVisa = isVisaBooking(booking);
   const total = booking.totalAmount != null ? Number(booking.totalAmount) : null;
   const fee = booking.platformFee != null ? Number(booking.platformFee) : null;
@@ -621,10 +623,23 @@ function BookingCard({
                 <Button
                   size="sm"
                   variant="ghost"
-                  // LD 40 lane 2: still id-addressed — `?clientId=` names a TRAVELER, who has no
-                  // handle and no storefront, so none of the three address kinds fits. The thread's
-                  // opaque id would, but this row is a BOOKING's traveler and may have no thread yet.
-                  onClick={() => navigate(`/chat?clientId=${booking.traveler!.id}`)}
+                  // LD 40 lane 2 (ledger `2026-09-25-ld40-lane2-inboxes`): addressed by the
+                  // BOOKING — the `{ bookingId }` kind resolves its other party server-side, so the
+                  // traveler's user id never crosses the wire, and a booking with no thread yet
+                  // gets one opened (its first send works — audit RC-11).
+                  onClick={async () => {
+                    const started = await startConversation({ bookingId: booking.id });
+                    if (!started) {
+                      toast({ title: "Couldn't open the conversation", description: "Please try again.", variant: "destructive" });
+                      return;
+                    }
+                    navigate(
+                      conversationChatPath(started.conversationId, {
+                        name: started.recipient.displayName || null,
+                        avatar: started.recipient.avatarUrl,
+                      }),
+                    );
+                  }}
                   data-testid={`button-message-${booking.id}`}
                   title="Message traveler"
                 >
@@ -890,40 +905,15 @@ function HistorySection({
 }
 
 // ─── Messages tab: recent-threads queue (C5 pattern — /chat stays the thread home) ──
-// Row shape per GET /api/chats — role-agnostic, session-scoped (storage.getChats(userId));
-// verified NOT expert-only (server/routes.ts). Unlike the expert Inbox (which has no
-// participant name and cross-references /expert/assigned-trips), the server here already
-// enriches each row with `participant.displayName` — used directly, no client-side join.
-
-interface ChatRow {
-  id: string;
-  senderId: string;
-  receiverId: string | null;
-  message: string | null;
-  createdAt: string | null;
-  participant?: { id?: string; displayName?: string | null } | null;
-}
+// The thread list is the shared `useConversationThreads` (the server-enriched `/api/chats` rows,
+// grouped once, joined with each thread's opaque id from `/api/messages`).
 
 function MessageThreadsSection() {
-  const { user } = useAuth();
-  const { data: chats, isLoading } = useQuery<ChatRow[] | null>({
-    queryKey: ["/api/chats"],
-  });
-
-  const threads = useMemo(() => {
-    const byCounterpart = new Map<string, ChatRow>();
-    for (const c of chats ?? []) {
-      const counterpartId = c.senderId === user?.id ? c.receiverId : c.senderId;
-      if (!counterpartId) continue;
-      const existing = byCounterpart.get(counterpartId);
-      if (!existing || +new Date(c.createdAt ?? 0) > +new Date(existing.createdAt ?? 0)) {
-        byCounterpart.set(counterpartId, c);
-      }
-    }
-    return Array.from(byCounterpart.entries())
-      .sort((a, b) => +new Date(b[1].createdAt ?? 0) - +new Date(a[1].createdAt ?? 0))
-      .slice(0, 8);
-  }, [chats, user?.id]);
+  // The SHARED thread list (ledger `2026-09-25-ld40-lane2-inboxes`): the same grouping the
+  // traveler inbox and /chat read, which also carries each thread's opaque conversation id. This
+  // inbox used to group `/api/chats` itself, which is why its links could only name a user id.
+  const { threads: allThreads, isLoading } = useConversationThreads();
+  const threads = useMemo(() => allThreads.slice(0, 8), [allThreads]);
 
   return (
     <section data-testid="section-inbox-messages">
@@ -955,28 +945,24 @@ function MessageThreadsSection() {
         />
       ) : (
         <div className="space-y-2">
-          {/* LD 40 lane 2: still id-addressed — this inbox groups `/api/chats` itself rather than
-              using the shared `useConversationThreads` hook, which now joins the opaque
-              conversation id from `/api/messages`. Moving all three inboxes onto that hook is the
-              fix and is its own change. */}
-          {threads.map(([counterpartId, last]) => (
-            <Link key={counterpartId} href={`/chat?clientId=${counterpartId}`}>
+          {threads.map((thread) => (
+            <Link key={thread.counterpartId} href={threadChatPath(thread, "clientId")}>
               <Card
                 className="border border-console-light hover-elevate cursor-pointer"
-                data-testid={`inbox-thread-${counterpartId}`}
+                data-testid={`inbox-thread-${thread.counterpartId}`}
               >
                 <CardContent className="p-4 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-medium text-console-darkest truncate flex items-center gap-1.5">
                       <User className="w-3.5 h-3.5 text-console-mid flex-shrink-0" />
-                      {last.participant?.displayName || "Traveler"}
+                      {thread.displayName || "Traveler"}
                     </p>
-                    {last.message && (
-                      <p className="text-xs text-console-mid truncate mt-0.5">{last.message}</p>
+                    {thread.lastMessage && (
+                      <p className="text-xs text-console-mid truncate mt-0.5">{thread.lastMessage}</p>
                     )}
                   </div>
                   <span className="text-xs text-console-mid flex-shrink-0">
-                    {last.createdAt ? new Date(last.createdAt).toLocaleDateString() : ""}
+                    {thread.lastMessageAt ? new Date(thread.lastMessageAt).toLocaleDateString() : ""}
                   </span>
                 </CardContent>
               </Card>

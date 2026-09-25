@@ -154,6 +154,25 @@ export function conversationChatPath(
 }
 
 /**
+ * The chat URL for a thread in an inbox list — ONE rule for the traveler inbox and both earner
+ * inboxes (§18 rule 1; ledger `2026-09-25-ld40-lane2-inboxes`).
+ *
+ * CANONICAL: the thread's opaque id (`?conversation=`), which carries no user id. The LEGACY
+ * id-addressed link is kept ONLY for a thread the `GET /api/messages` join did not cover (that read
+ * is capped at 50) — never an invented opaque id, and never a card with no link (§13). The legacy
+ * parameter differs by viewer because `/chat` reads the two sides' deep-links under their old names:
+ * a traveler's link names the EXPERT (`expertId`), an earner's names the CLIENT (`clientId`).
+ */
+export function threadChatPath(
+  thread: { publicId: string | null; counterpartId: string },
+  legacyParam: "expertId" | "clientId",
+): string {
+  if (thread.publicId) return `/chat?conversation=${encodeURIComponent(thread.publicId)}`;
+  // LD 40 lane 2: still id-addressed — only for a thread the /api/messages join did not cover.
+  return `/chat?${legacyParam}=${encodeURIComponent(thread.counterpartId)}`;
+}
+
+/**
  * The public profile path for an earner row.
  *
  * `/s/:handle` IS the canonical public page for a handled earner — `/experts/:id` already
