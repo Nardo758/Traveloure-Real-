@@ -3,6 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 // that also owns its rules. Nothing is imported at runtime, so this adds no module to the graph.
 import type { PlanStopPayload } from "./plan-stops";
 import type { PlanEventDraft } from "@shared/plan-events";
+// RC-6 (ledger `2026-09-25-rc6-bound-plan-city`): the ONE "same city?" rule and the ONE decision for an
+// AI write against a selected plan. A leaf module (it imports only `location-mismatch`, itself a leaf).
+import { identitySafeWrite, sameCity } from "./plan-city";
 
 /**
  * TripContext — the single typed owner of the site-wide trip details blob.
@@ -383,9 +386,52 @@ export function switchTripContextPreservingId(
   const live = getTripContext();
   const trimmedDestination =
     typeof patch.destination === "string" ? patch.destination.trim() || undefined : patch.destination;
-  const destinationChanged = (live.destination || "") !== (trimmedDestination || "");
+  // The ONE city rule (`sameCity`, RC-6) — "Kyoto" and "Kyoto, Japan" are one plan, not two.
+  const destinationChanged = !sameCity(live.destination, trimmedDestination);
   const preservedTripId = live.tripId && !destinationChanged ? live.tripId : undefined;
   return switchTripContext({ ...patch, tripId: preservedTripId });
+}
+
+/**
+ * THE AI PATHS' WRITE INTO THE PEN (ledger `2026-09-25-rc6-bound-plan-city`, audit RC-6).
+ *
+ * IntakePanel's "Plan with AI" and the AI-assistant extraction used a plain `updateTripContext`
+ * merge, so a city or dates heard while a plan was selected landed on THAT plan's id — the #972
+ * desync the tripwire above logs. `identitySafeWrite` (`plan-city.ts`) decides instead:
+ *   • no plan selected ⇒ the same merge as before;
+ *   • a DIFFERENT city ⇒ the pen describes a new plan: its identity fields are REPLACED from what was
+ *     heard (a city, dates and party that belonged to the old plan do not survive) and the id goes;
+ *   • the SAME city ⇒ merge everything except the city and dates, which stay the plan's own.
+ * Returns what was withheld so the caller can say so (§13), never silently.
+ */
+export function updateTripContextIdentitySafe(patch: TripContextPatch): {
+  context: TripContext;
+  withheld: string[];
+} {
+  const live = getTripContext();
+  const normalized: Record<string, unknown> = { ...patch };
+  for (const key of ["startDate", "endDate"] as const) {
+    if (key in normalized) normalized[key] = normalizeDate(normalized[key] as string | Date | null);
+  }
+  const decision = identitySafeWrite(live, normalized);
+  if (decision.kind === "switch") {
+    const identity: Record<string, unknown> = {};
+    const rest: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(decision.patch)) {
+      if ((SWITCH_FIELDS as readonly string[]).includes(key)) identity[key] = value;
+      else rest[key] = value;
+    }
+    // `tripId` omitted ⇒ cleared (REPLACE semantics): the pen no longer points at the old plan.
+    delete identity.tripId;
+    let context = switchTripContext(identity as TripContextPatch);
+    if (Object.keys(rest).length > 0) context = updateTripContext(rest as TripContextPatch);
+    return { context, withheld: [] };
+  }
+  const context =
+    Object.keys(decision.patch).length > 0
+      ? updateTripContext(decision.patch as TripContextPatch)
+      : getTripContext();
+  return { context, withheld: decision.withheld };
 }
 
 // ── Server persistence (migration 130; trip-scoped by migration 161) ──────────
