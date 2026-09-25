@@ -84,6 +84,72 @@ export function legacyBookingsClosedToNewWrites(now: Date = new Date()): boolean
 export const LEGACY_BOOKINGS_CLOSED_REASON = 'legacy_rail_closed';
 export const CANONICAL_BOOKING_RAIL = '/api/checkout';
 
+/** The three states the boot line reports. They are DIFFERENT FACTS and none is guessed (§13). */
+export type LegacyBookingsCutoffState = "not_set" | "decided_not_in_force" | "in_force";
+
+export interface LegacyBookingsCutoffReport {
+  state: LegacyBookingsCutoffState;
+  /** The resolved instant as ISO-8601, or `null` when no cutoff has been decided. */
+  cutoff: string | null;
+  /** The one sentence the boot log prints. */
+  message: string;
+}
+
+/**
+ * Describe the cutoff for the boot log — the ONE place that sentence is written (§18 rule 1).
+ *
+ * WHY THIS EXISTS. Setting `LEGACY_BOOKINGS_NO_NEW_WRITES_FROM` to a FUTURE date and leaving it
+ * unset are behaviourally identical until that date passes: both allow writes, and the only reader
+ * is `POST /api/bookings/process-cart`. So an operator who restarted to load a cutoff had no way to
+ * confirm it had loaded — the restart could only prove the value was not MALFORMED (a malformed one
+ * throws at module load, below). This line closes that gap by stating the resolved value at boot.
+ *
+ * §13 — AN UNSET VALUE IS NEVER REPORTED AS CLOSED, and the three states read differently on sight.
+ * "No cutoff decided" is a finished answer, not a degraded one: closing a live money rail because an
+ * env var is absent is the opposite of a safe failure mode, and the log must not imply it happened.
+ *
+ * It never re-derives what "closed" means — `legacyBookingsClosedToNewWrites` is asked — so the boot
+ * line and the route it describes cannot disagree.
+ *
+ * It cannot throw in practice: the module-load call below has already refused a malformed value, so
+ * by the time boot logs, the variable is either absent or well-formed. No try/catch is added here
+ * deliberately — one would hide a real failure rather than report it.
+ */
+export function describeLegacyBookingsCutoff(now: Date = new Date()): LegacyBookingsCutoffReport {
+  const cutoff = legacyBookingsNoNewWritesFrom();
+
+  if (cutoff === null) {
+    return {
+      state: "not_set",
+      cutoff: null,
+      message:
+        `${LEGACY_BOOKINGS_CUTOFF_ENV} is not set — no cutoff has been decided, and the legacy ` +
+        `bookings rail accepts new writes. Canonical rail: ${CANONICAL_BOOKING_RAIL}.`,
+    };
+  }
+
+  const iso = cutoff.toISOString();
+
+  // The ONE definition of "closed", asked rather than restated.
+  if (legacyBookingsClosedToNewWrites(now)) {
+    return {
+      state: "in_force",
+      cutoff: iso,
+      message:
+        `${LEGACY_BOOKINGS_CUTOFF_ENV}=${iso} — in force: the legacy bookings rail refuses new ` +
+        `writes with ${LEGACY_BOOKINGS_CLOSED_REASON}. Canonical rail: ${CANONICAL_BOOKING_RAIL}.`,
+    };
+  }
+
+  return {
+    state: "decided_not_in_force",
+    cutoff: iso,
+    message:
+      `${LEGACY_BOOKINGS_CUTOFF_ENV}=${iso} — decided, not yet in force: the legacy bookings rail ` +
+      `still accepts new writes until that instant. Canonical rail: ${CANONICAL_BOOKING_RAIL}.`,
+  };
+}
+
 // Boot-time validation: a malformed cutoff fails the process here, not at the first checkout.
 // (An unset or valid value makes this a no-op.)
 legacyBookingsNoNewWritesFrom();

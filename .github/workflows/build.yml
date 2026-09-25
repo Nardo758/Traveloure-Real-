@@ -394,6 +394,11 @@ jobs:
       # the switch's placement as the handler's FIRST statement, and that no cutoff date is set
       # anywhere in the repo — the date is the decision-maker's. C8/C9 pin what does NOT move: every
       # read, `confirm-payment`, `bulk-status`, `/refund` and §17's `scanLegacyRail`.
+      # C10-C14 (ledger `2026-09-25-legacy-cutoff-boot-line`) pin the BOOT LINE: a future cutoff and
+      # an unset one behave identically until the date passes, so a restart performed to load one
+      # could prove only that it was not malformed. The describer reports the three states, an unset
+      # value is never reported as closed (§13), it agrees with the route's own switch in all three
+      # (§18 rule 1), and boot prints it on the pino path after migrations and before routes.
       # (Pure — `db.execute`/`db.transaction` are stubbed and no query is issued — but it imports
       # `shared/schema.ts` through the router, so it belongs in this `npm ci` job. The two env vars
       # above are the same import-time placeholders the suites beside it need.)

@@ -22,6 +22,7 @@ import { Router } from "express";
 import {
   DISCOVER_IMPRESSION_WINDOWS,
   loadDiscoverImpressions,
+  loadEarnerDiscoverImpressions,
   resolveClickAttribution,
 } from "../services/discover-impressions.service";
 import { db } from "../db";
@@ -9419,6 +9420,23 @@ router.get("/api/platform/stats", async (_req, res) => {
       res.json(await loadDiscoverImpressions({ window: parsed.data.window ?? "30", city }));
     } catch (err) {
       console.error("Error loading Discover impressions:", err);
+      res.status(500).json({ message: "Failed to load impressions" });
+    }
+  });
+
+  // Board #621, earner half: the SESSION user's own listings on Discover (ledger
+  // `2026-09-25-discover-impressions-earner`). Owner-scoped in the query (§14 applied to a read);
+  // no role gate is needed because a person with no listings simply owns no rows.
+  const earnerImpressionsQuery = z.object({ window: z.enum(DISCOVER_IMPRESSION_WINDOWS).optional() });
+
+  router.get("/api/me/discover-impressions", isAuthenticated, async (req, res) => {
+    const parsed = earnerImpressionsQuery.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid filter" });
+    try {
+      const userId = getUserId(req)!;
+      res.json(await loadEarnerDiscoverImpressions({ userId, window: parsed.data.window ?? "30" }));
+    } catch (err) {
+      console.error("Error loading earner Discover impressions:", err);
       res.status(500).json({ message: "Failed to load impressions" });
     }
   });
