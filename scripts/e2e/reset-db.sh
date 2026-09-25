@@ -20,24 +20,30 @@ echo "[reset-db] target: $DATABASE_URL"
 # Found live: dist/index.cjs was built from a checkout BEFORE f018f2fe2 (the RC-11 fix), #1093
 # (planning tolls / fee_ledger) and #1095 had landed on this branch — every e2e run against it
 # silently tested pre-fix code, and a real fix (RC-11) read back as a fresh regression. Refuse
-# to reset/boot against a bundle older than HEAD's own commit; this is the one place every run
-# in this harness passes through, so it is the one place that can catch it for good.
+# to reset/boot against a bundle older than the last commit that could have changed the SERVED
+# code; this is the one place every run in this harness passes through, so it is the one place
+# that can catch it for good.
+#
+# Compared against the last PRODUCT-code commit, not bare HEAD (lead review): this branch's own
+# checkpoint commits routinely touch only e2e/ and docs/, which never change what dist/index.cjs
+# serves — comparing against HEAD would force a needless rebuild on every one of those.
 DIST_FILE="dist/index.cjs"
+PRODUCT_PATHS="server client shared package.json package-lock.json vite.config.ts"
 if [ -z "${ALLOW_STALE_DIST:-}" ]; then
   if [ ! -f "$DIST_FILE" ]; then
     echo "[reset-db] ERROR: $DIST_FILE does not exist — run 'npm run build' first." >&2
     exit 1
   fi
   DIST_MTIME=$(date -r "$DIST_FILE" +%s 2>/dev/null || stat -c %Y "$DIST_FILE" 2>/dev/null || echo 0)
-  HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-  HEAD_CTIME=$(git log -1 --format=%ct HEAD 2>/dev/null || echo "")
-  if [ -n "$HEAD_CTIME" ] && [ "$DIST_MTIME" -lt "$HEAD_CTIME" ]; then
-    echo "[reset-db] ERROR: $DIST_FILE (mtime $(date -u -d "@$DIST_MTIME" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null || date -u -r "$DIST_MTIME" '+%Y-%m-%d %H:%M:%S UTC')) is OLDER than HEAD's own commit" >&2
-    echo "         ($HEAD_SHA, $(date -u -d "@$HEAD_CTIME" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null || date -u -r "$HEAD_CTIME" '+%Y-%m-%d %H:%M:%S UTC'))." >&2
+  PRODUCT_SHA=$(git log -1 --format=%H -- $PRODUCT_PATHS 2>/dev/null || echo "")
+  PRODUCT_CTIME=$(git log -1 --format=%ct -- $PRODUCT_PATHS 2>/dev/null || echo "")
+  if [ -n "$PRODUCT_CTIME" ] && [ "$DIST_MTIME" -lt "$PRODUCT_CTIME" ]; then
+    echo "[reset-db] ERROR: $DIST_FILE (mtime $(date -u -d "@$DIST_MTIME" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null || date -u -r "$DIST_MTIME" '+%Y-%m-%d %H:%M:%S UTC')) is OLDER than the last product-code commit" >&2
+    echo "         ($PRODUCT_SHA, $(date -u -d "@$PRODUCT_CTIME" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null || date -u -r "$PRODUCT_CTIME" '+%Y-%m-%d %H:%M:%S UTC'), paths: $PRODUCT_PATHS)." >&2
     echo "         Run 'npm run build' before reset-db.sh, or set ALLOW_STALE_DIST=1 to override deliberately." >&2
     exit 1
   fi
-  echo "[reset-db] dist freshness OK (mtime $DIST_MTIME >= HEAD commit time $HEAD_CTIME, HEAD=$HEAD_SHA)"
+  echo "[reset-db] dist freshness OK (mtime $DIST_MTIME >= last product-code commit time $PRODUCT_CTIME, commit=$PRODUCT_SHA)"
 else
   echo "[reset-db] ALLOW_STALE_DIST=1 — staleness guard skipped by explicit override"
 fi
