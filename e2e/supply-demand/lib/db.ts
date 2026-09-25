@@ -97,6 +97,43 @@ export async function seedProviderIdentityAndBusinessVerification(userId: string
 }
 
 /**
+ * seedExpertIdentityVerification — Part 1b (Pass 2). TEST-FIXTURE-ONLY write, R-1 fallback, the
+ * same class as `seedProviderIdentityAndBusinessVerification` above: `local_expert_forms
+ * .identity_verification_status` is written ONLY by Stripe Identity webhooks in production
+ * (`server/utils/earner-verification.ts`) and has no admin UI override, so it cannot be driven
+ * through the real UI with the CI Stripe stub key (HELD:stripe). An expert offering can be
+ * `approval_status='approved'` and still stuck `status='draft'` (never visible) purely because
+ * this column reads 'pending' — confirmed against `resolvePublishVerification`
+ * (server/services/publish-verification.service.ts): the expert branch requires ONLY
+ * `identity_verification_status='verified'` (no business-verification column exists for an
+ * individual expert). Production flips the held row itself through the SAME idempotent sweep,
+ * `activateVerificationHeldListings` (same file) — `UPDATE provider_services SET status='active'
+ * WHERE user_id=$1 AND approval_status='approved' AND status='draft'` — fired from the Stripe
+ * Identity webhook handler. Reproduced verbatim here (not a new decision, the exact published
+ * logic) since this harness cannot receive that webhook. Every call site must log the write as a
+ * SPEC_DIVERGENCE/P3 finding tagged HELD:stripe, deduped with the provider identity/business
+ * verification finding where the two are filed in the same run (same underlying gap: no non-Stripe
+ * verification path for either role).
+ */
+export async function seedExpertIdentityVerification(userId: string): Promise<{ activatedListingCount: number }> {
+  await db().query(
+    `UPDATE local_expert_forms
+        SET identity_verification_status = 'verified',
+            identity_verified_at = NOW()
+      WHERE user_id = $1`,
+    [userId],
+  );
+  const activated = await q(
+    `UPDATE provider_services
+        SET status = 'active', updated_at = NOW()
+      WHERE user_id = $1 AND approval_status = 'approved' AND status = 'draft'
+      RETURNING id`,
+    [userId],
+  );
+  return { activatedListingCount: activated.length };
+}
+
+/**
  * seedMeetingPin — TEST-FIXTURE-ONLY write, R-1 fallback (brief: "Where a UI step is
  * impossible, record the finding and fall back to the smallest DB write, logged as a
  * seeded step finding"). The in-person Logistics step's meeting pin

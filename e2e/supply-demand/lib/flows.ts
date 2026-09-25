@@ -380,9 +380,31 @@ export async function createListingBasics(
  */
 export async function pickNeighborhood(page: Page, slug: string): Promise<boolean> {
   const opt = testid(page, `option-neighborhood-${slug}`);
+
+  // Part 1a (Pass 2 finding candidate P2-S1-31/32, private_transportation fixture): the picker's
+  // options come from a fetched list (`allNeighborhoods`), and the "Getting there" transport card
+  // on the same Logistics step can still be settling its own async state (transportProvision
+  // gates, attestations) when `walkServiceFormToReview`'s flat per-step wait fires — a plain
+  // `isVisible` + click can land on a node an in-flight re-render is about to replace, so the click
+  // fires but never registers (`selected` stays false, `aria-pressed="false"`). Verified live via
+  // probe: the option and click both work reliably once the step settles; the fix here is to wait
+  // for the option to be STABLE (present across a short poll) and to VERIFY + RETRY the click
+  // against the button's own `aria-pressed` state (ServiceForm.tsx ~1958) rather than trusting a
+  // single fire-and-forget click.
+  const clickAndVerify = async (): Promise<boolean> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (!(await opt.isVisible({ timeout: 3000 }).catch(() => false))) return false;
+      await opt.click({ timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(250);
+      const pressed = await opt.getAttribute('aria-pressed').catch(() => null);
+      if (pressed === 'true') return true;
+      await page.waitForTimeout(300);
+    }
+    return false;
+  };
+
   if (await opt.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await opt.click({ timeout: 3000 }).catch(() => {});
-    return true;
+    return await clickAndVerify();
   }
   // The picker may be behind a search box filtering the same list down — try the search first.
   const search = testid(page, 'input-neighborhood-search');
@@ -390,8 +412,7 @@ export async function pickNeighborhood(page: Page, slug: string): Promise<boolea
     await search.fill(slug.replace(/[-_]/g, ' '), { timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(300);
     if (await opt.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await opt.click({ timeout: 3000 }).catch(() => {});
-      return true;
+      return await clickAndVerify();
     }
   }
   return false;
@@ -446,15 +467,21 @@ export async function walkServiceFormToReview(
   }
 
   let clicks = 0;
+  let neighborhoodPicked = false;
   for (let i = 0; i < maxSteps; i++) {
     if (await testid(page, 'card-review-summary').isVisible().catch(() => false)) break;
+    // Let the step's own async state (neighborhood list fetch, category-specific cards like
+    // "Getting there" for place-anchored transport listings) settle before probing it — a flat
+    // per-step wait alone was not enough for the private_transportation fixture (Part 1a).
+    await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {});
 
     // The neighborhood picker (Meeting Location or "Where you're based" card) lands on whichever
     // step the Logistics/"place" section resolves to — branch-dependent (service-form-steps.ts),
     // so this checks every step rather than assuming a step number. A no-op when not present or
     // when the caller passed no slug (S3's throwaway listing deliberately stays unset).
     if (opts.neighborhoodSlug) {
-      await pickNeighborhood(page, opts.neighborhoodSlug);
+      const picked = await pickNeighborhood(page, opts.neighborhoodSlug);
+      if (picked) neighborhoodPicked = true;
     }
 
     const next = testid(page, 'button-step-next');
@@ -463,6 +490,12 @@ export async function walkServiceFormToReview(
     await next.click().catch(() => {});
     clicks += 1;
     await page.waitForTimeout(400);
+  }
+  // Last-chance retry: if the picker was never confirmed selected (aria-pressed="true") anywhere
+  // in the walk above, the wizard may still be on the Logistics step (e.g. Next stayed enabled and
+  // the loop moved past it before the click was verified) — try once more here before moving on.
+  if (opts.neighborhoodSlug && !neighborhoodPicked) {
+    await pickNeighborhood(page, opts.neighborhoodSlug);
   }
   // D9 attestations (service-attestations-card.tsx): a publish-blocking gate on the
   // Review & submit step, separate from identity/business verification. Renders one
@@ -618,4 +651,108 @@ export async function submitListingForReview(page: Page): Promise<SubmitOutcome>
     return { submitted: true, blockedByVerification: false };
   }
   return { submitted: false, blockedByVerification: false, reason: 'neither submit control found' };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Demand-journey helpers (Pass 2, Part 2 / D1-D7). Adapted from the lead's own proven driver
+// `docs/audits/journeys/harness/lib.mjs` fillPlanModal — same selectors, same walk shape — so the
+// modal-driving recipe is not re-guessed from scratch for a second harness.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+export function futureDateRange(offsetDays = 40, lenDays = 5): { start: string; end: string } {
+  const s = new Date();
+  s.setDate(s.getDate() + offsetDays);
+  const e = new Date(s);
+  e.setDate(e.getDate() + lenDays);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { start: iso(s), end: iso(e) };
+}
+
+/**
+ * Walks the ONE planning modal (ruling 33/42/45) from whatever step it opens on to its finish
+ * row, filling occasion/destination/dates as each becomes visible. Stops as soon as ANY finish
+ * CTA (`planning-option-*`) is visible, WITHOUT clicking one — the caller picks which branch.
+ */
+export async function fillPlanModalToFinish(
+  page: Page,
+  destination: string,
+  opts: { occasionSlug?: string; offsetDays?: number; lenDays?: number } = {},
+): Promise<boolean> {
+  const modal = testid(page, 'plan-modal');
+  if (!(await modal.isVisible({ timeout: 10_000 }).catch(() => false))) return false;
+  const { start, end } = futureDateRange(opts.offsetDays ?? 40, opts.lenDays ?? 5);
+  const occasionSlug = opts.occasionSlug ?? 'travel';
+
+  for (let i = 0; i < 8; i++) {
+    if (await page.locator('[data-testid^="planning-option-"]').first().isVisible().catch(() => false)) break;
+
+    const preferredOccasion = testid(page, `option-occasion-${occasionSlug}`);
+    if (await preferredOccasion.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await preferredOccasion.click().catch(() => {});
+    } else {
+      const anyOccasion = page.locator('[data-testid^="option-occasion-"]').first();
+      if (await anyOccasion.isVisible({ timeout: 1000 }).catch(() => false)) await anyOccasion.click().catch(() => {});
+    }
+
+    const dest = testid(page, 'input-etp-destination');
+    if (await dest.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await dest.fill(destination).catch(() => {});
+    }
+
+    const sd = testid(page, 'input-etp-start-date');
+    if (await sd.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await sd.fill(start).catch(() => {});
+      const ed = testid(page, 'input-etp-end-date');
+      if (await ed.isVisible({ timeout: 1500 }).catch(() => false)) await ed.fill(end).catch(() => {});
+    }
+
+    const next = testid(page, 'button-planning-next');
+    if (await next.isVisible({ timeout: 1500 }).catch(() => false)) {
+      if (await next.isDisabled().catch(() => false)) {
+        // Occasion step's Next is disabled until an occasion is picked (plan-modal.tsx:2656) —
+        // give the click above one more beat to register before giving up on this step.
+        await page.waitForTimeout(400);
+        if (await next.isDisabled().catch(() => false)) break;
+      }
+      await next.click().catch(() => {});
+      await page.waitForTimeout(500);
+    } else {
+      break;
+    }
+  }
+  return page.locator('[data-testid^="planning-option-"]').first().isVisible({ timeout: 3000 }).catch(() => false);
+}
+
+/**
+ * Clicks a finish branch (`planning-option-myself` / `-local` / `-ai` / `-occasion`) and waits
+ * for the resulting navigation, returning the tripId parsed from the landing URL when one mints
+ * (`/plans/:tripId`, `/expert/...?tripId=`, etc. — callers check the shape they expect).
+ */
+export async function clickPlanFinish(page: Page, branch: 'myself' | 'local' | 'ai' | 'occasion'): Promise<string | null> {
+  const btn = testid(page, `planning-option-${branch}`);
+  if (!(await btn.isVisible({ timeout: 3000 }).catch(() => false))) return null;
+  await btn.click().catch(() => {});
+  // The finish mutation shows its own in-dialog spinner (`disabled={saving}`) while it mints the
+  // trip server-side, then navigates — a single `waitForLoadState('networkidle')` can resolve
+  // WHILE that save is still in flight (a screenshot caught this live: the modal still showing
+  // its saving overlay 15s later is one thing; the real fix is to poll for the URL to actually
+  // change rather than trust one snapshot of "idle"). Poll up to ~25s.
+  const startUrl = page.url();
+  let url = startUrl;
+  for (let i = 0; i < 25; i++) {
+    await page.waitForTimeout(1000);
+    url = page.url();
+    if (url !== startUrl && (/\/plans\//.test(url) || /[?&]tripId=/.test(url))) break;
+  }
+  await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+  const m = url.match(/\/plans\/([a-zA-Z0-9-]+)/) || url.match(/[?&]tripId=([a-zA-Z0-9-]+)/);
+  return m ? m[1] : null;
+}
+
+/** Opens the plan modal from the hero "Plan a trip" button on the given page (usually "/"). */
+export async function openPlanModalFromHero(page: Page): Promise<boolean> {
+  const btn = testid(page, 'button-plan-trip');
+  if (!(await btn.isVisible({ timeout: 5000 }).catch(() => false))) return false;
+  await btn.click().catch(() => {});
+  return await testid(page, 'plan-modal').isVisible({ timeout: 5000 }).catch(() => false);
 }

@@ -23,7 +23,7 @@ import {
 } from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
-import { q, userByEmail, serviceByTitle, feeBand, seedMeetingPin } from './lib/db';
+import { q, userByEmail, serviceByTitle, feeBand, seedMeetingPin, seedExpertIdentityVerification } from './lib/db';
 import { writeState, readState } from './lib/state';
 import { testid } from './lib/ui';
 import { dedupe } from './lib/dedupe';
@@ -256,6 +256,85 @@ test('S2: Expert E applies, publishes an offering, and is admin-approved', async
         evidence: { shot: 'shots/S2-expertE-06-admin-approve-offering.png' },
         behavioural: true,
       });
+    } else {
+      // Part 1b (Pass 2). approval_status flips to 'approved' but `provider_services.status`
+      // stays 'draft' for an EXPERT-owned offering until the identity-verification gate is
+      // satisfied (resolvePublishVerification, server/services/publish-verification.service.ts —
+      // the expert branch requires identity_verification_status='verified', Stripe-Identity-only,
+      // no admin override). Confirm the row is actually held BEFORE seeding, so the finding below
+      // is a proven behaviour and not an assumption.
+      const heldRow = await serviceByTitle(offeringTitle);
+      const wasHeldDraft = heldRow?.approval_status === 'approved' && heldRow?.status === 'draft';
+
+      // FALSE_PROMISE check: what does each side see while approved-but-held? Admin's queue
+      // already emptied it (svcApproved implies the card is gone from pending); capture what the
+      // admin's OWN listing/queue view says next, and what the expert's console/listing-home says,
+      // before any seeding happens.
+      await page.goto('/admin/service-approvals');
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      await shot(page, 'S2-expertE', '06b', 'admin-view-after-approve-held');
+
+      await loginViaUi(page, email, E2E_PASSWORD);
+      await page.goto(`/expert/services/${heldRow?.id}/edit`);
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      await shot(page, 'S2-expertE', '06c', 'expert-listing-home-before-identity-seed');
+      const expertPageText = await page.locator('body').innerText().catch(() => '');
+      const expertToldNotLive = /not live|held|awaiting|pending verification|identity verif/i.test(expertPageText);
+
+      fileFinding({
+        journey: 'S2',
+        step: 'expertE:approved-but-held-visibility',
+        class: 'FALSE_PROMISE',
+        severity: wasHeldDraft ? 'P2' : 'P3',
+        known: null,
+        title: 'What the admin and the expert see when an offering is approved but held at draft by the identity gate',
+        expected:
+          'Either the admin approval queue or the expert listing-home tells the reader the ' +
+          'listing is approved but not yet visible to travelers (identity verification pending)',
+        actual: wasHeldDraft
+          ? `provider_services row confirmed approval_status=approved, status=draft. Expert listing-home text ` +
+            `${expertToldNotLive ? 'DOES mention' : 'does NOT mention'} not-live/pending-verification wording ` +
+            `(admin queue view captured separately, screenshot 06b).`
+          : `Row was not observed held (approval_status/status = ${heldRow?.approval_status}/${heldRow?.status}) — ` +
+            'seeding proceeded but the held-state screenshots above are recorded for reference only.',
+        where: 'client/src/components/ServiceForm.tsx (listing-home view); client/src/pages/admin/service-approvals.tsx',
+        evidence: { shot: 'shots/S2-expertE-06c-expert-listing-home-before-identity-seed.png' },
+        behavioural: true,
+      });
+
+      // Part 1b seed: bring identity verification the rest of the way, the same R-1 class as
+      // S1's provider seed (HELD:stripe — no non-Stripe path exists for either role's identity
+      // check; see S1's 'expertE:no-verification-path'-equivalent finding, cross-referenced here
+      // rather than re-filed).
+      const expertUser = await userByEmail(email);
+      if (expertUser?.id) {
+        const { activatedListingCount } = await seedExpertIdentityVerification(expertUser.id);
+        fileFinding({
+          journey: 'S2',
+          step: 'expertE:seeded-identity-verification',
+          class: 'SPEC_DIVERGENCE',
+          severity: 'P3',
+          known: null,
+          title: "seeded step: local_expert_forms.identity_verification_status='verified' (HELD:stripe)",
+          expected: 'n/a — documented R-1 fallback, same class of write as S1\'s provider identity/business ' +
+            'verification seed (P2-S1-3): no non-Stripe path exists to verify EITHER role\'s identity in this ' +
+            'environment, so this is not a second, separate product gap — it is the expert-side instance of ' +
+            'the same one.',
+          actual:
+            `UPDATE local_expert_forms SET identity_verification_status='verified', identity_verified_at=NOW() ` +
+            `WHERE user_id=${expertUser.id}. Reproduced the production auto-activation sweep verbatim ` +
+            `(activateVerificationHeldListings, server/services/publish-verification.service.ts): ` +
+            `UPDATE provider_services SET status='active' WHERE approval_status='approved' AND status='draft' — ` +
+            `${activatedListingCount} row(s) promoted.`,
+          where: 'e2e/supply-demand/lib/db.ts seedExpertIdentityVerification',
+          evidence: {},
+          behavioural: true,
+        });
+      }
+
+      await page.reload();
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      await shot(page, 'S2-expertE', '06d', 'expert-listing-home-after-identity-seed');
     }
   } else {
     fileFinding({
@@ -301,14 +380,20 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
   const net = netLogger(page, 'S2-readymade');
   await loginViaUi(page, expertEmail, E2E_PASSWORD);
 
+  // Part 1c fix (Pass 2): the original spec shot this page immediately after `goto`, with
+  // no wait — the "workspace landing" screenshot in the prior pass was a loading spinner,
+  // not the loaded page, so `button-new-build`'s `isVisible()` (which does not itself wait)
+  // read false before the workspace had ever rendered its content. Wait for the page to
+  // actually settle, then give the button-visibility check a real timeout.
   await page.goto('/expert/workspace');
+  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   await shot(page, 'S2-readymade', '01', 'workspace-landing');
 
   const newBuildBtn = testid(page, 'button-new-build');
   let usedUiBuild = false;
   let tripId: string | null = null;
 
-  if (await newBuildBtn.isVisible().catch(() => false)) {
+  if (await newBuildBtn.isVisible({ timeout: 8000 }).catch(() => false)) {
     await newBuildBtn.click();
     await page.waitForTimeout(1500);
     await shot(page, 'S2-readymade', '02', 'after-new-build');
