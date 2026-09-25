@@ -9,8 +9,8 @@ FEE = dict(
     provider_beta_flat=0.10,        # fee_bands beta_flat (mig 033) — active provider policy during beta
     expert_new=0.15,                # fee_bands expert_new (mig 033) — beta cohort platform take
     expert_standard=0.25,           # fee_bands expert_standard (mig 033)
-    traveler_fee_pct=0.07,          # traveler:service_fee_pct (map §5)
-    traveler_fee_cap=25.00,         # traveler:service_fee_cap_cents 2500
+    traveler_fee_pct=0.07,          # traveler_service_fee (map §5)
+    traveler_fee_cap=25.00,         # traveler_service_fee.max_amount $25.00
     optimizer_run=5.99,             # optimization_fees (mig 076) trip/experience
     ai_task=2.99,                   # concierge:ai_task (mig 258)
     trip_pass=19.00,                # plans.trip_pass (mig 258)
@@ -112,7 +112,7 @@ rows = [
  ("Plans created", "plans", "bookings ÷ bookings-per-plan (assumption)"),
  ("Provider commission", "provider_take", "`beta_flat` 10% (mig 033)"),
  ("Expert commission", "expert_take", "`expert_new` 15% (mig 033)"),
- ("Traveler service fee", "traveler_fee", "`traveler:service_fee_pct` 7% cap $25"),
+ ("Traveler service fee", "traveler_fee", "`traveler_service_fee` 7% cap $25"),
  ("Optimization runs", "runs", "`optimization_fees` $5.99"),
  ("AI Concierge tasks", "tasks", "`concierge:ai_task` $2.99"),
  ("Trip Pass", "passes", "`plans.trip_pass` $19"),
