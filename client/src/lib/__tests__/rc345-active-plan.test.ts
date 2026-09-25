@@ -172,6 +172,13 @@ describe("RC-5 — opening or creating a plan makes it the active plan", () => {
     assert.match(slip, /data\.tripRole,\n\s+penPrincipal,\n\s+\);/);
     const card = read("client/src/pages/trip-details.tsx");
     assert.match(card, /activateOpenedPlan\(trip, openedRole, penPrincipal\);/);
+    // Rules of hooks: the pair must sit BEFORE the page's first early return, or the loading render
+    // skips it and the loaded render adds it (React #310 — the Trip Card crashed for every pre-final
+    // plan when it first shipped after the returns).
+    assert.ok(
+      card.indexOf("usePenPrincipal();") < card.indexOf("if (isLoading) {"),
+      "usePenPrincipal() must precede the first early return in trip-details.tsx",
+    );
     const hook = read("client/src/hooks/use-trips.ts");
     assert.match(hook, /if \(user\) syncActiveTripToContext\(trip\);/);
     // The rule lives once: nothing else in client/ re-derives "opening makes it active".
