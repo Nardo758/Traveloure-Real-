@@ -168,21 +168,9 @@ export async function buildListingBuyActions(
   if (rows.length === 0) return out;
 
   // ── Owner instant-booking flags, one query for every owner in the batch. ──────────────────
-  const ownerIds = Array.from(
-    new Set(rows.map((r) => r.ownerUserId).filter((id): id is string => !!id)),
-  );
-  const instantByOwner = new Map<string, boolean | null>();
-  if (ownerIds.length > 0) {
-    const forms = await db
-      .select({ userId: serviceProviderForms.userId, instantBooking: serviceProviderForms.instantBooking })
-      .from(serviceProviderForms)
-      .where(inArray(serviceProviderForms.userId, ownerIds));
-    // UNCOERCED (OC-A0b): a NULL `instant_booking` is "the seller never answered", which is a
-    // different fact from `false` ("the seller said no"). Both resolve to `request`, so nothing
-    // downstream changes — but the provenance reader can only tell them apart if the NULL survives
-    // the map (§13).
-    for (const f of forms) instantByOwner.set(f.userId, f.instantBooking ?? null);
-  }
+  // Read through the ONE loader the cart and checkout rails also call (ledger
+  // `2026-09-25-checkout-request-mode`), so the button and the rail behind it see the same flag.
+  const instantByOwner = await loadOwnerInstantBookingFlags(rows.map((r) => r.ownerUserId));
 
   // ── Published calendars, one query for every listing in the batch. ────────────────────────
   // "Published" = at least one slot dated today or later. Deliberately NOT "has a FREE slot":
@@ -238,4 +226,178 @@ export async function buildListingBuyAction(
   buyer: BuyActionBuyer,
 ): Promise<BuyAction | undefined> {
   return (await buildListingBuyActions([row], buyer)).get(row.id);
+}
+
+// ─── A LISTING THE SELLER MUST ACCEPT IS NEVER A LIST-PRICE CART LINE ─────────────────────────
+// Ledger `2026-09-25-checkout-request-mode`. Before this, NOTHING on the cart or checkout path read
+// the booking mode: a `request`-mode listing (the seller accepts first) or a `custom_quote` listing
+// (LD 49 — priced by an issued quote, never by the listing) could be carted — from the slip's
+// routing flip, `POST /api/cart`, `POST /api/cart/items` — and `POST /api/checkout` charged the
+// list price and promoted it straight to `confirmed`, with no acceptance from anyone. The button
+// never offered that (`resolveBuyAction` row 11 lands `request` on `booking_request`, never
+// `checkout`); the rails behind the button simply did not agree with it.
+
+/**
+ * The owners' `service_provider_forms.instant_booking` flags, ONE query for the batch — the input
+ * `resolveBookingMode` needs to resolve an UNSET listing mode. Shared by `buildListingBuyActions`
+ * (the buttons) and `requestOnlyListingRefusals` (the cart + checkout rails) so the button and the
+ * rail behind it read the SAME fact the SAME way (§18 rule 1).
+ *
+ * UNCOERCED (OC-A0b): a NULL `instant_booking` is "the seller never answered", a different fact
+ * from `false` ("the seller said no"). Both resolve to `request`; the NULL survives the map so the
+ * provenance reader can still tell them apart (§13). An owner with no form row is simply absent.
+ */
+export async function loadOwnerInstantBookingFlags(
+  ownerUserIds: ReadonlyArray<string | null | undefined>,
+): Promise<Map<string, boolean | null>> {
+  const ownerIds = Array.from(new Set(ownerUserIds.filter((id): id is string => !!id)));
+  const out = new Map<string, boolean | null>();
+  if (ownerIds.length === 0) return out;
+  const forms = await db
+    .select({ userId: serviceProviderForms.userId, instantBooking: serviceProviderForms.instantBooking })
+    .from(serviceProviderForms)
+    .where(inArray(serviceProviderForms.userId, ownerIds));
+  for (const f of forms) out.set(f.userId, f.instantBooking ?? null);
+  return out;
+}
+
+/** Why a listing cannot be a list-price cart line. Machine-readable; the sentence is below. */
+export type RequestOnlyReason = "listing_requires_request" | "listing_not_bookable";
+
+export interface RequestOnlyRefusal {
+  reason: RequestOnlyReason;
+}
+
+/**
+ * THE ONE PREDICATE: may this listing be bought as a LIST-PRICE CART LINE?
+ *
+ * A listing whose commitment needs the SELLER's acceptance is never charged off the cart:
+ *   · `price_type = 'custom_quote'` — Locked Decision 49: a custom quote is a `service_quotes` row,
+ *     never a price on the listing, and its only charge rail is `POST /api/checkout
+ *     {quoteBookingId}` after the traveler accepts the ISSUED quote. Tested FIRST, whatever the
+ *     booking mode says (the offering contract's own P5 order, `archetypeForListing`).
+ *   · the RESOLVED booking mode is `request` — ruling 75's `resolveBookingMode`, CALLED, never
+ *     re-typed (§18 rule 1). `request` is the platform's safe default: "the traveler asks, the
+ *     seller accepts, and no money moves without an acceptance" (`2026-09-11-oc-a1-ratified`).
+ *     The provider-ACCEPTED commitment for such a listing is the quote rail — `requestQuote`
+ *     admits exactly the listings `resolveBuyAction` row 11 lands on `booking_request`; the seller
+ *     issues; the traveler accepts; the quote-born booking is charged through its OWN checkout arm
+ *     and is never a cart line, so the cart line itself is the thing refused.
+ *   · `hidden` — the seller withdrew the booking affordance (resolver row 1); nothing is bookable.
+ *
+ * PURE — no db, no clock. `ownerInstantBooking` is passed UNCOERCED (`undefined`/`null` = no flag
+ * known; those and `false` all resolve to `request`).
+ *
+ * NEGATIVE SPACE (§18d): it reads the listing's OWN commitment facts only. `resolveBuyAction`'s two
+ * FACT-shaped request rows — `instant` with no published calendar, `instant` with no price — are
+ * NOT decided here: the first belongs to the checkout's slot/eligibility gates and the second is
+ * `hasPublishedPrice`'s, already refused by its own rail with its own reason.
+ */
+export function listingRequiresRequest(
+  listing: { priceType?: string | null; bookingMode?: string | null },
+  ownerInstantBooking: boolean | null | undefined,
+): RequestOnlyRefusal | null {
+  if (listing.priceType === "custom_quote") return { reason: "listing_requires_request" };
+  const mode = resolveBookingMode(listing.bookingMode, ownerInstantBooking);
+  if (mode === "request") return { reason: "listing_requires_request" };
+  if (mode === "hidden") return { reason: "listing_not_bookable" };
+  return null;
+}
+
+type RequestOnlyListingFacts = {
+  id: string;
+  userId?: string | null;
+  priceType?: string | null;
+  bookingMode?: string | null;
+};
+
+/**
+ * The batch form every rail calls: listing id → its refusal, for exactly the listings that have
+ * one. ONE owner-flag query per batch, and only for listings whose mode is UNSET — a quote or a
+ * declared mode answers on the row alone.
+ *
+ * ONLY A REAL `provider_services` ROW IS JUDGED, and the test is its OWNER: `user_id` is NOT NULL
+ * on that table, while the cart reader's synthesized shapes carry none — a custom venue arrives as
+ * `service: { id: "custom-…", … }` with no owner, a content row as `service: null`. Neither is a
+ * seller's listing, neither has a booking mode, and resolving an ownerless shape would answer
+ * `request` for a thing nobody sells (§13), so both are left out of the map.
+ */
+export async function requestOnlyListingRefusals(
+  listings: ReadonlyArray<RequestOnlyListingFacts | null | undefined>,
+): Promise<Map<string, RequestOnlyRefusal>> {
+  const present = listings.filter((l): l is RequestOnlyListingFacts => !!l && !!l.id && !!l.userId);
+  const out = new Map<string, RequestOnlyRefusal>();
+  if (present.length === 0) return out;
+  const needFlag = present.filter((l) => l.priceType !== "custom_quote" && !l.bookingMode);
+  const flags = await loadOwnerInstantBookingFlags(needFlag.map((l) => l.userId));
+  for (const l of present) {
+    const refusal = listingRequiresRequest(l, l.userId ? flags.get(l.userId) : undefined);
+    if (refusal) out.set(l.id, refusal);
+  }
+  return out;
+}
+
+/**
+ * THE ONE SENTENCE per refusal, shared by both cart add rails, the LD 39 projection, the two cart
+ * reads and checkout (the `PRICELESS_LISTING_REFUSAL` precedent: the sentence is shared; the HTTP
+ * status belongs to each rail — 400 at an add, 409 at checkout).
+ */
+export const REQUEST_ONLY_REFUSAL_MESSAGE: Readonly<Record<RequestOnlyReason, string>> = {
+  listing_requires_request:
+    "This listing is booked by request: the provider accepts first, and nothing is charged until then. Ask for it from the listing page — it can stay on your plan meanwhile.",
+  listing_not_bookable:
+    "This listing is not open for booking right now. You can still message the provider about it.",
+};
+
+/**
+ * The two cart READS (`GET /api/cart`, `/api/cart/fee-preview`) name the request-only lines on
+ * disk and quote nothing for them — ONE helper so the two reads cannot disagree about which lines
+ * or in which words (§18 rule 1). `named` is PRESENT-ONLY-WHEN-SET: `{}` for an all-instant cart,
+ * so its response is byte-identical to before (§13, the `unpriceableItemIds` precedent).
+ */
+export async function requestOnlyCartLines(
+  items: ReadonlyArray<{ id: string; service?: RequestOnlyListingFacts | null }>,
+): Promise<{
+  isRequestOnly: (item: { service?: { id: string } | null }) => boolean;
+  named:
+    | Record<string, never>
+    | { requestOnlyItemIds: string[]; requestOnlyReasons: Record<string, RequestOnlyReason> };
+}> {
+  const refusals = await requestOnlyListingRefusals(items.map((i) => i.service ?? null));
+  const isRequestOnly = (item: { service?: { id: string } | null }) =>
+    !!item.service && refusals.has(item.service.id);
+  const lines = items.filter(isRequestOnly);
+  return {
+    isRequestOnly,
+    named:
+      lines.length === 0
+        ? {}
+        : {
+            requestOnlyItemIds: lines.map((i) => i.id),
+            requestOnlyReasons: Object.fromEntries(
+              lines.map((i) => [i.id, refusals.get(i.service!.id)!.reason]),
+            ),
+          },
+  };
+}
+
+/** The listing page a refused line points to — where the request control lives. */
+export function requestOnlyListingPath(serviceId: string): string {
+  return `/services/${encodeURIComponent(serviceId)}`;
+}
+
+/** The body every rail answers a refused listing with (status is the rail's own). */
+export function requestOnlyRefusalBody(
+  refusal: RequestOnlyRefusal,
+  listing: { id: string; serviceName?: string | null },
+) {
+  return {
+    success: false,
+    error: refusal.reason,
+    reason: refusal.reason,
+    message: REQUEST_ONLY_REFUSAL_MESSAGE[refusal.reason],
+    serviceId: listing.id,
+    ...(listing.serviceName ? { serviceName: listing.serviceName } : {}),
+    listingPath: requestOnlyListingPath(listing.id),
+  };
 }

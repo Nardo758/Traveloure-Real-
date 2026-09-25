@@ -1905,6 +1905,17 @@ This document captures architectural decisions to maintain consistency across co
     price-required publish gate (`server/routes.ts`, both create/update rails) refused every
     `custom_quote` listing unconditionally; `listingPriceGate` exempts it (price authority is the
     quote, never the listing), and `ServiceForm.tsx` can now select the priceType at all.
+    **A LISTING THE SELLER MUST ACCEPT IS NEVER A LIST-PRICE CART LINE (decision-maker approved Sep 25,
+    2026 — ledger `2026-09-25-checkout-request-mode`; no schema).** A `custom_quote` listing, or one whose
+    mode `resolveBookingMode` resolves to `request` (or `hidden`), is refused at both cart add rails
+    (400), projected into nothing by the LD 39 projection, named and quoted at nothing by the two cart
+    reads, and refused by `POST /api/checkout` (409 `listing_requires_request`) BEFORE any claim, slot or
+    Stripe call (§15b). ONE predicate, `listingRequiresRequest` (`server/services/buy-action-payload.ts`),
+    which calls `resolveBookingMode` and restates nothing (§18 rule 1). Its accepted path is the quote
+    rail above — never a cart line — and adding the listing to the PLAN is unchanged. Consequence, said
+    out loud (§13): an unset mode on an owner with no instant flag — every expert listing, and all of
+    production's catalog as measured by `2026-09-11-oc-a1-ratified` — is bought through the quote rail
+    until the seller declares instant.
 
 50. **A PARTIALLY FULFILLED BUNDLE SETTLES ONCE BY ITS PURCHASE-TIME COMPONENT ALLOCATION (decision-maker
     ruling, Sep 16, 2026 — ledger `2026-09-16-bundle-partial-settlement`; build lane dispatched the same

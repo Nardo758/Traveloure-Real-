@@ -135,10 +135,12 @@ function api(path: string, cookie: string | undefined, method = "GET", body?: un
 async function makeService(id: string, price: string | null, name: string): Promise<void> {
   await db.execute(sql`
     INSERT INTO provider_services (id, user_id, service_name, short_description, description, price,
-                                   status, approval_status, delivery_method, location)
+                                   status, approval_status, delivery_method, location, booking_mode)
     VALUES (${id}, ${ids.provider}, ${name}, 'fixture blurb', 'fixture', ${price},
-            'active', 'approved', 'in_person', 'Kyoto')
+            'active', 'approved', 'in_person', 'Kyoto', 'instant')
   `);
+  // ^ `instant` declared (ledger `2026-09-25-checkout-request-mode`): an unset mode on a form-less
+  //   owner resolves `request`, and the LD 39 projection never holds a request-mode line.
 }
 
 /** Reset the traveler's whole cart + every plan this suite minted, so each proof starts clean. */

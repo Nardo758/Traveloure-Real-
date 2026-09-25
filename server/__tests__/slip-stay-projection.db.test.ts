@@ -104,6 +104,9 @@ async function seedService(label: string, pricingUnit: string | null): Promise<s
     status: "active",
     approvalStatus: "approved",
     location: "Kyoto, Japan",
+    // Ledger `2026-09-25-checkout-request-mode`: the projection never holds a request-mode line,
+    // and an unset mode on a form-less owner resolves `request` — so this fixture declares instant.
+    bookingMode: "instant",
     ...(pricingUnit ? { pricingUnit } : {}),
   } as any).returning();
   return s.id;

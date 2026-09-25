@@ -81,7 +81,13 @@ import { quoteCheckoutBodySchema } from "@shared/service-quotes";
 import { resolveBookingEligibility } from "../services/booking-eligibility.service";
 // V-11 one endpoint over (ledger `2026-09-13-cart-priceless-gap`): the ONE translation of the
 // price column and the ONE sentence every rail refuses a priceless listing with (s18 rule 1).
-import { hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "../services/buy-action-payload";
+import {
+  hasPublishedPrice,
+  PRICELESS_LISTING_REFUSAL,
+  requestOnlyCartLines,
+  requestOnlyListingRefusals,
+  requestOnlyRefusalBody,
+} from "../services/buy-action-payload";
 // Ruling 11 (ledger `2026-09-08-rulings-11-12`): plan work needs a plan, refused at the CLAIM.
 import { isPlanWorkListing, PLAN_WORK_NEEDS_PLAN_REFUSAL } from "../services/plan-work-access.service";
 // The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`): reads the
@@ -1232,6 +1238,31 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             reason: PRICELESS_LISTING_REFUSAL.reason,
             detail: `"${item.service.serviceName}" publishes no price, so it cannot be bought here — remove it from your cart and request a quote instead.`,
           });
+        }
+      }
+
+      // -- A LISTING THE SELLER MUST ACCEPT IS NEVER CHARGED OFF THE CART (ledger
+      // `2026-09-25-checkout-request-mode`) ------------------------------------------------------
+      // Until this, nothing on this rail read the booking mode. A `request`-mode listing (ruling
+      // 75's `resolveBookingMode` — an UNSET mode on an owner with no instant flag is `request`,
+      // the platform's safe default: the traveler asks, the seller accepts, and no money moves
+      // without an acceptance) or a `custom_quote` listing (LD 49: priced by an issued quote,
+      // never by the listing) was claimed, slotted and charged at LIST PRICE here, and promotion
+      // then confirmed it with no acceptance from anyone. The provider-ACCEPTED commitment for
+      // such a listing is the quote rail, whose charge is this route's own `quoteBookingId` arm
+      // above — never a cart line — so the cart line itself is what is refused.
+      //
+      // ONE predicate (`requestOnlyListingRefusals`, which CALLS `resolveBookingMode` and restates
+      // nothing — s18 rule 1), shared with both add rails, the LD 39 projection and the two cart
+      // reads. Placed in this pre-flight block with its archived/priceless siblings: BEFORE any
+      // slot claim, booking row or Stripe call (s15b), so nothing is claimed and nothing unwinds.
+      // s14/s15 untouched: no amount, key, claim or stamp moved, and an instant cart is unchanged.
+      {
+        const requestOnly = await requestOnlyListingRefusals(cartData.map((i) => i.service ?? null));
+        for (const item of cartData) {
+          const refusal = item.service ? requestOnly.get(item.service.id) : undefined;
+          if (!refusal) continue;
+          return res.status(409).json(requestOnlyRefusalBody(refusal, item.service!));
         }
       }
 
@@ -2540,6 +2571,11 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         .filter((i: any) => i.service && !hasPublishedPrice(i.service.price))
         .map((i: any) => i.id as string);
 
+      // Ledger `2026-09-25-checkout-request-mode`: the SAME statement `GET /api/cart` makes, through
+      // the SAME helper — a line the seller must accept first is named and quoted at nothing,
+      // because `POST /api/checkout` refuses it (s13: never a total for a charge that cannot happen).
+      const previewRequestOnly = await requestOnlyCartLines(cartData as any[]);
+
       let previewSubtotal = 0;
       let previewPlatformFeeTotal = 0;
       let previewConciergeFeeTotal = 0;
@@ -2565,6 +2601,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
 
       for (const item of cartData) {
         if (!item.service) continue;
+        if (previewRequestOnly.isRequestOnly(item)) continue;
         // §17/§S11: nights × each night's own materialized rate for a room (§14), else the
         // existing price × quantity.
         const itemPrice = resolveItemBaseAmount(item, previewStayRates);
@@ -2685,6 +2722,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
               unpriceableReason: PRICELESS_LISTING_REFUSAL.reason,
             }
           : {}),
+        ...previewRequestOnly.named,
       });
     } catch (err) {
       console.error("Fee preview error:", err);

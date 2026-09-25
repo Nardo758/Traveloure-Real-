@@ -104,8 +104,10 @@ before(async () => {
   // counterfactual regardless of owner role.
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role)
     VALUES (${providerId}, ${`feeprev-${RUN}-prov@t.test`}, 'Prov', 'Fixture', 'service_provider')`);
-  await db.execute(sql`INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, delivery_method)
-    VALUES (${serviceId}, ${providerId}, ${`Fee preview svc ${RUN}`}, 'fixture', '100.00', 'active', 'approved', 'in_person')`);
+  // Declared `instant` (ledger `2026-09-25-checkout-request-mode`): an unset mode on a form-less
+  // owner resolves `request`, which a cart never holds and the preview never quotes.
+  await db.execute(sql`INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, delivery_method, booking_mode)
+    VALUES (${serviceId}, ${providerId}, ${`Fee preview svc ${RUN}`}, 'fixture', '100.00', 'active', 'approved', 'in_person', 'instant')`);
 
   // Two buyer-owned trips: one without a pass, one that will get one.
   for (const tid of [tripNoPassId, tripPassId]) {

@@ -37,7 +37,7 @@ import { storage, ExpertApplicationExistsError, type BookingStatusNotification }
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
-import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
+import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL, requestOnlyListingRefusals, requestOnlyRefusalBody, requestOnlyCartLines } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
 import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
 // D-11 (ledger 2026-09-15-d11-no-item-booking-exception): the named no-item classes, the ONE
 // composer of their mark, and the refusal the item-referenceless birth rail answers with.
@@ -7004,6 +7004,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             reason: PRICELESS_LISTING_REFUSAL.reason,
           });
         }
+        // Ledger `2026-09-25-checkout-request-mode`: a listing the SELLER must accept (resolved
+        // `request`, `hidden`, or a `custom_quote`) is never a list-price cart line — the SAME
+        // predicate `POST /api/cart` and checkout call (s18 rule 1). It can still go on the PLAN.
+        const requestOnly = (await requestOnlyListingRefusals([service])).get(service.id);
+        if (requestOnly) {
+          return res.status(400).json(requestOnlyRefusalBody(requestOnly, service));
+        }
       }
       if (customVenueId) {
         const venue = await storage.getCustomVenue(customVenueId);
@@ -8963,6 +8970,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       .filter((i) => i.service && !hasPublishedPrice(i.service.price))
       .map((i) => i.id as string);
 
+    // Ledger `2026-09-25-checkout-request-mode`: a line whose listing the SELLER must accept
+    // (resolved `request`/`hidden`, or a `custom_quote`) is refused at checkout, so this quote must
+    // not state a charge for it (s13). It is NAMED — never deleted on the traveler's behalf — and
+    // skipped in the totals below. Same predicate as the add rails and checkout (s18 rule 1).
+    // PRESENT-ONLY-WHEN-SET: an all-instant cart's response is byte-identical to before.
+    const cartRequestOnly = await requestOnlyCartLines(items as any[]);
+
     let subtotal = 0;
     let platformFeeTotal = 0;
     let conciergeFeeTotal = 0;
@@ -8975,6 +8989,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // /api/cart/fee-preview call — a room's live cart total cannot diverge from the charge.
     const cartStayRates = await resolveStayNightlyRates(items);
     for (const item of items) {
+      // A request-only line is named above and quoted at nothing — checkout will refuse it.
+      if (cartRequestOnly.isRequestOnly(item)) continue;
       // §17/§S11 property rooms: nights × each night's own materialized rate (never quantity ×
       // price — a room's cart "quantity" is meaningless, the client pins it to 1). Reuses the
       // exact same helper /api/checkout and /api/cart/fee-preview already use (payments.routes.ts)
@@ -9050,6 +9066,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       ...(unpriceableItemIds.length > 0
         ? { unpriceableItemIds, unpriceableReason: PRICELESS_LISTING_REFUSAL.reason }
         : {}),
+      // Ledger `2026-09-25-checkout-request-mode`: OMITTED when empty. When present, these lines
+      // are NOT in `subtotal`/`total` and `POST /api/checkout` answers 409 for them.
+      ...cartRequestOnly.named,
     });
     } catch (err) {
       console.error("[Cart] GET /api/cart failed:", err);
@@ -9313,6 +9332,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             message: PRICELESS_LISTING_REFUSAL.message,
             reason: PRICELESS_LISTING_REFUSAL.reason,
           });
+        }
+        // -- A LISTING THE SELLER MUST ACCEPT IS NOT A CART LINE (ledger
+        // `2026-09-25-checkout-request-mode`) ----------------------------------------------------
+        // Carting is the first step of a checkout (LD 39: the cart is the `ready_for_checkout`
+        // projection), and a `request`-mode, `hidden` or `custom_quote` listing is never charged
+        // at list price: `resolveBuyAction` row 11 lands it on `booking_request`, and its
+        // provider-accepted commitment is the quote rail (LD 49). ONE predicate, the same one
+        // checkout calls (s18 rule 1). The traveler can still add it to their PLAN.
+        const requestOnly = (await requestOnlyListingRefusals([service])).get(service.id);
+        if (requestOnly) {
+          return res.status(400).json(requestOnlyRefusalBody(requestOnly, service));
         }
       }
 

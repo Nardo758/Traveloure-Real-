@@ -130,3 +130,18 @@ jobs:
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
           NODE_ENV: test
           JOURNEY_DB_WRITES_OK: '1'
+
+      # Ledger `2026-09-25-checkout-request-mode`. A THIRD STEP on the same boot for the same reason
+      # as the second: a listing the seller must accept first (resolved `request`/`hidden`, or a
+      # custom quote) is refused at both cart add rails, the LD 39 projection and checkout — before
+      # any claim, slot or Stripe call — and the two cart reads name it and quote nothing for it.
+      - name: A listing the seller must accept is never charged off the cart (R1-R10)
+        run: npx tsx --test --test-force-exit server/__tests__/checkout-request-mode.http.test.ts
+        timeout-minutes: 15
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          JOURNEY_DB_WRITES_OK: '1'
