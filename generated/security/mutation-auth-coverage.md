@@ -4,15 +4,15 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 322/602**; remaining: **280**.
-- Admin: **146/151**; payments: **29/31**; user-data: **147/205**; other: **0/215**.
+- **Tested: 324/604**; remaining: **280**.
+- Admin: **146/151**; payments: **29/31**; user-data: **149/207**; other: **0/215**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **fresh**; manifest SHA-256: `adad71bf467ee823c89dd3307476992950f039af78f1c2f2378288755c81c7b6`; run timestamp: 2026-09-24T23:28:33.391Z.
+- Evidence state: **fresh**; manifest SHA-256: `81caae8dfd80225f195c5f26be14432e27aa8e0a45c790f2d1ec2c026aa4fa8e`; run timestamp: 2026-09-25T00:05:44.754Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
-- `highrisk-unauthenticated`: **passed**, 234 exact endpoint keys, context `unauthenticated`.
+- `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
 - `resource-ownership`: **passed**, 34 exact endpoint keys, context `resource-owner`.
 - `payments-resource-ownership`: **passed**, 5 exact endpoint keys, context `payments-resource-owner`.

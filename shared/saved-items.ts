@@ -26,3 +26,25 @@ export const saveItemBodySchema = z
   })
   .strict();
 export type SaveItemBody = z.infer<typeof saveItemBodySchema>;
+
+/**
+ * The ONE city identity for saved places (§18 rule 1): the Saved places shelf groups by it, the
+ * slip's "saved places here" card matches plan stops by it, and a share link (board #329) names a
+ * city by it. Case- and whitespace-insensitive; a blank city is `null` — "no city saved", never a
+ * city (§13).
+ */
+export function savedCityKey(city: string | null | undefined): string | null {
+  const trimmed = (city ?? "").trim().replace(/\s+/g, " ");
+  return trimmed ? trimmed.toLowerCase() : null;
+}
+
+/** Body of `POST /api/saved-items/shares` — the city to share, and nothing else (§19). */
+export const shareSavedCityBodySchema = z
+  .object({ city: z.string().trim().min(1).max(100) })
+  .strict();
+
+/** What a share link shows: the places and their city. No owner, no ids (LD 40 posture). */
+export interface SharedSavedPlaces {
+  city: string;
+  places: Array<{ contentType: string; contentName: string; contentImage: string | null }>;
+}
