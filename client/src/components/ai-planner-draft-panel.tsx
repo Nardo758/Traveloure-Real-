@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MapPin, Calendar, Users, Sparkles, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import { useTripContext, type TripContext } from "@/lib/trip-context";
+import { updateTripContextIdentitySafe, useTripContext, type TripContext } from "@/lib/trip-context";
+import { SELECTED_PLAN_KEEPS_ITS_BASICS_NOTE } from "@/lib/plan-city";
 import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
 
 /**
@@ -43,7 +44,7 @@ export function AiPlannerDraftPanel({
   extractionTrigger: number;
 }) {
   const [, navigate] = useLocation();
-  const [context, updateContext] = useTripContext();
+  const [context] = useTripContext();
   const lastRunTrigger = useRef(0);
 
   /**
@@ -57,6 +58,13 @@ export function AiPlannerDraftPanel({
    * shown, once, and the traveler restates it in the chat. Nothing here repairs or re-guesses.
    */
   const [pastDateNote, setPastDateNote] = useState<string | null>(null);
+  /**
+   * RC-6 (ledger `2026-09-25-rc6-bound-plan-city`): what the extraction heard is written
+   * IDENTITY-SAFELY — a different city while a plan is selected describes a new plan; the same city
+   * never rewrites the selected plan's city or dates. When something was withheld, the panel says so
+   * rather than leaving the traveler to wonder why the date they gave did not appear (§13).
+   */
+  const [withheldNote, setWithheldNote] = useState<string | null>(null);
 
   const extract = useMutation({
     mutationFn: async (id: number) => {
@@ -70,7 +78,8 @@ export function AiPlannerDraftPanel({
     onSuccess: (data) => {
       const fields = data?.fields;
       if (fields && Object.keys(fields).length > 0) {
-        updateContext(fields);
+        const { withheld } = updateTripContextIdentitySafe(fields);
+        setWithheldNote(withheld.length > 0 ? SELECTED_PLAN_KEEPS_ITS_BASICS_NOTE : null);
       }
       // §13: the note is REPLACED on every pass, including with null — once the traveler restates
       // the date and it comes back usable, a stale "that date has passed" line would be a claim
@@ -193,6 +202,11 @@ export function AiPlannerDraftPanel({
           {/* Lane L21: the server WITHHELD a past-resolving date rather than moving it to a year
               nobody stated. Saying so is the difference between an honest empty field and a
               conversation the traveler thinks was heard (§13). */}
+          {withheldNote && (
+            <p className="text-xs text-muted-foreground mt-2 text-center" data-testid="text-selected-plan-withheld-note">
+              {withheldNote}
+            </p>
+          )}
           {pastDateNote && (
             <p className="text-xs text-amber-700 mt-2 text-center" data-testid="text-past-date-note">
               {pastDateNote}
