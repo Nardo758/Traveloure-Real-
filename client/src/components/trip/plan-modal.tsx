@@ -76,6 +76,15 @@ import {
   BRANCHES_THAT_REQUIRE_THE_MINT,
   saveMintsPlan,
 } from "@/lib/plan-steps";
+import {
+  draftSignature,
+  holdsDraftOnDismiss,
+  offersResume,
+  resumablePenDraft,
+  resumeStep,
+  type DraftAnswers,
+  type PenDraft,
+} from "@/lib/plan-resume";
 import { useAuth } from "@/hooks/use-auth";
 import type { PlanningBranch, PlanningSource } from "@/contexts/PlanningContext";
 import type { ExperienceType } from "@shared/schema";
@@ -305,6 +314,15 @@ function stepUp(raw: string): string {
   return String(Math.min(MAX_PARTY_COUNT, n + 1));
 }
 
+/** A plan day as the eyebrow and the resume prompt both read it — ONE spelling (§18 rule 1). */
+function formatPlanDay(ymd: string): string {
+  const d = new Date(`${ymd}T00:00:00`);
+  return isNaN(d.getTime()) ? ymd : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+function formatPlanRange(start: string, end?: string | null): string {
+  return end && end !== start ? `${formatPlanDay(start)} to ${formatPlanDay(end)}` : formatPlanDay(start);
+}
+
 export function PlanModal({
   open,
   onOpenChange,
@@ -425,6 +443,11 @@ export function PlanModal({
   const [step, setStep] = useState<PlanStepId>("occasion");
   /** The start step is resolved ONCE per open, and only once the catalog has answered. */
   const startResolved = useRef(false);
+  /** What the form held when it was seeded, and the occasion the door table set (audit R-3). */
+  const seededAnswers = useRef<DraftAnswers | null>(null);
+  const seededOccasionSlug = useRef("");
+  /** The unminted draft offered back at open, or null. Cleared by Continue and Start over. */
+  const [resumeOffer, setResumeOffer] = useState<PenDraft | null>(null);
 
   // The ONE runtime occasion vocabulary. Same query key IntakePanel and the Trip Strip use, so the
   // cache is shared and no two doors can offer different occasions.
@@ -471,7 +494,8 @@ export function PlanModal({
      * replace this seed — they are the truth once one exists.
      */
     const seeded = seedStops(ctx.destination, ctx.stops);
-    setStops(sourceDestination ? renameStopAt(seeded, 0, sourceDestination) : seeded);
+    const seededStops = sourceDestination ? renameStopAt(seeded, 0, sourceDestination) : seeded;
+    setStops(seededStops);
     setStopsTouched(false);
     stopsReadOk.current = false;
     setStartDate(ctx.startDate || "");
@@ -496,9 +520,32 @@ export function PlanModal({
     // Reads BOTH pen spellings — the rich rows this release writes and the legacy bare titles a
     // pen written before it still holds — through the ONE shared reader, so nothing a traveler
     // ticked before the deploy is dropped on the floor.
-    setPickedEvents(readPendingEvents(ctx));
+    const seededEvents = readPendingEvents(ctx);
+    setPickedEvents(seededEvents);
     setCustomEvent("");
     setCustomOpen(false);
+    /**
+     * WHAT THE FORM SAID AT OPEN, kept so a dismiss can tell an answer the traveler gave from one
+     * the form merely showed (audit R-3; `@/lib/plan-resume`). The same normalisation as the state
+     * setters above — a second reading of the pen would drift from them. The occasion is not part
+     * of it: the door table decides it later, once the vocabulary loads (`seededOccasionSlug`).
+     */
+    seededAnswers.current = {
+      title: ctx.title || "",
+      stops: seededStops.map((s) => s.name),
+      startDate: ctx.startDate || "",
+      endDate: ctx.endDate || "",
+      adults: typeof ctx.adults === "number" && ctx.adults > 0 ? String(ctx.adults) : "",
+      kids: typeof ctx.kids === "number" && ctx.kids > 0 ? String(ctx.kids) : "",
+      budgetApproverName: ctx.budgetApproverName || "",
+      budgetApproverEmail: ctx.budgetApproverEmail || "",
+      accessibilityNote: ctx.accessibilityNote || "",
+      mainMomentTime: ctx.mainMomentTime || "",
+      mainMomentDate: ctx.mainMomentDate || "",
+      events: seededEvents,
+      occasionSlug: "",
+    };
+    seededOccasionSlug.current = "";
   };
 
   // Seed the form from the live context each time the modal opens, then let the door's own source
@@ -506,6 +553,12 @@ export function PlanModal({
   useEffect(() => {
     if (!open) return;
     seedFormFrom(ctx, doorDestination);
+    // RESUME (audit R-3): an unminted pen holding a destination or dates is offered back, named —
+    // and only when the form is showing it (a door naming another city is a different plan).
+    const draft = resumablePenDraft(ctx);
+    setResumeOffer(
+      offersResume(draft, { boundTripId: ctx.tripId || source?.tripId, doorDestination }) ? draft : null,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -537,6 +590,7 @@ export function PlanModal({
     if (!open || !occasions || startResolved.current) return;
     startResolved.current = true;
     setOccasionSlug(doorOccasion ? doorOccasion.slug : "");
+    seededOccasionSlug.current = doorOccasion ? doorOccasion.slug : "";
     setStep(
       resolvePlanSteps(
         source,
@@ -1384,15 +1438,71 @@ export function PlanModal({
    * later reader would inherit stale. The TRIP ITSELF is not deleted: clearing the planning
    * context is not destroying the traveler's trip (§13 — they are different acts).
    */
-  const clearAll = () => {
+  const resetPlan = () => {
     const clearedTripId = contextTripId;
     clearTripContext();
     queryClient.removeQueries({ queryKey: ["/api/trip-context"] });
     if (clearedTripId) queryClient.removeQueries({ queryKey: ["/api/trips", clearedTripId] });
     seedFormFrom({}, "");
     setOccasionSlug("");
+    setResumeOffer(null);
+  };
+  const clearAll = () => {
+    resetPlan();
     onOpenChange(false);
   };
+
+  /**
+   * DISMISS (✕ / Escape / backdrop) — audit R-3. It still CREATES NOTHING (RC-1): no plan row and
+   * no plan request. For a plan that does not exist yet it keeps the traveler's CHANGED answers in
+   * the pen, through the same `commitPlan` "Save" uses on an unminted plan — which, with no trip
+   * id, writes the pen and nothing else — so the next open can offer them back. A bound plan is
+   * never written by a dismiss; its edits are Save's to make (RC-6). The rule is
+   * `holdsDraftOnDismiss`; this is its one caller.
+   *
+   * Only the Dialog's own close reaches here. The finish, Save and Clear plan close through
+   * `onOpenChange` directly, having already written what they write.
+   */
+  const handleDialogOpenChange = (next: boolean) => {
+    if (!next) {
+      const seeded = seededAnswers.current;
+      const changed =
+        seeded !== null &&
+        draftSignature(currentAnswers()) !==
+          draftSignature({ ...seeded, occasionSlug: seededOccasionSlug.current });
+      if (
+        holdsDraftOnDismiss({
+          boundTripId: getTripContext().tripId || source?.tripId,
+          saving,
+          changed,
+        })
+      ) {
+        void commitPlan().catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn("[plan-modal] draft not kept on dismiss:", err?.message);
+        });
+      }
+    }
+    onOpenChange(next);
+  };
+
+  /** The form's answers, read from state in the shape `seededAnswers` records. */
+  const currentAnswers = (): DraftAnswers => ({
+    title,
+    // §13 — a suggested home city is not an answer (see `commitPlan`), so row 1 reads empty.
+    stops: stops.map((s, i) => (i === 0 && destinationSuggested ? "" : s.name)),
+    startDate,
+    endDate,
+    adults,
+    kids,
+    budgetApproverName,
+    budgetApproverEmail,
+    accessibilityNote,
+    mainMomentTime,
+    mainMomentDate,
+    events: pickedEvents,
+    occasionSlug,
+  });
 
   // ── Presentation ─────────────────────────────────────────────────────────────────────────────
 
@@ -1431,15 +1541,7 @@ export function PlanModal({
     const stopCount = stopsMany ? namedStops(stops).length : 0;
     const segments = [lead];
     if (stopCount > 1) segments.push(`${stopCount} stops`);
-    if (startDate) {
-      const fmt = (ymd: string) => {
-        const d = new Date(`${ymd}T00:00:00`);
-        return isNaN(d.getTime()) ? ymd : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      };
-      segments.push(
-        endDate && endDate !== startDate ? `${fmt(startDate)} to ${fmt(endDate)}` : fmt(startDate),
-      );
-    }
+    if (startDate) segments.push(formatPlanRange(startDate, endDate));
     return segments.join(" · ");
   }, [destination, selectedOccasion, startDate, endDate, stopsMany, stops]);
 
@@ -1516,7 +1618,7 @@ export function PlanModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent
         className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-[900px]"
         data-testid="plan-modal"
@@ -1562,6 +1664,64 @@ export function PlanModal({
             Set your plan once — the whole site uses these details while you plan.
           </DialogDescription>
         </DialogHeader>
+
+        {/* RESUME YOUR PLAN (audit R-3). Shown when the modal reopens on a plan the traveler began and
+            closed before it existed. It names ONLY the pen's own destination and dates — never a
+            party size or a guessed occasion (§13, RC-12) — and the form below is already holding
+            those answers; Continue moves to the first one still missing, Start over clears them. */}
+        {resumeOffer && (
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2"
+            style={{ borderColor: "var(--earn-border)", background: "var(--earn-teal-wash)" }}
+            data-testid="plan-modal-resume"
+          >
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy)" }}>
+                Resume your plan
+              </p>
+              <p className="text-[12px]" style={{ color: "var(--earn-muted)" }} data-testid="text-plan-resume-detail">
+                {[
+                  resumeOffer.destination,
+                  resumeOffer.startDate ? formatPlanRange(resumeOffer.startDate, resumeOffer.endDate) : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                {" — not created yet. Your answers are kept until you finish or start over."}
+              </p>
+            </div>
+            <span className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={resetPlan}
+                data-testid="button-plan-resume-clear"
+              >
+                Start over
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                // The start step waits on the occasion vocabulary; moving before it lands would
+                // leave the door's occasion unset.
+                disabled={!occasions}
+                onClick={() => {
+                  setResumeOffer(null);
+                  goToStep(
+                    resumeStep(visibleSteps, {
+                      occasion: !!selectedOccasion,
+                      where: !destinationSuggested && destination.trim() !== "",
+                      when: startDate !== "",
+                    }),
+                  );
+                }}
+                data-testid="button-plan-resume-continue"
+              >
+                Continue
+              </Button>
+            </span>
+          </div>
+        )}
 
         {/* The rail. Every VISIBLE step is reachable from it — that is what makes this the same
             modal for a brand-new plan and for an edit of one that already exists. */}
