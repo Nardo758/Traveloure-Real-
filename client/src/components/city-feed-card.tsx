@@ -17,6 +17,7 @@ import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
 import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import { SaveToggle } from "@/components/SaveToggle";
+import { buildSaveItem } from "@/lib/saved-items";
 import type { SaveItemBody } from "@shared/saved-items";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
@@ -680,6 +681,9 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoShee
     const isHotel = data._kind === "supply-hotel";
     return (
       <div className="flex flex-col gap-4 pt-2">
+        {saveItem?.contentName && (
+          <SaveToggle item={saveItem} showLabel testId={`btn-save-supply-sheet-${data.id}`} className="self-start" />
+        )}
         {data.description && (
           <div>
             <p className="text-[13px] font-semibold text-foreground mb-1">About</p>
@@ -839,13 +843,7 @@ export function CityFeedCardGem({
   const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
   // What the heart saves (#330): the card's own identity, name, photo and city — a display cache
   // for the Saved places shelf. A photo is carried only when it is an http(s) or site path.
-  const gemSaveItem = {
-    contentType: "gem" as const,
-    contentId: String(gem.id),
-    contentName: String(gem.placeName ?? "").trim().slice(0, 255),
-    contentImage: typeof photoUrl === "string" && /^(https?:\/\/|\/)/i.test(photoUrl) ? photoUrl : null,
-    city: city ? String(city).slice(0, 100) : null,
-  };
+  const gemSaveItem = buildSaveItem({ contentType: "gem", contentId: gem.id, name: gem.placeName, image: photoUrl, city });
 
   const resolvedBookability: Bookability = bookability ?? resolveBookability(gem);
   // DISABLED: GET /api/gems/:id/matched-service has no server implementation — every gem
@@ -950,7 +948,7 @@ export function CityFeedCardGem({
         <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
       )}
       {/* #330: save this place to Saved places. Bottom-left — the reference chip holds bottom-right. */}
-      {gemSaveItem.contentName && <SaveToggle item={gemSaveItem} className="absolute bottom-2 left-2 z-10" testId={`btn-save-gem-${gem.id}`} />}
+      {gemSaveItem && <SaveToggle item={gemSaveItem} className="absolute bottom-2 left-2 z-10" testId={`btn-save-gem-${gem.id}`} />}
     </div>
   );
 
@@ -1946,6 +1944,15 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     city,
     cardPosition,
   );
+  // #330: a stay or an activity is saved from its detail sheet (the compact card keeps its two
+  // buttons). Keyed on the same id the impression uses; no id and no name ⇒ nothing to save.
+  const supplySaveItem = buildSaveItem({
+    contentType: isHotel ? "hotel" : "activity",
+    contentId: item.id,
+    name: itemName,
+    image: photoUrl ?? dbImageUrl,
+    city,
+  });
 
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
@@ -2073,6 +2080,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
           onClose={() => setSheetOpen(false)}
           cardType="supply"
           data={{ ...item, _kind: kind, _city: city, _getImpressionId: getImpIdSupply }}
+          saveItem={supplySaveItem}
         />
       </>
     );
@@ -2212,6 +2220,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
         onClose={() => setSheetOpen(false)}
         cardType="supply"
         data={{ ...item, _kind: kind, _city: city, _getImpressionId: getImpIdSupply }}
+        saveItem={supplySaveItem}
       />
     </>
   );

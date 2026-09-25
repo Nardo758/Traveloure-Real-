@@ -2,7 +2,7 @@
 
 **Status:** RATIFIED 2026-08-27 (Leon) — build authority · supersedes Business Plan v1.3 §3.1, §3.3, §4 (credits, $19.99/$39.99 memberships, "Savings Concierge") · `audited@<main at landing>`
 
-> **Correction 2026-08-27 (verified against `main` @ a219e6fd):** the optimization run fee is **not** a `fee_bands` key. It lives in the canonical `optimization_fees` table, resolved server-side by `getFee(eventType, tier)` (migrations 017/076, admin-editable, determinism-tested). Any earlier reference to an `optimizer:run` `fee_bands` key is superseded — `/pricing` and the Optimize dialog read `optimization_fees`. The `plans` rows and the `concierge:*` / band keys are unaffected. Migration 259's status (the `plans` table + concierge rows) is being confirmed; if not on `main`, that migration is rebuilt — minus the optimizer row.
+> **Correction 2026-08-27 (verified against `main` @ a219e6fd):** the optimization run fee is **not** a `fee_bands` key. It lives in the canonical `optimization_fees` table, resolved server-side by `getFee(eventType, tier)` (migrations 017/076, admin-editable, determinism-tested). Any earlier reference to an `optimizer:run` `fee_bands` key is superseded — `/pricing` and the Optimize dialog read `optimization_fees`. The `plans` rows and the `concierge:*` / band keys are unaffected. Migration 259's status (the `plans` table + concierge rows) is being confirmed; if not on `main`, that migration is rebuilt — minus the optimizer row. <!-- band-key-ok: quoted as corrected, ledger 2026-09-24-pricing-map-row-keys -->
 
 Rules that govern this document:
 - Every number here is a `fee_bands` row (or a `plans` row for subscriptions). **No fee literal exists anywhere else.** The pricing page reads these rows; the resolver reads these rows; the plan document cites these rows.
@@ -29,7 +29,7 @@ The supply side (experts, providers) uses the platform weekly. Sold monthly. Pro
 |---|---|---|---|---|
 | **Plan it yourself** | slip, browse, `Book now`, ready-made trips, guest draft · **pay-per-use access to every AI action below — no membership needed** | free | — | default |
 | **Plan with AI** (pay per use) | optimization run (3 versions around an anchor) · AI Concierge task · available to free users, guests included after sign-in at the paid gate | run **$5.99** (trip/experience; event $19.99) · task **$2.99**, charged at confirm, nothing runs before | `optimization_fees` via `getFee` (see the 2026-08-27 correction above), `concierge:ai_task` | `Optimize this plan`; feed concierge panel; Finalize → Concierge |
-| **Trip Pass** | unlimited runs + AI tasks on one slip · ~~one expert revision~~ (**RETIRED — see below**) · traveler service fee waived on that trip's bookings | **$19 / trip** | `plans:trip_pass` | offered at the second paid AI action on a slip; pricing page |
+| **Trip Pass** | unlimited runs + AI tasks on one slip · ~~one expert revision~~ (**RETIRED — see below**) · traveler service fee waived on that trip's bookings | **$19 / trip** | `plans.trip_pass` | offered at the second paid AI action on a slip; pricing page |
 | **Plan with a local** | a named expert takes the slip: review, re-route, endorse, book what needs a human | expert's price (`from $N`), platform commission by band | expert bands below | `Plan with {name}`; Finalize → Travel expert |
 | **Done for you** | event / complex trip coordinated end to end (planner + providers) | quoted; deposit + milestones; full commission | `concierge:done_for_you_deposit_pct` **20%** | Event Planners; Finalize → Booking agent |
 
@@ -48,7 +48,7 @@ The supply side (experts, providers) uses the platform weekly. Sold monthly. Pro
 | AI task allowance | 4 tasks / month beyond the scheduled ones; then per-task | `plans:plus_task_allowance = 4` |
 | Resident mode on the feed | same `/discover/location/:City`, `where` = home city, occasion chips replace gem chips | **build** (feed lane, small) |
 
-**Price:** **$25 / year** (`plans:plus_annual`). No monthly option at launch.
+**Price:** **$25 / year** (`plans.plus_annual`). No monthly option at launch.
 **Cost to serve:** ~$3–7 / member / year (Stripe ~$1, AI tasks $1–4 with the allowance cap, notifications, refund allowance). Gross margin ≥ 72%.
 **Why this price:** removes the buy decision; the subscription is a booking engine. Success metric = **bookings per member per year**; target ≥ 3 (each ≈ $20 to the platform at a $150 occasion). Review at 12 months; if < 1.5, Plus is a retention tool, not a product.
 **Not a discount club.** No member pricing, no "up to 50% off." Ledger `2026-08-27-plus-no-discounts` reaffirms.
@@ -60,7 +60,7 @@ The supply side (experts, providers) uses the platform weekly. Sold monthly. Pro
 | Tier | Includes | Price | Key |
 |---|---|---|---|
 | **Free** | claimed storefront `/s/:handle`, attributed short-links (rails rate on own-sourced bookings), Publish/Promote, Money station | — | — |
-| **Pro** — *free during beta until 2026-12-31, price shown struck through* | one-band commission step-down · neighbourhood demand view (wanted slots, trend, lead-time) · priority in the feed anchor slot when eligible · early listing of occasion inventory · storefront analytics | **$29 / month** | `plans:pro_monthly` · `provider:pro_band_step = 1` |
+| **Pro** — *free during beta until 2026-12-31, price shown struck through* | one-band commission step-down · neighbourhood demand view (wanted slots, trend, lead-time) · priority in the feed anchor slot when eligible · early listing of occasion inventory · storefront analytics | **$29 / month** | `plans.pro_monthly` · `provider:pro_band_step = 1` |
 
 Pays for itself on one booking a month at the step-down. Demand view is the pitch — "12 travelers asked for a kaiseki host in Gion this month."
 
@@ -70,20 +70,40 @@ Pays for itself on one booking a month at the step-down. Demand view is the pitc
 
 | Revenue event | Payer | Rule | Key | Value | Status |
 |---|---|---|---|---|---|
-| Traveler service fee | traveler | 7% of booking, cap $25; waived on provider-attributed short-link bookings and under Trip Pass | `traveler:service_fee_pct`, `traveler:service_fee_cap_cents` | 0.07 / 2500 | **set** |
-| Provider commission (platform-sourced) | provider | by risk/insurance band | `provider:band_limited/moderate/commercial/premium` | 0.12 / 0.08 / 0.06 / 0.04 | **set** |
-| Provider commission (rails) | provider | own-sourced via short link; repeat pairs automatically rails | `provider:rails_rate` | ~0.08, admin-configurable | **set** |
-| Expert commission | expert | by category risk band | `expert:band_limited/moderate/commercial/premium` | 0.12 / 0.08 / 0.06 / 0.04 | **set — verify keys match the resolver** |
+| Traveler service fee | traveler | 7% of booking, cap $25; waived on provider-attributed short-link bookings and under Trip Pass | `traveler_service_fee` (cap via its own `max_amount`) | 0.0700 / $25.00 | **set** |
+| Provider commission (platform-sourced) | provider | by risk/insurance band | `limited` / `moderate` / `commercial` / `premium` | 0.12 / 0.08 / 0.06 / 0.04 | **set** |
+| Provider commission (rails) | provider | own-sourced via short link; repeat pairs automatically rails | `provider_rails` | 0.0800, admin-configurable | **set** |
+| Expert commission | expert | standard split; a beta cohort is admin-flagged | `expert_standard` / `expert_new` | 0.25 (expert keeps 75%) / 0.15 (keeps 85%) | **set — keys and values verified against the resolver 2026-09-24** |
 | Affiliate margin | partner | per partner | `affiliate:<partnerKey>` | 4–12% | **verify rows exist per registered partner** |
 | Optimization run | traveler | per run | `optimization_fees` table · `getFee(eventType,tier)` | admin-set tiers | **exists — canonical, NOT `fee_bands`** |
 | AI Concierge task | traveler | per task | `concierge:ai_task` | **$2.99** | **new** |
-| Booking Concierge facilitation (Model B) | traveler | % of facilitated amount, capped | `concierge:booking_pct`, `concierge:booking_cap_cents` | **5% / $40** | **new** |
+| Booking Concierge facilitation (Model B) | traveler | % of facilitated amount, capped | `expert_concierge_booking` (cap via its own `max_amount`) · `expert_concierge_booking_expert_share` | **5% / $40 · 75% to the listing owner** | **live (migration 311)** |
 | Done-for-you deposit | traveler | % of quote at acceptance | `concierge:done_for_you_deposit_pct` | **20%** | **new** |
-| Ready-made trip purchase | traveler | listing price; platform cut by the author's expert band | `ready_made:platform_band = expert band` | inherits | **new (rule, not a number)** |
-| Trip Pass | traveler | per trip | `plans:trip_pass` | **$19** | **new** |
-| Plus | resident | annual | `plans:plus_annual` | **$25** | **new** |
-| Pro | expert/provider | monthly | `plans:pro_monthly` | **$29** | **new** |
+| Ready-made trip purchase | traveler | listing price; platform cut by the author's expert band | `ready_made:platform_band` (`rule` = `inherit_expert`); the take resolves through `ready_made_trip` | inherits | **new (rule, not a number)** |
+| Trip Pass | traveler | per trip | `plans.trip_pass` | **$19** | **new** |
+| Plus | resident | annual | `plans.plus_annual` | **$25** | **new** |
+| Pro | expert/provider | monthly | `plans.pro_monthly` | **$29** | **new** |
 | Data resale | B2B | contract | — | — | contingent on counsel (ToS/provider agreements) |
+
+**How to read the Key column, and how to check it (corrected 2026-09-24, ledger `2026-09-24-pricing-map-row-keys`).**
+A backticked name here is one of exactly two things, and they are different namespaces that this table
+previously blurred:
+
+- a **`fee_bands.band_key`** — the authority is `server/services/fee-band-requirements.ts`, which declares every
+  key the resolvers read, its expected `rate_type`, and whether its absence is fail-loud or falls back;
+- a **`plans` table row**, written with a **dot** (`plans.trip_pass`). The colon form is reserved, because
+  `plans:plus_task_allowance` and `provider:pro_band_step` are genuine `fee_bands` keys — so `plans:trip_pass` <!-- band-key-ok: quoted as corrected, ledger 2026-09-24-pricing-map-row-keys -->
+  read as a band key that does not exist.
+
+A cap is **not a second band**: `traveler_service_fee` and `expert_concierge_booking` each carry their own
+`max_amount`, enforced at resolution (migration 178's own `COMMENT ON COLUMN`). Until this correction this table
+named `traveler:service_fee_pct` + `traveler:service_fee_cap_cents`, `provider:rails_rate` and <!-- band-key-ok: quoted as corrected, ledger 2026-09-24-pricing-map-row-keys -->
+`expert:band_limited/…` — **none of which exists in code** — and gave the expert commission the *provider* tier <!-- band-key-ok: quoted as corrected, ledger 2026-09-24-pricing-map-row-keys -->
+numbers, `0.12 / 0.08 / 0.06 / 0.04`, where the resolver charges `expert_standard` **0.25**. The printed rates
+were otherwise right; the keys were not, and this table is cited as the authority by four other documents, so
+they inherited both. The row that was wrong about its *number* is the one that had carried
+**"verify keys match the resolver"** since it was written: an unresolved flag is not a caveat, it is an open
+question, and this is what it was hiding.
 
 ---
 
@@ -105,7 +125,7 @@ Pays for itself on one booking a month at the step-down. Demand view is the pitc
 |---|---|---|
 | `/pricing` | exists in footer; contents unaudited | rebuild as the four-column ladder + Plus + Pro, reading `plans` and `fee_bands` rows; earn grammar · **add nav link (right-side cluster, plain text, next to Ways to Earn), same route as footer** |
 | Finalize popup (slip) | not built (R-C) | the four choices with the current slip's numbers; ships with the cart-is-slip lane |
-| Optimize dialog fee line | built | reads `optimizer:run` |
+| Optimize dialog fee line | built | reads the `optimization_fees` table via `getFee(eventType, tier)` — **not** a `fee_bands` key (see the 2026-08-27 correction at the top) |
 | Concierge panel (feed) | built (`Optimize`) | reads `concierge:ai_task` |
 | Trip Pass offer | none | inline at second paid action |
 | Plus | none | landing "occasions" section; profile home city; `/plus` |

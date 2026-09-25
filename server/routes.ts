@@ -1889,7 +1889,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // no trip involved (e.g. visa-help's service purchase), so tripId stays OPTIONAL on the
   // schema — the ruling binds the ADVISOR ATTACHMENT below, not every caller. A tripId that IS
   // supplied must still resolve to a trip the session owns (404/401), never silently downgraded
-  // to a trip-less request. The storefront (expert-detail.tsx) is the actual touchpoint this
+  // to a trip-less request. The storefront (storefront.tsx, which also serves `/experts/:id`) is the actual touchpoint this
   // ruling closes: with no trip to share, it sends the traveler through the planning ladder and
   // returns via the existing `?tripId=` handoff before ever calling this endpoint. Validation +
   // ownership authorization lives in expert-booking-request-guard.service.ts (a pure function,

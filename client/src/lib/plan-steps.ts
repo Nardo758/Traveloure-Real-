@@ -64,7 +64,7 @@ import type { PlanningBranch } from "@/contexts/PlanningContext";
  * `local` needs one for a different and stronger reason: Locked Decision 42 D5, applying Locked
  * Decision 32's precondition — NO EXPERT TOUCHPOINT EXISTS WITHOUT A SLIP. A traveler sent to
  * `/experts` with no trip walks into exactly what 32 forbids: a lead that surfaces to nobody,
- * because `POST /api/expert-booking-requests` REQUIRES a `tripId` and the expert-detail CTA
+ * because `POST /api/expert-booking-requests` REQUIRES a `tripId` and the storefront CTA
  * re-opens this very modal without one (`docs/briefs/EXPERT_HANDOFF_IS_A_LOOP.md`).
  *
  * `ai` needs one since RC-1 (decision-maker ruled Sep 24, 2026 — ledger
@@ -94,7 +94,7 @@ export const BRANCHES_THAT_MINT: readonly PlanningBranch[] = ["myself", "local",
  * sign-in gate — "the SAME sign-in gate" `myself` uses, which exists because the SLIP ROUTE is
  * protected — and says nothing about gating the browse. So a guest, or anyone whose mint failed,
  * still reaches `/experts`; they simply arrive with no `tripId`, exactly as before D5, and the
- * expert-detail CTA gates them at sign-in on its own as it always has.
+ * storefront CTA gates them at sign-in on its own as it always has.
  *
  * Turning a public browse into a sign-in wall would be a discovery regression nobody ruled, and
  * `playwright/tests/planning-entry.spec.ts` ("local branch navigates to /experts") is the armed

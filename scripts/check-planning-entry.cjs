@@ -152,6 +152,16 @@ const REQUIRED_SOURCE_FIELDS = [
     why: "listing.market is the listing's own stated market",
   },
   {
+    file: "client/src/components/dashboard/WishlistSection.tsx",
+    require: ["city"],
+    why: "\"Plan this city\" sits on ONE city group of Saved places — the city those places were saved under (#329)",
+  },
+  {
+    file: "client/src/pages/shared-saved-places.tsx",
+    require: ["city"],
+    why: "a shared list is ONE city's saved places; its entry opens the modal in that city (#329)",
+  },
+  {
     file: "client/src/pages/chat.tsx",
     require: ["tripId"],
     why: "selectedTripId is the trip the open thread is about — the same value the header badge renders",

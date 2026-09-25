@@ -1826,4 +1826,7 @@ export const MIGRATION_FILES = [
   // Ledger `2026-09-24-live-chat-qa-sessions` (Locked Decision 54): `users.available_now_until`,
   // additive NULLABLE, NO DEFAULT, NO CHECK, NO BACKFILL; declared in shared/models/auth.ts.
   "323_available_now.sql",
+  // Ledger `2026-09-24-saved-places-plan-and-share` (board #329): `saved_place_shares`, one
+  // read-only share link per (user, city); additive table, NO CHECK; declared in shared/schema.ts.
+  "324_saved_place_shares.sql",
 ] as const;

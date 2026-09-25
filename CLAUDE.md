@@ -884,6 +884,11 @@ This document captures architectural decisions to maintain consistency across co
     outright, and removing the `/experts/:id` route requires every card row to carry a handle.
     Do not remove a deprecated INPUT until those are done, and do not add a new id-addressed
     contact rail at all.
+    **`expert-detail.tsx` IS DELETED (ledger `2026-09-25-expert-detail-deleted`).** No route rendered
+    it — `/experts/:id` and `/local-experts/:id` render the STOREFRONT page through the by-id loader,
+    which already carries the handle redirect, the `?tripId=` handoff and the cover image — so it is
+    struck from the list above by §18c, not by a lane-2 removal; `storefront.tsx` keeps the
+    `LD 40 lane 2: still id-addressed` marker for the handle-less earner the id route still serves.
 
 
 41. **THE FREE DRAFT IS A SKETCH; OPTIMIZE IS THE PLAN; THE MAP SHOWS THE COMPARISON
@@ -2121,6 +2126,26 @@ This document captures architectural decisions to maintain consistency across co
     flow. A session that does not exist, is not yours or is not a Q&A Session is ONE 404 (LD 40).
     **Not in this lane:** per-minute billing, locking the chat at the end of a session, and a traveler
     "notify me when available" alert.
+
+55. **SAVED PLACES ARE PLANNED ON THE PLAN AND SHARED AS A LIVE, READ-ONLY CITY LINK (decision-maker,
+    Sep 24, 2026: "go with your recommendations" — board #329/#330; ledger
+    `2026-09-24-saved-places-plan-and-share`; migration 324).** A city group on Saved places offers
+    **"Plan this city"**, which opens the ONE planning modal with that city (a door, LD 33/42 D13 — it
+    carries no places through the modal). The places come in on the PLAN: the slip shows the OWNER's
+    saved places whose city matches the plan's destination or a stop (`savedPlacesForPlan`, each name
+    read up to its first comma; no country or nearby-city guess), each added through the SAME
+    `POST /api/trips/:tripId/itinerary-items` body the Add-to-plan dialog sends — no second add rail
+    (LD 39). A city group can also be **shared**: `saved_place_shares` (additive table, NO CHECK,
+    declared in `shared/schema.ts` with both indexes) holds one ACTIVE link per (user, city) — a
+    partial UNIQUE on `revoked_at IS NULL` makes "share" idempotent at the statement — and stores NO
+    place: `GET /api/saved-places/shared/:token` reads the owner's CURRENT saved places for that city
+    and returns the city and the places ONLY (no owner, no user id, no row id — LD 40 posture); a
+    stopped, unknown or malformed token is one 404, and a stopped link never comes back (sharing again
+    mints a new token). The owner is the session on every write (§14); the body is a `.strict()`
+    `{ city }` (§19). ONE city key, `savedCityKey` (`shared/saved-items.ts`), is read by the shelf, the
+    slip and the share (§18 rule 1). **No CSV export** (ruled out). Save controls now also sit on
+    Discover's stay/activity detail sheets and on partner search results (source-prefixed ids;
+    transfers and safety notices are not places and offer no Save).
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

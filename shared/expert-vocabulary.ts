@@ -11,7 +11,7 @@
  *     hold a MIX — `expertSpecializationEnum` slugs (`food_wine`) written by the
  *     application wizard, `expert_offering_types.offering_type_key` values and, since
  *     the Event Planner track, an offering DISPLAY NAME prepended by the same submit.
- *     `expert-detail.tsx` and `expert-card.tsx` each rendered whatever string came back,
+ *     `expert-detail.tsx` (since deleted) and `expert-card.tsx` each rendered whatever string came back,
  *     so one badge row could read "Food & Wine" beside "food_wine" beside
  *     "wedding_planner".
  *   • `local_expert_forms.local_specialties` holds a second slug vocabulary
@@ -146,7 +146,7 @@ function asStringArray(value: unknown): string[] {
  *
  * Gap 9 (ledger `2026-09-04-earn-contained-fixes`): there are THREE stores and two surfaces
  * were reading different ones — `expert-card.tsx` took `users.specialties` else the
- * `expert_specializations` table, while `expert-detail.tsx` read only the application's
+ * `expert_specializations` table, while `expert-detail.tsx` (since deleted) read only the application's
  * `local_expert_forms.specializations` jsonb. The same expert could therefore show one set on
  * the browse card and a different set on their own profile.
  *

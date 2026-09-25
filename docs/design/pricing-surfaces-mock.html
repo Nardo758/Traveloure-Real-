@@ -465,10 +465,10 @@
         <h3>Pay for this one, or the whole trip?</h3>
         <p>You've already run the optimizer once on Kyoto · Nov 2–6.</p>
         <div class="opt"><span><b>Just this task</b><small>Stitch Gion into your evening</small></span><span class="pr">$2.99<br><small>concierge:ai_task</small></span></div>
-        <div class="opt hl"><span><b>Trip Pass · this trip</b><small>Unlimited runs &amp; tasks · one revision by a local · no service fee on bookings</small></span><span class="pr">$19<br><small>plans:trip_pass</small></span></div>
+        <div class="opt hl"><span><b>Trip Pass · this trip</b><small>Unlimited runs &amp; tasks · one revision by a local · no service fee on bookings</small></span><span class="pr">$19<br><small>plans.trip_pass</small></span></div>
         <div class="opt" style="border-top:0;padding-top:4px"><span><small>Service fee on your current cart (5 items · $500)</small></span><span class="save">saves $25 with the pass</span></div>
         <div class="row" style="display:flex;gap:8px;margin-top:10px"><button class="btn teal" style="flex:1;justify-content:center">Get the Trip Pass</button><button class="btn" style="flex:1;justify-content:center">Just this task</button></div>
-        <div class="keyline">fee line: traveler:service_fee_pct × cart subtotal, capped traveler:service_fee_cap_cents · shown only when &gt; 0</div>
+        <div class="keyline">fee line: traveler_service_fee × cart subtotal, capped at its own max_amount · shown only when &gt; 0</div>
       </div>
       <div class="note rule"><b>Rules.</b> Appears on the <i>second</i> paid AI action per slip, never the first (<code>2026-08-27-anchor-and-pass</code>). Three numbers: this action's price, the pass, the fee saving computed from the live cart by the resolver. If the cart is empty the saving line is omitted. Choosing "Just this task" suppresses the sheet for 24h on that slip. Under Trip Pass the paid gate copy becomes "Included in your Trip Pass" and no charge occurs.</div>
     </div>
@@ -487,7 +487,7 @@
         <div class="opt hl"><span class="tile"><svg class="ic"><use href="#i-lantern"/></svg></span><span style="flex:1"><b>Plan with Yuki</b><small>Local expert · Gion · responds under 2h · gets access to this plan (never a copy)</small></span><span class="pr">from $249<br><small>expert-priced · band applies</small></span></div>
         <div class="opt"><span class="tile"><svg class="ic"><use href="#i-wine"/></svg></span><span style="flex:1"><b>Done for you</b><small>A planner coordinates providers end to end</small></span><span class="pr">quote<br><small>20% deposit at acceptance</small></span></div>
         <div class="row" style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" style="flex:1;justify-content:center">Plan with Yuki · from $249</button><button class="btn" style="flex:1;justify-content:center">Book it myself</button></div>
-        <div class="keyline">rows: traveler:service_fee_* · concierge:ai_task · plans:trip_pass · expert offering price + expert:band_* · concierge:done_for_you_deposit_pct</div>
+        <div class="keyline">rows: traveler_service_fee · concierge:ai_task · plans.trip_pass · expert offering price + expert_standard/expert_new · concierge:done_for_you_deposit_pct</div>
       </div>
       <div class="note rule"><b>Rules.</b> R-C wording: "gets access to this plan," never "hands them a copy." The highlighted row is the slip's chosen/lead expert when one exists, else "Plan with AI." "Book it myself" = the existing <code>Add all to checkout</code> transition. "Done for you" opens a quote request, no charge. One coral CTA: the highlighted row.</div>
     </div>
@@ -506,11 +506,11 @@
           <div class="col hl"><span class="eyebrow" style="color:var(--earn-teal-ink)">Best for one trip</span><h4>Trip Pass</h4><div class="price">$19 <small>/ trip</small></div><ul><li><svg class="ic"><use href="#i-check"/></svg>Unlimited runs &amp; tasks on that slip</li><li><svg class="ic"><use href="#i-check"/></svg>One revision by a local expert</li><li><svg class="ic"><use href="#i-check"/></svg>No service fee on that trip's bookings</li><li><svg class="ic"><use href="#i-check"/></svg>Usually pays for itself on the bookings alone</li></ul><button class="btn teal">Get a Trip Pass</button></div>
           <div class="col"><span class="eyebrow">With a local</span><h4>Plan with a local</h4><div class="price">from $N <small>expert-priced</small></div><ul><li><svg class="ic"><use href="#i-check"/></svg>A named expert takes your slip</li><li><svg class="ic"><use href="#i-check"/></svg>Reviews, re-routes, books what needs a human</li><li><svg class="ic"><use href="#i-check"/></svg>Done-for-you for events: quote · 20% deposit</li></ul><button class="btn">Find a local expert</button></div>
         </div>
-        <div class="keyline">rows: traveler:service_fee_* · optimizer:run · concierge:ai_task · plans:trip_pass · expert offering + expert:band_* · concierge:done_for_you_deposit_pct</div>
+        <div class="keyline">rows: traveler_service_fee · optimization_fees · concierge:ai_task · plans.trip_pass · expert offering + expert_standard/expert_new · concierge:done_for_you_deposit_pct</div>
 
         <div class="plusband">
           <div><span class="eyebrow" style="color:var(--earn-coral-ink)">Plus · for the city you live in</span><h3>A plan arrives before every date that matters.</h3><p>Tell us your city and the occasions — birthdays, anniversaries, date night every other Friday. Two weeks before each one, a draft built from hidden gems and locals in your neighbourhood shows up on your slip.</p>
-            <div class="price" style="font:600 30px var(--mono);letter-spacing:-.03em">$25 <small style="font:400 12px var(--mono);color:var(--earn-muted)">/ year · plans:plus_annual</small></div>
+            <div class="price" style="font:600 30px var(--mono);letter-spacing:-.03em">$25 <small style="font:400 12px var(--mono);color:var(--earn-muted)">/ year · plans.plus_annual</small></div>
             <ul style="list-style:none;padding:0;margin:10px 0 14px;font-size:13px;color:#3C4652;display:flex;flex-direction:column;gap:6px"><li>· A draft slip 14 days before each occasion</li><li>· Priority response from your local expert (their time, their price)</li><li>· 48h early access on inventory that sells out</li><li>· 4 concierge tasks a month included</li></ul>
             <button class="btn primary">Join Plus · $25 / year</button></div>
           <div class="occ">
@@ -523,7 +523,7 @@
 
         <div class="sec" style="margin-top:26px"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">For experts &amp; providers</span><h3 style="font-size:24px">Pro</h3></div><span class="beta-free">Free during beta · until 2026-12-31</span></div>
         <div class="band2" style="margin-top:12px">
-          <div class="lead"><div class="price" style="font:600 30px var(--mono);letter-spacing:-.03em"><span class="strike">$29</span> $0 <small style="font:400 12px var(--mono);color:var(--earn-muted)">/ month during beta · plans:pro_monthly</small></div><p>Everything in your free storefront, plus the numbers behind your neighbourhood and a lower rate on what the platform sends you.</p><button class="btn teal">Turn on Pro · free</button></div>
+          <div class="lead"><div class="price" style="font:600 30px var(--mono);letter-spacing:-.03em"><span class="strike">$29</span> $0 <small style="font:400 12px var(--mono);color:var(--earn-muted)">/ month during beta · plans.pro_monthly</small></div><p>Everything in your free storefront, plus the numbers behind your neighbourhood and a lower rate on what the platform sends you.</p><button class="btn teal">Turn on Pro · free</button></div>
           <div style="display:grid;gap:0">
             <div class="rate"><span>Your commission on platform-sourced bookings</span><span><span class="strike">12%</span> <b style="color:var(--earn-green-ink)">8%</b></span></div>
             <div class="rate"><span>Own-sourced via your short link (rails)</span><span>8%</span></div>
@@ -531,7 +531,7 @@
             <div class="rate"><span>Priority in the feed anchor slot when eligible · early occasion listings</span><span style="color:var(--earn-teal-ink)">included</span></div>
           </div>
         </div>
-        <div class="keyline">rows: plans:pro_monthly (beta_free_until) · provider:band_* · provider:pro_band_step · provider:rails_rate</div>
+        <div class="keyline">rows: plans.pro_monthly (beta_free_until) · limited/moderate/commercial/premium · provider:pro_band_step · provider_rails</div>
       </div></div>
     </div>
   </div>
@@ -543,7 +543,7 @@
       <div class="osec" style="border-top:0">
         <div class="h-row"><div><span class="eyebrow" style="color:var(--earn-coral-ink)">Plus · the city you live in</span><h3>Her birthday is in 14 days.</h3></div><a href="#">How Plus works →</a></div>
         <div class="earn2">
-          <div><p style="color:var(--earn-muted);font-size:15px;margin:0 0 14px;max-width:460px">Birthdays, anniversaries, the Friday you keep meaning to do something about. Tell Traveloure your city and the dates; a plan built by someone who lives there arrives before each one.</p><div style="display:flex;gap:10px;align-items:center"><button class="btn primary">Join Plus · $25 / year</button><span style="font:400 11px var(--mono);color:var(--earn-muted)">plans:plus_annual</span></div></div>
+          <div><p style="color:var(--earn-muted);font-size:15px;margin:0 0 14px;max-width:460px">Birthdays, anniversaries, the Friday you keep meaning to do something about. Tell Traveloure your city and the dates; a plan built by someone who lives there arrives before each one.</p><div style="display:flex;gap:10px;align-items:center"><button class="btn primary">Join Plus · $25 / year</button><span style="font:400 11px var(--mono);color:var(--earn-muted)">plans.plus_annual</span></div></div>
           <div class="occ">
             <div class="oc"><div class="ph" style="background:linear-gradient(135deg,#E5C6B6,#B97C7C)"><span class="tag">Birthday</span></div><b>An evening in Gion</b><small>built by @yuki-flowers</small></div>
             <div class="oc"><div class="ph" style="background:linear-gradient(135deg,#F3E2B8,#D2A24C)"><span class="tag">Anniversary</span></div><b>Rooftop dinner, Bandra</b><small>built by a local</small></div>

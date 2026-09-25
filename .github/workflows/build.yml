@@ -3245,7 +3245,7 @@ jobs:
   # or enforce-branch-protection.yml fails on the applied-vs-declared diff.
   # ---------------------------------------------------------------------------
   guard-batch:
-    name: guard-batch (25 grep/logic guards — each a named step)
+    name: guard-batch (26 grep/logic guards — each a named step)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -3447,3 +3447,15 @@ jobs:
       - name: ai-draft-eligibility-guard · AI-draft eligibility guard
         if: ${{ !cancelled() }}
         run: node scripts/check-ai-draft-eligibility.cjs
+      # Ledger 2026-09-25-doc-band-key-guard. A pricing DOC may not cite a `fee_bands` key that
+      # does not exist: the ratified map named six that never existed and a retired pair as live,
+      # and every copy inherited them, because nothing mechanical checked a doc against the code.
+      # The authority is server/services/fee-band-requirements.ts, PARSED and never restated.
+      # Predicate fixtures FIRST (§18d) — this guard checks KEYS, never printed VALUES; its
+      # CANNOT DETECT block states the rest of its negative space.
+      - name: doc-band-keys-guard · Doc band-key guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-doc-band-keys.cjs --self-test
+      - name: doc-band-keys-guard · Doc band-key citation guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-doc-band-keys.cjs

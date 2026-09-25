@@ -68,7 +68,7 @@ const PUBLIC_USER_FIELDS: ReadonlySet<string> = new Set(EXPERT_PUBLIC_FIELDS as 
 
 /**
  * The one `preferences` key a public expert surface reads: the storefront cover image
- * (`expert-detail.tsx`). `users.preferences` is unbounded jsonb whose contents nothing in this
+ * (read by the deleted `expert-detail.tsx`; ledger `2026-09-25-expert-detail-deleted`). `users.preferences` is unbounded jsonb whose contents nothing in this
  * codebase constrains, so the blob is never published; this re-attaches the single string the page
  * renders, in the shape the page already reads, and only when a real non-empty value exists.
  *
