@@ -65,10 +65,11 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Set up CI database (migrations + sessions table)
+      - name: Set up CI database (migrations + sessions table + CI test accounts)
         uses: ./.github/actions/ci-db-setup
         with:
           database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'true'
 
       - name: Build
         run: npm run build
@@ -107,13 +108,8 @@ jobs:
           echo "::error::Server did not become ready within 5 minutes"
           exit 1
 
-      - name: Seed CI test accounts
-        run: npx tsx scripts/seed-ci-test-users.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-
       - name: Capture baseline row counts (post-seed)
-        run: npx tsx scripts/e2e/row-counts.ts > test-results/row-counts-baseline.txt
+        run: mkdir -p test-results && npx tsx scripts/e2e/row-counts.ts > test-results/row-counts-baseline.txt
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
 
