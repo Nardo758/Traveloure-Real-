@@ -190,9 +190,18 @@ export async function adminApproveProviderApplication(page: Page, businessName: 
 export async function adminApproveExpertApplication(page: Page, matchText: string): Promise<boolean> {
   await page.goto('/admin/experts');
   await testid(page, 'button-tab-applications').click().catch(() => {});
-  await page.waitForTimeout(500);
   const card = page.locator('[data-testid^="card-application-"]', { hasText: matchText });
-  if ((await card.count()) === 0) return false;
+  // "applications" is already the page's default tab (admin/experts.tsx useState default), and
+  // the card DOES render the email (app.email at line ~406) — a prior "not found" reading was a
+  // pure RACE: the list is an async useQuery that resolves after navigation, and a flat 500ms
+  // sleep after page.goto does not reliably outlast that fetch under load. Poll instead of
+  // guessing a fixed delay, matching every other admin-list lookup in this harness.
+  let found = false;
+  for (let i = 0; i < 10 && !found; i++) {
+    found = (await card.count()) > 0;
+    if (!found) await page.waitForTimeout(1000);
+  }
+  if (!found) return false;
   // admin/experts.tsx's Approve handler opens a window.prompt() override-reason dialog
   // whenever identity verification is incomplete (always true here, HELD:stripe) — same
   // pattern as adminApproveProviderApplication. Missing this handler is exactly why an
@@ -264,6 +273,14 @@ export async function createListingBasics(
     title: string;
     /** service_offering_types.offering_type_key — ServiceForm is offering-first (picker auto-opens on create); category derives from it. */
     offeringTypeKey?: string;
+    /** expert_offering_types.offering_type_key — ServiceForm.tsx's "What you sell" tile picker
+     *  (option-tier-<key>), the ONE canonical offering column for role='expert' (§4/migration 292).
+     *  Required for an expert's final submit (service-form-required.ts "tier" row). */
+    expertOfferingTypeKey?: string;
+    /** A category NAME to pick from the native `#category` Select — role='expert' only. Providers
+     *  never see this control (their category is DERIVED from offeringTypeKey). Required for both
+     *  roles' final submit (service-form-required.ts "category" row, applicable: true). */
+    expertCategoryName?: string;
     deliveryMethod?: string; // ServiceForm UI value, e.g. 'in-person'
     priceCents?: number;
     description: string;
@@ -315,9 +332,105 @@ export async function createListingBasics(
   }
 
   await fillIfVisible(page, 'service-description', opts.description);
+
+  // The EXPERT-only "What you sell" tile picker (ServiceForm.tsx ~3686, `option-tier-<key>`,
+  // required for role='expert' final submit) and the native `#category` Select (both roles,
+  // required: `service-form-required.ts` "category" row is `applicable: true` for everyone,
+  // but only role='provider' derives it automatically from an offering — an expert must pick
+  // one directly). Neither was ever driven before this fix, which is why the expert wizard's
+  // final-step control (`button-submit-service`) stayed permanently disabled behind "Still
+  // needed: Category, What you sell" with no error the harness ever read.
+  if (opts.role === 'expert' && opts.expertOfferingTypeKey) {
+    const tile = testid(page, `option-tier-${opts.expertOfferingTypeKey}`);
+    if (await tile.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await tile.click({ timeout: 3000 }).catch(() => {});
+    } else {
+      const anyTile = page.locator('[data-testid^="option-tier-"]');
+      if ((await anyTile.count()) > 0) await anyTile.first().click({ timeout: 3000 }).catch(() => {});
+    }
+  }
+
+  if (opts.role === 'expert' && opts.expertCategoryName) {
+    const trigger = page.locator('#category');
+    if (await trigger.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await trigger.click({ timeout: 3000 }).catch(() => {});
+      const option = page.getByRole('option', { name: opts.expertCategoryName, exact: false });
+      if (await option.first().isVisible({ timeout: 3000 }).catch(() => false)) {
+        await option.first().click({ timeout: 3000 }).catch(() => {});
+      } else {
+        // Named category not in the list (drift) — pick the first real option rather than
+        // leaving the required field permanently empty.
+        const anyOption = page.getByRole('option');
+        if ((await anyOption.count()) > 0) await anyOption.first().click({ timeout: 3000 }).catch(() => {});
+      }
+    }
+  }
 }
 
-export async function walkServiceFormToReview(page: Page, maxSteps = 8): Promise<number> {
+/**
+ * ONE neighborhood picker (ServiceForm.tsx ~1889, `renderNeighborhoodPicker`), rendered on the
+ * Logistics step in EITHER the "Meeting Location" card (in-person/hybrid) or the "Where you're
+ * based" card (every other delivery method) — same testids either way
+ * (`option-neighborhood-<slug>`). Composes `provider_services.location`/`city` server-side
+ * (ServiceForm.tsx ~1440); skipping it is exactly why every S1/S2 listing in the prior pass was
+ * born `location='Unknown'`, `city=NULL` and invisible on every location-scoped surface.
+ * Deliberately a SEPARATE call from `walkServiceFormToReview` (not baked into every wizard walk)
+ * so a spec can choose NOT to call it — S3's throwaway listing stays deliberately
+ * neighbourhood-less, the one proof for the product finding this gap causes.
+ */
+export async function pickNeighborhood(page: Page, slug: string): Promise<boolean> {
+  const opt = testid(page, `option-neighborhood-${slug}`);
+  if (await opt.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await opt.click({ timeout: 3000 }).catch(() => {});
+    return true;
+  }
+  // The picker may be behind a search box filtering the same list down — try the search first.
+  const search = testid(page, 'input-neighborhood-search');
+  if (await search.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await search.fill(slug.replace(/[-_]/g, ' '), { timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    if (await opt.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await opt.click({ timeout: 3000 }).catch(() => {});
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * HandleClaimBanner (client/src/components/backoffice/handle-claim-banner.tsx), mounted once in
+ * BackofficeShell and shown on every provider/expert console page until `users.handle` is set.
+ * The input is pre-filled by `suggestHandle` from the account's name, so this only needs to open
+ * and submit it — never type over the run-id-tagged handle the spec already minted, since the
+ * server derives the canonical value itself and a mismatch would just be a second, unused guess.
+ */
+export async function claimHandle(page: Page, consoleHome: '/provider/dashboard' | '/expert/dashboard'): Promise<boolean> {
+  await page.goto(consoleHome);
+  await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+  const banner = testid(page, 'handle-claim-banner');
+  if (!(await banner.isVisible({ timeout: 5000 }).catch(() => false))) {
+    // No banner at all — either already claimed, or the account isn't recognized as an earner
+    // role yet. Either way there is nothing this call can do; the caller checks users.handle.
+    return false;
+  }
+  await clickIfVisible(page, 'button-open-handle-claim');
+  const submit = testid(page, 'handle-claim-submit');
+  if (!(await submit.isVisible({ timeout: 3000 }).catch(() => false))) return false;
+  if (await submit.isDisabled().catch(() => false)) {
+    // Prefilled suggestion was too short/empty — the input still needs a value.
+    await fillIfVisible(page, 'handle-claim-input', `e2eh${Date.now().toString(36)}`.slice(0, 20));
+  }
+  if (await submit.isDisabled().catch(() => false)) return false;
+  await submit.click({ timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(1000);
+  return true;
+}
+
+export async function walkServiceFormToReview(
+  page: Page,
+  maxSteps = 8,
+  opts: { neighborhoodSlug?: string } = {},
+): Promise<number> {
   // The listing-home checklist's "Describe it in 140+ characters" row lands here — top it up
   // if it's short, regardless of how this function was reached (create or edit-mode entry).
   const descField = testid(page, 'service-description');
@@ -335,6 +448,14 @@ export async function walkServiceFormToReview(page: Page, maxSteps = 8): Promise
   let clicks = 0;
   for (let i = 0; i < maxSteps; i++) {
     if (await testid(page, 'card-review-summary').isVisible().catch(() => false)) break;
+
+    // The neighborhood picker (Meeting Location or "Where you're based" card) lands on whichever
+    // step the Logistics/"place" section resolves to — branch-dependent (service-form-steps.ts),
+    // so this checks every step rather than assuming a step number. A no-op when not present or
+    // when the caller passed no slug (S3's throwaway listing deliberately stays unset).
+    if (opts.neighborhoodSlug) {
+      await pickNeighborhood(page, opts.neighborhoodSlug);
+    }
 
     const next = testid(page, 'button-step-next');
     if (!(await next.isVisible().catch(() => false))) break;
@@ -363,20 +484,40 @@ export async function walkServiceFormToReview(page: Page, maxSteps = 8): Promise
  * "2 availability slots" per the Phase 0 fixture plan is read as "a saved weekly
  * pattern", since the manager has no bare N-slot picker.
  */
+/**
+ * REWRITTEN (lead review): `card-availability-patterns` / `input-pattern-start-0` /
+ * `button-save-patterns` do not exist anywhere in the current client — that testid set was a
+ * stale reading of `ProviderAvailabilityManager`, a component `/provider/services` explicitly
+ * no longer mounts (its own comment: "No drawer import: availability is the standalone
+ * /provider/availability page"). The real, currently-live editor is
+ * `client/src/pages/provider/availability.tsx`'s `WeeklyPatternsRail`, which mounts only when
+ * `needsScheduling({deliveryMethod, productShape})` is true (shared/service-fundamentals.ts) —
+ * true for `in_person`/`hybrid`/`call`/`video`, false for `pdf`/`voice_notes`/`async_messaging`
+ * (those render `NoCalendarPanel` instead, honestly: "This listing sells without a calendar").
+ * Its day toggles and Save button carry no `data-testid` (style-only buttons), so they are
+ * targeted by accessible name instead.
+ *
+ * Provider-only: no expert-facing availability route exists in this codebase (grepped) — an
+ * expert offering is `draft`-only until admin approval and carries no calendar UI in this pass.
+ */
 export async function addAvailabilityViaUi(page: Page, role: 'provider' | 'expert', serviceId: string): Promise<boolean> {
-  await page.goto(`/${role}/services?availability=${serviceId}`);
+  if (role !== 'provider') return false;
+  await page.goto(`/provider/availability?serviceId=${serviceId}`);
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-  const patternsCard = testid(page, 'card-availability-patterns');
-  if (!(await patternsCard.isVisible({ timeout: 6000 }).catch(() => false))) {
+  const mondayToggle = page.getByRole('button', { name: 'Mo', exact: true });
+  if (!(await mondayToggle.isVisible({ timeout: 6000 }).catch(() => false))) {
+    // Either NoCalendarPanel rendered (this delivery method carries no calendar — not a bug) or
+    // the page never resolved the service. The caller can't tell which without reading the
+    // delivery method itself, so it reports both possibilities.
     return false;
   }
-  await fillIfVisible(page, 'input-pattern-start-0', '09:00');
-  await fillIfVisible(page, 'input-pattern-end-0', '17:00');
-  await fillIfVisible(page, 'input-pattern-capacity-0', '2');
-  const saveBtn = testid(page, 'button-save-patterns');
-  if ((await saveBtn.isVisible().catch(() => false)) && !(await saveBtn.isDisabled().catch(() => false))) {
-    await saveBtn.click();
-    await page.waitForTimeout(800);
+  await mondayToggle.click({ timeout: 3000 }).catch(() => {});
+  await fillIfVisible(page, 'input-patterns-start', '09:00');
+  await fillIfVisible(page, 'input-patterns-capacity', '2');
+  const saveBtn = page.getByRole('button', { name: /Save schedule/i });
+  if (await saveBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await saveBtn.click({ timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(1000);
     return true;
   }
   return false;

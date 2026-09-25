@@ -10,7 +10,7 @@ import { loginViaUi } from './lib/accounts';
 import { createListingBasics, walkServiceFormToReview, submitListingForReview, adminRejectService } from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
-import { serviceByTitle } from './lib/db';
+import { serviceByTitle, q } from './lib/db';
 import { readState } from './lib/state';
 import { testid } from './lib/ui';
 
@@ -79,6 +79,35 @@ test('S3: pending listing is hidden from travelers while awaiting approval', asy
   }
 
   const row = await serviceByTitle('Kyoto Moderation Throwaway Listing');
+
+  // Product finding (lead review item 3): this listing DELIBERATELY never calls
+  // pickNeighborhood (unlike every S1/S2 listing) — the one proof kept for the real defect
+  // location-picking prevents. `provider_services.location` DEFAULTs to the literal
+  // "Unknown" (shared/schema.ts:1170) and `city` stays NULL until a neighborhood is chosen
+  // (ServiceForm.tsx:1440's `location` composer returns `undefined` — never written — when
+  // no neighborhood is selected); both server-side location filters key on `city`/`location`
+  // (server/services/location-view.service.ts:80-85 `cityScopePredicate`; server/storage.ts:3934
+  // `listingLocationMatches`), so a listing born this way is invisible on every location-scoped
+  // surface (city page, location browse, the paid optimizer's catalog reads) once approved — and
+  // nothing in the wizard warns the seller this happened, before or after publish.
+  if (row) {
+    const locRow = await q(`SELECT location, city FROM provider_services WHERE id = $1`, [row.id]).catch(() => []);
+    const loc = (locRow as any[])[0];
+    fileFinding({
+      journey: 'S3',
+      step: 'throwaway:no-neighborhood-location-default',
+      class: 'INVISIBLE_RESULT',
+      severity: 'P2',
+      known: null,
+      title: 'An approved listing with no neighbourhood picked is stored with location \'Unknown\' and no city, so it is invisible on every location-scoped surface (city page, location browse, paid optimizer), and the wizard does not warn',
+      expected: 'Either a neighborhood is required before publish, or an unset location is surfaced to the seller as a visibility-affecting gap',
+      actual: `provider_services.location=${JSON.stringify(loc?.location)}, city=${JSON.stringify(loc?.city)} for a listing that walked the wizard\'s Logistics step without ever calling the neighborhood picker (option-neighborhood-<slug>) — nothing in the UI flagged this before submit.`,
+      where: 'client/src/components/ServiceForm.tsx:1440 (location composer); server/services/location-view.service.ts:80-85 (cityScopePredicate); server/storage.ts:3934 (listingLocationMatches); shared/schema.ts:1170 (location DEFAULT \'Unknown\')',
+      evidence: { shot: 'shots/S3-02-provider-pending-view.png' },
+      behavioural: true,
+    });
+  }
+
   if (!row) {
     fileFinding({
       journey: 'S3',
@@ -117,6 +146,7 @@ test('S3: pending listing is hidden from travelers while awaiting approval', asy
     actual: publicResp.status() === 200 ? 'visible' : 'hidden',
     filter: 'server/routes/content.routes.ts:2334 (approved+active gate)',
     journey: 'S3',
+    ms: null,
   });
   fileVisibility({
     content: 'service',
@@ -126,6 +156,7 @@ test('S3: pending listing is hidden from travelers while awaiting approval', asy
     actual: inBrowse ? 'visible' : 'hidden',
     filter: 'server/storage.ts:3929 (approved+active gate)',
     journey: 'S3',
+    ms: null,
   });
 
   if (publicResp.status() === 200 || inBrowse) {
@@ -282,18 +313,16 @@ test('S3: time-to-visible after a clean approve (no background-check gate)', asy
   }
   const elapsed = visibleAt ? visibleAt - submitTime : null;
 
-  fileFinding({
+  // Time-to-visible is DATA, not a finding (lead review, findings hygiene) — visibility.jsonl only.
+  fileVisibility({
+    content: 'service',
+    item: title,
+    surface: '/api/services/:id (submit-to-visible timing, no background-check gate)',
+    expected: 'visible',
+    actual: elapsed !== null ? 'visible' : 'hidden',
+    filter: 'server/routes/content.routes.ts:2334 (approved+active gate)',
     journey: 'S3',
-    step: 'timing:submit-to-visible',
-    class: 'SPEC_DIVERGENCE',
-    severity: 'P3',
-    known: null,
-    title: 'Time from submit to publicly-visible for a no-background-check listing',
-    expected: 'n/a — informational timing record',
-    actual: elapsed !== null ? `${elapsed}ms (includes admin UI click latency, not a server SLA)` : 'never became visible within 15s of admin approve-click',
-    where: 'e2e/supply-demand/s3-moderation.spec.ts',
-    evidence: {},
-    behavioural: true,
+    ms: elapsed,
   });
   expect(elapsed, 'listing should become visible shortly after admin approval').not.toBeNull();
 

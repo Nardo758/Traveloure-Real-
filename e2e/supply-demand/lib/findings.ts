@@ -35,6 +35,13 @@ export type VisibilityObservation = {
   actual: 'visible' | 'hidden';
   filter: string;
   journey: string;
+  /**
+   * Milliseconds from the admin-approve click to the surface first reporting visible, or null
+   * when it never did within the poll window. Lead review (findings hygiene): time-to-visible is
+   * DATA about the run, not a defect — it belongs here, not as a per-surface SPEC_DIVERGENCE
+   * finding cluttering findings.jsonl with 6×N rows for N items.
+   */
+  ms: number | null;
 };
 
 function appendLine(dirCandidates: string[], filename: string, obj: unknown) {

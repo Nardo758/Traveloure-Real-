@@ -18,10 +18,12 @@ import {
   walkServiceFormToReview,
   submitListingForReview,
   adminApproveService,
+  claimHandle,
+  pickNeighborhood,
 } from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
-import { q, userByEmail, serviceByTitle, feeBand } from './lib/db';
+import { q, userByEmail, serviceByTitle, feeBand, seedMeetingPin } from './lib/db';
 import { writeState, readState } from './lib/state';
 import { testid } from './lib/ui';
 
@@ -129,17 +131,76 @@ test('S2: Expert E applies, publishes an offering, and is admin-approved', async
     });
   }
 
-  // Log in as the expert; create one custom-itinerary offering via ServiceForm.
+  // Log in as the expert; claim a handle (lead review item 4); create one
+  // custom-itinerary offering via ServiceForm.
   await loginViaUi(page, email, E2E_PASSWORD);
+  const handleClaimed = await claimHandle(page, '/expert/dashboard');
+  if (!handleClaimed) {
+    const acct = await userByEmail(email);
+    if (!acct?.handle) {
+      fileFinding({
+        journey: 'S2',
+        step: 'expertE:handle-claim',
+        class: 'DEAD_TRIGGER',
+        severity: 'P2',
+        known: null,
+        title: 'Could not claim a handle via the HandleClaimBanner for expertE',
+        expected: 'handle-claim-banner is visible on /expert/dashboard for an earner with no handle, and submitting it sets users.handle',
+        actual: 'Banner not visible, submit disabled, or users.handle stayed null after submit',
+        where: 'client/src/components/backoffice/handle-claim-banner.tsx',
+        evidence: {},
+        behavioural: true,
+      });
+    }
+  }
+
+  // Lead review item 1: the expert wizard's final-step control was NEVER reachable because
+  // the harness never picked "What you sell" (expertOfferingTypeKey, required for role='expert')
+  // or Category (required for both roles) — service-form-required.ts's "tier"/"category" rows.
+  // `itinerary_2nd_opinion` is an ADVISORY-tier offering (LOCAL_EXPERT_TIERS — the only tier set
+  // visible to a local_expert account per ServiceForm.tsx's `visibleExpertOfferingTypes`
+  // partition; `full_itinerary`/PLANNING would not even render as an option here).
   await createListingBasics(page, {
     role: 'expert',
     title: offeringTitle,
+    expertOfferingTypeKey: 'itinerary_2nd_opinion',
+    expertCategoryName: 'Tours & Experiences',
     deliveryMethod: 'in-person',
     priceCents: 15000,
     description: `Custom Kyoto itinerary planning — e2e supply-demand fixture (run ${RUN_ID}).`,
   });
   await shot(page, 'S2-expertE', '04', 'offering-basics-filled');
-  const stepClicks = await walkServiceFormToReview(page);
+
+  // Meeting point (lead review item 1: "same seeded-and-logged way as providers" — R-1, the
+  // map click-to-place + geocode flow is not headless-reliable, see S1's identical comment).
+  // Save as a draft first so a row id exists to seed against.
+  const draftBtn = testid(page, 'button-save-draft');
+  if (await draftBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await draftBtn.click({ timeout: 3000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+  }
+  const draftRow = await serviceByTitle(offeringTitle);
+  if (draftRow) {
+    await seedMeetingPin(draftRow.id, 35.0116, 135.7681, 'Meet outside the main entrance — e2e supply-demand fixture.');
+    fileFinding({
+      journey: 'S2',
+      step: 'expertE:seeded-meeting-pin',
+      class: 'SPEC_DIVERGENCE',
+      severity: 'P3',
+      known: null,
+      title: 'seeded step: provider_services.latitude/longitude/meeting_point (R-1 fallback, same write class as S1)',
+      expected: 'n/a — documented R-1 fallback, not a UI path',
+      actual: `UPDATE provider_services SET latitude=35.0116, longitude=135.7681, meeting_point=<text> WHERE id=${draftRow.id}.`,
+      where: 'e2e/supply-demand/lib/db.ts seedMeetingPin',
+      evidence: {},
+      behavioural: true,
+    });
+    // Re-enter the wizard (a cold /edit load lands on listing-home, same as S1).
+    await page.goto(`/expert/services/${draftRow.id}/edit`);
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+  }
+
+  const stepClicks = await walkServiceFormToReview(page, 8, { neighborhoodSlug: 'gion' });
   const outcome = await submitListingForReview(page);
   await shot(page, 'S2-expertE', '05', 'offering-post-submit');
 
@@ -496,6 +557,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
       actual: visible ? 'visible' : 'hidden',
       filter: 'see $P2/../PHASE0_SUPPLY_DEMAND.md §3(c)',
       journey: 'S2',
+      ms: null,
     });
   }
   // Known/expected-hidden: the city page never shows ready-mades (discover-location.tsx:1964).
@@ -509,6 +571,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
     actual: JSON.stringify(cityPageBody).includes(buildTitle) ? 'visible' : 'hidden',
     filter: 'client/src/pages/discover-location.tsx:1964 (cityWideReadyMade = null)',
     journey: 'S2',
+    ms: null,
   });
 
   net.flush();

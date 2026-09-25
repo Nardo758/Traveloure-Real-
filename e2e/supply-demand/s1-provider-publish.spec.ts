@@ -31,6 +31,7 @@ import {
   saveDraft,
   fillCoverPhotoFromListingHome,
   enterWizardFromListingHome,
+  claimHandle,
 } from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
@@ -88,10 +89,24 @@ const PROVIDERS: ProviderFixture[] = [
 
 test.describe.configure({ mode: 'serial' });
 
+// city_neighborhoods.slug — a real Kyoto neighborhood, so every S1 listing composes a
+// real `location`/`city` (ServiceForm.tsx:1440) instead of the DB default 'Unknown'
+// (shared/schema.ts:1170). S3's throwaway listing deliberately never picks one — the one
+// proof kept for the resulting product finding (see S3 spec).
+const KYOTO_NEIGHBORHOOD_SLUG = 'gion';
+
 let filedReturnToFinding = false;
 let filedNoVerificationPathFinding = false;
 let filedSeedFinding = false;
 let filedMeetingPinFinding = false;
+
+// Lead review (findings hygiene): one finding per DEFECT, not one per provider/surface.
+// These accumulate across A/B/C and are flushed as ONE finding each in test.afterAll.
+const categoryGateHitBy: string[] = [];
+const categoryGateNotes: Record<string, string> = {};
+const stillInvisibleAfterFix: Record<string, string[]> = {}; // item title -> surface names
+const noHandleClaimedFor: string[] = [];
+const availabilityFailedFor: string[] = [];
 
 for (const fx of PROVIDERS) {
   test(`S1 ${fx.key}: apply, publish, and become visible`, async ({ page }) => {
@@ -249,6 +264,15 @@ for (const fx of PROVIDERS) {
     // onto the DRAFT row, which button-save-draft mints WITHOUT requiring the pin.
     await loginViaUi(page, email, E2E_PASSWORD);
 
+    // Claim a handle (lead review item 4) — the HandleClaimBanner is mounted once in
+    // BackofficeShell and shown on every backoffice page until users.handle is set; the input
+    // is pre-filled by suggestHandle from the account's name.
+    const handleClaimed = await claimHandle(page, '/provider/dashboard');
+    if (!handleClaimed) {
+      const acct = await userByEmail(email);
+      if (!acct?.handle) noHandleClaimedFor.push(fx.key);
+    }
+
     await createListingBasics(page, {
       role: 'provider',
       title,
@@ -327,23 +351,11 @@ for (const fx of PROVIDERS) {
       });
     }
 
+    // Real control (lead review item 5): the standalone /provider/availability page's
+    // WeeklyPatternsRail, not the retired ProviderAvailabilityManager drawer.
     const availabilityAdded = await addAvailabilityViaUi(page, 'provider', draftRow.id);
     await shot(page, `S1-${fx.key}`, '04c', 'availability');
-    if (!availabilityAdded) {
-      fileFinding({
-        journey: 'S1',
-        step: `${fx.key}:add-availability`,
-        class: 'DEAD_TRIGGER',
-        severity: 'P2',
-        known: null,
-        title: `Could not save an availability pattern for ${title} via /provider/services?availability=<id>`,
-        expected: 'card-availability-patterns renders with a savable default row',
-        actual: 'card-availability-patterns not visible, or button-save-patterns disabled/absent',
-        where: 'client/src/components/logistics/provider-availability-manager.tsx',
-        evidence: { shot: `shots/S1-${fx.key}-04c-availability.png` },
-        behavioural: true,
-      });
-    }
+    if (!availabilityAdded) availabilityFailedFor.push(fx.key);
 
     // Now enter the wizard for the FIRST real submit attempt — expected to be blocked by
     // the category-verification gate for every one of A/B/C in this environment (see the
@@ -369,7 +381,7 @@ for (const fx of PROVIDERS) {
       throw new Error(`S1 ${fx.key}: could not enter the wizard from listing-home — see finding above`);
     }
 
-    const stepClicks = await walkServiceFormToReview(page);
+    const stepClicks = await walkServiceFormToReview(page, 8, { neighborhoodSlug: KYOTO_NEIGHBORHOOD_SLUG });
     await shot(page, `S1-${fx.key}`, '05', `listing-review-after-${stepClicks}-clicks`);
 
     const firstAttempt = await submitListingForReview(page);
@@ -434,21 +446,12 @@ for (const fx of PROVIDERS) {
       }
 
       // What the provider sees on the Basics/Review step itself while blocked (§13 honesty check).
+      // Accumulated across A/B/C — same gate, same note — and flushed as ONE finding below
+      // (lead review: one finding per defect, not one per provider).
       const blockedNote = testid(page, 'text-provider-publish-verification-note');
       const noteText = (await blockedNote.textContent().catch(() => '')) ?? '';
-      fileFinding({
-        journey: 'S1',
-        step: `${fx.key}:pre-verification-provider-view`,
-        class: noteText.trim() ? 'SPEC_DIVERGENCE' : 'SILENT_SUCCESS',
-        severity: 'P3',
-        known: null,
-        title: `Wizard's own explanation for ${fx.key} while category-verification is outstanding`,
-        expected: 'A visible (not just tooltip-only) note explaining the block and linking to Provider Status',
-        actual: `text-provider-publish-verification-note: "${noteText.trim()}"`,
-        where: 'client/src/components/ServiceForm.tsx:5290 (text-provider-publish-verification-note)',
-        evidence: { shot: `shots/S1-${fx.key}-06-listing-pre-verification-submit-attempt.png` },
-        behavioural: true,
-      });
+      categoryGateHitBy.push(fx.key);
+      categoryGateNotes[fx.key] = noteText.trim();
 
       // Admin confirms the background/category check via the UI (never seeded — a real control exists).
       await loginViaUi(page, ADMIN.email, ADMIN.password);
@@ -499,7 +502,7 @@ for (const fx of PROVIDERS) {
         throw new Error(`S1 ${fx.key}: could not re-enter the wizard from listing-home — see finding above`);
       }
 
-      await walkServiceFormToReview(page);
+      await walkServiceFormToReview(page, 8, { neighborhoodSlug: KYOTO_NEIGHBORHOOD_SLUG });
       outcome = await submitListingForReview(page);
       await shot(page, `S1-${fx.key}`, '08', 'listing-post-submit');
     }
@@ -553,6 +556,7 @@ for (const fx of PROVIDERS) {
       actual: (await page.request.get(`/api/services/${serviceRow.id}`)).status() === 200 ? 'visible' : 'hidden',
       filter: 'server/routes/content.routes.ts:2334 (approved+active gate — approval_status still "submitted")',
       journey: 'S1',
+      ms: null,
     });
 
     // ── 5. Admin approves the service listing via /admin/service-approvals ─
@@ -645,6 +649,10 @@ for (const fx of PROVIDERS) {
       },
     ];
 
+    // Time-to-visible and per-surface visible/hidden are DATA about the run, not findings —
+    // they go to visibility.jsonl (with `ms`) only (lead review, findings hygiene). Genuinely
+    // hidden surfaces are accumulated and flushed as ONE consolidated finding in afterAll.
+    const hiddenHere: string[] = [];
     for (const s of surfaces) {
       let visible = await s.check().catch(() => false);
       let visibleAt: number | null = visible ? Date.now() : null;
@@ -663,40 +671,13 @@ for (const fx of PROVIDERS) {
         actual: visible ? 'visible' : 'hidden',
         filter: 'see $P2/../PHASE0_SUPPLY_DEMAND.md §3(a)',
         journey: 'S1',
+        ms: visibleAt ? visibleAt - approveClickTime : null,
       });
-      fileFinding({
-        journey: 'S1',
-        step: `${fx.key}:time-to-visible:${s.name}`,
-        class: 'SPEC_DIVERGENCE',
-        severity: 'P3',
-        known: null,
-        title: `Time-to-visible on ${s.name} for ${fx.key}`,
-        expected: 'n/a — informational timing record',
-        actual: visibleAt
-          ? `${visibleAt - approveClickTime}ms after the admin-approve click (includes admin UI click latency, not a server SLA)`
-          : 'never became visible within 10s of polling after admin approve',
-        where: 'e2e/supply-demand/s1-provider-publish.spec.ts',
-        evidence: {},
-        behavioural: true,
-      });
-      if (!visible) {
-        fileFinding({
-          journey: 'S1',
-          step: `${fx.key}:visibility:${s.name}`,
-          class: 'INVISIBLE_RESULT',
-          severity: 'P2',
-          known: null,
-          title: `${title} not visible on ${s.name} after approval`,
-          expected: `Listing visible on ${s.name}`,
-          actual: 'Not present in response after 10s of polling',
-          where: 'see $P2/../PHASE0_SUPPLY_DEMAND.md §3(a) for the governing filter',
-          evidence: {},
-          behavioural: true,
-        });
-      }
+      if (!visible) hiddenHere.push(s.name);
     }
+    if (hiddenHere.length > 0) stillInvisibleAfterFix[title] = hiddenHere;
 
-    // Storefront (only if a handle was actually claimed via the UI).
+    // Storefront (lead review item 4: actually claim a handle rather than reporting one absent).
     const acctRow = await userByEmail(email);
     if (acctRow?.handle) {
       const r = await page.request.get(`/api/storefront/${acctRow.handle}`);
@@ -709,23 +690,81 @@ for (const fx of PROVIDERS) {
         actual: visible ? 'visible' : 'hidden',
         filter: 'server/routes/storefront.routes.ts:600',
         journey: 'S1',
+        ms: null,
       });
-    } else {
-      fileFinding({
-        journey: 'S1',
-        step: `${fx.key}:handle-claim`,
-        class: 'SPEC_DIVERGENCE',
-        severity: 'P3',
-        known: null,
-        title: `No handle recorded for ${fx.key} despite entering one at application step 5`,
-        expected: 'users.handle set from the application-time handle field',
-        actual: 'users.handle is null/absent',
-        where: 'client/src/pages/services-provider.tsx:896 (input-public-handle) — ratified as "set up once approved"',
-        evidence: {},
-        behavioural: true,
-      });
+      if (!visible) stillInvisibleAfterFix[title] = [...(stillInvisibleAfterFix[title] ?? []), `/s/${acctRow.handle}`];
+    } else if (!noHandleClaimedFor.includes(fx.key)) {
+      noHandleClaimedFor.push(fx.key);
     }
 
     net.flush();
   });
 }
+
+// ── Consolidated findings (lead review: one per defect, not one per provider) ────────────
+test.afterAll(() => {
+  if (categoryGateHitBy.length > 0) {
+    fileFinding({
+      journey: 'S1',
+      step: 'all:category-verification-gate-note',
+      class: categoryGateNotes[categoryGateHitBy[0]]?.trim() ? 'SPEC_DIVERGENCE' : 'SILENT_SUCCESS',
+      severity: 'P3',
+      known: null,
+      title: 'Wizard\'s own explanation while category-verification is outstanding',
+      expected: 'A visible (not just tooltip-only) note explaining the block and linking to Provider Status',
+      actual: `text-provider-publish-verification-note, observed identically for ${categoryGateHitBy.join('/')}: "${categoryGateNotes[categoryGateHitBy[0]] ?? ''}"`,
+      where: 'client/src/components/ServiceForm.tsx:5290 (text-provider-publish-verification-note)',
+      evidence: {},
+      behavioural: true,
+    });
+  }
+
+  if (availabilityFailedFor.length > 0) {
+    fileFinding({
+      journey: 'S1',
+      step: 'all:add-availability',
+      class: 'DEAD_TRIGGER',
+      severity: 'P2',
+      known: null,
+      title: `Could not save an availability pattern via /provider/availability?serviceId=<id> for ${availabilityFailedFor.join('/')}`,
+      expected: 'The Monday day-toggle and Save schedule control are reachable for an in_person listing (needsScheduling=true)',
+      actual: 'Monday day-toggle button not visible/reachable, or Save schedule click did not take',
+      where: 'client/src/pages/provider/availability.tsx (WeeklyPatternsRail)',
+      evidence: {},
+      behavioural: true,
+    });
+  }
+
+  if (noHandleClaimedFor.length > 0) {
+    fileFinding({
+      journey: 'S1',
+      step: 'all:handle-claim',
+      class: 'DEAD_TRIGGER',
+      severity: 'P2',
+      known: null,
+      title: `Could not claim a handle via the HandleClaimBanner for ${noHandleClaimedFor.join('/')}`,
+      expected: 'handle-claim-banner is visible on /provider/dashboard for an earner with no handle, and submitting it sets users.handle',
+      actual: 'Banner not visible, submit disabled, or users.handle stayed null after submit',
+      where: 'client/src/components/backoffice/handle-claim-banner.tsx',
+      evidence: {},
+      behavioural: true,
+    });
+  }
+
+  const invisibleItems = Object.keys(stillInvisibleAfterFix);
+  if (invisibleItems.length > 0) {
+    fileFinding({
+      journey: 'S1',
+      step: 'all:visibility-after-neighborhood-and-handle-fix',
+      class: 'INVISIBLE_RESULT',
+      severity: 'P2',
+      known: null,
+      title: 'Approved, neighborhood-tagged, handle-claimed listings still hidden on some surfaces after a full 10s poll',
+      expected: 'Visible on every surface in the Phase 0 visibility contract once approved+neighborhood+handle are all set',
+      actual: invisibleItems.map((item) => `${item}: ${stillInvisibleAfterFix[item].join(', ')}`).join(' | '),
+      where: 'see $P2/../PHASE0_SUPPLY_DEMAND.md §3(a) for the governing filter',
+      evidence: {},
+      behavioural: true,
+    });
+  }
+});
