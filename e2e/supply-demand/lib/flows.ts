@@ -6,7 +6,7 @@
  * finding, not to silently skip.
  */
 import type { Page } from '@playwright/test';
-import { testid, fillIfVisible, clickIfVisible, checkIfVisible } from './ui';
+import { testid, fillIfVisible, clickIfVisible, checkIfVisible, appears } from './ui';
 
 export async function selectByTrigger(page: Page, triggerTestId: string, optionText?: string): Promise<void> {
   await testid(page, triggerTestId).click();
@@ -102,7 +102,7 @@ export async function applyAsExpert(
 
   const nextBtn = testid(page, 'button-next-step');
   const advance = async (): Promise<boolean> => {
-    if (!(await nextBtn.isVisible().catch(() => false))) return false;
+    if (!(await appears(nextBtn))) return false;
     if (await nextBtn.isDisabled().catch(() => false)) return false;
     await nextBtn.click().catch(() => {});
     await page.waitForTimeout(300);
@@ -163,7 +163,7 @@ export async function applyAsExpert(
   }
 
   const submitBtn = testid(page, 'button-submit');
-  if (!(await submitBtn.isVisible().catch(() => false))) {
+  if (!(await appears(submitBtn))) {
     return { reachedFinalStep: false, stoppedAtStep: 7 };
   }
   await submitBtn.click({ timeout: 3000 }).catch(() => {});
@@ -238,7 +238,7 @@ export async function adminApproveService(page: Page, titleMatch: string): Promi
   await approveBtn.click();
   await page.waitForTimeout(300);
   const confirmBtn = page.locator('[data-testid^="button-approve-confirm-"]');
-  if (await confirmBtn.isVisible().catch(() => false)) {
+  if (await appears(confirmBtn)) {
     await confirmBtn.click();
   }
   await page.waitForTimeout(1000);
@@ -298,12 +298,12 @@ export async function createListingBasics(
   // always unset.
   if (opts.role === 'provider' && opts.offeringTypeKey) {
     const opener = testid(page, 'button-choose-offering');
-    if (await opener.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await appears(opener, 3000)) {
       await opener.click();
       const picker = testid(page, 'provider-offering-picker');
-      await picker.isVisible({ timeout: 3000 }).catch(() => false);
+      await appears(picker, 3000);
       const opt = testid(page, `option-offering-${opts.offeringTypeKey}`);
-      if (await opt.isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await appears(opt, 3000)) {
         await opt.click();
       } else {
         // Offering absent from this catalog view (search/filter drift) — fall back to
@@ -342,7 +342,7 @@ export async function createListingBasics(
   // needed: Category, What you sell" with no error the harness ever read.
   if (opts.role === 'expert' && opts.expertOfferingTypeKey) {
     const tile = testid(page, `option-tier-${opts.expertOfferingTypeKey}`);
-    if (await tile.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await appears(tile, 3000)) {
       await tile.click({ timeout: 3000 }).catch(() => {});
     } else {
       const anyTile = page.locator('[data-testid^="option-tier-"]');
@@ -352,10 +352,10 @@ export async function createListingBasics(
 
   if (opts.role === 'expert' && opts.expertCategoryName) {
     const trigger = page.locator('#category');
-    if (await trigger.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await appears(trigger, 3000)) {
       await trigger.click({ timeout: 3000 }).catch(() => {});
       const option = page.getByRole('option', { name: opts.expertCategoryName, exact: false });
-      if (await option.first().isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await appears(option.first(), 3000)) {
         await option.first().click({ timeout: 3000 }).catch(() => {});
       } else {
         // Named category not in the list (drift) — pick the first real option rather than
@@ -383,7 +383,7 @@ export async function pickNeighborhood(page: Page, slug: string): Promise<boolea
   if (process.env.PN_DEBUG) {
     const anyOpt = page.locator('[data-testid^="option-neighborhood-"]');
     const cnt = await anyOpt.count().catch(() => -1);
-    const specificVisible = cnt > 0 ? await opt.isVisible({ timeout: 500 }).catch(() => false) : false;
+    const specificVisible = cnt > 0 ? await appears(opt, 500) : false;
     const specificCount = cnt > 0 ? await opt.count().catch(() => -1) : -1;
     let sampleIds = '';
     if (cnt > 0) {
@@ -413,7 +413,7 @@ export async function pickNeighborhood(page: Page, slug: string): Promise<boolea
   // `aria-pressed` re-render just lags, a second click flips it straight back OFF. So this polls
   // the ALREADY-clicked state for longer before ever clicking again, and clicks at most twice.
   const clickAndVerify = async (): Promise<boolean> => {
-    if (!(await opt.isVisible({ timeout: 8000 }).catch(() => false))) return false;
+    if (!(await appears(opt, 8000))) return false;
     for (let click = 0; click < 2; click++) {
       let clickErr: string | null = null;
       await opt.click({ timeout: 5000 }).catch((e) => { clickErr = String(e?.message ?? e); });
@@ -434,15 +434,15 @@ export async function pickNeighborhood(page: Page, slug: string): Promise<boolea
     return false;
   };
 
-  if (await opt.isVisible({ timeout: 3000 }).catch(() => false)) {
+  if (await appears(opt, 3000)) {
     return await clickAndVerify();
   }
   // The picker may be behind a search box filtering the same list down — try the search first.
   const search = testid(page, 'input-neighborhood-search');
-  if (await search.isVisible({ timeout: 2000 }).catch(() => false)) {
+  if (await appears(search, 2000)) {
     await search.fill(slug.replace(/[-_]/g, ' '), { timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(300);
-    if (await opt.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (await appears(opt, 2000)) {
       return await clickAndVerify();
     }
   }
@@ -460,14 +460,14 @@ export async function claimHandle(page: Page, consoleHome: '/provider/dashboard'
   await page.goto(consoleHome);
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
   const banner = testid(page, 'handle-claim-banner');
-  if (!(await banner.isVisible({ timeout: 5000 }).catch(() => false))) {
+  if (!(await appears(banner, 5000))) {
     // No banner at all — either already claimed, or the account isn't recognized as an earner
     // role yet. Either way there is nothing this call can do; the caller checks users.handle.
     return false;
   }
   await clickIfVisible(page, 'button-open-handle-claim');
   const submit = testid(page, 'handle-claim-submit');
-  if (!(await submit.isVisible({ timeout: 3000 }).catch(() => false))) return false;
+  if (!(await appears(submit, 3000))) return false;
   if (await submit.isDisabled().catch(() => false)) {
     // Prefilled suggestion was too short/empty — the input still needs a value.
     await fillIfVisible(page, 'handle-claim-input', `e2eh${Date.now().toString(36)}`.slice(0, 20));
@@ -486,7 +486,7 @@ export async function walkServiceFormToReview(
   // The listing-home checklist's "Describe it in 140+ characters" row lands here — top it up
   // if it's short, regardless of how this function was reached (create or edit-mode entry).
   const descField = testid(page, 'service-description');
-  if (await descField.isVisible({ timeout: 2000 }).catch(() => false)) {
+  if (await appears(descField, 2000)) {
     const current = (await descField.inputValue().catch(() => '')) ?? '';
     if (current.length < 140) {
       const filler =
@@ -500,7 +500,7 @@ export async function walkServiceFormToReview(
   let clicks = 0;
   let neighborhoodPicked = false;
   for (let i = 0; i < maxSteps; i++) {
-    if (await testid(page, 'card-review-summary').isVisible().catch(() => false)) break;
+    if (await appears(testid(page, 'card-review-summary'))) break;
     // Let the step's own async state (neighborhood list fetch, category-specific cards like
     // "Getting there" for place-anchored transport listings) settle before probing it — a flat
     // per-step wait alone was not enough for the private_transportation fixture (Part 1a).
@@ -516,7 +516,7 @@ export async function walkServiceFormToReview(
     }
 
     const next = testid(page, 'button-step-next');
-    if (!(await next.isVisible().catch(() => false))) break;
+    if (!(await appears(next))) break;
     if (await next.isDisabled().catch(() => false)) break;
     await next.click().catch(() => {});
     clicks += 1;
@@ -554,10 +554,10 @@ export async function walkServiceFormToReview(
   const selectCatCount = await selectCatFields.count().catch(() => 0);
   for (let i = 0; i < selectCatCount; i++) {
     const trigger = selectCatFields.nth(i);
-    if (await trigger.isVisible({ timeout: 1000 }).catch(() => false)) {
+    if (await appears(trigger, 1000)) {
       await trigger.click({ timeout: 2000 }).catch(() => {});
       const firstOption = page.getByRole('option').first();
-      if (await firstOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await appears(firstOption, 2000)) {
         await firstOption.click({ timeout: 2000 }).catch(() => {});
       } else {
         await page.keyboard.press('Escape').catch(() => {});
@@ -568,7 +568,7 @@ export async function walkServiceFormToReview(
   const inputCatCount = await inputCatFields.count().catch(() => 0);
   for (let i = 0; i < inputCatCount; i++) {
     const field = inputCatFields.nth(i);
-    if (await field.isVisible({ timeout: 1000 }).catch(() => false)) {
+    if (await appears(field, 1000)) {
       const current = await field.inputValue().catch(() => '');
       if (!current) {
         const type = await field.getAttribute('type').catch(() => null);
@@ -613,7 +613,7 @@ export async function addAvailabilityViaUi(page: Page, role: 'provider' | 'exper
   await page.goto(`/provider/availability?serviceId=${serviceId}`);
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
   const mondayToggle = page.getByRole('button', { name: 'Mo', exact: true });
-  if (!(await mondayToggle.isVisible({ timeout: 6000 }).catch(() => false))) {
+  if (!(await appears(mondayToggle, 6000))) {
     // Either NoCalendarPanel rendered (this delivery method carries no calendar — not a bug) or
     // the page never resolved the service. The caller can't tell which without reading the
     // delivery method itself, so it reports both possibilities.
@@ -623,7 +623,7 @@ export async function addAvailabilityViaUi(page: Page, role: 'provider' | 'exper
   await fillIfVisible(page, 'input-patterns-start', '09:00');
   await fillIfVisible(page, 'input-patterns-capacity', '2');
   const saveBtn = page.getByRole('button', { name: /Save schedule/i });
-  if (await saveBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+  if (await appears(saveBtn, 3000)) {
     await saveBtn.click({ timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(1000);
     return true;
@@ -655,7 +655,7 @@ export type SubmitOutcome = { submitted: boolean; blockedByVerification: boolean
  */
 export async function saveDraft(page: Page): Promise<boolean> {
   const btn = testid(page, 'button-save-draft');
-  if (!(await btn.isVisible().catch(() => false))) return false;
+  if (!(await appears(btn))) return false;
   await btn.click({ timeout: 3000 }).catch(() => {});
   await page.waitForTimeout(1200);
   return true;
@@ -670,10 +670,10 @@ export async function saveDraft(page: Page): Promise<boolean> {
  */
 export async function fillCoverPhotoFromListingHome(page: Page, url: string): Promise<boolean> {
   const openBtn = testid(page, 'button-open-listing-photos');
-  if (!(await openBtn.isVisible().catch(() => false))) return false;
+  if (!(await appears(openBtn))) return false;
   await openBtn.click({ timeout: 3000 }).catch(() => {});
   const linkInput = testid(page, 'input-photos-paste-link');
-  if (!(await linkInput.isVisible({ timeout: 3000 }).catch(() => false))) return false;
+  if (!(await appears(linkInput, 3000))) return false;
   await linkInput.fill(url, { timeout: 3000 }).catch(() => {});
   await testid(page, 'button-photos-save-link').click({ timeout: 3000 }).catch(() => {});
   await page.waitForTimeout(600);
@@ -686,7 +686,7 @@ export async function fillCoverPhotoFromListingHome(page: Page, url: string): Pr
 /** Enters the wizard from listing-home via any step-targeted checklist row (description140 is always present pre-fill). */
 export async function enterWizardFromListingHome(page: Page): Promise<boolean> {
   const row = testid(page, 'checklist-row-description140');
-  if (await row.isVisible({ timeout: 3000 }).catch(() => false)) {
+  if (await appears(row, 3000)) {
     await row.click({ timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(500);
     return true;
@@ -721,7 +721,7 @@ export async function submitListingForReview(page: Page): Promise<SubmitOutcome>
     });
   }
   const btn = testid(page, 'button-submit-service');
-  if (await btn.isVisible().catch(() => false)) {
+  if (await appears(btn)) {
     if (await btn.isDisabled().catch(() => false)) {
       return { submitted: false, blockedByVerification: false, reason: 'button-submit-service present but disabled' };
     }
@@ -730,7 +730,7 @@ export async function submitListingForReview(page: Page): Promise<SubmitOutcome>
     return { submitted: true, blockedByVerification: false };
   }
   const publishBtn = testid(page, 'button-publish-service');
-  if (await publishBtn.isVisible().catch(() => false)) {
+  if (await appears(publishBtn)) {
     if (await publishBtn.isDisabled().catch(() => false)) {
       const title = await publishBtn.getAttribute('title').catch(() => null);
       return {
@@ -772,35 +772,35 @@ export async function fillPlanModalToFinish(
   opts: { occasionSlug?: string; offsetDays?: number; lenDays?: number } = {},
 ): Promise<boolean> {
   const modal = testid(page, 'plan-modal');
-  if (!(await modal.isVisible({ timeout: 10_000 }).catch(() => false))) return false;
+  if (!(await appears(modal, 10_000))) return false;
   const { start, end } = futureDateRange(opts.offsetDays ?? 40, opts.lenDays ?? 5);
   const occasionSlug = opts.occasionSlug ?? 'travel';
 
   for (let i = 0; i < 8; i++) {
-    if (await page.locator('[data-testid^="planning-option-"]').first().isVisible().catch(() => false)) break;
+    if (await appears(page.locator('[data-testid^="planning-option-"]').first())) break;
 
     const preferredOccasion = testid(page, `option-occasion-${occasionSlug}`);
-    if (await preferredOccasion.isVisible({ timeout: 1500 }).catch(() => false)) {
+    if (await appears(preferredOccasion, 1500)) {
       await preferredOccasion.click().catch(() => {});
     } else {
       const anyOccasion = page.locator('[data-testid^="option-occasion-"]').first();
-      if (await anyOccasion.isVisible({ timeout: 1000 }).catch(() => false)) await anyOccasion.click().catch(() => {});
+      if (await appears(anyOccasion, 1000)) await anyOccasion.click().catch(() => {});
     }
 
     const dest = testid(page, 'input-etp-destination');
-    if (await dest.isVisible({ timeout: 1500 }).catch(() => false)) {
+    if (await appears(dest, 1500)) {
       await dest.fill(destination).catch(() => {});
     }
 
     const sd = testid(page, 'input-etp-start-date');
-    if (await sd.isVisible({ timeout: 1500 }).catch(() => false)) {
+    if (await appears(sd, 1500)) {
       await sd.fill(start).catch(() => {});
       const ed = testid(page, 'input-etp-end-date');
-      if (await ed.isVisible({ timeout: 1500 }).catch(() => false)) await ed.fill(end).catch(() => {});
+      if (await appears(ed, 1500)) await ed.fill(end).catch(() => {});
     }
 
     const next = testid(page, 'button-planning-next');
-    if (await next.isVisible({ timeout: 1500 }).catch(() => false)) {
+    if (await appears(next, 1500)) {
       if (await next.isDisabled().catch(() => false)) {
         // Occasion step's Next is disabled until an occasion is picked (plan-modal.tsx:2656) —
         // give the click above one more beat to register before giving up on this step.
@@ -813,7 +813,7 @@ export async function fillPlanModalToFinish(
       break;
     }
   }
-  return page.locator('[data-testid^="planning-option-"]').first().isVisible({ timeout: 3000 }).catch(() => false);
+  return appears(page.locator('[data-testid^="planning-option-"]').first(), 3000);
 }
 
 /**
@@ -823,7 +823,7 @@ export async function fillPlanModalToFinish(
  */
 export async function clickPlanFinish(page: Page, branch: 'myself' | 'local' | 'ai' | 'occasion'): Promise<string | null> {
   const btn = testid(page, `planning-option-${branch}`);
-  if (!(await btn.isVisible({ timeout: 3000 }).catch(() => false))) return null;
+  if (!(await appears(btn, 3000))) return null;
   await btn.click().catch(() => {});
   // The finish mutation shows its own in-dialog spinner (`disabled={saving}`) while it mints the
   // trip server-side, then navigates — a single `waitForLoadState('networkidle')` can resolve
@@ -845,7 +845,7 @@ export async function clickPlanFinish(page: Page, branch: 'myself' | 'local' | '
 /** Opens the plan modal from the hero "Plan a trip" button on the given page (usually "/"). */
 export async function openPlanModalFromHero(page: Page): Promise<boolean> {
   const btn = testid(page, 'button-plan-trip');
-  if (!(await btn.isVisible({ timeout: 5000 }).catch(() => false))) return false;
+  if (!(await appears(btn, 5000))) return false;
   await btn.click().catch(() => {});
-  return await testid(page, 'plan-modal').isVisible({ timeout: 5000 }).catch(() => false);
+  return await appears(testid(page, 'plan-modal'), 5000);
 }

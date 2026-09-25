@@ -25,7 +25,7 @@ import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
 import { q, userByEmail, serviceByTitle, feeBand, seedMeetingPin, seedExpertIdentityVerification } from './lib/db';
 import { writeState, readState } from './lib/state';
-import { testid } from './lib/ui';
+import { testid, appears } from './lib/ui';
 import { dedupe } from './lib/dedupe';
 
 const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
@@ -176,7 +176,7 @@ test('S2: Expert E applies, publishes an offering, and is admin-approved', async
   // map click-to-place + geocode flow is not headless-reliable, see S1's identical comment).
   // Save as a draft first so a row id exists to seed against.
   const draftBtn = testid(page, 'button-save-draft');
-  if (await draftBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+  if (await appears(draftBtn, 2000)) {
     await draftBtn.click({ timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(1000);
   }
@@ -393,7 +393,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
   let usedUiBuild = false;
   let tripId: string | null = null;
 
-  if (await newBuildBtn.isVisible({ timeout: 8000 }).catch(() => false)) {
+  if (await appears(newBuildBtn, 8000)) {
     await newBuildBtn.click();
     await page.waitForTimeout(1500);
     await shot(page, 'S2-readymade', '02', 'after-new-build');
@@ -407,7 +407,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
       usedUiBuild = true;
       // Rename the build.
       const titleInput = testid(page, 'input-build-title');
-      if (await titleInput.isVisible().catch(() => false)) {
+      if (await appears(titleInput)) {
         await titleInput.fill(buildTitle).catch(() => {});
       }
 
@@ -427,7 +427,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
       ].filter(Boolean) as string[];
 
       const platformPill = testid(page, 'pill-add-platform');
-      const platformPillVisible = await platformPill.isVisible({ timeout: 5000 }).catch(() => false);
+      const platformPillVisible = await appears(platformPill, 5000);
       if (platformPillVisible && providerServiceIds.length > 0) {
         await platformPill.click().catch(() => {});
         await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
@@ -443,17 +443,17 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
           const addBtn = testid(page, `button-add-result-pl_${svcId}`);
           let added = false;
           for (let attempt = 0; attempt < 6 && !added; attempt++) {
-            added = await addBtn.isVisible({ timeout: 5000 }).catch(() => false);
+            added = await appears(addBtn, 5000);
             if (added) break;
             const searchBox = testid(page, 'input-browse-search');
-            if (await searchBox.isVisible({ timeout: 3000 }).catch(() => false)) {
+            if (await appears(searchBox, 3000)) {
               await searchBox.fill('').catch(() => {});
               await page.waitForTimeout(400);
             }
             await page.reload();
             await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
             const pillAgain = testid(page, 'pill-add-platform');
-            if (await pillAgain.isVisible({ timeout: 5000 }).catch(() => false)) {
+            if (await appears(pillAgain, 5000)) {
               await pillAgain.click().catch(() => {});
               await page.waitForTimeout(600);
             }
@@ -522,12 +522,12 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
   // comment was a stale reading of an earlier phase.
   if (tripId) {
     const distributeTab = testid(page, 'tab-right-distribute');
-    if (await distributeTab.isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (await appears(distributeTab, 5000)) {
       await distributeTab.click().catch(() => {});
       await page.waitForTimeout(600);
       await shot(page, 'S2-readymade', '03b', 'distribute-tab-open');
       const shipBtn = testid(page, 'button-ship-to-store');
-      if (await shipBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      if (await appears(shipBtn, 5000)) {
         await shipBtn.click().catch(() => {});
         await page.waitForTimeout(1500);
         await shot(page, 'S2-readymade', '03c', 'after-ship-to-store');
@@ -578,7 +578,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
 
     await testid(page, 'input-listing-title').fill(buildTitle).catch(() => {});
     const planTypeSelect = testid(page, 'select-listing-plan-type');
-    if (await planTypeSelect.isVisible().catch(() => false)) {
+    if (await appears(planTypeSelect)) {
       const options = await planTypeSelect.locator('option').allTextContents();
       if (options.length > 1) {
         await planTypeSelect.selectOption({ index: 1 }).catch(() => {});
@@ -638,7 +638,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
   await page.goto('/admin/template-approvals');
   await shot(page, 'S2-readymade', '06', 'admin-template-approvals');
   const pendingCard = page.locator(`text=${buildTitle}`);
-  const found = await pendingCard.isVisible({ timeout: 5000 }).catch(() => false);
+  const found = await appears(pendingCard, 5000);
   if (found) {
     const approveBtn = page.locator('button', { hasText: /approve/i }).first();
     await approveBtn.click().catch(() => {});

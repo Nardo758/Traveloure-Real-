@@ -19,7 +19,7 @@ import { shot, netLogger } from './lib/evidence';
 import { fileFinding } from './lib/findings';
 import { q, feeBand } from './lib/db';
 import { readState, writeState } from './lib/state';
-import { testid } from './lib/ui';
+import { testid, appears } from './lib/ui';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -115,7 +115,7 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
   });
 
   const generateBtn = testid(page, 'button-generate-itinerary');
-  const generateVisible = await generateBtn.isVisible({ timeout: 6000 }).catch(() => false);
+  const generateVisible = await appears(generateBtn, 6000);
   if (!generateVisible) {
     fileFinding({
       journey: 'D4',
@@ -210,15 +210,15 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
   await page.goto(`/plans/${draftTripId}`);
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   const askAiTrigger = testid(page, 'slip-action-ask-ai');
-  if (await askAiTrigger.isVisible({ timeout: 5000 }).catch(() => false)) {
+  if (await appears(askAiTrigger, 5000)) {
     await askAiTrigger.click().catch(() => {});
     await page.waitForTimeout(500);
     await shot(page, 'D4', '05', 'ask-ai-drawer-open');
     const question = testid(page, 'ask-ai-question');
-    if (await question.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await appears(question, 3000)) {
       await question.fill('Swap one afternoon activity for something quieter.').catch(() => {});
       const submit = testid(page, 'ask-ai-submit');
-      if (await submit.isVisible({ timeout: 2000 }).catch(() => false) && !(await submit.isDisabled().catch(() => false))) {
+      if (await appears(submit, 2000) && !(await submit.isDisabled().catch(() => false))) {
         const band = await feeBand('concierge:ai_task').catch(() => null);
         await submit.click().catch(() => {});
         await page.waitForTimeout(3000);

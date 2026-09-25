@@ -15,7 +15,7 @@ import { shot, netLogger } from './lib/evidence';
 import { fileFinding } from './lib/findings';
 import { q } from './lib/db';
 import { readState } from './lib/state';
-import { testid } from './lib/ui';
+import { testid, appears } from './lib/ui';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -73,24 +73,24 @@ test('D7: provider-side changes propagate (or fail to) onto the traveler\'s slip
     await page.goto(`/provider/services/${providerB.providerServiceId}/edit`);
     await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
     const row = testid(page, 'checklist-row-description140');
-    if (await row.isVisible({ timeout: 5000 }).catch(() => false)) await row.click().catch(() => {});
+    if (await appears(row, 5000)) await row.click().catch(() => {});
     await page.waitForTimeout(600);
     const priceInput = testid(page, 'input-base-price');
-    if (await priceInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (await appears(priceInput, 5000)) {
       await priceInput.fill('120').catch(() => {});
       await shot(page, 'D7', '02', 'providerB-price-edited');
       // Walk to Review (Next up to 8 times) without touching neighbourhood/category fields —
       // they are already set from S1 and this edit should not need to retouch them.
       for (let i = 0; i < 8; i++) {
-        if (await testid(page, 'card-review-summary').isVisible().catch(() => false)) break;
+        if (await appears(testid(page, 'card-review-summary'))) break;
         const next = testid(page, 'button-step-next');
-        if (!(await next.isVisible().catch(() => false)) || (await next.isDisabled().catch(() => false))) break;
+        if (!(await appears(next)) || (await next.isDisabled().catch(() => false))) break;
         await next.click().catch(() => {});
         await page.waitForTimeout(400);
       }
       await shot(page, 'D7', '02b', 'providerB-review-before-publish');
       const publishBtn = testid(page, 'button-publish-service');
-      if (await publishBtn.isVisible({ timeout: 5000 }).catch(() => false) && !(await publishBtn.isDisabled().catch(() => false))) {
+      if (await appears(publishBtn, 5000) && !(await publishBtn.isDisabled().catch(() => false))) {
         await publishBtn.click().catch(() => {});
         await page.waitForTimeout(1500);
       } else {
@@ -102,7 +102,7 @@ test('D7: provider-side changes propagate (or fail to) onto the traveler\'s slip
           known: null,
           title: 'button-publish-service not reachable/enabled to re-publish Provider B after a live price edit',
           expected: 'The wizard reaches Review with button-publish-service enabled (all gates already cleared during S1)',
-          actual: `publishVisible=${await publishBtn.isVisible().catch(() => false)}, disabled=${await publishBtn.isDisabled().catch(() => true)}`,
+          actual: `publishVisible=${await appears(publishBtn)}, disabled=${await publishBtn.isDisabled().catch(() => true)}`,
           where: 'client/src/components/ServiceForm.tsx (button-publish-service)',
           evidence: { shot: 'shots/D7-02b-providerB-review-before-publish.png' },
           behavioural: true,
@@ -148,7 +148,7 @@ test('D7: provider-side changes propagate (or fail to) onto the traveler\'s slip
     await page.goto('/provider/services');
     await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
     const toggle = testid(page, `switch-active-${providerA.providerServiceId}`);
-    if (await toggle.isVisible({ timeout: 6000 }).catch(() => false)) {
+    if (await appears(toggle, 6000)) {
       await toggle.click().catch(() => {});
       await page.waitForTimeout(1200);
       await shot(page, 'D7', '03', 'providerA-paused');
@@ -191,10 +191,10 @@ test('D7: provider-side changes propagate (or fail to) onto the traveler\'s slip
     await page.goto(`/provider/availability?serviceId=${providerC.providerServiceId}`);
     await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
     const capacityInput = testid(page, 'input-patterns-capacity');
-    if (await capacityInput.isVisible({ timeout: 6000 }).catch(() => false)) {
+    if (await appears(capacityInput, 6000)) {
       await capacityInput.fill('0').catch(() => {});
       const saveBtn = page.getByRole('button', { name: /Save schedule/i });
-      if (await saveBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await appears(saveBtn, 3000)) {
         await saveBtn.click().catch(() => {});
         await page.waitForTimeout(1200);
       }

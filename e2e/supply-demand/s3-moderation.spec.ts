@@ -19,7 +19,7 @@ import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
 import { serviceByTitle, q, seedMeetingPin } from './lib/db';
 import { readState } from './lib/state';
-import { testid } from './lib/ui';
+import { testid, appears } from './lib/ui';
 import { dedupe } from './lib/dedupe';
 
 const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
@@ -353,7 +353,7 @@ test('S3: time-to-visible after a clean approve (no background-check gate)', asy
   const approveBtn = card.first().locator('[data-testid^="button-approve-"]');
   await approveBtn.click();
   const confirmBtn = page.locator('[data-testid^="button-approve-confirm-"]');
-  if (await confirmBtn.isVisible().catch(() => false)) await confirmBtn.click();
+  if (await appears(confirmBtn)) await confirmBtn.click();
   await page.waitForTimeout(500);
 
   // Poll GET /api/services/:id until visible or a 15s ceiling.

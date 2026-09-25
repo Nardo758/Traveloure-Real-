@@ -17,7 +17,7 @@ import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
 import { q } from './lib/db';
 import { readState } from './lib/state';
-import { testid } from './lib/ui';
+import { testid, appears } from './lib/ui';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -102,7 +102,7 @@ test('D2: traveler discovers and attempts to clone Expert E\'s ready-made', asyn
   });
 
   const buyBtn = testid(page, 'button-buy-rm');
-  const buyVisible = await buyBtn.isVisible({ timeout: 5000 }).catch(() => false);
+  const buyVisible = await appears(buyBtn, 5000);
   if (!buyVisible) {
     fileFinding({
       journey: 'D2',

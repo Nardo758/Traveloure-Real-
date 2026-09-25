@@ -13,7 +13,7 @@ import { shot, netLogger } from './lib/evidence';
 import { fileFinding } from './lib/findings';
 import { q, userByEmail } from './lib/db';
 import { readState } from './lib/state';
-import { testid } from './lib/ui';
+import { testid, appears } from './lib/ui';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -49,7 +49,7 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
   await shot(page, 'D3', '01', 'storefront');
 
   const msgBtn = testid(page, 'button-message-storefront');
-  const msgBtnVisible = await msgBtn.isVisible({ timeout: 5000 }).catch(() => false);
+  const msgBtnVisible = await appears(msgBtn, 5000);
   if (!msgBtnVisible) {
     fileFinding({
       journey: 'D3',
@@ -135,14 +135,14 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
 
   const expertUser = await userByEmail(expertE.email);
   const hireTrigger = testid(page, 'slip-action-hire-expert');
-  const hireTriggerVisible = await hireTrigger.isVisible({ timeout: 5000 }).catch(() => false);
+  const hireTriggerVisible = await appears(hireTrigger, 5000);
   let hired = false;
   if (hireTriggerVisible) {
     await hireTrigger.click().catch(() => {});
     await page.waitForTimeout(800);
     await shot(page, 'D3', '05', 'hire-dialog-open');
     const specificOption = expertUser?.id ? testid(page, `hire-expert-option-${expertUser.id}`) : null;
-    const specificVisible = specificOption ? await specificOption.isVisible({ timeout: 4000 }).catch(() => false) : false;
+    const specificVisible = specificOption ? await appears(specificOption, 4000) : false;
     if (specificVisible && specificOption) {
       await specificOption.click().catch(() => {});
     } else {
@@ -166,7 +166,7 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
       }
     }
     const submit = testid(page, 'button-hire-expert-submit');
-    if (await submit.isVisible({ timeout: 3000 }).catch(() => false) && !(await submit.isDisabled().catch(() => false))) {
+    if (await appears(submit, 3000) && !(await submit.isDisabled().catch(() => false))) {
       await submit.click().catch(() => {});
       await page.waitForTimeout(1200);
       hired = true;
@@ -234,7 +234,7 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
     await testid(page, 'input-suggestion-description').fill('Go right when it opens, before the tour groups — e2e D3 suggestion.').catch(() => {});
     await shot(page, 'D3', '08', 'suggestion-form-filled');
     const submitBtn = testid(page, 'button-submit-suggestion');
-    if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false) && !(await submitBtn.isDisabled().catch(() => false))) {
+    if (await appears(submitBtn, 3000) && !(await submitBtn.isDisabled().catch(() => false))) {
       await submitBtn.click().catch(() => {});
       await page.waitForTimeout(1200);
       suggestionSubmitted = true;
@@ -288,7 +288,7 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
   await shot(page, 'D3', '10', 'slip-with-suggestion');
 
   const approveBtn = testid(page, `button-approve-suggestion-${suggestionId}`);
-  const approveVisible = await approveBtn.isVisible({ timeout: 6000 }).catch(() => false);
+  const approveVisible = await appears(approveBtn, 6000);
   if (approveVisible) {
     await approveBtn.click().catch(() => {});
     await page.waitForTimeout(1200);

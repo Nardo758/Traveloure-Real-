@@ -14,7 +14,7 @@ import { shot, netLogger } from './lib/evidence';
 import { fileFinding } from './lib/findings';
 import { q } from './lib/db';
 import { readState, writeState } from './lib/state';
-import { testid } from './lib/ui';
+import { testid, appears } from './lib/ui';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -48,7 +48,7 @@ test('D5: guest add-to-plan, then sign up — does the item survive?', async ({ 
   await shot(page, 'D5', '01', 'guest-service-detail');
 
   const addBtn = testid(page, 'button-add-to-cart');
-  const addVisible = await addBtn.isVisible({ timeout: 6000 }).catch(() => false);
+  const addVisible = await appears(addBtn, 6000);
   if (!addVisible) {
     fileFinding({
       journey: 'D5',
@@ -71,7 +71,7 @@ test('D5: guest add-to-plan, then sign up — does the item survive?', async ({ 
   await shot(page, 'D5', '02', 'after-guest-add-click');
 
   const signInModal = testid(page, 'modal-sign-in');
-  const modalOpened = await signInModal.isVisible({ timeout: 4000 }).catch(() => false);
+  const modalOpened = await appears(signInModal, 4000);
   fileFinding({
     journey: 'D5',
     step: 'guest:add-opens-signin',
@@ -93,7 +93,7 @@ test('D5: guest add-to-plan, then sign up — does the item survive?', async ({ 
 
   // Switch to signup mode inside the modal and create the account.
   const switchLink = testid(page, 'link-switch-signup');
-  if (await switchLink.isVisible({ timeout: 3000 }).catch(() => false)) {
+  if (await appears(switchLink, 3000)) {
     await switchLink.click().catch(() => {});
     await page.waitForTimeout(400);
   }

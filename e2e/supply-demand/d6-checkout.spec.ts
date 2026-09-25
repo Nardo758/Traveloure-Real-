@@ -18,7 +18,7 @@ import { shot, netLogger } from './lib/evidence';
 import { fileFinding } from './lib/findings';
 import { q, feeBand } from './lib/db';
 import { readState } from './lib/state';
-import { testid } from './lib/ui';
+import { testid, appears } from './lib/ui';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -65,7 +65,7 @@ test('D6: checkout — HELD:stripe; the quote leg runs only if a custom_quote fi
   await shot(page, 'D6', '01', 'quote-listing-detail');
 
   const requestBtn = testid(page, 'button-request-to-book');
-  if (!(await requestBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
+  if (!(await appears(requestBtn, 5000))) {
     fileFinding({
       journey: 'D6',
       step: 'quote:request-button',
@@ -117,7 +117,7 @@ test('D6: checkout — HELD:stripe; the quote leg runs only if a custom_quote fi
     await page.goto('/provider/services');
     await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
     const openIssue = testid(page, `button-open-issue-${quoteId}`);
-    if (await openIssue.isVisible({ timeout: 6000 }).catch(() => false)) {
+    if (await appears(openIssue, 6000)) {
       await openIssue.click().catch(() => {});
       await testid(page, `input-quote-amount-${quoteId}`).fill('175').catch(() => {});
       await testid(page, `input-quote-validity-${quoteId}`).fill('7').catch(() => {});
@@ -147,11 +147,11 @@ test('D6: checkout — HELD:stripe; the quote leg runs only if a custom_quote fi
   await page.goto('/my-bookings');
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   const quotesTab = testid(page, 'tab-quotes');
-  if (await quotesTab.isVisible({ timeout: 5000 }).catch(() => false)) await quotesTab.click().catch(() => {});
+  if (await appears(quotesTab, 5000)) await quotesTab.click().catch(() => {});
   await shot(page, 'D6', '05', 'traveler-quotes-tab');
 
   const payBtn = testid(page, `button-pay-quote-${quoteId}`);
-  const payVisible = await payBtn.isVisible({ timeout: 6000 }).catch(() => false);
+  const payVisible = await appears(payBtn, 6000);
   // Acceptance mints the booking through the checkout claim spine, which IS a charge — HELD:stripe
   // from here. The behavioural read below is on whatever the ISSUE step alone already produced.
   fileFinding({

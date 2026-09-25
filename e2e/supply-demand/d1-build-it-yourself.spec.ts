@@ -19,7 +19,7 @@ import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
 import { q } from './lib/db';
 import { readState, writeState } from './lib/state';
-import { testid } from './lib/ui';
+import { testid, appears } from './lib/ui';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -207,7 +207,7 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
     );
 
     const addBtn = testid(page, 'button-add-to-cart');
-    const addVisible = await addBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    const addVisible = await appears(addBtn, 5000);
     if (!addVisible) {
       fileFinding({
         journey: 'D1',
@@ -229,7 +229,7 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
 
     // RC-2/RC-5 class: if no plan was bound as "current", a PlanPickerDialog asks which plan.
     const picker = testid(page, 'dialog-plan-picker');
-    if (await picker.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await appears(picker, 3000)) {
       await shot(page, 'D1', `07b-${listing.title.slice(0, 12)}`, 'plan-picker-shown');
       fileFinding({
         journey: 'D1',
@@ -245,7 +245,7 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
         behavioural: true,
       });
       const pickBtn = testid(page, `button-pick-plan-${tripId}`);
-      if (await pickBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await appears(pickBtn, 3000)) {
         await pickBtn.click().catch(() => {});
         await page.waitForTimeout(1000);
       } else {
@@ -297,7 +297,7 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
   await page.goto(`/plans/${tripId}`);
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   await shot(page, 'D1', '09', 'slip-view');
-  const slipVisible = await testid(page, `slip-view-${tripId}`).isVisible({ timeout: 5000 }).catch(() => false);
+  const slipVisible = await appears(testid(page, `slip-view-${tripId}`), 5000);
   const slipText = await page.locator('body').innerText().catch(() => '');
   const slipShowsA = slipText.includes('Traditional Tea Ceremony');
   const slipShowsB = slipText.includes('Arashiyama');
