@@ -884,6 +884,11 @@ This document captures architectural decisions to maintain consistency across co
     outright, and removing the `/experts/:id` route requires every card row to carry a handle.
     Do not remove a deprecated INPUT until those are done, and do not add a new id-addressed
     contact rail at all.
+    **`expert-detail.tsx` IS DELETED (ledger `2026-09-25-expert-detail-deleted`).** No route rendered
+    it — `/experts/:id` and `/local-experts/:id` render the STOREFRONT page through the by-id loader,
+    which already carries the handle redirect, the `?tripId=` handoff and the cover image — so it is
+    struck from the list above by §18c, not by a lane-2 removal; `storefront.tsx` keeps the
+    `LD 40 lane 2: still id-addressed` marker for the handle-less earner the id route still serves.
 
 
 41. **THE FREE DRAFT IS A SKETCH; OPTIMIZE IS THE PLAN; THE MAP SHOWS THE COMPARISON

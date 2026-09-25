@@ -3330,8 +3330,8 @@ export type VendorDirectoryRow = Pick<Vendor, (typeof VENDOR_DIRECTORY_FIELDS)[n
  * earner who has claimed NO handle has. Removing the id without giving those earners a handle would
  * not degrade honestly, it would delete them from the site.
  *
- * `preferences` is deliberately ABSENT even though `expert-detail.tsx` reads
- * `expert.preferences.storefront.coverImageUrl`: the column is unbounded jsonb, so the projector
+ * `preferences` is deliberately ABSENT even though the page this payload once fed (`expert-detail.tsx`,
+ * deleted — ledger `2026-09-25-expert-detail-deleted`) read `expert.preferences.storefront.coverImageUrl`: the column is unbounded jsonb, so the projector
  * re-attaches that ONE key narrowed (see `server/utils/expert-read-scope.ts`) rather than
  * publishing the blob — the same thing `buildStorefront` already does for `/s/:handle`.
  */
@@ -3369,7 +3369,7 @@ export const EXPERT_PUBLIC_FIELDS = [
  *
  * Every name below is read by a shipped consumer: the two server-side browse filters
  * (`destinations`/`city`/`country`/`neighborhoods`), `expert-card`/`expert-match-card`/
- * `expert-detail`/`city-feed-card-expert`/`ExpertsScroll`/`chat`/`experts.tsx` and
+ * `city-feed-card-expert`/`ExpertsScroll`/`chat`/`experts.tsx` and
  * `client/src/lib/expert-search.ts`.
  */
 export const EXPERT_FORM_PUBLIC_FIELDS = [
