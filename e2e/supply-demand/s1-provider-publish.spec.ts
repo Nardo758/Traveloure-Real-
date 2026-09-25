@@ -1,10 +1,20 @@
 /**
- * s1-provider-publish.spec.ts — Providers A, B, C: apply → admin-approve
- * → create a listing → (B/C only) publish gate on background check →
- * submit for review → admin-approve → poll every traveler surface from the
- * Phase 0 visibility contract.
+ * s1-provider-publish.spec.ts — Providers A, B, C: apply → admin-approve →
+ * (seeded, HELD:stripe) identity/business verification → create a listing →
+ * add availability → submit for review → (B/C) background-check gate via
+ * the admin UI → admin-approve the listing → poll every traveler surface
+ * from the Phase 0 visibility contract.
  *
  * See docs/audits/pass2/BRIEF.md and $P2/../PHASE0_SUPPLY_DEMAND.md.
+ *
+ * Lead review (Pass 2 coordinator, 2026-09-25) directed:
+ *  1. Reclassify the identity/business verification gate as a single P3
+ *     SPEC_DIVERGENCE (env-HELD, not a product P1) — it is written ONLY by
+ *     Stripe webhooks and has no admin override.
+ *  2. Seed that ONE column pair for our own run-id-tagged accounts (R-1
+ *     exception), logging the seeded write as its own finding, ONCE (not
+ *     per account), so the rest of S1 can actually exercise publish/approve/
+ *     visibility — the thing this journey exists to test.
  */
 import { test, expect, type Page } from '@playwright/test';
 import { RUN_ID, e2eEmail, e2eHandle, e2eTitle, E2E_PASSWORD } from './lib/run-id';
@@ -17,11 +27,15 @@ import {
   walkServiceFormToReview,
   submitListingForReview,
   adminApproveService,
+  addAvailabilityViaUi,
+  saveDraft,
+  fillCoverPhotoFromListingHome,
+  enterWizardFromListingHome,
 } from './lib/flows';
-import { shot, netLogger, dbSnapshot } from './lib/evidence';
+import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
-import { q, userByEmail, serviceByTitle, feeBand } from './lib/db';
-import { writeState, readState } from './lib/state';
+import { q, userByEmail, serviceByTitle, feeBand, seedProviderIdentityAndBusinessVerification, seedMeetingPin } from './lib/db';
+import { writeState } from './lib/state';
 import { testid } from './lib/ui';
 
 const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
@@ -43,7 +57,13 @@ const PROVIDERS: ProviderFixture[] = [
     offeringTypeKey: 'tea_ceremony_host',
     categoryKey: 'activity_provider',
     bandKey: 'moderate',
-    needsBackgroundCheck: false,
+    // Phase 0's fixture table (§4) expected NO publish gate for activity_provider
+    // (requires_background_check=false there) — but ServiceForm.tsx's `isCategoryGated`
+    // is `requiresBackgroundCheck || insuranceBand >= 2`, and activity_provider's row
+    // carries insurance_band=2, so it IS gated too (same admin "Mark Verified" control
+    // clears both reasons — verificationMutation sets one column, providerVerificationStatus,
+    // regardless of which condition tripped it). Filed as its own finding, once, below.
+    needsBackgroundCheck: true,
     listingTitleBase: 'Traditional Tea Ceremony',
   },
   {
@@ -69,6 +89,9 @@ const PROVIDERS: ProviderFixture[] = [
 test.describe.configure({ mode: 'serial' });
 
 let filedReturnToFinding = false;
+let filedNoVerificationPathFinding = false;
+let filedSeedFinding = false;
+let filedMeetingPinFinding = false;
 
 for (const fx of PROVIDERS) {
   test(`S1 ${fx.key}: apply, publish, and become visible`, async ({ page }) => {
@@ -94,14 +117,14 @@ for (const fx of PROVIDERS) {
         severity: 'P2',
         known: null,
         title: 'A stale sessionStorage "traveloure_return_to" hijacks the very next full navigation after signup',
-        expected:
-          'After signup, an explicit page.goto to a chosen URL (e.g. /become-provider) lands there',
+        expected: 'After signup, an explicit page.goto to a chosen URL (e.g. /become-provider) lands there',
         actual:
           'Signup.tsx routes to a protected /dashboard before the auth query re-resolves; ProtectedRoute\'s guard ' +
           'fires once (user still null in the cache), stores sessionStorage.traveloure_return_to="/dashboard" and ' +
           'bounces to "/". AuthReturnToRestorer then replays that stored value on the SESSION\'s next full ' +
           'navigation, silently redirecting it back to /dashboard regardless of where it was headed. Reproduced ' +
-          'deterministically outside Playwright with a bare script (signup -> read sessionStorage -> "/dashboard").',
+          'deterministically outside Playwright with a bare script (signup -> read sessionStorage -> "/dashboard") ' +
+          'and again in this final run.',
         where: 'client/src/App.tsx: ProtectedRoute useEffect + AuthReturnToRestorer (~lines 218-233, 307-323)',
         evidence: { shot: `shots/S1-${fx.key}-01-post-signup.png` },
         behavioural: true,
@@ -129,8 +152,8 @@ for (const fx of PROVIDERS) {
         class: 'SPEC_DIVERGENCE',
         severity: 'P2',
         known: null,
-        title: 'No provider_applications row found after submitting the become-provider form',
-        expected: 'A provider_applications row exists with status pending/submitted',
+        title: 'No service_provider_forms row found after submitting the become-provider form',
+        expected: 'A service_provider_forms row exists with status pending/submitted',
         actual: 'No matching row (selector drift, or a step in the 5-step wizard silently failed to submit)',
         where: 'client/src/pages/services-provider.tsx (button-submit handler)',
         evidence: { shot: `shots/S1-${fx.key}-02-post-application-submit.png` },
@@ -162,12 +185,69 @@ for (const fx of PROVIDERS) {
       });
     }
 
-    // ── 3. Log in as the provider, create the listing via ServiceForm ─────
+    // ── 2b. HELD:stripe unblock (lead-authorized, R-1 exception). ──────────
+    // identity_verification_status / business_verification_status are written ONLY by
+    // Stripe Identity/Connect webhooks in production (server/utils/earner-verification.ts) —
+    // there is NO admin UI control for either, unlike the category background-check flag,
+    // which DOES have one and is driven through it below (step 4), never seeded.
+    if (!filedNoVerificationPathFinding) {
+      filedNoVerificationPathFinding = true;
+      fileFinding({
+        journey: 'S1',
+        step: 'all:identity-business-verification-gate',
+        class: 'SPEC_DIVERGENCE',
+        severity: 'P3',
+        known: null,
+        title:
+          'No non-Stripe path to provider identity/business verification (no admin override); with Stripe unavailable no provider listing can publish',
+        expected:
+          'n/a — this is an environment limit, not a product defect: identity/business verification is correctly Stripe-only by design',
+        actual:
+          'HELD:stripe. service_provider_forms.identity_verification_status/business_verification_status flip only via ' +
+          'the Stripe Identity/Connect webhooks; ServiceForm.tsx:2085 (verificationGateBlocked) disables ' +
+          'button-publish-service until both read "verified". No /admin/providers control sets either field ' +
+          '(only the separate category background-check flag has one, used below). Unblocked in THIS spec by ' +
+          'seeding the two columns directly for run-id-tagged e2e accounts only (see the seeded-step finding).',
+        where: 'client/src/components/ServiceForm.tsx:2082-2085; server/utils/earner-verification.ts:37',
+        evidence: {},
+        behavioural: true,
+      });
+    }
+
+    const preSeedUser = await userByEmail(email);
+    if (preSeedUser?.id) {
+      await seedProviderIdentityAndBusinessVerification(preSeedUser.id);
+      if (!filedSeedFinding) {
+        filedSeedFinding = true;
+        fileFinding({
+          journey: 'S1',
+          step: 'all:seeded-identity-business-verification',
+          class: 'SPEC_DIVERGENCE',
+          severity: 'P3',
+          known: null,
+          title: 'seeded step: service_provider_forms.identity_verification_status/business_verification_status = verified (HELD:stripe)',
+          expected: 'n/a — documented R-1 exception, not a UI path',
+          actual:
+            'UPDATE service_provider_forms SET identity_verification_status=\'verified\', business_verification_status=\'verified\' ' +
+            'WHERE user_id = <run-id-tagged e2e account>. Applied once per account (A/B/C) this run; filed as ONE finding ' +
+            'covering the whole class of writes, per lead review.',
+          where: 'e2e/supply-demand/lib/db.ts seedProviderIdentityAndBusinessVerification',
+          evidence: {},
+          behavioural: true,
+        });
+      }
+    }
+
+    // ── 3. Log in as the provider, create the listing via ServiceForm, save as a DRAFT. ──
+    // Providers create-and-submit in ONE click, and that click is gated on THREE things:
+    // identity+business verification (seeded above), category verification (below, via the
+    // real admin UI), and — discovered here — a confirmed map meeting pin for an in-person
+    // listing (service-map-authoring.tsx). The pin is placed by clicking a Leaflet canvas
+    // and geocoding a typed address against a third-party lookup ("Could not find that
+    // meeting area" on a bare click-to-place attempt with no real resolvable address) — not
+    // reliably driveable headless, so it is seeded directly (R-1 fallback, finding below)
+    // onto the DRAFT row, which button-save-draft mints WITHOUT requiring the pin.
     await loginViaUi(page, email, E2E_PASSWORD);
-    const beforeListings = await dbSnapshot(
-      `SELECT id, service_name AS name, approval_status, status FROM provider_services WHERE service_name = $1`,
-      [title],
-    );
 
     await createListingBasics(page, {
       role: 'provider',
@@ -179,56 +259,267 @@ for (const fx of PROVIDERS) {
     });
     await shot(page, `S1-${fx.key}`, '04', 'listing-basics-filled');
 
-    const stepClicks = await walkServiceFormToReview(page);
-    await shot(page, `S1-${fx.key}`, '05', `listing-review-after-${stepClicks}-clicks`);
-
-    const outcome = await submitListingForReview(page);
-    await shot(page, `S1-${fx.key}`, '06', 'listing-post-submit');
-
-    if (outcome.blockedByVerification) {
-      // Providers create-and-submit in ONE click (button-publish-service), and that
-      // control is disabled until identity + business (Stripe Identity/Connect)
-      // verification completes — which cannot happen against the CI stub key. This is
-      // a HELD:stripe environment limit, not a UI defect: ServiceForm DOES show the
-      // reason (text-provider-publish-verification-note), so it is filed as an
-      // informational divergence from the fixture plan's assumption (only B/C were
-      // expected to need admin action) rather than a bug.
+    const drafted = await saveDraft(page);
+    const draftRow = await serviceByTitle(fx.listingTitleBase + ` [e2e:${RUN_ID}]`);
+    if (!drafted || !draftRow) {
       fileFinding({
         journey: 'S1',
-        step: `${fx.key}:submit-listing`,
-        class: 'SPEC_DIVERGENCE',
+        step: `${fx.key}:save-draft`,
+        class: 'DEAD_TRIGGER',
         severity: 'P1',
         known: null,
-        title: `${fx.key}: listing creation blocked pre-submit by identity/business verification, not only the category background-check`,
-        expected:
-          "Per PHASE0_SUPPLY_DEMAND.md §4, only B/C (requires_background_check categories) need admin action before publish",
-        actual: `button-publish-service disabled: "${outcome.reason}". This gates ALL providers (A included), not only the background-check categories — HELD:stripe (Stripe Identity/Connect cannot complete against the CI stub key).`,
-        where: 'client/src/components/ServiceForm.tsx:5211-5231 (verificationGateBlocked)',
-        evidence: { shot: `shots/S1-${fx.key}-06-listing-post-submit.png` },
+        title: `button-save-draft did not mint a provider_services row for "${title}"`,
+        expected: 'Clicking Save draft creates a provider_services row (approval_status likely "draft" or "submitted")',
+        actual: `drafted=${drafted}, row found=${!!draftRow}`,
+        where: 'client/src/components/ServiceForm.tsx (button-save-draft, createMutation.mutate("draft"))',
+        evidence: { shot: `shots/S1-${fx.key}-04-listing-basics-filled.png` },
         behavioural: true,
       });
       net.flush();
-      test.skip(true, `HELD:stripe — ${fx.key} cannot pass the provider identity/business verification gate without real Stripe Identity/Connect keys; see finding above.`);
-      return;
+      throw new Error(`S1 ${fx.key}: draft save did not create a row — see finding above`);
     }
 
-    if (!outcome.submitted) {
+    if (!filedMeetingPinFinding) {
+      filedMeetingPinFinding = true;
+      fileFinding({
+        journey: 'S1',
+        step: 'all:seeded-meeting-pin',
+        class: 'SPEC_DIVERGENCE',
+        severity: 'P3',
+        known: null,
+        title: 'seeded step: provider_services.latitude/longitude/meeting_point (R-1 fallback — map click-to-place is not headless-reliable)',
+        expected: 'n/a — documented R-1 fallback, not a UI path',
+        actual:
+          'UPDATE provider_services SET latitude=35.0116, longitude=135.7681, meeting_point=<text> WHERE id=<drafted row>. ' +
+          'Applied once per account (A/B/C) this run; filed as ONE finding covering the whole class of writes.',
+        where: 'e2e/supply-demand/lib/db.ts seedMeetingPin',
+        evidence: {},
+        behavioural: true,
+      });
+    }
+    // Kyoto Station — a real, in-bounds coordinate for every one of this fixture's listings.
+    await seedMeetingPin(draftRow.id, 35.0116, 135.7681, 'Meet outside the main entrance — e2e supply-demand fixture.');
+
+    // A cold /edit load lands on the LISTING HOME checklist/summary view, not the wizard —
+    // fill in what only exists there BEFORE ever entering the wizard: a cover photo (a
+    // drawer, not a step) and published availability (a different page, `?availability=`).
+    await page.goto(`/provider/services/${draftRow.id}/edit`);
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+    await shot(page, `S1-${fx.key}`, '04b', 'listing-home-checklist');
+
+    const coverPhotoSet = await fillCoverPhotoFromListingHome(
+      page,
+      'https://images.unsplash.com/photo-1545048702-79362596cdc9',
+    );
+    if (!coverPhotoSet) {
+      fileFinding({
+        journey: 'S1',
+        step: `${fx.key}:cover-photo`,
+        class: 'DEAD_TRIGGER',
+        severity: 'P2',
+        known: null,
+        title: `Could not set a cover photo for ${title} via the listing-home Photos drawer`,
+        expected: 'button-open-listing-photos opens a drawer with input-photos-paste-link / button-photos-save-link',
+        actual: 'One of those controls was not visible/reachable',
+        where: 'client/src/components/provider/service-photos-drawer.tsx',
+        evidence: { shot: `shots/S1-${fx.key}-04b-listing-home-checklist.png` },
+        behavioural: true,
+      });
+    }
+
+    const availabilityAdded = await addAvailabilityViaUi(page, 'provider', draftRow.id);
+    await shot(page, `S1-${fx.key}`, '04c', 'availability');
+    if (!availabilityAdded) {
+      fileFinding({
+        journey: 'S1',
+        step: `${fx.key}:add-availability`,
+        class: 'DEAD_TRIGGER',
+        severity: 'P2',
+        known: null,
+        title: `Could not save an availability pattern for ${title} via /provider/services?availability=<id>`,
+        expected: 'card-availability-patterns renders with a savable default row',
+        actual: 'card-availability-patterns not visible, or button-save-patterns disabled/absent',
+        where: 'client/src/components/logistics/provider-availability-manager.tsx',
+        evidence: { shot: `shots/S1-${fx.key}-04c-availability.png` },
+        behavioural: true,
+      });
+    }
+
+    // Now enter the wizard for the FIRST real submit attempt — expected to be blocked by
+    // the category-verification gate for every one of A/B/C in this environment (see the
+    // "all:identity-business-verification-gate" and "unexpected-category-gate" findings).
+    await page.goto(`/provider/services/${draftRow.id}/edit`);
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+    const enteredWizard1 = await enterWizardFromListingHome(page);
+    if (!enteredWizard1) {
+      fileFinding({
+        journey: 'S1',
+        step: `${fx.key}:enter-wizard`,
+        class: 'DEAD_TRIGGER',
+        severity: 'P1',
+        known: null,
+        title: `Could not find a step-targeted checklist row to enter the wizard for ${title}`,
+        expected: 'checklist-row-description140 (or any step-target row) is present and clickable',
+        actual: 'No matching row found',
+        where: 'client/src/components/ServiceForm.tsx (openChecklistRow)',
+        evidence: {},
+        behavioural: true,
+      });
+      net.flush();
+      throw new Error(`S1 ${fx.key}: could not enter the wizard from listing-home — see finding above`);
+    }
+
+    const stepClicks = await walkServiceFormToReview(page);
+    await shot(page, `S1-${fx.key}`, '05', `listing-review-after-${stepClicks}-clicks`);
+
+    const firstAttempt = await submitListingForReview(page);
+    await shot(page, `S1-${fx.key}`, '06', 'listing-pre-verification-submit-attempt');
+
+    let outcome = firstAttempt;
+    if (!firstAttempt.blockedByVerification && !firstAttempt.submitted) {
       fileFinding({
         journey: 'S1',
         step: `${fx.key}:submit-listing`,
         class: 'DEAD_TRIGGER',
         severity: 'P1',
         known: null,
-        title: `Could not reach the submit control for "${title}" via the wizard's step-next chain`,
-        expected: 'The wizard reaches the review step and submits for approval',
-        actual: `Advanced ${stepClicks} step(s); ${outcome.reason ?? 'submit control never became available'}`,
+        title: `Could not reach a submit control for "${title}" from the wizard`,
+        expected: 'button-submit-service or button-publish-service is reachable after walkServiceFormToReview',
+        actual: `Advanced ${stepClicks} step(s); ${firstAttempt.reason ?? 'submit control never became available'}`,
         where: 'client/src/components/ServiceForm.tsx (button-step-next / button-publish-service)',
-        evidence: { shot: `shots/S1-${fx.key}-06-listing-post-submit.png` },
+        evidence: { shot: `shots/S1-${fx.key}-06-listing-pre-verification-submit-attempt.png` },
         behavioural: true,
       });
       net.flush();
-      test.fail(true, `S1 ${fx.key}: submit unreachable — see finding above`);
-      return;
+      throw new Error(`S1 ${fx.key}: submit unreachable — see finding above`);
+    }
+
+    if (firstAttempt.blockedByVerification) {
+      const isKnownCategoryGate = /background verification/i.test(firstAttempt.reason ?? '');
+      if (fx.key === 'providerA' && isKnownCategoryGate) {
+        fileFinding({
+          journey: 'S1',
+          step: 'providerA:unexpected-category-gate',
+          class: 'SPEC_DIVERGENCE',
+          severity: 'P3',
+          known: null,
+          title: 'Provider A (activity_provider) is ALSO category-verification-gated, contradicting the Phase 0 fixture table',
+          expected: 'PHASE0_SUPPLY_DEMAND.md §4: activity_provider has "publish gate: none"',
+          actual:
+            'ServiceForm.tsx isCategoryGated = requiresBackgroundCheck || insuranceBand >= 2; activity_provider has ' +
+            'requires_background_check=false but insurance_band=2, so publishBlocked is true for it too. The same ' +
+            'admin "Mark Verified" control (verificationMutation, one column) clears both reasons, so the fix here ' +
+            'is the same step already used for B/C — the finding is that the fixture plan under-scoped which ' +
+            'categories need it, not a missing admin path.',
+          where: 'client/src/components/ServiceForm.tsx:2081-2082 (isCategoryGated, publishBlocked)',
+          evidence: {},
+          behavioural: true,
+        });
+      } else if (!isKnownCategoryGate) {
+        fileFinding({
+          journey: 'S1',
+          step: `${fx.key}:submit-listing`,
+          class: 'DEAD_TRIGGER',
+          severity: 'P1',
+          known: null,
+          title: `${fx.key}: still blocked by a gate other than the known identity/business/category ones`,
+          expected: 'Only the category-verification gate should remain after the identity/business seed',
+          actual: `button-publish-service disabled: "${firstAttempt.reason}"`,
+          where: 'client/src/components/ServiceForm.tsx:2081-2085',
+          evidence: { shot: `shots/S1-${fx.key}-06-listing-pre-verification-submit-attempt.png` },
+          behavioural: true,
+        });
+        net.flush();
+        throw new Error(`S1 ${fx.key}: blocked by an unexplained gate — see finding above`);
+      }
+
+      // What the provider sees on the Basics/Review step itself while blocked (§13 honesty check).
+      const blockedNote = testid(page, 'text-provider-publish-verification-note');
+      const noteText = (await blockedNote.textContent().catch(() => '')) ?? '';
+      fileFinding({
+        journey: 'S1',
+        step: `${fx.key}:pre-verification-provider-view`,
+        class: noteText.trim() ? 'SPEC_DIVERGENCE' : 'SILENT_SUCCESS',
+        severity: 'P3',
+        known: null,
+        title: `Wizard's own explanation for ${fx.key} while category-verification is outstanding`,
+        expected: 'A visible (not just tooltip-only) note explaining the block and linking to Provider Status',
+        actual: `text-provider-publish-verification-note: "${noteText.trim()}"`,
+        where: 'client/src/components/ServiceForm.tsx:5290 (text-provider-publish-verification-note)',
+        evidence: { shot: `shots/S1-${fx.key}-06-listing-pre-verification-submit-attempt.png` },
+        behavioural: true,
+      });
+
+      // Admin confirms the background/category check via the UI (never seeded — a real control exists).
+      await loginViaUi(page, ADMIN.email, ADMIN.password);
+      const verified = await adminMarkProviderVerified(page, fx.businessName);
+      await shot(page, `S1-${fx.key}`, '07', 'admin-mark-verified');
+      if (!verified) {
+        fileFinding({
+          journey: 'S1',
+          step: `${fx.key}:admin-verify`,
+          class: 'DEAD_TRIGGER',
+          severity: 'P1',
+          known: null,
+          title: `Could not find/click "Mark Verified" for ${fx.businessName} on /admin/providers platform tab`,
+          expected: 'A provider row with a Mark Verified control exists post-approval',
+          actual: 'No matching card/control found',
+          where: 'client/src/pages/admin/providers.tsx:594 (button-verify-*)',
+          evidence: { shot: `shots/S1-${fx.key}-07-admin-mark-verified.png` },
+          behavioural: true,
+        });
+        net.flush();
+        throw new Error(`S1 ${fx.key}: could not clear the category-verification gate — see finding above`);
+      }
+    }
+
+    if (firstAttempt.blockedByVerification) {
+      // Retry on the SAME draft row, now that the category-verification gate is cleared —
+      // cover photo, description and availability were already saved server-side above, so
+      // this is just re-entering the wizard and submitting again.
+      await loginViaUi(page, email, E2E_PASSWORD);
+      await page.goto(`/provider/services/${draftRow.id}/edit`);
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      const enteredWizard2 = await enterWizardFromListingHome(page);
+      if (!enteredWizard2) {
+        fileFinding({
+          journey: 'S1',
+          step: `${fx.key}:enter-wizard-retry`,
+          class: 'DEAD_TRIGGER',
+          severity: 'P1',
+          known: null,
+          title: `Could not find a step-targeted checklist row to re-enter the wizard for ${title}`,
+          expected: 'checklist-row-description140 (or any step-target row) is present and clickable',
+          actual: 'No matching row found',
+          where: 'client/src/components/ServiceForm.tsx (openChecklistRow)',
+          evidence: {},
+          behavioural: true,
+        });
+        net.flush();
+        throw new Error(`S1 ${fx.key}: could not re-enter the wizard from listing-home — see finding above`);
+      }
+
+      await walkServiceFormToReview(page);
+      outcome = await submitListingForReview(page);
+      await shot(page, `S1-${fx.key}`, '08', 'listing-post-submit');
+    }
+
+    if (outcome.blockedByVerification || !outcome.submitted) {
+      fileFinding({
+        journey: 'S1',
+        step: `${fx.key}:submit-listing-retry`,
+        class: 'DEAD_TRIGGER',
+        severity: 'P1',
+        known: null,
+        title: `${fx.key}: still blocked/unreachable on retry after clearing both verification gates`,
+        expected: 'Submit succeeds once identity, business AND category verification are all "verified"',
+        actual: `blockedByVerification=${outcome.blockedByVerification}, submitted=${outcome.submitted}, reason="${outcome.reason}"`,
+        where: 'client/src/components/ServiceForm.tsx:2081-2085',
+        evidence: { shot: `shots/S1-${fx.key}-08-listing-post-submit.png` },
+        behavioural: true,
+      });
+      net.flush();
+      throw new Error(`S1 ${fx.key}: still blocked on retry — see finding above`);
     }
 
     const serviceRow = await serviceByTitle(fx.listingTitleBase + ` [e2e:${RUN_ID}]`);
@@ -243,95 +534,37 @@ for (const fx of PROVIDERS) {
         expected: 'A provider_services row exists (born approval_status=submitted, migration 111)',
         actual: 'Row absent — either the create call never fired or a required field blocked it silently',
         where: 'server/routes.ts:3835 POST /api/provider/services',
-        evidence: { shot: `shots/S1-${fx.key}-06-listing-post-submit.png`, net: `net/S1-${fx.key}.jsonl` },
+        evidence: { shot: `shots/S1-${fx.key}-08-listing-post-submit.png`, net: `net/S1-${fx.key}.jsonl` },
         behavioural: true,
       });
       net.flush();
-      test.fail(true, `S1 ${fx.key}: no provider_services row created — see finding above`);
-      return;
+      throw new Error(`S1 ${fx.key}: no provider_services row created — see finding above`);
     }
 
     writeState((s) => {
       s.listings[fx.key] = { id: serviceRow.id, title, providerServiceId: serviceRow.id, categoryKey: fx.categoryKey };
     });
 
-    // ── 4. Background-check gate (B/C): assert NOT visible/publishable pre-verification ─
-    if (fx.needsBackgroundCheck) {
-      await page.goto(`/provider/services/${serviceRow.id}`);
-      await shot(page, `S1-${fx.key}`, '07', 'listing-home-pre-verification');
-      const statusBadge = testid(page, 'badge-listing-hero-status');
-      const statusText = (await statusBadge.textContent().catch(() => '')) ?? '';
-      const publicResp = await page.request.get(`/api/services/${serviceRow.id}`);
-      const publicVisible = publicResp.status() === 200;
-
-      fileVisibility({
-        content: 'service',
-        item: title,
-        surface: '/api/services/:id (pre-verification)',
-        expected: 'hidden',
-        actual: publicVisible ? 'visible' : 'hidden',
-        filter: 'server/routes/content.routes.ts:2334 (approved+active gate)',
-        journey: 'S1',
-      });
-
-      if (publicVisible) {
-        fileFinding({
-          journey: 'S1',
-          step: `${fx.key}:pre-verification-visibility`,
-          class: 'FALSE_PROMISE',
-          severity: 'P1',
-          known: null,
-          title: `${title} is publicly reachable before its background-check verification is confirmed`,
-          expected: 'A requires_background_check listing is hidden from GET /api/services/:id until admin verification',
-          actual: `GET /api/services/${serviceRow.id} returned ${publicResp.status()}`,
-          where: 'server/routes.ts:3899 (background/insurance publish gate)',
-          evidence: { shot: `shots/S1-${fx.key}-07-listing-home-pre-verification.png` },
-          behavioural: true,
-        });
-      }
-
-      // What the provider itself sees in this pending state (status pill / messaging).
-      fileFinding({
-        journey: 'S1',
-        step: `${fx.key}:pre-verification-provider-view`,
-        class: statusText.trim() ? 'SPEC_DIVERGENCE' : 'SILENT_SUCCESS',
-        severity: 'P3',
-        known: null,
-        title: `Listing-home status pill for ${fx.key} while awaiting background-check verification`,
-        expected: 'A status pill/message explaining the listing is blocked on verification',
-        actual: `badge-listing-hero-status text: "${statusText.trim()}"`,
-        where: 'client/src/components/ServiceForm.tsx:2311',
-        evidence: { shot: `shots/S1-${fx.key}-07-listing-home-pre-verification.png` },
-        behavioural: true,
-      });
-
-      // Admin confirms the background check.
-      await loginViaUi(page, ADMIN.email, ADMIN.password);
-      const verified = await adminMarkProviderVerified(page, fx.businessName);
-      await shot(page, `S1-${fx.key}`, '08', 'admin-mark-verified');
-      if (!verified) {
-        fileFinding({
-          journey: 'S1',
-          step: `${fx.key}:admin-verify`,
-          class: 'DEAD_TRIGGER',
-          severity: 'P1',
-          known: null,
-          title: `Could not find/click "Mark Verified" for ${fx.businessName} on /admin/providers platform tab`,
-          expected: 'A provider row with a Mark Verified control exists post-approval',
-          actual: 'No matching card/control found',
-          where: 'client/src/pages/admin/providers.tsx:594 (button-verify-*)',
-          evidence: { shot: `shots/S1-${fx.key}-08-admin-mark-verified.png` },
-          behavioural: true,
-        });
-      }
-    }
+    fileVisibility({
+      content: 'service',
+      item: title,
+      surface: '/api/services/:id (immediately after submit, before admin service-approval)',
+      expected: 'hidden',
+      actual: (await page.request.get(`/api/services/${serviceRow.id}`)).status() === 200 ? 'visible' : 'hidden',
+      filter: 'server/routes/content.routes.ts:2334 (approved+active gate — approval_status still "submitted")',
+      journey: 'S1',
+    });
 
     // ── 5. Admin approves the service listing via /admin/service-approvals ─
     await loginViaUi(page, ADMIN.email, ADMIN.password);
-    const submitTime = Date.now();
-    const svcApproved = await adminApproveService(page, fx.listingTitleBase);
-    await shot(page, `S1-${fx.key}`, '09', 'admin-approve-service');
-    const timeToApproveMs = Date.now() - submitTime;
+    // MUST match on the run-id-tagged title, not the bare listingTitleBase: the pending
+    // queue can carry same-titled listings left over from earlier runs/iterations, and a
+    // bare-text match's `.first()` silently approved a DIFFERENT (stale) row in exactly
+    // this shape — the DB showed approval_status still "submitted" after a run that
+    // reported success, because it had approved someone else's card.
+    const svcApproved = await adminApproveService(page, title);
+    await shot(page, `S1-${fx.key}`, '10', 'admin-approve-service');
+    const approveClickTime = Date.now();
 
     if (!svcApproved) {
       fileFinding({
@@ -344,15 +577,15 @@ for (const fx of PROVIDERS) {
         expected: 'The submitted listing appears in the pending-approval queue',
         actual: 'No matching card',
         where: 'client/src/pages/admin/service-approvals.tsx',
-        evidence: { shot: `shots/S1-${fx.key}-09-admin-approve-service.png` },
+        evidence: { shot: `shots/S1-${fx.key}-10-admin-approve-service.png` },
         behavioural: true,
       });
       net.flush();
-      test.fail(true, `S1 ${fx.key}: could not approve listing — see finding above`);
-      return;
+      throw new Error(`S1 ${fx.key}: could not approve listing — see finding above`);
     }
 
-    // ── 6. Poll every traveler surface from the Phase 0 visibility contract ─
+    // ── 6. Poll every traveler surface from the Phase 0 visibility contract, ─
+    //      measuring time-to-visible for each (submit-click -> first 200).
     const surfaces: { name: string; check: () => Promise<boolean> }[] = [
       {
         name: '/services (browse, location=Kyoto)',
@@ -380,8 +613,7 @@ for (const fx of PROVIDERS) {
           const r = await page.request.get(`/api/discover/location/kyoto`);
           if (!r.ok()) return false;
           const body = await r.json().catch(() => ({}));
-          const text = JSON.stringify(body);
-          return text.includes(serviceRow.id);
+          return JSON.stringify(body).includes(serviceRow.id);
         },
       },
       {
@@ -414,7 +646,15 @@ for (const fx of PROVIDERS) {
     ];
 
     for (const s of surfaces) {
-      const visible = await s.check().catch(() => false);
+      let visible = await s.check().catch(() => false);
+      let visibleAt: number | null = visible ? Date.now() : null;
+      if (!visible) {
+        for (let i = 0; i < 10 && !visible; i++) {
+          await page.waitForTimeout(1000);
+          visible = await s.check().catch(() => false);
+          if (visible) visibleAt = Date.now();
+        }
+      }
       fileVisibility({
         content: 'service',
         item: title,
@@ -423,6 +663,21 @@ for (const fx of PROVIDERS) {
         actual: visible ? 'visible' : 'hidden',
         filter: 'see $P2/../PHASE0_SUPPLY_DEMAND.md §3(a)',
         journey: 'S1',
+      });
+      fileFinding({
+        journey: 'S1',
+        step: `${fx.key}:time-to-visible:${s.name}`,
+        class: 'SPEC_DIVERGENCE',
+        severity: 'P3',
+        known: null,
+        title: `Time-to-visible on ${s.name} for ${fx.key}`,
+        expected: 'n/a — informational timing record',
+        actual: visibleAt
+          ? `${visibleAt - approveClickTime}ms after the admin-approve click (includes admin UI click latency, not a server SLA)`
+          : 'never became visible within 10s of polling after admin approve',
+        where: 'e2e/supply-demand/s1-provider-publish.spec.ts',
+        evidence: {},
+        behavioural: true,
       });
       if (!visible) {
         fileFinding({
@@ -433,7 +688,7 @@ for (const fx of PROVIDERS) {
           known: null,
           title: `${title} not visible on ${s.name} after approval`,
           expected: `Listing visible on ${s.name}`,
-          actual: 'Not present in response',
+          actual: 'Not present in response after 10s of polling',
           where: 'see $P2/../PHASE0_SUPPLY_DEMAND.md §3(a) for the governing filter',
           evidence: {},
           behavioural: true,
@@ -470,20 +725,6 @@ for (const fx of PROVIDERS) {
         behavioural: true,
       });
     }
-
-    fileFinding({
-      journey: 'S1',
-      step: `${fx.key}:time-to-visible`,
-      class: 'SPEC_DIVERGENCE',
-      severity: 'P3',
-      known: null,
-      title: `Time from submit to admin-approve for ${fx.key}`,
-      expected: 'n/a — informational timing record',
-      actual: `${timeToApproveMs}ms (harness-driven click latency, not a product SLA)`,
-      where: 'e2e/supply-demand/s1-provider-publish.spec.ts',
-      evidence: {},
-      behavioural: true,
-    });
 
     net.flush();
   });

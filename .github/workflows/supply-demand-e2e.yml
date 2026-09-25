@@ -82,6 +82,10 @@ jobs:
           SESSION_SECRET: ci-test-secret-not-for-production
           # Stripe stub — every Stripe-dependent supply/demand step is test.skip('HELD:stripe').
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          # CI escape hatch (server/validate-env.ts) — without it, the prod-strict
+          # Stripe-key guard refuses to boot the production bundle with a sk_test_
+          # stub key. Every *-gate.yml workflow that boots dist/index.cjs sets this.
+          ALLOW_TEST_ACCOUNTS: '1'
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: production
           E2E_AI_STUB: '1'

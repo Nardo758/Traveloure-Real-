@@ -10,8 +10,30 @@
  * See docs/audits/pass2/BRIEF.md for the harness contract.
  */
 import { defineConfig, devices } from '@playwright/test';
+import fs from 'fs';
 
 const baseURL = process.env.BASE_URL || 'http://localhost:5000';
+
+// Chromium executable resolution: prefer an explicit env override, else fall back to
+// this environment's pre-installed browser at /opt/pw-browsers/chromium (the installed
+// @playwright/test version can expect a newer revision than what's on disk here — CI
+// runs `npx playwright install chromium` instead and never needs this fallback). Local
+// dev/debugging works with no env var either way.
+function resolveChromiumExecutablePath(): string | undefined {
+  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
+    return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+  }
+  // /opt/pw-browsers/chromium is itself the executable (a symlink straight to the
+  // chrome binary) in this environment — not a directory to look inside.
+  const candidates = [
+    '/opt/pw-browsers/chromium',
+    '/opt/pw-browsers/chromium/chrome-linux/chrome',
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c) && fs.statSync(c).isFile()) return c;
+  }
+  return undefined;
+}
 
 export default defineConfig({
   testDir: './e2e/supply-demand',
@@ -34,12 +56,21 @@ export default defineConfig({
   ],
   use: {
     baseURL,
+    // Hardening (lead review): Playwright's action timeout defaults to 0 (no limit
+    // beyond the whole test's timeout), so one element that is present but never
+    // becomes actionable used to burn the entire per-test budget on a single
+    // `.fill()`/`.click()`. Setting it here covers every call site — including the
+    // raw (un-wrapped) calls in lib/flows.ts — not just the ones in lib/ui.ts that
+    // additionally pass an explicit timeout.
+    actionTimeout: 3000,
+    navigationTimeout: 20_000,
     trace: 'retain-on-failure',
     screenshot: 'on',
     video: 'off',
-    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
-      : {},
+    launchOptions: (() => {
+      const executablePath = resolveChromiumExecutablePath();
+      return executablePath ? { executablePath } : {};
+    })(),
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

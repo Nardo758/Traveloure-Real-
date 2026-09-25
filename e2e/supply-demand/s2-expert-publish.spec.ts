@@ -38,8 +38,31 @@ test('S2: Expert E applies, publishes an offering, and is admin-approved', async
   await signupViaUi(page, { email, firstName: 'E2E', lastName: 'ExpertE' });
   await shot(page, 'S2-expertE', '01', 'post-signup');
 
-  await applyAsExpert(page, { firstName: 'E2E', lastName: 'ExpertE', email, city: 'Kyoto', country: 'Japan', handle });
+  const applyOutcome = await applyAsExpert(page, {
+    firstName: 'E2E',
+    lastName: 'ExpertE',
+    email,
+    city: 'Kyoto',
+    country: 'Japan',
+    handle,
+  });
   await shot(page, 'S2-expertE', '02', 'post-application-submit');
+
+  if (!applyOutcome.reachedFinalStep) {
+    fileFinding({
+      journey: 'S2',
+      step: 'expertE:apply',
+      class: 'DEAD_TRIGGER',
+      severity: 'P2',
+      known: null,
+      title: `Local Expert application walker stopped at step ${applyOutcome.stoppedAtStep} — a step-specific gate never satisfied`,
+      expected: 'Each of the 7 Local Expert steps\' canProceed() gate is satisfied by the fields the walker fills',
+      actual: `button-next-step stayed disabled (or absent) after step ${applyOutcome.stoppedAtStep}`,
+      where: 'client/src/pages/travel-experts.tsx canProceed() (isLocalExpert branch)',
+      evidence: { shot: 'shots/S2-expertE-02-post-application-submit.png' },
+      behavioural: true,
+    });
+  }
 
   const appRow = await q(
     `SELECT id, status FROM local_expert_forms WHERE email = $1 ORDER BY created_at DESC LIMIT 1`,
@@ -79,6 +102,28 @@ test('S2: Expert E applies, publishes an offering, and is admin-approved', async
       expected: 'A pending expert application card is listed and approvable',
       actual: 'No matching card',
       where: 'client/src/pages/admin/experts.tsx (Applications tab)',
+      evidence: { shot: 'shots/S2-expertE-03-admin-approve-application.png' },
+      behavioural: true,
+    });
+  }
+
+  // Verify the approval actually TOOK — admin/experts.tsx's Approve opens a
+  // window.prompt() override dialog whenever verification is incomplete (always true
+  // here); a click that finds the button but never handles that dialog silently does
+  // nothing, and the UI helper alone cannot tell "clicked" from "took effect".
+  const acctAfterApproval = await userByEmail(email);
+  const roleFlipped = acctAfterApproval?.role && acctAfterApproval.role !== 'user';
+  if (approved && !roleFlipped) {
+    fileFinding({
+      journey: 'S2',
+      step: 'expertE:admin-approve-application-verify',
+      class: 'DEAD_TRIGGER',
+      severity: 'P1',
+      known: null,
+      title: 'adminApproveExpertApplication clicked Approve but users.role never flipped off "user"',
+      expected: 'A successful admin approve mutation updates users.role to an expert role',
+      actual: `users.role = ${JSON.stringify(acctAfterApproval?.role)} after the click (likely an unhandled window.prompt() override dialog silently cancelling the mutation)`,
+      where: 'client/src/pages/admin/experts.tsx (Approve handler, window.prompt override-reason path)',
       evidence: { shot: 'shots/S2-expertE-03-admin-approve-application.png' },
       behavioural: true,
     });
@@ -125,7 +170,9 @@ test('S2: Expert E applies, publishes an offering, and is admin-approved', async
       s.listings.expertOffering = { id: offeringRow.id, title: offeringTitle, providerServiceId: offeringRow.id };
     });
     await loginViaUi(page, ADMIN.email, ADMIN.password);
-    const svcApproved = await adminApproveService(page, 'Kyoto Custom Itinerary Planning');
+    // MUST match on the run-id-tagged title, not the bare base (see S1's admin-approve comment —
+    // a bare-text match's `.first()` can silently approve a different, stale row).
+    const svcApproved = await adminApproveService(page, offeringTitle);
     await shot(page, 'S2-expertE', '06', 'admin-approve-offering');
     if (!svcApproved) {
       fileFinding({

@@ -44,7 +44,16 @@ export function getRunId(): string {
 export const RUN_ID = getRunId();
 
 export function e2eEmail(role: string): string {
-  return `e2e-${RUN_ID}-${role}@traveloure.test`;
+  // LOWERCASE, always: the server normalizes users.email to lowercase on signup
+  // (confirmed behaviourally), but does NOT normalize application-form email
+  // columns (service_provider_forms.email / local_expert_forms.email) the same
+  // way — so a mixed-case role token here (e.g. "providerA") used to produce a
+  // users row at .../providera@... while the form row kept .../providerA@...,
+  // and every case-sensitive `WHERE email = $1` lookup against `users` (see
+  // db.ts userByEmail) silently matched nothing. Real harness bug, found when
+  // the identity/business-verification seed (lib/db.ts) never took effect
+  // because `userByEmail(email)` returned null for every account.
+  return `e2e-${RUN_ID}-${role}@traveloure.test`.toLowerCase();
 }
 
 export function e2eHandle(role: string): string {

@@ -161,7 +161,10 @@ test('S3: pending listing is hidden from travelers while awaiting approval', asy
   // Admin reject path — does the provider see the reason?
   await loginViaUi(page, ADMIN.email, ADMIN.password);
   const rejectReason = `e2e supply-demand: rejected on purpose (run ${RUN_ID}) — does not meet Kyoto category fixture requirements.`;
-  const rejected = await adminRejectService(page, 'Kyoto Moderation Throwaway Listing', rejectReason);
+  // MUST match on the run-id-tagged title (not the bare base) — the pending queue can carry
+  // same-titled rows left over from earlier runs, and a bare-text match's `.first()` can
+  // silently act on a DIFFERENT row (found behaviourally in S1's admin-approve step).
+  const rejected = await adminRejectService(page, title, rejectReason);
   await shot(page, 'S3', '03', 'admin-reject');
 
   if (!rejected) {
@@ -259,7 +262,8 @@ test('S3: time-to-visible after a clean approve (no background-check gate)', asy
 
   await loginViaUi(page, ADMIN.email, ADMIN.password);
   await page.goto('/admin/service-approvals');
-  const card = page.locator('[data-testid^="pending-service-"]', { hasText: 'Kyoto Moderation Timing Listing' });
+  // MUST match on the run-id-tagged title — see the comment on the throwaway-listing reject above.
+  const card = page.locator('[data-testid^="pending-service-"]', { hasText: title });
   const approveBtn = card.first().locator('[data-testid^="button-approve-"]');
   await approveBtn.click();
   const confirmBtn = page.locator('[data-testid^="button-approve-confirm-"]');
