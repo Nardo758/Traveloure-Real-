@@ -2,28 +2,28 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "aead0ba5a07613ee529534498d8a6000de1b139e1f763b56a7bcaf4c608e819c",
+  "manifestSha256": "541109a7c8291f08eb7036132c808ea79a1e68a4afb3ab394ad93d0690a2de8c",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
-    "state": "fresh",
+    "state": "evidence manifest SHA-256 is stale",
     "timestamp": "2026-09-25T00:56:06.499Z"
   },
   "totals": {
-    "tested": 324,
-    "total": 604,
-    "remaining": 280,
+    "tested": 0,
+    "total": 606,
+    "remaining": 606,
     "categories": {
       "payments": {
-        "tested": 29,
+        "tested": 0,
         "total": 31
       },
       "admin": {
-        "tested": 146,
+        "tested": 0,
         "total": 151
       },
       "user-data": {
-        "tested": 149,
-        "total": 207
+        "tested": 0,
+        "total": 209
       },
       "other": {
         "tested": 0,
@@ -38,7 +38,7 @@
       "path": "/api/admin/affiliate/partners/:id",
       "effectivePath": "/api/admin/affiliate/partners/:id",
       "source": "server/routes/content.routes.ts",
-      "line": 8801,
+      "line": 8814,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -51,8 +51,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/affiliate/partners/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -73,8 +73,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/categories/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -95,8 +95,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/content-placement-rules/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -117,8 +117,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/event-packages/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -139,8 +139,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/expert-offering-types/:key",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -161,8 +161,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/neighborhoods/:id/coverage-targets/:categoryKey",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -170,7 +170,7 @@
       "path": "/api/admin/notifications/:id",
       "effectivePath": "/api/admin/notifications/:id",
       "source": "server/routes.ts",
-      "line": 13219,
+      "line": 13223,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -183,8 +183,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/notifications/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -205,8 +205,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/service-offering-types/:key",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -227,8 +227,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/service-templates/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -249,8 +249,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/services/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -258,7 +258,7 @@
       "path": "/api/admin/slow-queries",
       "effectivePath": "/api/admin/slow-queries",
       "source": "server/routes.ts",
-      "line": 12112,
+      "line": 12116,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -271,8 +271,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/slow-queries",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -293,8 +293,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/subcategories/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -315,8 +315,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/users/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -355,8 +355,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/auth/account",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -364,7 +364,7 @@
       "path": "/api/cart",
       "effectivePath": "/api/cart",
       "source": "server/routes.ts",
-      "line": 9480,
+      "line": 9484,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -375,8 +375,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/cart",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -384,7 +384,7 @@
       "path": "/api/cart/:id",
       "effectivePath": "/api/cart/:id",
       "source": "server/routes.ts",
-      "line": 9462,
+      "line": 9466,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -395,8 +395,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/cart/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -404,7 +404,7 @@
       "path": "/api/contracts/:id",
       "effectivePath": "/api/contracts/:id",
       "source": "server/routes.ts",
-      "line": 12410,
+      "line": 12414,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -415,8 +415,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/contracts/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -435,8 +435,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/conversations/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -444,7 +444,7 @@
       "path": "/api/coordination-bookings/:id",
       "effectivePath": "/api/coordination-bookings/:id",
       "source": "server/routes.ts",
-      "line": 10729,
+      "line": 10733,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -464,7 +464,7 @@
       "path": "/api/coordination-states/:id",
       "effectivePath": "/api/coordination-states/:id",
       "source": "server/routes.ts",
-      "line": 10627,
+      "line": 10631,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -537,8 +537,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/ea/ai-tasks/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -559,8 +559,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/ea/clients/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -581,8 +581,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/ea/communications/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -603,8 +603,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/ea/events/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -625,8 +625,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/ea/executives/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -647,8 +647,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/ea/gifts/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -669,8 +669,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/ea/travel/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -691,8 +691,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/ea/venues/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -700,7 +700,7 @@
       "path": "/api/emergency-contacts/:id",
       "effectivePath": "/api/emergency-contacts/:id",
       "source": "server/routes/content.routes.ts",
-      "line": 7402,
+      "line": 7415,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -751,8 +751,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/expert/knowledge-nuggets/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -771,8 +771,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/expert/ready-made/build/:id",
-      "tested": true,
-      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -780,7 +780,7 @@
       "path": "/api/expert/selected-services/:serviceOfferingId",
       "effectivePath": "/api/expert/selected-services/:serviceOfferingId",
       "source": "server/routes.ts",
-      "line": 5499,
+      "line": 5503,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -791,8 +791,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/expert/selected-services/:serviceOfferingId",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -800,7 +800,7 @@
       "path": "/api/expert/service-listings/:id",
       "effectivePath": "/api/expert/service-listings/:id",
       "source": "server/routes.ts",
-      "line": 5654,
+      "line": 5658,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -811,8 +811,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/expert/service-listings/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -820,7 +820,7 @@
       "path": "/api/expert/specializations/:specialization",
       "effectivePath": "/api/expert/specializations/:specialization",
       "source": "server/routes.ts",
-      "line": 5537,
+      "line": 5541,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -831,8 +831,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/expert/specializations/:specialization",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -911,8 +911,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/me/ea-links/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -931,8 +931,28 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/me/payment-methods/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
+    },
+    {
+      "method": "DELETE",
+      "rawPath": "/api/me/profile-photo",
+      "path": "/api/me/profile-photo",
+      "effectivePath": "/api/me/profile-photo",
+      "source": "server/routes/profile-photo.routes.ts",
+      "line": 114,
+      "risk": "user-data",
+      "expectedAuth": "required",
+      "expectedRoles": [],
+      "expectedOwnership": "self",
+      "expectedBoundary": "session-self",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "DELETE /api/me/profile-photo",
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -971,8 +991,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/messages/block/:targetUserId",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -1020,7 +1040,7 @@
       "path": "/api/participants/:id",
       "effectivePath": "/api/participants/:id",
       "source": "server/routes/content.routes.ts",
-      "line": 7303,
+      "line": 7316,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -1031,8 +1051,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/participants/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -1040,7 +1060,7 @@
       "path": "/api/provider/availability/:id",
       "effectivePath": "/api/provider/availability/:id",
       "source": "server/routes.ts",
-      "line": 10406,
+      "line": 10410,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -1140,7 +1160,7 @@
       "path": "/api/provider/services/:id",
       "effectivePath": "/api/provider/services/:id",
       "source": "server/routes.ts",
-      "line": 4592,
+      "line": 4596,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -1151,8 +1171,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/provider/services/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -1191,8 +1211,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/saved-items/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -1211,8 +1231,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/saved-items/shares/:shareId",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -1220,7 +1240,7 @@
       "path": "/api/transactions/:id",
       "effectivePath": "/api/transactions/:id",
       "source": "server/routes/content.routes.ts",
-      "line": 7364,
+      "line": 7377,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -1251,8 +1271,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/trips/:id",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -1271,8 +1291,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/trips/:tripId/changes/:changeId",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -1291,8 +1311,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/trips/:tripId/itinerary-items/:itemId",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -1311,8 +1331,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/trips/:tripId/transport-legs/:legId",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "DELETE",
@@ -1380,7 +1400,7 @@
       "path": "/api/admin/affiliate/partners/:id",
       "effectivePath": "/api/admin/affiliate/partners/:id",
       "source": "server/routes/content.routes.ts",
-      "line": 8784,
+      "line": 8797,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1393,8 +1413,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/affiliate/partners/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1415,8 +1435,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/affiliate/reconciliation/:earningId",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1437,8 +1457,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/bookings/auto-cancel/config",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1459,8 +1479,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/categories/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1481,8 +1501,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/contact-submissions/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1503,8 +1523,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/content-placement-rules/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1525,8 +1545,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/event-packages/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1548,7 +1568,7 @@
       "diagnostics": [],
       "key": "PATCH /api/admin/evidence-thresholds/:key",
       "tested": false,
-      "reason": "Not run: fresh admin live-matrix evidence for this endpoint is absent."
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1569,8 +1589,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/expert-applications/:id/rejection-reason",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1591,8 +1611,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/expert-applications/:id/status",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1613,8 +1633,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/expert-offering-types/:key",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1635,8 +1655,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/expert-templates/:id/roles",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1657,8 +1677,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/fee-bands/:bandKey",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1679,8 +1699,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/invoices/:invoiceNumber/status",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1701,8 +1721,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/lead-routing-logs/:id/override",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1723,8 +1743,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/message-reports/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1745,8 +1765,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/neighborhoods/:id/adjacency",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1754,7 +1774,7 @@
       "path": "/api/admin/notifications/:id/read",
       "effectivePath": "/api/admin/notifications/:id/read",
       "source": "server/routes.ts",
-      "line": 13185,
+      "line": 13189,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1767,8 +1787,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/notifications/:id/read",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1776,7 +1796,7 @@
       "path": "/api/admin/notifications/read-all",
       "effectivePath": "/api/admin/notifications/read-all",
       "source": "server/routes.ts",
-      "line": 13245,
+      "line": 13249,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -1789,8 +1809,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/notifications/read-all",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1811,8 +1831,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/payouts/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1833,8 +1853,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/platform-settings/:settingKey",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1855,8 +1875,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/provider-applications/:id/rejection-reason",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1877,8 +1897,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/provider-applications/:id/status",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1899,8 +1919,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/ready-made/:id/badge",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1921,8 +1941,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/reviews/:id/status",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1943,8 +1963,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/service-offering-types/:key",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1965,8 +1985,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/service-requests/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -1987,8 +2007,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/service-templates/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2009,8 +2029,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/services/:id/affinity-tags",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2031,8 +2051,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/services/:id/featured",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2053,8 +2073,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/services/:id/status",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2075,8 +2095,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/subcategories/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2097,8 +2117,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/users/:id/commission-override",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2119,8 +2139,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/users/:id/suspend",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2141,8 +2161,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/users/:id/unsuspend",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2163,8 +2183,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/admin/users/:id/verification",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2172,7 +2192,7 @@
       "path": "/api/affiliate-booking-requests/:id",
       "effectivePath": "/api/affiliate-booking-requests/:id",
       "source": "server/routes/content.routes.ts",
-      "line": 8081,
+      "line": 8094,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2192,7 +2212,7 @@
       "path": "/api/cart/:id",
       "effectivePath": "/api/cart/:id",
       "source": "server/routes.ts",
-      "line": 9390,
+      "line": 9394,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2203,8 +2223,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/cart/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2232,7 +2252,7 @@
       "path": "/api/contracts/:id",
       "effectivePath": "/api/contracts/:id",
       "source": "server/routes.ts",
-      "line": 12341,
+      "line": 12345,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2243,8 +2263,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/contracts/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2263,8 +2283,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/conversations/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2272,7 +2292,7 @@
       "path": "/api/coordination-bookings/:id",
       "effectivePath": "/api/coordination-bookings/:id",
       "source": "server/routes.ts",
-      "line": 10687,
+      "line": 10691,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2292,7 +2312,7 @@
       "path": "/api/coordination-states/:id",
       "effectivePath": "/api/coordination-states/:id",
       "source": "server/routes.ts",
-      "line": 10522,
+      "line": 10526,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2312,7 +2332,7 @@
       "path": "/api/coordination-states/:id/status",
       "effectivePath": "/api/coordination-states/:id/status",
       "source": "server/routes.ts",
-      "line": 10550,
+      "line": 10554,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2365,8 +2385,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/ea/ai-tasks/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2387,8 +2407,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/ea/clients/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2409,8 +2429,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/ea/events/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2431,8 +2451,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/ea/executives/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2453,8 +2473,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/ea/gifts/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2475,8 +2495,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/ea/preferences",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2497,8 +2517,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/ea/travel/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2519,8 +2539,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/ea/venues/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2528,7 +2548,7 @@
       "path": "/api/emergency-contacts/:id",
       "effectivePath": "/api/emergency-contacts/:id",
       "source": "server/routes/content.routes.ts",
-      "line": 7384,
+      "line": 7397,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2688,7 +2708,7 @@
       "path": "/api/expert/bookings/:id/status",
       "effectivePath": "/api/expert/bookings/:id/status",
       "source": "server/routes.ts",
-      "line": 7507,
+      "line": 7511,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2719,8 +2739,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/expert/knowledge-nuggets/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2728,7 +2748,7 @@
       "path": "/api/expert/neighborhoods",
       "effectivePath": "/api/expert/neighborhoods",
       "source": "server/routes.ts",
-      "line": 5303,
+      "line": 5307,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2739,8 +2759,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/expert/neighborhoods",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2748,7 +2768,7 @@
       "path": "/api/expert/photo",
       "effectivePath": "/api/expert/photo",
       "source": "server/routes.ts",
-      "line": 5462,
+      "line": 5466,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2759,8 +2779,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/expert/photo",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2768,7 +2788,7 @@
       "path": "/api/expert/profile",
       "effectivePath": "/api/expert/profile",
       "source": "server/routes.ts",
-      "line": 5374,
+      "line": 5378,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2779,8 +2799,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/expert/profile",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2788,7 +2808,7 @@
       "path": "/api/expert/profile-notes",
       "effectivePath": "/api/expert/profile-notes",
       "source": "server/routes.ts",
-      "line": 5350,
+      "line": 5354,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2799,8 +2819,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/expert/profile-notes",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2819,8 +2839,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/expert/ready-made/:id",
-      "tested": true,
-      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2839,8 +2859,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/expert/ready-made/build/:tripId",
-      "tested": true,
-      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2868,7 +2888,7 @@
       "path": "/api/expert/service-listings/:id",
       "effectivePath": "/api/expert/service-listings/:id",
       "source": "server/routes.ts",
-      "line": 5606,
+      "line": 5610,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2879,8 +2899,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/expert/service-listings/:id",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2888,7 +2908,7 @@
       "path": "/api/expert/services/:id/status",
       "effectivePath": "/api/expert/services/:id/status",
       "source": "server/routes.ts",
-      "line": 6113,
+      "line": 6117,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2979,8 +2999,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/me/home-city",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -2999,8 +3019,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/me/notification-email",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3019,8 +3039,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/me/preferences",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3059,8 +3079,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/me/storefront",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3079,8 +3099,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/me/travel-preferences",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3099,8 +3119,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/me/traveler-profile",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3119,8 +3139,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/me/vacation",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3139,8 +3159,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/messages/:messageId/read",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3159,8 +3179,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/messages/conversation/:conversationId/read-all",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3208,7 +3228,7 @@
       "path": "/api/participants/:id",
       "effectivePath": "/api/participants/:id",
       "source": "server/routes/content.routes.ts",
-      "line": 7239,
+      "line": 7252,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3228,7 +3248,7 @@
       "path": "/api/participants/:id/rsvp",
       "effectivePath": "/api/participants/:id/rsvp",
       "source": "server/routes/content.routes.ts",
-      "line": 7265,
+      "line": 7278,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3239,8 +3259,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/participants/:id/rsvp",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3259,8 +3279,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/profile",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3268,7 +3288,7 @@
       "path": "/api/provider-application",
       "effectivePath": "/api/provider-application",
       "source": "server/routes.ts",
-      "line": 2767,
+      "line": 2771,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3288,7 +3308,7 @@
       "path": "/api/provider/availability/:id",
       "effectivePath": "/api/provider/availability/:id",
       "source": "server/routes.ts",
-      "line": 10382,
+      "line": 10386,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3308,7 +3328,7 @@
       "path": "/api/provider/bookings/:id/status",
       "effectivePath": "/api/provider/bookings/:id/status",
       "source": "server/routes.ts",
-      "line": 7511,
+      "line": 7515,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3388,7 +3408,7 @@
       "path": "/api/provider/services/:id",
       "effectivePath": "/api/provider/services/:id",
       "source": "server/routes.ts",
-      "line": 4175,
+      "line": 4179,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3428,7 +3448,7 @@
       "path": "/api/service-bookings/:id/document-checklist",
       "effectivePath": "/api/service-bookings/:id/document-checklist",
       "source": "server/routes.ts",
-      "line": 7955,
+      "line": 7959,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3448,7 +3468,7 @@
       "path": "/api/service-bookings/:id/visa-status",
       "effectivePath": "/api/service-bookings/:id/visa-status",
       "source": "server/routes.ts",
-      "line": 7890,
+      "line": 7894,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3488,7 +3508,7 @@
       "path": "/api/transactions/:id",
       "effectivePath": "/api/transactions/:id",
       "source": "server/routes/content.routes.ts",
-      "line": 7346,
+      "line": 7359,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3559,8 +3579,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/trips/:id",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3599,8 +3619,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/trips/:tripId/expert-notes",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3619,8 +3639,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/trips/:tripId/expert-traveler-note",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3639,8 +3659,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/trips/:tripId/itinerary-items/:itemId",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3659,8 +3679,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/trips/:tripId/occasion",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3679,8 +3699,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PATCH /api/trips/:tripId/transport-legs/:legId",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PATCH",
@@ -3728,7 +3748,7 @@
       "path": "/api/admin/affiliate/partners",
       "effectivePath": "/api/admin/affiliate/partners",
       "source": "server/routes/content.routes.ts",
-      "line": 8721,
+      "line": 8734,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3741,8 +3761,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/affiliate/partners",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3763,8 +3783,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/affiliate/partners/:id/approve",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3785,8 +3805,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/affiliate/partners/:id/reject",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3794,7 +3814,7 @@
       "path": "/api/admin/affiliate/partners/:id/scrape",
       "effectivePath": "/api/admin/affiliate/partners/:id/scrape",
       "source": "server/routes/content.routes.ts",
-      "line": 8815,
+      "line": 8828,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3807,8 +3827,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/affiliate/partners/:id/scrape",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3829,8 +3849,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/bookings/:bookingId/lost-chargeback/reconcile",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3851,8 +3871,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/bookings/:bookingId/out-of-band-refund/clear",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3873,8 +3893,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/bookings/auto-cancel/run",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3895,8 +3915,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/catalog/ingest",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3917,8 +3937,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/categories",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3939,8 +3959,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/categories/:categoryId/subcategories",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3961,8 +3981,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/content-placement-rules",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -3983,8 +4003,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/content-placement-rules/auto-index",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4005,8 +4025,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/content/:trackingNumber/moderate",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4027,8 +4047,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/content/flags/:flagId/resolve",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4049,8 +4069,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/content/register",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4071,8 +4091,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/coordination-states/:id/assign-coordinator",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4093,8 +4113,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/coordination-states/:id/review-ledger-gap",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4115,8 +4135,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/demand/onepager/:market/approve",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4137,8 +4157,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/demand/onepager/:market/generate",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4159,8 +4179,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/demand/onepager/:market/withdraw",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4181,8 +4201,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/destination-events/:id/approve",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4203,8 +4223,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/destination-events/:id/reject",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4225,8 +4245,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/digest/send-now",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4247,8 +4267,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/disputes/:bookingId/refund-rejected-artifact",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4269,8 +4289,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/disputes/:bookingId/reject",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4291,8 +4311,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/disputes/:bookingId/uphold",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4313,8 +4333,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/dmo/analyze-gaps",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4335,8 +4355,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/dmo/ingest-gaps",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4357,8 +4377,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/dmo/ingest-kyoto",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4379,8 +4399,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/dmo/ingest-youtube",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4401,8 +4421,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/dmo/intake/:id/approve",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4423,8 +4443,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/dmo/intake/:id/reject",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4445,8 +4465,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/dmo/publish-batch",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4467,8 +4487,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/dmo/publish/:id",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4489,8 +4509,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/dmo/resolve",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4511,8 +4531,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/dmo/sync-registry",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4533,8 +4553,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/email-outbox/:id/retry",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4555,8 +4575,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/event-packages",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4577,8 +4597,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/expert-offering-types",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4599,8 +4619,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/gem-candidates/:id/approve",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4621,8 +4641,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/gem-candidates/:id/reject",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4643,8 +4663,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/gems/backfill-photos",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4665,8 +4685,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/invoices",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4687,8 +4707,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/leads/:expertRequestId/assign",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4709,8 +4729,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/leads/:expertRequestId/confirm",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4731,8 +4751,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/markets",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4753,8 +4773,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/markets/:slug/refresh-geography",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4776,7 +4796,7 @@
       "diagnostics": [],
       "key": "POST /api/admin/neighborhood-claims/:id/ratify",
       "tested": false,
-      "reason": "Not run: fresh admin live-matrix evidence for this endpoint is absent."
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4798,7 +4818,7 @@
       "diagnostics": [],
       "key": "POST /api/admin/neighborhood-claims/:id/rescore",
       "tested": false,
-      "reason": "Not run: fresh admin live-matrix evidence for this endpoint is absent."
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4820,7 +4840,7 @@
       "diagnostics": [],
       "key": "POST /api/admin/neighborhood-claims/:id/return",
       "tested": false,
-      "reason": "Not run: fresh admin live-matrix evidence for this endpoint is absent."
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4842,7 +4862,7 @@
       "diagnostics": [],
       "key": "POST /api/admin/neighborhood-claims/manual-entry",
       "tested": false,
-      "reason": "Not run: fresh admin live-matrix evidence for this endpoint is absent."
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4863,8 +4883,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/neighborhoods/:id/coverage-targets",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4885,8 +4905,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/neighborhoods/backfill",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4907,8 +4927,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/optimization-fees",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4929,8 +4949,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/payouts",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4951,8 +4971,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/provider-services/:id/approve",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4973,8 +4993,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/provider-services/:id/reject",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -4995,8 +5015,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/providers/:userId/remind-stripe",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5017,8 +5037,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/qa/run-nightly",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5039,8 +5059,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/ready-made/:id/approve",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5061,8 +5081,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/ready-made/:id/reject",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5083,8 +5103,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/ready-made/disputes/:purchaseId/dismiss",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5105,8 +5125,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/ready-made/disputes/:purchaseId/refund",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5127,8 +5147,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/reviews/:id/clear-response",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5149,8 +5169,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/routing-queue/:requestId/confirm",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5171,8 +5191,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/routing-queue/:requestId/reassign",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5193,8 +5213,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/seed-categories",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5215,8 +5235,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/service-offering-types",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5237,8 +5257,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/service-templates",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5259,8 +5279,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/system/test-email",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5281,8 +5301,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/trigger-digest",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5290,7 +5310,7 @@
       "path": "/api/affiliate-booking-requests",
       "effectivePath": "/api/affiliate-booking-requests",
       "source": "server/routes/content.routes.ts",
-      "line": 7644,
+      "line": 7657,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5310,7 +5330,7 @@
       "path": "/api/affiliate-booking-requests/:id/claim",
       "effectivePath": "/api/affiliate-booking-requests/:id/claim",
       "source": "server/routes/content.routes.ts",
-      "line": 8023,
+      "line": 8036,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5330,7 +5350,7 @@
       "path": "/api/affiliate-booking-requests/:id/verify",
       "effectivePath": "/api/affiliate-booking-requests/:id/verify",
       "source": "server/routes/content.routes.ts",
-      "line": 8368,
+      "line": 8381,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5350,7 +5370,7 @@
       "path": "/api/affiliate-booking-requests/from-catalog",
       "effectivePath": "/api/affiliate-booking-requests/from-catalog",
       "source": "server/routes/content.routes.ts",
-      "line": 7783,
+      "line": 7796,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5370,7 +5390,7 @@
       "path": "/api/affiliate/track-click",
       "effectivePath": "/api/affiliate/track-click",
       "source": "server/routes/content.routes.ts",
-      "line": 9219,
+      "line": 9232,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5390,7 +5410,7 @@
       "path": "/api/affiliates/track",
       "effectivePath": "/api/affiliates/track",
       "source": "server/routes/content.routes.ts",
-      "line": 9259,
+      "line": 9272,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5470,7 +5490,7 @@
       "path": "/api/ai/generate-optimized-itineraries",
       "effectivePath": "/api/ai/generate-optimized-itineraries",
       "source": "server/routes/content.routes.ts",
-      "line": 5190,
+      "line": 5202,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5490,7 +5510,7 @@
       "path": "/api/ai/itineraries/:id/save-as-trip",
       "effectivePath": "/api/ai/itineraries/:id/save-as-trip",
       "source": "server/routes/content.routes.ts",
-      "line": 5319,
+      "line": 5331,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5530,7 +5550,7 @@
       "path": "/api/alerts/:id/acknowledge",
       "effectivePath": "/api/alerts/:id/acknowledge",
       "source": "server/routes/content.routes.ts",
-      "line": 7420,
+      "line": 7433,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5550,7 +5570,7 @@
       "path": "/api/alerts/:id/dismiss",
       "effectivePath": "/api/alerts/:id/dismiss",
       "source": "server/routes/content.routes.ts",
-      "line": 7438,
+      "line": 7451,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5810,7 +5830,7 @@
       "path": "/api/bookings",
       "effectivePath": "/api/bookings",
       "source": "server/routes.ts",
-      "line": 7051,
+      "line": 7055,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5821,8 +5841,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5841,8 +5861,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/accept-deliverable",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5850,7 +5870,7 @@
       "path": "/api/bookings/:id/cancel",
       "effectivePath": "/api/bookings/:id/cancel",
       "source": "server/routes.ts",
-      "line": 8005,
+      "line": 8009,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5861,8 +5881,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/cancel",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5870,7 +5890,7 @@
       "path": "/api/bookings/:id/components/:componentServiceId/cancel",
       "effectivePath": "/api/bookings/:id/components/:componentServiceId/cancel",
       "source": "server/routes.ts",
-      "line": 7811,
+      "line": 7815,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5881,8 +5901,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/components/:componentServiceId/cancel",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5901,8 +5921,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/confirm-completion",
-      "tested": true,
-      "reason": "Fresh real-booking User A → User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -5921,8 +5941,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/deliver-artifact",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -5941,8 +5961,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/dispute",
-      "tested": true,
-      "reason": "Fresh real-booking User A → User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -5961,8 +5981,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/pay-balance",
-      "tested": true,
-      "reason": "Fresh real-booking User A → User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -5981,8 +6001,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/:id/request-revision",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6021,8 +6041,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/confirm-payment",
-      "tested": true,
-      "reason": "Fresh real-booking User A → User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -6041,8 +6061,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/estimate-cost",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6061,8 +6081,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/process-cart",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6081,8 +6101,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/refund",
-      "tested": true,
-      "reason": "Fresh real-booking User A → User B ownership evidence (payments-mutation-auth.test.ts): anonymous, a stranger party to nothing, and the listing owner are each refused with the row proven unchanged, and the booking's own traveler passes the ownership gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -6101,8 +6121,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/bookings/webhooks/stripe",
-      "tested": true,
-      "reason": "Fresh unsigned-request evidence for the payment/user-data signature boundary."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6110,7 +6130,7 @@
       "path": "/api/budget/calculate-tip",
       "effectivePath": "/api/budget/calculate-tip",
       "source": "server/routes/content.routes.ts",
-      "line": 7335,
+      "line": 7348,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6130,7 +6150,7 @@
       "path": "/api/budget/convert-currency",
       "effectivePath": "/api/budget/convert-currency",
       "source": "server/routes/content.routes.ts",
-      "line": 7321,
+      "line": 7334,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6230,7 +6250,7 @@
       "path": "/api/cart",
       "effectivePath": "/api/cart",
       "source": "server/routes.ts",
-      "line": 9204,
+      "line": 9208,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6250,7 +6270,7 @@
       "path": "/api/cart/convert-to-itinerary",
       "effectivePath": "/api/cart/convert-to-itinerary",
       "source": "server/routes.ts",
-      "line": 9516,
+      "line": 9520,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6270,7 +6290,7 @@
       "path": "/api/cart/items",
       "effectivePath": "/api/cart/items",
       "source": "server/routes.ts",
-      "line": 6921,
+      "line": 6925,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6281,8 +6301,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/cart/items",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6290,7 +6310,7 @@
       "path": "/api/cart/migrate",
       "effectivePath": "/api/cart/migrate",
       "source": "server/routes.ts",
-      "line": 9492,
+      "line": 9496,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6301,8 +6321,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/cart/migrate",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6310,7 +6330,7 @@
       "path": "/api/cart/resolve-trip",
       "effectivePath": "/api/cart/resolve-trip",
       "source": "server/routes.ts",
-      "line": 9001,
+      "line": 9005,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6381,8 +6401,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/checkout",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6570,7 +6590,7 @@
       "path": "/api/content/:trackingNumber/flag",
       "effectivePath": "/api/content/:trackingNumber/flag",
       "source": "server/routes/content.routes.ts",
-      "line": 9326,
+      "line": 9339,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6590,7 +6610,7 @@
       "path": "/api/content/affiliate-redirect",
       "effectivePath": "/api/content/affiliate-redirect",
       "source": "server/routes/content.routes.ts",
-      "line": 9145,
+      "line": 9158,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6610,7 +6630,7 @@
       "path": "/api/content/checkout",
       "effectivePath": "/api/content/checkout",
       "source": "server/routes/content.routes.ts",
-      "line": 9130,
+      "line": 9143,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6630,7 +6650,7 @@
       "path": "/api/contracts/:id/communication",
       "effectivePath": "/api/contracts/:id/communication",
       "source": "server/routes.ts",
-      "line": 12393,
+      "line": 12397,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6641,8 +6661,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/contracts/:id/communication",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6650,7 +6670,7 @@
       "path": "/api/contracts/:id/milestone",
       "effectivePath": "/api/contracts/:id/milestone",
       "source": "server/routes.ts",
-      "line": 12376,
+      "line": 12380,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6661,8 +6681,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/contracts/:id/milestone",
-      "tested": true,
-      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -6670,7 +6690,7 @@
       "path": "/api/contracts/:id/payment",
       "effectivePath": "/api/contracts/:id/payment",
       "source": "server/routes.ts",
-      "line": 12358,
+      "line": 12362,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6681,8 +6701,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/contracts/:id/payment",
-      "tested": true,
-      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -6701,8 +6721,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/conversations",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6721,8 +6741,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/conversations/:id/messages",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6741,8 +6761,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/conversations/start",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6750,7 +6770,7 @@
       "path": "/api/coordination-bookings/:id/confirm",
       "effectivePath": "/api/coordination-bookings/:id/confirm",
       "source": "server/routes.ts",
-      "line": 10713,
+      "line": 10717,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6770,7 +6790,7 @@
       "path": "/api/coordination-states",
       "effectivePath": "/api/coordination-states",
       "source": "server/routes.ts",
-      "line": 10470,
+      "line": 10474,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6790,7 +6810,7 @@
       "path": "/api/coordination-states/:coordinationId/bookings",
       "effectivePath": "/api/coordination-states/:coordinationId/bookings",
       "source": "server/routes.ts",
-      "line": 10656,
+      "line": 10660,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6810,7 +6830,7 @@
       "path": "/api/coordination-states/:id/pay",
       "effectivePath": "/api/coordination-states/:id/pay",
       "source": "server/routes.ts",
-      "line": 10783,
+      "line": 10787,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6821,8 +6841,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/coordination-states/:id/pay",
-      "tested": true,
-      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -6830,7 +6850,7 @@
       "path": "/api/coordination-states/:id/pay/confirm",
       "effectivePath": "/api/coordination-states/:id/pay/confirm",
       "source": "server/routes.ts",
-      "line": 11007,
+      "line": 11011,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6841,8 +6861,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/coordination-states/:id/pay/confirm",
-      "tested": true,
-      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -6850,7 +6870,7 @@
       "path": "/api/coordination-states/:id/refund",
       "effectivePath": "/api/coordination-states/:id/refund",
       "source": "server/routes.ts",
-      "line": 11083,
+      "line": 11087,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -6861,8 +6881,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/coordination-states/:id/refund",
-      "tested": true,
-      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -6881,8 +6901,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/credits/purchase",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -6970,7 +6990,7 @@
       "path": "/api/discovery/scan",
       "effectivePath": "/api/discovery/scan",
       "source": "server/routes/content.routes.ts",
-      "line": 8536,
+      "line": 8549,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -6983,8 +7003,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/discovery/scan",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7005,8 +7025,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ea/ai-tasks",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7027,8 +7047,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ea/clients",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7049,8 +7069,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ea/clients/:id/push",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7071,8 +7091,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ea/clients/:id/trips",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7093,8 +7113,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ea/communications",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7115,8 +7135,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ea/events",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7137,8 +7157,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ea/executives",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7159,8 +7179,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ea/gifts",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7181,8 +7201,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ea/travel",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7203,8 +7223,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ea/venues",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7252,7 +7272,7 @@
       "path": "/api/expert-application",
       "effectivePath": "/api/expert-application",
       "source": "server/routes.ts",
-      "line": 2499,
+      "line": 2503,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7272,7 +7292,7 @@
       "path": "/api/expert-booking-requests",
       "effectivePath": "/api/expert-booking-requests",
       "source": "server/routes.ts",
-      "line": 1897,
+      "line": 1901,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7292,7 +7312,7 @@
       "path": "/api/expert-forms",
       "effectivePath": "/api/expert-forms",
       "source": "server/routes.ts",
-      "line": 2587,
+      "line": 2591,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7343,8 +7363,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert-requests/payment-intent",
-      "tested": true,
-      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -7492,7 +7512,7 @@
       "path": "/api/expert/:expertId/tip",
       "effectivePath": "/api/expert/:expertId/tip",
       "source": "server/routes.ts",
-      "line": 5717,
+      "line": 5721,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7512,7 +7532,7 @@
       "path": "/api/expert/ai-tasks/:taskId/approve",
       "effectivePath": "/api/expert/ai-tasks/:taskId/approve",
       "source": "server/routes.ts",
-      "line": 11848,
+      "line": 11852,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7532,7 +7552,7 @@
       "path": "/api/expert/ai-tasks/:taskId/regenerate",
       "effectivePath": "/api/expert/ai-tasks/:taskId/regenerate",
       "source": "server/routes.ts",
-      "line": 11911,
+      "line": 11915,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7552,7 +7572,7 @@
       "path": "/api/expert/ai-tasks/:taskId/reject",
       "effectivePath": "/api/expert/ai-tasks/:taskId/reject",
       "source": "server/routes.ts",
-      "line": 11881,
+      "line": 11885,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7572,7 +7592,7 @@
       "path": "/api/expert/ai-tasks/delegate",
       "effectivePath": "/api/expert/ai-tasks/delegate",
       "source": "server/routes.ts",
-      "line": 11749,
+      "line": 11753,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7612,7 +7632,7 @@
       "path": "/api/expert/bookings/:id/complete",
       "effectivePath": "/api/expert/bookings/:id/complete",
       "source": "server/routes.ts",
-      "line": 7678,
+      "line": 7682,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7632,7 +7652,7 @@
       "path": "/api/expert/bookings/:id/component-failed",
       "effectivePath": "/api/expert/bookings/:id/component-failed",
       "source": "server/routes.ts",
-      "line": 7773,
+      "line": 7777,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7643,8 +7663,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/bookings/:id/component-failed",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7663,8 +7683,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/knowledge-nuggets",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7683,8 +7703,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/knowledge-nuggets/:id/propose-gem",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7703,8 +7723,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/neighborhood-claims",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7723,8 +7743,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/neighborhood-claims/:id/submit",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7743,8 +7763,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/ready-made",
-      "tested": true,
-      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7763,8 +7783,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/ready-made/:id/build-review",
-      "tested": true,
-      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7783,8 +7803,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/ready-made/:id/submit",
-      "tested": true,
-      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7803,8 +7823,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/ready-made/:id/withdraw",
-      "tested": true,
-      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7823,8 +7843,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/ready-made/from-trip/:tripId",
-      "tested": true,
-      "reason": "Fresh real ready-made author/non-author fixture evidence records authentication, ownership refusal, unchanged state, and author success."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7832,7 +7852,7 @@
       "path": "/api/expert/reviews/:id/respond",
       "effectivePath": "/api/expert/reviews/:id/respond",
       "source": "server/routes.ts",
-      "line": 8178,
+      "line": 8182,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7852,7 +7872,7 @@
       "path": "/api/expert/selected-services",
       "effectivePath": "/api/expert/selected-services",
       "source": "server/routes.ts",
-      "line": 5491,
+      "line": 5495,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7863,8 +7883,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/selected-services",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7872,7 +7892,7 @@
       "path": "/api/expert/service-listings",
       "effectivePath": "/api/expert/service-listings",
       "source": "server/routes.ts",
-      "line": 5566,
+      "line": 5570,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7883,8 +7903,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/service-listings",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7892,7 +7912,7 @@
       "path": "/api/expert/service-listings/:id/submit",
       "effectivePath": "/api/expert/service-listings/:id/submit",
       "source": "server/routes.ts",
-      "line": 5630,
+      "line": 5634,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7903,8 +7923,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/service-listings/:id/submit",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7912,7 +7932,7 @@
       "path": "/api/expert/services/:id/duplicate",
       "effectivePath": "/api/expert/services/:id/duplicate",
       "source": "server/routes.ts",
-      "line": 6155,
+      "line": 6159,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7923,8 +7943,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/services/:id/duplicate",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7932,7 +7952,7 @@
       "path": "/api/expert/services/from-template/:templateId",
       "effectivePath": "/api/expert/services/from-template/:templateId",
       "source": "server/routes.ts",
-      "line": 6194,
+      "line": 6198,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7943,8 +7963,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/services/from-template/:templateId",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -7952,7 +7972,7 @@
       "path": "/api/expert/specializations",
       "effectivePath": "/api/expert/specializations",
       "source": "server/routes.ts",
-      "line": 5513,
+      "line": 5517,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7963,8 +7983,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/expert/specializations",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8012,7 +8032,7 @@
       "path": "/api/fever/cache/refresh-all",
       "effectivePath": "/api/fever/cache/refresh-all",
       "source": "server/routes/content.routes.ts",
-      "line": 7124,
+      "line": 7137,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -8032,7 +8052,7 @@
       "path": "/api/fever/cache/refresh/:cityCode",
       "effectivePath": "/api/fever/cache/refresh/:cityCode",
       "source": "server/routes/content.routes.ts",
-      "line": 7107,
+      "line": 7120,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -8223,8 +8243,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/identity/create-session",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8392,7 +8412,7 @@
       "path": "/api/itinerary-comparisons",
       "effectivePath": "/api/itinerary-comparisons",
       "source": "server/routes.ts",
-      "line": 9636,
+      "line": 9640,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -8472,7 +8492,7 @@
       "path": "/api/itinerary-comparisons/:id/generate",
       "effectivePath": "/api/itinerary-comparisons/:id/generate",
       "source": "server/routes.ts",
-      "line": 9978,
+      "line": 9982,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -8643,8 +8663,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/me/business-advisor",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8663,8 +8683,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/me/ea-invitations/:id/accept",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8683,8 +8703,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/me/ea-invitations/:id/decline",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8703,8 +8723,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/me/offering-requests",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8723,8 +8743,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/me/payment-methods/default",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8743,8 +8763,28 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/me/payment-methods/setup-intent",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/me/profile-photo",
+      "path": "/api/me/profile-photo",
+      "effectivePath": "/api/me/profile-photo",
+      "source": "server/routes/profile-photo.routes.ts",
+      "line": 51,
+      "risk": "user-data",
+      "expectedAuth": "required",
+      "expectedRoles": [],
+      "expectedOwnership": "self",
+      "expectedBoundary": "session-self",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/me/profile-photo",
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8763,8 +8803,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/me/research-prefs",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8783,8 +8823,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/me/services/:serviceId/slots",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8803,8 +8843,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/me/services/:serviceId/slots/range",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8843,8 +8883,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/messages",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8863,8 +8903,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/messages/block/:targetUserId",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8883,8 +8923,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/messages/report/message/:messageId",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8903,8 +8943,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/messages/report/user/:targetUserId",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8923,8 +8963,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/messages/typing/:conversationId",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8943,8 +8983,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/notifications/mark-all-read",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -8983,8 +9023,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/optimization-payments",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9003,8 +9043,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/optimization-payments/confirm",
-      "tested": true,
-      "reason": "Fresh mocked-Stripe confirmation ownership evidence (three tests)."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9032,7 +9072,7 @@
       "path": "/api/participants/:id/payment",
       "effectivePath": "/api/participants/:id/payment",
       "source": "server/routes/content.routes.ts",
-      "line": 7284,
+      "line": 7297,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9043,8 +9083,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/participants/:id/payment",
-      "tested": true,
-      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -9063,8 +9103,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/payouts/request",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9072,7 +9112,7 @@
       "path": "/api/provider-application",
       "effectivePath": "/api/provider-application",
       "source": "server/routes.ts",
-      "line": 2728,
+      "line": 2732,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9092,7 +9132,7 @@
       "path": "/api/provider-forms",
       "effectivePath": "/api/provider-forms",
       "source": "server/routes.ts",
-      "line": 2801,
+      "line": 2805,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9112,7 +9152,7 @@
       "path": "/api/provider/availability",
       "effectivePath": "/api/provider/availability",
       "source": "server/routes.ts",
-      "line": 10354,
+      "line": 10358,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9152,7 +9192,7 @@
       "path": "/api/provider/bookings/:id/complete",
       "effectivePath": "/api/provider/bookings/:id/complete",
       "source": "server/routes.ts",
-      "line": 7677,
+      "line": 7681,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9172,7 +9212,7 @@
       "path": "/api/provider/bookings/:id/component-failed",
       "effectivePath": "/api/provider/bookings/:id/component-failed",
       "source": "server/routes.ts",
-      "line": 7772,
+      "line": 7776,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9183,8 +9223,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/bookings/:id/component-failed",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9263,8 +9303,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/quotes/:quoteId/issue",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9283,8 +9323,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/quotes/:quoteId/withdraw",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9292,7 +9332,7 @@
       "path": "/api/provider/request-verification-review",
       "effectivePath": "/api/provider/request-verification-review",
       "source": "server/routes.ts",
-      "line": 4136,
+      "line": 4140,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9303,8 +9343,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/request-verification-review",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9312,7 +9352,7 @@
       "path": "/api/provider/services",
       "effectivePath": "/api/provider/services",
       "source": "server/routes.ts",
-      "line": 3831,
+      "line": 3835,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9332,7 +9372,7 @@
       "path": "/api/provider/services/:id/archive",
       "effectivePath": "/api/provider/services/:id/archive",
       "source": "server/routes.ts",
-      "line": 4622,
+      "line": 4626,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9343,8 +9383,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/services/:id/archive",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9363,8 +9403,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/services/:id/attestations",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9372,7 +9412,7 @@
       "path": "/api/provider/services/:id/cover-photo",
       "effectivePath": "/api/provider/services/:id/cover-photo",
       "source": "server/routes.ts",
-      "line": 6563,
+      "line": 6567,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9383,8 +9423,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/services/:id/cover-photo",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9392,7 +9432,7 @@
       "path": "/api/provider/services/:id/deliverable-file",
       "effectivePath": "/api/provider/services/:id/deliverable-file",
       "source": "server/routes.ts",
-      "line": 6475,
+      "line": 6479,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9412,7 +9452,7 @@
       "path": "/api/provider/services/:id/duplicate",
       "effectivePath": "/api/provider/services/:id/duplicate",
       "source": "server/routes.ts",
-      "line": 6176,
+      "line": 6180,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9423,8 +9463,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/services/:id/duplicate",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9432,7 +9472,7 @@
       "path": "/api/provider/services/:id/gallery-photo",
       "effectivePath": "/api/provider/services/:id/gallery-photo",
       "source": "server/routes.ts",
-      "line": 6689,
+      "line": 6693,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9443,8 +9483,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/services/:id/gallery-photo",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9452,7 +9492,7 @@
       "path": "/api/provider/services/:id/submit",
       "effectivePath": "/api/provider/services/:id/submit",
       "source": "server/routes.ts",
-      "line": 4569,
+      "line": 4573,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9463,8 +9503,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/services/:id/submit",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9472,7 +9512,7 @@
       "path": "/api/provider/services/:id/translations/:locale/approve",
       "effectivePath": "/api/provider/services/:id/translations/:locale/approve",
       "source": "server/routes.ts",
-      "line": 3765,
+      "line": 3769,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9483,8 +9523,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/services/:id/translations/:locale/approve",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9492,7 +9532,7 @@
       "path": "/api/provider/services/:id/translations/:locale/draft",
       "effectivePath": "/api/provider/services/:id/translations/:locale/draft",
       "source": "server/routes.ts",
-      "line": 3784,
+      "line": 3788,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9503,8 +9543,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/provider/services/:id/translations/:locale/draft",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9643,8 +9683,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ready-made/:id/purchase",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9683,8 +9723,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ready-made/purchases/:id/concern",
-      "tested": true,
-      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -9703,8 +9743,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/ready-made/purchases/:id/request-revision",
-      "tested": true,
-      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "POST",
@@ -9712,7 +9752,7 @@
       "path": "/api/recommendations/:id/convert",
       "effectivePath": "/api/recommendations/:id/convert",
       "source": "server/routes.ts",
-      "line": 8657,
+      "line": 8661,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9732,7 +9772,7 @@
       "path": "/api/recommendations/:id/dismiss",
       "effectivePath": "/api/recommendations/:id/dismiss",
       "source": "server/routes.ts",
-      "line": 8687,
+      "line": 8691,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9752,7 +9792,7 @@
       "path": "/api/recommendations/refresh/:city",
       "effectivePath": "/api/recommendations/refresh/:city",
       "source": "server/routes.ts",
-      "line": 8641,
+      "line": 8645,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9783,8 +9823,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/reviews/:id/flag",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9843,8 +9883,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/saved-items",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9863,8 +9903,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/saved-items/shares",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -9912,7 +9952,7 @@
       "path": "/api/serp/inquiry",
       "effectivePath": "/api/serp/inquiry",
       "source": "server/routes/content.routes.ts",
-      "line": 6462,
+      "line": 6475,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9932,7 +9972,7 @@
       "path": "/api/serp/track-click",
       "effectivePath": "/api/serp/track-click",
       "source": "server/routes/content.routes.ts",
-      "line": 6434,
+      "line": 6447,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],
@@ -10092,7 +10132,7 @@
       "path": "/api/spontaneous/:id/book",
       "effectivePath": "/api/spontaneous/:id/book",
       "source": "server/routes/content.routes.ts",
-      "line": 7578,
+      "line": 7591,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10112,7 +10152,7 @@
       "path": "/api/spontaneous/preferences",
       "effectivePath": "/api/spontaneous/preferences",
       "source": "server/routes/content.routes.ts",
-      "line": 7544,
+      "line": 7557,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10123,8 +10163,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/spontaneous/preferences",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10143,8 +10183,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/stripe/connect/onboard",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10152,7 +10192,7 @@
       "path": "/api/track/accommodation-preference",
       "effectivePath": "/api/track/accommodation-preference",
       "source": "server/routes/content.routes.ts",
-      "line": 9678,
+      "line": 9691,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10172,7 +10212,7 @@
       "path": "/api/track/activity",
       "effectivePath": "/api/track/activity",
       "source": "server/routes/content.routes.ts",
-      "line": 9561,
+      "line": 9574,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10192,7 +10232,7 @@
       "path": "/api/track/destination-search",
       "effectivePath": "/api/track/destination-search",
       "source": "server/routes/content.routes.ts",
-      "line": 9640,
+      "line": 9653,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10212,7 +10252,7 @@
       "path": "/api/track/funnel",
       "effectivePath": "/api/track/funnel",
       "source": "server/routes/content.routes.ts",
-      "line": 9521,
+      "line": 9534,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10232,7 +10272,7 @@
       "path": "/api/track/pageview",
       "effectivePath": "/api/track/pageview",
       "source": "server/routes/content.routes.ts",
-      "line": 9495,
+      "line": 9508,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10252,7 +10292,7 @@
       "path": "/api/track/search",
       "effectivePath": "/api/track/search",
       "source": "server/routes/content.routes.ts",
-      "line": 9455,
+      "line": 9468,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10272,7 +10312,7 @@
       "path": "/api/track/trip-enhanced",
       "effectivePath": "/api/track/trip-enhanced",
       "source": "server/routes/content.routes.ts",
-      "line": 9596,
+      "line": 9609,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10292,7 +10332,7 @@
       "path": "/api/tracking/impression",
       "effectivePath": "/api/tracking/impression",
       "source": "server/routes/content.routes.ts",
-      "line": 9431,
+      "line": 9444,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10412,7 +10452,7 @@
       "path": "/api/travelpulse/ai/refresh-all",
       "effectivePath": "/api/travelpulse/ai/refresh-all",
       "source": "server/routes/content.routes.ts",
-      "line": 5808,
+      "line": 5821,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -10425,8 +10465,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/travelpulse/ai/refresh-all",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10434,7 +10474,7 @@
       "path": "/api/travelpulse/ai/refresh/:cityName/:country",
       "effectivePath": "/api/travelpulse/ai/refresh/:cityName/:country",
       "source": "server/routes/content.routes.ts",
-      "line": 5781,
+      "line": 5794,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -10447,8 +10487,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/travelpulse/ai/refresh/:cityName/:country",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10456,7 +10496,7 @@
       "path": "/api/travelpulse/media/track-download",
       "effectivePath": "/api/travelpulse/media/track-download",
       "source": "server/routes/content.routes.ts",
-      "line": 5835,
+      "line": 5848,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],
@@ -10476,7 +10516,7 @@
       "path": "/api/travelpulse/seed",
       "effectivePath": "/api/travelpulse/seed",
       "source": "server/routes/content.routes.ts",
-      "line": 5692,
+      "line": 5705,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10496,7 +10536,7 @@
       "path": "/api/travelpulse/truth-check",
       "effectivePath": "/api/travelpulse/truth-check",
       "source": "server/routes/content.routes.ts",
-      "line": 5504,
+      "line": 5517,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],
@@ -10556,7 +10596,7 @@
       "path": "/api/trips/:id/claim",
       "effectivePath": "/api/trips/:id/claim",
       "source": "server/routes.ts",
-      "line": 1565,
+      "line": 1569,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10567,8 +10607,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:id/claim",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10596,7 +10636,7 @@
       "path": "/api/trips/:id/generate-itinerary",
       "effectivePath": "/api/trips/:id/generate-itinerary",
       "source": "server/routes.ts",
-      "line": 1600,
+      "line": 1604,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10667,8 +10707,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:id/suggestions",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10676,7 +10716,7 @@
       "path": "/api/trips/:tripId/activate-transport",
       "effectivePath": "/api/trips/:tripId/activate-transport",
       "source": "server/routes.ts",
-      "line": 12947,
+      "line": 12951,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10687,8 +10727,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/activate-transport",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10707,8 +10747,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/advisor/narration",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10727,8 +10767,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/advisors",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10736,7 +10776,7 @@
       "path": "/api/trips/:tripId/alerts",
       "effectivePath": "/api/trips/:tripId/alerts",
       "source": "server/routes.ts",
-      "line": 13165,
+      "line": 13169,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10747,8 +10787,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/alerts",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10767,8 +10807,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/analytics/infer",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10787,8 +10827,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/anchor-suggestions",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10807,8 +10847,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/anchors",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10827,8 +10867,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/anchors/:anchorId/impacts",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10836,7 +10876,7 @@
       "path": "/api/trips/:tripId/budget/calculate-split",
       "effectivePath": "/api/trips/:tripId/budget/calculate-split",
       "source": "server/routes.ts",
-      "line": 12532,
+      "line": 12536,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10847,8 +10887,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/budget/calculate-split",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10867,8 +10907,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/calculate-energy",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10887,8 +10927,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/changes",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10896,7 +10936,7 @@
       "path": "/api/trips/:tripId/contracts",
       "effectivePath": "/api/trips/:tripId/contracts",
       "source": "server/routes.ts",
-      "line": 12324,
+      "line": 12328,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10907,8 +10947,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/contracts",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10927,8 +10967,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/contracts/:contractId/documents",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10947,8 +10987,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/day-boundaries",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10956,7 +10996,7 @@
       "path": "/api/trips/:tripId/emergency-contacts",
       "effectivePath": "/api/trips/:tripId/emergency-contacts",
       "source": "server/routes.ts",
-      "line": 13100,
+      "line": 13104,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10967,8 +11007,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/emergency-contacts",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -10976,7 +11016,7 @@
       "path": "/api/trips/:tripId/emergency/initialize",
       "effectivePath": "/api/trips/:tripId/emergency/initialize",
       "source": "server/routes.ts",
-      "line": 13117,
+      "line": 13121,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10987,8 +11027,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/emergency/initialize",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11007,8 +11047,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/finalize",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11027,8 +11067,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/generate-presets",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11067,8 +11107,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/items/:itemId/route",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11076,7 +11116,7 @@
       "path": "/api/trips/:tripId/itinerary-items",
       "effectivePath": "/api/trips/:tripId/itinerary-items",
       "source": "server/routes.ts",
-      "line": 12647,
+      "line": 12651,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -11087,8 +11127,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/itinerary-items",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11096,7 +11136,7 @@
       "path": "/api/trips/:tripId/itinerary/optimize-order",
       "effectivePath": "/api/trips/:tripId/itinerary/optimize-order",
       "source": "server/routes.ts",
-      "line": 12893,
+      "line": 12897,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -11107,8 +11147,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/itinerary/optimize-order",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11116,7 +11156,7 @@
       "path": "/api/trips/:tripId/itinerary/reorder",
       "effectivePath": "/api/trips/:tripId/itinerary/reorder",
       "source": "server/routes.ts",
-      "line": 12858,
+      "line": 12862,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -11127,8 +11167,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/itinerary/reorder",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11136,7 +11176,7 @@
       "path": "/api/trips/:tripId/participants",
       "effectivePath": "/api/trips/:tripId/participants",
       "source": "server/routes.ts",
-      "line": 12193,
+      "line": 12197,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -11147,8 +11187,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/participants",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11156,7 +11196,7 @@
       "path": "/api/trips/:tripId/participants/bulk-invite",
       "effectivePath": "/api/trips/:tripId/participants/bulk-invite",
       "source": "server/routes.ts",
-      "line": 12229,
+      "line": 12233,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -11167,8 +11207,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/participants/bulk-invite",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11227,8 +11267,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/proposals/:id/discard",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11267,8 +11307,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/reopen",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11276,7 +11316,7 @@
       "path": "/api/trips/:tripId/transactions",
       "effectivePath": "/api/trips/:tripId/transactions",
       "source": "server/routes.ts",
-      "line": 12489,
+      "line": 12493,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -11287,8 +11327,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/transactions",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11296,7 +11336,7 @@
       "path": "/api/trips/:tripId/transactions/split",
       "effectivePath": "/api/trips/:tripId/transactions/split",
       "source": "server/routes.ts",
-      "line": 12506,
+      "line": 12510,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -11307,8 +11347,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/transactions/split",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11327,8 +11367,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/transport-legs/generate",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11347,8 +11387,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/trip-pass/purchase",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11367,8 +11407,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/trip-pass/purchase/confirm",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11387,8 +11427,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/validate-schedule",
-      "tested": true,
-      "reason": "Fresh real-resource User A → User B ownership evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11716,7 +11756,7 @@
       "path": "/api/vendors",
       "effectivePath": "/api/vendors",
       "source": "server/routes.ts",
-      "line": 2448,
+      "line": 2452,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -11787,8 +11827,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/wallet/add-credits",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -11827,8 +11867,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/webhooks/stripe",
-      "tested": true,
-      "reason": "Fresh unsigned-request evidence for the payment/user-data signature boundary."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",
@@ -12089,8 +12129,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/admin/neighborhoods/:id/lead",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PUT",
@@ -12111,8 +12151,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/admin/testimonials/featured",
-      "tested": true,
-      "reason": "Fresh admin live-matrix evidence records both unauthenticated and wrong-role rejection."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PUT",
@@ -12171,8 +12211,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/expert/neighborhood-claims/:id/capture",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PUT",
@@ -12211,8 +12251,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/me/available-now",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PUT",
@@ -12240,7 +12280,7 @@
       "path": "/api/provider/services/:id/availability-patterns",
       "effectivePath": "/api/provider/services/:id/availability-patterns",
       "source": "server/routes.ts",
-      "line": 3467,
+      "line": 3471,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -12251,8 +12291,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/provider/services/:id/availability-patterns",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PUT",
@@ -12260,7 +12300,7 @@
       "path": "/api/provider/services/:id/blackouts",
       "effectivePath": "/api/provider/services/:id/blackouts",
       "source": "server/routes.ts",
-      "line": 3617,
+      "line": 3621,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -12271,8 +12311,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/provider/services/:id/blackouts",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PUT",
@@ -12280,7 +12320,7 @@
       "path": "/api/provider/services/:id/date-ranges",
       "effectivePath": "/api/provider/services/:id/date-ranges",
       "source": "server/routes.ts",
-      "line": 3542,
+      "line": 3546,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -12291,8 +12331,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/provider/services/:id/date-ranges",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PUT",
@@ -12300,7 +12340,7 @@
       "path": "/api/provider/services/:id/pickup-route-points",
       "effectivePath": "/api/provider/services/:id/pickup-route-points",
       "source": "server/routes.ts",
-      "line": 3368,
+      "line": 3372,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -12311,8 +12351,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/provider/services/:id/pickup-route-points",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PUT",
@@ -12320,7 +12360,7 @@
       "path": "/api/provider/services/:id/route-points",
       "effectivePath": "/api/provider/services/:id/route-points",
       "source": "server/routes.ts",
-      "line": 3314,
+      "line": 3318,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -12331,8 +12371,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/provider/services/:id/route-points",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "PUT",
@@ -12340,7 +12380,7 @@
       "path": "/api/provider/services/:id/surcharge-tiers",
       "effectivePath": "/api/provider/services/:id/surcharge-tiers",
       "source": "server/routes.ts",
-      "line": 3411,
+      "line": 3415,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -12351,8 +12391,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/provider/services/:id/surcharge-tiers",
-      "tested": true,
-      "reason": "Fresh real-resource ownership evidence (payments-other-rails-mutation-auth.test.ts): anonymous is refused 401, a stranger party to nothing and every named wrong party for the rail are refused with the resource row proven unchanged, and the authorized party passes the gate."
+      "tested": false,
+      "reason": "Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints."
     },
     {
       "method": "PUT",
@@ -12360,7 +12400,7 @@
       "path": "/api/provider/services/:id/translations/:locale",
       "effectivePath": "/api/provider/services/:id/translations/:locale",
       "source": "server/routes.ts",
-      "line": 3737,
+      "line": 3741,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -12411,8 +12451,8 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "PUT /api/trips/:tripId/destinations",
-      "tested": true,
-      "reason": "Fresh unauthenticated session-boundary evidence."
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     }
   ]
 }
