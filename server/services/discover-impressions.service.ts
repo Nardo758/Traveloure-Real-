@@ -167,6 +167,47 @@ function group(row: any, key: string | null): DiscoverImpressionGroup {
   };
 }
 
+function windowFilterFor(window: DiscoverImpressionWindow) {
+  return window === "all"
+    ? sql`TRUE`
+    : sql`ci.created_at >= NOW() - (${Number(window)} * INTERVAL '1 day')`;
+}
+
+/**
+ * One row per impression passing `filter`, carrying whether it led to a linked click — aggregated
+ * once by each caller so a card clicked twice is still ONE clicked impression and never inflates
+ * the impression count. ONE derivation for the admin and the earner views (§18 rule 1).
+ *
+ * `countable` is compared in SQL against the same LINKING_START, never round-tripped through a JS
+ * Date. No linked click yet ⇒ the comparison is NULL ⇒ nothing is countable: every "since
+ * linking" figure stays 0 and every rate null, rather than dividing by impressions no click could
+ * have been linked to.
+ */
+function impressionBase(filter: ReturnType<typeof sql>) {
+  return sql`
+    WITH linked AS (
+      SELECT DISTINCT source_impression_id::text AS impression_id
+        FROM affiliate_clicks
+       WHERE source_impression_id IS NOT NULL
+    ),
+    imp AS (
+      SELECT ci.id, ci.content_type, ci.content_id, ci.city, ci.card_position,
+             ci.session_id, ci.created_at,
+             COALESCE(ci.created_at >= (${LINKING_START}), FALSE) AS countable,
+             (l.impression_id IS NOT NULL) AS clicked
+        FROM content_impressions ci
+        LEFT JOIN linked l ON l.impression_id = ci.id::text
+       WHERE ${filter}
+    )`;
+}
+
+const IMPRESSION_AGGREGATES = sql`
+    count(*)::int AS impressions,
+    count(DISTINCT session_id)::int AS sessions,
+    count(DISTINCT (content_type, content_id))::int AS cards,
+    count(*) FILTER (WHERE countable)::int AS impressions_since_linking,
+    count(*) FILTER (WHERE countable AND clicked)::int AS impressions_clicked`;
+
 export async function loadDiscoverImpressions(opts: {
   window: DiscoverImpressionWindow;
   city: string | null;
@@ -183,41 +224,10 @@ export async function loadDiscoverImpressions(opts: {
   const impressionsRecordedSince = toIso(bounds.impressions_since);
   const linkingSince = toIso(bounds.linking_since);
 
-  const windowFilter =
-    opts.window === "all"
-      ? sql`TRUE`
-      : sql`ci.created_at >= NOW() - (${Number(opts.window)} * INTERVAL '1 day')`;
-  const cityFilter = opts.city ? sql`ci.city = ${opts.city}` : sql`TRUE`;
-  // Compared in SQL against the same LINKING_START, never round-tripped through a JS Date.
-  // No linked click yet ⇒ the comparison is NULL ⇒ nothing is countable: every "since linking"
-  // figure stays 0 and every rate null, rather than dividing by impressions no click could have
-  // been linked to.
-  const sinceLinking = sql`ci.created_at >= (${LINKING_START})`;
-
-  // One row per impression, carrying whether it led to a linked click — aggregated once below so
-  // a card clicked twice is still ONE clicked impression and never inflates the impression count.
-  const base = sql`
-    WITH linked AS (
-      SELECT DISTINCT source_impression_id::text AS impression_id
-        FROM affiliate_clicks
-       WHERE source_impression_id IS NOT NULL
-    ),
-    imp AS (
-      SELECT ci.id, ci.content_type, ci.content_id, ci.city, ci.card_position,
-             ci.session_id, ci.created_at,
-             COALESCE(${sinceLinking}, FALSE) AS countable,
-             (l.impression_id IS NOT NULL) AS clicked
-        FROM content_impressions ci
-        LEFT JOIN linked l ON l.impression_id = ci.id::text
-       WHERE ${windowFilter} AND ${cityFilter}
-    )`;
-
-  const aggregates = sql`
-    count(*)::int AS impressions,
-    count(DISTINCT session_id)::int AS sessions,
-    count(DISTINCT (content_type, content_id))::int AS cards,
-    count(*) FILTER (WHERE countable)::int AS impressions_since_linking,
-    count(*) FILTER (WHERE countable AND clicked)::int AS impressions_clicked`;
+  const base = impressionBase(sql`${windowFilterFor(opts.window)} AND ${
+    opts.city ? sql`ci.city = ${opts.city}` : sql`TRUE`
+  }`);
+  const aggregates = IMPRESSION_AGGREGATES;
 
   const [totalsRes, byCityRes, byTypeRes, cardsRes] = await Promise.all([
     db.execute(sql`${base} SELECT ${aggregates} FROM imp`),
@@ -269,5 +279,89 @@ export async function loadDiscoverImpressions(opts: {
     cards,
     cardLimit: CARD_LIMIT,
     cities: rowsOf(citiesRes).map((r) => String(r.city)),
+  };
+}
+
+// ─── Earner view (board #621, second half; ledger `2026-09-25-discover-impressions-earner`) ─────
+//
+// An earner sees Discover impressions of THEIR OWN LISTINGS only — the decision-maker ruled
+// "listings only" (Sep 25, 2026), so curated gems are not counted as theirs. A listing reaches
+// Discover as a `vendor-service` card whose id is the `provider_services.id` (location-view
+// service → `CityFeedCardVendorService`), so ownership is `provider_services.user_id` = the
+// SESSION user (§14 applied to a read — never a query value). Nothing else on the page is theirs
+// to see: no other listing, no other card type, no session or viewer detail beyond counts.
+
+export const EARNER_LISTING_CARD_TYPE = "vendor-service";
+
+export interface EarnerListingImpressions {
+  serviceId: string;
+  serviceName: string;
+  impressions: number;
+  sessions: number;
+  averagePosition: number | null;
+  lastSeen: string;
+  impressionsSinceLinking: number;
+  impressionsClicked: number;
+  clickThroughRate: number | null;
+}
+
+export interface EarnerDiscoverImpressionsReport {
+  window: DiscoverImpressionWindow;
+  linkingSince: string | null;
+  totals: DiscoverImpressionGroup;
+  byCity: DiscoverImpressionGroup[];
+  listings: EarnerListingImpressions[];
+}
+
+export async function loadEarnerDiscoverImpressions(opts: {
+  userId: string;
+  window: DiscoverImpressionWindow;
+}): Promise<EarnerDiscoverImpressionsReport> {
+  if (!opts.userId) throw new Error("loadEarnerDiscoverImpressions requires the session user");
+  const boundsRes = await db.execute(sql`SELECT (${LINKING_START}) AS linking_since`);
+  const linkingSince = toIso(rowsOf(boundsRes)[0]?.linking_since);
+
+  const base = impressionBase(sql`${windowFilterFor(opts.window)}
+    AND ci.content_type = ${EARNER_LISTING_CARD_TYPE}
+    AND ci.content_id IN (SELECT ps.id::text FROM provider_services ps WHERE ps.user_id = ${opts.userId})`);
+
+  const [totalsRes, byCityRes, listingsRes] = await Promise.all([
+    db.execute(sql`${base} SELECT ${IMPRESSION_AGGREGATES} FROM imp`),
+    db.execute(sql`${base} SELECT city AS key, ${IMPRESSION_AGGREGATES} FROM imp
+                    GROUP BY city ORDER BY impressions DESC LIMIT 50`),
+    db.execute(sql`${base}
+      SELECT imp.content_id, ps.service_name,
+             count(*)::int AS impressions,
+             count(DISTINCT imp.session_id)::int AS sessions,
+             round(avg(imp.card_position)::numeric, 1) AS average_position,
+             max(imp.created_at) AS last_seen,
+             count(*) FILTER (WHERE imp.countable)::int AS impressions_since_linking,
+             count(*) FILTER (WHERE imp.countable AND imp.clicked)::int AS impressions_clicked
+        FROM imp
+        JOIN provider_services ps ON ps.id::text = imp.content_id AND ps.user_id = ${opts.userId}
+       GROUP BY imp.content_id, ps.service_name
+       ORDER BY impressions DESC, ps.service_name`),
+  ]);
+
+  return {
+    window: opts.window,
+    linkingSince,
+    totals: group(rowsOf(totalsRes)[0] ?? {}, null),
+    byCity: rowsOf(byCityRes).map((r) => group(r, r.key ?? null)),
+    listings: rowsOf(listingsRes).map((r) => {
+      const impressionsSinceLinking = Number(r.impressions_since_linking ?? 0);
+      const impressionsClicked = Number(r.impressions_clicked ?? 0);
+      return {
+        serviceId: String(r.content_id),
+        serviceName: String(r.service_name ?? ""),
+        impressions: Number(r.impressions ?? 0),
+        sessions: Number(r.sessions ?? 0),
+        averagePosition: r.average_position == null ? null : Number(r.average_position),
+        lastSeen: toIso(r.last_seen) ?? "",
+        impressionsSinceLinking,
+        impressionsClicked,
+        clickThroughRate: clickThroughRate(impressionsClicked, impressionsSinceLinking),
+      };
+    }),
   };
 }
