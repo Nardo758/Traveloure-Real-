@@ -380,6 +380,22 @@ export async function createListingBasics(
  */
 export async function pickNeighborhood(page: Page, slug: string): Promise<boolean> {
   const opt = testid(page, `option-neighborhood-${slug}`);
+  if (process.env.PN_DEBUG) {
+    const anyOpt = page.locator('[data-testid^="option-neighborhood-"]');
+    const cnt = await anyOpt.count().catch(() => -1);
+    const specificVisible = cnt > 0 ? await opt.isVisible({ timeout: 500 }).catch(() => false) : false;
+    const specificCount = cnt > 0 ? await opt.count().catch(() => -1) : -1;
+    let sampleIds = '';
+    if (cnt > 0) {
+      const ids = await anyOpt.evaluateAll((els) => els.slice(0, 15).map((e) => e.getAttribute('data-testid'))).catch(() => []);
+      sampleIds = ids.join(',');
+    }
+    // eslint-disable-next-line no-console
+    console.log(
+      `[PN_DEBUG] slug=${slug} url=${page.url()} anyOptCount=${cnt} gionCount=${specificCount} gionVisible=${specificVisible} sample=${sampleIds}`,
+    );
+    if (cnt > 0) await page.screenshot({ path: `/tmp/claude-0/sp/pn-debug-${Date.now()}.png`, fullPage: true }).catch(() => {});
+  }
 
   // Part 1a (Pass 2 finding candidate P2-S1-31/32, private_transportation fixture): the picker's
   // options come from a fetched list (`allNeighborhoods`), and the "Getting there" transport card
@@ -391,14 +407,29 @@ export async function pickNeighborhood(page: Page, slug: string): Promise<boolea
   // for the option to be STABLE (present across a short poll) and to VERIFY + RETRY the click
   // against the button's own `aria-pressed` state (ServiceForm.tsx ~1958) rather than trusting a
   // single fire-and-forget click.
+  // NOTE (found live, second iteration): the option is a TOGGLE
+  // (`onClick={() => set("neighborhood", selected ? "" : n.slug)}`), so a retry-on-not-yet-true
+  // scheme that RE-CLICKS is dangerous — if the first click genuinely succeeded but the
+  // `aria-pressed` re-render just lags, a second click flips it straight back OFF. So this polls
+  // the ALREADY-clicked state for longer before ever clicking again, and clicks at most twice.
   const clickAndVerify = async (): Promise<boolean> => {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (!(await opt.isVisible({ timeout: 3000 }).catch(() => false))) return false;
-      await opt.click({ timeout: 3000 }).catch(() => {});
-      await page.waitForTimeout(250);
-      const pressed = await opt.getAttribute('aria-pressed').catch(() => null);
-      if (pressed === 'true') return true;
-      await page.waitForTimeout(300);
+    if (!(await opt.isVisible({ timeout: 8000 }).catch(() => false))) return false;
+    for (let click = 0; click < 2; click++) {
+      let clickErr: string | null = null;
+      await opt.click({ timeout: 5000 }).catch((e) => { clickErr = String(e?.message ?? e); });
+      if (process.env.PN_DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log(`[PN_DEBUG] click#${click} err=${clickErr}`);
+      }
+      for (let poll = 0; poll < 10; poll++) {
+        await page.waitForTimeout(300);
+        const pressed = await opt.getAttribute('aria-pressed').catch((e) => `ERR:${e?.message ?? e}`);
+        if (process.env.PN_DEBUG && poll === 0) {
+          // eslint-disable-next-line no-console
+          console.log(`[PN_DEBUG] click#${click} poll#${poll} pressed=${pressed}`);
+        }
+        if (pressed === 'true') return true;
+      }
     }
     return false;
   };
@@ -507,6 +538,50 @@ export async function walkServiceFormToReview(
     const already = await box.getAttribute('data-state').then((s) => s === 'checked').catch(() => false);
     if (!already) await box.click({ timeout: 3000 }).catch(() => {});
   }
+
+  // Part 1a follow-on (Pass 2, found live via a PN_DEBUG network trace): category-specific
+  // REQUIRED fields (`GET /api/service-categories/:key/fields`, rendered on the Review step —
+  // e.g. private_transportation's `vehicle_type`/`seats`) keep `button-publish-service`
+  // permanently DISABLED when unfilled. Because F2 (migration 111) births every
+  // `provider_services` row `approval_status='submitted'` already, admin can approve straight
+  // off the Save-Draft snapshot with NO further PATCH ever required — so a category with such a
+  // field went live anyway, but carrying only whatever Save Draft wrote BEFORE the wizard was
+  // ever entered (in particular, no neighborhood: the picker's client-side state was set
+  // correctly — confirmed via `aria-pressed` — but the PATCH that would have sent it never
+  // fired, because Publish stayed disabled). Fill every category field generically here so
+  // Publish can become enabled and the picked neighborhood actually reaches the server.
+  const selectCatFields = page.locator('[data-testid^="select-cat-"]');
+  const selectCatCount = await selectCatFields.count().catch(() => 0);
+  for (let i = 0; i < selectCatCount; i++) {
+    const trigger = selectCatFields.nth(i);
+    if (await trigger.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await trigger.click({ timeout: 2000 }).catch(() => {});
+      const firstOption = page.getByRole('option').first();
+      if (await firstOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await firstOption.click({ timeout: 2000 }).catch(() => {});
+      } else {
+        await page.keyboard.press('Escape').catch(() => {});
+      }
+    }
+  }
+  const inputCatFields = page.locator('[data-testid^="input-cat-"]');
+  const inputCatCount = await inputCatFields.count().catch(() => 0);
+  for (let i = 0; i < inputCatCount; i++) {
+    const field = inputCatFields.nth(i);
+    if (await field.isVisible({ timeout: 1000 }).catch(() => false)) {
+      const current = await field.inputValue().catch(() => '');
+      if (!current) {
+        const type = await field.getAttribute('type').catch(() => null);
+        await field.fill(type === 'number' ? '2' : 'e2e supply-demand fixture', { timeout: 2000 }).catch(() => {});
+      }
+    }
+  }
+  const switchCatFields = page.locator('[data-testid^="switch-cat-"]');
+  // Booleans are left at their default (never forced true) — a required boolean gate is not a
+  // shape this fixture set has hit yet, and forcing every switch on would be guessing an answer
+  // (§13 posture) rather than filling a blank the provider genuinely must state.
+  void switchCatFields;
+
   return clicks;
 }
 
@@ -627,6 +702,24 @@ export async function enterWizardFromListingHome(page: Page): Promise<boolean> {
 }
 
 export async function submitListingForReview(page: Page): Promise<SubmitOutcome> {
+  if (process.env.PN_DEBUG) {
+    page.on('request', (req) => {
+      if (/\/api\/(provider|expert)\/services/.test(req.url()) && ['POST', 'PATCH'].includes(req.method())) {
+        const body = req.postData();
+        let neighborhoodField: string | undefined;
+        let locationField: string | undefined;
+        try {
+          const parsed = body ? JSON.parse(body) : null;
+          neighborhoodField = parsed?.neighborhood;
+          locationField = parsed?.location;
+        } catch {}
+        // eslint-disable-next-line no-console
+        console.log(
+          `[PN_DEBUG submit] ${req.method()} ${req.url()} neighborhood=${JSON.stringify(neighborhoodField)} location=${JSON.stringify(locationField)}`,
+        );
+      }
+    });
+  }
   const btn = testid(page, 'button-submit-service');
   if (await btn.isVisible().catch(() => false)) {
     if (await btn.isDisabled().catch(() => false)) {

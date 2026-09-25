@@ -37,7 +37,6 @@ function resolveChromiumExecutablePath(): string | undefined {
 
 export default defineConfig({
   testDir: './e2e/supply-demand',
-  testMatch: ['s*-*.spec.ts', 'd*-*.spec.ts'],
   // IMPORTANT: Playwright deletes `outputDir` at the start of every run. The
   // harness's own persistent files (run-id, cross-spec state, findings/
   // visibility JSONL, row-count baselines) live under test-results/ but
@@ -72,5 +71,18 @@ export default defineConfig({
       return executablePath ? { executablePath } : {};
     })(),
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // Pass 2 fix: `testMatch: ['s*-*.spec.ts', 'd*-*.spec.ts']` on a single project did NOT
+  // enforce supply-before-demand ordering, despite this file's own header comment claiming
+  // "file-name order matters" — Playwright sorts matched files by PATH, not by the order glob
+  // patterns are listed, and 'd' sorts before 's', so a plain `npx playwright test` ran every
+  // d*-*.spec.ts FIRST, against an empty harness state, and all seven skipped with "no supply
+  // fixtures in state" (found running the first full Pass-2 demand suite: 9 skipped, S1-S3
+  // green, all of D1-D7 skipped for exactly that reason). Two projects with an explicit
+  // `dependencies` edge is what actually guarantees order: Playwright will not start a
+  // dependent project until every test in its dependency has finished, regardless of alpha
+  // sort — this is the documented mechanism for cross-file ordering, not testMatch array order.
+  projects: [
+    { name: 'supply', testMatch: 's*-*.spec.ts', use: { ...devices['Desktop Chrome'] } },
+    { name: 'demand', testMatch: 'd*-*.spec.ts', dependencies: ['supply'], use: { ...devices['Desktop Chrome'] } },
+  ],
 });

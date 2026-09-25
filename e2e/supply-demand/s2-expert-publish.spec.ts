@@ -411,28 +411,43 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
         await titleInput.fill(buildTitle).catch(() => {});
       }
 
-      // Add A, B, C via the platform Service catalog picker.
-      const openPicker = testid(page, 'button-open-service-picker');
+      // Add A, B, C via the "Platform services" Add-panel source (Part 1c fix, lead review):
+      // `button-open-service-picker` / `input-service-picker-search` / `button-service-add-<id>`
+      // read as a `service-picker-modal.tsx` shape that does not exist in the CURRENT workspace —
+      // the real surface is the Add panel's seven source pills (`pill-add-<key>`), and the
+      // service catalog lives under the "platform" pill's inline search+results list
+      // (`input-browse-search`, `button-add-result-<id>`), which `button-open-service-picker`
+      // (Store icon, "Service catalog") sits inside of and is a SEPARATE, secondary control, not
+      // the entry point. Confirmed live: `pill-add-platform` was never clicked, so that whole
+      // panel — and therefore the picker button inside it — was never rendered.
       const providerServiceIds = [
         state.listings.providerA?.providerServiceId,
         state.listings.providerB?.providerServiceId,
         state.listings.providerC?.providerServiceId,
       ].filter(Boolean) as string[];
 
-      if (await openPicker.isVisible({ timeout: 5000 }).catch(() => false) && providerServiceIds.length > 0) {
+      const platformPill = testid(page, 'pill-add-platform');
+      const platformPillVisible = await platformPill.isVisible({ timeout: 5000 }).catch(() => false);
+      if (platformPillVisible && providerServiceIds.length > 0) {
+        await platformPill.click().catch(() => {});
+        await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+        await shot(page, 'S2-readymade', '03a', 'platform-services-pill-open');
         for (const svcId of providerServiceIds) {
-          await openPicker.click().catch(() => {});
-          await page.waitForTimeout(500);
-          const searchBox = testid(page, 'input-service-picker-search');
-          if (await searchBox.isVisible().catch(() => false)) {
-            await searchBox.fill('Kyoto').catch(() => {});
-            await page.waitForTimeout(600);
+          const addBtn = testid(page, `button-add-result-${svcId}`);
+          let added = await addBtn.isVisible({ timeout: 5000 }).catch(() => false);
+          if (!added) {
+            // The destination-scoped default list may not include every fixture — try a direct
+            // search too before concluding it is unreachable.
+            const searchBox = testid(page, 'input-browse-search');
+            if (await searchBox.isVisible({ timeout: 3000 }).catch(() => false)) {
+              await searchBox.fill('Kyoto').catch(() => {});
+              await page.waitForTimeout(900);
+              added = await addBtn.isVisible({ timeout: 4000 }).catch(() => false);
+            }
           }
-          const addBtn = testid(page, `button-service-add-${svcId}`);
-          const added = await addBtn.isVisible({ timeout: 4000 }).catch(() => false);
           if (added) {
             await addBtn.click().catch(() => {});
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(700);
           } else {
             fileFinding({
               journey: 'S2',
@@ -440,10 +455,10 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
               class: 'DEAD_TRIGGER',
               severity: 'P2',
               known: null,
-              title: `Service-picker did not surface provider_services ${svcId} for the ready-made build`,
-              expected: 'Searching "Kyoto" in the service picker surfaces the just-approved listing',
-              actual: 'button-service-add-<id> not visible within 4s',
-              where: 'client/src/components/expert/service-picker-modal.tsx',
+              title: `Platform-services search did not surface provider_services ${svcId} for the ready-made build`,
+              expected: '/api/search/experiences?sources=platform&destination=Kyoto surfaces the just-approved listing',
+              actual: 'button-add-result-<id> not visible within 5s (default list or "Kyoto" search)',
+              where: 'client/src/pages/expert/workspace.tsx (searchResults / button-add-result-<id>)',
               evidence: {},
               behavioural: true,
             });
@@ -457,10 +472,10 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
           class: 'DEAD_TRIGGER',
           severity: 'P1',
           known: null,
-          title: 'button-open-service-picker not available, or no A/B/C provider_service ids in state',
-          expected: 'The service catalog picker opens and A/B/C are addable',
-          actual: `openPicker visible=${await openPicker.isVisible().catch(() => false)}, ids=${providerServiceIds.length}`,
-          where: 'client/src/pages/expert/workspace.tsx (button-open-service-picker)',
+          title: 'pill-add-platform not available, or no A/B/C provider_service ids in state',
+          expected: 'The "Platform services" Add-panel source opens and A/B/C are addable',
+          actual: `platformPillVisible=${platformPillVisible}, ids=${providerServiceIds.length}`,
+          where: 'client/src/pages/expert/workspace.tsx (pill-add-platform)',
           evidence: { shot: 'shots/S2-readymade-02-after-new-build.png' },
           behavioural: true,
         });
