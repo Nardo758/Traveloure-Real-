@@ -298,6 +298,7 @@ import {
   getConciergeBookingCap,
   resolveConciergeBookingFee,
   resolveServiceOwnerShareRate,
+  serviceCategorySlugToFeeCategory,
   type CommissionRates,
 } from "./services/commission";
 // 1C direct-lane repoint (docs/DECISIONS.md ruling 69 disposition 6) — the cart quote must price a
@@ -352,17 +353,7 @@ import { locationQueryMatches } from "@shared/location-match";
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
 // "transportation-logistics"). booking_fee_configs.category uses broader domain
 // names ("transportation", "accommodation", …). This helper bridges the two.
-function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
-  if (!slug) return "default";
-  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
-  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
-  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
-  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
-  if (/flight|air|airline/.test(slug)) return "flights";
-  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
-  if (/insurance|safety|security/.test(slug)) return "insurance";
-  return "default";
-}
+// serviceCategorySlugToFeeCategory is imported from services/commission (one definition, §18 rule 1).
 
 // verifyTripOwnership now comes from ./utils/trip-ownership — the shared single source of
 // truth (it additionally handles raw-SQL snake_case rows and never throws). The local copy
@@ -7185,9 +7176,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ownerIsProvider: isProviderRole(
           (await storage.getUser(service.userId ?? ""))?.role,
         ),
-        feeCategory: service.categoryId
-          ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
-          : null,
+        // Mapped to its fee category the way /api/checkout maps a cart line — a raw slug names no
+        // band, throws inside the resolver and leaves platform_fee at 0 (ledger
+        // `2026-09-25-quote-platform-fee`).
+        feeCategory: serviceCategorySlugToFeeCategory(
+          service.categoryId
+            ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
+            : null,
+        ),
       });
 
       // createServiceBookingAtomic wraps the insert + bookings_count increment in a single
