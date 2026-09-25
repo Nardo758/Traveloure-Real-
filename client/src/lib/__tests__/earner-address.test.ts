@@ -284,7 +284,6 @@ describe("shipped wiring — the call sites actually switched", () => {
     // The inventory lane 2 works from. Each of these files keeps a user-id address for a stated
     // reason; the marker is what makes the remaining set countable rather than rediscovered.
     for (const rel of [
-      "pages/expert-detail.tsx",
       "pages/storefront.tsx",
       "pages/expert/client-detail.tsx",
       "components/marketplace/concierge-card.tsx",

@@ -157,7 +157,7 @@ export function conversationChatPath(
  * The public profile path for an earner row.
  *
  * `/s/:handle` IS the canonical public page for a handled earner — `/experts/:id` already
- * redirects there (`expert-detail.tsx`'s S2 redirect), so linking by handle is today's
+ * redirects there (the storefront page's own redirect for a handled earner, `storefront.tsx`), so linking by handle is today's
  * destination with the internal id taken out of the address bar rather than a new page.
  *
  * FALLBACK, and it is honest about what it is: an earner who has claimed no handle has no

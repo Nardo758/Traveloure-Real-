@@ -8,7 +8,7 @@
  *
  * The /notifications route stays registered (App.tsx) so existing links/bookmarks keep working;
  * this component now only redirects, mirroring the retired-route pattern used elsewhere
- * (e.g. expert-detail.tsx's `<Redirect to={...} />`, the C5/C9 Inbox-absorption redirects).
+ * (e.g. storefront.tsx's `<Redirect to={...} />` to `/s/:handle`, the C5/C9 Inbox-absorption redirects).
  */
 import { Redirect } from "wouter";
 
