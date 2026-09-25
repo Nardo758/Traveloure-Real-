@@ -8,6 +8,10 @@
  *   I3 click-through is counted only over impressions shown from the earliest linked impression; an
  *      older impression is in the impression count and NOT in the click-through denominator.
  *   I4 where nothing is countable yet the rate is null — never 0%.
+ *   E1 the earner view counts ONLY the session user's own listings (vendor-service cards whose id
+ *      is their provider_services row) — never another earner's listing, never a gem that happens
+ *      to share an id, and names each listing from its own row.
+ *   E2 someone with no listings gets an empty report, not an error and not anyone else's rows.
  * Needs a disposable Postgres with migrations applied and JOURNEY_DB_WRITES_OK=1.
  * Run: npx tsx --test --test-force-exit server/__tests__/discover-impressions.db.test.ts
  */
@@ -19,6 +23,7 @@ import { db } from "../db";
 import {
   clickThroughRate,
   loadDiscoverImpressions,
+  loadEarnerDiscoverImpressions,
   resolveClickAttribution,
 } from "../services/discover-impressions.service";
 
@@ -57,7 +62,15 @@ before(() => {
   assert.equal(process.env.JOURNEY_DB_WRITES_OK, "1", "Refusing to write fixtures without JOURNEY_DB_WRITES_OK=1");
 });
 
+const earnerA = `di-ea-${RUN}`;
+const earnerB = `di-eb-${RUN}`;
+const nobody = `di-nb-${RUN}`;
+const listingA1 = `di-la1-${RUN}`;
+const listingA2 = `di-la2-${RUN}`;
+const listingB = `di-lb-${RUN}`;
+
 after(async () => {
+  await db.execute(sql`DELETE FROM users WHERE id IN (${earnerA}, ${earnerB}, ${nobody})`);
   if (clickIds.length) {
     await db.execute(sql`DELETE FROM affiliate_clicks WHERE id IN (${sql.join(clickIds.map((i) => sql`${i}`), sql`, `)})`);
   }
@@ -155,4 +168,49 @@ test("I4 nothing countable yet ⇒ no rate, never 0%", async () => {
   assert.equal(clickThroughRate(0, 0), null);
   assert.equal(clickThroughRate(3, 0), null);
   assert.equal(clickThroughRate(1, 8), 12.5);
+});
+
+test("E1 an earner sees only their own listings", async () => {
+  await db.execute(sql`
+    INSERT INTO users (id, email, first_name, role)
+    VALUES (${earnerA}, ${earnerA + "@t.test"}, 'Ana', 'local_expert'),
+           (${earnerB}, ${earnerB + "@t.test"}, 'Ben', 'service_provider'),
+           (${nobody}, ${nobody + "@t.test"}, 'Nia', 'user')`);
+  await db.execute(sql`
+    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, delivery_method)
+    VALUES (${listingA1}, ${earnerA}, ${"Tea ceremony " + RUN}, 'fixture', '40.00', 'active', 'approved', 'in_person'),
+           (${listingA2}, ${earnerA}, ${"Night walk " + RUN}, 'fixture', '40.00', 'active', 'approved', 'in_person'),
+           (${listingB}, ${earnerB}, ${"Someone else " + RUN}, 'fixture', '40.00', 'active', 'approved', 'in_person')`);
+
+  const city = `di-earn-${RUN}`;
+  const a1 = await impression({ type: "vendor-service", id: listingA1, session: `s-e1-${RUN}`, city, position: 3 });
+  await impression({ type: "vendor-service", id: listingA1, session: `s-e2-${RUN}`, city, position: 5 });
+  await impression({ type: "vendor-service", id: listingA2, session: `s-e3-${RUN}`, city, position: 1 });
+  // Not earner A's: another earner's listing, and a gem card that happens to reuse A's id.
+  await impression({ type: "vendor-service", id: listingB, session: `s-e4-${RUN}`, city });
+  await impression({ type: "gem", id: listingA1, session: `s-e5-${RUN}`, city });
+  await click(a1, "vendor-service", listingA1);
+
+  const report = await loadEarnerDiscoverImpressions({ userId: earnerA, window: "all" });
+  assert.equal(report.totals.impressions, 3, "three impressions of A's two listings, nothing else");
+  assert.deepEqual(report.listings.map((l) => l.serviceId).sort(), [listingA1, listingA2].sort());
+  const one = report.listings.find((l) => l.serviceId === listingA1)!;
+  assert.equal(one.serviceName, "Tea ceremony " + RUN);
+  assert.equal(one.impressions, 2);
+  assert.equal(one.averagePosition, 4);
+  assert.equal(one.impressionsClicked, 1);
+  assert.ok(!JSON.stringify(report).includes(listingB), "another earner's listing never appears");
+
+  const other = await loadEarnerDiscoverImpressions({ userId: earnerB, window: "all" });
+  assert.equal(other.totals.impressions, 1);
+  assert.deepEqual(other.listings.map((l) => l.serviceId), [listingB]);
+});
+
+test("E2 no listings means an empty report", async () => {
+  const report = await loadEarnerDiscoverImpressions({ userId: nobody, window: "all" });
+  assert.equal(report.totals.impressions, 0);
+  assert.equal(report.totals.clickThroughRate, null);
+  assert.deepEqual(report.listings, []);
+  assert.deepEqual(report.byCity, []);
+  await assert.rejects(() => loadEarnerDiscoverImpressions({ userId: "", window: "all" }));
 });

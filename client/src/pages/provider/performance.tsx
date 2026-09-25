@@ -11,6 +11,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useSearch, Link } from "wouter";
 import { ProviderLayout } from "@/components/provider/provider-layout";
+import { DiscoverImpressionsPanel } from "@/components/backoffice/discover-impressions-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -445,6 +446,13 @@ export default function ProviderPerformance() {
             </div>
           </>
         )}
+            {/* Board #621, earner half: the provider's own listings on Discover. */}
+            <section data-testid="section-performance-discover">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                On Discover
+              </h2>
+              <DiscoverImpressionsPanel />
+            </section>
           </div>
         </TabsContent>
 
