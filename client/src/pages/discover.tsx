@@ -93,7 +93,10 @@ import { useTrip } from "@/hooks/use-trips";
 // reads, same empty-state behaviour; only their mount changed.
 import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
 import { WishlistSection } from "@/components/dashboard/WishlistSection";
-import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE, ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
+import { ADDED_TO_CART_TITLE, ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE, ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
+import { addButtonLabel, decideAddTarget, GUEST_CART_SAVED_NOTE, listingPlanItemBody } from "@/lib/add-target";
+import { PlanPickerDialog, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
+import { syncActiveTripToContext } from "@/lib/trip-selection";
 import type { LucideIcon } from "lucide-react";
 
 // Geist Mono — labels & numbers per the earn grammar (2026-08-25-marketplace-earn-grammar).
@@ -407,12 +410,15 @@ function ServiceCard({
   isAddingToCart,
   isAdded,
   targetTripId,
+  addLabelText = ADD_TO_PLAN_LABEL,
 }: {
   service: Service;
   category?: ServiceCategory;
   onAddToCart?: (serviceId: string) => void;
   isAddingToCart?: boolean;
   isAdded?: boolean;
+  /** The add button's words, from `addButtonLabel` — "Add to Cart" only for a guest (RC-2). */
+  addLabelText?: string;
   /** The trip this grid is scoped to (slip handoff / active TripContext), forwarded into the
       detail link so opening a listing does not drop the trip the way it used to. */
   targetTripId?: string;
@@ -593,7 +599,7 @@ function ServiceCard({
                   disabled={isAddingToCart || isAdded}
                   data-testid={`button-add-to-cart-${service.id}`}
                 >
-                  {isAdded ? "Added" : isAddingToCart ? "Adding…" : ADD_TO_PLAN_LABEL}
+                  {isAdded ? "Added" : isAddingToCart ? "Adding…" : addLabelText}
                 </Button>
               )}
             </div>
@@ -1245,8 +1251,9 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   // paid-optimization step now. Its server endpoint (POST /api/discover/recommendations)
   // was removed too (roadmap 3.4, consumer-less; restore from git history if revived).
 
-  // Guest cart fallback — used when auth has resolved to no user, or when the
-  // server returns 401 (the definitive "not authenticated" signal).
+  // Guest cart fallback — used ONLY when auth has resolved to no user (LD 39's sanctioned guest
+  // fallback). The words say where the item is and what it takes to plan it (RC-2, §13): it is in
+  // the CART, not on a plan, until the guest signs in and starts one.
   const saveToGuestCart = (serviceId: string) => {
     const GUEST_CART_KEY = "traveloure_guest_cart_pending";
     try {
@@ -1255,37 +1262,13 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
         localStorage.setItem(GUEST_CART_KEY, JSON.stringify([...existing, serviceId]));
       }
     } catch { /* ignore */ }
-    toast({ title: "Saved!", description: "Sign in to checkout and save your selection." });
+    toast({ title: ADDED_TO_CART_TITLE, description: GUEST_CART_SAVED_NOTE });
   };
 
-  // Cart mutations
-  const addToCartMutation = useMutation({
-    mutationFn: async (serviceId: string) => {
-      setAddingToCartId(serviceId);
-      return apiRequest("POST", "/api/cart", { serviceId, quantity: 1 });
-    },
-    onSuccess: (_, serviceId) => {
-      setAddedServices(prev => new Set(prev).add(serviceId));
-      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-      toast({ title: "Added to cart!", description: "Service has been added to your cart." });
-      setAddingToCartId(null);
-    },
-    onError: (error: any, serviceId: string) => {
-      // A 401 means the session cookie was not established server-side — i.e. a
-      // genuine guest, or a click that beat the /api/auth/user query on a cold
-      // load. Fall back to the guest cart instead of a scary error toast; this
-      // closes the auth-state race that dropped authed users' items into
-      // localStorage (Stage-1 journey-1A cart-empty failure).
-      if (typeof error?.message === "string" && error.message.startsWith("401")) {
-        saveToGuestCart(serviceId);
-        setAddingToCartId(null);
-        return;
-      }
-      console.error("[Cart] addToCartMutation failed:", error);
-      toast({ variant: "destructive", title: "Failed to add to cart", description: error.message });
-      setAddingToCartId(null);
-    },
-  });
+  // RC-2 (ledger 2026-09-24-rc2-add-to-plan): the signed-in trip-less `POST /api/cart` add that
+  // lived here is DELETED (§18c) — a member with no plan in hand is now asked which plan (or to
+  // start one), and a guest keeps the client-local guest cart above. Nothing on this grid writes a
+  // trip-less server cart row any more.
 
   // cart-is-slip (Trip Card rebuild Phase 3b, row 12; ledger 2026-08-31-manifest-is-the-boundary):
   // an Add-to-trip click resolves the TARGET trip — the ?tripId= handoff first, then the active
@@ -1301,15 +1284,13 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     mutationFn: async (serviceId: string) => {
       setAddingToCartId(serviceId);
       const svc = result?.services?.find((s) => s.id === serviceId);
-      return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, {
-        title: svc?.serviceName ?? "Service",
-        description: svc?.description || svc?.shortDescription || undefined,
-        itemType: "activity",
-        providerServiceId: serviceId,
-        estimatedCost: svc?.price ? String(svc.price) : undefined,
-        locationName: svc?.location || svc?.serviceName || undefined,
-        dayNumber: 1,
-      });
+      // The ONE listing→item body (`listingPlanItemBody`), shared with "Start a new plan", so both
+      // ways onto a plan land the same row.
+      return apiRequest(
+        "POST",
+        `/api/trips/${targetTripId}/itinerary-items`,
+        listingPlanItemBody(svc ?? { id: serviceId }),
+      );
     },
     onSuccess: (_res, serviceId) => {
       setAddedServices((prev) => new Set(prev).add(serviceId));
@@ -1347,24 +1328,69 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     );
   };
 
+  // RC-2 (ledger 2026-09-24-rc2-add-to-plan). Where an add lands is ONE pure decision
+  // (`decideAddTarget`): a plan in hand ⇒ that plan; a signed-in member with none ⇒ the plan
+  // picker; a definitive guest ⇒ the guest cart; auth still unanswered ⇒ the click is HELD until it
+  // answers, never guessed either way (the cold-load race that once dropped members' selections
+  // into localStorage, Stage-1 journey-1A).
+  const addTarget = decideAddTarget({ targetTripId, signedIn: !!user, authLoading });
+  const [pickFor, setPickFor] = useState<string | null>(null);
+  const [heldUntilAuth, setHeldUntilAuth] = useState<string | null>(null);
+  // A picked plan is bound as the CURRENT plan first; the add then re-enters `handleAddToCart`
+  // once `targetTripId` has become that plan, so the ordinary rail — location check included —
+  // runs against it. No second add path.
+  const [resumeAdd, setResumeAdd] = useState<{ serviceId: string; tripId: string } | null>(null);
+  const startPlanThenAdd = useStartPlanThenAdd();
+
+  useEffect(() => {
+    if (resumeAdd && targetTripId === resumeAdd.tripId) {
+      const { serviceId } = resumeAdd;
+      setResumeAdd(null);
+      handleAddToCart(serviceId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeAdd, targetTripId]);
+
+  useEffect(() => {
+    if (heldUntilAuth && !authLoading) {
+      const serviceId = heldUntilAuth;
+      setHeldUntilAuth(null);
+      runAddToCart(serviceId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heldUntilAuth, authLoading]);
+
   const runAddToCart = (serviceId: string) => {
-    // A resolved active trip means "add to THAT trip's plan" (cart-is-slip), not the generic cart.
-    if (targetTripId) {
-      addToTripMutation.mutate(serviceId);
-      return;
+    switch (addTarget) {
+      case "plan":
+        addToTripMutation.mutate(serviceId);
+        return;
+      case "pick":
+        setPickFor(serviceId);
+        return;
+      case "guest_cart":
+        saveToGuestCart(serviceId);
+        return;
+      case "wait":
+        setHeldUntilAuth(serviceId);
+        return;
     }
-    // Auth is authoritative server-side (the session cookie), not the client
-    // `user` query — which can still be loading on a cold page load. Only take
-    // the guest path once auth has DEFINITIVELY resolved to no user; while it is
-    // still loading, attempt the authenticated add and let the server's 401
-    // (handled in the mutation's onError) fall back to the guest cart. Branching
-    // on `!user` alone raced the auth query and silently dropped authenticated
-    // users' selections into localStorage (Stage-1 journey-1A cart-empty).
-    if (!user && !authLoading) {
-      saveToGuestCart(serviceId);
-      return;
-    }
-    addToCartMutation.mutate(serviceId);
+  };
+
+  const pickPlanForAdd = (plan: PickablePlan) => {
+    const serviceId = pickFor;
+    setPickFor(null);
+    if (!serviceId) return;
+    syncActiveTripToContext(plan);
+    setResumeAdd({ serviceId, tripId: plan.id });
+  };
+
+  const startNewPlanForAdd = () => {
+    const serviceId = pickFor;
+    setPickFor(null);
+    if (!serviceId) return;
+    const svc = result?.services?.find((s) => s.id === serviceId);
+    startPlanThenAdd(listingPlanItemBody(svc ?? { id: serviceId }));
   };
 
   const createComparison = async () => {
@@ -1870,6 +1896,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                               isAddingToCart={addingToCartId === service.id}
                               isAdded={addedServices.has(service.id)}
                               targetTripId={targetTripId}
+                              addLabelText={addButtonLabel(addTarget)}
                             />
                           ))}
                         </div>
@@ -2189,6 +2216,15 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
         </section>
       </div>
       <TripQueueIndicator />
+      <PlanPickerDialog
+        open={pickFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setPickFor(null);
+        }}
+        itemName={result?.services?.find((s) => s.id === pickFor)?.serviceName ?? null}
+        onPick={pickPlanForAdd}
+        onStartNew={startNewPlanForAdd}
+      />
       <LocationMismatchDialog
         alert={mismatchGate.alert}
         listingName={mismatchGate.listing?.name ?? ""}
