@@ -1019,20 +1019,6 @@ jobs:
   category-key-repair:
     name: category-key-repair (ledger 2026-09-06-category-key-repair — migration 289)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1040,6 +1026,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1066,20 +1054,6 @@ jobs:
   archetype-fixtures:
     name: archetype-fixtures (ledger 2026-09-12-archetype-fixtures)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1087,6 +1061,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1116,20 +1092,6 @@ jobs:
   service-quotes:
     name: service-quotes (punchlist D-28..D-31; ledger 2026-09-15-d28-d31-service-quotes)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1137,6 +1099,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1163,20 +1127,6 @@ jobs:
   quote-born-charge:
     name: quote-born-charge (LD 49's charge lane; ledger 2026-09-18-quote-born-charge)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1184,6 +1134,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1211,20 +1163,6 @@ jobs:
   quote-plan-link:
     name: quote-plan-link (migration 314; ledger 2026-09-19-quote-plan-link)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1232,6 +1170,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1255,20 +1195,6 @@ jobs:
   booking-birth-provenance:
     name: booking-birth-provenance (rulings 41/46; ledger 2026-09-12-booking-birth-holes)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1276,6 +1202,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1308,20 +1236,6 @@ jobs:
   plan-work-one-rail:
     name: plan-work-one-rail (rulings 11/12; ledger 2026-09-15-plan-work-one-rail)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1329,6 +1243,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1356,20 +1272,6 @@ jobs:
   booking-agent-claim:
     name: booking-agent-claim (LD 44; ledger 2026-09-08-assignment-is-claimed / 2026-09-15-booking-agent-claim / 2026-09-15-d10-confirmed-needs-partner-evidence)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1377,6 +1279,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1410,20 +1314,6 @@ jobs:
   transport-payment-intent:
     name: transport-payment-intent (punchlist R-1; ledger 2026-09-14-transport-confirm-stamps-pi)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1431,6 +1321,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1465,20 +1357,6 @@ jobs:
   ready-made-clone-fields:
     name: ready-made-clone-fields (V-14/V-15; ledger 2026-09-13-clone-carries-content-not-state)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1487,6 +1365,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1525,20 +1405,6 @@ jobs:
   dates-confirmed:
     name: dates-confirmed (D-22 + R-4; ledger 2026-09-15-d22-dates-confirmed)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1547,6 +1413,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1577,20 +1445,6 @@ jobs:
   acceptance-rails:
     name: acceptance-rails (D-24..D-27 + D-40 + D-36..D-39 + D-32..D-35; ledgers 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt, 2026-09-15-d36-d39-completion-declared, 2026-09-16-d32-d35-bundle-components)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1599,6 +1453,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1721,20 +1577,6 @@ jobs:
   plan-proposals:
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1743,6 +1585,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1838,20 +1682,6 @@ jobs:
   from-state-guards:
     name: from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1860,6 +1690,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1886,20 +1718,6 @@ jobs:
   concierge-fee-split:
     name: concierge-fee-split (Locked Decision 51; ledger 2026-09-18-concierge-fee-cap-split)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1908,6 +1726,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1935,20 +1755,6 @@ jobs:
   concierge-handoff:
     name: concierge-handoff (ledger 2026-09-18-concierge-handoff)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -1957,6 +1763,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1981,20 +1789,6 @@ jobs:
   concierge-plan-read:
     name: concierge-plan-read (ledger 2026-09-20-concierge-plan-read)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2003,6 +1797,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2028,20 +1824,6 @@ jobs:
   linked-item-purchase-write:
     name: linked-item-purchase-write (ledger 2026-09-19-linked-item-purchase-write)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2050,6 +1832,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2075,20 +1859,6 @@ jobs:
   platform-concierge-listing:
     name: platform-concierge-listing (Locked Decision 51 lane F; ledger 2026-09-18-platform-concierge-listing)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2097,6 +1867,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2192,20 +1964,6 @@ jobs:
   one-trip-write-resolver:
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2214,6 +1972,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2240,20 +2000,6 @@ jobs:
   leads-door-and-trip-read-gate:
     name: leads-door-and-trip-read-gate (V-32, V-33; ledger 2026-09-15-v32-v33-leads-door-item-read-gate)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2262,6 +2008,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2291,20 +2039,6 @@ jobs:
   slot-units:
     name: slot-units (V-26; ledger 2026-09-15-v26-slot-units)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2313,6 +2047,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2340,20 +2076,6 @@ jobs:
   reconciliation-detection:
     name: reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2361,6 +2083,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -3106,20 +2830,6 @@ jobs:
   suite-server-services:
     name: suite-server-services (server/services/__tests__ — DB-backed)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -3128,6 +2838,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -3153,20 +2865,6 @@ jobs:
   suite-server-routes-migrations:
     name: suite-server-routes-migrations (server/routes/__tests__ + server/migrations/__tests__ — DB-backed)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: traveloure
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -3175,6 +2873,8 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
