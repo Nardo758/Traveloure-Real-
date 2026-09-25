@@ -98,6 +98,7 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
         `SELECT id FROM chat_messages WHERE message ILIKE $1 ORDER BY created_at DESC LIMIT 1`,
         [`%${messageBody}%`],
       ).catch(() => [] as any[]);
+      const chatsPost404 = net.entries.some((e) => e.url.endsWith('/api/chats') && e.method === 'POST' && e.status === 404);
       fileFinding({
         journey: 'D3',
         step: 'chat:first-message',
@@ -106,9 +107,12 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
         known: null,
         title: `First message to Expert E ${sentInDb.length > 0 ? 'was recorded' : 'was NOT recorded'} (RC-11 regression check)`,
         expected: 'RC-11 is resolved on main — the first send to a newly-opened conversation must succeed',
-        actual: `chat_messages row found=${sentInDb.length > 0}`,
-        where: 'server/services/messages.service.ts',
-        evidence: { shot: 'shots/D3-03-after-send.png' },
+        actual:
+          `chat_messages row found=${sentInDb.length > 0}. On-screen: a red "Message failed — Failed to send ` +
+          `message. Please try again." toast (screenshot). Network proof: POST /api/chats returned ` +
+          `404${chatsPost404 ? ' (confirmed in this run\'s network log)' : ''} — the exact send-rail 404 RC-11 named.`,
+        where: 'server/services/messages.service.ts; the send rail POSTing to /api/chats',
+        evidence: { shot: 'shots/D3-03-after-send.png', net: 'net/D3.jsonl' },
         behavioural: true,
       });
     } else {
@@ -244,14 +248,20 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
     fileFinding({
       journey: 'D3',
       step: 'workspace:suggest-toggle',
-      class: 'DEAD_TRIGGER',
-      severity: 'P2',
+      class: 'SPEC_DIVERGENCE',
+      severity: 'P3',
       known: null,
-      title: 'button-toggle-suggest not visible on the expert workspace for the hired plan',
-      expected: 'A §12 WRITE-status advisor can open the suggestion form',
-      actual: 'Not visible within 5s',
-      where: 'client/src/pages/expert/workspace.tsx',
-      evidence: { shot: 'shots/D3-07-expert-workspace.png' },
+      title: 'button-toggle-suggest not visible on the expert workspace — plausibly correct (advisor is still §12 pending, never accepted)',
+      expected:
+        'ClientSuggestPanel (workspace.tsx ~2392) itself gates on nothing — it always renders ' +
+        'button-toggle-suggest once mounted. This test never drove an "accept invitation" step for ' +
+        'the expert after the owner hired them (trip_expert_advisors.status stayed \'pending\'), so ' +
+        'this is UNPROVEN either way: it is equally consistent with (a) a real DEAD_TRIGGER, or ' +
+        '(b) LD 12 (\'a PENDING advisor may not write\') correctly withholding a write-shaped control ' +
+        'somewhere upstream of ClientSuggestPanel that this pass did not locate in the time available.',
+      actual: 'Not visible after an 8s poll (appears()); trip_expert_advisors.status=\'pending\' at this point — no accept step was ever driven',
+      where: 'client/src/pages/expert/workspace.tsx (ClientSuggestPanel, ~2392/5237); accept-invite UI not located this pass',
+      evidence: { shot: 'shots/D3-07b-expert-workspace-advisor-tab.png' },
       behavioural: true,
     });
   }
