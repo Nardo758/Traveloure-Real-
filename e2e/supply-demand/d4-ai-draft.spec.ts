@@ -12,8 +12,8 @@
  * asserted.
  */
 import { test } from '@playwright/test';
-import { E2E_PASSWORD } from './lib/run-id';
-import { loginViaUi } from './lib/accounts';
+import { E2E_PASSWORD, e2eEmail } from './lib/run-id';
+import { signupViaUi } from './lib/accounts';
 import { fillPlanModalToFinish, clickPlanFinish, openPlanModalFromHero } from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding } from './lib/findings';
@@ -25,8 +25,7 @@ test.describe.configure({ mode: 'serial' });
 
 test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async ({ page }) => {
   const state = readState();
-  const tauth = state.accounts.tauth;
-  if (!tauth?.email) {
+  if (!state.accounts.tauth?.email) {
     fileFinding({
       journey: 'D4',
       step: 'precondition',
@@ -44,8 +43,16 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
     return;
   }
 
+  // A SEPARATE fresh account, not D1's tauth (harness fix): `finish()`'s `shouldMint` only mints
+  // a NEW trip when `!getTripContext().tripId` — D1's tauth already has a plan bound as "current"
+  // in their pen, so re-opening "Plan with AI" in that SAME session just continues D1's
+  // now-non-empty plan (confirmed behaviourally: state.trips.tauthAiDraft came back with the
+  // IDENTICAL id as state.trips.tauthKyoto). LD 41 (b)'s free-draft-on-empty-plan premise needs a
+  // session with NO plan bound yet, so this journey mints its own traveler.
+  const tauth = { email: e2eEmail('tauth-d4') };
+
   const net = netLogger(page, 'D4');
-  await loginViaUi(page, tauth.email, E2E_PASSWORD);
+  await signupViaUi(page, { email: tauth.email, firstName: 'E2E', lastName: 'TAuthD4' });
 
   // ── A FRESH plan for the free-draft leg (LD 41 (b): free draft runs only on an EMPTY plan) ──
   await page.goto('/');

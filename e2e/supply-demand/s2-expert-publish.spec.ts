@@ -433,16 +433,29 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
         await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
         await shot(page, 'S2-readymade', '03a', 'platform-services-pill-open');
         for (const svcId of providerServiceIds) {
-          const addBtn = testid(page, `button-add-result-${svcId}`);
-          let added = await addBtn.isVisible({ timeout: 5000 }).catch(() => false);
-          if (!added) {
-            // The destination-scoped default list may not include every fixture — try a direct
-            // search too before concluding it is unreachable.
+          // Part 1c follow-on fix (found live via curl against /api/search/experiences): the
+          // platform search's `result.id` is `pl_<provider_services.id>` (content.routes.ts
+          // ~6640, `id: \`pl_${p.id}\``), not the raw id — `button-add-result-${svcId}` never
+          // matched anything. Also: the endpoint's `storage.getAllProviderServices()` read can
+          // lag the admin-approve UI action by longer than 5s (the same time-to-visible
+          // characteristic already tracked, e.g. P2-S1-13), so this polls with page reloads
+          // rather than a single short wait.
+          const addBtn = testid(page, `button-add-result-pl_${svcId}`);
+          let added = false;
+          for (let attempt = 0; attempt < 6 && !added; attempt++) {
+            added = await addBtn.isVisible({ timeout: 5000 }).catch(() => false);
+            if (added) break;
             const searchBox = testid(page, 'input-browse-search');
             if (await searchBox.isVisible({ timeout: 3000 }).catch(() => false)) {
-              await searchBox.fill('Kyoto').catch(() => {});
-              await page.waitForTimeout(900);
-              added = await addBtn.isVisible({ timeout: 4000 }).catch(() => false);
+              await searchBox.fill('').catch(() => {});
+              await page.waitForTimeout(400);
+            }
+            await page.reload();
+            await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+            const pillAgain = testid(page, 'pill-add-platform');
+            if (await pillAgain.isVisible({ timeout: 5000 }).catch(() => false)) {
+              await pillAgain.click().catch(() => {});
+              await page.waitForTimeout(600);
             }
           }
           if (added) {
@@ -457,7 +470,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
               known: null,
               title: `Platform-services search did not surface provider_services ${svcId} for the ready-made build`,
               expected: '/api/search/experiences?sources=platform&destination=Kyoto surfaces the just-approved listing',
-              actual: 'button-add-result-<id> not visible within 5s (default list or "Kyoto" search)',
+              actual: 'button-add-result-pl_<id> not visible after 6 reload attempts (~30-45s)',
               where: 'client/src/pages/expert/workspace.tsx (searchResults / button-add-result-<id>)',
               evidence: {},
               behavioural: true,

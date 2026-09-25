@@ -10,4 +10,5 @@
  */
 export const dedupe = {
   filedMeetingPinFinding: false,
+  filedBornSubmittedRaceFinding: false,
 };

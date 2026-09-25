@@ -303,6 +303,50 @@ for (const fx of PROVIDERS) {
       throw new Error(`S1 ${fx.key}: draft save did not create a row — see finding above`);
     }
 
+    if (!dedupe.filedBornSubmittedRaceFinding) {
+      dedupe.filedBornSubmittedRaceFinding = true;
+      const bornRow = await q(
+        `SELECT approval_status, status FROM provider_services WHERE id = $1`,
+        [draftRow.id],
+      );
+      fileFinding({
+        journey: 'S1',
+        step: 'all:born-submitted-approve-race',
+        class: 'FALSE_PROMISE',
+        severity: 'P2',
+        known: null,
+        title:
+          "A listing is born approval_status='submitted' (migration 111), so a provider's Save-Draft " +
+          'snapshot sits in the admin queue and an admin can approve it before the provider finishes ' +
+          'the wizard; it goes live with pre-wizard data (e.g. location \'Unknown\', missing category fields)',
+        expected:
+          'F2 (migration 111) intends "born submitted" to mean the row is a legitimate review candidate the ' +
+          'moment a provider has SOMETHING down — not that admin approval is safe to race against an ' +
+          'in-progress edit the provider has not pressed Publish on yet',
+        actual:
+          `Immediately after this run's button-save-draft, the row already reads approval_status=` +
+          `'${bornRow[0]?.approval_status}', status='${bornRow[0]?.status}' — eligible for /admin/service-approvals ` +
+          'right now, before cover photo, availability, neighbourhood or any category-specific field has been ' +
+          'set. Behavioural proof from an earlier run in this same pass (run-id probe4/probe5, before the Part 1a ' +
+          'category-fields fix): Provider C\'s row (private_transportation) was admin-approved and went ' +
+          "status='active' while `button-publish-service` had NEVER become enabled (blocked on the unfilled " +
+          "required 'Vehicle Type'/'Number of Seats' category fields) — so the row that went live carried " +
+          "location='Unknown', neighborhood=NULL: exactly the Save-Draft snapshot from before the wizard was " +
+          'ever entered, admin-approved out from under an incomplete draft. Same root cause as the earlier ' +
+          'walkthrough finding F-3 (Catalog shows "In review" while the listing-home checklist independently ' +
+          'reads "Draft (not submitted)") — one write (createMutation\'s PATCH/POST) determines the row admin ' +
+          'sees as reviewable, and nothing distinguishes "the provider is still actively editing this wizard" ' +
+          'from "the provider walked away, this is their final answer."',
+        where:
+          'shared/schema.ts (provider_services.approval_status DEFAULT \'submitted\', migration 111); ' +
+          'client/src/pages/admin/service-approvals.tsx (queue reads approval_status=\'submitted\' with no ' +
+          '"still editing" signal); client/src/components/ServiceForm.tsx (button-save-draft has no distinct ' +
+          '"submit for review" action — Save Draft and "still working on it" are the same click)',
+        evidence: {},
+        behavioural: true,
+      });
+    }
+
     if (!dedupe.filedMeetingPinFinding) {
       dedupe.filedMeetingPinFinding = true;
       fileFinding({

@@ -69,7 +69,15 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
     await shot(page, 'D3', '02', 'chat-opened');
     const input = testid(page, 'input-message');
-    const inputVisible = await input.isVisible({ timeout: 5000 }).catch(() => false);
+    // Same "spinner survives a first wait" class already fixed for S2's workspace landing and
+    // the ready-made service-add poll — one reload before concluding the composer is unreachable.
+    let inputVisible = await input.isVisible({ timeout: 5000 }).catch(() => false);
+    if (!inputVisible) {
+      await page.reload();
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      await shot(page, 'D3', '02b', 'chat-opened-after-reload');
+      inputVisible = await input.isVisible({ timeout: 6000 }).catch(() => false);
+    }
     if (inputVisible) {
       const messageBody = `D3 first message — e2e supply-demand`;
       await input.fill(messageBody).catch(() => {});
@@ -184,6 +192,16 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
   await page.goto(`/expert/workspace/${tripId}`);
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   await shot(page, 'D3', '07', 'expert-workspace');
+
+  // "Suggest to client" (button-toggle-suggest) lives under the right rail's "Advisor" tab, not
+  // the default "Add" tab the panel opens on (confirmed live via screenshot — the "Add" tab was
+  // showing the DMO/Platform-services picker with no suggest control anywhere on the page).
+  const advisorTab = testid(page, 'tab-right-advisor');
+  if (await advisorTab.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await advisorTab.click().catch(() => {});
+    await page.waitForTimeout(500);
+  }
+  await shot(page, 'D3', '07b', 'expert-workspace-advisor-tab');
 
   const toggleSuggest = testid(page, 'button-toggle-suggest');
   const toggleVisible = await toggleSuggest.isVisible({ timeout: 5000 }).catch(() => false);

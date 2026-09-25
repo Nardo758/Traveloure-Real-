@@ -52,8 +52,9 @@ test('D7: provider-side changes propagate (or fail to) onto the traveler\'s slip
   await page.goto(`/plans/${tripId}`);
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   await shot(page, 'D7', '01', 'slip-baseline');
-  const beforePriceRow = await q(`SELECT price FROM provider_services WHERE id = $1`, [providerB.providerServiceId]);
+  const beforePriceRow = await q(`SELECT price, status, approval_status FROM provider_services WHERE id = $1`, [providerB.providerServiceId]);
   const originalPrice = beforePriceRow[0]?.price;
+  const originalStatus = beforePriceRow[0]?.status;
 
   // ── Provider B changes price (safe edit, LD 23) ──
   const providerBAccount = accounts.providerB;
@@ -89,7 +90,7 @@ test('D7: provider-side changes propagate (or fail to) onto the traveler\'s slip
       });
     }
   }
-  const afterPriceRow = await q(`SELECT price FROM provider_services WHERE id = $1`, [providerB.providerServiceId]);
+  const afterPriceRow = await q(`SELECT price, status, approval_status FROM provider_services WHERE id = $1`, [providerB.providerServiceId]);
   const priceChangedInDb = String(afterPriceRow[0]?.price) !== String(originalPrice);
   fileFinding({
     journey: 'D7',
@@ -102,6 +103,51 @@ test('D7: provider-side changes propagate (or fail to) onto the traveler\'s slip
     actual: `before=${originalPrice}, after=${afterPriceRow[0]?.price}`,
     where: 'server PATCH /api/provider/services/:id',
     evidence: {},
+    behavioural: true,
+  });
+
+  // P1 CANDIDATE, found as a byproduct of this same edit: does "Save draft" (the wizard's ONE
+  // save control, per Part 1's `saveDraft`/`button-save-draft`) unpublish an already-APPROVED,
+  // already-ACTIVE listing just because a routine field edit used it? Confirmed in code before
+  // filing (never filed on a hunch): `ServiceForm.tsx`'s `createMutation` sets
+  // `payload.status = submitAction === "publish" ? "active" : "draft"` UNCONDITIONALLY for the
+  // provider role on every save — there is no `isEditMode`/already-live guard. Server-side,
+  // `status` is NOT in `IDENTITY_EDIT_FIELDS` (shared/edit-split.ts, the §23/LD-23 edit-split
+  // list), so it never enters the `pending_changes` staging lane and is applied to the live row
+  // immediately by the generic `storage.updateProviderService` call
+  // (server/routes.ts PATCH /api/provider/services/:id). Net effect: EVERY save from this
+  // wizard on an approved+active listing — even a price-only edit through the exact "safe
+  // edit" path LD 23 describes — silently reverts `status` to 'draft', unpublishing it, unless
+  // the provider happens to press a (currently nonexistent, in this UI) "Publish" action
+  // instead of "Save draft" on every single edit.
+  const statusRegressed = originalStatus === 'active' && afterPriceRow[0]?.status !== 'active';
+  fileFinding({
+    journey: 'D7',
+    step: 'providerB:save-draft-unpublishes-approved-listing',
+    class: 'FALSE_PROMISE',
+    severity: 'P1',
+    known: null,
+    title: statusRegressed
+      ? "Save draft on an approved+active listing REVERTS provider_services.status to 'draft', unpublishing it (LD 23 violation)"
+      : `Provider B status after the Save-Draft price edit: before=${originalStatus}, after=${afterPriceRow[0]?.status}`,
+    expected:
+      "LD 23 (CLAUDE.md §23): 'An APPROVED listing is never taken down for an edit... safe edits ... apply to the live row " +
+      "immediately... the approved version stays live and bookable.' A price-only edit is explicitly listed as a safe edit.",
+    actual: statusRegressed
+      ? `provider_services.status: before='${originalStatus}' (live) -> after='${afterPriceRow[0]?.status}' (unpublished), ` +
+        `caused by a routine price-only edit through button-save-draft. Root cause, confirmed in code: ` +
+        `client/src/components/ServiceForm.tsx's createMutation sets ` +
+        `payload.status = submitAction === "publish" ? "active" : "draft" unconditionally for the provider role branch ` +
+        `(no isEditMode/already-approved guard), and status is absent from shared/edit-split.ts IDENTITY_EDIT_FIELDS, so ` +
+        `server/routes.ts PATCH /api/provider/services/:id applies it straight to the live row instead of staging it. ` +
+        `Same root cause as the earlier walkthrough finding F-3 (Catalog shows "In review" while the listing-home ` +
+        `checklist independently reads "Draft (not submitted)") — one write path (this PATCH) determines BOTH ` +
+        `"is it live" and "is it under review" for every field the client sends, with no per-field authority.`
+      : `before=${originalStatus}, after=${afterPriceRow[0]?.status} (no regression observed on this run)`,
+    where:
+      'client/src/components/ServiceForm.tsx (createMutation, payload.status); shared/edit-split.ts (IDENTITY_EDIT_FIELDS, ' +
+      'status absent); server/routes.ts PATCH /api/provider/services/:id (safeInput applied unconditionally)',
+    evidence: { shot: 'shots/D7-02-providerB-price-edited.png' },
     behavioural: true,
   });
 
