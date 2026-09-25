@@ -23,9 +23,29 @@ export type Finding = {
   expected: string;
   actual: string;
   where: string;
-  evidence?: { shot?: string; net?: string; db?: string };
+  evidence?: { shot?: string; net?: string; db?: string; builtFrom?: string };
   behavioural: boolean;
 };
+
+/**
+ * builtFrom — the exact server build every finding was proven against (lead-mandated, found
+ * after a whole pass ran against a stale `dist/index.cjs` built BEFORE the very fix a finding
+ * then reported as a fresh regression). Read once from `dist/build-info.json` (written by the
+ * build script) and stamped onto every finding's evidence automatically, so no call site has to
+ * remember to pass it and no finding can go unattributed to a build.
+ */
+let cachedBuiltFrom: string | null | undefined;
+function readBuiltFrom(): string | null {
+  if (cachedBuiltFrom !== undefined) return cachedBuiltFrom;
+  try {
+    const raw = fs.readFileSync(path.join(process.cwd(), 'dist', 'build-info.json'), 'utf8');
+    const parsed = JSON.parse(raw);
+    cachedBuiltFrom = parsed.commit ? `${parsed.commit} (built ${parsed.builtAt})` : null;
+  } catch {
+    cachedBuiltFrom = null;
+  }
+  return cachedBuiltFrom;
+}
 
 export type VisibilityObservation = {
   content: 'service' | 'ready_made' | 'expert_offering' | 'storefront' | 'event';
@@ -61,7 +81,8 @@ let findingSeq = 0;
 export function fileFinding(f: Omit<Finding, 'id'> & { id?: string }): Finding {
   findingSeq += 1;
   const id = f.id ?? `P2-${f.journey}-${findingSeq}`;
-  const full: Finding = { ...f, id };
+  const builtFrom = readBuiltFrom();
+  const full: Finding = { ...f, id, evidence: { ...(f.evidence ?? {}), ...(builtFrom ? { builtFrom } : {}) } };
   appendLine([P2_DIR, LOCAL_DIR], 'findings.jsonl', full);
   appendLine([LOCAL_DIR], 'supply-demand-findings.jsonl', full);
   return full;
