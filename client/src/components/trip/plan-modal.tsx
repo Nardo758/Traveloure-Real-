@@ -45,6 +45,8 @@ import {
   type PlanStop,
 } from "@/lib/plan-stops";
 import { savePlanStops } from "@/lib/plan-stops-writer";
+import { boundPlanCityChanged, sameCity } from "@/lib/plan-city";
+import { changeBoundPlanCity } from "@/lib/plan-city-writer";
 import { eventsNotYetCreated } from "@/lib/organize-events";
 import {
   eventsToCreate,
@@ -407,6 +409,19 @@ export function PlanModal({
   /** Save's own refusal. Separate from `finishError` because Save is on EVERY step and the finish
    *  error renders only inside the finish block on the last one. */
   const [saveError, setSaveError] = useState<string | null>(null);
+  /**
+   * RC-6 (ledger `2026-09-25-rc6-bound-plan-city`): a plan is selected and the traveler named a
+   * DIFFERENT city. The modal asks — "change this plan's city" or "start a new plan" — rather than
+   * guessing, which used to clear the plan's id and create nothing. `null` = no question pending;
+   * otherwise it records which action (Save, or a finish branch) is waiting on the answer.
+   */
+  const [cityChoice, setCityChoice] = useState<
+    null | { action: "save" } | { action: "finish"; branch: PlanningBranch }
+  >(null);
+  // A question asked about one city is not an answer about another, and it does not outlive the open.
+  useEffect(() => {
+    setCityChoice(null);
+  }, [open, destination]);
   const [step, setStep] = useState<PlanStepId>("occasion");
   /** The start step is resolved ONCE per open, and only once the catalog has answered. */
   const startResolved = useRef(false);
@@ -824,7 +839,7 @@ export function PlanModal({
    *                    two switch-driven answers are HELD in the pre-trip pen instead.
    * @returns the trip id the commit actually bound to (undefined when it held).
    */
-  async function commitPlan(boundTripId?: string): Promise<string | undefined> {
+  async function commitPlan(boundTripId?: string, keepTripId?: string): Promise<string | undefined> {
     const start = startDate || undefined;
     let end = endDate || undefined;
     if (shape === "day") {
@@ -847,14 +862,21 @@ export function PlanModal({
     // Read fresh (not the `ctx` React-state snapshot from when the modal opened) —
     // this is the ground truth to compare the edited destination against.
     const liveCtx = getTripContext();
-    const destinationChanged = (liveCtx.destination || "") !== (trimmedDestination || "");
+    // The ONE city rule (`sameCity`, RC-6) — "Kyoto" and "Kyoto, Japan" do not unbind a plan.
+    const destinationChanged = !sameCity(liveCtx.destination, trimmedDestination);
     // A freshly minted trip is the plan being described, so it survives a destination change by
     // construction. Otherwise the panel's long-standing policy stands: editing the DESTINATION
     // means the traveler is describing a DIFFERENT trip than the one `tripId` points at, so the
     // stale identity is cleared in the SAME atomic write (money-adjacent — downstream
     // optimize/payment requests derive the target trip from `tripId`).
+    // `keepTripId` is the traveler's own answer "change this plan's city" (RC-6): the selected plan
+    // stays the plan being described even though its city just changed. It is deliberately NOT
+    // `boundTripId`, which also licenses replacing the stop list unread (a freshly minted plan has
+    // none) — a KEPT plan has rows, and they must have been read first.
     const tripId =
-      boundTripId ?? (liveCtx.tripId && !destinationChanged ? liveCtx.tripId : undefined);
+      boundTripId ??
+      keepTripId ??
+      (liveCtx.tripId && !destinationChanged ? liveCtx.tripId : undefined);
 
     /**
      * THE PARTY, derived and never re-masked. `partyTotal` is the one place adults+kids becomes
@@ -1190,11 +1212,60 @@ export function PlanModal({
    * an incomplete answer all keep the old context-only Save. A refused mint stays open and says why
    * rather than closing as if it had worked.
    */
-  const save = async () => {
+  /**
+   * RC-6: does this Save/finish need the traveler's answer first? Only for a signed-in member whose
+   * pen holds a plan and who named a DIFFERENT city (`boundPlanCityChanged`). A guest holds no plan
+   * id to protect, and a suggested home city is not yet an answer (§13).
+   */
+  const needsCityChoice = () =>
+    !!user &&
+    boundPlanCityChanged({
+      boundTripId: getTripContext().tripId,
+      liveDestination: getTripContext().destination,
+      destination: destinationSuggested ? "" : destination,
+    });
+
+  /**
+   * RC-6: carry out the traveler's answer. "change" renames the selected plan's city through the
+   * rails that own it (`changeBoundPlanCity`) and keeps the plan; "new" creates a plan in the new
+   * city through the ONE mint step. Either failure is shown and the modal stays open.
+   */
+  const resolveCityChoice = async (
+    answer: "change" | "new",
+  ): Promise<{ ok: true; bound?: string; keep?: string } | { ok: false; message?: string }> => {
+    const selected = getTripContext().tripId;
+    if (answer === "change" && selected) {
+      const changed = await changeBoundPlanCity(selected, destination);
+      if (!changed.ok) {
+        return { ok: false, message: changed.message || "We couldn't change this plan's city. Nothing was changed." };
+      }
+      return { ok: true, keep: selected };
+    }
+    const outcome = await mintThisPlan();
+    if (!outcome.ok) return { ok: false, message: outcome.message };
+    return { ok: true, bound: outcome.tripId };
+  };
+
+  const save = async (answer?: "change" | "new") => {
     if (saving) return;
     setSaveError(null);
+    if (!answer && needsCityChoice()) {
+      setCityChoice({ action: "save" });
+      return;
+    }
+    setCityChoice(null);
     setSaving(true);
     try {
+      if (answer) {
+        const resolved = await resolveCityChoice(answer);
+        if (!resolved.ok) {
+          if (resolved.message) setSaveError(resolved.message);
+          return;
+        }
+        await commitPlan(resolved.bound, resolved.keep);
+        onOpenChange(false);
+        return;
+      }
       let bound: string | undefined;
       if (
         saveMintsPlan({
@@ -1232,11 +1303,28 @@ export function PlanModal({
    * and another quietly stops. Either way it mints through the opener's one mint door
    * (`mintTripSlip`), never a body built here.
    */
-  const finish = async (branch: PlanningBranch) => {
+  const finish = async (branch: PlanningBranch, answer?: "change" | "new") => {
     if (saving) return;
     setFinishError(null);
+    // Only a branch that can create a plan is asked: `occasion` never mints (RC-1), so "start a new
+    // plan" is not an answer it can act on and its finish stays exactly as it was.
+    if (!answer && BRANCHES_THAT_MINT.includes(branch) && needsCityChoice()) {
+      setCityChoice({ action: "finish", branch });
+      return;
+    }
+    setCityChoice(null);
     setSaving(true);
     try {
+      if (answer) {
+        const resolved = await resolveCityChoice(answer);
+        if (!resolved.ok) {
+          if (resolved.message) setFinishError(resolved.message);
+          return;
+        }
+        const tripId = await commitPlan(resolved.bound, resolved.keep);
+        onFinish?.(branch, committedPlan(tripId));
+        return;
+      }
       let bound: string | undefined;
       /**
        * D5's §13 half. `mintPlan` opens the sign-in modal for a guest and takes the screen, so a
@@ -2299,6 +2387,55 @@ export function PlanModal({
 
         </div>
 
+        {cityChoice && (
+          <div
+            className="rounded-md border p-3 space-y-2"
+            style={{ borderColor: "var(--earn-border)" }}
+            role="group"
+            aria-label="This plan or a new one?"
+            data-testid="plan-city-choice"
+          >
+            <p className="text-sm" style={{ color: "var(--earn-ink)" }}>
+              Your selected plan is for {getTripContext().destination || "another city"}. What should happen with{" "}
+              {destination.trim()}?
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={saving}
+                onClick={() =>
+                  void (cityChoice.action === "save" ? save("change") : finish(cityChoice.branch, "change"))
+                }
+                data-testid="button-plan-city-change"
+              >
+                Change this plan's city
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={saving}
+                onClick={() =>
+                  void (cityChoice.action === "save" ? save("new") : finish(cityChoice.branch, "new"))
+                }
+                data-testid="button-plan-city-new"
+              >
+                Start a new plan
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={saving}
+                onClick={() => setCityChoice(null)}
+                data-testid="button-plan-city-cancel"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
         {saveError && (
           <p className="text-xs text-destructive" role="alert" data-testid="text-planning-save-error">
             {saveError}
