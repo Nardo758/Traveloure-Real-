@@ -10,6 +10,7 @@ import { ExpertLayout } from "@/components/expert/expert-layout";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { EALayout } from "@/components/ea-layout";
 import { useAuth } from "@/hooks/use-auth";
+import { PenBinder } from "@/components/pen-binder";
 import { useLocale } from "@/hooks/use-locale";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider, useSignInModal } from "@/contexts/SignInModalContext";
@@ -1336,6 +1337,8 @@ function App() {
                 <PlanningProvider>
                   <Toaster />
                   <LocaleSync />
+                  {/* RC-3: the ONE pen binder, above every shell (see pen-binder.tsx). */}
+                  <PenBinder />
                   <GuestCartMigrator />
                   <AuthReturnToRestorer />
                   <MaintenanceGate>
