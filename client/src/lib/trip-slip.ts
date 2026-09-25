@@ -152,7 +152,15 @@ async function defaultTripMintPoster(body: TripMintBody): Promise<{ id?: string 
   // Lazy so this module has no top-level import and stays testable under `tsx --test`.
   const { apiRequest } = await import("@/lib/queryClient");
   const res = await apiRequest("POST", TRIP_MINT_ENDPOINT, body);
-  return (await res.json()) as { id?: string };
+  const trip = (await res.json()) as { id?: string };
+  // RC-7 (ledger `2026-09-25-rc7-new-plan-visible`): a plan now exists that every loaded plan
+  // list has never seen. Every door through this mint (the planning modal, the concierge and
+  // experience-template lead doors) shares this ONE refresh.
+  if (trip?.id) {
+    const { refreshPlanLists } = await import("@/lib/plan-lists");
+    void refreshPlanLists();
+  }
+  return trip;
 }
 
 /**
