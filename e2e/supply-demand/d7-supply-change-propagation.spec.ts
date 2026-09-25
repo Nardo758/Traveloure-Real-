@@ -56,7 +56,17 @@ test('D7: provider-side changes propagate (or fail to) onto the traveler\'s slip
   const originalPrice = beforePriceRow[0]?.price;
   const originalStatus = beforePriceRow[0]?.status;
 
-  // ── Provider B changes price (safe edit, LD 23) ──
+  // ── Provider B changes price (safe edit, LD 23) — the LIVE-edit path ──
+  // WITHDRAWN (lead review): a prior version of this test pressed `button-save-draft`, whose
+  // label and disclosed warning ("Unpublish & Save Draft" / "This listing is live. Saving it as
+  // a draft removes it from the marketplace until you publish it again.", ServiceForm.tsx
+  // ~5175-5185, gated on `isCurrentlyLive` ~2078) make it the DESIGNED, disclosed unpublish
+  // rail — not a bug, the harness pressed the wrong control. The live-edit control that keeps
+  // `status: "active"` is `button-publish-service` (`handleFinalSubmit("publish")` ->
+  // `payload.status = submitAction === "publish" ? "active" : "draft"`), reached the same way a
+  // fresh listing reaches it — walk the wizard to Review and press it — since Pricing & Fees
+  // drawer's own base-price field is read-only (pricing-fees-drawer.tsx ~143, surcharge/deposit/
+  // cancellation only).
   const providerBAccount = accounts.providerB;
   if (providerBAccount?.email) {
     await loginViaUi(page, providerBAccount.email, E2E_PASSWORD);
@@ -69,10 +79,34 @@ test('D7: provider-side changes propagate (or fail to) onto the traveler\'s slip
     if (await priceInput.isVisible({ timeout: 5000 }).catch(() => false)) {
       await priceInput.fill('120').catch(() => {});
       await shot(page, 'D7', '02', 'providerB-price-edited');
-      const saveBtn = testid(page, 'button-save-draft');
-      if (await saveBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await saveBtn.click().catch(() => {});
+      // Walk to Review (Next up to 8 times) without touching neighbourhood/category fields —
+      // they are already set from S1 and this edit should not need to retouch them.
+      for (let i = 0; i < 8; i++) {
+        if (await testid(page, 'card-review-summary').isVisible().catch(() => false)) break;
+        const next = testid(page, 'button-step-next');
+        if (!(await next.isVisible().catch(() => false)) || (await next.isDisabled().catch(() => false))) break;
+        await next.click().catch(() => {});
+        await page.waitForTimeout(400);
+      }
+      await shot(page, 'D7', '02b', 'providerB-review-before-publish');
+      const publishBtn = testid(page, 'button-publish-service');
+      if (await publishBtn.isVisible({ timeout: 5000 }).catch(() => false) && !(await publishBtn.isDisabled().catch(() => false))) {
+        await publishBtn.click().catch(() => {});
         await page.waitForTimeout(1500);
+      } else {
+        fileFinding({
+          journey: 'D7',
+          step: 'providerB:live-price-edit-publish',
+          class: 'DEAD_TRIGGER',
+          severity: 'P2',
+          known: null,
+          title: 'button-publish-service not reachable/enabled to re-publish Provider B after a live price edit',
+          expected: 'The wizard reaches Review with button-publish-service enabled (all gates already cleared during S1)',
+          actual: `publishVisible=${await publishBtn.isVisible().catch(() => false)}, disabled=${await publishBtn.isDisabled().catch(() => true)}`,
+          where: 'client/src/components/ServiceForm.tsx (button-publish-service)',
+          evidence: { shot: 'shots/D7-02b-providerB-review-before-publish.png' },
+          behavioural: true,
+        });
       }
     } else {
       fileFinding({
@@ -92,62 +126,18 @@ test('D7: provider-side changes propagate (or fail to) onto the traveler\'s slip
   }
   const afterPriceRow = await q(`SELECT price, status, approval_status FROM provider_services WHERE id = $1`, [providerB.providerServiceId]);
   const priceChangedInDb = String(afterPriceRow[0]?.price) !== String(originalPrice);
+  const stayedLive = afterPriceRow[0]?.status === 'active';
   fileFinding({
     journey: 'D7',
     step: 'providerB:price-applied-live',
-    class: priceChangedInDb ? 'SPEC_DIVERGENCE' : 'DEAD_TRIGGER',
-    severity: priceChangedInDb ? 'P3' : 'P2',
+    class: priceChangedInDb && stayedLive ? 'SPEC_DIVERGENCE' : 'FALSE_PROMISE',
+    severity: priceChangedInDb && stayedLive ? 'P3' : 'P2',
     known: null,
-    title: `Provider B's price edit ${priceChangedInDb ? 'DID' : 'did NOT'} apply live (LD 23 safe edit)`,
-    expected: 'A price edit is a safe edit and applies to the live row immediately, no admin review',
-    actual: `before=${originalPrice}, after=${afterPriceRow[0]?.price}`,
-    where: 'server PATCH /api/provider/services/:id',
-    evidence: {},
-    behavioural: true,
-  });
-
-  // P1 CANDIDATE, found as a byproduct of this same edit: does "Save draft" (the wizard's ONE
-  // save control, per Part 1's `saveDraft`/`button-save-draft`) unpublish an already-APPROVED,
-  // already-ACTIVE listing just because a routine field edit used it? Confirmed in code before
-  // filing (never filed on a hunch): `ServiceForm.tsx`'s `createMutation` sets
-  // `payload.status = submitAction === "publish" ? "active" : "draft"` UNCONDITIONALLY for the
-  // provider role on every save — there is no `isEditMode`/already-live guard. Server-side,
-  // `status` is NOT in `IDENTITY_EDIT_FIELDS` (shared/edit-split.ts, the §23/LD-23 edit-split
-  // list), so it never enters the `pending_changes` staging lane and is applied to the live row
-  // immediately by the generic `storage.updateProviderService` call
-  // (server/routes.ts PATCH /api/provider/services/:id). Net effect: EVERY save from this
-  // wizard on an approved+active listing — even a price-only edit through the exact "safe
-  // edit" path LD 23 describes — silently reverts `status` to 'draft', unpublishing it, unless
-  // the provider happens to press a (currently nonexistent, in this UI) "Publish" action
-  // instead of "Save draft" on every single edit.
-  const statusRegressed = originalStatus === 'active' && afterPriceRow[0]?.status !== 'active';
-  fileFinding({
-    journey: 'D7',
-    step: 'providerB:save-draft-unpublishes-approved-listing',
-    class: 'FALSE_PROMISE',
-    severity: 'P1',
-    known: null,
-    title: statusRegressed
-      ? "Save draft on an approved+active listing REVERTS provider_services.status to 'draft', unpublishing it (LD 23 violation)"
-      : `Provider B status after the Save-Draft price edit: before=${originalStatus}, after=${afterPriceRow[0]?.status}`,
-    expected:
-      "LD 23 (CLAUDE.md §23): 'An APPROVED listing is never taken down for an edit... safe edits ... apply to the live row " +
-      "immediately... the approved version stays live and bookable.' A price-only edit is explicitly listed as a safe edit.",
-    actual: statusRegressed
-      ? `provider_services.status: before='${originalStatus}' (live) -> after='${afterPriceRow[0]?.status}' (unpublished), ` +
-        `caused by a routine price-only edit through button-save-draft. Root cause, confirmed in code: ` +
-        `client/src/components/ServiceForm.tsx's createMutation sets ` +
-        `payload.status = submitAction === "publish" ? "active" : "draft" unconditionally for the provider role branch ` +
-        `(no isEditMode/already-approved guard), and status is absent from shared/edit-split.ts IDENTITY_EDIT_FIELDS, so ` +
-        `server/routes.ts PATCH /api/provider/services/:id applies it straight to the live row instead of staging it. ` +
-        `Same root cause as the earlier walkthrough finding F-3 (Catalog shows "In review" while the listing-home ` +
-        `checklist independently reads "Draft (not submitted)") — one write path (this PATCH) determines BOTH ` +
-        `"is it live" and "is it under review" for every field the client sends, with no per-field authority.`
-      : `before=${originalStatus}, after=${afterPriceRow[0]?.status} (no regression observed on this run)`,
-    where:
-      'client/src/components/ServiceForm.tsx (createMutation, payload.status); shared/edit-split.ts (IDENTITY_EDIT_FIELDS, ' +
-      'status absent); server/routes.ts PATCH /api/provider/services/:id (safeInput applied unconditionally)',
-    evidence: { shot: 'shots/D7-02-providerB-price-edited.png' },
+    title: `Provider B's price edit via button-publish-service: price ${priceChangedInDb ? 'DID' : 'did NOT'} change, status ${stayedLive ? 'stayed active' : `became '${afterPriceRow[0]?.status}'`} (LD 23 safe edit, live-edit path)`,
+    expected: "A price edit is a safe edit: it applies to the live row immediately, and status stays 'active' throughout",
+    actual: `before price=${originalPrice} status=${originalStatus}, after price=${afterPriceRow[0]?.price} status=${afterPriceRow[0]?.status}`,
+    where: 'server PATCH /api/provider/services/:id (button-publish-service -> submitAction="publish")',
+    evidence: { shot: 'shots/D7-02b-providerB-review-before-publish.png' },
     behavioural: true,
   });
 
