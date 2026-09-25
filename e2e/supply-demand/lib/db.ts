@@ -155,3 +155,35 @@ export async function seedMeetingPin(
     [serviceId, lat, lng, meetingPoint],
   );
 }
+
+/**
+ * seedReadyMadeHero — TEST-FIXTURE-ONLY write, R-1 fallback (lead-authorized, coordinator
+ * review). `assertReadyMadeComplete` (server/routes/ready-made.routes.ts:687 submit path) requires
+ * BOTH `heroImageUrl` and `heroImageMeta.photographer` before a ready-made can be submitted, and
+ * the only UI path to either is the Unsplash picker (`GET /api/expert/ready-made/hero-search`),
+ * which answers `{ready:false, reason:"unsplash_not_configured"}` with no UNSPLASH_ACCESS_KEY —
+ * absent in this environment, and the object-storage upload path also 503s here. This seeds a
+ * stable, publicly-resolvable test image URL directly onto the two columns the gate reads, AFTER
+ * the real picker has been attempted (so the finding records what the UI actually said first).
+ * Every call site must log this as a SPEC_DIVERGENCE/P3 "seeded ready-made hero (HELD:unsplash)"
+ * finding and must only ever target a run-id-tagged e2e ready-made row.
+ */
+export async function seedReadyMadeHero(readyMadeId: string): Promise<void> {
+  await db().query(
+    `UPDATE ready_made_trips
+        SET hero_image_url = $2,
+            hero_image_meta = $3::jsonb,
+            updated_at = NOW()
+      WHERE id = $1`,
+    [
+      readyMadeId,
+      'https://images.unsplash.com/photo-1478436127897-769e1b3f0f36',
+      JSON.stringify({
+        unsplashId: 'seeded-e2e-fixture',
+        photographer: 'e2e supply-demand fixture (HELD:unsplash — seeded, not a real Unsplash credit)',
+        profileUrl: null,
+        downloadLocation: null,
+      }),
+    ],
+  );
+}

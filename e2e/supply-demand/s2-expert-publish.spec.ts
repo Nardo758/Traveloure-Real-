@@ -23,7 +23,7 @@ import {
 } from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
-import { q, userByEmail, serviceByTitle, feeBand, seedMeetingPin, seedExpertIdentityVerification } from './lib/db';
+import { q, userByEmail, serviceByTitle, feeBand, seedMeetingPin, seedExpertIdentityVerification, seedReadyMadeHero } from './lib/db';
 import { writeState, readState } from './lib/state';
 import { testid, appears } from './lib/ui';
 import { dedupe } from './lib/dedupe';
@@ -641,7 +641,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
               class: 'SPEC_DIVERGENCE',
               severity: 'P3',
               known: null,
-              title: 'Ready-made cover photo could not be set — Unsplash is not configured in this environment (HELD:unsplash)',
+              title: 'Ready-made cover photo could not be set through the real picker — Unsplash is not configured in this environment (HELD:unsplash)',
               expected:
                 'n/a — this is an environment limit, not a product defect: /api/expert/ready-made/hero-search ' +
                 'correctly answers {ready:false, reason:"unsplash_not_configured"} with no UNSPLASH_ACCESS_KEY set, ' +
@@ -649,18 +649,51 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
               actual:
                 'button-choose-hero opened modal-hero-picker; no button-hero-option ever became available within 5s ' +
                 'of polling (unavailable banner or empty). assertReadyMadeComplete (ready-made.routes.ts) requires ' +
-                'heroImageUrl + heroImageMeta.photographer, so submit is expected to 400 on "hero" below — this is ' +
-                'HELD, not faked (R-1: no DB write substitutes for a real Unsplash photo here).',
+                'heroImageUrl + heroImageMeta.photographer, so submit would 400 on "hero" without an unblock — this ' +
+                'attempt is recorded BEFORE the coordinator-authorized R-1 seed below runs, so this finding records ' +
+                'what the real UI actually said.',
               where: 'server/services/unsplash.service.ts isReady(); client/src/components/expert/ready-made-listing-panel.tsx',
               evidence: { shot: 'shots/S2-readymade-03b-hero-picker-open.png' },
               behavioural: true,
             });
           }
           await testid(page, 'button-close-hero-picker').click({ timeout: 2000 }).catch(() => {});
+
+          if (!pickedHero) {
+            // Coordinator decision (Pass 2, R-1 exception — the same class as S1's
+            // identity/business-verification seed and S3's meeting-pin seed): with no
+            // UNSPLASH_ACCESS_KEY AND the object-storage upload path also 503ing in this
+            // environment, there is no UI-reachable way to satisfy assertReadyMadeComplete's
+            // hero requirement here. Seed the exact two columns the gate reads
+            // (hero_image_url, hero_image_meta.photographer — ready-made.routes.ts:540/687) with
+            // a stable test image, logged as its own finding, never silently.
+            await seedReadyMadeHero(rm.id);
+            fileFinding({
+              journey: 'S2',
+              step: 'readymade:seeded-hero',
+              class: 'SPEC_DIVERGENCE',
+              severity: 'P3',
+              known: null,
+              title: 'seeded ready-made hero (HELD:unsplash)',
+              expected: 'n/a — documented R-1 exception, not a UI path; coordinator-authorized for this ready-made only',
+              actual:
+                `UPDATE ready_made_trips SET hero_image_url = <stable test image>, hero_image_meta = ` +
+                `{photographer: '...'} WHERE id = ${rm.id}. Applied only after the real Unsplash picker was driven ` +
+                'and confirmed unavailable (see readymade:hero-unavailable above).',
+              where: 'e2e/supply-demand/lib/db.ts seedReadyMadeHero',
+              evidence: {},
+              behavioural: true,
+            });
+            // The client's `listing` query does not know about a direct DB write — reload so the
+            // panel refetches and `dirty`/Submit recompute against the seeded row.
+            await page.reload();
+            await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+            await shot(page, 'S2-readymade', '03c', 'after-seeded-hero-reload');
+          }
         }
       }
-      // Re-check submit-enabled now that a hero may have just been set (a successful pick calls
-      // save.mutate directly, independent of the button-save-listing/dirty round trip above).
+      // Re-check submit-enabled now that a hero may have just been set (a successful pick, or
+      // the R-1 seed + reload above, is independent of the button-save-listing/dirty round trip).
       for (let i = 0; i < 10 && !submittable; i++) {
         submittable = await submitBtn.isEnabled().catch(() => false);
         if (submittable) break;
