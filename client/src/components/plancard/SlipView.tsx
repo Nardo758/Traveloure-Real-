@@ -72,6 +72,7 @@ import {
   type SlipDestinationRow,
 } from "@/lib/slip-meta";
 import { usePlanning } from "@/contexts/PlanningContext";
+import { syncActiveTripToContext } from "@/lib/trip-selection";
 import { TripExpertNote } from "./TripExpertNote";
 import { ItemComments } from "./ItemComments";
 // D6 (ledger `2026-09-06-slip-conformance`): the EVENT-level role question opens the PROVIDER
@@ -115,7 +116,10 @@ export interface SlipTrip {
   destination: string | null;
   startDate: string | null;
   endDate: string | null;
-  travelers: number;
+  /** `null` = nobody has said who is going (RC-12); the header asks instead of printing a count. */
+  travelers: number | null;
+  /** `trips.event_type` — the coarse occasion key the plancard already sends. */
+  eventType?: string | null;
   /** Lane S identity — NULL on pre-Lane-S rows; render NOTHING for null (never invent). */
   trackingNumber?: string | null;
   /** Version = item_transition_log row count (display-only, server-computed). */
@@ -275,6 +279,7 @@ function SlipHeader({
   stopsLine,
   zoneLine,
   onEditStops,
+  onAskParty,
 }: {
   data: SlipData;
   hasOptimized: boolean;
@@ -315,6 +320,12 @@ function SlipHeader({
    * not first read silently drops stops it never saw).
    */
   onEditStops: () => void;
+  /**
+   * RC-12 (ledger `2026-09-25-rc12-party-size`): set only when the plan states NO party and the
+   * viewer is the OWNER. Renders "Who's coming?" where the count would be, opening the one plan
+   * modal on step 4 of THIS plan. Absent ⇒ nothing renders (a non-owner is never asked, D16).
+   */
+  onAskParty?: () => void;
 }) {
   const trip = data.trip;
   const start = safeDate(trip?.startDate);
@@ -420,6 +431,23 @@ function SlipHeader({
             <Users className="w-3.5 h-3.5 inline" />
             {partyLabel}
           </span>
+        ) : null}
+        {/* RC-12: nobody has said who is going, so the owner is ASKED rather than shown an
+            invented "1 traveler" (§13). The count comes back through step 4's one owner-gated
+            write, and this link then gives way to it. */}
+        {onAskParty ? (
+          <>
+            {(start && end) || partyLabel ? " · " : null}
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-primary hover:underline"
+              onClick={onAskParty}
+              data-testid="slip-meta-ask-party"
+            >
+              <Users className="w-3.5 h-3.5 inline" />
+              Who's coming?
+            </button>
+          </>
         ) : null}
         {/* THE EVENT COUNT (re-audit A16). The SAME derivation the Trip Strip's chip already
             renders — `countPlanEvents` / `eventCountLabel` — never a second count (§18 rule 1),
@@ -1509,6 +1537,44 @@ export function SlipView({
    * Both helpers keep their §13 absences (see `@/lib/slip-meta`): the stops line falls back
    * EXPLICITLY to `trips.destination`, and an unset zone renders NOTHING rather than UTC.
    */
+  /**
+   * ── RC-12 · "WHO'S COMING?" (ledger `2026-09-25-rc12-party-size`) ─────────────────────────
+   * A plan whose party nobody stated (`travelers === null` — the pair and the stored total are all
+   * unset) used to read "1 traveler". The owner is asked instead; everyone else sees no count.
+   * Waits for the occasion lookup to SETTLE, because the door hands the modal this plan's own
+   * occasion and must not hand it an unresolved one (§13).
+   *
+   * The door first loads THIS plan into the pen (`syncActiveTripToContext`) — the slip does not
+   * bind the pen, and the modal edits whichever plan the pen holds — including its own party and
+   * occasion, so another plan's answers can neither seed step 4 nor be saved onto this one. It
+   * then opens the ONE modal on step 4 (`focusStep`, honoured by `resolvePlanSteps` only for a
+   * door that names a plan).
+   */
+  const partyUnstated = !!data.trip && data.trip.travelers == null;
+  const askParty =
+    isOwner && partyUnstated && occasionResolved && data.trip
+      ? () => {
+          const t = data.trip!;
+          syncActiveTripToContext({
+            id: t.id,
+            destination: t.destination,
+            startDate: t.startDate,
+            endDate: t.endDate,
+            title: t.title,
+            travelers: null,
+            adults: null,
+            kids: null,
+            experienceSlug: occasion?.slug ?? null,
+            eventType: t.eventType ?? null,
+          });
+          openPlanModal({
+            tripId: t.id,
+            focusStep: "who",
+            ...(occasion?.slug ? { experienceSlug: occasion.slug } : {}),
+          });
+        }
+      : undefined;
+
   const stopsLine = slipStopsLine(data.trip?.destination, data.destinations);
   const zoneLine = slipZoneLine(data.trip?.timezone);
 
@@ -1576,6 +1642,7 @@ export function SlipView({
            34's one-writer rule). The SAME opener the Trip Strip's Edit uses, with no source: the
            modal reads the plan the traveler is already on. */
         onEditStops={() => openPlanModal()}
+        onAskParty={askParty}
       />
 
       {/* ── THE TWO COLUMNS (ledger `2026-09-06-slip-conformance`) ───────────────────────

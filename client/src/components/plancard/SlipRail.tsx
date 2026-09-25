@@ -447,7 +447,8 @@ function BuildCard({
           tripId: trip.id,
           destination: trip.destination,
           dates: { start: String(trip.startDate).slice(0, 10), end: String(trip.endDate).slice(0, 10) },
-          travelers: trip.travelers || 1,
+          // RC-12: a party nobody stated is not sent; the draft route plans without one.
+          ...(trip.travelers ? { travelers: trip.travelers } : {}),
         }),
       });
       if (!res.ok) {
