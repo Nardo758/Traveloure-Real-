@@ -166,17 +166,16 @@ async function runJourney(page: Page, c: SellerCase): Promise<void> {
   await expect(page.getByTestId("text-service-name")).toHaveText(c.listing.serviceName, { timeout: 90_000 });
   await expect(page.getByTestId("text-price")).toHaveText(listedPrice(c.listing.price));
 
-  // The page's add control; its label is the buy descriptor's, so it is found by id, not by words.
-  await page.getByTestId("button-add-to-cart").click();
-  await expect(page.getByText("Added to cart").first()).toBeVisible();
+  // The checkout path is the page's purchase control. "Add to plan" now stays on the plan for a
+  // signed-in member with no plan in hand (RC-2), so this journey uses the direct buy rail.
+  await page.getByTestId("button-book-now").click();
+  await expect(page).toHaveURL(/\/cart(?:\?|$)/, { timeout: 90_000 });
 
   // ── 5: the cart carries the seller's price, and the traveler checks out ────────────────────
   const cart = await (await page.request.get("/api/cart")).json();
   const line = (cart.items ?? []).find((i: any) => i.serviceId === listingId);
   expect(line, "the cart holds a line for this listing").toBeTruthy();
   const cartCountBefore = (cart.items ?? []).length;
-
-  await page.goto("/cart");
   const cartLine = page.getByTestId(`cart-item-${line.id}`);
   await expect(cartLine).toBeVisible({ timeout: 90_000 });
   await expect(cartLine).toContainText(c.listing.serviceName);
