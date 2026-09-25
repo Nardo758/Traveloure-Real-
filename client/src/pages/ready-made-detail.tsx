@@ -62,6 +62,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { planTypeDisplay } from "@shared/ready-made-plan-types";
 import { ITEM_KINDS, itemKindChip } from "@shared/item-kind";
 import { resolveFormat } from "@/lib/build-formats/registry";
+import { refreshPlanLists } from "@/lib/plan-lists";
 import {
   ArrowLeft,
   CalendarDays,
@@ -257,7 +258,8 @@ export default function ReadyMadeDetailPage() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.message ?? "Confirmation failed");
       setPaymentIntent(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
+      // RC-7: the ONE spelling of "a plan was born" (ledger `2026-09-25-rc7-new-plan-visible`).
+      void refreshPlanLists(queryClient);
       toast({ title: "Trip is yours!", description: "We copied it into your plans — every day is editable." });
       if (body.redirect) navigate(body.redirect);
     } catch (e: any) {
