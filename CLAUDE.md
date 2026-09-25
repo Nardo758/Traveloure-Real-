@@ -1064,6 +1064,14 @@ This document captures architectural decisions to maintain consistency across co
     one more caller (§18 rule 1) — **behind the SAME sign-in gate**, checked BEFORE anything is
     minted, and forwards `tripId` to `/experts` so the storefront request rail ruling 32(b)
     requires has the trip it needs. The reason is ruling 32's precondition, not a preference.
+    **AMENDED FOR `ai` AND FOR SAVE (decision-maker ruled Sep 24, 2026 — ledger
+    `2026-09-24-rc1-finish-mints`, audit RC-1).** "Plan with AI" now MINTS through the same
+    `mintTripSlip` before the AI form opens, and the free draft is written INTO that empty plan (LD 41
+    (b); LD 45's "a door before the mint, a drawer after it"); a failed or abandoned draft leaves a
+    plan, never only answers. The modal's "Save" creates the plan when none is bound, the member is
+    signed in and the basics are complete (`saveMintsPlan`), and otherwise stays the edit it was.
+    Dismissal still creates nothing. `occasion` still mints nothing, and a door that names a plan
+    (`source.tripId`) is never minted a second one.
 
     **D6 — TWO ROLE QUESTIONS, TWO CATALOGS, AND THEY ARE NEVER MERGED (§4, and the FAQ's refusal
     of a new service table).** "Who plans this WITH me" is a **plan-level** question and its answer
