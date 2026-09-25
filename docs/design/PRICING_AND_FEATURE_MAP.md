@@ -2,7 +2,7 @@
 
 **Status:** RATIFIED 2026-08-27 (Leon) — build authority · supersedes Business Plan v1.3 §3.1, §3.3, §4 (credits, $19.99/$39.99 memberships, "Savings Concierge") · `audited@<main at landing>`
 
-> **Correction 2026-08-27 (verified against `main` @ a219e6fd):** the optimization run fee is **not** a `fee_bands` key. It lives in the canonical `optimization_fees` table, resolved server-side by `getFee(eventType, tier)` (migrations 017/076, admin-editable, determinism-tested). Any earlier reference to an `optimizer:run` `fee_bands` key is superseded — `/pricing` and the Optimize dialog read `optimization_fees`. The `plans` rows and the `concierge:*` / band keys are unaffected. Migration 259's status (the `plans` table + concierge rows) is being confirmed; if not on `main`, that migration is rebuilt — minus the optimizer row.
+> **Correction 2026-08-27 (verified against `main` @ a219e6fd):** the optimization run fee is **not** a `fee_bands` key. It lives in the canonical `optimization_fees` table, resolved server-side by `getFee(eventType, tier)` (migrations 017/076, admin-editable, determinism-tested). Any earlier reference to an `optimizer:run` `fee_bands` key is superseded — `/pricing` and the Optimize dialog read `optimization_fees`. The `plans` rows and the `concierge:*` / band keys are unaffected. Migration 259's status (the `plans` table + concierge rows) is being confirmed; if not on `main`, that migration is rebuilt — minus the optimizer row. <!-- band-key-ok: quoted as corrected, ledger 2026-09-24-pricing-map-row-keys -->
 
 Rules that govern this document:
 - Every number here is a `fee_bands` row (or a `plans` row for subscriptions). **No fee literal exists anywhere else.** The pricing page reads these rows; the resolver reads these rows; the plan document cites these rows.
@@ -92,13 +92,13 @@ previously blurred:
 - a **`fee_bands.band_key`** — the authority is `server/services/fee-band-requirements.ts`, which declares every
   key the resolvers read, its expected `rate_type`, and whether its absence is fail-loud or falls back;
 - a **`plans` table row**, written with a **dot** (`plans.trip_pass`). The colon form is reserved, because
-  `plans:plus_task_allowance` and `provider:pro_band_step` are genuine `fee_bands` keys — so `plans:trip_pass`
+  `plans:plus_task_allowance` and `provider:pro_band_step` are genuine `fee_bands` keys — so `plans:trip_pass` <!-- band-key-ok: quoted as corrected, ledger 2026-09-24-pricing-map-row-keys -->
   read as a band key that does not exist.
 
 A cap is **not a second band**: `traveler_service_fee` and `expert_concierge_booking` each carry their own
 `max_amount`, enforced at resolution (migration 178's own `COMMENT ON COLUMN`). Until this correction this table
-named `traveler:service_fee_pct` + `traveler:service_fee_cap_cents`, `provider:rails_rate` and
-`expert:band_limited/…` — **none of which exists in code** — and gave the expert commission the *provider* tier
+named `traveler:service_fee_pct` + `traveler:service_fee_cap_cents`, `provider:rails_rate` and <!-- band-key-ok: quoted as corrected, ledger 2026-09-24-pricing-map-row-keys -->
+`expert:band_limited/…` — **none of which exists in code** — and gave the expert commission the *provider* tier <!-- band-key-ok: quoted as corrected, ledger 2026-09-24-pricing-map-row-keys -->
 numbers, `0.12 / 0.08 / 0.06 / 0.04`, where the resolver charges `expert_standard` **0.25**. The printed rates
 were otherwise right; the keys were not, and this table is cited as the authority by four other documents, so
 they inherited both. The row that was wrong about its *number* is the one that had carried
@@ -125,7 +125,7 @@ question, and this is what it was hiding.
 |---|---|---|
 | `/pricing` | exists in footer; contents unaudited | rebuild as the four-column ladder + Plus + Pro, reading `plans` and `fee_bands` rows; earn grammar · **add nav link (right-side cluster, plain text, next to Ways to Earn), same route as footer** |
 | Finalize popup (slip) | not built (R-C) | the four choices with the current slip's numbers; ships with the cart-is-slip lane |
-| Optimize dialog fee line | built | reads `optimizer:run` |
+| Optimize dialog fee line | built | reads the `optimization_fees` table via `getFee(eventType, tier)` — **not** a `fee_bands` key (see the 2026-08-27 correction at the top) |
 | Concierge panel (feed) | built (`Optimize`) | reads `concierge:ai_task` |
 | Trip Pass offer | none | inline at second paid action |
 | Plus | none | landing "occasions" section; profile home city; `/plus` |
