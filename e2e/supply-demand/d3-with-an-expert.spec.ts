@@ -69,14 +69,23 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
     await shot(page, 'D3', '02', 'chat-opened');
     const input = testid(page, 'input-message');
-    // Same "spinner survives a first wait" class already fixed for S2's workspace landing and
-    // the ready-made service-add poll — one reload before concluding the composer is unreachable.
-    let inputVisible = await input.isVisible({ timeout: 5000 }).catch(() => false);
+    // `locator.isVisible()` does NOT auto-wait for the element to appear — it checks the DOM's
+    // CURRENT state and returns instantly, so a plain `isVisible({timeout})` on a still-rendering
+    // React tree can read false even though the element shows up a moment later (the D3-02
+    // screenshot from an earlier attempt proved this: the composer WAS on screen by the time the
+    // screenshot fired, moments after the check had already failed). `waitFor` DOES poll.
+    let inputVisible = await input
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
     if (!inputVisible) {
       await page.reload();
       await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
       await shot(page, 'D3', '02b', 'chat-opened-after-reload');
-      inputVisible = await input.isVisible({ timeout: 6000 }).catch(() => false);
+      inputVisible = await input
+        .waitFor({ state: 'visible', timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false);
     }
     if (inputVisible) {
       const messageBody = `D3 first message — e2e supply-demand`;
@@ -195,16 +204,28 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
 
   // "Suggest to client" (button-toggle-suggest) lives under the right rail's "Advisor" tab, not
   // the default "Add" tab the panel opens on (confirmed live via screenshot — the "Add" tab was
-  // showing the DMO/Platform-services picker with no suggest control anywhere on the page).
-  const advisorTab = testid(page, 'tab-right-advisor');
-  if (await advisorTab.isVisible({ timeout: 5000 }).catch(() => false)) {
+  // showing the DMO/Platform-services picker with no suggest control anywhere on the page). The
+  // tab's DISPLAY label is "Advisor" but its testid key is still "gaps" (workspace.tsx: "Advisor
+  // Phase 1: visible label only — the 'gaps' key/testids are untouched... tab-right-gaps... stays
+  // exactly as it was") — `tab-right-advisor` does not exist, which is why the first fix attempt
+  // silently no-opped (isVisible=false, swallowed by .catch()) and this screenshot still showed
+  // "Add" selected.
+  const advisorTab = testid(page, 'tab-right-gaps');
+  const advisorTabVisible = await advisorTab
+    .waitFor({ state: 'visible', timeout: 8000 })
+    .then(() => true)
+    .catch(() => false);
+  if (advisorTabVisible) {
     await advisorTab.click().catch(() => {});
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(700);
   }
   await shot(page, 'D3', '07b', 'expert-workspace-advisor-tab');
 
   const toggleSuggest = testid(page, 'button-toggle-suggest');
-  const toggleVisible = await toggleSuggest.isVisible({ timeout: 5000 }).catch(() => false);
+  const toggleVisible = await toggleSuggest
+    .waitFor({ state: 'visible', timeout: 8000 })
+    .then(() => true)
+    .catch(() => false);
   let suggestionSubmitted = false;
   if (toggleVisible) {
     await toggleSuggest.click().catch(() => {});

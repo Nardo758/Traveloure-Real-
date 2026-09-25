@@ -512,8 +512,59 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
     });
   }
 
-  // Attempt the listing-panel publish step (title/plan type/price/save/submit) if a
-  // ready_made_trips row now exists for this trip (created by "New build" per P1-1).
+  // Harness fix (lead review class — same shape as D3's Advisor-tab bug): the listing panel
+  // lives under the right rail's "Distribute" tab (App.tsx: "ReadyMadeListingPanel via
+  // Distribute"), not on "Add" where "New build" leaves the panel open. AND: "New build" does
+  // NOT itself create a `ready_made_trips` row (confirmed — the table was empty in the DB right
+  // after a successful 3-item build) — the row is minted by pressing "Ship to store"
+  // (`button-ship-to-store`, `shipToStoreMutation`) on that tab, which only renders while no
+  // listing exists yet (`workspaceCtx.listing`). The earlier "created by New build per P1-1"
+  // comment was a stale reading of an earlier phase.
+  if (tripId) {
+    const distributeTab = testid(page, 'tab-right-distribute');
+    if (await distributeTab.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await distributeTab.click().catch(() => {});
+      await page.waitForTimeout(600);
+      await shot(page, 'S2-readymade', '03b', 'distribute-tab-open');
+      const shipBtn = testid(page, 'button-ship-to-store');
+      if (await shipBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await shipBtn.click().catch(() => {});
+        await page.waitForTimeout(1500);
+        await shot(page, 'S2-readymade', '03c', 'after-ship-to-store');
+      } else {
+        fileFinding({
+          journey: 'S2',
+          step: 'readymade:ship-to-store',
+          class: 'DEAD_TRIGGER',
+          severity: 'P2',
+          known: null,
+          title: 'button-ship-to-store not visible on the Distribute tab',
+          expected: 'A build with no listing yet offers "Ship to store" under Distribute > Store',
+          actual: 'Not visible within 5s',
+          where: 'client/src/pages/expert/workspace.tsx (Store channel, isAuthoring branch)',
+          evidence: { shot: 'shots/S2-readymade-03b-distribute-tab-open.png' },
+          behavioural: true,
+        });
+      }
+    } else {
+      fileFinding({
+        journey: 'S2',
+        step: 'readymade:distribute-tab',
+        class: 'DEAD_TRIGGER',
+        severity: 'P2',
+        known: null,
+        title: 'tab-right-distribute not visible on the expert workspace build',
+        expected: 'The right rail offers an Add/Advisor/Distribute tab set for every build',
+        actual: 'Not visible within 5s',
+        where: 'client/src/pages/expert/workspace.tsx',
+        evidence: {},
+        behavioural: true,
+      });
+    }
+  }
+
+  // Attempt the listing-panel publish step (title/plan type/price/save/submit) now that
+  // "Ship to store" should have minted the ready_made_trips row.
   const rmRows = tripId
     ? await q(`SELECT id, status FROM ready_made_trips WHERE source_trip_id = $1`, [tripId])
     : [];
