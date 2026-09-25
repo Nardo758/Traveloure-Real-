@@ -272,24 +272,22 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   await shot(page, 'D3', '07', 'expert-workspace');
 
-  // "Suggest to client" (button-toggle-suggest) lives under the right rail's "Advisor" tab, not
-  // the default "Add" tab the panel opens on (confirmed live via screenshot — the "Add" tab was
-  // showing the DMO/Platform-services picker with no suggest control anywhere on the page). The
-  // tab's DISPLAY label is "Advisor" but its testid key is still "gaps" (workspace.tsx: "Advisor
-  // Phase 1: visible label only — the 'gaps' key/testids are untouched... tab-right-gaps... stays
-  // exactly as it was") — `tab-right-advisor` does not exist, which is why the first fix attempt
-  // silently no-opped (isVisible=false, swallowed by .catch()) and this screenshot still showed
-  // "Add" selected.
-  const advisorTab = testid(page, 'tab-right-gaps');
-  const advisorTabVisible = await advisorTab
+  // "Suggest to client" (`ClientSuggestPanel`, button-toggle-suggest) actually lives under the
+  // right rail's "Distribute" tab (`rightTab === "distribute"`, workspace.tsx ~5141/5232) — a
+  // prior pass's comment here claimed the "Advisor" tab (testid key "gaps") from a screenshot,
+  // but reading the component tree directly shows `tab-right-gaps` only gates the AI-gaps content
+  // (~4585) and `ClientSuggestPanel` mounts inside the DISTRIBUTE tab's block instead. Confirmed
+  // by grep, not by a screenshot this time.
+  const distributeTab = testid(page, 'tab-right-distribute');
+  const distributeTabVisible = await distributeTab
     .waitFor({ state: 'visible', timeout: 8000 })
     .then(() => true)
     .catch(() => false);
-  if (advisorTabVisible) {
-    await advisorTab.click().catch(() => {});
+  if (distributeTabVisible) {
+    await distributeTab.click().catch(() => {});
     await page.waitForTimeout(700);
   }
-  await shot(page, 'D3', '07b', 'expert-workspace-advisor-tab');
+  await shot(page, 'D3', '07b', 'expert-workspace-distribute-tab');
 
   const toggleSuggest = testid(page, 'button-toggle-suggest');
   const toggleVisible = await toggleSuggest
@@ -314,8 +312,8 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
     fileFinding({
       journey: 'D3',
       step: 'workspace:suggest-toggle',
-      class: 'SPEC_DIVERGENCE',
-      severity: 'P3',
+      class: 'DEAD_TRIGGER',
+      severity: 'P1',
       known: null,
       title: 'button-toggle-suggest not visible on the expert workspace, despite the advisor row having ALREADY moved past pending',
       expected:
@@ -326,7 +324,7 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
         'gating the earlier pass could not rule out.',
       actual: `Not visible after an 8s poll (appears()); trip_expert_advisors.status='${advisorRowAfterAccept[0]?.status}' at this point (accepted before this step)`,
       where: 'client/src/pages/expert/workspace.tsx (ClientSuggestPanel, ~2392/5237)',
-      evidence: { shot: 'shots/D3-07b-expert-workspace-advisor-tab.png' },
+      evidence: { shot: 'shots/D3-07b-expert-workspace-distribute-tab.png' },
       behavioural: true,
     });
   }
