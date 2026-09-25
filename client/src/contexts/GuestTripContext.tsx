@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { refreshPlanLists } from "@/lib/plan-lists";
 
 // Guest trips are stored in localStorage as { tripId: shareToken } pairs
 // This allows guests to access their draft trips before sign-up.
@@ -64,6 +65,9 @@ export function GuestTripProvider({ children }: { children: React.ReactNode }) {
         console.error(`Failed to claim trip ${tripId}:`, err);
       }
     }
+    // RC-7 (ledger `2026-09-25-rc7-new-plan-visible`): claimed plans are now this member's —
+    // every loaded plan list must see them.
+    if (tripIds.length > 0) void refreshPlanLists();
   };
 
   return (

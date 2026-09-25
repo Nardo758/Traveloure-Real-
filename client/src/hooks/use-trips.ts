@@ -5,12 +5,18 @@ import type { InsertTrip, Trip, GeneratedItinerary } from "@shared/schema";
 import { useToast } from "./use-toast";
 import { useGuestTrips } from "@/contexts/GuestTripContext";
 import { useAuth } from "./use-auth";
+import { refreshPlanLists } from "@/lib/plan-lists";
 
 // === TRIPS ===
 
 export function useTrips() {
   return useQuery({
     queryKey: [api.trips.list.path],
+    // RC-7 (ledger `2026-09-25-rc7-new-plan-visible`): the app default is `staleTime: Infinity`,
+    // so an already-loaded list never saw a plan born where no client door invalidated it (a
+    // server-scheduled Plus draft, another tab). Re-fetch whenever a reader mounts; the doors
+    // that create a plan also call `refreshPlanLists` for the reader already on screen.
+    refetchOnMount: "always",
     queryFn: async () => {
       const res = await fetch(api.trips.list.path, { credentials: "include" });
       if (res.status === 401) return null; // Handle unauthorized gracefully
@@ -79,7 +85,8 @@ export function useCreateTrip() {
       if (!user && (trip as any).shareToken) {
         addGuestTrip(trip.id, (trip as any).shareToken);
       }
-      queryClient.invalidateQueries({ queryKey: [api.trips.list.path] });
+      // RC-7: the ONE spelling of "a plan was born" (ledger `2026-09-25-rc7-new-plan-visible`).
+      void refreshPlanLists(queryClient);
       toast({
         title: "Trip Created",
         description: user ? "Your new adventure awaits!" : "Your trip is ready. Sign up to book services!",

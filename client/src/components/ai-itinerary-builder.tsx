@@ -55,6 +55,7 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { trackItineraryGenerated } from "@/lib/analytics";
+import { refreshPlanLists } from "@/lib/plan-lists";
 
 interface AIItineraryBuilderProps {
   destination: string;
@@ -351,6 +352,10 @@ export function AIItineraryBuilder({
       if ("refusal" in result && result.refusal) {
         setDraftRefusal(result.refusal);
         return;
+      }
+      if ("id" in result && result.id) {
+        // RC-7 (ledger `2026-09-25-rc7-new-plan-visible`): save-as-trip may create the plan.
+        void refreshPlanLists();
       }
       if (onSave && "id" in result && result.id) {
         onSave(result.id);
