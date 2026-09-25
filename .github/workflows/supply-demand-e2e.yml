@@ -87,6 +87,11 @@ jobs:
           # Stripe-key guard refuses to boot the production bundle with a sk_test_
           # stub key. Every *-gate.yml workflow that boots dist/index.cjs sets this.
           ALLOW_TEST_ACCOUNTS: '1'
+          # The server runs NODE_ENV=production over plain http://localhost, so the session
+          # cookie is Secure by default and the browser drops it: login answers 200 and every
+          # later request is 401. Same pair every other browser gate that boots dist/ sets.
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: production
           E2E_AI_STUB: '1'
