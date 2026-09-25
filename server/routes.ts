@@ -109,6 +109,7 @@ import {
   bundleComponents,
   deliverableDownloads,
   resolveBookingMode,
+  isBookingModeChosen,
   convertCartToItinerarySchema,
 } from "@shared/schema";
 import {
@@ -232,6 +233,7 @@ import { insertAccessAuditLog } from "./services/admin-query.service";
 import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
+import bookingModePromptRoutes from "./routes/booking-mode-prompt.routes";
 import storefrontRoutes from "./routes/storefront.routes";
 import seoRoutes from "./routes/seo.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
@@ -1255,6 +1257,11 @@ export async function registerRoutes(
 
   // Provider supply tools — /api/provider/settings (Kyoto-supply activation); provider-role gated
   app.use(providerRoutes);
+
+  // Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`): the owner's
+  // live-listing mode status, the bulk decide for undecided listings, and the admin summary
+  // (its /api/admin path sits behind the blanket guard registered above).
+  app.use(bookingModePromptRoutes);
 
   // Listing Health (Catalog card meter, §13-deterministic checks). MUST mount before the inline
   // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as
@@ -3134,6 +3141,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       ...s,
       showPrice: (s as any).showPrice ?? true,
       bookingMode: resolveBookingMode((s as any).bookingMode, ownerInstantBooking),
+      // Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`): whether a
+      // seller CHOSE this mode or the platform default answered — the ONE predicate beside the
+      // resolver, fed the UNCOERCED account flag, so the Catalog row can say "not chosen yet".
+      bookingModeChosen: isBookingModeChosen((s as any).bookingMode, ownerForm ? ownerForm.instantBooking ?? null : undefined),
     }));
     res.json(withDisplayOptions);
   });
