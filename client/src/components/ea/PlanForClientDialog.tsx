@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { refreshPlanLists } from "@/lib/plan-lists";
 
 export function PlanForClientDialog({ relationshipId, clientLabel }: { relationshipId: string; clientLabel: string }) {
   const [open, setOpen] = useState(false);
@@ -41,6 +42,8 @@ export function PlanForClientDialog({ relationshipId, clientLabel }: { relations
     },
     onSuccess: ({ id }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ea/trips"] });
+      // RC-7: a plan was created; every loaded plan list must see it.
+      void refreshPlanLists(queryClient);
       setOpen(false);
       navigate(`/plans/${id}`);
     },
