@@ -702,7 +702,22 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
     }
 
     if (submittable) {
-      await submitBtn.click();
+      // Retry with a swallowed error, not a bare `.click()` (found live, run 4: `isEnabled()`
+      // read true a moment earlier, but the click itself hit Playwright's own actionability wait
+      // and timed out — e.g. a toast or a re-render mid-transition — which an unguarded click
+      // turns into an uncaught exception that crashes the WHOLE test instead of a findable state.
+      // The post-submit DB read below is the real verification either way, so a swallowed click
+      // failure here still gets reported accurately as readymade:submit-verify, never silently.
+      let clicked = false;
+      for (let i = 0; i < 3 && !clicked; i++) {
+        await submitBtn
+          .click({ timeout: 3000 })
+          .then(() => {
+            clicked = true;
+          })
+          .catch(() => {});
+        if (!clicked) await page.waitForTimeout(500);
+      }
       await page.waitForTimeout(1200);
     } else {
       fileFinding({
