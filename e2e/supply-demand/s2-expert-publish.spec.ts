@@ -33,6 +33,9 @@ const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
 test.describe.configure({ mode: 'serial' });
 
 test('S2: Expert E applies, publishes an offering, and is admin-approved', async ({ page }) => {
+  // Same margin as S1 (lead review, isVisible sweep arithmetic fix) — this test also walks the
+  // wizard and can retry it, so it carries the same risk of exceeding the default 120s budget.
+  test.setTimeout(8 * 60_000);
   const email = e2eEmail('expertE');
   const handle = e2eHandle('expertE');
   const offeringTitle = e2eTitle('Kyoto Custom Itinerary Planning');

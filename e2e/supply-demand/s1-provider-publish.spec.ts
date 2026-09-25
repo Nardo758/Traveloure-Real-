@@ -110,6 +110,13 @@ const availabilityFailedFor: string[] = [];
 
 for (const fx of PROVIDERS) {
   test(`S1 ${fx.key}: apply, publish, and become visible`, async ({ page }) => {
+    // Lead review (isVisible sweep, arithmetic fix): this test walks the wizard TWICE, and
+    // every wizard-step probe now genuinely waits instead of returning instantly — a correct
+    // fix, but one that eats into the default 120s test budget fast enough to time this test
+    // out under normal variance (confirmed live: S1 providerA hit exactly this). Widened the
+    // budget rather than racing the clock; the individual probes were ALSO shortened
+    // (pickNeighborhood) where they were the actual multiplier.
+    test.setTimeout(10 * 60_000);
     const email = e2eEmail(fx.key);
     const handle = e2eHandle(fx.key);
     const title = e2eTitle(fx.listingTitleBase);

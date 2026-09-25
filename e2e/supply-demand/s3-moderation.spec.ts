@@ -27,6 +27,8 @@ const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
 test.describe.configure({ mode: 'serial' });
 
 test('S3: pending listing is hidden from travelers while awaiting approval', async ({ page }) => {
+  // Same margin as S1/S2 (lead review, isVisible sweep arithmetic fix).
+  test.setTimeout(6 * 60_000);
   const state = readState();
   const providerAEmail = state.accounts.providerA?.email;
   test.skip(!providerAEmail, 'S1 providerA must have run first to produce an account (see state.json)');
@@ -283,6 +285,8 @@ test('S3: Stripe Connect onboarding steps (HELD)', async () => {
 });
 
 test('S3: time-to-visible after a clean approve (no background-check gate)', async ({ page }) => {
+  // Same margin as S1/S2 (lead review, isVisible sweep arithmetic fix).
+  test.setTimeout(6 * 60_000);
   const state = readState();
   const providerAEmail = state.accounts.providerA?.email;
   test.skip(!providerAEmail, 'S1 providerA must have run first');

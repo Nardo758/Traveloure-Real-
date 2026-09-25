@@ -434,15 +434,24 @@ export async function pickNeighborhood(page: Page, slug: string): Promise<boolea
     return false;
   };
 
-  if (await appears(opt, 3000)) {
+  // Lead review (isVisible sweep, arithmetic fix): `walkServiceFormToReview` calls this on
+  // EVERY wizard step, and only the Logistics step ever actually has this picker — under the
+  // old (broken, non-waiting) `isVisible()` a miss on the other 4-7 steps cost nothing; under
+  // the now-correct `appears()` a miss here used to cost a real 3000+2000=5000ms EACH, times
+  // every wrong step, times two full wizard walks per fixture — comfortably enough on its own
+  // to blow a 120s test timeout (confirmed: this is what pushed S1 providerA over). These two
+  // outer PROBES ("is this even the right step") stay short; only `clickAndVerify`'s internal
+  // wait — reached ONLY once presence is confirmed — gets the patient 8000ms budget that fixed
+  // the real click/render-race bug.
+  if (await appears(opt, 800)) {
     return await clickAndVerify();
   }
   // The picker may be behind a search box filtering the same list down — try the search first.
   const search = testid(page, 'input-neighborhood-search');
-  if (await appears(search, 2000)) {
+  if (await appears(search, 600)) {
     await search.fill(slug.replace(/[-_]/g, ' '), { timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(300);
-    if (await appears(opt, 2000)) {
+    if (await appears(opt, 1500)) {
       return await clickAndVerify();
     }
   }
