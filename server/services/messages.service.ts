@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { userAndExpertChats, users, notifications, userBlocks, messageReports, adminNotifications } from "@shared/schema";
+import { userAndExpertChats, users, notifications, userBlocks, messageReports, adminNotifications, conversationContexts } from "@shared/schema";
 import { eq, and, or, desc, sql, isNull, ilike } from "drizzle-orm";
 import {
   matchPublicConversationId,
@@ -363,6 +363,30 @@ export async function listInternalConversationIds(userId: string): Promise<strin
   for (const row of rows) {
     const other = row.senderId === userId ? row.receiverId : row.senderId;
     if (other) ids.add(buildConversationId(userId, other));
+  }
+  // AUDIT RC-11 (ledger `2026-09-25-rc11-first-message`): a thread OPENED by the start rail has no
+  // message yet — `POST /api/conversations/start` records its `conversation_contexts` row first and
+  // sends nothing unless `about` was given — so a walk over messages alone could not resolve the
+  // public id it just handed out, and the traveler's FIRST send was a 404. A context row is a
+  // conversation the server itself opened between two named parties, so it is one of the caller's
+  // conversations exactly as a message row is. The LIKE only narrows; the exact party test below
+  // is the decision, so a user id that is a prefix or suffix of another never matches (§13).
+  const escaped = userId.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const contextRows = await db
+    .selectDistinct({ conversationId: conversationContexts.conversationId })
+    .from(conversationContexts)
+    .where(
+      or(
+        sql`${conversationContexts.conversationId} LIKE ${`${escaped}\\_%`}`,
+        sql`${conversationContexts.conversationId} LIKE ${`%\\_${escaped}`}`,
+      ),
+    );
+  for (const row of contextRows) {
+    const { userId1, userId2 } = parseConversationId(row.conversationId);
+    if (userId1 === userId || userId2 === userId) {
+      const other = userId1 === userId ? userId2 : userId1;
+      if (other && other !== userId) ids.add(buildConversationId(userId, other));
+    }
   }
   return Array.from(ids);
 }
