@@ -55,6 +55,7 @@ import { db } from "../db";
 import {
   acceptQuote,
   declineQuote,
+  resolveQuoteOwnerShareRate,
   issueQuote,
   listQuotesForOwner,
   listQuotesForTraveler,
@@ -69,7 +70,7 @@ import {
   resolveQuoteValidityDays,
   DAY_MS,
 } from "../config/quote-validity.config";
-import { resolveServiceOwnerShareRate } from "../services/commission";
+import { resolveServiceOwnerShareRate, serviceCategorySlugToFeeCategory } from "../services/commission";
 import { resolveDepositPlan } from "../services/deposit.service";
 import { storage } from "../storage";
 import { listingPriceGate } from "../services/listing-price-gate";
@@ -77,6 +78,7 @@ import { centsToAmount, quoteLifecycle, SERVICE_QUOTE_STATUSES } from "@shared/s
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
+  expert: `sq-${RUN}-expert`,
   provider: `sq-${RUN}-prov`,
   traveler: `sq-${RUN}-trav`,
   other: `sq-${RUN}-other`,
@@ -185,6 +187,10 @@ before(async () => {
     VALUES (${ids.provider}, ${`sq-${RUN}-prov@t.test`}, 'SQ', 'Provider', 'service_provider')
   `);
   await db.execute(sql`
+    INSERT INTO users (id, email, first_name, last_name, role)
+    VALUES (${ids.expert}, ${`sq-${RUN}-expert@t.test`}, 'SQ', 'Expert', 'expert')
+  `);
+  await db.execute(sql`
     INSERT INTO users (id, email, first_name, last_name)
     VALUES (${ids.traveler}, ${`sq-${RUN}-trav@t.test`}, 'SQ', 'Traveler')
   `);
@@ -205,7 +211,7 @@ after(async () => {
     await db.execute(sql`DELETE FROM content_registry WHERE content_id = ${sid}`).catch(() => {});
     await db.execute(sql`DELETE FROM provider_services WHERE id = ${sid}`).catch(() => {});
   }
-  await db.execute(sql`DELETE FROM users WHERE id IN (${ids.provider}, ${ids.traveler}, ${ids.other})`).catch(() => {});
+  await db.execute(sql`DELETE FROM users WHERE id IN (${ids.expert}, ${ids.provider}, ${ids.traveler}, ${ids.other})`).catch(() => {});
   for (const id of createdCategoryIds) {
     await db.execute(sql`DELETE FROM service_categories WHERE id = ${id}`).catch(() => {});
   }
@@ -455,13 +461,21 @@ test("Q6 · ACCEPT under a DOUBLE CALL mints EXACTLY ONE booking, priced off the
   assert.equal(booking.provider_id, ids.provider);
   assert.equal(booking.booking_details?.notes, "rooftop, if possible", "the traveler's own words ride along");
 
-  // §8: the split is the fee_bands answer through the ONE resolver, computed here the same way.
-  const share = await resolveServiceOwnerShareRate({ ownerUserId: ids.provider, ownerIsProvider: true, feeCategory: null });
-  if (share !== null) {
-    const amount = 482.5;
-    assert.equal(booking.platform_fee, (amount * (1 - share)).toFixed(2));
-    assert.equal(booking.provider_earnings, (amount * share).toFixed(2));
-  }
+  // §8: the split is the fee_bands answer through checkout's ONE precedence, computed here the same
+  // way. It MUST resolve: this used to be `if (share !== null)`, which let a swallowed resolver
+  // failure mint `platform_fee = 0` and still pass (ledger `2026-09-25-quote-platform-fee`).
+  const share = await resolveQuoteOwnerShareRate({
+    serviceId,
+    ownerUserId: ids.provider,
+    ownerRole: "service_provider",
+    categoryId,
+    categorySlug: null,
+  });
+  assert.ok(share !== null, "the owner share resolves for a provider listing");
+  const amount = 482.5;
+  assert.equal(booking.platform_fee, (amount * (1 - share)).toFixed(2));
+  assert.equal(booking.provider_earnings, (amount * share).toFixed(2));
+  assert.ok(Number(booking.platform_fee) > 0, "the platform's commission is never an invented zero");
 
   const q = await quoteRow(req.quote.id);
   assert.equal(q.status, "accepted");
@@ -656,4 +670,70 @@ test("D33 · D33b: a FIXED-price listing with price=null still gets PRICE_REQUIR
   // the row this test builds is exactly the shape that gate would see on a publish attempt.
   const gate = listingPriceGate({ priceType: created.priceType, price: created.price });
   assert.deepEqual(gate, { ok: false, code: "PRICE_REQUIRED" });
+});
+
+// ─── Ledger `2026-09-25-quote-platform-fee` ──────────────────────────────────────────────────
+
+test("F1 · serviceCategorySlugToFeeCategory maps raw slugs to fee categories and is idempotent — pure, no DB", () => {
+  assert.equal(serviceCategorySlugToFeeCategory(null), "default");
+  assert.equal(serviceCategorySlugToFeeCategory("events-celebrations"), "default");
+  assert.equal(serviceCategorySlugToFeeCategory("tours-experiences"), "activities");
+  assert.equal(serviceCategorySlugToFeeCategory("transportation-logistics"), "transportation");
+  assert.equal(serviceCategorySlugToFeeCategory("restaurants-dining"), "dining");
+  assert.equal(serviceCategorySlugToFeeCategory("lodging-accommodation"), "accommodation");
+  for (const k of ["default", "activities", "transportation", "dining", "accommodation", "flights", "car_rental", "insurance"]) {
+    assert.equal(serviceCategorySlugToFeeCategory(k), k, `idempotent on "${k}"`);
+  }
+});
+
+test("F2 · an EXPERT-owned quote on a category whose raw slug names no band is minted with the real commission, not 0", async () => {
+  // A disposable category whose slug is NOT a fee_bands key — the defect's exact shape (every live
+  // `service_categories.slug`, e.g. `events-celebrations`, is one).
+  const catId = `sq-${RUN}-cat-slug`;
+  const slug = `sq-${RUN}-events-celebrations`;
+  await db.execute(sql`
+    INSERT INTO service_categories (id, name, slug, commission_band_key)
+    SELECT ${catId}, ${`SQ ${RUN} events`}, ${slug}, sc.commission_band_key
+      FROM service_categories sc WHERE sc.commission_band_key IS NOT NULL LIMIT 1
+  `);
+  createdCategoryIds.push(catId);
+  const bandKeyTaken = await db.execute(sql`SELECT 1 FROM fee_bands WHERE band_key = ${slug}`);
+  assert.equal(bandKeyTaken.rows.length, 0, "precondition: the raw slug names no band");
+
+  const serviceId = `sq-${RUN}-svc-expert`;
+  await db.execute(sql`
+    INSERT INTO provider_services (id, user_id, service_name, description, price, price_type, booking_mode,
+                                   delivery_method, category_id, status, approval_status)
+    VALUES (${serviceId}, ${ids.expert}, ${`SQ expert listing ${RUN}`}, 'fixture', NULL, 'custom_quote', 'request',
+            'video', ${catId}, 'active', 'approved')
+  `);
+  createdServiceIds.push(serviceId);
+
+  const req = ok(await requestQuote({ serviceId, travelerId: ids.traveler }), "request");
+  ok(await issueQuote({ quoteId: req.quote.id, actorUserId: ids.expert, amountCents: 20000 }), "issue");
+  const acc = ok(await acceptQuote({ quoteId: req.quote.id, travelerId: ids.traveler }), "accept");
+
+  const booking = (
+    await db.execute(sql`SELECT platform_fee, provider_earnings FROM service_bookings WHERE id = ${acc.bookingId}`)
+  ).rows[0] as any;
+
+  // Expected rate read from fee_bands at test time (§8, no literal): an unmapped slug is the
+  // "default" fee category, which resolves the expert band exactly as a cart line does.
+  const band = (
+    await db.execute(sql`SELECT CAST(default_rate AS FLOAT) AS rate FROM fee_bands WHERE band_key = 'expert_standard' AND is_active = true`)
+  ).rows[0] as any;
+  assert.ok(band, "fee_bands carries an active expert_standard band");
+  const amount = 200;
+  assert.ok(Number(booking.platform_fee) > 0, `platform_fee must not be 0 (got ${booking.platform_fee})`);
+  assert.equal(booking.platform_fee, (amount * band.rate).toFixed(2));
+  assert.equal(booking.provider_earnings, (amount * (1 - band.rate)).toFixed(2));
+
+  // The same slug, MAPPED, through the legacy resolver (what POST /api/bookings now passes too).
+  const legacy = await resolveServiceOwnerShareRate({
+    ownerUserId: ids.expert,
+    ownerIsProvider: false,
+    feeCategory: serviceCategorySlugToFeeCategory(slug),
+  });
+  assert.ok(legacy !== null, "the mapped slug resolves");
+  assert.equal((amount * (1 - legacy)).toFixed(2), booking.platform_fee);
 });
