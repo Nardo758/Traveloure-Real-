@@ -64,6 +64,7 @@ import { isPlaceAnchored } from "@shared/service-fundamentals";
 import type { BuyAction } from "@shared/buy-action";
 import {
   storefrontOfferingActionLabel,
+  offeringActionIsMessageOnly,
   formatNextAvailable,
   buildStorefrontActionHref,
   storefrontActionCharges,
@@ -330,6 +331,7 @@ function StorefrontOfferingCard({
   actionHref,
   actionCharges,
   nextAvailableText,
+  onMessage,
 }: {
   href: string;
   testId: string;
@@ -367,6 +369,13 @@ function StorefrontOfferingCard({
    * in which case the footer badge keeps its pre-existing unconditional behaviour.
    */
   actionCharges?: boolean;
+  /**
+   * Present only when the resolver offers NO booking verb for this listing (`not_available` —
+   * the provider hid the CTA). The card then offers Message about the listing (LD 40's
+   * `{ serviceId }` address) and no buy button, no "Secure checkout" and no inline CTA (ledger
+   * `2026-09-25-provider-action-buttons`).
+   */
+  onMessage?: () => void;
 }) {
   const priceHidden = showPrice === false;
   // ld23-buy-action-gap: THIS CARD STILL AUTHORS ITS OWN CTA — recorded, not decided. Ruling 9
@@ -404,7 +413,7 @@ function StorefrontOfferingCard({
   // old inline `ctaLabel` beside it duplicated the same decision in the card's own words and
   // could disagree with it outright (a custom-quote row read "Request to book →" here while the
   // resolver's own button read "Request a quote"). §18 rule 1: one button, one label.
-  const hasNewAction = Boolean(actionLabel && actionHref);
+  const hasNewAction = Boolean(actionLabel && actionHref) || Boolean(onMessage);
   const [, navigate] = useLocation();
   return (
     <Link
@@ -476,7 +485,7 @@ function StorefrontOfferingCard({
             >
               Enquire for pricing
             </span>
-          ) : hasNewAction && actionCharges === false ? (
+          ) : hasNewAction && (actionCharges === false || onMessage) ? (
             // A request/quote row: the new button already says "Request …", and nothing is
             // charged by pressing it — "Secure checkout" here would be a claim about a payment
             // this row never takes (§13).
@@ -522,6 +531,22 @@ function StorefrontOfferingCard({
                 {nextAvailableText}
               </p>
             )}
+          </div>
+        )}
+        {onMessage && (
+          <div className="mt-2">
+            <button
+              type="button"
+              data-testid={`button-offering-message-${actionId ?? ""}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onMessage();
+              }}
+              className="w-full rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-card)] px-3 py-2 text-[13px] font-semibold text-[color:var(--earn-navy)] transition-colors hover:border-[color:var(--earn-coral-border)]"
+            >
+              Message
+            </button>
           </div>
         )}
       </div>
@@ -1163,17 +1188,12 @@ export default function StorefrontPage() {
                   // Vacation mode (the `ld23-buy-action-gap` note above): the server's `buyAction`
                   // does not yet know the owner is away, so this button — like `cta` above —
                   // withholds itself rather than promising "Book" on an away storefront (§13).
-                  const actionLabel = away
-                    ? null
-                    : storefrontOfferingActionLabel(
-                        {
-                          deliveryMethod: s.deliveryMethod,
-                          productShape: s.productShape,
-                          priceType: s.priceType,
-                          expertOfferingTypeKey: s.expertOfferingTypeKey,
-                        },
-                        s.buyAction,
-                      );
+                  // The label is mapped FROM the resolved action only (ledger
+                  // `2026-09-25-provider-action-buttons`): no listing column is read here.
+                  const actionLabel = away ? null : storefrontOfferingActionLabel(s.buyAction);
+                  // The resolver offers NO booking verb (not live / provider hid the CTA): the
+                  // card offers Message about this listing, and no buy button at all.
+                  const messageOnly = !away && offeringActionIsMessageOnly(s.buyAction);
                   const nextAvailableText = formatNextAvailable(s.nextAvailable);
                   return (
                     <StorefrontOfferingCard
@@ -1197,7 +1217,18 @@ export default function StorefrontPage() {
                       actionLabel={actionLabel ?? undefined}
                       actionHref={actionLabel ? buildStorefrontActionHref(serviceHref, actionLabel, s.nextAvailable) : undefined}
                       actionCharges={actionLabel ? storefrontActionCharges(s.buyAction) : undefined}
-                      nextAvailableText={nextAvailableText}
+                      nextAvailableText={actionLabel ? nextAvailableText : null}
+                      onMessage={
+                        messageOnly
+                          ? () =>
+                              askExpert({
+                                serviceId: s.id,
+                                subject: s.serviceName,
+                                returnTo: serviceHref,
+                                fallbackName: displayName,
+                              })
+                          : undefined
+                      }
                     />
                   );
                 })}

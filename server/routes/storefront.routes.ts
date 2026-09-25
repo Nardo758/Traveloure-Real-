@@ -38,7 +38,7 @@ import { db } from "../db";
 import { users, providerServices, readyMadeTrips, localExpertForms, serviceProviderForms, serviceReviews, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations, travelPulseHiddenGems } from "@shared/schema";
 import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
 // L23 (brief §11.5, ruling 9): the ONE author of a buy button, shipped on each card.
-import { buildListingBuyActions, resolveBuyerState, resolveNextAvailableSlots } from "../services/buy-action-payload";
+import { buildListingBuyActions, listingBuyFacts, resolveBuyerState, resolveNextAvailableSlots } from "../services/buy-action-payload";
 import type { BuyActionBuyer } from "@shared/buy-action";
 // Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9 2026):
 // business-level flag only, read here for the storefront's `away` field — never touches
@@ -618,9 +618,10 @@ async function loadStorefrontFromOwner(
   }
 
   // Lane 1: custom services — public read-gate is approval_status='approved' (F2) + active.
-  const services = await db
+  const publicListingRows = await db
     .select({
       id: providerServices.id,
+      parentServiceId: providerServices.parentServiceId,
       serviceName: providerServices.serviceName,
       price: providerServices.price,
       priceType: providerServices.priceType,
@@ -653,6 +654,14 @@ async function loadStorefrontFromOwner(
       // delivered as `async_messaging`, Locked Decision 54(d)) apart from an ordinary listing —
       // never re-derived client-side from a guess, read straight off the row.
       expertOfferingTypeKey: providerServices.expertOfferingTypeKey,
+      // Provider action buttons (ledger `2026-09-25-provider-action-buttons`): the facts the ONE
+      // resolver reads to tell a ride (category) and a deposit listing apart. Read server-side
+      // only — `categoryId` and the deposit config are stripped before the row leaves (below).
+      categoryId: providerServices.categoryId,
+      depositEnabled: providerServices.depositEnabled,
+      depositType: providerServices.depositType,
+      depositPercentage: providerServices.depositPercentage,
+      depositFlatAmount: providerServices.depositFlatAmount,
     })
     .from(providerServices)
     .where(
@@ -662,6 +671,13 @@ async function loadStorefrontFromOwner(
         eq(providerServices.status, "active"),
       ),
     );
+  // A ROOM (`parent_service_id` set) is booked from its PROPERTY's page, never as a card of its
+  // own (ledger `2026-09-25-provider-action-buttons`, item 4): the storefront's cards, counts and
+  // buy actions cover the property only. Rooms stay in `publicListingRows` so an approved review
+  // of a room still counts toward the storefront's reviews exactly as before.
+  const services = publicListingRows
+    .filter((row) => !row.parentServiceId)
+    .map(({ parentServiceId: _parent, ...row }) => row);
 
   // C3 (ruling 74/75): resolve each service's booking mode server-side, so the traveler card
   // always receives a CONCRETE value. This is THE ONE derivation site shared by both card reads
@@ -727,7 +743,7 @@ async function loadStorefrontFromOwner(
       ),
     )
     .orderBy(desc(serviceReviews.createdAt));
-  const publicServiceIds = new Set(services.map((service) => service.id));
+  const publicServiceIds = new Set(publicListingRows.map((service) => service.id));
   const serviceReviewRows = approvedReviewRows.filter((review) =>
     publicServiceIds.has(review.serviceId),
   );
@@ -756,6 +772,7 @@ async function loadStorefrontFromOwner(
           productShape: s.productShape,
           price: s.price,
           isLive: true,
+          ...listingBuyFacts(s),
         })),
         buyer,
       )
@@ -766,7 +783,18 @@ async function loadStorefrontFromOwner(
   // — §18 rule 1), never one query per card. §13: absent for a listing with no such slot, never
   // a guessed date.
   const nextAvailableByService = await resolveNextAvailableSlots(services.map((s) => s.id));
-  let resolvedServices = services.map((s) => ({
+  let resolvedServices = services.map(
+    // The resolver's inputs stay on the server: the category id and the listing's deposit
+    // config are read above to classify the button, and the traveler receives the resolved
+    // `buyAction` (a `deposit: true` flag at most — never a percentage or an amount, §14).
+    ({
+      categoryId: _categoryId,
+      depositEnabled: _depositEnabled,
+      depositType: _depositType,
+      depositPercentage: _depositPercentage,
+      depositFlatAmount: _depositFlatAmount,
+      ...s
+    }) => ({
     ...s,
     averageRating: null as string | null,
     reviewCount: 0,
@@ -777,7 +805,8 @@ async function loadStorefrontFromOwner(
     // Set true below only when the viewer's locale differs from the card's source and no
     // approved translation exists — the client renders the honest one-line note (§13).
     shownInOriginal: false,
-  }));
+  }),
+  );
   const serviceReviewFacts = new Map<string, { ratingTotal: number; count: number }>();
   for (const review of serviceReviewRows) {
     const facts = serviceReviewFacts.get(review.serviceId) ?? { ratingTotal: 0, count: 0 };

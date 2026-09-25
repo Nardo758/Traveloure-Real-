@@ -1,20 +1,30 @@
 /**
- * The storefront offering card's primary-action label (client/src/lib/storefront-offering-action.ts).
- * Ledger `2026-09-25-storefront-booking-actions`. Every row proves the label a real
- * `resolveBuyAction` output would produce — this file constructs `BuyAction` values by hand
- * rather than importing the resolver, so a change to the resolver's shape fails THIS test's
- * types rather than silently drifting.
+ * The offering card's primary-action label (client/src/lib/storefront-offering-action.ts).
+ * Ledgers `2026-09-25-storefront-booking-actions` and `2026-09-25-provider-action-buttons`.
+ *
+ * Two halves. The HAND-BUILT half constructs `BuyAction` values directly, so a change to the
+ * resolver's output shape fails THIS test's types rather than silently drifting. The RESOLVER half
+ * (P1–P14) runs real listing rows through the ONE resolver (`resolveBuyAction`) and then the
+ * mapper, proving the label a traveler actually sees for every provider shape — the mapper reads
+ * the resolved action only and never a listing column (§18 rule 1).
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { BuyAction } from "../../../../shared/buy-action";
+import {
+  resolveBuyAction,
+  platformListingBookability,
+  type BuyAction,
+  type BuyActionRow,
+  type BuyActionBuyer,
+} from "../../../../shared/buy-action";
 import {
   storefrontOfferingActionLabel,
+  offeringActionLabel,
+  offeringActionIsMessageOnly,
   formatNextAvailable,
   storefrontActionCharges,
   storefrontOfferingIntentHash,
   buildStorefrontActionHref,
-  type StorefrontOfferingActionRow,
 } from "../storefront-offering-action";
 
 const NO_LANDING = { store: "none" as const, timed: false, placeAnchored: false, forksFinal: false };
@@ -28,90 +38,168 @@ function buyAction(over: Partial<BuyAction>): BuyAction {
   };
 }
 
+// ─── Hand-built descriptors ───────────────────────────────────────────────────────────────────
+
 test("no server buyAction (e.g. a caller the resolver never ran for) keeps the default label", () => {
-  assert.equal(storefrontOfferingActionLabel({}, undefined), "View & book");
+  assert.equal(storefrontOfferingActionLabel(undefined), "View & book");
+  assert.equal(offeringActionIsMessageOnly(undefined), false);
 });
 
-test("ask_me_anything delivered as async_messaging is a Q&A Session, whatever the buy action says", () => {
-  const row: StorefrontOfferingActionRow = {
-    deliveryMethod: "async_messaging",
-    expertOfferingTypeKey: "ask_me_anything",
-  };
+test("a qa_session subject reads 'Start a Q&A Session' on book and on request", () => {
   assert.equal(
-    storefrontOfferingActionLabel(row, buyAction({ primary: { kind: "book", label: "Book" } })),
+    offeringActionLabel(buyAction({ primary: { kind: "book", label: "Book" }, subject: "qa_session" })),
+    "Start a Q&A Session",
+  );
+  assert.equal(
+    offeringActionLabel(
+      buyAction({ primary: { kind: "request_to_book", label: "Request to book" }, subject: "qa_session" }),
+    ),
     "Start a Q&A Session",
   );
 });
 
-test("a video Q&A (ask_me_anything delivered as video) keeps the scheduled-consult branch, not the chat label", () => {
-  const row: StorefrontOfferingActionRow = { deliveryMethod: "video", expertOfferingTypeKey: "ask_me_anything" };
+test("session subject: book -> 'Book a session', request -> 'Request a session'", () => {
   assert.equal(
-    storefrontOfferingActionLabel(row, buyAction({ primary: { kind: "book", label: "Book" } })),
+    offeringActionLabel(buyAction({ primary: { kind: "book", label: "Book" }, subject: "session" })),
     "Book a session",
   );
-});
-
-test("instant + scheduled + published availability (video) reads 'Book a session'", () => {
-  const row: StorefrontOfferingActionRow = { deliveryMethod: "video" };
   assert.equal(
-    storefrontOfferingActionLabel(row, buyAction({ primary: { kind: "book", label: "Book" } })),
-    "Book a session",
-  );
-});
-
-test("call consult with no published availability (request_to_book) reads 'Request a session'", () => {
-  const row: StorefrontOfferingActionRow = { deliveryMethod: "call" };
-  assert.equal(
-    storefrontOfferingActionLabel(
-      row,
+    offeringActionLabel(
       buyAction({
         primary: { kind: "request_to_book", label: "Request to book" },
         refusal: { reason: "availability_unknown" },
+        subject: "session",
       }),
     ),
     "Request a session",
   );
 });
 
-test("no published price (§14 — never invented) reads 'Request a quote', even for a call consult", () => {
-  const row: StorefrontOfferingActionRow = { deliveryMethod: "call" };
+test("no published price (§14 — never invented) reads 'Request a quote', even for a session", () => {
   assert.equal(
-    storefrontOfferingActionLabel(
-      row,
+    offeringActionLabel(
       buyAction({
         primary: { kind: "request_to_book", label: "Request to book" },
         refusal: { reason: "no_published_price" },
+        subject: "session",
       }),
     ),
     "Request a quote",
   );
 });
 
-test("priceType === 'custom_quote' reads 'Request a quote' even without a refusal reason", () => {
-  const row: StorefrontOfferingActionRow = { deliveryMethod: "call", priceType: "custom_quote" };
+test("request_quote reads 'Request a quote'", () => {
   assert.equal(
-    storefrontOfferingActionLabel(row, buyAction({ primary: { kind: "request_to_book", label: "Request to book" } })),
+    offeringActionLabel(buyAction({ primary: { kind: "request_quote", label: "Request a quote" } })),
     "Request a quote",
   );
 });
 
-test("info-only / written-planning row (add_to_plan) reads 'Add to my plan'", () => {
-  const row: StorefrontOfferingActionRow = { deliveryMethod: "pdf" };
+test("not_available (Contact or none) is Message only — no buy label at all", () => {
+  const hidden = buyAction({ primary: { kind: "message", label: "Contact" }, refusal: { reason: "not_available" } });
+  assert.equal(offeringActionLabel(hidden), null);
+  assert.equal(offeringActionIsMessageOnly(hidden), true);
+  const none = buyAction({ primary: { kind: "none", label: "" }, refusal: { reason: "not_available" } });
+  assert.equal(offeringActionLabel(none), null);
+  assert.equal(offeringActionIsMessageOnly(none), true);
+});
+
+test("stay subject reads 'Check dates' whether it is booked or requested", () => {
+  for (const kind of ["book", "request_to_book"] as const) {
+    assert.equal(offeringActionLabel(buyAction({ primary: { kind, label: "x" }, subject: "stay" })), "Check dates");
+  }
+});
+
+test("deposit on a checkout reads 'Reserve with deposit'; a request never does", () => {
   assert.equal(
-    storefrontOfferingActionLabel(row, buyAction({ primary: { kind: "add_to_plan", label: "Add to plan" } })),
-    "Add to my plan",
+    offeringActionLabel(buyAction({ primary: { kind: "book", label: "Book" }, subject: "in_person", deposit: true })),
+    "Reserve with deposit",
+  );
+  assert.equal(
+    offeringActionLabel(buyAction({ primary: { kind: "request_to_book", label: "Request to book" }, subject: "in_person" })),
+    "Request to book",
   );
 });
 
-test("an unclassified/fallback resolved row keeps the card's existing default", () => {
-  const row: StorefrontOfferingActionRow = {};
-  assert.equal(
-    storefrontOfferingActionLabel(
-      row,
-      buyAction({ primary: { kind: "add_to_plan", label: "Add to plan" }, refusal: { reason: "booking_affordance_unknown" } }),
-    ),
-    "Add to my plan",
-  );
+test("ride / bundle / in_person / artifact / async / unclassified verbs", () => {
+  const cases: Array<[BuyAction["subject"], "book" | "request_to_book", string]> = [
+    ["ride", "book", "Book ride"],
+    ["ride", "request_to_book", "Request a ride"],
+    ["bundle", "book", "Book bundle"],
+    ["bundle", "request_to_book", "Request to book"],
+    ["in_person", "book", "Book now"],
+    ["in_person", "request_to_book", "Request to book"],
+    ["artifact", "book", "Book"],
+    ["async", "book", "Book"],
+    [undefined, "book", "Book"],
+    [undefined, "request_to_book", "Request to book"],
+  ];
+  for (const [subject, kind, label] of cases) {
+    assert.equal(offeringActionLabel(buyAction({ primary: { kind, label: "x" }, subject })), label, `${subject}/${kind}`);
+  }
+});
+
+test("info-only / written-planning row (add_to_plan) reads 'Add to my plan'", () => {
+  assert.equal(offeringActionLabel(buyAction({ primary: { kind: "add_to_plan", label: "Add to plan" } })), "Add to my plan");
+});
+
+test("a ready-made or advisor row (buy_ready_made / plan_with) keeps 'View & book' — not authored by this lane", () => {
+  assert.equal(offeringActionLabel(buyAction({ primary: { kind: "buy_ready_made", label: "Get this trip" } })), "View & book");
+  assert.equal(offeringActionLabel(buyAction({ primary: { kind: "plan_with", label: "Plan with X" } })), "View & book");
+});
+
+// ─── Through the ONE resolver: every provider shape, row → action → label ──────────────────────
+
+const MEMBER: BuyActionBuyer = { principal: "member", plans: "one" };
+
+function listing(over: Partial<BuyActionRow>): BuyActionRow {
+  return {
+    kind: "listing",
+    bookability: platformListingBookability("svc-1"),
+    deliveryMethod: "in_person",
+    productShape: null,
+    bookingMode: "instant",
+    hasPrice: true,
+    hasPublishedAvailability: true,
+    isLive: true,
+    ...over,
+  };
+}
+
+function labelFor(over: Partial<BuyActionRow>): string | null {
+  return offeringActionLabel(resolveBuyAction(listing(over), MEMBER));
+}
+
+const RESOLVED: Array<[string, Partial<BuyActionRow>, string | null]> = [
+  ["P1 request-mode in-person", { bookingMode: "request" }, "Request to book"],
+  ["P2 hidden listing", { bookingMode: "hidden" }, null],
+  ["P3 not live", { isLive: false }, null],
+  ["P4 property (stay)", { productShape: "property", deliveryMethod: null }, "Check dates"],
+  ["P5 property_room (stay)", { productShape: "property_room", deliveryMethod: null }, "Check dates"],
+  ["P6 per_night unit (stay)", { pricingUnit: "per_night" }, "Check dates"],
+  ["P7 deposit listing", { takesDeposit: true }, "Reserve with deposit"],
+  ["P8 bundle", { productShape: "bundle" }, "Book bundle"],
+  ["P9 private transport, instant", { categoryKey: "private_transportation" }, "Book ride"],
+  ["P10 private transport, request", { categoryKey: "private_transportation", bookingMode: "request" }, "Request a ride"],
+  ["P11 custom_quote WITH a price", { priceType: "custom_quote" }, "Request a quote"],
+  ["P12 in-person scheduled instant", {}, "Book now"],
+  ["P13 video, published calendar", { deliveryMethod: "video" }, "Book a session"],
+  ["P14 call, no calendar", { deliveryMethod: "call", hasPublishedAvailability: false }, "Request a session"],
+  ["P15 pdf artifact", { deliveryMethod: "pdf", hasPublishedAvailability: false }, "Book"],
+  ["P16 Q&A Session", { deliveryMethod: "async_messaging", offeringTypeKey: "ask_me_anything" }, "Start a Q&A Session"],
+  ["P17 priceless instant", { hasPrice: false }, "Request a quote"],
+];
+
+for (const [name, over, expected] of RESOLVED) {
+  test(`${name} → ${expected === null ? "Message only" : `'${expected}'`}`, () => {
+    assert.equal(labelFor(over), expected);
+  });
+}
+
+test("P18 a deposit on a REQUEST listing is not stated (no checkout, so no deposit claim)", () => {
+  const action = resolveBuyAction(listing({ takesDeposit: true, bookingMode: "request" }), MEMBER);
+  assert.equal(action.deposit, undefined);
+  assert.equal(offeringActionLabel(action), "Request to book");
 });
 
 test("formatNextAvailable: null slot renders nothing (§13 — never a guessed date)", () => {
@@ -182,14 +270,17 @@ test("buildStorefrontActionHref: a non-#book label never carries a month param, 
   );
 });
 
-test("a ready-made or advisor row (buy_ready_made / plan_with) keeps 'View & book' — not authored by this lane", () => {
-  const row: StorefrontOfferingActionRow = {};
+
+test("storefrontOfferingIntentHash: provider verbs land on #book, a stay on #dates", () => {
+  for (const label of ["Book now", "Request to book", "Book ride", "Request a ride", "Book bundle", "Reserve with deposit", "Book"]) {
+    assert.equal(storefrontOfferingIntentHash(label), "#book", label);
+  }
+  assert.equal(storefrontOfferingIntentHash("Check dates"), "#dates");
+});
+
+test("buildStorefrontActionHref: 'Check dates' lands on #dates and never carries a month", () => {
   assert.equal(
-    storefrontOfferingActionLabel(row, buyAction({ primary: { kind: "buy_ready_made", label: "Get this trip" } })),
-    "View & book",
-  );
-  assert.equal(
-    storefrontOfferingActionLabel(row, buyAction({ primary: { kind: "plan_with", label: "Plan with X" } })),
-    "View & book",
+    buildStorefrontActionHref("/services/room", "Check dates", { date: "2026-10-02", startTime: null }),
+    "/services/room#dates",
   );
 });

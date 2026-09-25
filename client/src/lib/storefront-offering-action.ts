@@ -1,69 +1,85 @@
 /**
- * STOREFRONT OFFERING CARD — the primary action button's label, decided ONCE.
+ * OFFERING CARD ACTION — the primary action button's label, decided ONCE, for every card that
+ * draws a platform listing (the storefront card and the Discover services card).
  *
- * Ledger `2026-09-25-storefront-booking-actions`. The decision-maker asked for "a Button so the
- * user can book a consulting session" on the expert storefront; the card already renders a CTA
- * string authored by `StorefrontOfferingCard` itself (the `ld23-buy-action-gap` note in
- * `storefront.tsx`). This module does NOT re-decide buyability — `resolveBuyAction`
- * (`@shared/buy-action`) is still the sole author of WHETHER and HOW a row can be bought (ruling
- * 9 / LD 42), and the server ships its answer on every storefront listing (`buyAction`). This
- * module only chooses which SENTENCE to put on the button for the six shapes the decision-maker's
- * request distinguishes, reading the resolver's own `primary.kind` / `refusal.reason` plus the
- * two fundamentals derivations the resolver already calls (`needsScheduling`, delivery method) —
- * never a second buyability test (§18 rule 1).
+ * Ledgers `2026-09-25-storefront-booking-actions` (the expert's "book a consulting session"
+ * button) and `2026-09-25-provider-action-buttons` (the same button for every PROVIDER shape —
+ * stays, rides, bundles, deposits, requests, quotes, hidden listings).
+ *
+ * THIS MODULE READS ONLY THE RESOLVED ACTION. `resolveBuyAction` (`@shared/buy-action`) is the
+ * sole author of WHETHER and HOW a row can be bought (ruling 9 / LD 42), and it now also names
+ * WHAT is being bought (`subject`) and whether its checkout takes a deposit (`deposit`). This
+ * module maps `primary.kind` + `subject` + `deposit` + `refusal.reason` onto a SENTENCE and never
+ * reads a listing column itself — a second reading of `productShape`, `priceType` or a category
+ * key here would be the derivation-drift class §18 rule 1 names.
  *
  * §13: an absent fact never becomes a guessed label. A row the resolver could not classify keeps
- * the existing "View & book" wording rather than a label invented from a fact nobody stated.
+ * a plain verb ("Book", "Request to book") or the card's "View & book"; a listing the resolver
+ * says is not open for booking gets NO buy label at all (`null`) — the card offers Message only.
  */
 import type { BuyAction } from "@shared/buy-action";
-import { needsScheduling, type FundamentalsShape } from "@shared/service-fundamentals";
-import { QA_SESSION_OFFERING_KEY } from "@shared/live-availability";
 
-/** The listing facts this mapper reads. Every field mirrors a storefront payload column. */
-export interface StorefrontOfferingActionRow {
-  deliveryMethod?: string | null;
-  productShape?: string | null;
-  priceType?: string | null;
-  /** `provider_services.expert_offering_type_key` — `"ask_me_anything"` names a Q&A Session. */
-  expertOfferingTypeKey?: string | null;
-}
-
-const SCHEDULED_CONSULT_METHODS = new Set(["call", "video"]);
+/** The label for a listing that cannot be classified and carries no resolved action. */
+export const OFFERING_ACTION_DEFAULT_LABEL = "View & book";
 
 /**
- * The button's label. `buyAction` is the row's server-resolved descriptor (`undefined` only for a
- * caller — e.g. the Ready-Made lane — the server never resolved one for; that caller keeps its
- * own existing CTA and never calls this mapper).
+ * The button's label, or `null` when the resolver offers NO booking verb (`not_available` — not
+ * live, or the provider chose `hidden`): the card then offers Message only, never a buy button
+ * that leads to a page with nothing to press. `undefined` buyAction (a payload that resolved
+ * none) keeps the card's existing default.
  */
-export function storefrontOfferingActionLabel(
-  row: StorefrontOfferingActionRow,
-  buyAction: BuyAction | undefined,
-): string {
-  if (!buyAction) return "View & book";
-
-  const isQaSession =
-    row.expertOfferingTypeKey === QA_SESSION_OFFERING_KEY && row.deliveryMethod === "async_messaging";
-  if (isQaSession) return "Start a Q&A Session";
-
-  const noPublishedPrice =
-    buyAction.refusal?.reason === "no_published_price" || row.priceType === "custom_quote";
-  if (noPublishedPrice) return "Request a quote";
-
-  const isScheduledConsult =
-    !!row.deliveryMethod && SCHEDULED_CONSULT_METHODS.has(row.deliveryMethod);
-  const shape: FundamentalsShape = { deliveryMethod: row.deliveryMethod, productShape: row.productShape };
-  const scheduled = needsScheduling(shape);
-
-  if (isScheduledConsult && scheduled) {
-    if (buyAction.primary.kind === "book") return "Book a session";
-    if (buyAction.primary.kind === "request_to_book") return "Request a session";
+export function offeringActionLabel(buyAction: BuyAction | undefined): string | null {
+  if (!buyAction) return OFFERING_ACTION_DEFAULT_LABEL;
+  const kind = buyAction.primary.kind;
+  if (buyAction.refusal?.reason === "not_available" || kind === "none" || kind === "message") {
+    return null;
   }
 
-  if (buyAction.primary.kind === "add_to_plan") return "Add to my plan";
+  if (kind === "request_quote" || buyAction.refusal?.reason === "no_published_price") {
+    return "Request a quote";
+  }
 
-  // Any other resolved shape (ready-made, advisor, partner, or a §13 fallback this card does
-  // not render through this mapper) keeps the card's existing default.
-  return "View & book";
+  const subject = buyAction.subject;
+  const book = kind === "book";
+  const request = kind === "request_to_book";
+
+  if (book || request) {
+    // A stay is chosen by its dates first; the detail page's range picker is where that happens.
+    if (subject === "stay") return "Check dates";
+    if (subject === "qa_session") return "Start a Q&A Session";
+    if (book && buyAction.deposit) return "Reserve with deposit";
+    switch (subject) {
+      case "ride":
+        return book ? "Book ride" : "Request a ride";
+      case "bundle":
+        return book ? "Book bundle" : "Request to book";
+      case "session":
+        return book ? "Book a session" : "Request a session";
+      case "in_person":
+        return book ? "Book now" : "Request to book";
+      default:
+        // artifact / async / unclassified — the plain verb, never a guessed noun.
+        return book ? "Book" : "Request to book";
+    }
+  }
+
+  if (kind === "add_to_plan") return "Add to my plan";
+
+  // Any other resolved shape (ready-made, advisor, partner) is not authored through this mapper.
+  return OFFERING_ACTION_DEFAULT_LABEL;
+}
+
+/**
+ * Storefront name for the same mapping (kept so the storefront's call sites and the earlier
+ * ledger row still read true). ONE implementation — it delegates.
+ */
+export function storefrontOfferingActionLabel(buyAction: BuyAction | undefined): string | null {
+  return offeringActionLabel(buyAction);
+}
+
+/** True when the resolver offers no booking verb and the card should offer Message only. */
+export function offeringActionIsMessageOnly(buyAction: BuyAction | undefined): boolean {
+  return !!buyAction && offeringActionLabel(buyAction) === null;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -104,13 +120,30 @@ export function storefrontActionCharges(buyAction: BuyAction | undefined): boole
   return buyAction?.landing.store === "checkout";
 }
 
+/** Labels whose press lands on the detail page's booking panel (`#book`). */
+const BOOK_INTENT_LABELS: ReadonlySet<string> = new Set([
+  "Book a session",
+  "Request a session",
+  "Book now",
+  "Request to book",
+  "Book ride",
+  "Request a ride",
+  "Book bundle",
+  "Reserve with deposit",
+  "Book",
+]);
+
+export type OfferingIntentHash = "#book" | "#quote" | "#dates" | "";
+
 /**
- * The booking-intent hash `service-detail.tsx` reads to scroll/focus the right control
- * (`#book` for a scheduled consult, `#quote` for a request-a-quote row, none otherwise).
+ * The booking-intent hash `service-detail.tsx` reads to scroll/focus the right control:
+ * `#book` for a book/request verb, `#quote` for a request-a-quote row, `#dates` for a stay (the
+ * date-range picker), none otherwise (a Q&A Session, an add-to-plan row, the default).
  */
-export function storefrontOfferingIntentHash(label: string): "#book" | "#quote" | "" {
-  if (label === "Book a session" || label === "Request a session") return "#book";
+export function storefrontOfferingIntentHash(label: string): OfferingIntentHash {
+  if (BOOK_INTENT_LABELS.has(label)) return "#book";
   if (label === "Request a quote") return "#quote";
+  if (label === "Check dates") return "#dates";
   return "";
 }
 

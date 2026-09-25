@@ -934,6 +934,19 @@ export default function ServiceDetailPage() {
   useEffect(() => {
     if (!service) return;
     const hash = window.location.hash;
+    // `#dates` (ledger `2026-09-25-provider-action-buttons`): a stay card's "Check dates" lands
+    // on the date-range picker — a ROOM's own check-in control, or a PROPERTY's room list, whose
+    // rooms each carry that picker. Scroll-and-focus only, like `#book` below.
+    if (hash === "#dates") {
+      const stay =
+        document.querySelector<HTMLElement>('[data-testid="card-room-stay"]') ??
+        document.querySelector<HTMLElement>('[data-testid="card-property-rooms"]') ??
+        document.getElementById("book");
+      if (!stay) return;
+      stay.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.querySelector<HTMLButtonElement>('[data-testid="button-room-checkin"]')?.focus();
+      return;
+    }
     if (hash !== "#book" && hash !== "#quote") return;
     const panel = document.getElementById("book");
     if (!panel) return;
