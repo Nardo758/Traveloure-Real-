@@ -67,22 +67,6 @@ const USERS_COLUMN_NAMES: ReadonlySet<string> = new Set(Object.keys(getTableColu
 const PUBLIC_USER_FIELDS: ReadonlySet<string> = new Set(EXPERT_PUBLIC_FIELDS as readonly string[]);
 
 /**
- * The one `preferences` key a public expert surface reads: the storefront cover image
- * (read by the deleted `expert-detail.tsx`; ledger `2026-09-25-expert-detail-deleted`). `users.preferences` is unbounded jsonb whose contents nothing in this
- * codebase constrains, so the blob is never published; this re-attaches the single string the page
- * renders, in the shape the page already reads, and only when a real non-empty value exists.
- *
- * §13 — an absent cover image is OMITTED, not sent as `null` or `""`. `buildStorefront` in
- * `storefront.routes.ts` makes the same narrowing for `/s/:handle`; this does not invent a second
- * reading of the blob, it applies the same one on the other surface.
- */
-function narrowPreferences(raw: unknown): { storefront: { coverImageUrl: string } } | undefined {
-  const cover = (raw as any)?.storefront?.coverImageUrl;
-  if (typeof cover !== "string" || cover.trim().length === 0) return undefined;
-  return { storefront: { coverImageUrl: cover } };
-}
-
-/**
  * Projects the nested `expertForm` (a `local_expert_forms` row) down to
  * `EXPERT_FORM_PUBLIC_FIELDS`. `null`/absent stays `null` — an expert with no form is a real state
  * the cards already handle, and it must not become `{}` (§13: "no form" and "a form with nothing
@@ -114,9 +98,10 @@ export function toPublicExpert<T extends Record<string, any>>(row: T): Record<st
   }
 
   // `preferences` is a users column and is therefore already gone (it is not in
-  // EXPERT_PUBLIC_FIELDS). Re-attach only the one narrowed key, from the RAW row.
-  const prefs = narrowPreferences(row.preferences);
-  if (prefs) out.preferences = prefs;
+  // EXPERT_PUBLIC_FIELDS). Its one public key, the storefront cover image, used to be re-attached
+  // for the deleted `expert-detail.tsx`; nothing reads it here now — the storefront reads the
+  // owner's own row (`storefront.routes.ts`) — so it is not published (§18c; ledger
+  // `2026-09-25-experts-cover-unpublished`).
 
   return out;
 }

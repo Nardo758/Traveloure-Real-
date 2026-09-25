@@ -191,6 +191,21 @@ export const isHistoryBooking = (status: BookingStatusLike): boolean =>
   has(HISTORY_BOOKING_STATUSES, status);
 
 /**
+ * What a seller's booking card may say about the money on a row (ledger
+ * `2026-09-25-provisional-claim-payout-line`). ONE derivation from the predicates above, read by the
+ * card itself rather than passed in by each caller, so a caller cannot forget it:
+ *   `provisional` — an unauthorized §15b claim. No payout figure at all: the traveler has not paid,
+ *                   and the checkout that left the row told them nothing was booked (§13).
+ *   `closed`      — declined/cancelled/refunded. Disclosed, never implied payable.
+ *   `banked`      — everything else a card is drawn for: the pre-accept promise on a `pending` row
+ *                   (the figure payout-parity pins) and the money on a RECORD row.
+ */
+export type BookingPayoutState = "banked" | "closed" | "provisional";
+
+export const bookingPayoutState = (status: BookingStatusLike): BookingPayoutState =>
+  isProvisionalBooking(status) ? "provisional" : isClosedBooking(status) ? "closed" : "banked";
+
+/**
  * The one label every surface uses for a provisional claim, so the traveler-payment state reads
  * identically on Inbox, Today and Customers. Customers wrote this idiom first ("1 pending
  * payment"); the rest of the console adopts it rather than inventing a second wording.
