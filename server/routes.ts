@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { zodErrorBody } from "./utils/zod-error-body";
 import express from "express";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { getUserId, getDbRole } from "./utils/auth";
 // ONE ownership predicate for a custom venue (ledger `2026-09-05-custom-venues-owner-scope`).
 import { isCustomVenueOwner } from "./utils/custom-venue-owner";
@@ -212,6 +212,8 @@ import {
   logOptimizerRunBasis,
   type OptimizerRunAuthorizationDeps,
 } from "./services/optimizer-run-authorization";
+import type { OptimizerRunAuthorization } from "./services/optimizer-run-authorization";
+import { optimizerRunTollPlan, recordOptimizerRunToll } from "./services/fee-ledger.service";
 import { coversAction } from "./services/trip-entitlement.service";
 import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
@@ -599,6 +601,61 @@ type OptimizationPaymentCheck =
   | { ok: false; status: number; body: Record<string, unknown> };
 
 /**
+ * THE optimizer's price for one target — the ONE derivation the payment verifier and the toll
+ * record both read (§18 rule 1): the target's event type from the DB (never PI metadata, never a
+ * body), its complexity tier, and `getFee` (table `optimization_fees`, §8 — no literal here).
+ * `null` = no target at all: a run with nothing to price has no price, and none is guessed (§13).
+ */
+async function resolveOptimizationFeeForTarget(target: {
+  tripId?: string | null;
+  userExperienceId?: string | null;
+}): Promise<{ eventType: string | null; tier: string; priceCents: number; isDisabled: boolean } | null> {
+  if (!target.tripId && !target.userExperienceId) return null;
+  const eventType = target.tripId
+    ? ((await storage.getTripEventType(target.tripId)) ?? undefined)
+    : ((await storage.getExperienceTypeSlugByExperienceId(target.userExperienceId!)) ?? undefined);
+  const tier = complexityTier(eventType);
+  const { priceCents, isDisabled } = await getFee(eventType, tier);
+  return { eventType: eventType ?? null, tier, priceCents, isDisabled };
+}
+
+/**
+ * Record one AUTHORIZED optimizer run's toll in `fee_ledger` (ruling `2026-09-25-planning-tolls`).
+ * ONE implementation, two callers — create and regenerate (§18 rule 1). Never throws (§15b): a
+ * ledger write may never break the run it records.
+ *
+ *   - paid, fresh PaymentIntent (`claimRequired`) ⇒ one fee row keyed on that PaymentIntent, at the
+ *     resolver's price — which the payment verifier below just proved IS the charged amount;
+ *   - paid, reusing the comparison's recorded payment ⇒ NOTHING: not a new charge;
+ *   - Trip Pass / free re-run ⇒ fee + `fee_waiver` naming `covered_by`, keyed on a run id minted
+ *     here, because regenerate re-runs the same comparison id (decision-maker ruling, 2026-09-25).
+ * A run with no target, a disabled fee or no positive price writes nothing (§13).
+ */
+async function recordOptimizerRunTollFor(
+  runAuth: Extract<OptimizerRunAuthorization, { authorized: true }>,
+  ctx: { comparisonId: string; tripId?: string | null; userExperienceId?: string | null; actor: string },
+): Promise<void> {
+  try {
+    const plan = optimizerRunTollPlan(runAuth, randomUUID);
+    if (!plan) return;
+    const fee = await resolveOptimizationFeeForTarget(ctx);
+    if (!fee || fee.isDisabled) return;
+    await recordOptimizerRunToll({
+      comparisonId: ctx.comparisonId,
+      tripId: ctx.tripId ?? null,
+      userExperienceId: ctx.userExperienceId ?? null,
+      eventType: fee.eventType,
+      tier: fee.tier,
+      priceCents: fee.priceCents,
+      actor: ctx.actor,
+      ...plan,
+    });
+  } catch (err: any) {
+    console.error("[optimizer-toll] toll record failed (non-fatal):", err?.message);
+  }
+}
+
+/**
  * Verify a client-supplied optimization PaymentIntent before the optimizer is allowed to run.
  * Ported verbatim-in-spirit from the dead twin: reuse rejection, concrete target, Stripe
  * `status === 'succeeded'`, PI→user binding, PI type, PI→target binding, and a re-derived
@@ -656,11 +713,10 @@ async function verifyOptimizationPayment(params: {
     }
     // Re-derive the expected fee from the actual resource (not PI metadata), through the single
     // fee resolver so admin event-type overrides pass validation (§8 — no rate/amount literals here).
-    const actualEventType = tripId
-      ? ((await storage.getTripEventType(tripId)) ?? undefined)
-      : ((await storage.getExperienceTypeSlugByExperienceId(userExperienceId!)) ?? undefined);
-    const actualTier = complexityTier(actualEventType);
-    const { priceCents: requiredCents, isDisabled: feeDisabled } = await getFee(actualEventType, actualTier);
+    const { priceCents: requiredCents, isDisabled: feeDisabled } = (await resolveOptimizationFeeForTarget({
+      tripId,
+      userExperienceId,
+    }))!;
     if (feeDisabled) {
       return {
         ok: false,
@@ -9807,6 +9863,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // LD 41: announce a pass-covered run the same way the charge gate announces a suppressed
       // charge. No-op for every other basis (the function itself decides — one place, §18 rule 1).
       if (runBasis) logOptimizerRunBasis(runBasis, { tripId, comparisonId: comparison.id });
+      // The toll (ruling `2026-09-25-planning-tolls`). A PAID run is recorded whenever it was
+      // authorized — the charge happened. A covered run is recorded only when the optimizer
+      // actually starts below: a waiver for a run that never ran would record a toll nobody took.
+      if (runAuth.authorized && (runAuth.basis === "paid" || baselineItems.length > 0)) {
+        await recordOptimizerRunTollFor(runAuth, {
+          comparisonId: comparison.id,
+          tripId,
+          userExperienceId,
+          actor: userId,
+        });
+      }
 
       // Trigger AI optimization in background only when authorized (pass, free re-run, or payment)
       if (canRunOptimizer && baselineItems.length > 0) {
@@ -10171,6 +10238,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       logOptimizerRunBasis(runAuth.basis, { tripId: comparison.tripId, comparisonId });
+      // The toll (ruling `2026-09-25-planning-tolls`) — the same one implementation create uses.
+      await recordOptimizerRunTollFor(runAuth, {
+        comparisonId,
+        tripId: comparison.tripId,
+        userExperienceId: comparison.userExperienceId,
+        actor: userId,
+      });
 
       // Same shared catalog query as the create path (L6, ledger
       // 2026-08-22-optimizer-catalog-honesty): active + APPROVED + destination-scoped.

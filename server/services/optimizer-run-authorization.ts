@@ -193,8 +193,10 @@ function normalizeId(value: string | null | undefined): string | undefined {
  * pass-covered run are both stored as "no payment id". Writing a sentinel like `"trip_pass"` into
  * that column would be a lie about a payment identity (§19a) and would poison the reuse check
  * that reads it, and a $0 `fee_ledger` row is forbidden by that table's `amount<>0` CHECK. So the
- * basis is reported (log line + the run response's `runBasis`) and reconstructible from the
- * entitlement row — it is deliberately NOT claimed to be pinned per comparison.
+ * basis is reported (log line + the run response's `runBasis`) and, since ruling
+ * `2026-09-25-planning-tolls`, recorded per RUN in `fee_ledger` as a fee + `fee_waiver` pair
+ * naming `covered_by` (`recordOptimizerRunToll`, called beside this at both run points). The
+ * comparison row itself still carries no basis column.
  */
 export function logOptimizerRunBasis(
   basis: OptimizerRunBasis,

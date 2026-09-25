@@ -54,6 +54,7 @@ import {
   refundRefusedProposalCharge,
   type ProposalRefundOutcome,
 } from "../services/proposal-charge.service";
+import { recordAiTaskToll } from "../services/fee-ledger.service";
 import {
   PLAN_PROPOSAL_STATUS_PROPOSED,
   PLAN_PROPOSAL_STATUS_REFUNDED,
@@ -4042,9 +4043,12 @@ router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (re
 
     logProposalApplyBasis(auth.basis, { tripId, proposalId: id });
 
-    // §15b: the ledger write follows the operation it describes and may never break it. A
-    // Trip-Pass-covered apply writes NO ledger row — there is no money to record, and a `$0` row is
-    // forbidden by `fee_ledger`'s own `amount <> 0` CHECK and would be a fabricated charge (§13).
+    // §15b: the ledger writes follow the operation they describe and may never break it.
+    // `platform_revenue` records the MONEY (paid only — a covered apply took none). `fee_ledger`
+    // records the TOLL on this plan (ruling `2026-09-25-planning-tolls`): paid ⇒ one fee row at what
+    // Stripe took; Trip Pass ⇒ the fee row plus a `fee_waiver` naming `covered_by:trip_pass`, so a
+    // covered task is a pair that nets to zero rather than silence — never a `$0` row (§13).
+    // `recordAiTaskToll` never throws.
     if (auth.basis === "paid") {
       try {
         await ledgerProposalCharge({
@@ -4058,6 +4062,18 @@ router.post("/api/trips/:tripId/proposals/:id/apply", isAuthenticated, async (re
         console.error("[trips] proposal charge ledger failed (non-fatal):", ledgerErr?.message);
       }
     }
+    await recordAiTaskToll(
+      auth.basis === "paid"
+        ? {
+            proposalId: id,
+            tripId,
+            actor: userId,
+            basis: "paid",
+            amountCents: auth.amountCents,
+            paymentIntentId: auth.paymentIntentId,
+          }
+        : { proposalId: id, tripId, actor: userId, basis: "trip_pass" },
+    );
 
     res.json({
       ok: true,

@@ -90,6 +90,7 @@ import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
 import { itineraryItemIsMoneyCommitted } from "@shared/itinerary-item-money";
 import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
 import { CONCIERGE_AI_TASK_BAND, requireFlatCentsBand } from "./fee-resolution.service";
+import { recordAiTaskRefundToll } from "./fee-ledger.service";
 import { revenueTrackingService } from "./revenue-tracking.service";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import type { ProposalPaymentVerification } from "./proposal-apply-authorization";
@@ -724,8 +725,9 @@ export type ProposalRefundOutcome =
  * ── WHAT IS NOT WRITTEN, and why ─────────────────────────────────────────────────────────────
  * No `platform_revenue` reversal: `ledgerProposalCharge` runs only AFTER a successful apply, and a
  * refused apply never reached it, so there is no revenue row for this proposal to reverse — writing
- * a negative against nothing would fabricate a charge that was never recognised (§13), and a `0`
- * row is refused by the ledger's own CHECK. No `ai_cost_tracking` row: the charge lane writes none
+ * a negative against nothing would fabricate a charge that was never recognised (§13). The TOLL is
+ * recorded in `fee_ledger` instead (ruling `2026-09-25-planning-tolls`): once the refund is issued,
+ * `recordAiTaskRefundToll` writes the fee row and its linked reversal together. No `ai_cost_tracking` row: the charge lane writes none
  * at apply. The Stripe refund and the `refunds` audit row ARE the money record, matching how a
  * booking refund is recorded.
  */
@@ -803,6 +805,14 @@ export async function refundRefusedProposalCharge(params: {
     .where(and(eq(refunds.stripePaymentIntentId, paymentIntentId), isNull(refunds.bookingId)))
     .limit(1);
   if (existing?.stripeRefundId) {
+    await recordAiTaskRefundToll({
+      proposalId,
+      tripId,
+      paymentIntentId,
+      amountCents,
+      stripeRefundId: existing.stripeRefundId,
+      actor: "proposal-refund",
+    });
     return { issued: true, refundId: existing.stripeRefundId, amountCents };
   }
 
@@ -820,6 +830,17 @@ export async function refundRefusedProposalCharge(params: {
       `[proposal-refund] fee refunded for a refused paid apply (refusal:${auditRefusal})`,
       { proposalId, tripId, paymentIntentId, refundId: refund.id },
     );
+    // The toll record (ruling `2026-09-25-planning-tolls`): the fee row — the charge happened — and
+    // its reversal — it went back — written together, because a refused apply never reached the
+    // applied-toll writer. Idempotent on the proposal; never throws (§15b).
+    await recordAiTaskRefundToll({
+      proposalId,
+      tripId,
+      paymentIntentId,
+      amountCents,
+      stripeRefundId: refund.id,
+      actor: "proposal-refund",
+    });
     return { issued: true, refundId: refund.id, amountCents };
   } catch (err: any) {
     // LOUD, and the claim STANDS. The row is `refunded`, Stripe may or may not hold the refund, and
@@ -839,11 +860,9 @@ export async function refundRefusedProposalCharge(params: {
  *
  * `recordRevenueEventOnce` is the EXISTING idempotent recorder the optimizer's confirm path uses,
  * keyed on the PaymentIntent id, so a retry records one row (§15). **A Trip-Pass-covered apply
- * writes NO row at all** — there is no money to record, and a `$0` ledger row is forbidden by
- * `fee_ledger`'s own `amount <> 0` CHECK and would be a fabricated charge here (§13). The durable
- * record of a covered apply is the `charge_basis = 'trip_pass'` on the proposal row plus the
- * absence of a PaymentIntent, which is LD 41 (a)'s posture with the one improvement D-21 ratifies:
- * here the basis has a column of its own.
+ * writes NO revenue row** — there is no money to record here. Its durable record is the
+ * `charge_basis = 'trip_pass'` on the proposal row, and — since ruling `2026-09-25-planning-tolls` —
+ * the fee + `fee_waiver` pair `recordAiTaskToll` writes to `fee_ledger` (never a `$0` row, §13).
  */
 export async function ledgerProposalCharge(params: {
   paymentIntentId: string;

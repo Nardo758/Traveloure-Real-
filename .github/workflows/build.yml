@@ -1678,6 +1678,11 @@ jobs:
       # emulates Stripe's idempotency because that is the property R6 asserts. No network.
       - name: the AI-proposal re-validation and the Option B refund on a refused apply (R1-R8)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/plan-proposal-refund.db.test.ts
+      # Ruling `2026-09-25-planning-tolls` (ledger `2026-09-25-tolls-fee-ledger`): every toll is ONE
+      # `fee_ledger` fee row, plus ONE waiver row when covered — the nine-case matrix, each case
+      # printing the rows it proves (T1-T11). No Stripe call; the covered apply runs the real routes.
+      - name: planning tolls recorded in fee_ledger (T1-T11)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/planning-tolls-ledger.db.test.ts
 
   from-state-guards:
     name: from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)
