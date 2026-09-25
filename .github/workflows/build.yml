@@ -2073,6 +2073,37 @@ jobs:
       - name: A slot claim carries the line's unit count (S1-S8)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/slot-units.db.test.ts
 
+  trip-context-recovery:
+    name: trip-context-recovery (RC-4; ledger 2026-09-25-rc345-active-plan)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # RC-4: the client pen hydrates from the bare `GET /api/trip-context` in every new tab or
+      # device, and that read answered the legacy `trip_id IS NULL` row by predicate while a mint
+      # pushes the pen into the trip-scoped row only — so a new session never recovered the plan
+      # being built and the next add went to the cart (audit J2 R2b). The bare read now answers the
+      # account's most recently written row, whichever scope. T1/T4/T5 fail on the old route.
+      - name: A new session recovers the active plan (T1-T6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/trip-context-recovery.db.test.ts
+
   profile-photo:
     name: profile-photo (RC-10; ledger 2026-09-25-rc10-profile-photo)
     runs-on: ubuntu-latest

@@ -6,6 +6,7 @@ import { useToast } from "./use-toast";
 import { useGuestTrips } from "@/contexts/GuestTripContext";
 import { useAuth } from "./use-auth";
 import { refreshPlanLists } from "@/lib/plan-lists";
+import { syncActiveTripToContext } from "@/lib/trip-selection";
 
 // === TRIPS ===
 
@@ -87,6 +88,11 @@ export function useCreateTrip() {
       }
       // RC-7: the ONE spelling of "a plan was born" (ledger `2026-09-25-rc7-new-plan-visible`).
       void refreshPlanLists(queryClient);
+      // RC-5 (ledger `2026-09-25-rc345-active-plan`): the plan just made IS the active plan — the
+      // ONE re-keying (`syncActiveTripToContext`), REPLACE semantics, so the previous plan's identity
+      // cannot survive into the slip this door opens next. The mint is refused for a guest, so a
+      // success here is a signed-in owner's.
+      if (user) syncActiveTripToContext(trip);
       toast({
         title: "Trip Created",
         description: user ? "Your new adventure awaits!" : "Your trip is ready. Sign up to book services!",
