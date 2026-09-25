@@ -239,13 +239,14 @@ test("P5 — a null expertForm stays null, never {} (§13: 'no form' and 'an emp
   assert.equal(toPublicExpert(row).expertForm, null);
 });
 
-test("P6 — preferences is narrowed to the one storefront key, never published as a blob", () => {
+test("P6 — no part of preferences is published, the cover image included", () => {
   const out = toPublicExpert(leakyExpertRow());
-  assert.deepEqual(out.preferences, { storefront: { coverImageUrl: "https://cdn.example/cover.jpg" } });
-  assert.equal(JSON.stringify(out).includes("secret"), false, "the rest of the preferences blob must not ride along");
+  assert.equal("preferences" in out, false);
+  assert.equal(JSON.stringify(out).includes("secret"), false, "the preferences blob must not ride along");
+  assert.equal(JSON.stringify(out).includes("cover.jpg"), false, "the storefront reads its cover from the owner's row, not from here");
 });
 
-test("P7 — an absent cover image OMITS preferences entirely rather than sending null (§13)", () => {
+test("P7 — preferences is absent whatever the row carries", () => {
   for (const prefs of [undefined, null, {}, { storefront: {} }, { storefront: { coverImageUrl: "   " } }]) {
     const out = toPublicExpert({ ...leakyExpertRow(), preferences: prefs });
     assert.equal("preferences" in out, false, `preferences must be omitted for ${JSON.stringify(prefs)}`);
