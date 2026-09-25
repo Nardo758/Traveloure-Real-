@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import { canRemoveBeforePayment, readCartIntentParam, resolveCartIntent } from "@/lib/cart-intent";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { refreshPlanLists } from "@/lib/plan-lists";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
 import { bookingConfirmationPath } from "@/lib/booking-confirmation";
 import { requestOptimizationGate, confirmOptimizationPayment } from "@/lib/optimization-gate";
@@ -918,6 +919,8 @@ export default function CartPage() {
     },
     onSuccess: (data: { tripId: string; convertedCount: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      // RC-7: the conversion may have created a plan — every loaded plan list must see it.
+      void refreshPlanLists(queryClient);
       toast({
         title: `${data.convertedCount} item${data.convertedCount !== 1 ? "s" : ""} added to your trip!`,
         description: "View and arrange them in your trip itinerary.",
@@ -1444,6 +1447,8 @@ export default function CartPage() {
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || "Could not prepare trip"); }
       const data = await res.json();
       const trip = data.trip;
+      // RC-7: resolve-trip may have CREATED the plan it returns; refresh every loaded plan list.
+      void refreshPlanLists(queryClient);
 
       setResolvedTrip(trip);
       setTripTitle(trip.title || "");
