@@ -23,6 +23,7 @@ import {
   HISTORY_BOOKING_STATUSES,
   PROVISIONAL_BOOKING_STATUSES,
   RECORD_BOOKING_STATUSES,
+  bookingPayoutState,
   isActionableBooking,
   isClosedBooking,
   isEarningBooking,
@@ -223,5 +224,24 @@ test("P9: CLOSED stays outside ACTIONABLE/PROVISIONAL/EARNING — no sixth answe
       isClosedBooking(status),
     ].filter(Boolean).length;
     assert.ok(memberships <= 1, `${status} is claimed by ${memberships} sets — History and Queue will disagree`);
+  }
+});
+
+// ── The seller card's money line (ledger `2026-09-25-provisional-claim-payout-line`) ──────────
+
+test("P1: an unauthorized §15b claim carries no payout line, and is not called cancelled", () => {
+  // The provider inbox's "Awaiting payment" cards inherited a banked default and printed
+  // "You earn $X" on a claim the traveler was told booked nothing.
+  assert.equal(bookingPayoutState("payment_pending"), "provisional");
+});
+
+test("P2: closed rows are closed, and every other card keeps its payout line", () => {
+  for (const status of CLOSED_BOOKING_STATUSES) assert.equal(bookingPayoutState(status), "closed");
+  // `pending` keeps the pre-accept promise (the figure payout-parity pins); RECORD rows are money.
+  assert.equal(bookingPayoutState("pending"), "banked");
+  for (const status of RECORD_BOOKING_STATUSES) assert.equal(bookingPayoutState(status), "banked");
+  // The three states partition every real status; only a provisional claim is provisional.
+  for (const status of ALL_STATUSES) {
+    assert.equal(bookingPayoutState(status) === "provisional", isProvisionalBooking(status), status);
   }
 });

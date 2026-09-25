@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { useCreateTrip } from "@/hooks/use-trips";
-import { updateTripContext } from "@/lib/trip-context";
+import { updateTripContextIdentitySafe } from "@/lib/trip-context";
 import { trackEvent } from "@/lib/analytics";
 import { eventTypeForSlug } from "@shared/occasions";
 import type { ExperienceType, InsertTrip } from "@shared/schema";
@@ -172,7 +172,10 @@ export function IntakePanel({
     // If a shape was picked before switching to AI, carry it forward as a
     // canonical eventType hint (mapped — never the raw non-enum slug).
     const mappedEventType = selectedSlug ? eventTypeForSlug(selectedSlug) : undefined;
-    updateTripContext({
+    // RC-6 (ledger `2026-09-25-rc6-bound-plan-city`): identity-safe — a different city while a plan
+    // is selected makes the pen describe a NEW plan (the selected plan's id is dropped), and the same
+    // city never rewrites the selected plan's city or dates. A plain merge here was the #972 desync.
+    updateTripContextIdentitySafe({
       destination: destination.trim(),
       startDate,
       endDate,

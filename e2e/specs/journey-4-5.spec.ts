@@ -1,202 +1,281 @@
-import { test, expect } from "@playwright/test";
-import { loginAsTestAccount } from "./helpers/auth";
-import { requireBaseUrl } from "../fixtures/base-url";
+// e2e/specs/journey-4-5.spec.ts
+// Journey 4 (expert) and Journey 5 (provider): a seller's listing goes live, a traveler finds it
+// on the seller's storefront and checks out, and the seller's inbox tells the truth about it.
+//
+// REWRITTEN 2026-09-25 (ledger `2026-09-25-journey-4-5-rewritten`). The previous version waited on
+// test ids no page renders any more (`expert-detail-page`, `expert-feed`, `tab-services`,
+// `service-creation-form`, `earnings-dashboard`, …), drove a Stripe iframe by placeholder text,
+// and asserted fixed commission splits ("Platform fee: 25%") that §8 forbids anywhere outside
+// `fee_bands`. It could not pass against any build, so it measured nothing.
+//
+// WHAT THIS JOURNEY PROVES, per seller (one test each, same steps):
+//   1. The seller publishes a listing through the rail the listing wizard posts to
+//      (`POST /api/provider/services`) — born `submitted` (migration 111). The wizard UI itself is
+//      proven by the persona suites (playwright/tests/personas/supply-*.spec.ts); this journey is
+//      about what happens AFTER a listing exists.
+//   2. The seller has a public handle (claimed through `PATCH /api/me/handle` if they have none) —
+//      a storefront is addressed by handle (Locked Decision 40).
+//   3. The admin approves the listing (`POST /api/admin/provider-services/:id/approve`).
+//   4. A newly registered traveler opens `/s/<handle>`, finds the listing's card, opens the listing
+//      page, reads the seller's own price, and presses the page's add control.
+//   5. The traveler's cart carries the line at that price, and the traveler checks out
+//      (Checkout → Complete Booking).
+//   6. The seller's side of the sale, read through the seller's own session and console.
+//
+// STRIPE — TWO TRUTHFUL CONTRACTS, CHOSEN EXPLICITLY (the journey-suite.yml posture, ruling 38).
+// `JOURNEY_STRIPE_UNAVAILABLE=1` declares the server has no working Stripe key. Then checkout must
+// answer the declared 503 `payment_unavailable`, the cart must be intact, and the seller must see
+// the provisional claim ONLY as the §15b claim it is: never actionable (no Accept — §18b), listed
+// under "Awaiting payment" on the provider console, and absent from the expert console's queue
+// and history. With a real key, checkout must return a PaymentIntent, the PaymentElement is
+// confirmed with the 4242 test card, and the seller's History shows the booking with "You earn"
+// equal to the booking's own server-stamped `providerEarnings` — never a figure computed here
+// (§8: no rate literal; the stamp's arithmetic is payout-parity-gate.yml's job).
+//
+// STATED NEGATIVE SPACE. The real-key branch has not been run: no CI job holds a Stripe test key
+// today, so every green run of this file is the declared-unavailable branch. It does not prove the
+// listing wizard, completion, earnings minting or payouts. It needs the Kyoto personas
+// (`npx tsx scripts/seed-personas.ts --apply`) and the CI admin (`scripts/seed-ci-test-users.ts`).
 
-test.describe("Journey 4 — Expert Supply Side (Onboarding → Service → Booking → Earnings)", () => {
-  test("Expert onboarding wizard → creates service → traveler books → earnings reflect", async ({ page }) => {
-    const BASE = requireBaseUrl();
+import { test, expect, request as pwRequest, type APIRequestContext, type Page } from "@playwright/test";
+import { loginAs } from "../../playwright/utils/auth";
+import { PERSONAS, PERSONA_PASSWORD, CI_ADMIN_EMAIL, CI_ADMIN_PASSWORD } from "../../playwright/tests/personas/_persona-helpers";
+import { PROVISIONAL_BOOKING_HINT } from "../../shared/booking-visibility";
 
-    // ── Step 1: Sign in as expert test account ───────────────────────────
-    await loginAsTestAccount(page, "expert");
+const STRIPE_UNAVAILABLE = process.env.JOURNEY_STRIPE_UNAVAILABLE === "1";
 
-    // ── Step 2: Navigate to expert onboarding ────────────────────────────
-    await page.goto(`${BASE}/become-expert`);
-    await page.waitForSelector("[data-testid='expert-onboarding-wizard']", { timeout: 10000 });
+test.setTimeout(240_000);
 
-    // ── Step 3: Fill Step 1 — Basic Info ─────────────────────────────────
-    await page.fill("[data-testid='input-full-name']", "E2E Test Expert");
-    await page.fill("[data-testid='input-email']", "expert-e2e@traveloure.test");
-    await page.fill("[data-testid='input-phone']", "+1-555-000-1234");
-    await page.click("[data-testid='button-next-step']");
+interface SellerCase {
+  label: string;
+  email: string;
+  /** Used only when the seller has no handle yet. */
+  handle: string;
+  inboxPath: string;
+  listing: Record<string, unknown> & { serviceName: string; price: string };
+}
 
-    // ── Step 4: Fill Step 2 — Expertise / Locality ──────────────────────
-    await page.fill("[data-testid='input-destinations']", "Paris, Tokyo, Bali");
-    await page.selectOption("[data-testid='select-role']", "local_expert");
-    await page.click("[data-testid='button-next-step']");
+const RUN = Date.now().toString(36);
 
-    // ── Step 5: Fill Step 3 — Services ──────────────────────────────────
-    await page.fill("[data-testid='input-services']", "Itinerary planning, Restaurant reservations, Local recommendations");
-    await page.fill("[data-testid='textarea-knowledge-proof']", "I have lived in Paris for 15 years and know every hidden gem.");
-    await page.click("[data-testid='button-next-step']");
+const EXPERT_CASE: SellerCase = {
+  label: "expert",
+  email: PERSONAS.gionExpert,
+  handle: "gion-evenings",
+  inboxPath: "/expert/inbox",
+  listing: {
+    serviceName: `Gion Lantern Walk Planning Call ${RUN}`,
+    shortDescription: "A call to plan a quiet Gion evening walk.",
+    description: "We plan a Gion evening walk around lantern light and foot traffic, on a call.",
+    price: "80",
+    priceType: "fixed",
+    deliveryMethod: "call",
+    location: "Kyoto",
+    status: "active",
+  },
+};
 
-    // ── Step 6: Fill Step 4 — Experience ──────────────────────────────────
-    await page.fill("[data-testid='input-experience-years']", "10");
-    await page.click("[data-testid='button-next-step']");
+const PROVIDER_CASE: SellerCase = {
+  label: "provider",
+  email: PERSONAS.kyotoProvider,
+  handle: "kyoto-station-transfers",
+  inboxPath: "/provider/inbox",
+  listing: {
+    serviceName: `Kyoto Station Meet and Transfer ${RUN}`,
+    shortDescription: "Meet at Kyoto Station and ride to your hotel.",
+    description: "A driver meets you at the Hachijo Central exit and takes you to your hotel.",
+    price: "120",
+    priceType: "fixed",
+    deliveryMethod: "in_person",
+    meetingPoint: "Kyoto Station, Hachijo Central exit",
+    location: "Kyoto",
+    status: "active",
+    // The seller's own statement for an in-person listing (the SS-5a publish gate). The platform
+    // does not verify it; the seller makes it when they publish, exactly as the wizard asks.
+    affirmAttestations: ["in_person_safety_basics"],
+  },
+};
 
-    // ── Step 7: Fill Step 5 — Availability & Pricing ──────────────────────
-    await page.fill("[data-testid='input-hourly-rate']", "150");
-    await page.click("[data-testid='button-next-step']");
+function baseURL(): string {
+  const url = test.info().project.use.baseURL;
+  if (!url) throw new Error("journey-4-5: no baseURL — run with playwright.local.config.ts (BASE_URL)");
+  return url;
+}
 
-    // ── Step 8: Review → Next ──────────────────────────────────────────
-    await page.click("[data-testid='button-next-step']");
+async function newSession(email: string, password: string): Promise<APIRequestContext> {
+  const ctx = await pwRequest.newContext({ baseURL: baseURL() });
+  await loginAs(ctx, email, password);
+  return ctx;
+}
 
-    // ── Step 9: Your public handle (ledger `2026-09-05-handles-are-claimed`) ───
-    // Optional and skippable by design — nothing gates on it, and it writes nothing at submit
-    // (an applicant is not yet an earner, so the claim rail would 403). Left as prefilled.
-    await page.click("[data-testid='button-submit-application']");
-    await page.waitForSelector("text=Application submitted", { timeout: 10000 });
+/** The seller's public handle: the one they have, or the one this journey claims for them. */
+async function ensureHandle(seller: APIRequestContext, wanted: string): Promise<string> {
+  const me = await (await seller.get("/api/auth/user")).json();
+  if (me?.handle) return me.handle as string;
+  const res = await seller.patch("/api/me/handle", { data: { handle: wanted } });
+  expect(res.status(), `claim @${wanted}: ${await res.text()}`).toBe(200);
+  return ((await res.json()) as { handle: string }).handle;
+}
 
-    // ── Step 9: Admin approves the expert (via API or UI) ──────────────
-    // In a real E2E, this would be done by an admin test account.
-    // For this spec, we assume the test account is pre-approved or we skip.
+async function publishAndApprove(seller: APIRequestContext, c: SellerCase): Promise<string> {
+  const created = await seller.post("/api/provider/services", { data: c.listing });
+  expect(created.status(), `publish ${c.label} listing: ${await created.text()}`).toBe(201);
+  const listing = await created.json();
+  expect(listing.approvalStatus, "a new listing is born submitted (migration 111)").toBe("submitted");
 
-    // ── Step 10: Expert creates a service ────────────────────────────────
-    await page.goto(`${BASE}/expert/services/new`);
-    await page.waitForSelector("[data-testid='service-creation-form']", { timeout: 10000 });
-    await page.fill("[data-testid='input-service-name']", "E2E Expert Service");
-    await page.fill("[data-testid='input-service-description']", "A premium itinerary planning service for Paris.");
-    await page.fill("[data-testid='input-service-price']", "500");
-    await page.selectOption("[data-testid='select-service-category']", "itinerary_planning");
-    await page.click("[data-testid='button-create-service']");
-    await page.waitForSelector("text=Service created", { timeout: 10000 });
+  const admin = await newSession(CI_ADMIN_EMAIL, CI_ADMIN_PASSWORD);
+  const approved = await admin.post(`/api/admin/provider-services/${listing.id}/approve`);
+  expect(approved.status(), `admin approve: ${await approved.text()}`).toBe(200);
+  await admin.dispose();
 
-    // ── Step 11: Sign out and sign in as traveler ──────────────────────
-    await page.goto(`${BASE}/api/logout`);
-    await loginAsTestAccount(page, "traveler");
+  const pub = await (await seller.get(`/api/services/${listing.id}`)).json();
+  expect(pub.approvalStatus).toBe("approved");
+  expect(pub.status, "an approved listing from a verified seller is live").toBe("active");
+  return listing.id as string;
+}
 
-    // ── Step 12: Discover the expert's service ───────────────────────────
-    await page.goto(`${BASE}/experts`);
-    await page.waitForSelector("[data-testid='expert-feed']", { timeout: 10000 });
-    await page.fill("[data-testid='input-search-experts']", "E2E Test Expert");
-    await page.waitForSelector("[data-testid='expert-card-e2e-test-expert']", { timeout: 10000 });
-    await page.click("[data-testid='expert-card-e2e-test-expert']");
+async function registerTraveler(page: Page): Promise<void> {
+  const email = `j45-traveler-${RUN}-${Math.random().toString(36).slice(2, 8)}@example.test`;
+  const reg = await page.request.post("/api/auth/register", {
+    data: { email, password: "Journey45!pass", firstName: "Journey", lastName: "Traveler" },
+  });
+  expect(reg.status(), `register traveler: ${await reg.text()}`).toBe(201);
+  const terms = await page.request.post("/api/auth/accept-terms", { data: { acceptTerms: true, acceptPrivacy: true } });
+  expect(terms.ok()).toBe(true);
+}
 
-    // ── Step 13: Navigate to expert detail and book service ────────────
-    await page.waitForSelector("[data-testid='expert-detail-page']", { timeout: 10000 });
-    await page.click("[data-testid='tab-services']");
-    await page.waitForSelector("[data-testid='button-book-service-']", { timeout: 10000 });
-    await page.click("[data-testid='button-book-service-']");
+/** Price as the listing page prints it: whole dollars without cents, cents kept otherwise. */
+function listedPrice(price: string): string {
+  const n = Number(price);
+  return Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+}
 
-    // ── Step 14: Cart and checkout ───────────────────────────────────────
-    await page.waitForURL(`${BASE}/cart**`, { timeout: 10000 });
-    await page.waitForSelector("[data-testid='cart-item-expert-service']", { timeout: 10000 });
-    await page.click("[data-testid='button-checkout']");
+async function runJourney(page: Page, c: SellerCase): Promise<void> {
+  // ── 1–3: the listing exists, is approved and is live under the seller's handle ─────────────
+  const seller = await newSession(c.email, PERSONA_PASSWORD);
+  const handle = await ensureHandle(seller, c.handle);
+  const listingId = await publishAndApprove(seller, c);
 
-    // ── Step 15: Stripe Payment Intent ─────────────────────────────────
-    // (Stripe test mode — use test card 4242 4242 4242 4242)
-    const stripeFrame = page.frameLocator("iframe[name*='stripe']").first();
-    await stripeFrame.locator("[placeholder='Card number']").fill("4242424242424242");
-    await stripeFrame.locator("[placeholder='MM / YY']").fill("12/30");
-    await stripeFrame.locator("[placeholder='CVC']").fill("123");
-    await page.click("[data-testid='button-confirm-payment']");
-    await page.waitForSelector("text=Booking confirmed", { timeout: 20000 });
+  // ── 4: the traveler finds it on the storefront and opens it ────────────────────────────────
+  await registerTraveler(page);
+  await page.goto(`/s/${handle}`);
+  const card = page.getByTestId(`storefront-service-${listingId}`);
+  await expect(card, "the approved listing is on the seller's storefront").toBeVisible({ timeout: 90_000 });
+  await expect(card).toContainText(c.listing.serviceName);
+  await card.click();
+  await expect(page).toHaveURL(new RegExp(`/services/${listingId}`));
+  await expect(page.getByTestId("text-service-name")).toHaveText(c.listing.serviceName, { timeout: 90_000 });
+  await expect(page.getByTestId("text-price")).toHaveText(listedPrice(c.listing.price));
 
-    // ── Step 16: Sign out and sign in as expert ────────────────────────
-    await page.goto(`${BASE}/api/logout`);
-    await loginAsTestAccount(page, "expert");
+  // The page's add control; its label is the buy descriptor's, so it is found by id, not by words.
+  await page.getByTestId("button-add-to-cart").click();
+  await expect(page.getByText("Added to cart").first()).toBeVisible();
 
-    // ── Step 17: Verify earnings reflect the booking ────────────────────
-    await page.goto(`${BASE}/expert/earnings`);
-    await page.waitForSelector("[data-testid='earnings-dashboard']", { timeout: 10000 });
-    // Expert earns 75% of $500 = $375 (per commission.service.ts expert_share_rate)
-    await expect(page.locator("text=$375.00")).toBeVisible();
-    await expect(page.locator("text=Platform fee: 25%")).toBeVisible();
+  // ── 5: the cart carries the seller's price, and the traveler checks out ────────────────────
+  const cart = await (await page.request.get("/api/cart")).json();
+  const line = (cart.items ?? []).find((i: any) => i.serviceId === listingId);
+  expect(line, "the cart holds a line for this listing").toBeTruthy();
+  const cartCountBefore = (cart.items ?? []).length;
+
+  await page.goto("/cart");
+  const cartLine = page.getByTestId(`cart-item-${line.id}`);
+  await expect(cartLine).toBeVisible({ timeout: 90_000 });
+  await expect(cartLine).toContainText(c.listing.serviceName);
+  await expect(cartLine).toContainText(`$${Number(c.listing.price).toFixed(2)}`);
+
+  await page.getByTestId("button-skip-to-payment").click();
+  const checkoutResponse = page.waitForResponse(
+    (r) => r.url().endsWith("/api/checkout") && r.request().method() === "POST",
+  );
+  await page.getByTestId("button-complete-booking").click();
+  const checkout = await checkoutResponse;
+
+  const sellerBookings = async () =>
+    ((await (await seller.get(c.label === "expert" ? "/api/expert/bookings" : "/api/provider/bookings")).json()) as any[]).filter(
+      (b) => b.serviceId === listingId,
+    );
+
+  if (STRIPE_UNAVAILABLE) {
+    // ── 6a: declared unavailable — nothing committed, and the seller is told the truth ────────
+    expect(checkout.status(), "with Stripe declared unavailable the only answer is the declared 503").toBe(503);
+    const body = await checkout.json();
+    expect(body.error).toBe("payment_unavailable");
+    expect(body.success).toBe(false);
+    await expect(page.getByText("Payment provider unavailable").first()).toBeVisible();
+
+    const cartAfter = await (await page.request.get("/api/cart")).json();
+    expect((cartAfter.items ?? []).length, "the cart is exactly as the traveler left it").toBe(cartCountBefore);
+
+    const rows = await sellerBookings();
+    expect(rows.every((b) => b.status === "payment_pending" && !b.stripePaymentIntentId),
+      `only an unauthorized §15b claim may exist for this listing: ${JSON.stringify(rows.map((b) => b.status))}`).toBe(true);
+
+    const sellerPage = await page.context().browser()!.newPage({ baseURL: baseURL() });
+    await loginAs(sellerPage, c.email, PERSONA_PASSWORD);
+    await sellerPage.goto(c.inboxPath);
+    await expect(sellerPage.getByTestId("tab-inbox-queue")).toBeVisible({ timeout: 90_000 });
+    for (const claim of rows) {
+      // Never actionable: the owner rail may not move a provisional claim (§18b).
+      await expect(sellerPage.getByTestId(`button-accept-booking-${claim.id}`)).toHaveCount(0);
+      if (c.label === "provider") {
+        // The provider console discloses it read-only, under "Awaiting payment".
+        const awaiting = sellerPage.getByTestId("section-inbox-awaiting-payment");
+        await expect(awaiting).toBeVisible();
+        await expect(awaiting.getByTestId(`inbox-booking-${claim.id}`)).toBeVisible();
+        // …with no payout figure: nothing is earned until the traveler pays (ledger
+        // `2026-09-25-provisional-claim-payout-line`) — the neutral line, never "You earn".
+        await expect(awaiting.getByTestId(`booking-payout-${claim.id}`)).toHaveCount(0);
+        await expect(awaiting.getByTestId(`booking-no-payout-${claim.id}`)).toHaveCount(0);
+        await expect(awaiting.getByTestId(`booking-provisional-${claim.id}`)).toHaveText(PROVISIONAL_BOOKING_HINT);
+      } else {
+        // The expert console lists no provisional claim, in the queue or in History.
+        await expect(sellerPage.getByTestId(`inbox-booking-${claim.id}`)).toHaveCount(0);
+        await sellerPage.getByTestId("tab-inbox-history").click();
+        await expect(sellerPage.getByTestId("section-inbox-history")).toBeVisible();
+        await expect(sellerPage.getByTestId(`booking-payout-${claim.id}`)).toHaveCount(0);
+      }
+    }
+    await sellerPage.close();
+  } else {
+    // ── 6b: a real Stripe test key — pay, then read the seller's promise ─────────────────────
+    expect(checkout.status(), `checkout must accept with a working key: ${await checkout.text()}`).toBeLessThan(300);
+    const body = await checkout.json();
+    expect(body.paymentIntent?.clientSecret, "checkout returns a PaymentIntent").toBeTruthy();
+
+    const frame = page.frameLocator('iframe[title*="Secure payment input frame"], iframe[name^="__privateStripeFrame"]').first();
+    await frame.locator('input[name="number"]').fill("4242424242424242");
+    await frame.locator('input[name="expiry"]').fill("12/34");
+    await frame.locator('input[name="cvc"]').fill("123");
+    const zip = frame.locator('input[name="postalCode"]');
+    if (await zip.count()) await zip.fill("94105");
+    await page.getByRole("button", { name: /^Pay \$/ }).click();
+
+    await expect
+      .poll(async () => (await sellerBookings()).find((b) => b.status === "confirmed")?.id ?? null, { timeout: 60_000 })
+      .not.toBeNull();
+    const booking = (await sellerBookings()).find((b) => b.status === "confirmed");
+    const payout = Number(booking.providerEarnings);
+    expect(payout, "the stamped payout is a positive part of the booking total").toBeGreaterThan(0);
+    expect(payout).toBeLessThanOrEqual(Number(booking.totalAmount));
+
+    const sellerPage = await page.context().browser()!.newPage({ baseURL: baseURL() });
+    await loginAs(sellerPage, c.email, PERSONA_PASSWORD);
+    await sellerPage.goto(c.inboxPath);
+    await sellerPage.getByTestId("tab-inbox-history").click({ timeout: 90_000 });
+    await expect(sellerPage.getByTestId(`booking-payout-${booking.id}`)).toContainText(`You earn $${payout.toFixed(2)}`);
+    await sellerPage.close();
+  }
+
+  await seller.dispose();
+}
+
+test.describe("Journey 4 — expert: listing → storefront → checkout → the expert's inbox", () => {
+  test("a traveler finds the expert's listing on their storefront and checks out", async ({ page }) => {
+    await runJourney(page, EXPERT_CASE);
   });
 });
 
-test.describe("Journey 5 — Provider Supply Side (Onboarding → Service → Booking → Earnings)", () => {
-  test("Provider onboarding wizard → creates service → traveler books → earnings reflect", async ({ page }) => {
-    const BASE = requireBaseUrl();
-
-    // ── Step 1: Sign in as provider test account ─────────────────────────
-    await loginAsTestAccount(page, "provider");
-
-    // ── Step 2: Navigate to provider onboarding ────────────────────────
-    await page.goto(`${BASE}/become-provider`);
-    await page.waitForSelector("[data-testid='provider-onboarding-wizard']", { timeout: 10000 });
-
-    // ── Step 3: Fill Step 1 — Business Info ────────────────────────────
-    await page.fill("[data-testid='input-business-name']", "E2E Test Provider");
-    await page.selectOption("[data-testid='select-business-type']", "llc");
-    await page.fill("[data-testid='input-tax-id']", "12-3456789");
-    await page.fill("[data-testid='input-email']", "provider-e2e@traveloure.test");
-    await page.fill("[data-testid='input-phone']", "+1-555-000-5678");
-    await page.click("[data-testid='button-next-step']");
-
-    // ── Step 4: Fill Step 2 — Service Categories ───────────────────────
-    await page.selectOption("[data-testid='select-category']", "transportation");
-    await page.fill("[data-testid='textarea-service-description']", "Luxury transportation services in Paris.");
-    await page.click("[data-testid='button-next-step']");
-
-    // ── Step 5: Fill Step 3 — Location & Insurance ────────────────────
-    await page.fill("[data-testid='input-location']", "Paris, France");
-    // input-capacity removed by ledger 2026-09-04-earn-contained-fixes (gap 4): Capacity is a
-    // per-listing attribute set in ServiceForm, not an account-application field — no
-    // service_provider_forms column ever held it.
-    await page.check("[data-testid='checkbox-insurance']");
-    await page.check("[data-testid='checkbox-license']");
-    await page.click("[data-testid='button-next-step']");
-
-    // ── Step 6: Review → Next ──────────────────────────────────────────
-    await page.click("[data-testid='button-next-step']");
-
-    // ── Step 7: Your public handle (ledger `2026-09-05-handles-are-claimed`) ───
-    // Optional and skippable by design — see the expert funnel's note above.
-    await page.click("[data-testid='button-submit-application']");
-    await page.waitForSelector("text=Application submitted", { timeout: 10000 });
-
-    // ── Step 7: Admin approves the provider (via API or UI) ────────────
-    // In a real E2E, this would be done by an admin test account.
-
-    // ── Step 8: Provider creates a service ───────────────────────────────
-    await page.goto(`${BASE}/provider/services/new`);
-    await page.waitForSelector("[data-testid='service-creation-form']", { timeout: 10000 });
-    await page.fill("[data-testid='input-service-name']", "E2E Provider Service");
-    await page.fill("[data-testid='input-service-description']", "Luxury airport transfer in Paris.");
-    await page.fill("[data-testid='input-service-price']", "200");
-    await page.selectOption("[data-testid='select-service-category']", "transportation");
-    await page.click("[data-testid='button-create-service']");
-    await page.waitForSelector("text=Service created", { timeout: 10000 });
-
-    // ── Step 9: Sign out and sign in as traveler ───────────────────────
-    await page.goto(`${BASE}/api/logout`);
-    await loginAsTestAccount(page, "traveler");
-
-    // ── Step 10: Discover the provider's service ────────────────────────
-    await page.goto(`${BASE}/discover`);
-    await page.waitForSelector("[data-testid='discover-feed']", { timeout: 10000 });
-    await page.fill("[data-testid='input-search-services']", "E2E Provider Service");
-    await page.waitForSelector("[data-testid='service-card-e2e-provider-service']", { timeout: 10000 });
-    await page.click("[data-testid='service-card-e2e-provider-service']");
-
-    // ── Step 11: Service detail page — verify commission display ───────
-    await page.waitForSelector("[data-testid='service-detail-page']", { timeout: 10000 });
-    await expect(page.locator("text=Provider earns 90%")).toBeVisible();
-    await expect(page.locator("text=Platform fee: 10%")).toBeVisible();
-
-    // ── Step 12: Add to cart and checkout ──────────────────────────────
-    await page.click("[data-testid='button-add-to-cart']");
-    await page.waitForURL(`${BASE}/cart**`, { timeout: 10000 });
-    await page.waitForSelector("[data-testid='cart-item-provider-service']", { timeout: 10000 });
-    await page.click("[data-testid='button-checkout']");
-
-    // ── Step 13: Stripe Payment Intent ─────────────────────────────────
-    const stripeFrame = page.frameLocator("iframe[name*='stripe']").first();
-    await stripeFrame.locator("[placeholder='Card number']").fill("4242424242424242");
-    await stripeFrame.locator("[placeholder='MM / YY']").fill("12/30");
-    await stripeFrame.locator("[placeholder='CVC']").fill("123");
-    await page.click("[data-testid='button-confirm-payment']");
-    await page.waitForSelector("text=Booking confirmed", { timeout: 20000 });
-
-    // ── Step 14: Sign out and sign in as provider ──────────────────────
-    await page.goto(`${BASE}/api/logout`);
-    await loginAsTestAccount(page, "provider");
-
-    // ── Step 15: Verify earnings reflect the booking ───────────────────
-    await page.goto(`${BASE}/provider/earnings`);
-    await page.waitForSelector("[data-testid='earnings-dashboard']", { timeout: 10000 });
-    // Provider earns 90% of $200 = $180 (per commission.service.ts provider_share_rate)
-    await expect(page.locator("text=$180.00")).toBeVisible();
-    await expect(page.locator("text=Platform fee: 10%")).toBeVisible();
+test.describe("Journey 5 — provider: listing → storefront → checkout → the provider's inbox", () => {
+  test("a traveler finds the provider's listing on their storefront and checks out", async ({ page }) => {
+    await runJourney(page, PROVIDER_CASE);
   });
 });

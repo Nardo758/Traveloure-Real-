@@ -1,0 +1,160 @@
+name: Journey 4-5 Gate (seller listing → storefront → checkout → seller inbox)
+
+# Runs e2e/specs/journey-4-5.spec.ts against a freshly-built production bundle and a THROWAWAY
+# Postgres (ledger `2026-09-25-journey-4-5-rewritten`). The spec was stale for weeks — it waited
+# on test ids no page renders and asserted fixed commission splits — and it lived in no workflow,
+# so nothing noticed. This gate is what keeps the rewrite from rotting the same way.
+#
+# Per seller (a verified Kyoto expert persona and a verified Kyoto provider persona): the listing
+# is published and admin-approved, a newly registered traveler finds it on the seller's
+# storefront, adds it, and checks out; then the seller's own console is read.
+#
+# STRIPE IS DECLARED UNAVAILABLE HERE, NEVER INFERRED. The server boots with the stub key and the
+# spec runs with JOURNEY_STRIPE_UNAVAILABLE=1, so it asserts the ruling-38 contract: the declared
+# 503 `payment_unavailable`, an intact cart, and a seller console that shows the leftover §15b
+# claim only as a claim (never actionable; on the provider console, under "Awaiting payment" with
+# no payout figure — ledger `2026-09-25-provisional-claim-payout-line`).
+#
+# STATED NEGATIVE SPACE. The spec's real-key branch (pay with the 4242 card, then "You earn" on
+# the seller's History equals the booking's stamped payout) does NOT run in this job, and has not
+# been run anywhere; wiring a Stripe test secret here is a separate, deliberate change. Nor does
+# this gate prove the listing wizard UI (the persona suites), completion, minting or payouts.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: journey-4-5-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  journey-4-5:
+    name: journey-4-5 (seller listing → storefront → checkout → seller inbox)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Set up CI database (migrations, sessions table, CI admin)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # The spec approves listings as ci-admin@traveloure.test.
+          seed-ci-users: 'true'
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # The stub, deliberately — see "STRIPE IS DECLARED UNAVAILABLE" above.
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          # A production boot purges test accounts unless explicitly allowed. This DB is throwaway.
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          # Plain-http loopback: a `secure` session cookie is never replayed. NEVER in production.
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Seed the verified Kyoto sellers (scripts/seed-personas.ts --apply)
+        run: npx tsx scripts/seed-personas.ts --apply
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Seed the E2E accounts global-setup logs in as
+        run: npm run seed:e2e-accounts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          E2E_TEST_PASSWORD: TestPass123!
+
+      - name: Journey 4-5 (Stripe declared unavailable)
+        # playwright.local.config.ts: testDir ./e2e/specs + the global-setup that accepts
+        # http://localhost when the RUNNER's NODE_ENV is development (the server's stays production).
+        run: npx playwright test e2e/specs/journey-4-5.spec.ts --project=chromium --config playwright.local.config.ts
+        env:
+          BASE_URL: http://localhost:5000
+          E2E_TEST_PASSWORD: TestPass123!
+          NODE_ENV: development
+          CI: 'true'
+          JOURNEY_STRIPE_UNAVAILABLE: '1'
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journey-4-5-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
