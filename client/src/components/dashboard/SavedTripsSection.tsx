@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInDays } from "date-fns";
+import { refreshPlanLists } from "@/lib/plan-lists";
 
 interface SavedTrip {
   id: string;
@@ -64,7 +65,8 @@ export function SavedTripsSection() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/saved-trips"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
+      // RC-7: the ONE spelling of "a plan was born" (ledger `2026-09-25-rc7-new-plan-visible`).
+      void refreshPlanLists(queryClient);
       toast({ title: "Trip created!", description: "Your plan is ready — let's build it out." });
       navigate(`/plans/${data.tripId}`);
     },
