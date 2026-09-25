@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -7,7 +7,6 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -16,22 +15,13 @@ import { useSearch } from "wouter";
 import { useTripContext } from "@/lib/trip-context";
 import { resolveTargetTripId } from "@/lib/trip-target";
 import { ADDED_TO_PLAN_TITLE } from "@/lib/plan-vocabulary";
+import { syncActiveTripToContext } from "@/lib/trip-selection";
+import { PlanPickerList, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
 import {
-  MapPin,
   Plus,
   Loader2,
-  Plane,
   LogIn,
 } from "lucide-react";
-
-interface Trip {
-  id: string;
-  title: string;
-  destination: string;
-  status: string;
-  startDate?: string;
-  endDate?: string;
-}
 
 interface ExperienceItem {
   /** Stable content id when the feed has one; falls back to a title slug. */
@@ -66,53 +56,35 @@ export function AddToExperienceDialog({
   // the secondary action put identical content where it could. Two rails, one intent, opposite
   // outcomes. The primary now converges on the SAME itinerary rail whenever a target trip
   // resolves ("URL first, then the active TripContext" — client/src/lib/trip-target.ts, §18
-  // rule 1), and falls back to the cart only for a genuinely trip-less click (the sanctioned
-  // guest/no-trip fallback until G2, ledger row 5). No price is sent on either rail (§14).
+  // rule 1). No price is sent on either rail (§14). SUPERSEDED IN PART by RC-2 (ledger
+  // `2026-09-24-rc2-add-to-plan`): the trip-less cart fallback is gone — a signed-in member with
+  // no plan in hand picks one or starts one, and a guest meets the sign-in gate below.
   const searchString = useSearch();
   const [tripCtx] = useTripContext();
   const targetTripId = resolveTargetTripId(searchString, tripCtx);
 
   const addToCartMutation = useMutation({
     mutationFn: async () => {
-      if (!item) return;
-      if (targetTripId) {
-        // Same payload shape the per-trip rail below builds — one rail, one body.
-        const res = await fetch(`/api/trips/${targetTripId}/itinerary-items`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            title: item.title,
-            description: item.description || "",
-            itemType: item.type || "experience",
-            dayNumber: 1,
-            status: "planned",
-            ...(item.city ? { locationName: item.city } : {}),
-            ...(item.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
-          }),
-        });
-        if (!res.ok) throw new Error("Failed to add to your plan");
-        return res.json();
-      }
-      const contentId =
-        item.id ||
-        item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120) ||
-        "feed-item";
-      const res = await fetch("/api/cart", {
+      // RC-2 (ledger 2026-09-24-rc2-add-to-plan): the trip-less `POST /api/cart` write that lived
+      // here is DELETED (§18c). This button renders only when a plan is in hand; with none, the
+      // member picks a plan or starts one — nothing lands in a trip-less cart.
+      if (!item || !targetTripId) return;
+      // Same payload shape the per-plan rail below builds — one rail, one body.
+      const res = await fetch(`/api/trips/${targetTripId}/itinerary-items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          contentType: item.type === "recommendation" ? "activity" : item.type,
-          contentId,
-          contentMeta: {
-            name: item.title,
-            description: item.description || undefined,
-            city: item.city || undefined,
-          },
+          title: item.title,
+          description: item.description || "",
+          itemType: item.type || "experience",
+          dayNumber: 1,
+          status: "planned",
+          ...(item.city ? { locationName: item.city } : {}),
+          ...(item.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
         }),
       });
-      if (!res.ok) throw new Error("Failed to add to cart");
+      if (!res.ok) throw new Error("Failed to add to your plan");
       return res.json();
     },
     onSuccess: () => {
@@ -120,62 +92,57 @@ export function AddToExperienceDialog({
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({
-        title: targetTripId ? ADDED_TO_PLAN_TITLE : "Added to your cart",
-        description: targetTripId
-          ? `"${item?.title}" is on your plan — check out whenever you're ready.`
-          : `"${item?.title}" is in your cart — plan & optimize whenever you're ready.`,
+        title: ADDED_TO_PLAN_TITLE,
+        description: `"${item?.title}" is on your plan — check out whenever you're ready.`,
       });
       onOpenChange(false);
     },
     onError: () => {
       toast({
         variant: "destructive",
-        title: targetTripId ? "Could not add to your trip" : "Could not add to cart",
+        title: "Could not add to your plan",
         description: "Please try again.",
       });
     },
   });
 
-  const { data: trips, isLoading: tripsLoading } = useQuery<Trip[]>({
-    queryKey: ["/api/trips"],
-    enabled: open && isAuthenticated,
-  });
+  /** The plan-item body a feed item becomes on a chosen plan (dates known) or a new one (not yet). */
+  const feedItemBody = (tripStartDate?: string | null): Record<string, unknown> => {
+    // dayNumber is 1-based relative to the plan's start date, when both dates are known.
+    let dayNumber = 1;
+    if (item?.scheduledDate && tripStartDate) {
+      const tripStart = new Date(tripStartDate + "T00:00:00");
+      const itemDate = new Date(item.scheduledDate + "T00:00:00");
+      const diffDays = Math.round((itemDate.getTime() - tripStart.getTime()) / (1000 * 60 * 60 * 24));
+      dayNumber = Math.max(1, diffDays + 1);
+    }
+    return {
+      title: item?.title,
+      description: item?.description || "",
+      itemType: item?.type || "experience",
+      dayNumber,
+      status: "planned",
+      notes: `Added from ${item?.city || "destination"}`,
+      ...(item?.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
+    };
+  };
 
   const addToTripMutation = useMutation({
-    mutationFn: async (tripId: string) => {
+    mutationFn: async (plan: PickablePlan) => {
       if (!item) return;
-
-      // Compute dayNumber from scheduledDate and trip startDate when available.
-      // dayNumber is 1-based relative to the trip start date.
-      const trip = trips?.find((t) => t.id === tripId);
-      let dayNumber = 1;
-      if (item.scheduledDate && trip?.startDate) {
-        const tripStart = new Date(trip.startDate + "T00:00:00");
-        const itemDate = new Date(item.scheduledDate + "T00:00:00");
-        const diffMs = itemDate.getTime() - tripStart.getTime();
-        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-        dayNumber = Math.max(1, diffDays + 1);
-      }
-
-      const res = await fetch(`/api/trips/${tripId}/itinerary-items`, {
+      const res = await fetch(`/api/trips/${plan.id}/itinerary-items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: item.title,
-          description: item.description || "",
-          itemType: item.type || "experience",
-          dayNumber,
-          status: "planned",
-          notes: `Added from ${item.city || "destination"}`,
-          ...(item.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
-        }),
+        credentials: "include",
+        body: JSON.stringify(feedItemBody(plan.startDate)),
       });
       if (!res.ok) throw new Error("Failed to add item");
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_res, plan) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${plan.id}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${plan.id}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
       toast({
         title: ADDED_TO_PLAN_TITLE,
@@ -192,12 +159,18 @@ export function AddToExperienceDialog({
     },
   });
 
-  // §13: trips.status is a dead write-once field (born draft/planning, never advanced to
-  // completed/cancelled) — filtering on it here never actually excluded a finished trip.
-  // "Still addable" is derived from the trip's own dates instead, mirroring the convention
-  // every traveler-facing renderer uses (client/src/pages/my-trips.tsx: a trip is live/
-  // upcoming while its endDate has not yet passed). See docs/briefs/L3-trips-status-brief.md.
-  const activeTrips = trips?.filter((t) => !t.endDate || new Date(t.endDate) >= new Date()) || [];
+  // RC-2: which plans are offered is the ONE picker's rule (`isActivePlan`, the My plans "not
+  // Past" derivation) — this dialog no longer carries its own date filter. Picking a plan binds it
+  // as the CURRENT plan (the ruling) and adds the item there.
+  const startPlanThenAdd = useStartPlanThenAdd();
+  const pickPlan = (plan: PickablePlan) => {
+    syncActiveTripToContext(plan);
+    addToTripMutation.mutate(plan);
+  };
+  const startNewPlan = () => {
+    onOpenChange(false);
+    startPlanThenAdd(feedItemBody(null));
+  };
 
   if (!isAuthenticated) {
     return (
@@ -245,11 +218,9 @@ export function AddToExperienceDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Primary: straight into the trip cart — same as adding a service. The
-            trip/experience question is asked once, in the cart's Trip-details
-            step ("What are you planning?"), never at add-time. The old
-            "Experience Type" tab (a forced template choice that redirected into
-            the builder) is removed — funnel doctrine, Jul 17. */}
+        {/* Primary, only when a plan is in hand: straight onto that plan. With none, the ONE
+            plan picker below is the whole dialog (RC-2) — pick a plan or start one. */}
+        {targetTripId && (
         <button
           type="button"
           onClick={() => addToCartMutation.mutate()}
@@ -268,78 +239,27 @@ export function AddToExperienceDialog({
             {/* Ledger 2026-09-03-slip-convergence: with a target trip resolved this button lands
                 the item on the PLAN, not the cart — say which, rather than promising a cart row
                 the traveler will not find (§13). */}
-            <p className="font-semibold text-sm">
-              {targetTripId ? "Add to my trip plan" : "Add to my trip cart"}
-            </p>
+            <p className="font-semibold text-sm">Add to my current plan</p>
             <p className="text-xs text-muted-foreground">
               Plan &amp; optimize whenever you're ready — nothing to set up now
             </p>
           </div>
         </button>
+        )}
 
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <div className="flex-1 border-t" />
-          or add to a specific trip
-          <div className="flex-1 border-t" />
-        </div>
+        {targetTripId && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex-1 border-t" />
+            or choose another plan
+            <div className="flex-1 border-t" />
+          </div>
+        )}
 
-        <div className="space-y-3">
-            {tripsLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-16 w-full rounded-lg" />
-                ))}
-              </div>
-            ) : activeTrips.length === 0 ? (
-              <div className="text-center py-8">
-                <Plane className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground">No active trips found.</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Create a trip first to add items.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => {
-                    onOpenChange(false);
-                    window.location.href = "/my-trips";
-                  }}
-                >
-                  Go to My Plans
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {activeTrips.map((trip) => (
-                  <button
-                    key={trip.id}
-                    className="w-full text-left p-3 rounded-lg border hover:border-primary hover:bg-primary/5 transition-colors"
-                    onClick={() => addToTripMutation.mutate(trip.id)}
-                    disabled={addToTripMutation.isPending}
-                    data-testid={`button-select-trip-${trip.id}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-sm">
-                          {trip.title || "Untitled Trip"}
-                        </p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                          <MapPin className="w-3 h-3" />
-                          {trip.destination}
-                        </p>
-                      </div>
-                      {addToTripMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                      ) : (
-                        <Plus className="w-4 h-4 text-muted-foreground" />
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-        </div>
+        <PlanPickerList
+          onPick={pickPlan}
+          onStartNew={startNewPlan}
+          disabled={addToTripMutation.isPending}
+        />
       </DialogContent>
     </Dialog>
   );

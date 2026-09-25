@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation, useSearch } from "wouter";
@@ -57,6 +57,9 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useTripContext } from "@/lib/trip-context";
 import { resolveTargetTripId } from "@/lib/trip-target";
 import { addedTitle } from "@/lib/plan-vocabulary";
+import { decideAddTarget } from "@/lib/add-target";
+import { PlanPickerDialog, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
+import { syncActiveTripToContext } from "@/lib/trip-selection";
 // Punchlist V-13 (ledger `2026-09-13-service-detail-buy-action`; ruling 9 / lane L23). This page
 // used to AUTHOR its own three CTAs — "Book on Traveloure" / "Add to Cart" / "Contact Provider",
 // the same three for every archetype — while `GET /api/services/:id` was already shipping the one
@@ -508,6 +511,22 @@ export default function ServiceDetailPage() {
   // The add that is waiting on an answer. `null` = no question pending. `kind` says which of the
   // page's two plan writes (a service, or a room's night range) the answer belongs to.
   const [pendingAdd, setPendingAdd] = useState<{ kind: "service" | "room"; proceed: boolean } | null>(null);
+  // RC-2 (ledger 2026-09-24-rc2-add-to-plan): a signed-in member with no plan in hand is asked
+  // WHICH plan (or to start one) — never handed a trip-less cart row. A picked plan is bound as the
+  // current plan, and the add then re-enters `beginAdd` once `targetTripId` IS that plan, so the
+  // location check and "Which event?" run against it exactly as for any other add (one door).
+  const [pickForAdd, setPickForAdd] = useState<{ kind: "service" | "room"; proceed: boolean } | null>(null);
+  const [resumeAdd, setResumeAdd] = useState<{ kind: "service" | "room"; proceed: boolean; tripId: string } | null>(null);
+  const startPlanThenAdd = useStartPlanThenAdd();
+  // `beginAdd` is declared below the page's loading returns, so the effect reaches it by ref.
+  const beginAddRef = useRef<((kind: "service" | "room", proceed: boolean) => void) | null>(null);
+  useEffect(() => {
+    if (resumeAdd && targetTripId === resumeAdd.tripId) {
+      const { kind, proceed } = resumeAdd;
+      setResumeAdd(null);
+      beginAddRef.current?.(kind, proceed);
+    }
+  }, [resumeAdd, targetTripId]);
   // LOCATION MISMATCH (ledger 2026-09-04-location-mismatch). ONE gate for every add on this page:
   // the four buttons below (Book now / Add, and the room rung's twins) are four confirm points for
   // the SAME add, so they share one reader rather than each carrying a copy of the decision
@@ -593,37 +612,41 @@ export default function ServiceDetailPage() {
     },
   });
 
+  // The plan-item body this page's SERVICE add sends — ONE builder shared by the add below and by
+  // "Start a new plan" (RC-2), so both land the same row, slot and date included.
+  const servicePlanItemBody = (_vars: AddVars): Record<string, unknown> => ({
+    title: service?.serviceName ?? "Service",
+    description: service?.description || service?.shortDescription || undefined,
+    itemType: "activity",
+    providerServiceId: id,
+    estimatedCost: service?.price ? String(service.price) : undefined,
+    // FP-1/B3: the stored 'Unknown' default is ABSENCE, not a place — never plant it as a
+    // location on the plan (§13). Same filter the page's own location chip uses.
+    locationName:
+      service?.location && service.location.trim() !== "Unknown" ? service.location : undefined,
+    dayNumber: 1,
+    // A plan item's `scheduledDate` is a calendar DATE (the cart row's is a timestamp) —
+    // the slot's own date wins over a hand-typed one, and the time rides `startTime`.
+    ...(selectedSlot?.date
+      ? { scheduledDate: selectedSlot.date, ...(selectedSlot.startTime ? { startTime: selectedSlot.startTime } : {}) }
+      : bookingDate
+        ? { scheduledDate: bookingDate, ...(bookingTime ? { startTime: bookingTime } : {}) }
+        : {}),
+    // Migration-275 allowlist field: an INTENT marker. The capacity claim is still the
+    // atomic `storage.bookSlot` at checkout (§15), never at add time.
+    ...(selectedSlot ? { slotId: selectedSlot.id } : {}),
+    // Migration-277 allowlist field, ledger 2026-09-04-which-event-picker. ABSENT and NULL
+    // are two different instructions to `resolveItemEventLink`: an omitted key means "the
+    // question was never asked, do not touch the link", while an explicit `null` means the
+    // traveler CHOSE the plan's one implicit unnamed event. So the key rides only when an
+    // answer exists, and a chosen `null` is sent as a real value (Locked Decision 29).
+    ...eventLinkBody(_vars),
+  });
+
   const addToCartMutation = useMutation({
     mutationFn: async (_vars: AddVars) => {
       if (targetTripId) {
-        return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, {
-          title: service?.serviceName ?? "Service",
-          description: service?.description || service?.shortDescription || undefined,
-          itemType: "activity",
-          providerServiceId: id,
-          estimatedCost: service?.price ? String(service.price) : undefined,
-          // FP-1/B3: the stored 'Unknown' default is ABSENCE, not a place — never plant it as a
-          // location on the plan (§13). Same filter the page's own location chip uses.
-          locationName:
-            service?.location && service.location.trim() !== "Unknown" ? service.location : undefined,
-          dayNumber: 1,
-          // A plan item's `scheduledDate` is a calendar DATE (the cart row's is a timestamp) —
-          // the slot's own date wins over a hand-typed one, and the time rides `startTime`.
-          ...(selectedSlot?.date
-            ? { scheduledDate: selectedSlot.date, ...(selectedSlot.startTime ? { startTime: selectedSlot.startTime } : {}) }
-            : bookingDate
-              ? { scheduledDate: bookingDate, ...(bookingTime ? { startTime: bookingTime } : {}) }
-              : {}),
-          // Migration-275 allowlist field: an INTENT marker. The capacity claim is still the
-          // atomic `storage.bookSlot` at checkout (§15), never at add time.
-          ...(selectedSlot ? { slotId: selectedSlot.id } : {}),
-          // Migration-277 allowlist field, ledger 2026-09-04-which-event-picker. ABSENT and NULL
-          // are two different instructions to `resolveItemEventLink`: an omitted key means "the
-          // question was never asked, do not touch the link", while an explicit `null` means the
-          // traveler CHOSE the plan's one implicit unnamed event. So the key rides only when an
-          // answer exists, and a chosen `null` is sent as a real value (Locked Decision 29).
-          ...eventLinkBody(_vars),
-        });
+        return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, servicePlanItemBody(_vars));
       }
       const scheduledDate = bookingDate
         ? new Date(`${bookingDate}T${bookingTime || "09:00"}:00`).toISOString()
@@ -788,32 +811,35 @@ export default function ServiceDetailPage() {
   const [roomCheckInOpen, setRoomCheckInOpen] = useState(false);
   const [roomCheckOutOpen, setRoomCheckOutOpen] = useState(false);
 
+  // The ROOM add's plan-item body — shared with "Start a new plan" (RC-2) for the same reason.
+  const roomPlanItemBody = (_vars: AddVars): Record<string, unknown> => ({
+    title: service?.serviceName ?? "Stay",
+    description: service?.description || service?.shortDescription || undefined,
+    itemType: "accommodation",
+    providerServiceId: id,
+    locationName:
+      service?.location && service.location.trim() !== "Unknown" ? service.location : undefined,
+    dayNumber: 1,
+    // The stay starts on check-in night; the range itself rides the migration-275 columns.
+    scheduledDate: roomCheckIn,
+    checkIn: roomCheckIn,
+    checkOut: roomCheckOut,
+    // DELIBERATELY no `estimatedCost`: a stay's cost is nights × EACH night's own
+    // materialized rate (S11), which only `resolveStayNightlyRates` knows. Restating that
+    // arithmetic here would be a second derivation of the same number (§18 rule 1) and
+    // would read as a claim the moment rates are mixed — an absent estimate is the honest
+    // state (§13). The traveler still sees the real total at checkout, server-derived.
+    // Same migration-277 allowlist field, same absent-vs-null distinction as the add above.
+    ...eventLinkBody(_vars),
+  });
+
   const addRoomToCartMutation = useMutation({
     mutationFn: async (_vars: AddVars) => {
       if (targetTripId) {
         // Same convergence as the service add above. `itemType: "accommodation"` is a real value
         // in `itineraryItemTypeEnum` — the stay renders AS a stay on the plan and feeds the
         // anchor logic, rather than passing as a generic activity.
-        return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, {
-          title: service?.serviceName ?? "Stay",
-          description: service?.description || service?.shortDescription || undefined,
-          itemType: "accommodation",
-          providerServiceId: id,
-          locationName:
-            service?.location && service.location.trim() !== "Unknown" ? service.location : undefined,
-          dayNumber: 1,
-          // The stay starts on check-in night; the range itself rides the migration-275 columns.
-          scheduledDate: roomCheckIn,
-          checkIn: roomCheckIn,
-          checkOut: roomCheckOut,
-          // DELIBERATELY no `estimatedCost`: a stay's cost is nights × EACH night's own
-          // materialized rate (S11), which only `resolveStayNightlyRates` knows. Restating that
-          // arithmetic here would be a second derivation of the same number (§18 rule 1) and
-          // would read as a claim the moment rates are mixed — an absent estimate is the honest
-          // state (§13). The traveler still sees the real total at checkout, server-derived.
-          // Same migration-277 allowlist field, same absent-vs-null distinction as the add above.
-          ...eventLinkBody(_vars),
-        });
+        return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, roomPlanItemBody(_vars));
       }
       return apiRequest("POST", "/api/cart", {
         serviceId: id,
@@ -1003,6 +1029,12 @@ export default function ServiceDetailPage() {
       openSignInModal();
       return;
     }
+    // Signed in with no plan in hand ⇒ ask which plan (RC-2). The pure decision is shared with
+    // the Discover grid; auth has answered here (a user row exists), so it is never "wait".
+    if (decideAddTarget({ targetTripId, signedIn: true, authLoading: false }) === "pick") {
+      setPickForAdd({ kind, proceed });
+      return;
+    }
     guardServiceAdd(() => {
       if (targetTripId && shouldAskWhichEvent(planEvents)) {
         setPendingAdd({ kind, proceed });
@@ -1011,6 +1043,26 @@ export default function ServiceDetailPage() {
       if (kind === "room") addRoomToCartMutation.mutate({ proceed });
       else addToCartMutation.mutate({ proceed });
     });
+  };
+
+  beginAddRef.current = beginAdd;
+
+  const pickPlanForAdd = (plan: PickablePlan) => {
+    const pending = pickForAdd;
+    setPickForAdd(null);
+    if (!pending) return;
+    syncActiveTripToContext(plan);
+    setResumeAdd({ ...pending, tripId: plan.id });
+  };
+
+  // "Start a new plan": the item rides the SAME body builder the add uses, and lands once the
+  // finish has made the plan. A "Book now" intent becomes an add — the new plan's slip is where
+  // it is checked out, and nothing is charged from here.
+  const startNewPlanForAdd = () => {
+    const pending = pickForAdd;
+    setPickForAdd(null);
+    if (!pending) return;
+    startPlanThenAdd(pending.kind === "room" ? roomPlanItemBody({ proceed: false }) : servicePlanItemBody({ proceed: false }));
   };
 
   /** The picker's answer — an event id, or an EXPLICIT null for the implicit unnamed event. */
@@ -2309,6 +2361,13 @@ export default function ServiceDetailPage() {
           the picker's ONLY input for the role hint; whether any event actually wants it is
           answered against each event row's own `rolesNeeded`, inside the pure module. Absent on a
           listing whose category predates the key column, and then no row is marked. */}
+      <PlanPickerDialog
+        open={pickForAdd !== null}
+        onOpenChange={(next) => { if (!next) setPickForAdd(null); }}
+        itemName={service.serviceName}
+        onPick={pickPlanForAdd}
+        onStartNew={startNewPlanForAdd}
+      />
       <WhichEventDialog
         open={!!pendingAdd}
         onOpenChange={(next) => { if (!next) setPendingAdd(null); }}
