@@ -894,6 +894,27 @@ export default function ServiceDetailPage() {
    * that mark is drawn from the server's own `roles_needed` list and chooses nothing: the row is
    * still un-selected until the traveler clicks it.
    */
+  // A storefront card's "Book a session" / "Request a session" / "Request a quote" button lands
+  // here with `#book` or `#quote` (ledger `2026-09-25-storefront-booking-actions`, item 4). This
+  // is scroll-and-focus ONLY — it renders none of the buy controls and decides none of them; it
+  // focuses whichever the resolver already rendered (`button-book-now` or
+  // `button-request-to-book`), and does nothing when neither exists (§13 — no control to focus is
+  // not an error to surface, the panel itself is still in view from the scroll). Declared ABOVE
+  // the loading/error early returns below (Rules of Hooks — a hook after a conditional return is
+  // called on some renders and not others), and guarded on `service` being loaded internally.
+  useEffect(() => {
+    if (!service) return;
+    const hash = window.location.hash;
+    if (hash !== "#book" && hash !== "#quote") return;
+    const panel = document.getElementById("book");
+    if (!panel) return;
+    panel.scrollIntoView({ behavior: "smooth", block: "center" });
+    const target = document.querySelector<HTMLButtonElement>(
+      '[data-testid="button-book-now"], [data-testid="button-request-to-book"]',
+    );
+    target?.focus();
+  }, [service?.id]);
+
   if (serviceLoading) {
     return (
       <Layout>
@@ -1159,24 +1180,6 @@ export default function ServiceDetailPage() {
   // `isLive: true` for every approved+active listing, so the descriptor cannot say "this provider
   // is away" — the `isAway` disabling below stays exactly as it was, on top of the descriptor.
   const buy = serviceDetailBuyRender(service.buyAction);
-
-  // A storefront card's "Book a session" / "Request a session" / "Request a quote" button lands
-  // here with `#book` or `#quote` (ledger `2026-09-25-storefront-booking-actions`, item 4). This
-  // is scroll-and-focus ONLY — it renders none of the buy controls and decides none of them; it
-  // focuses whichever the resolver already rendered (`button-book-now` or
-  // `button-request-to-book`), and does nothing when neither exists (§13 — no control to focus is
-  // not an error to surface, the panel itself is still in view from the scroll).
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (hash !== "#book" && hash !== "#quote") return;
-    const panel = document.getElementById("book");
-    if (!panel) return;
-    panel.scrollIntoView({ behavior: "smooth", block: "center" });
-    const target = document.querySelector<HTMLButtonElement>(
-      '[data-testid="button-book-now"], [data-testid="button-request-to-book"]',
-    );
-    target?.focus();
-  }, [service.id]);
   // THE TRUST PANEL'S PAYMENT CLAIM IS THE DESCRIPTOR'S TOO (ledger
   // `2026-09-14-direct-booking-panel-conditioned`, punchlist V-20). Until this lane the panel
   // below asserted "Payment is processed securely through Traveloure" on every listing, including
