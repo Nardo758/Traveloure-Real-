@@ -350,7 +350,7 @@ test('S2: Expert E applies, publishes an offering, and is admin-approved', async
       expected: 'A provider_services row exists (role=expert)',
       actual: 'Row absent',
       where: 'server/routes.ts:3835 POST /api/provider/services',
-      evidence: { shot: 'shots/S2-expertE-05-offering-post-submit.png', net: 'net/S2-expertE.jsonl' },
+      evidence: { shot: 'shots/S2-expertE-05-offering-post-submit.png', net: `net/S2-expertE-${RUN_ID}.jsonl` },
       behavioural: true,
     });
   }
@@ -571,6 +571,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
   const rmRows = tripId
     ? await q(`SELECT id, status FROM ready_made_trips WHERE source_trip_id = $1`, [tripId])
     : [];
+  let reachedSubmitted = false;
 
   if (rmRows.length > 0) {
     const rm = rmRows[0];
@@ -593,14 +594,83 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
     const saveBtn = testid(page, 'button-save-listing');
     if (await saveBtn.isEnabled().catch(() => false)) {
       await saveBtn.click().catch(() => {});
-      await page.waitForTimeout(800);
+    }
+    // Poll for the save round trip to actually land (PATCH -> invalidate -> re-render with a
+    // `listing` prop that matches `draft`, at which point `dirty` goes false and Submit becomes
+    // clickable) rather than a single fixed wait — the earlier fixed 800ms window was the
+    // documented root cause of run rbvvcu leaving this listing at status='draft': the button was
+    // never actually driven, just checked once too early (lead verdict P2-S2-3/P2-D2-… "vacuous
+    // pass"). isEnabled() polls no more than isVisible() does, so this loop drives it for real.
+    const submitBtn = testid(page, 'button-submit-listing');
+    let submittable = false;
+    for (let i = 0; i < 15; i++) {
+      submittable = await submitBtn.isEnabled().catch(() => false);
+      if (submittable) break;
+      await page.waitForTimeout(500);
     }
 
-    const submitBtn = testid(page, 'button-submit-listing');
-    const submittable = await submitBtn.isEnabled().catch(() => false);
+    // Cover photo — REQUIRED server-side (assertReadyMadeComplete, ready-made.routes.ts) even
+    // though the Save/Submit buttons' client-side `dirty` gate does not itself block on it, so
+    // this must be driven for real or Submit's 400 is not "the listing wasn't ready", it's "this
+    // harness never tried". Only attempted once (title/plan-type/price alone were never enough
+    // to reach `approved` for a fresh build with no hero).
+    if (!(await testid(page, 'img-listing-hero').isVisible().catch(() => false))) {
+      const chooseHero = testid(page, 'button-choose-hero');
+      if (await appears(chooseHero, 4000)) {
+        await chooseHero.click().catch(() => {});
+        const modal = testid(page, 'modal-hero-picker');
+        if (await appears(modal, 4000)) {
+          await shot(page, 'S2-readymade', '03b', 'hero-picker-open');
+          const unavailable = testid(page, 'text-hero-unavailable');
+          const option = testid(page, 'button-hero-option');
+          let pickedHero = false;
+          for (let i = 0; i < 10; i++) {
+            if (await unavailable.isVisible().catch(() => false)) break;
+            if (await option.first().isVisible().catch(() => false)) {
+              await option.first().click({ timeout: 3000 }).catch(() => {});
+              await page.waitForTimeout(700);
+              pickedHero = await testid(page, 'img-listing-hero').isVisible().catch(() => false);
+              break;
+            }
+            await page.waitForTimeout(500);
+          }
+          if (!pickedHero) {
+            fileFinding({
+              journey: 'S2',
+              step: 'readymade:hero-unavailable',
+              class: 'SPEC_DIVERGENCE',
+              severity: 'P3',
+              known: null,
+              title: 'Ready-made cover photo could not be set — Unsplash is not configured in this environment (HELD:unsplash)',
+              expected:
+                'n/a — this is an environment limit, not a product defect: /api/expert/ready-made/hero-search ' +
+                'correctly answers {ready:false, reason:"unsplash_not_configured"} with no UNSPLASH_ACCESS_KEY set, ' +
+                'and the picker correctly shows text-hero-unavailable rather than faking results (§13)',
+              actual:
+                'button-choose-hero opened modal-hero-picker; no button-hero-option ever became available within 5s ' +
+                'of polling (unavailable banner or empty). assertReadyMadeComplete (ready-made.routes.ts) requires ' +
+                'heroImageUrl + heroImageMeta.photographer, so submit is expected to 400 on "hero" below — this is ' +
+                'HELD, not faked (R-1: no DB write substitutes for a real Unsplash photo here).',
+              where: 'server/services/unsplash.service.ts isReady(); client/src/components/expert/ready-made-listing-panel.tsx',
+              evidence: { shot: 'shots/S2-readymade-03b-hero-picker-open.png' },
+              behavioural: true,
+            });
+          }
+          await testid(page, 'button-close-hero-picker').click({ timeout: 2000 }).catch(() => {});
+        }
+      }
+      // Re-check submit-enabled now that a hero may have just been set (a successful pick calls
+      // save.mutate directly, independent of the button-save-listing/dirty round trip above).
+      for (let i = 0; i < 10 && !submittable; i++) {
+        submittable = await submitBtn.isEnabled().catch(() => false);
+        if (submittable) break;
+        await page.waitForTimeout(400);
+      }
+    }
+
     if (submittable) {
       await submitBtn.click();
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(1200);
     } else {
       fileFinding({
         journey: 'S2',
@@ -608,15 +678,37 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
         class: 'DEAD_TRIGGER',
         severity: 'P2',
         known: null,
-        title: 'button-submit-listing disabled — the ready-made likely needs a hero photo and/or non-empty days',
-        expected: 'Submit becomes enabled once title/plan-type/price are set and the build has items',
-        actual: 'button-submit-listing remained disabled',
+        title: 'button-submit-listing never became enabled after saving title/plan-type/price (and, where possible, a cover photo)',
+        expected: 'Submit becomes enabled once title/plan-type/price are set and saved and the build has items',
+        actual: `button-submit-listing.isEnabled() polled false for ~7.5s after save`,
         where: 'client/src/components/expert/ready-made-listing-panel.tsx',
         evidence: { shot: 'shots/S2-readymade-04-listing-panel-filled.png' },
         behavioural: true,
       });
     }
     await shot(page, 'S2-readymade', '05', 'listing-panel-post-submit');
+
+    // Verify the submit actually took (server-side, via the row's own status) rather than
+    // trusting the click — a 400 from assertReadyMadeComplete (most likely: missing hero, see
+    // above) leaves status='draft' with no client-visible failure beyond a toast this harness
+    // does not read.
+    const postSubmitRow = await q(`SELECT status FROM ready_made_trips WHERE id = $1`, [rm.id]);
+    reachedSubmitted = !!(postSubmitRow[0]?.status && postSubmitRow[0].status !== 'draft');
+    if (submittable && !reachedSubmitted) {
+      fileFinding({
+        journey: 'S2',
+        step: 'readymade:submit-verify',
+        class: 'SILENT_SUCCESS',
+        severity: 'P2',
+        known: null,
+        title: `Submit was clicked (button enabled) but ready_made_trips.status is still "${postSubmitRow[0]?.status ?? 'row absent'}" — the click did not move it out of draft`,
+        expected: 'POST /api/expert/ready-made/:id/submit returns 200 and flips status to submitted',
+        actual: `status=${postSubmitRow[0]?.status ?? 'row absent'}; most likely cause: assertReadyMadeComplete 400 on a missing requirement (see the hero finding above if the picker was unavailable)`,
+        where: 'server/routes/ready-made.routes.ts POST /:id/submit',
+        evidence: { shot: 'shots/S2-readymade-05-listing-panel-post-submit.png' },
+        behavioural: true,
+      });
+    }
   } else {
     fileFinding({
       journey: 'S2',
@@ -636,30 +728,36 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
     return;
   }
 
-  // Admin approves the ready-made via /admin/template-approvals.
-  await loginViaUi(page, ADMIN.email, ADMIN.password);
-  await page.goto('/admin/template-approvals');
-  await shot(page, 'S2-readymade', '06', 'admin-template-approvals');
-  const pendingCard = page.locator(`text=${buildTitle}`);
-  const found = await appears(pendingCard, 5000);
-  if (found) {
-    const approveBtn = page.locator('button', { hasText: /approve/i }).first();
-    await approveBtn.click().catch(() => {});
-    await page.waitForTimeout(1000);
-  } else {
-    fileFinding({
-      journey: 'S2',
-      step: 'readymade:admin-approve',
-      class: 'DEAD_TRIGGER',
-      severity: 'P2',
-      known: null,
-      title: `"${buildTitle}" not found on /admin/template-approvals`,
-      expected: 'A submitted ready-made appears in the admin approval queue',
-      actual: 'Not found',
-      where: 'client/src/pages/admin/template-approvals.tsx (or equivalent)',
-      evidence: { shot: 'shots/S2-readymade-06-admin-template-approvals.png' },
-      behavioural: true,
-    });
+  // Admin approves the ready-made via /admin/template-approvals — only meaningful once the
+  // listing actually reached status='submitted'; if it didn't (see the hero/submit-verify
+  // findings above), the queue correctly has nothing to show and re-filing "not found" here
+  // would be the same vacuous-pass-adjacent noise the lead flagged for the pre-fix run
+  // (P2-S2-3: "the row is draft — it correctly does not appear in the approval queue").
+  if (reachedSubmitted) {
+    await loginViaUi(page, ADMIN.email, ADMIN.password);
+    await page.goto('/admin/template-approvals');
+    await shot(page, 'S2-readymade', '06', 'admin-template-approvals');
+    const pendingCard = page.locator(`text=${buildTitle}`);
+    const found = await appears(pendingCard, 5000);
+    if (found) {
+      const approveBtn = page.locator('button', { hasText: /approve/i }).first();
+      await approveBtn.click().catch(() => {});
+      await page.waitForTimeout(1000);
+    } else {
+      fileFinding({
+        journey: 'S2',
+        step: 'readymade:admin-approve',
+        class: 'DEAD_TRIGGER',
+        severity: 'P2',
+        known: null,
+        title: `"${buildTitle}" not found on /admin/template-approvals`,
+        expected: 'A submitted ready-made appears in the admin approval queue',
+        actual: 'Not found',
+        where: 'client/src/pages/admin/template-approvals.tsx (or equivalent)',
+        evidence: { shot: 'shots/S2-readymade-06-admin-template-approvals.png' },
+        behavioural: true,
+      });
+    }
   }
 
   // Assert via DB: the ready-made's items reference the LIVE provider_services ids (never copies).

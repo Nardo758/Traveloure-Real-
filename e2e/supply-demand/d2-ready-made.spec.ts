@@ -65,6 +65,39 @@ test('D2: traveler discovers and attempts to clone Expert E\'s ready-made', asyn
     return;
   }
 
+  // ── Fail-soft precondition: nothing to clone unless S2's ready-made actually reached
+  // 'approved' (lead review, Pass-2 hardening — P2-S2-3/D2 "vacuous pass": readyMade being
+  // present in harness state only means S2 minted a draft row, not that it is live). Below,
+  // this journey's discovery/purchase checks are only meaningful evidence when there is
+  // something approved to discover; when there isn't, D2 must fail LOUDLY (annotated
+  // expected-fail) rather than quietly reach the end of the test and read as a green PASS
+  // that proved nothing.
+  const rmStatusRow = await q(`SELECT status FROM ready_made_trips WHERE id = $1`, [readyMade.id]).catch(
+    () => [] as any[],
+  );
+  const rmStatus = rmStatusRow[0]?.status ?? null;
+  if (rmStatus !== 'approved') {
+    const reason =
+      `S2's ready-made "${readyMade.title}" (${readyMade.id}) is not approved (status=${rmStatus ?? 'row absent'}) ` +
+      `— there is nothing live for D2 to discover or clone this run.`;
+    test.info().annotations.push({ type: 'expected-fail', description: reason });
+    fileFinding({
+      journey: 'D2',
+      step: 'precondition:not-approved',
+      class: 'SPEC_DIVERGENCE',
+      severity: 'P2',
+      known: null,
+      title: `Ready-made ${readyMade.id} is not approved (status=${rmStatus ?? 'row absent'}) — D2 has nothing live to open`,
+      expected: "S2's ready-made reaches status='approved' (submit + admin-approve) before D2 runs",
+      actual: `status=${rmStatus ?? 'row absent'}`,
+      where: 'e2e/supply-demand/s2-expert-publish.spec.ts (submit/admin-approve steps)',
+      evidence: {},
+      behavioural: true,
+    });
+    net.flush();
+    throw new Error(`D2 expected-fail: ${reason} See the finding above for the S2-side root cause.`);
+  }
+
   // ── Discovery: /ready-made browse ──
   await page.goto('/ready-made');
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});

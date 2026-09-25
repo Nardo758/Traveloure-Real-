@@ -589,7 +589,7 @@ for (const fx of PROVIDERS) {
         expected: 'A provider_services row exists (born approval_status=submitted, migration 111)',
         actual: 'Row absent — either the create call never fired or a required field blocked it silently',
         where: 'server/routes.ts:3835 POST /api/provider/services',
-        evidence: { shot: `shots/S1-${fx.key}-08-listing-post-submit.png`, net: `net/S1-${fx.key}.jsonl` },
+        evidence: { shot: `shots/S1-${fx.key}-08-listing-post-submit.png`, net: `net/S1-${fx.key}-${RUN_ID}.jsonl` },
         behavioural: true,
       });
       net.flush();

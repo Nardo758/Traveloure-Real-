@@ -290,22 +290,34 @@ test('D6b: a confirmed video-call booking reveals its join link only where it sh
   const joinBtn = testid(page, `button-join-session-${seededBookingId}`);
   const blockVisible = await appears(joinLinkBlock, 8000);
   const btnVisible = blockVisible && (await appears(joinBtn, 3000));
-  const href = btnVisible ? await joinBtn.locator('a').getAttribute('href').catch(() => null) : null;
-  const target = btnVisible ? await joinBtn.locator('a').getAttribute('target').catch(() => null) : null;
+  // Wait for the <a> itself to render before reading its attributes (lead review, P2-D6b-3):
+  // `getAttribute('href')` on a locator that resolves before React has painted the anchor reads
+  // null even though the anchor renders moments later — the same `isVisible()`-before-render trap
+  // documented in lib/ui.ts's `appears()`. `button-join-session-<id>` is a wrapper; poll its own
+  // <a> child with `appears()` (which DOES wait) before reading href/target off it.
+  const anchor = joinBtn.locator('a');
+  const anchorVisible = btnVisible && (await appears(anchor, 3000));
+  const href = anchorVisible ? await anchor.getAttribute('href').catch(() => null) : null;
+  const target = anchorVisible ? await anchor.getAttribute('target').catch(() => null) : null;
+  const joinLinkOk = blockVisible && btnVisible && anchorVisible && href === joinLinkUrl && target === '_blank';
 
-  fileFinding({
-    journey: 'D6b',
-    step: 'my-bookings:join-link-shown',
-    class: blockVisible && btnVisible && href === joinLinkUrl && target === '_blank' ? 'SPEC_DIVERGENCE' : 'INVISIBLE_RESULT',
-    severity: blockVisible && btnVisible && href === joinLinkUrl && target === '_blank' ? 'P3' : 'P1',
-    known: null,
-    title: `T-auth's /my-bookings ${blockVisible && btnVisible ? 'DOES' : 'does NOT'} render the join link for the confirmed booking`,
-    expected: `join-link-${seededBookingId} and button-join-session-${seededBookingId} render, with href="${joinLinkUrl}" and target="_blank"`,
-    actual: `blockVisible=${blockVisible}, btnVisible=${btnVisible}, href=${href}, target=${target}`,
-    where: 'client/src/pages/my-bookings.tsx (~857-870)',
-    evidence: { shot: 'shots/D6b-05-tauth-my-bookings-confirmed.png' },
-    behavioural: true,
-  });
+  // A PASS is not a finding (lead review: P2-D6b-3 was re-checked as an actual PASS and REMOVED,
+  // not filed) — only log when this diverges from what is expected.
+  if (!joinLinkOk) {
+    fileFinding({
+      journey: 'D6b',
+      step: 'my-bookings:join-link-shown',
+      class: 'INVISIBLE_RESULT',
+      severity: 'P1',
+      known: null,
+      title: `T-auth's /my-bookings does NOT render the join link for the confirmed booking`,
+      expected: `join-link-${seededBookingId} and button-join-session-${seededBookingId} render, with href="${joinLinkUrl}" and target="_blank"`,
+      actual: `blockVisible=${blockVisible}, btnVisible=${btnVisible}, anchorVisible=${anchorVisible}, href=${href}, target=${target}`,
+      where: 'client/src/pages/my-bookings.tsx (~857-870)',
+      evidence: { shot: 'shots/D6b-05-tauth-my-bookings-confirmed.png' },
+      behavioural: true,
+    });
+  }
 
   // ── 4a. A DIFFERENT traveler must not see this booking at all ──
   const otherEmail = e2eEmail('d6b-other-traveler');
