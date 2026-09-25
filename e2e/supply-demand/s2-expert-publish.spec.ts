@@ -26,6 +26,7 @@ import { fileFinding, fileVisibility } from './lib/findings';
 import { q, userByEmail, serviceByTitle, feeBand, seedMeetingPin } from './lib/db';
 import { writeState, readState } from './lib/state';
 import { testid } from './lib/ui';
+import { dedupe } from './lib/dedupe';
 
 const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
 
@@ -182,19 +183,25 @@ test('S2: Expert E applies, publishes an offering, and is admin-approved', async
   const draftRow = await serviceByTitle(offeringTitle);
   if (draftRow) {
     await seedMeetingPin(draftRow.id, 35.0116, 135.7681, 'Meet outside the main entrance — e2e supply-demand fixture.');
-    fileFinding({
-      journey: 'S2',
-      step: 'expertE:seeded-meeting-pin',
-      class: 'SPEC_DIVERGENCE',
-      severity: 'P3',
-      known: null,
-      title: 'seeded step: provider_services.latitude/longitude/meeting_point (R-1 fallback, same write class as S1)',
-      expected: 'n/a — documented R-1 fallback, not a UI path',
-      actual: `UPDATE provider_services SET latitude=35.0116, longitude=135.7681, meeting_point=<text> WHERE id=${draftRow.id}.`,
-      where: 'e2e/supply-demand/lib/db.ts seedMeetingPin',
-      evidence: {},
-      behavioural: true,
-    });
+    if (!dedupe.filedMeetingPinFinding) {
+      dedupe.filedMeetingPinFinding = true;
+      fileFinding({
+        journey: 'S1',
+        step: 'all:seeded-meeting-pin',
+        class: 'SPEC_DIVERGENCE',
+        severity: 'P3',
+        known: null,
+        title: 'seeded step: provider_services.latitude/longitude/meeting_point (R-1 fallback — map click-to-place is not headless-reliable)',
+        expected: 'n/a — documented R-1 fallback, not a UI path',
+        actual:
+          'UPDATE provider_services SET latitude=35.0116, longitude=135.7681, meeting_point=<text> WHERE id=<drafted row>. ' +
+          'Applied once per account (A/B/C, expertE, S3 throwaway) across the whole run; filed as ONE finding covering ' +
+          'the whole class of writes, per lead review.',
+        where: 'e2e/supply-demand/lib/db.ts seedMeetingPin',
+        evidence: {},
+        behavioural: true,
+      });
+    }
     // Re-enter the wizard (a cold /edit load lands on listing-home, same as S1).
     await page.goto(`/expert/services/${draftRow.id}/edit`);
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});

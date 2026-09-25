@@ -7,12 +7,20 @@
 import { test, expect } from '@playwright/test';
 import { RUN_ID, e2eEmail, e2eTitle, E2E_PASSWORD } from './lib/run-id';
 import { loginViaUi } from './lib/accounts';
-import { createListingBasics, walkServiceFormToReview, submitListingForReview, adminRejectService } from './lib/flows';
+import {
+  createListingBasics,
+  walkServiceFormToReview,
+  submitListingForReview,
+  adminRejectService,
+  saveDraft,
+  enterWizardFromListingHome,
+} from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
-import { serviceByTitle, q } from './lib/db';
+import { serviceByTitle, q, seedMeetingPin } from './lib/db';
 import { readState } from './lib/state';
 import { testid } from './lib/ui';
+import { dedupe } from './lib/dedupe';
 
 const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
 
@@ -36,6 +44,40 @@ test('S3: pending listing is hidden from travelers while awaiting approval', asy
     priceCents: 5000,
     description: `Moderation-state throwaway fixture (run ${RUN_ID}).`,
   });
+
+  // Save as a draft, then seed the meeting pin (R-1 — same fallback S1/S2 use; the map
+  // click-to-place + geocode flow is not headless-reliable) — a listing found here with no
+  // pin was previously stuck permanently on Logistics behind a real "Meeting point is
+  // required before you submit this for review" banner, so submit never reached Review and
+  // no row was ever created for the whole rest of this spec to moderate.
+  await saveDraft(page);
+  const draftRow = await serviceByTitle(title);
+  if (draftRow) {
+    await seedMeetingPin(draftRow.id, 35.0116, 135.7681, 'Meet outside the main entrance — e2e supply-demand fixture.');
+    if (!dedupe.filedMeetingPinFinding) {
+      dedupe.filedMeetingPinFinding = true;
+      fileFinding({
+        journey: 'S1',
+        step: 'all:seeded-meeting-pin',
+        class: 'SPEC_DIVERGENCE',
+        severity: 'P3',
+        known: null,
+        title: 'seeded step: provider_services.latitude/longitude/meeting_point (R-1 fallback — map click-to-place is not headless-reliable)',
+        expected: 'n/a — documented R-1 fallback, not a UI path',
+        actual:
+          'UPDATE provider_services SET latitude=35.0116, longitude=135.7681, meeting_point=<text> WHERE id=<drafted row>. ' +
+          'Applied once per account (A/B/C, expertE, S3 throwaway) across the whole run; filed as ONE finding, ' +
+          'shared cross-spec via lib/dedupe.ts, covering the whole class of writes.',
+        where: 'e2e/supply-demand/lib/db.ts seedMeetingPin',
+        evidence: {},
+        behavioural: true,
+      });
+    }
+    await page.goto(`/provider/services/${draftRow.id}/edit`);
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+    await enterWizardFromListingHome(page);
+  }
+
   await walkServiceFormToReview(page);
   const outcome = await submitListingForReview(page);
   await shot(page, 'S3', '01', 'throwaway-post-submit');
@@ -257,6 +299,19 @@ test('S3: time-to-visible after a clean approve (no background-check gate)', asy
     priceCents: 6000,
     description: `Timing fixture (run ${RUN_ID}).`,
   });
+
+  // Same R-1 meeting-pin fallback as the throwaway-listing test above and S1/S2 — without it
+  // this listing gets stuck behind a real "Meeting point is required" banner and never reaches
+  // Review & submit at all.
+  await saveDraft(page);
+  const timingDraftRow = await serviceByTitle(title);
+  if (timingDraftRow) {
+    await seedMeetingPin(timingDraftRow.id, 35.0116, 135.7681, 'Meet outside the main entrance — e2e supply-demand fixture.');
+    await page.goto(`/provider/services/${timingDraftRow.id}/edit`);
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+    await enterWizardFromListingHome(page);
+  }
+
   await walkServiceFormToReview(page);
   const outcome = await submitListingForReview(page);
   const submitTime = Date.now();

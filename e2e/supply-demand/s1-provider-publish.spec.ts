@@ -38,6 +38,7 @@ import { fileFinding, fileVisibility } from './lib/findings';
 import { q, userByEmail, serviceByTitle, feeBand, seedProviderIdentityAndBusinessVerification, seedMeetingPin } from './lib/db';
 import { writeState } from './lib/state';
 import { testid } from './lib/ui';
+import { dedupe } from './lib/dedupe';
 
 const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
 
@@ -98,7 +99,6 @@ const KYOTO_NEIGHBORHOOD_SLUG = 'gion';
 let filedReturnToFinding = false;
 let filedNoVerificationPathFinding = false;
 let filedSeedFinding = false;
-let filedMeetingPinFinding = false;
 
 // Lead review (findings hygiene): one finding per DEFECT, not one per provider/surface.
 // These accumulate across A/B/C and are flushed as ONE finding each in test.afterAll.
@@ -303,8 +303,8 @@ for (const fx of PROVIDERS) {
       throw new Error(`S1 ${fx.key}: draft save did not create a row — see finding above`);
     }
 
-    if (!filedMeetingPinFinding) {
-      filedMeetingPinFinding = true;
+    if (!dedupe.filedMeetingPinFinding) {
+      dedupe.filedMeetingPinFinding = true;
       fileFinding({
         journey: 'S1',
         step: 'all:seeded-meeting-pin',
@@ -315,7 +315,8 @@ for (const fx of PROVIDERS) {
         expected: 'n/a — documented R-1 fallback, not a UI path',
         actual:
           'UPDATE provider_services SET latitude=35.0116, longitude=135.7681, meeting_point=<text> WHERE id=<drafted row>. ' +
-          'Applied once per account (A/B/C) this run; filed as ONE finding covering the whole class of writes.',
+          'Applied once per account (A/B/C, expertE, S3 throwaway) across the whole run; filed as ONE finding, ' +
+          'shared cross-spec via lib/dedupe.ts, covering the whole class of writes.',
         where: 'e2e/supply-demand/lib/db.ts seedMeetingPin',
         evidence: {},
         behavioural: true,
