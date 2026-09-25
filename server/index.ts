@@ -9,6 +9,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { mountWellKnown } from "./well-known";
 import { runMigrations } from "./migrations/run-migrations";
+import { describeLegacyBookingsCutoff } from "./config/legacy-bookings.config";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedProviderServiceListings, seedMockExperts, seedProviderServices } from "./seed-expert-services";
@@ -645,6 +646,19 @@ if (process.env.NODE_ENV === "production") {
     logger.error({ err }, "FATAL: Database migrations failed — shutting down");
     process.exit(1);
   }
+
+  // D-12's legacy-rail cutoff, stated at boot (ledger `2026-09-25-legacy-cutoff-boot-line`).
+  // A FUTURE cutoff and an UNSET one behave identically until the date passes — both allow writes,
+  // and the only reader is `POST /api/bookings/process-cart` — so an operator who restarted to load
+  // `LEGACY_BOOKINGS_NO_NEW_WRITES_FROM` could confirm only that it was not MALFORMED (a malformed
+  // value throws at that module's load). This line states the resolved value, on the SAME pino path
+  // as the migration summary above, so the deploy log carries it. §13: an unset value reads as "no
+  // cutoff decided", never as closed. The sentence has ONE home, the config module (§18 rule 1).
+  const legacyCutoff = describeLegacyBookingsCutoff();
+  logger.info(
+    { state: legacyCutoff.state, cutoff: legacyCutoff.cutoff },
+    legacyCutoff.message,
+  );
 
   await registerRoutes(httpServer, app);
 
