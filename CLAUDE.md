@@ -1064,6 +1064,14 @@ This document captures architectural decisions to maintain consistency across co
     one more caller (§18 rule 1) — **behind the SAME sign-in gate**, checked BEFORE anything is
     minted, and forwards `tripId` to `/experts` so the storefront request rail ruling 32(b)
     requires has the trip it needs. The reason is ruling 32's precondition, not a preference.
+    **AMENDED FOR `ai` AND FOR SAVE (decision-maker ruled Sep 24, 2026 — ledger
+    `2026-09-24-rc1-finish-mints`, audit RC-1).** "Plan with AI" now MINTS through the same
+    `mintTripSlip` before the AI form opens, and the free draft is written INTO that empty plan (LD 41
+    (b); LD 45's "a door before the mint, a drawer after it"); a failed or abandoned draft leaves a
+    plan, never only answers. The modal's "Save" creates the plan when none is bound, the member is
+    signed in and the basics are complete (`saveMintsPlan`), and otherwise stays the edit it was.
+    Dismissal still creates nothing. `occasion` still mints nothing, and a door that names a plan
+    (`source.tripId`) is never minted a second one.
 
     **D6 — TWO ROLE QUESTIONS, TWO CATALOGS, AND THEY ARE NEVER MERGED (§4, and the FAQ's refusal
     of a new service table).** "Who plans this WITH me" is a **plan-level** question and its answer
@@ -2635,6 +2643,42 @@ adds the same column a minute later. **Everything else keeps §20's default — 
 statement for an object no registered migration names, and the "copy development database to
 production" option under any wording. A dispatch that tells an operator "the push has nothing to
 add" is TRUE only when production has already booted the newest migration; say which case applies.
+
+**THE CARVE-OUT COVERS A BORN OBJECT, NOT ONLY A BORN COLUMN (amended Sep 25, 2026 — decision-maker,
+after the `a912ebe49` dispatch was refused; ledger `2026-09-25-publish-prompt-new-objects`).** The
+Sep 17 amendment was written with ONE migration in front of it — 309, a column — so it blessed
+`ADD COLUMN IF NOT EXISTS` and put **any index** in the decline-and-stop list. A migration that
+creates a NEW TABLE with its indexes produces exactly the same expected prompt for exactly the same
+reason, and under the old wording an operator had to stop on it. **`CREATE TABLE IF NOT EXISTS` and
+`CREATE INDEX IF NOT EXISTS` (including `CREATE UNIQUE INDEX IF NOT EXISTS`) are now approvable on
+the SAME THREE TESTS as a column** — every offered statement matches, byte for byte in effect, a
+migration that is **registered** in `server/migrations/migration-files.ts`, **declared** in
+`shared/schema.ts`, and **not yet stamped** on production — and the `IF NOT EXISTS` form stays
+load-bearing for the same reason: the boot that follows finds the object present, does nothing, and
+stamps the row.
+
+**THE UNIQUE-INDEX PRECONDITION IS PART OF THE TEST, NOT A FOOTNOTE.** A violated UNIQUE fails the
+publish mid-push and offers the DESTRUCTIVE "copy dev over production" option (the Coordination
+Prevention rules above). So a `CREATE UNIQUE INDEX` is approvable **only when the table it indexes is
+being CREATED BY THE SAME PROMPT** — born empty, so no row can violate it — **or** when prod has been
+checked for duplicates first (`SELECT <cols>, count(*) … GROUP BY 1 HAVING count(*) > 1`). A unique
+index offered over an EXISTING table with no such check keeps §20's default: DECLINE and STOP.
+
+**UNCHANGED, and still the whole decline-and-stop set:** any `DROP`, any `ALTER COLUMN … TYPE`, any
+NOT NULL or DEFAULT change, any CHECK, any statement for an object **no registered migration names**,
+and the "copy development database to production" option under any wording. Declining remains safe on
+every path — boot applies the same migration a minute later — and an operator who declines is never
+wrong.
+
+**TWO PROCESS RULES THE REFUSAL EXPOSED, and they bind the dispatch author, not the operator.**
+(a) **A dispatch may not widen this carve-out on its own authority.** The refused dispatch told the
+operator to "decline the prompt in full and continue" on a prompt containing two unique indexes —
+decline-and-CONTINUE where §20 said decline-and-STOP. The operator's refusal was correct, and the
+amendment is the decision-maker's to make, never the dispatch's. (b) **PRODUCTION'S MIGRATION STATE
+IS READ, NEVER INFERRED.** That same dispatch claimed six migrations would apply (319–324) because it
+reasoned from an older publish report; production had already recorded 319–323 and only 324 was
+missing, and the ledger table is `schema_migrations`, not `migrations`. A session that cannot reach
+production says so and asks for the read — a §13 honesty question, not a rounding error.
 
 ### Branch and publish rule
 

@@ -72,6 +72,7 @@ import {
   type PlanStepId,
   BRANCHES_THAT_MINT,
   BRANCHES_THAT_REQUIRE_THE_MINT,
+  saveMintsPlan,
 } from "@/lib/plan-steps";
 import { useAuth } from "@/hooks/use-auth";
 import type { PlanningBranch, PlanningSource } from "@/contexts/PlanningContext";
@@ -403,6 +404,9 @@ export function PlanModal({
   const [customOpen, setCustomOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
+  /** Save's own refusal. Separate from `finishError` because Save is on EVERY step and the finish
+   *  error renders only inside the finish block on the last one. */
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [step, setStep] = useState<PlanStepId>("occasion");
   /** The start step is resolved ONCE per open, and only once the catalog has answered. */
   const startResolved = useRef(false);
@@ -440,6 +444,7 @@ export function PlanModal({
   const seedFormFrom = (ctx: TripContext, sourceDestination: string) => {
     startResolved.current = false;
     setFinishError(null);
+    setSaveError(null);
     setStep("occasion");
     setTitle(ctx.title || "");
     /**
@@ -1147,11 +1152,73 @@ export function PlanModal({
     occasionName: selectedOccasion?.name,
   });
 
-  /** "Save" — commit and close, without choosing a way to build. Every door keeps this. */
+  /**
+   * THE ONE MINT STEP the finish and Save share (§18 rule 1 — two copies of the pen release and
+   * the mint call are how one path starts double-creating events and the other does not).
+   *
+   * THE MODAL IS THE AUTHOR OF THE EVENTS IT COLLECTED, so it takes its own pen off the table
+   * before the mint (ledger `2026-09-06-event-mint-dedupe`, CLAUDE.md Locked Decision 30 (b)).
+   * `storage.createTrip` awaits the server-side pen drain, and the rows on screen were SEEDED from
+   * that same pen — so without this, every ticked event is created twice in one click: once by the
+   * drain, once by `commitPlan`.
+   *
+   * The modal wins the authorship because it holds what the drain can only guess at: the occasion
+   * resolved on screen (the drain creates NOTHING when a stored slug does not resolve — its rule 5),
+   * and an untick the pen still remembers. The pen keeps its whole job for every other mint door
+   * and for a pen this modal never comes back for.
+   *
+   * AWAITED, and its answer is deliberately NOT branched on: a release the server did not confirm
+   * leaves `commitPlan`'s idempotency filter to do exactly what it is there for.
+   */
+  const mintThisPlan = async (): Promise<{ ok: true; tripId: string } | { ok: false; message?: string }> => {
+    if (!mintPlan) return { ok: false };
+    await releasePendingEventsPen();
+    return mintPlan({
+      destination: destination.trim(),
+      startDate,
+      endDate: shape === "day" ? startDate : endDate,
+      title: title.trim() || undefined,
+    });
+  };
+
+  /**
+   * "Save" — commit and close, without choosing a way to build. Every door keeps this.
+   *
+   * On a plan that does not exist yet it now CREATES it (ledger `2026-09-24-rc1-finish-mints`,
+   * audit RC-1): Save used to write only the pen and close, so a traveler who pressed it had
+   * nothing on My Plans and no word saying so. `saveMintsPlan` decides — a bound plan, a guest and
+   * an incomplete answer all keep the old context-only Save. A refused mint stays open and says why
+   * rather than closing as if it had worked.
+   */
   const save = async () => {
     if (saving) return;
-    await commitPlan();
-    onOpenChange(false);
+    setSaveError(null);
+    setSaving(true);
+    try {
+      let bound: string | undefined;
+      if (
+        saveMintsPlan({
+          boundTripId: getTripContext().tripId || source?.tripId,
+          signedIn: !!user,
+          // §13 — A SUGGESTION IS NOT AN ANSWER: the home-city default is not yet the traveler's
+          // destination (see `commitPlan`), so it can never be the city a plan is minted in.
+          destination: destinationSuggested ? "" : destination,
+          startDate,
+          endDate: shape === "day" ? startDate : endDate,
+        })
+      ) {
+        const outcome = await mintThisPlan();
+        if (!outcome.ok) {
+          if (outcome.message) setSaveError(outcome.message);
+          return;
+        }
+        bound = outcome.tripId;
+      }
+      await commitPlan(bound);
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   /**
@@ -1159,8 +1226,9 @@ export function PlanModal({
    * reading the plan they just described, not the one they had before they opened the modal.
    *
    * WHICH BRANCHES NEED A PLAN ROW IS NOT DECIDED HERE. It is `BRANCHES_THAT_MINT`, stated once
-   * beside `PlanningBranch` (§18 rule 1) — "Build it myself" and, since Locked Decision 42 D5,
-   * "Get a local expert". A `branch === "…"` test written here is how one branch starts minting
+   * beside `PlanningBranch` (§18 rule 1) — "Build it myself", since Locked Decision 42 D5
+   * "Get a local expert", and since ledger `2026-09-24-rc1-finish-mints` "Plan with AI" (which now
+   * drafts INTO the plan it minted). A `branch === "…"` test written here is how one branch starts minting
    * and another quietly stops. Either way it mints through the opener's one mint door
    * (`mintTripSlip`), never a body built here.
    */
@@ -1180,31 +1248,14 @@ export function PlanModal({
       const shouldMint =
         BRANCHES_THAT_MINT.includes(branch) &&
         !getTripContext().tripId &&
+        // A door that NAMES a plan (`source.tripId` — the trip-details re-plan door) is never
+        // minted a second one; before `ai` joined the set this could only bite `myself`/`local`,
+        // which no such door opens (ledger `2026-09-24-rc1-finish-mints`).
+        !source?.tripId &&
         !!mintPlan &&
         (mintRequired || !!user);
-      if (shouldMint && mintPlan) {
-        /**
-         * THE MODAL IS THE AUTHOR OF THE EVENTS IT COLLECTED, so it takes its own pen off the
-         * table before the mint (ledger `2026-09-06-event-mint-dedupe`, CLAUDE.md Locked
-         * Decision 30 (b)). `storage.createTrip` awaits the server-side pen drain, and the rows
-         * on screen were SEEDED from that same pen — so without this, every ticked event is
-         * created twice in one click: once by the drain, once by `commitPlan` below.
-         *
-         * The modal wins the authorship because it holds what the drain can only guess at: the
-         * occasion resolved on screen (the drain creates NOTHING when a stored slug does not
-         * resolve — its rule 5), and an untick the pen still remembers. The pen keeps its whole
-         * job for every other mint door and for a pen this modal never comes back for.
-         *
-         * AWAITED, and its answer is deliberately NOT branched on: a release the server did not
-         * confirm leaves `commitPlan`'s idempotency filter to do exactly what it is there for.
-         */
-        await releasePendingEventsPen();
-        const outcome = await mintPlan({
-          destination: destination.trim(),
-          startDate,
-          endDate: shape === "day" ? startDate : endDate,
-          title: title.trim() || undefined,
-        });
+      if (shouldMint) {
+        const outcome = await mintThisPlan();
         if (!outcome.ok) {
           // A refusal with no message means the opener already took the screen (sign-in).
           if (outcome.message) setFinishError(outcome.message);
@@ -2248,6 +2299,11 @@ export function PlanModal({
 
         </div>
 
+        {saveError && (
+          <p className="text-xs text-destructive" role="alert" data-testid="text-planning-save-error">
+            {saveError}
+          </p>
+        )}
         <div
           className="flex flex-wrap items-center justify-between gap-2 border-t pt-3"
           style={{ borderColor: "var(--earn-border)" }}

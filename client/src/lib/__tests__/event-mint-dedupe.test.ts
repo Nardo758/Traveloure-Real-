@@ -197,15 +197,24 @@ describe("D4 — the modal's create loop is filtered, not unconditional", () => 
 describe("D5 — the finish releases its own pen BEFORE it mints", () => {
   const src = read(MODAL);
   const finishBody = src.slice(src.indexOf("const finish = async"), src.indexOf('"CLEAR PLAN"'));
+  // Since audit RC-1 (ledger `2026-09-24-rc1-finish-mints`) the finish AND Save mint through ONE
+  // helper, `mintThisPlan`, and the release lives there — so both mints release first, and the pin
+  // follows the helper rather than the finish's own body.
+  const helperBody = src.slice(
+    src.indexOf("const mintThisPlan = async"),
+    src.indexOf("const mintThisPlan = async") + 1500,
+  );
 
   it("calls the release", () => {
-    assert.match(finishBody, /releasePendingEventsPen\(/);
+    assert.match(helperBody, /releasePendingEventsPen\(/);
+    assert.match(finishBody, /await mintThisPlan\(/, "the finish mints through the one helper");
+    assert.doesNotMatch(finishBody, /await mintPlan\(/, "and never around it");
   });
 
   it("awaits it, and does so before the mint (a release that lands after is no release at all)", () => {
-    assert.match(finishBody, /await releasePendingEventsPen\(/);
+    assert.match(helperBody, /await releasePendingEventsPen\(/);
     assert.ok(
-      finishBody.indexOf("releasePendingEventsPen") < finishBody.indexOf("await mintPlan("),
+      helperBody.indexOf("releasePendingEventsPen") < helperBody.indexOf("mintPlan("),
       "the pen must be released before POST /api/trips, whose drain reads it",
     );
   });
