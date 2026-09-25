@@ -166,6 +166,15 @@ export function buildStorefrontActionHref(
 }
 
 /**
+ * Whether the card may show the "Next available" line. A STAY is booked by a date range, never by
+ * a single time slot, so a slot instant on a stay card would promise a time nobody books; the line
+ * is withheld for it (read off the resolved action's `subject`, never a listing column).
+ */
+export function offeringShowsNextAvailable(buyAction: BuyAction | undefined): boolean {
+  return buyAction?.subject !== "stay";
+}
+
+/**
  * "Next available: Nov 8, 2:00 PM (Asia/Tokyo)" — the storefront card's own line. Mirrors the
  * service-detail zone convention (`formatStartWindow`, `service-good-to-know.ts`): a stated IANA
  * zone is appended, but — unlike that helper's "(provider's local time)" default — an UNKNOWN

@@ -22,6 +22,7 @@ import {
   offeringActionLabel,
   offeringActionIsMessageOnly,
   formatNextAvailable,
+  offeringShowsNextAvailable,
   storefrontActionCharges,
   storefrontOfferingIntentHash,
   buildStorefrontActionHref,
@@ -283,4 +284,10 @@ test("buildStorefrontActionHref: 'Check dates' lands on #dates and never carries
     buildStorefrontActionHref("/services/room", "Check dates", { date: "2026-10-02", startTime: null }),
     "/services/room#dates",
   );
+});
+
+test("offeringShowsNextAvailable: a stay never shows a slot time; other subjects do", () => {
+  assert.equal(offeringShowsNextAvailable({ subject: "stay" } as BuyAction), false);
+  assert.equal(offeringShowsNextAvailable({ subject: "bundle" } as BuyAction), true);
+  assert.equal(offeringShowsNextAvailable(undefined), true);
 });
