@@ -37,7 +37,7 @@ import {
 import type { PlanCardActivity } from "./plancard-types";
 import { ShoppingCart, UserCheck, Sparkles, Handshake, Check } from "lucide-react";
 
-type FinalizeTrip = { id: string; destination: string | null; travelers: number };
+type FinalizeTrip = { id: string; destination: string | null; travelers: number | null };
 type Lane = "myself" | "agent" | "expert" | "concierge";
 
 /** Partner-bookable stops carry an opaque §16 bookingToken on `affiliateBooking` (never a URL). */
@@ -100,7 +100,9 @@ export function FinalizeBookingModal({
               partnerName: stop.affiliateBooking?.partnerName ?? null,
               partnerCategory: null,
               bookingToken: stop.affiliateBooking?.bookingToken ?? undefined,
-              travelers: trip.travelers ?? 1,
+              // RC-12: only a party the traveler stated is sent. With none, the field is left
+              // off and the booking request records its own default, never the plan's answer.
+              ...(trip.travelers ? { travelers: trip.travelers } : {}),
             });
             ok += 1;
           } catch {

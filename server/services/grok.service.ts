@@ -155,7 +155,8 @@ export interface TravelPulseContext {
 export interface AutonomousItineraryRequest {
   destination: string;
   dates: { start: string; end: string };
-  travelers: number;
+  /** Absent = the traveler did not say how many are going (RC-12); the prompt says so. */
+  travelers?: number;
   budget?: number;
   eventType?: string;
   interests: string[];
@@ -707,7 +708,7 @@ IMPORTANT: Incorporate this real-time intelligence into your recommendations. Pr
 **Trip Details:**
 - Destination: ${request.destination}
 - Dates: ${request.dates.start} to ${request.dates.end}
-- Travelers: ${request.travelers}
+- Travelers: ${request.travelers ?? "not stated — plan activities that suit any group size"}
 - Budget: ${request.budget ? `$${request.budget}` : "Flexible"}
 - Event Type: ${request.eventType || "Vacation"}
 - Interests: ${request.interests.join(", ")}
