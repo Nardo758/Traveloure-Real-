@@ -190,6 +190,7 @@ import {
 } from "@shared/schema";
 import {
   resolveCommissionRates,
+  serviceCategorySlugToFeeCategory,
   feeConfigFromRates,
   calcInsuranceFee,
   getConciergeBookingRate,
@@ -244,17 +245,6 @@ function mapFeverCategoryToEventType(category: string): string {
   return categoryMap[category] || 'other';
 }
 
-function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
-  if (!slug) return "default";
-  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
-  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
-  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
-  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
-  if (/flight|air|airline/.test(slug)) return "flights";
-  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
-  if (/insurance|safety|security/.test(slug)) return "insurance";
-  return "default";
-}
 
 
 // FP-3 (credits retirement, decision-maker ratified): the credits/wallet system is RETIRED.

@@ -7971,8 +7971,21 @@ export class DatabaseStorage implements IStorage {
   // session user performing the transition; pass it so disputes have an actor on record.
   async updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string, actorId?: string): Promise<any> {
     return db.transaction(async (tx) => {
+      // Ledger `2026-09-25-p1-approve-and-quotes`: a RE-delivery (after the traveler asked for
+      // changes) re-opens the review handshake — `plan_approval_status` goes from
+      // 'changes_requested' back to NULL in the SAME statement, so the traveler's Approve banner
+      // (it renders only while the status is NULL) comes back. An 'approved' plan is never
+      // cleared here, and the traveler's note stays on the row as the record of what was asked.
+      const reopensReview = workspaceStatus === "delivered";
       const [updated] = await tx.update(tripExpertAdvisors)
-        .set({ workspaceStatus })
+        .set({
+          workspaceStatus,
+          ...(reopensReview
+            ? {
+                planApprovalStatus: sql`CASE WHEN ${tripExpertAdvisors.planApprovalStatus} = 'changes_requested' THEN NULL ELSE ${tripExpertAdvisors.planApprovalStatus} END`,
+              }
+            : {}),
+        })
         .where(
           expectedCurrentStatus !== undefined
             ? and(eq(tripExpertAdvisors.id, assignmentId), eq(tripExpertAdvisors.workspaceStatus, expectedCurrentStatus))
