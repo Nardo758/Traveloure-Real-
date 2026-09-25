@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { activateOpenedPlan } from "@/lib/trip-selection";
+import { usePenPrincipal } from "@/lib/trip-context";
 import { useTrip } from "@/hooks/use-trips";
 import { useParams, Link, useSearch, useLocation } from "wouter";
 import { Loader2, Sparkles, ArrowLeft, MapPin, Copy, Check, XCircle, Package, ChevronDown } from "lucide-react";
@@ -255,6 +257,14 @@ export default function TripDetails() {
   // The page's own role reading: the plancard DTO's `tripRole` (the server's answer). The rail's
   // every read is owner-gated, so it mounts for the owner only.
   const isOwner = plancardData?.tripRole === "owner";
+  // RC-5 (ledger `2026-09-25-rc345-active-plan`): opening YOUR Trip Card makes this the active plan,
+  // through the ONE rule the slip uses (`activateOpenedPlan`). The card is not a planning surface
+  // (LD 42 D8) but it IS the plan on screen, and an add from here must not land on another one.
+  const penPrincipal = usePenPrincipal();
+  const openedRole = plancardData?.tripRole;
+  useEffect(() => {
+    activateOpenedPlan(trip, openedRole, penPrincipal);
+  }, [trip, openedRole, penPrincipal]);
 
   return (
     <div className="min-h-screen bg-background pb-20" data-testid="trip-card-page">

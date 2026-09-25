@@ -229,15 +229,31 @@ router.get("/api/trip-context", isAuthenticated, async (req, res) => {
     const resolved = await resolveTripIdParam(req, userId);
     if (resolved.error) return res.status(resolved.error.status).json({ message: resolved.error.message });
     const { tripId } = resolved;
+    // RC-4 (ledger `2026-09-25-rc345-active-plan`; audit J2 R2b): a bare read — the client's pen
+    // names no trip yet, which is every NEW tab or device — used to answer the legacy
+    // `trip_id IS NULL` row by fiat. A mint pushes the pen into the TRIP-SCOPED row (`?tripId=`)
+    // and never into the legacy one, so the legacy row held no plan identity and a new session
+    // lost the plan the traveler was just working on: the next add went to the cart. The bare read
+    // now answers the account's MOST RECENTLY WRITTEN pen row, whichever scope it is in — the
+    // server's own record of the last write (`updated_at`), never a guess (§13): a user whose
+    // newest row is a fresh pre-mint draft still gets the legacy row, one who never pushed a
+    // trip-scoped row gets exactly what they got before, and one with no row gets `{}`. A
+    // `?tripId=` read is unchanged. §14 unchanged: every row here is `user_id = session`.
     const rows = tripId
       ? await db.execute(
-          sql`SELECT context, updated_at FROM trip_contexts WHERE user_id = ${userId} AND trip_id = ${tripId} LIMIT 1`,
+          sql`SELECT context, updated_at, trip_id FROM trip_contexts WHERE user_id = ${userId} AND trip_id = ${tripId} LIMIT 1`,
         )
       : await db.execute(
-          sql`SELECT context, updated_at FROM trip_contexts WHERE user_id = ${userId} AND trip_id IS NULL LIMIT 1`,
+          sql`SELECT context, updated_at, trip_id FROM trip_contexts WHERE user_id = ${userId}
+              ORDER BY updated_at DESC NULLS LAST LIMIT 1`,
         );
     const row: any = (rows as any).rows?.[0];
-    res.json({ context: row?.context ?? {}, updatedAt: row?.updated_at ?? null });
+    const context: Record<string, unknown> =
+      row?.context && typeof row.context === "object" ? { ...(row.context as Record<string, unknown>) } : {};
+    // A trip-scoped row IS that trip's pen: the identity travels with it even when the pushed blob
+    // predates the client writing `tripId` into the blob itself. Legacy row ⇒ no identity added.
+    if (row?.trip_id && !context.tripId) context.tripId = row.trip_id;
+    res.json({ context, updatedAt: row?.updated_at ?? null });
   } catch (err) {
     console.error("[TripContext] GET failed:", err);
     res.status(500).json({ message: "Failed to load trip context" });
