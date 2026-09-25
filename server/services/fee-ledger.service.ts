@@ -29,7 +29,8 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { logger } from "../infrastructure/logger";
 import type { FeeLedgerType, FeeRateSource } from "@shared/schema";
-import { round2 } from "./fee-resolution.service";
+import type { OptimizerRunAuthorization } from "./optimizer-run-authorization";
+import { CONCIERGE_AI_TASK_BAND, requireFlatCentsBand, round2 } from "./fee-resolution.service";
 
 export interface FeeLedgerAppendRow {
   sourceType: string;
@@ -490,4 +491,342 @@ export async function recordRailsFeeLedger(opts: {
     );
   }
   return { inserted, considered: rows.length };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// TOLLS — ruling `2026-09-25-planning-tolls` (ledger `2026-09-25-tolls-fee-ledger`).
+//
+// Every toll is ONE fee row, plus ONE waiver row when it is covered — the traveler-fee pair above,
+// applied to the two paid planning actions. `fee_type` is the `ai_concierge_fee` migration 179
+// seeded for exactly this ("a later lane … adds a writer rather than a migration"); the action is
+// told apart by `source_type` (`ai_task` | `optimizer_run`). Nothing here charges, prices or moves
+// money: the charge rails are unchanged, `platform_revenue` keeps its own rows (money totals are
+// read from there; this table is the per-plan toll record — a reader never sums both), and every
+// amount below is SERVER-derived (§14): Stripe's own report of a charge, or the resolver's price.
+//
+// NEVER THROWS. Every recorder catches and logs, because a ledger write may never break the
+// charge, apply or run it records (§15b). NEVER A $0 ROW: `appendFeeLedgerRows` skips one, and a
+// price that cannot be resolved writes NOTHING rather than a guessed amount (§13).
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+export const AI_TASK_TOLL_SOURCE_TYPE = "ai_task";
+export const OPTIMIZER_RUN_TOLL_SOURCE_TYPE = "optimizer_run";
+/** Why a toll was not charged. `free_rerun` is the optimizer's 24h window only. */
+export type TollCoverage = "trip_pass" | "free_rerun";
+
+export interface TollRecordResult {
+  inserted: number;
+  /** Why nothing was written, when that was the right answer. */
+  skipped?: "price_unresolved" | "fee_row_missing" | "error";
+}
+
+/** One deterministic key per leg, per proposal — the AI task's whole idempotency story (§15). */
+export function aiTaskTollLedgerKey(proposalId: string): string {
+  return `fee-ledger:ai-task:${proposalId}`;
+}
+export function aiTaskTollWaiverLedgerKey(proposalId: string): string {
+  return `fee-ledger:ai-task-waiver:${proposalId}`;
+}
+export function aiTaskTollReversalLedgerKey(proposalId: string): string {
+  return `fee-ledger:ai-task-reversal:${proposalId}`;
+}
+/**
+ * The optimizer's keys. A PAID run is keyed on its PaymentIntent — one charge, one row, however many
+ * runs that payment authorizes. A COVERED run is keyed on a run id minted at the run point, because
+ * regenerate re-runs the SAME comparison id and a comparison-keyed row would fold every re-run into
+ * the first one (decision-maker ruling on the Phase 0 note, 2026-09-25).
+ */
+export function optimizerRunPaidTollLedgerKey(paymentIntentId: string): string {
+  return `fee-ledger:optimizer-run:pi:${paymentIntentId}`;
+}
+export function optimizerRunTollLedgerKey(runId: string): string {
+  return `fee-ledger:optimizer-run:${runId}`;
+}
+export function optimizerRunTollWaiverLedgerKey(runId: string): string {
+  return `fee-ledger:optimizer-run-waiver:${runId}`;
+}
+
+export interface AiTaskTollBand {
+  id: string;
+  /** flat_cents — the band's own rate, snapshotted onto the row. */
+  rateCents: number;
+}
+
+export type AiTaskTollInput = {
+  proposalId: string;
+  tripId: string;
+  actor: string;
+} & (
+  | { basis: "paid"; amountCents: number; paymentIntentId: string }
+  | { basis: "trip_pass" }
+);
+
+/**
+ * PURE: the AI task's rows. Paid ⇒ ONE `+X` row, X = what Stripe took. Trip Pass ⇒ `+X` plus a
+ * `fee_waiver −X` (`covered_by:trip_pass`), X = the band's price now — there is no charged amount
+ * to copy, so the band is the only server-side source. Both are `rate_source='band'` and name the
+ * band (the band-provenance CHECK).
+ */
+export function buildAiTaskTollRows(input: AiTaskTollInput, band: AiTaskTollBand): FeeLedgerAppendRow[] {
+  const cents = input.basis === "paid" ? input.amountCents : band.rateCents;
+  if (!Number.isFinite(cents) || cents <= 0) return [];
+  const amount = round2(cents / 100);
+  const common = {
+    sourceType: AI_TASK_TOLL_SOURCE_TYPE,
+    sourceId: input.proposalId,
+    bookingId: null,
+    bandId: band.id,
+    rateAsResolved: band.rateCents,
+    rateSource: "band" as const,
+    stripePaymentRef: input.basis === "paid" ? input.paymentIntentId : null,
+  };
+  const meta = {
+    actor: input.actor,
+    tripId: input.tripId,
+    proposalId: input.proposalId,
+    bandKey: CONCIERGE_AI_TASK_BAND,
+    rateType: "flat_cents",
+    basis: input.basis,
+  };
+  const rows: FeeLedgerAppendRow[] = [
+    {
+      ...common,
+      feeType: "ai_concierge_fee",
+      amount,
+      borneBy: "traveler",
+      idempotencyKey: aiTaskTollLedgerKey(input.proposalId),
+      description: `AI task on plan ${input.tripId} (proposal ${input.proposalId})`,
+      metadata: meta,
+    },
+  ];
+  if (input.basis === "trip_pass") {
+    rows.push({
+      ...common,
+      feeType: "fee_waiver",
+      amount: -amount,
+      borneBy: "platform",
+      idempotencyKey: aiTaskTollWaiverLedgerKey(input.proposalId),
+      description: `AI task WAIVED on plan ${input.tripId} (covered_by:trip_pass)`,
+      metadata: { ...meta, covered_by: "trip_pass", waivedAmount: amount },
+    });
+  }
+  return rows;
+}
+
+async function readAiTaskTollBand(): Promise<AiTaskTollBand | null> {
+  try {
+    const band = await requireFlatCentsBand(CONCIERGE_AI_TASK_BAND);
+    const rateCents = Math.round(band.rate);
+    if (!Number.isFinite(rateCents) || rateCents <= 0) return null;
+    return { id: band.id, rateCents };
+  } catch {
+    return null;
+  }
+}
+
+/** Record an APPLIED AI task's toll (paid, or covered by the Trip Pass). Never throws. */
+export async function recordAiTaskToll(input: AiTaskTollInput): Promise<TollRecordResult> {
+  try {
+    const band = await readAiTaskTollBand();
+    if (!band) {
+      logger.error(
+        { proposalId: input.proposalId, tripId: input.tripId, basis: input.basis },
+        `[fee-ledger] AI task toll NOT recorded — band '${CONCIERGE_AI_TASK_BAND}' unresolvable (ledger gap, no guessed amount)`,
+      );
+      return { inserted: 0, skipped: "price_unresolved" };
+    }
+    return { inserted: await appendFeeLedgerRows(buildAiTaskTollRows(input, band)) };
+  } catch (err: any) {
+    logger.error({ proposalId: input.proposalId, err: err?.message }, "[fee-ledger] AI task toll write failed (non-fatal)");
+    return { inserted: 0, skipped: "error" };
+  }
+}
+
+/**
+ * Record a REFUSED-then-refunded AI task: the fee row (the charge really happened) AND its reversal
+ * (it really went back), written together at the refund — there is no applied fee row to reverse,
+ * because a refused apply never reaches `recordAiTaskToll`. Idempotent on the proposal: the fee row
+ * shares the paid key, so this can never produce a second one. Never throws.
+ */
+export async function recordAiTaskRefundToll(opts: {
+  proposalId: string;
+  tripId: string;
+  paymentIntentId: string;
+  amountCents: number;
+  stripeRefundId: string;
+  actor: string;
+}): Promise<TollRecordResult> {
+  try {
+    const band = await readAiTaskTollBand();
+    if (!band) {
+      logger.error(
+        { proposalId: opts.proposalId, tripId: opts.tripId },
+        `[fee-ledger] AI task refund toll NOT recorded — band '${CONCIERGE_AI_TASK_BAND}' unresolvable (ledger gap)`,
+      );
+      return { inserted: 0, skipped: "price_unresolved" };
+    }
+    const feeRows = buildAiTaskTollRows(
+      {
+        proposalId: opts.proposalId,
+        tripId: opts.tripId,
+        actor: opts.actor,
+        basis: "paid",
+        amountCents: opts.amountCents,
+        paymentIntentId: opts.paymentIntentId,
+      },
+      band,
+    );
+    if (feeRows.length === 0) return { inserted: 0, skipped: "price_unresolved" };
+    let inserted = await appendFeeLedgerRows(feeRows);
+    const orig = await db.execute(sql`
+      SELECT id, amount FROM fee_ledger
+       WHERE idempotency_key = ${aiTaskTollLedgerKey(opts.proposalId)} AND fee_type = 'ai_concierge_fee'
+       LIMIT 1
+    `);
+    const row = (orig.rows ?? [])[0] as any;
+    if (!row) return { inserted, skipped: "fee_row_missing" };
+    const charged = Math.abs(Number(row.amount) || 0);
+    inserted += await appendFeeLedgerRows([
+      {
+        sourceType: AI_TASK_TOLL_SOURCE_TYPE,
+        sourceId: opts.proposalId,
+        bookingId: null,
+        feeType: "reversal",
+        amount: -charged,
+        borneBy: "traveler",
+        bandId: band.id,
+        rateAsResolved: band.rateCents,
+        rateSource: "band",
+        stripePaymentRef: opts.paymentIntentId,
+        stripeRefundRef: opts.stripeRefundId,
+        reversesLedgerId: String(row.id),
+        idempotencyKey: aiTaskTollReversalLedgerKey(opts.proposalId),
+        description: `AI task fee refunded on plan ${opts.tripId} (proposal ${opts.proposalId}, apply refused)`,
+        metadata: {
+          actor: opts.actor,
+          tripId: opts.tripId,
+          proposalId: opts.proposalId,
+          reversesLedgerId: String(row.id),
+          refundAmount: charged,
+        },
+      },
+    ]);
+    return { inserted };
+  } catch (err: any) {
+    logger.error({ proposalId: opts.proposalId, err: err?.message }, "[fee-ledger] AI task refund toll write failed (non-fatal)");
+    return { inserted: 0, skipped: "error" };
+  }
+}
+
+export type OptimizerRunTollInput = {
+  comparisonId: string;
+  tripId: string | null;
+  userExperienceId: string | null;
+  eventType: string | null;
+  tier: string;
+  /** The resolver's price for this target and tier (`getFee`). */
+  priceCents: number;
+  actor: string;
+} & (
+  | { basis: "paid"; paymentIntentId: string }
+  | { basis: TollCoverage; runId: string }
+);
+
+/**
+ * PURE: the optimizer's rows. Paid ⇒ ONE `+X` row keyed on the PaymentIntent. Trip Pass or the free
+ * re-run ⇒ `+X` plus `fee_waiver −X` carrying `covered_by`, keyed on the run. The price is the
+ * EXISTING resolver's (`getFee`, table `optimization_fees`), which is not a `fee_bands` row — so the
+ * rows are `rate_source='flat'` with no band, and the tier is named in metadata. For a paid run that
+ * price IS the charged amount: `verifyOptimizationPayment` refuses any PaymentIntent whose amount
+ * differs from it.
+ */
+export function buildOptimizerRunTollRows(input: OptimizerRunTollInput): FeeLedgerAppendRow[] {
+  if (!Number.isFinite(input.priceCents) || input.priceCents <= 0) return [];
+  const amount = round2(input.priceCents / 100);
+  const meta: Record<string, unknown> = {
+    actor: input.actor,
+    tripId: input.tripId,
+    userExperienceId: input.userExperienceId,
+    comparisonId: input.comparisonId,
+    eventType: input.eventType,
+    tier: input.tier,
+    basis: input.basis,
+  };
+  const common = {
+    sourceType: OPTIMIZER_RUN_TOLL_SOURCE_TYPE,
+    sourceId: input.comparisonId,
+    bookingId: null,
+    bandId: null,
+    rateAsResolved: null,
+    rateSource: "flat" as const,
+  };
+  if (input.basis === "paid") {
+    return [
+      {
+        ...common,
+        feeType: "ai_concierge_fee",
+        amount,
+        borneBy: "traveler",
+        stripePaymentRef: input.paymentIntentId,
+        idempotencyKey: optimizerRunPaidTollLedgerKey(input.paymentIntentId),
+        description: `Optimizer run (comparison ${input.comparisonId}, tier ${input.tier})`,
+        metadata: meta,
+      },
+    ];
+  }
+  const runMeta = { ...meta, runId: input.runId };
+  return [
+    {
+      ...common,
+      feeType: "ai_concierge_fee",
+      amount,
+      borneBy: "traveler",
+      idempotencyKey: optimizerRunTollLedgerKey(input.runId),
+      description: `Optimizer run (comparison ${input.comparisonId}, tier ${input.tier})`,
+      metadata: runMeta,
+    },
+    {
+      ...common,
+      feeType: "fee_waiver",
+      amount: -amount,
+      borneBy: "platform",
+      idempotencyKey: optimizerRunTollWaiverLedgerKey(input.runId),
+      description: `Optimizer run WAIVED (comparison ${input.comparisonId}, covered_by:${input.basis})`,
+      metadata: { ...runMeta, covered_by: input.basis, waivedAmount: amount },
+    },
+  ];
+}
+
+/**
+ * PURE: which toll an AUTHORIZED optimizer run records — the decision, stated once and tested
+ * (§18 rule 1). `null` = nothing: a paid run reusing the comparison's already-recorded payment is not
+ * a new charge. A fresh payment is keyed on its PaymentIntent; a covered run gets a run id from the
+ * caller-supplied minter, because regenerate re-runs the same comparison id.
+ */
+export function optimizerRunTollPlan(
+  runAuth: Extract<OptimizerRunAuthorization, { authorized: true }>,
+  mintRunId: () => string,
+): { basis: "paid"; paymentIntentId: string } | { basis: TollCoverage; runId: string } | null {
+  if (runAuth.basis === "paid") {
+    return runAuth.claimRequired ? { basis: "paid", paymentIntentId: runAuth.optimizationPaymentId } : null;
+  }
+  return { basis: runAuth.basis, runId: mintRunId() };
+}
+
+/** Record one optimizer run's toll. Never throws. */
+export async function recordOptimizerRunToll(input: OptimizerRunTollInput): Promise<TollRecordResult> {
+  try {
+    const rows = buildOptimizerRunTollRows(input);
+    if (rows.length === 0) {
+      logger.warn(
+        { comparisonId: input.comparisonId, tier: input.tier, basis: input.basis },
+        "[fee-ledger] optimizer toll NOT recorded — no positive price for this tier (no guessed amount)",
+      );
+      return { inserted: 0, skipped: "price_unresolved" };
+    }
+    return { inserted: await appendFeeLedgerRows(rows) };
+  } catch (err: any) {
+    logger.error({ comparisonId: input.comparisonId, err: err?.message }, "[fee-ledger] optimizer toll write failed (non-fatal)");
+    return { inserted: 0, skipped: "error" };
+  }
 }

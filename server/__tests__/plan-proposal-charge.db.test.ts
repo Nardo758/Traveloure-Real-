@@ -360,9 +360,10 @@ test("C5: a second apply is 409, creates no second items, and records no second 
     "a second apply creates no second copy of the proposal's items",
   );
 
-  // §13 AND `fee_ledger`'s own `amount <> 0` CHECK, one table over: a Trip-Pass-covered apply
-  // writes NO revenue row at all — not one, and certainly not a $0 one. The durable record of the
-  // covered apply is `charge_basis = 'trip_pass'` plus the absence of a PaymentIntent.
+  // §13: a Trip-Pass-covered apply writes NO revenue row at all — not one, and certainly not a $0
+  // one. Its record is `charge_basis = 'trip_pass'` plus the absence of a PaymentIntent, and —
+  // since ruling `2026-09-25-planning-tolls` — the fee + `fee_waiver` PAIR in `fee_ledger` (the toll
+  // record, not revenue; pinned by `planning-tolls-ledger.db.test.ts`).
   const ledgered = await db
     .select({ n: sql<number>`count(*)` })
     .from(platformRevenue)

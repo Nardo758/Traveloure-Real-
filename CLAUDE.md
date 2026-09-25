@@ -949,6 +949,20 @@ This document captures architectural decisions to maintain consistency across co
     on the trip and the absence of a PI. **It is deliberately not claimed to be pinned per
     comparison** — a per-comparison basis column is a schema change nobody has ratified, and stating
     the limit is the honest half of shipping without one.
+    **AMENDED — EVERY TOLL IS NOW RECORDED IN `fee_ledger` (decision-maker ratified Sep 25, 2026 —
+    ledger `2026-09-25-planning-tolls`, implementation `2026-09-25-tolls-fee-ledger`; NO migration,
+    no price, charge moment or `platform_revenue` writer changed).** A run or an AI task writes ONE
+    `ai_concierge_fee` row (`source_type` `optimizer_run` | `ai_task`), plus ONE `fee_waiver` row
+    naming `covered_by` (`trip_pass`, or `free_rerun` for the optimizer only) when it was covered —
+    the traveler-fee pair, so a covered run is a pair netting to zero and never a `$0` row. A refused,
+    refunded AI task writes its fee row AND a linked `reversal`. The optimizer's covered rows are keyed
+    on a run id minted at the run point (regenerate re-runs the same comparison id); a paid run is
+    keyed on its PaymentIntent, and a regenerate reusing the comparison's recorded payment writes
+    nothing. ONE writer family in `fee-ledger.service.ts`, never throwing (§15b). `platform_revenue`
+    stays the money record and `fee_ledger` the per-plan toll record; a reader never sums both.
+    **Recorded, not fixed:** the free re-run is decided per USER and wins over a supplied
+    PaymentIntent, so a paid run can be recorded as `free_rerun` while revenue records the charge —
+    a charge-behaviour change needing its own ruling.
     **(b) THE FREE AI DRAFT RUNS ONLY ON AN EMPTY SLIP (lane 2).** Any AI action on a slip that
     already holds items is **Optimize**, and goes through the existing pay gate. There is no second
     free rail hiding behind a different button.
