@@ -325,7 +325,8 @@ export interface SaveGeneratedItinerarySnapshotInput {
     destination: string;
     startDate: string;
     endDate: string;
-    numberOfTravelers: number;
+    /** `null` = the party was not stated (RC-12, ledger `2026-09-25-rc12-party-size`). */
+    numberOfTravelers: number | null;
     status: string;
     eventType: string;
     specialRequests: string | null;

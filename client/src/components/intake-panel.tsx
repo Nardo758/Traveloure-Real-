@@ -15,6 +15,7 @@ import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { useCreateTrip } from "@/hooks/use-trips";
 import { updateTripContextIdentitySafe } from "@/lib/trip-context";
 import { trackEvent } from "@/lib/analytics";
+import { parsePartyCountInput, travelersForSave } from "@/lib/plan-vocabulary";
 import { eventTypeForSlug } from "@shared/occasions";
 import type { ExperienceType, InsertTrip } from "@shared/schema";
 
@@ -130,7 +131,11 @@ export function IntakePanel({
   const [destination, setDestination] = useState(doorDestination);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [travelers, setTravelers] = useState(2);
+  // RC-12 (ledger `2026-09-25-rc12-party-size`): the field starts EMPTY. It used to start at 2, and
+  // that 2 was sent as the plan's party whether or not anyone typed it (§13). Held as the typed
+  // string through the same parser step 4 uses; `partyStated` is the only number that leaves.
+  const [travelers, setTravelers] = useState("");
+  const partyStated = travelersForSave(travelers);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
   const { data: experienceTypes, isLoading: typesLoading } = useQuery<ExperienceType[]>({
@@ -157,7 +162,7 @@ export function IntakePanel({
     setDestination(doorDestination);
     setStartDate("");
     setEndDate("");
-    setTravelers(2);
+    setTravelers("");
     setSelectedSlug(null);
     setShowAllTypes(false);
   }
@@ -179,7 +184,7 @@ export function IntakePanel({
       destination: destination.trim(),
       startDate,
       endDate,
-      travelers,
+      ...(partyStated !== undefined ? { travelers: partyStated } : {}),
       ...(mappedEventType ? { eventType: mappedEventType } : {}),
     });
     reset();
@@ -202,7 +207,9 @@ export function IntakePanel({
       // honest answer (§13). The server does not need them here: it derives numberOfTravelers from
       // `adults` ONLY when numberOfTravelers was omitted (server/routes.ts POST /api/trips), and
       // this payload states it outright.
-      numberOfTravelers: travelers,
+      // RC-12: only a party the traveler typed; left off entirely otherwise, and the plan stores
+      // no count.
+      ...(partyStated !== undefined ? { numberOfTravelers: partyStated } : {}),
       eventType: eventTypeForSlug(selectedSlug),
     } as InsertTrip;
 
@@ -274,8 +281,9 @@ export function IntakePanel({
                   type="number"
                   min={1}
                   max={500}
+                  placeholder="How many?"
                   value={travelers}
-                  onChange={(e) => setTravelers(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                  onChange={(e) => setTravelers(parsePartyCountInput(e.target.value))}
                   data-testid="input-intake-travelers"
                 />
               </div>
@@ -327,7 +335,9 @@ export function IntakePanel({
                 className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-foreground"
                 data-testid="pill-recap-travelers"
               >
-                {travelers} traveler{travelers === 1 ? "" : "s"}
+                {partyStated !== undefined
+                  ? `${partyStated} traveler${partyStated === 1 ? "" : "s"}`
+                  : "Group size not set"}
               </span>
               <button
                 type="button"

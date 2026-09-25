@@ -1128,13 +1128,12 @@ export async function assembleTripPlan(
          * `2026-09-05-slip-events-first-render` D3 taught both write rails to derive the total)
          * rendered "1 traveler" on the slip header while the Trip Strip chip and step 4 both said
          * "2". `plancardPartyCount` is the ladder, stated once in `shared/plan-vocabulary.ts`:
-         * the stated pair through the ONE `partyTotal` (§18 rule 1), then the stored total, then
-         * the caller's fallback. The `1` is UNCHANGED and still reached in exactly the cases the
-         * old `|| 1` reached it in — a fully uncaptured party — which §13 says is the mask
-         * migration 241 removed at the column and D3 recorded as still open one layer up. That is
-         * a held decision, not this lane's to make.
+         * the stated pair through the ONE `partyTotal` (§18 rule 1), then the stored total.
+         * RC-12 (ledger `2026-09-25-rc12-party-size`): a fully uncaptured party is `null`, no
+         * longer the held `1` — the slip asks the owner "Who's coming?" instead of printing a
+         * party of one nobody stated (§13).
          */
-        travelers: plancardPartyCount(trip.adults, trip.kids, trip.numberOfTravelers, 1),
+        travelers: plancardPartyCount(trip.adults, trip.kids, trip.numberOfTravelers),
         budget: trip.budget ? `$${parseFloat(trip.budget.toString()).toLocaleString()}` : null,
         // Lane S §3: slip identity (existing TRV- scheme, ruling 10) + version (= diary row
         // count). Additive — existing consumers ignore unknown keys.
