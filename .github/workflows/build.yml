@@ -2077,6 +2077,13 @@ jobs:
       # is deliberate. S1/S3/S4/S6 fail on main's storage. No server boot, so no ALLOW_TEST_ACCOUNTS.
       - name: A slot claim carries the line's unit count (S1-S8)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/slot-units.db.test.ts
+      # Locked Decision 56 (ledger `2026-09-25-price-basis`, migration 325): a place service's price
+      # is PER PERSON only when `provider_services.price_basis` says so; NULL / `per_booking` is ONE
+      # unit whatever the party. P1 is the reproduction (a $300 in-person listing for a party of four
+      # was 4 units / $1200 on main). Same job as V-26 because the unit count it proves is the one
+      # the slot claim takes. No server boot.
+      - name: A listing's price basis decides whether the party multiplies it (P1-P7)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/price-basis.db.test.ts
 
   trip-context-recovery:
     name: trip-context-recovery (RC-4; ledger 2026-09-25-rc345-active-plan)
