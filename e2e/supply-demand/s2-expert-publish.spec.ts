@@ -688,12 +688,33 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
             // panel refetches and `dirty`/Submit recompute against the seeded row.
             await page.reload();
             await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+            // A hard reload resets `rightTab` to its mount default ("add"), NOT the "distribute"
+            // tab this whole listing panel lives under (workspace.tsx: `{rightTab === "distribute"
+            // && (…<ReadyMadeListingPanel/>…)}`, ~5141/5458) — the tab had only been "distribute"
+            // because an EARLIER step in this test clicked it (to reach "Ship to store") and React
+            // state doesn't survive a reload. Without re-selecting it, `button-submit-listing` is
+            // simply not in the DOM post-reload, `isEnabled()` on it resolves to `false`, and — the
+            // actual bug this fixes (found live, run 5sdiqy) — because `submittable` had ALREADY
+            // read `true` from an EARLIER poll (the client button is never gated on the hero, only
+            // on `dirty`), the old `for (…&& !submittable…)` guard below short-circuited and never
+            // re-polled at all, so a stale `submittable=true` drove a `.click()` against a button
+            // that no longer existed — 3 silent timeouts, no `POST …/submit` ever sent, and the row
+            // stayed `draft` with no finding explaining why (`readymade:submit-verify` blamed
+            // "a missing requirement" when the real cause was the hidden tab).
+            const distributeTabAfterReload = testid(page, 'tab-right-distribute');
+            if (await appears(distributeTabAfterReload, 8000)) {
+              await distributeTabAfterReload.click().catch(() => {});
+              await page.waitForTimeout(700);
+            }
             await shot(page, 'S2-readymade', '03c', 'after-seeded-hero-reload');
           }
         }
       }
-      // Re-check submit-enabled now that a hero may have just been set (a successful pick, or
-      // the R-1 seed + reload above, is independent of the button-save-listing/dirty round trip).
+      // Re-check submit-enabled now that a hero may have just been set — UNCONDITIONALLY, not
+      // only `while (!submittable)`: a reload can turn a previously-true reading stale (see the
+      // comment above), so a value from before this block must never be trusted without a fresh
+      // read here.
+      submittable = false;
       for (let i = 0; i < 10 && !submittable; i++) {
         submittable = await submitBtn.isEnabled().catch(() => false);
         if (submittable) break;
