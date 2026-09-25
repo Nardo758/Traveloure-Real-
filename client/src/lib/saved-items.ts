@@ -16,7 +16,9 @@ export interface SavedItemRow {
   createdAt: string | null;
 }
 
-export { SAVED_CONTENT_TYPES, type SavedContentType } from "@shared/saved-items";
+import { savedCityKey, type SaveItemBody } from "@shared/saved-items";
+
+export { SAVED_CONTENT_TYPES, savedCityKey, type SavedContentType } from "@shared/saved-items";
 
 /** The saved row for this card, or undefined when it is not saved. Identity is (type, id) — the
  *  same pair the table's UNIQUE constraint keys on. */
@@ -47,12 +49,12 @@ export function groupSavedByCity<T extends Pick<SavedItemRow, "city" | "createdA
   const byKey = new Map<string, { group: SavedCityGroup<T>; latest: number }>();
   const noCity: T[] = [];
   for (const row of rows ?? []) {
-    const city = row.city?.trim();
-    if (!city) {
+    const key = savedCityKey(row.city);
+    if (!key) {
       noCity.push(row);
       continue;
     }
-    const key = city.toLowerCase();
+    const city = row.city!.trim();
     const at = row.createdAt ? Date.parse(row.createdAt) : NaN;
     const entry = byKey.get(key);
     if (entry) {
@@ -67,4 +69,80 @@ export function groupSavedByCity<T extends Pick<SavedItemRow, "city" | "createdA
     .map((e) => e.group);
   if (noCity.length > 0) groups.push({ city: null, items: noCity });
   return groups;
+}
+
+/**
+ * The save body for a card, or null when the card has nothing to save under (no id or no name —
+ * a save with a blank name would render as an empty tile on the shelf, §13). ONE place bounds the
+ * display cache to the server's allowlist (`saveItemBodySchema`), so every card saves the same way.
+ */
+export function buildSaveItem(input: {
+  contentType: SaveItemBody["contentType"];
+  contentId: unknown;
+  name: unknown;
+  image?: unknown;
+  city?: unknown;
+}): SaveItemBody | null {
+  const contentId = input.contentId == null ? "" : String(input.contentId).trim().slice(0, 255);
+  const contentName = typeof input.name === "string" ? input.name.trim().slice(0, 255) : "";
+  if (!contentId || !contentName) return null;
+  const image = typeof input.image === "string" ? input.image.trim() : "";
+  const city = typeof input.city === "string" ? input.city.trim().slice(0, 100) : "";
+  return {
+    contentType: input.contentType,
+    contentId,
+    contentName,
+    contentImage: image && image.length <= 2000 && /^(https?:\/\/|\/)/i.test(image) ? image : null,
+    city: city || null,
+  };
+}
+
+/** The public address of a share link (board #329). */
+export function sharedSavedPlacesPath(token: string): string {
+  return `/saved/shared/${encodeURIComponent(token)}`;
+}
+
+/**
+ * The city keys a plan is in (board #329): its headline `trips.destination` and every stop's
+ * name and city, each also read up to its first comma, so a plan headed to "Kyoto, Japan" matches
+ * places saved under "Kyoto". Nothing is guessed beyond that — no country match, no nearby city.
+ */
+export function planCityKeys(
+  destination: string | null | undefined,
+  stops: ReadonlyArray<{ name?: string | null; city?: string | null }> | null | undefined,
+): Set<string> {
+  const keys = new Set<string>();
+  const add = (value: string | null | undefined) => {
+    for (const candidate of [value, value?.split(",")[0]]) {
+      const key = savedCityKey(candidate);
+      if (key) keys.add(key);
+    }
+  };
+  add(destination);
+  for (const stop of stops ?? []) {
+    add(stop.name);
+    add(stop.city);
+  }
+  return keys;
+}
+
+/** The traveler's saved places in this plan's cities, in saved order. No city ⇒ never matched. */
+export function savedPlacesForPlan<T extends Pick<SavedItemRow, "city">>(
+  rows: readonly T[] | null | undefined,
+  destination: string | null | undefined,
+  stops: ReadonlyArray<{ name?: string | null; city?: string | null }> | null | undefined,
+): T[] {
+  const keys = planCityKeys(destination, stops);
+  if (keys.size === 0) return [];
+  return (rows ?? []).filter((r) => {
+    const key = savedCityKey(r.city);
+    return key != null && keys.has(key);
+  });
+}
+
+/** Whether the plan already holds an item with this place's name (case/space-insensitive). A
+ *  display hint only — it never blocks an add, since two places can share a name. */
+export function planHasItemNamed(itemNames: readonly string[], name: string): boolean {
+  const key = savedCityKey(name);
+  return key != null && itemNames.some((n) => savedCityKey(n) === key);
 }

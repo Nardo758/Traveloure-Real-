@@ -24,6 +24,26 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { CatalogItem } from "@/types/catalog";
+import { SaveToggle } from "@/components/SaveToggle";
+import { buildSaveItem } from "@/lib/saved-items";
+
+/**
+ * #330: a search result the traveler can keep in Saved places. Stays save as "hotel", other
+ * places as "activity"; transfers and safety notices are not places and offer no Save. The id is
+ * source-prefixed so two feeds that reuse an id never read as the same saved place.
+ */
+function resultSaveItem(result: UnifiedResult, destination: string) {
+  if (result.source === "transfer" || result.source === "safety") return null;
+  const isStay =
+    result.source === "booking_com" || /\b(hotel|lodging|stay|accommodation)s?\b/i.test(result.category ?? "");
+  return buildSaveItem({
+    contentType: isStay ? "hotel" : "activity",
+    contentId: result.id ? `${result.source}:${result.id}` : null,
+    name: result.name || result.title,
+    image: result.imageUrl || result.thumbnail,
+    city: destination,
+  });
+}
 
 export interface UnifiedResult {
   id: string;
@@ -115,6 +135,7 @@ export function UnifiedResultCard({
   const isPartner = result.isPartner || isPartnerSource;
   const hasPartnerBookingUrl = isPartner && !!result.bookingToken;
   const displayName = result.name || result.title || "Unknown";
+  const saveItem = resultSaveItem(result, destination);
   const imageUrl = result.imageUrl || result.thumbnail;
   const websiteUrl = result.websiteUrl || result.website;
 
@@ -273,6 +294,9 @@ export function UnifiedResultCard({
               <Check className="h-3 w-3 mr-1" />
               Traveloure Partner
             </Badge>
+          )}
+          {saveItem && (
+            <SaveToggle item={saveItem} className="absolute top-2 right-2 z-10" testId={`btn-save-result-${result.id}`} />
           )}
         </div>
 

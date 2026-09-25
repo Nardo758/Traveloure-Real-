@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "generatedBy": "scripts/run-mutation-auth-live-audit.ts",
-  "manifestSha256": "adad71bf467ee823c89dd3307476992950f039af78f1c2f2378288755c81c7b6",
-  "timestamp": "2026-09-24T23:28:33.391Z",
+  "manifestSha256": "81caae8dfd80225f195c5f26be14432e27aa8e0a45c790f2d1ec2c026aa4fa8e",
+  "timestamp": "2026-09-25T00:05:44.754Z",
   "passed": true,
   "suites": [
     {
@@ -194,6 +194,7 @@
         "DELETE /api/provider/rooms/:id",
         "DELETE /api/provider/services/:id",
         "DELETE /api/saved-items/:id",
+        "DELETE /api/saved-items/shares/:shareId",
         "DELETE /api/trips/:id",
         "DELETE /api/trips/:tripId/changes/:changeId",
         "DELETE /api/trips/:tripId/itinerary-items/:itemId",
@@ -345,6 +346,7 @@
         "POST /api/ready-made/purchases/:id/request-revision",
         "POST /api/reviews/:id/flag",
         "POST /api/saved-items",
+        "POST /api/saved-items/shares",
         "POST /api/spontaneous/preferences",
         "POST /api/stripe/connect/onboard",
         "POST /api/trips/:id/claim",

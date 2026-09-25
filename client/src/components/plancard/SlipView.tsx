@@ -46,6 +46,7 @@ import {
 import { ItemKindBadge, OriginBadge, RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
+import { SlipSavedPlaces } from "./SlipSavedPlaces";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // The action rail, in four cards (ledger `2026-09-05-slip-rail-regroup`). It owns every
 // `slip-action-*` control this file used to render inline, plus the browse link, the logistics
@@ -1873,6 +1874,18 @@ export function SlipView({
           here; the same component mounts on the finalized Trip Card (PlanCard full) where accepting
           auto-creates a new final version. Renders nothing when there are no suggestions. */}
       <ExpertSuggestionsPanel tripId={tripId} className="border-t border-border pt-5" />
+
+      {/* Board #329: the owner's saved places in this plan's cities — how "Plan this city" brings
+          its places in. The owner's own list, so owner only; renders nothing when none match. */}
+      {isOwner && (
+        <SlipSavedPlaces
+          tripId={tripId}
+          destination={data.trip?.destination}
+          stops={data.destinations}
+          itemNames={allActivities.map((a) => a.name)}
+          className="border-t border-border pt-5 mt-5"
+        />
+      )}
 
           <TransitionLogFooter
             transitions={transitions}
