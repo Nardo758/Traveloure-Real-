@@ -30,13 +30,15 @@ test("M2: D5 — `local` mints, because no expert touchpoint exists without a sl
   );
 });
 
-test("M3: `ai` and `occasion` do NOT mint here — they are not merely untested", () => {
-  // `ai` opens the drawer on the committed plan and mints on its own rail; `occasion` goes to
-  // Stripe checkout and plans nothing. Asserting their ABSENCE is what stops the set growing by
-  // accident into "every branch mints", which would create rows for a checkout that never happens.
-  assert.equal(BRANCHES_THAT_MINT.includes("ai"), false);
+test("M3: `occasion` does NOT mint — and `ai` now DOES (ledger `2026-09-24-rc1-finish-mints`)", () => {
+  // This pin first asserted `ai` ABSENT, because the AI finish minted "on its own rail" — the AI
+  // generation, and only when it succeeded. The decision-maker ruled that away on 2026-09-24
+  // (audit RC-1): the AI finish mints first and drafts INTO the new, empty plan. `occasion` still
+  // goes to Stripe checkout and plans nothing, and asserting its ABSENCE (plus the exact size) is
+  // still what stops the set growing by accident into "every branch mints".
+  assert.equal(BRANCHES_THAT_MINT.includes("ai"), true);
   assert.equal(BRANCHES_THAT_MINT.includes("occasion"), false);
-  assert.equal(BRANCHES_THAT_MINT.length, 2);
+  assert.equal(BRANCHES_THAT_MINT.length, 3);
 });
 
 test("M4: the mint is REQUIRED only for `myself` — `local`'s destination is a PUBLIC browse", () => {

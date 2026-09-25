@@ -124,6 +124,12 @@ interface EnhancedPlanningModalProps {
    *  carries the moment (ruling 2026-09-01-moment-key). */
   momentKey?: string;
   /**
+   * The plan this draft is written INTO. Set when the plan modal's "Plan with AI" finish minted
+   * one first (ledger `2026-09-24-rc1-finish-mints`); absent for a door that opens this form with
+   * no plan, where the server mints on a successful generation as it always has.
+   */
+  tripId?: string;
+  /**
    * Go back and change the basics. THE PROVIDER OWNS THIS CALL — it re-opens the ONE plan modal
    * through `usePlanning().open(source)` (ledger `2026-09-04-golf-occasion-and-housekeeping`), so
    * this component never opens a modal of its own and never decides which step to land on. Absent
@@ -144,6 +150,7 @@ export default function EnhancedPlanningModal({
   initialTravelers,
   momentKey,
   onChangeBasics,
+  tripId,
 }: EnhancedPlanningModalProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -333,6 +340,9 @@ export default function EnhancedPlanningModal({
           // the generation prompt ("Occasion: …") so the brief carries the moment
           // (ruling 2026-09-01-moment-key).
           momentKey: momentKey || undefined,
+          // The plan the finish minted (RC-1). The server verifies ownership and the LD 41 (b)
+          // empty-slip rule before any model call; omitted when there is none.
+          tripId: tripId || undefined,
           interests: interests.length > 0 ? interests : undefined,
           pacePreference,
           mustSeeAttractions: mustSeeAttractions || undefined,
@@ -348,9 +358,9 @@ export default function EnhancedPlanningModal({
         // LD 41 (b): the free draft runs only on an EMPTY slip. Read through the ONE shared
         // reader — never a second copy of the discriminator (§18 rule 1) — and shown as the
         // server's own sentence plus a link to the slip, whose existing Optimize button runs the
-        // ONE pay-gate implementation. This surface sends no tripId today, so the branch is
-        // reachable only if a door starts to; it is here so that door does not have to invent
-        // its own handling.
+        // ONE pay-gate implementation. Since RC-1 the plan modal's AI finish sends the tripId it
+        // just minted — an empty slip, so this refusal needs a second writer on that plan to fire;
+        // it is handled here so no door has to invent its own handling.
         const refusal = readSlipHasItemsRefusal(response.status, errorData);
         if (refusal) {
           setDraftRefusal(refusal);
