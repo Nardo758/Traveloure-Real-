@@ -172,6 +172,10 @@ const ALLOWED_ADDITIONS = {
   // delegate only and writes through the one shared add rail.
   "slip-delegate-note": "LD 52 (C) — tells the delegate the client approves, books and pays (no handler)",
   "slip-delegate-add-first": "LD 52 (C) — the delegate's first item on an empty plan",
+  // Ledger `2026-09-25-rc12-party-size` (audit RC-12). A LATER ruling's control: where the header
+  // used to print an invented "1 traveler", the OWNER of a plan with no stated party is asked. It
+  // opens the one plan modal on step 4 of this plan; nobody else sees it.
+  "slip-meta-ask-party": "RC-12 — 'Who's coming?' on a plan whose party nobody stated (owner only)",
 } as const;
 
 /**

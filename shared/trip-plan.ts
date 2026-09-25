@@ -568,7 +568,9 @@ export interface TripPlanPlancardExtras {
     eventType: string | null;
     startDate: string | null;
     endDate: string | null;
-    travelers: number;
+    /** The stated party (the pair, else the stored total). `null` = nobody has said — RC-12,
+     *  ledger `2026-09-25-rc12-party-size`; never rendered as a party of one (§13). */
+    travelers: number | null;
     /** Pre-formatted display string, e.g. "$4,500" — the existing contract. */
     budget: string | null;
     /** Lane S §3 (ruling 10): the slip's identity — the existing TRV- scheme. NULL on

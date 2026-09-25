@@ -104,25 +104,24 @@ export function partyTotal(
  * was derived from — which is exactly the shape of the bug. `partyTotal` is the ONE derivation
  * (§18 rule 1) and this delegates to it rather than re-adding the two numbers here.
  *
- * §13 — THE HELD FALLBACK IS LEFT EXACTLY AS FOUND, AND IS NOT THIS FUNCTION'S OPINION. When
- * NEITHER the pair NOR the total states anything, the party is genuinely uncaptured and the
- * caller passes the `fallback` it has always used. Migration 241 de-masked these columns so NULL
- * would stay NULL, and rendering an uncaptured party as "1 traveler" is that mask one layer up —
- * a real, contained defect, recorded by D3 and still open. It is deliberately NOT fixed here:
- * how a fully-uncaptured party renders is a held decision, and changing it in passing would
- * decide it silently. The ladder is written down here so that when the decision is made there is
- * exactly ONE line to change.
+ * §13 — AN UNCAPTURED PARTY IS ANSWERED `null`, NEVER "1" (ledger `2026-09-25-rc12-party-size`,
+ * audit RC-12; decision-maker ruled Sep 25, 2026). When NEITHER the pair NOR the total states
+ * anything, nobody has said who is going. This used to hand back the caller's held fallback `1`,
+ * which the slip header then rendered as "1 traveler" — migration 241's mask one layer up, the
+ * defect D3 recorded and left open. There is no fallback any more: the ladder returns `null`, the
+ * reader omits the count and the owner is asked ("Who's coming?"). A surface that needs a number to
+ * PRICE something keeps its own labelled default at that surface; it never becomes the plan's
+ * answer.
  */
 export function plancardPartyCount(
   adults: string | number | undefined | null,
   kids: string | number | undefined | null,
   numberOfTravelers: string | number | undefined | null,
-  fallback: number,
-): number {
+): number | null {
   const stated = partyTotal(adults, kids);
   if (stated !== undefined) return stated;
   // `travelersForSave` reads every spelling of "not stated" — NULL, "", 0, negative, non-numeric —
-  // as `undefined`, so the stored total gets the same honesty test the pair does, and the caller's
-  // held fallback is reached in exactly the cases `|| fallback` reached it in before.
-  return travelersForSave(numberOfTravelers) ?? fallback;
+  // as `undefined`, so the stored total gets the same honesty test the pair does. Nothing stated
+  // anywhere is `null`: an unanswered question, not a party of one (§13).
+  return travelersForSave(numberOfTravelers) ?? null;
 }

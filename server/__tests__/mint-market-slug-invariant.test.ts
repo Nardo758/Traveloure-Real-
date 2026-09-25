@@ -313,7 +313,9 @@ describe("I1 — the intake panel states a TOTAL and fabricates no split", () =>
   });
 
   it("the stated total IS still sent — stripping the split must not drop the real answer", () => {
-    assert.match(panel, /numberOfTravelers:\s*travelers/);
+    // RC-12 (ledger `2026-09-25-rc12-party-size`): the total is sent only when the traveler stated
+    // one — an untouched field is omitted, never an invented count (§13).
+    assert.match(panel, /partyStated !== undefined \? \{ numberOfTravelers: partyStated \}/);
   });
 });
 
