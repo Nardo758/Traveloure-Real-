@@ -16,10 +16,19 @@
 //   2. The seller has a public handle (claimed through `PATCH /api/me/handle` if they have none) —
 //      a storefront is addressed by handle (Locked Decision 40).
 //   3. The admin approves the listing (`POST /api/admin/provider-services/:id/approve`).
-//   4. A newly registered traveler opens `/s/<handle>`, finds the listing's card, opens the listing
-//      page, reads the seller's own price, and presses the page's add control.
-//   5. The traveler's cart carries the line at that price, and the traveler checks out
-//      (Checkout → Complete Booking).
+//   4. A newly registered traveler starts a plan, opens `/s/<handle>`, finds the listing's card,
+//      opens the listing page ON THAT PLAN, reads the seller's own price, and presses the page's
+//      add control — the item lands on the plan (LD 39: every add surface is a view of
+//      `itinerary_items`).
+//   5. The traveler sends the item to checkout through the ONE routing rail the Finalize chooser
+//      uses; the cart line is that item's projection and carries the seller's price, and the
+//      traveler checks out (Checkout → Complete Booking).
+//
+// WHY THE TRAVELER PLANS FIRST (ledger `2026-09-25-journey-4-5-plans-first`). RC-2 (ledger
+// `2026-09-24-rc2-add-to-plan`) rules that a signed-in member with no plan is ASKED which plan
+// rather than handed a trip-less cart line, so "sign up, click add, see a cart line" is not a
+// journey the platform offers a member. Planning first is the member's real path, and it is the
+// same path with or without RC-2, so this file does not depend on which one a build carries.
 //   6. The seller's side of the sale, read through the seller's own session and console.
 //
 // STRIPE — TWO TRUTHFUL CONTRACTS, CHOSEN EXPLICITLY (the journey-suite.yml posture, ruling 38).
@@ -143,6 +152,18 @@ async function registerTraveler(page: Page): Promise<void> {
   expect(terms.ok()).toBe(true);
 }
 
+/** The traveler's own plan in the listing's city, minted through the one client trip rail. */
+async function startPlan(page: Page): Promise<string> {
+  const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  const res = await page.request.post("/api/trips", {
+    data: { title: `Journey 4-5 plan ${RUN}`, destination: "Kyoto, Japan", startDate: day(30), endDate: day(33) },
+  });
+  expect(res.status(), `start a plan: ${await res.text()}`).toBe(201);
+  const trip = await res.json();
+  expect(trip.id, "the plan was minted").toBeTruthy();
+  return trip.id as string;
+}
+
 /** Price as the listing page prints it: whole dollars without cents, cents kept otherwise. */
 function listedPrice(price: string): string {
   const n = Number(price);
@@ -155,22 +176,40 @@ async function runJourney(page: Page, c: SellerCase): Promise<void> {
   const handle = await ensureHandle(seller, c.handle);
   const listingId = await publishAndApprove(seller, c);
 
-  // ── 4: the traveler finds it on the storefront and opens it ────────────────────────────────
+  // ── 4: the traveler plans, finds the listing on the storefront and adds it to the plan ─────
   await registerTraveler(page);
+  const tripId = await startPlan(page);
   await page.goto(`/s/${handle}`);
   const card = page.getByTestId(`storefront-service-${listingId}`);
   await expect(card, "the approved listing is on the seller's storefront").toBeVisible({ timeout: 90_000 });
   await expect(card).toContainText(c.listing.serviceName);
   await card.click();
   await expect(page).toHaveURL(new RegExp(`/services/${listingId}`));
+  // The same listing page, addressed to the traveler's plan (`resolveTargetTripId` reads `?tripId=`).
+  await page.goto(`/services/${listingId}?tripId=${tripId}`);
   await expect(page.getByTestId("text-service-name")).toHaveText(c.listing.serviceName, { timeout: 90_000 });
   await expect(page.getByTestId("text-price")).toHaveText(listedPrice(c.listing.price));
 
   // The page's add control; its label is the buy descriptor's, so it is found by id, not by words.
   await page.getByTestId("button-add-to-cart").click();
-  await expect(page.getByText("Added to cart").first()).toBeVisible();
+  let planItem: any;
+  await expect
+    .poll(async () => {
+      const body = await (await page.request.get(`/api/trips/${tripId}/itinerary-items`)).json();
+      // The plan's items come back grouped by day: `{ days: [{ dayNumber, items }], total }`.
+      const items: any[] = (body.days ?? []).flatMap((d: any) => d.items ?? []);
+      planItem = items.find((i) => i.providerServiceId === listingId);
+      return Boolean(planItem);
+    }, { message: "the add lands on the traveler's plan", timeout: 30_000 })
+    .toBe(true);
 
-  // ── 5: the cart carries the seller's price, and the traveler checks out ────────────────────
+  // ── 5: the item goes to checkout; its cart line carries the seller's price ────────────────
+  const routed = await page.request.post(`/api/trips/${tripId}/items/${planItem.id}/route`, {
+    data: { to: "ready_for_checkout" },
+  });
+  expect(routed.ok(), `route the plan item to checkout: ${await routed.text()}`).toBe(true);
+  expect((await routed.json()).projection?.action, "the cart projection was written").not.toBe("error");
+
   const cart = await (await page.request.get("/api/cart")).json();
   const line = (cart.items ?? []).find((i: any) => i.serviceId === listingId);
   expect(line, "the cart holds a line for this listing").toBeTruthy();
