@@ -46,6 +46,7 @@ import {
   LEGACY_BOOKINGS_CUTOFF_ENV,
   legacyBookingsClosedToNewWrites,
   legacyBookingsNoNewWritesFrom,
+  describeLegacyBookingsCutoff,
 } from '../config/legacy-bookings.config';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -278,6 +279,105 @@ describe('D-12 — what the switch deliberately does NOT touch', () => {
     assert.ok(
       !job.includes('legacyBookingsClosedToNewWrites'),
       'the detector must never stop looking at a rail because it stopped taking new rows',
+    );
+  });
+});
+
+
+describe('D-12 — the boot line states the resolved cutoff (ledger `2026-09-25-legacy-cutoff-boot-line`)', () => {
+  // WHY THIS BLOCK EXISTS. A FUTURE cutoff and an UNSET one are behaviourally identical until the
+  // date passes: both allow writes, and the rail's only reader is the write endpoint above. So a
+  // restart performed to LOAD a cutoff could prove only that the value was not malformed. The boot
+  // line closes that gap, and these proofs pin the one thing it must never do — read an absent
+  // value as a closed rail (§13).
+  //
+  // NEGATIVE SPACE: this asserts what the DESCRIBER returns, not that `server/index.ts` prints it;
+  // C14 reads the shipped source for the call site instead, because importing that module boots a
+  // server. It asserts no cutoff DATE, for the same reason C7 does not.
+  afterEach(() => {
+    delete process.env[LEGACY_BOOKINGS_CUTOFF_ENV];
+  });
+
+  it('C10 — UNSET reports "not set" with a null cutoff, and never says the rail is closed', () => {
+    delete process.env[LEGACY_BOOKINGS_CUTOFF_ENV];
+    const report = describeLegacyBookingsCutoff();
+
+    assert.equal(report.state, 'not_set');
+    assert.equal(report.cutoff, null, 'no cutoff decided ⇒ null, never a stand-in instant (§13)');
+    assert.match(report.message, /not set/i);
+    assert.match(report.message, /accepts new writes/i);
+    assert.ok(
+      !/refuses/i.test(report.message),
+      'an absent variable must never be reported as a closed rail',
+    );
+    assert.match(report.message, new RegExp(CANONICAL_BOOKING_RAIL.replace('/', '\\/')));
+  });
+
+  it('C11 — a FUTURE cutoff reports "decided, not in force" and carries the instant', () => {
+    const at = iso(30 * DAY);
+    process.env[LEGACY_BOOKINGS_CUTOFF_ENV] = at;
+    const report = describeLegacyBookingsCutoff();
+
+    assert.equal(report.state, 'decided_not_in_force');
+    assert.equal(report.cutoff, new Date(at).toISOString());
+    assert.match(report.message, /still accepts new writes/i);
+    // The operator's whole reason for restarting: the value they set is echoed back.
+    assert.ok(report.message.includes(report.cutoff!), 'the resolved instant must be visible');
+    assert.ok(report.message.includes(LEGACY_BOOKINGS_CUTOFF_ENV), 'the variable is named');
+  });
+
+  it('C12 — a PAST cutoff reports "in force" and names the refusal reason', () => {
+    process.env[LEGACY_BOOKINGS_CUTOFF_ENV] = iso(-DAY);
+    const report = describeLegacyBookingsCutoff();
+
+    assert.equal(report.state, 'in_force');
+    assert.equal(typeof report.cutoff, 'string');
+    assert.match(report.message, new RegExp(LEGACY_BOOKINGS_CLOSED_REASON));
+  });
+
+  it('C13 — the describer agrees with the route\'s own switch in all three states', () => {
+    // §18 rule 1: the boot line ASKS `legacyBookingsClosedToNewWrites` rather than restating what
+    // "closed" means, so the log and the endpoint it describes can never disagree.
+    const cases: Array<[string | undefined, boolean]> = [
+      [undefined, false],
+      [iso(30 * DAY), false],
+      [iso(-DAY), true],
+    ];
+    for (const [value, closed] of cases) {
+      if (value === undefined) delete process.env[LEGACY_BOOKINGS_CUTOFF_ENV];
+      else process.env[LEGACY_BOOKINGS_CUTOFF_ENV] = value;
+
+      assert.equal(
+        describeLegacyBookingsCutoff().state === 'in_force',
+        legacyBookingsClosedToNewWrites(),
+        `the boot line and the route must agree for ${String(value)}`,
+      );
+      assert.equal(legacyBookingsClosedToNewWrites(), closed);
+    }
+  });
+
+  it('C14 — boot logs the line on the pino path, after migrations and before routes', () => {
+    const src = readFileSync(join(ROOT, 'server/index.ts'), 'utf8');
+
+    assert.match(src, /describeLegacyBookingsCutoff/, 'boot must state the resolved cutoff');
+    const at = src.indexOf('describeLegacyBookingsCutoff()');
+    assert.ok(at > 0);
+
+    // Ordering, not decoration: the migration summary and this line share the pino path precisely
+    // because raw console.log interleaves unreliably with pino on fd 1 in production. A line
+    // emitted after `registerRoutes` would land after the first requests are served.
+    const migrations = src.indexOf('"Migrations complete"');
+    const routes = src.indexOf('await registerRoutes(');
+    assert.ok(migrations > 0 && routes > 0);
+    assert.ok(at > migrations, 'the cutoff line follows the migration summary');
+    assert.ok(at < routes, 'the cutoff line precedes route registration');
+
+    // The message is the config module's, never re-typed at the call site (§18 rule 1).
+    const tail = src.slice(at, at + 400);
+    assert.match(tail, /legacyCutoff\.message/, 'boot prints the describer\'s own sentence');
+    assert.ok(
+      !/logger\.info\(\s*\{[^}]*\},\s*["`'].*LEGACY_BOOKINGS/s.test(tail),
+      'the sentence must not be restated at the call site',
     );
   });
 });
