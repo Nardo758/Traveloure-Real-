@@ -915,6 +915,10 @@ export default function ExperienceTemplatePage() {
   const [hotelMaxPrice, setHotelMaxPrice] = useState(initialSettings?.hotelMaxPrice ?? 5000);
   const [hotelStarRating, setHotelStarRating] = useState<number>(initialSettings?.hotelStarRating ?? 0);
   const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
+  // RC-12 (ledger `2026-09-25-rc12-party-size`): `adults` starts at 2 as a SEARCH ASSUMPTION only
+  // — the catalog queries and price estimates below need a head count. It is never the traveler's
+  // answer: every write to the plan, the Trip Strip or a request reads `statedParty` instead, and
+  // the page says the estimate assumes 2 until a group size is set.
   const [adults, setAdults] = useState(initialSettings?.adults ?? 2);
   const [kids, setKids] = useState(initialSettings?.kids ?? 0);
   // P3b: the global Trip Strip owns the destination/dates/party quartet — this
@@ -922,6 +926,11 @@ export default function ExperienceTemplatePage() {
   // downstream catalog queries + context writes read them); they now sync FROM
   // the site-wide TripContext, and the one plan modal is the edit surface.
   const [tripCtx] = useTripContext();
+  // RC-12: the party the TRAVELER stated. The pen is the one place it is answered (the plan
+  // modal's step 4, via the Trip Strip); `undefined` = nobody has said, and no write below
+  // may turn the search assumption into an answer (§13).
+  const statedParty =
+    typeof tripCtx.travelers === "number" && tripCtx.travelers > 0 ? tripCtx.travelers : undefined;
   // Ledger `2026-09-04-one-modal-many-doors`: this page's "edit trip" affordances are DOORS of the
   // one planning modal, opened through the one opener — not a second dialog this page mounts.
   //
@@ -936,6 +945,30 @@ export default function ExperienceTemplatePage() {
   // as `""`: an ABSENT field is how `PlanningSource` says "not known", and an empty string is a
   // stated answer that happens to be empty. Nothing here is invented to fill either one.
   const { open: openPlanModal } = usePlanning();
+  /**
+   * RC-12: the search assumption is SAID, never passed off as an answer. Rendered beside both tab
+   * strips (desktop and mobile) only while no party is stated; "Set group size" is a door of the
+   * one plan modal, whose step 4 is where the answer is given.
+   */
+  const renderPartyAssumptionNote = (surface: "desktop" | "mobile") =>
+    statedParty === undefined ? (
+      <p
+        className="text-xs text-muted-foreground px-1 py-1.5"
+        data-testid={`text-party-assumption-${surface}`}
+      >
+        Prices assume {adults + kids} {adults + kids === 1 ? "person" : "people"} — your group size isn't set.{" "}
+        <button
+          type="button"
+          className="text-primary underline underline-offset-2"
+          onClick={() =>
+            openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })
+          }
+          data-testid={`button-set-group-size-${surface}`}
+        >
+          Set group size
+        </button>
+      </p>
+    ) : null;
   // Flips true once the mount-time context→local sync has run, so the persist
   // effect can't write stale local defaults over the strip's values first.
   const [ctxApplied, setCtxApplied] = useState(false);
@@ -1144,7 +1177,7 @@ export default function ExperienceTemplatePage() {
           destination: destination.trim(),
           startDate,
           endDate,
-          travelers: adults + kids,
+          travelers: statedParty /* RC-12: never the search assumption */,
           experienceType: experienceType?.name,
         });
       }
@@ -1405,7 +1438,8 @@ export default function ExperienceTemplatePage() {
         startDate: startIso,
         endDate: endIso,
         budget: cartTotal.toString(),
-        travelers: adults + kids,
+        // RC-12: only a stated party; the comparison row keeps its own default otherwise.
+        ...(statedParty ? { travelers: statedParty } : {}),
         baselineItems: cartItems,
         experienceTypeSlug: slug || "travel",
       });
@@ -1480,7 +1514,7 @@ export default function ExperienceTemplatePage() {
       destination,
       startDate,
       endDate,
-      travelers: adults + kids,
+      travelers: statedParty /* RC-12: never the search assumption */,
     });
     updateTripContext({
       experienceSlug: slug,
@@ -1547,7 +1581,8 @@ export default function ExperienceTemplatePage() {
     originCity,
     startDate: startDate ? startDate.toISOString().split("T")[0] : undefined,
     endDate: endDate ? endDate.toISOString().split("T")[0] : undefined,
-    travelers: adults + kids,
+    // RC-12: the expert reads the traveler's stated party, or none — never the search default.
+    travelers: statedParty,
     interests: selectedInterests,
   });
 
@@ -1757,7 +1792,7 @@ export default function ExperienceTemplatePage() {
                     destination,
                     startDate,
                     endDate,
-                    travelers: adults + kids
+                    travelers: statedParty /* RC-12: never the search assumption */
                   });
       updateTripContext({ experienceSlug: slug });
       return;
@@ -1826,7 +1861,7 @@ export default function ExperienceTemplatePage() {
                     destination,
                     startDate,
                     endDate,
-                    travelers: adults + kids
+                    travelers: statedParty /* RC-12: never the search assumption */
                   });
     updateTripContext({ experienceSlug: slug });
     // An item that landed on the PLAN is not in the cart — sending the traveler to /cart would
@@ -2305,6 +2340,7 @@ export default function ExperienceTemplatePage() {
                 handling and cut off the last tab with no scroll cue at the pane edge. Copy the
                 mobile tab strip's `overflow-x-auto` + `flex-nowrap` treatment (see the twin below,
                 "Mobile Tabs") so the strip scrolls horizontally instead of clipping. */}
+            {renderPartyAssumptionNote("desktop")}
             <div className="flex items-center justify-between overflow-x-auto">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="h-auto bg-transparent p-0 gap-0 flex-nowrap">
@@ -3001,7 +3037,7 @@ export default function ExperienceTemplatePage() {
                     destination,
                     startDate,
                     endDate,
-                    travelers: adults + kids
+                    travelers: statedParty /* RC-12: never the search assumption */
                   });
                       updateTripContext({ experienceSlug: slug });
                       setLocation("/cart");
@@ -3272,6 +3308,7 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
+          {!showMobileMap && renderPartyAssumptionNote("mobile")}
           {/* Mobile Tabs */}
           <div className={cn(
             "bg-white dark:bg-gray-800 border-b mt-4 px-2 overflow-x-auto",
@@ -3581,6 +3618,7 @@ export default function ExperienceTemplatePage() {
                   travelers={adults + kids}
                   adults={adults}
                   kids={kids}
+                  partyStated={statedParty !== undefined}
                   experienceType={experienceType?.name}
                   onClose={() => setAiItineraryDialogOpen(false)}
                   onSave={(tripId) => {

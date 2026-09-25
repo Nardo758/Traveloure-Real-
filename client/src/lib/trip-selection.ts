@@ -1,4 +1,4 @@
-import { switchTripContext, type TripContext } from "./trip-context";
+import { replaceTripContextPlanAnswers, switchTripContext, type TripContext } from "./trip-context";
 
 /**
  * Minimal shape of a trip row needed to bind the site-wide TripContext to it —
@@ -13,6 +13,11 @@ export interface TripIdentitySource {
   title?: string | null;
   numberOfTravelers?: number | null;
   travelers?: number | null;
+  /** The plan's own step-4 pair; absent/NULL means that plan never stated it (RC-12). */
+  adults?: number | null;
+  kids?: number | null;
+  /** The plan's own resolved occasion slug, when the caller holds it; absent ⇒ not known (RC-12). */
+  experienceSlug?: string | null;
   experienceType?: string | null;
   eventType?: string | null;
 }
@@ -37,7 +42,7 @@ export interface TripIdentitySource {
  * active trip can survive the switch by omission.
  */
 export function syncActiveTripToContext(trip: TripIdentitySource): TripContext {
-  return switchTripContext({
+  switchTripContext({
     tripId: trip.id,
     destination: trip.destination ?? undefined,
     startDate: trip.startDate ?? undefined,
@@ -45,5 +50,13 @@ export function syncActiveTripToContext(trip: TripIdentitySource): TripContext {
     title: trip.title ?? undefined,
     travelers: trip.numberOfTravelers ?? trip.travelers ?? undefined,
     experienceType: trip.experienceType ?? trip.eventType ?? undefined,
+  });
+  // RC-12: the step-4 pair and the occasion are this plan's too. Without this the previous plan's
+  // answers stayed in the pen and the plan modal seeded — and could save — them onto this one
+  // (see `replaceTripContextPlanAnswers`).
+  return replaceTripContextPlanAnswers({
+    adults: trip.adults,
+    kids: trip.kids,
+    experienceSlug: trip.experienceSlug,
   });
 }

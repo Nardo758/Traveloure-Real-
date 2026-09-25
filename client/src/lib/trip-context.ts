@@ -365,6 +365,53 @@ export function switchTripContext(patch: TripContextPatch): TripContext {
 }
 
 /**
+ * Replace the pen's per-plan ANSWERS — the step-4 pair (`adults` / `kids`) and the occasion
+ * (`experienceSlug`) — with the given plan's own. REPLACE semantics, like `switchTripContext`, for
+ * exactly those three keys (ledger `2026-09-25-rc12-party-size`, audit RC-12).
+ *
+ * Why this exists: those keys sit OUTSIDE `SWITCH_FIELDS`, so switching the active plan left the
+ * PREVIOUS plan's answers in the pen, and the plan modal seeds step 4 and its occasion from the
+ * pen — a plan nobody had described would open showing someone else's "3 adults", and a Save
+ * would write that party and that occasion onto it. A value the plan does not hold (NULL, 0,
+ * blank, absent) is REMOVED rather than carried: an unanswered question on this plan stays
+ * unanswered (§13). Deliberately NOT added to `SWITCH_FIELDS`, whose other callers (the
+ * same-trip re-sync in `switchTripContextPreservingId`) would then CLEAR a real stated answer
+ * just because they did not repeat it.
+ */
+export function replaceTripContextPlanAnswers(answers: {
+  adults?: number | null;
+  kids?: number | null;
+  experienceSlug?: string | null;
+}): TripContext {
+  const current = getTripContext();
+  const next: Record<string, unknown> = { ...current };
+  delete next.adults;
+  delete next.kids;
+  delete next.experienceSlug;
+  if (typeof answers.adults === "number" && Number.isFinite(answers.adults) && answers.adults > 0) {
+    next.adults = answers.adults;
+  }
+  if (typeof answers.kids === "number" && Number.isFinite(answers.kids) && answers.kids > 0) {
+    next.kids = answers.kids;
+  }
+  if (typeof answers.experienceSlug === "string" && answers.experienceSlug.trim().length > 0) {
+    next.experienceSlug = answers.experienceSlug.trim();
+  }
+  try {
+    sessionStorage.setItem(storageKey(), JSON.stringify(next));
+  } catch {
+    /* storage full/unavailable — context is best-effort */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+  } catch {
+    /* non-browser env */
+  }
+  schedulePush(next as TripContext);
+  return next as TripContext;
+}
+
+/**
  * Convenience for callers that know a CANDIDATE destination/date/etc. set but
  * not necessarily whether it differs from whichever trip is currently bound
  * (e.g. a page-level "reflect my local form state back to context" sync, as

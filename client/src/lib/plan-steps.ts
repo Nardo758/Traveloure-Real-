@@ -164,6 +164,15 @@ export interface PlanStepsSource {
   destination?: string;
   /** Deep-open: decides the FINISH, never the steps (rule 6). */
   branch?: string;
+  /** The plan the door is about. `focusStep` is honoured only when this names one. */
+  tripId?: string;
+  /**
+   * RC-12 (ledger `2026-09-25-rc12-party-size`): open straight on step 4. Honoured only for a door
+   * that names a plan (`tripId`) — that plan's row already holds its Where and When (both NOT
+   * NULL), so opening on Who skips no unanswered question, and every visible step stays reachable
+   * from the rail. Any other value, or no plan, falls through to the ordinary door table.
+   */
+  focusStep?: "who";
 }
 
 /** The subset of the held `TripContext` this decision reads. */
@@ -211,6 +220,16 @@ export function resolvePlanSteps(
   // Rules 1 + 2. A row alone is not enough: something must have NAMED it, or this is a row the
   // caller resolved by some other route and the traveler was never asked.
   const answered = Boolean(occasion) && (namesOccasion(source) || namesOccasion(context));
+
+  // RC-12: the slip's "Who's coming?" door opens on step 4 of a plan that already exists.
+  if (
+    source?.focusStep === "who" &&
+    typeof source.tripId === "string" &&
+    source.tripId.trim().length > 0 &&
+    visibleSteps.includes("who")
+  ) {
+    return { startStep: "who", visibleSteps };
+  }
 
   return { startStep: answered ? "where" : "occasion", visibleSteps };
 }

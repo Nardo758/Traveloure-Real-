@@ -4853,7 +4853,19 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       if (dateRangeError) {
         return res.status(400).json({ message: dateRangeError });
       }
-      if (!travelers || typeof travelers !== "number" || travelers < 1) {
+      /**
+       * RC-12 (ledger `2026-09-25-rc12-party-size`): a party nobody stated is NOT invented. This
+       * route used to refuse a missing count, so every client made one up (the AI modal sent 2).
+       * Now an ABSENT count is accepted and means "not stated": the model is told so, and a plan
+       * this route creates carries no count. A count that IS sent must still be a real one (§13 —
+       * a 0, a negative or a non-integer is refused, never coerced).
+       */
+      const travelersStated: number | undefined =
+        travelers === undefined || travelers === null ? undefined : travelers;
+      if (
+        travelersStated !== undefined &&
+        (typeof travelersStated !== "number" || !Number.isInteger(travelersStated) || travelersStated < 1)
+      ) {
         return res.status(400).json({ message: "Number of travelers must be at least 1" });
       }
       const effectiveInterests = Array.isArray(interests) && interests.length > 0
@@ -4903,7 +4915,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         destination,
         dates?.start,
         dates?.end,
-        travelers,
+        travelersStated ?? "party-unstated",
         JSON.stringify(effectiveInterests),
         pacePreference || "moderate",
         JSON.stringify((mustSeeAttractions || []).slice().sort()),
@@ -4935,7 +4947,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
             grokService.generateAutonomousItinerary({
               destination,
               dates,
-              travelers,
+              travelers: travelersStated,
               budget: budget || undefined,
               eventType: eventType || undefined,
               interests: effectiveInterests,
@@ -4967,7 +4979,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           destination,
           startDate: dates.start,
           endDate: dates.end,
-          numberOfTravelers: travelers,
+          numberOfTravelers: travelersStated ?? null,
           status: "draft",
           eventType: eventType || experienceType || "vacation",
           specialRequests: normalizedSpecialRequests || null,
@@ -5003,7 +5015,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           startDate: dates.start,
           endDate: dates.end,
           budget: normalizeGeneratedEstimatedCost(budget),
-          travelers: travelers || 1,
+          travelers: travelersStated ?? 1, // RC-12: the comparison row's own pricing default (column DEFAULT 1) — never written to the plan
           status: "generating",
         },
       });
@@ -5048,7 +5060,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         success: true,
         userId,
         tripId: resolvedTripId,
-        metadata: { destination, dates, travelers, interests, itineraryId: savedItinerary.id },
+        metadata: { destination, dates, travelers: travelersStated ?? null, interests, itineraryId: savedItinerary.id },
       });
 
       // Convert generated itinerary to baseline items using the DB-inserted IDs
@@ -5087,7 +5099,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           dates.start,
           dates.end,
           budget,
-          travelers,
+          travelersStated,
           resolvedTripId
           // Transport leg calculation is handled inside generateOptimizedItineraries
           // for each variant after metrics are finalized
@@ -5384,7 +5396,8 @@ router.post("/api/ai/itineraries/:id/save-as-trip", isAuthenticated, async (req,
           destination: row.destination,
           startDate,
           endDate,
-          numberOfTravelers: body.travelers ?? 1,
+          // RC-12 (ledger `2026-09-25-rc12-party-size`): no count sent ⇒ none saved, never 1.
+          numberOfTravelers: body.travelers ?? null,
           status: "draft",
           eventType: body.eventType || "vacation",
           specialRequests: null,

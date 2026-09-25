@@ -24,9 +24,9 @@
  * re-opens at step 2 (Where), the first of the basics.
  *
  * §13: the summary states only what it was GIVEN. A basic that arrived empty is rendered as "not
- * set" with the change link beside it, never as a fabricated default — with the ONE documented
- * exception of the party count, whose pre-existing `2` fallback is preserved verbatim because the
- * generator has always required a number (see `travelers` below).
+ * set" with the change link beside it, never as a fabricated default. The party count used to be
+ * the one exception (a `2` the generator required); RC-12 removed it — the generator now accepts a
+ * missing count (see `travelers` below).
  *
  * Other features, unchanged: progressive disclosure of the preference groups, the neighborhood and
  * hidden-gem refinements for a resolved city, `/api/ai/generate-itinerary`, the 2-variant
@@ -174,12 +174,11 @@ export default function EnhancedPlanningModal({
   // The coarse machine key the door carried (a landing Moment CTA, or step 1's occasion); 'travel'
   // otherwise, exactly as before.
   const experienceType = initialExperienceType ?? 'travel';
-  // From the plan modal's Who step. The pre-existing default of 2 is UNCHANGED for the doors that
-  // pass nothing — this modal's generator has always required a count, and that fallback predates
-  // this lane. It is the one basic whose empty state is a number, and the summary says so.
+  // From the plan modal's Who step. RC-12 (ledger `2026-09-25-rc12-party-size`): there is no
+  // fallback any more. A door that passes nothing states nothing, the summary says so, and the
+  // generator is sent NO count — the server plans without one and saves none (§13).
   const travelers =
-    typeof initialTravelers === 'number' && initialTravelers > 0 ? initialTravelers : 2;
-  const travelersStated = typeof initialTravelers === 'number' && initialTravelers > 0;
+    typeof initialTravelers === 'number' && initialTravelers > 0 ? initialTravelers : null;
 
   // Progressive disclosure toggles
   const [showPreferences, setShowPreferences] = useState(false);
@@ -289,12 +288,11 @@ export default function EnhancedPlanningModal({
   const datesLabel = startDate && endDate
     ? `${startDate} → ${endDate}${getSuggestedDays() ? ` · ${getSuggestedDays()}` : ''}`
     : 'No dates yet';
-  // The ONE place a number stands in for an unstated answer, and it is labelled as such rather
-  // than shown as the traveler's own. The `2` fallback itself predates this lane (the generator
-  // has always required a count) and is deliberately unchanged.
-  const travelersLabel = travelersStated
-    ? `${travelers} ${travelers === 1 ? 'traveler' : 'travelers'}`
-    : `${travelers} travelers (not stated)`;
+  // RC-12: an unstated party is said to be unstated, with no number in front of it.
+  const travelersLabel =
+    travelers !== null
+      ? `${travelers} ${travelers === 1 ? 'traveler' : 'travelers'}`
+      : 'Group size not set';
   const occasionType = EXPERIENCE_TYPES.find((t) => t.value === experienceType);
   const occasionLabel = occasionType
     ? `${occasionType.emoji} ${occasionType.label}`
@@ -334,7 +332,8 @@ export default function EnhancedPlanningModal({
         body: JSON.stringify({
           destination: destinations.map(d => `${d.city}, ${d.country}`).join('; '),
           dates: { start: startDate, end: endDate },
-          travelers,
+          // RC-12: only a party the traveler stated is sent.
+          ...(travelers !== null ? { travelers } : {}),
           eventType: experienceType,
           // Fine occasion identity when opened from a landing Moment — the server folds it into
           // the generation prompt ("Occasion: …") so the brief carries the moment

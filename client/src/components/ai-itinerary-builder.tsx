@@ -63,6 +63,13 @@ interface AIItineraryBuilderProps {
   travelers: number;
   adults?: number;
   kids?: number;
+  /**
+   * RC-12 (ledger `2026-09-25-rc12-party-size`): did the TRAVELER state `travelers`, or is it the
+   * caller's search assumption? Generation may use an assumption (it is an estimate, and says
+   * so); SAVING a plan sends a count only when this is true, so an assumed 2 never becomes the
+   * plan's answer. Omitted ⇒ true, the behaviour every earlier caller had.
+   */
+  partyStated?: boolean;
   experienceType?: string;
   tripId?: string;
   onClose?: () => void;
@@ -185,6 +192,7 @@ export function AIItineraryBuilder({
   travelers,
   adults,
   kids,
+  partyStated = true,
   experienceType,
   tripId,
   onClose,
@@ -317,7 +325,8 @@ export function AIItineraryBuilder({
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          travelers,
+          // RC-12: only a stated party is saved onto the plan.
+          ...(partyStated ? { travelers } : {}),
           eventType: experienceType || "vacation",
           preferences: {
             interests,
@@ -596,7 +605,14 @@ export function AIItineraryBuilder({
                   <Users className="h-5 w-5 text-primary" />
                   <div>
                     <p className="text-sm text-muted-foreground">Travelers</p>
-                    <p className="font-medium text-foreground">{travelers} {travelers === 1 ? "person" : "people"}</p>
+                    <p className="font-medium text-foreground">
+                      {travelers} {travelers === 1 ? "person" : "people"}
+                      {partyStated ? null : (
+                        <span className="text-muted-foreground font-normal" data-testid="text-builder-party-assumed">
+                          {" "}(assumed — not saved to your plan)
+                        </span>
+                      )}
+                    </p>
                   </div>
                 </div>
 

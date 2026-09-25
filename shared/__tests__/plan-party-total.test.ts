@@ -92,30 +92,30 @@ test("P5: the derivation the trip-create path used to write inline gives the sam
 // rows already on disk, and the plancard assembler read the stored total FIRST
 // (`trip.numberOfTravelers || 1`) — so a plan holding `adults = 2, kids = NULL,
 // number_of_travelers = NULL` rendered "1 traveler" on the slip header while the Trip Strip chip
-// and step 4 both said "2". These pin the order, and pin that the held fallback did not move.
+// and step 4 both said "2". These pin the order, and (RC-12) that nothing stated is null.
 
 test("P6: the STATED pair outranks the stored total — the QA F4 row reads 2, not 1", () => {
   // The exact production row the finding names.
-  assert.equal(plancardPartyCount(2, null, null, 1), 2);
+  assert.equal(plancardPartyCount(2, null, null), 2);
   // And it still wins when the stored total merely disagrees, rather than being absent: the total
   // is a derivation OF the pair, so a stale one must never outrank the answer it came from.
-  assert.equal(plancardPartyCount(2, 1, 7, 1), 3);
+  assert.equal(plancardPartyCount(2, 1, 7), 3);
 });
 
 test("P6b: with NO pair, the stored total is used — the pre-D3 rows keep rendering as they did", () => {
-  assert.equal(plancardPartyCount(null, null, 4, 1), 4);
-  assert.equal(plancardPartyCount(undefined, undefined, "4", 1), 4);
+  assert.equal(plancardPartyCount(null, null, 4), 4);
+  assert.equal(plancardPartyCount(undefined, undefined, "4"), 4);
 });
 
-test("P6c (§13, HELD): a fully uncaptured party still reaches the caller's fallback, unchanged", () => {
-  // This is the behaviour ledger `2026-09-05-slip-events-first-render` recorded as still open —
-  // rendering an uncaptured party as "1 traveler" is migration 241's mask one layer up. It is
-  // DELIBERATELY not changed here; these assertions exist so that a future lane changing it has to
-  // change a test that says so, rather than doing it as a side effect of an unrelated edit.
+test("P6c (§13, RC-12): a fully uncaptured party is null — never the old held fallback 1", () => {
+  // Ledger `2026-09-05-slip-events-first-render` recorded this as still open, and this test used to
+  // pin the old answer (1) so that changing it had to be deliberate. RC-12 is that deliberate change
+  // (ledger `2026-09-25-rc12-party-size`, decision-maker ruled Sep 25, 2026): nobody said who is
+  // going, so there is no count.
   for (const total of [null, undefined, 0, "0", "", "   ", -2, "abc"]) {
     assert.equal(
-      plancardPartyCount(null, null, total as any, 1),
-      1,
+      plancardPartyCount(null, null, total as any),
+      null,
       `uncaptured pair + ${String(total)} total`,
     );
   }
@@ -126,7 +126,7 @@ test("P6d: the ladder DELEGATES — it never re-adds the pair itself (§18 rule 
     for (const kids of [null, 0, 2, "1"]) {
       const stated = partyTotal(adults as any, kids as any);
       assert.equal(
-        plancardPartyCount(adults as any, kids as any, 9, 1),
+        plancardPartyCount(adults as any, kids as any, 9),
         stated ?? 9,
         `${String(adults)}/${String(kids)}`,
       );
