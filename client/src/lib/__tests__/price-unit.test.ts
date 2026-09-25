@@ -141,3 +141,12 @@ test("P9: the listing page's own spaced-slash register composes from the bare sh
   assert.equal(priceUnitWord("event"), "event");
   assert.equal(priceUnitWord("group"), "group");
 });
+
+test("P10 (Locked Decision 56): a per-person price BASIS reads per person; per booking or unstated adds no unit", () => {
+  assert.equal(resolvePriceUnit({ priceType: "fixed", priceBasis: "per_person" }), "person");
+  assert.equal(priceUnitPhrase({ priceType: "fixed", priceBasis: "per_person" }), "per person");
+  assert.equal(resolvePriceUnit({ priceType: "fixed", priceBasis: "per_booking" }), null);
+  assert.equal(resolvePriceUnit({ priceType: "fixed", priceBasis: null }), null);
+  // pricingUnit still wins: a per-night stay is per night whatever the basis says.
+  assert.equal(resolvePriceUnit({ pricingUnit: "per_night", priceBasis: "per_person" }), "night");
+});

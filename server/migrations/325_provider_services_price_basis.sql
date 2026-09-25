@@ -1,0 +1,14 @@
+-- Migration 325: A LISTING SAYS WHETHER ITS PRICE IS PER PERSON OR PER BOOKING.
+--
+-- Ledger `2026-09-25-price-basis`. CLAUDE.md Locked Decision 56 (decision-maker, Sep 25, 2026:
+-- "go with all your recommendations"). §13, §19, §20.
+--
+-- The cart's D-14 archetype rule gave EVERY in_person / hybrid listing the seat rule (units = party
+-- size), and checkout charges rate x units, so a fixed-price photographer booked for a party of four
+-- was charged four times. This column lets the listing say which it is.
+--
+-- ONE column, additive, NULLABLE, NO DEFAULT, NO CHECK, NO BACKFILL — the publish-trap posture.
+-- Values `per_person` | `per_booking` are app-enforced in shared/price-basis.ts. NULL = never stated,
+-- read as PER BOOKING. Declared in shared/schema.ts in the same commit. Column-only, so it is §20's
+-- one approvable publish prompt; no preflight-prod-constraints manifest entry is needed.
+ALTER TABLE provider_services ADD COLUMN IF NOT EXISTS price_basis VARCHAR(20);

@@ -74,6 +74,7 @@ import { resolveTravelSurcharge, type TravelSurchargeResult } from "../services/
 // `authorizeAndPromote` — one Stripe creation site, one promotion, one more caller (§18 rule 1).
 import { resolveQuoteCharge, claimQuoteBornBooking } from "../services/quote-charge.service";
 import { quoteCheckoutBodySchema } from "@shared/service-quotes";
+import { cartLineUnitCount } from "@shared/cart-quantity";
 // T2 (ruling 62/64 D7 capture; ruling 83 wiring): the D7 booking-eligibility gates — party size,
 // start window, lead time — validated against the listing's own constraints BEFORE any slot claim or
 // Stripe call (the B1 pickup_out_of_range placement). §13: NULL field ⇒ no constraint; §14: pure
@@ -411,9 +412,17 @@ export async function resolveStayNightlyRates(cartData: any[]): Promise<Map<stri
  *
  * §13: `|| 1` is the item model's own historical reading — an unstated count is ONE unit, never
  * zero and never unknown (the same reading `2026-09-15-d41-item-quantity` gave the plan column).
+ *
+ * Locked Decision 56 (ledger `2026-09-25-price-basis`): the count is read through the ONE shared
+ * `cartLineUnitCount`, which the cart's own order review also reads (§18 rule 1). It returns the
+ * row's count exactly as before for every rule but one: a PER-BOOKING place service (the listing's
+ * `price_basis` is `per_booking` or never stated) is ONE unit whatever the row holds, so a line
+ * admitted while the old seat rule wrote `quantity = party_size` is neither charged for nor claims
+ * seats a fixed price never sold. The slot claim takes this same number — a per-booking line holds
+ * ONE unit of its slot, because a per-booking listing's capacity counts BOOKINGS, not heads.
  */
 export function resolveItemUnitCount(item: any): number {
-  return item?.quantity || 1;
+  return cartLineUnitCount(item?.service ?? null, item?.quantity);
 }
 
 export function resolveItemBaseAmount(item: any, stayRates?: Map<string, StayNightlyRateResult>): number {
@@ -1963,7 +1972,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             bookingDetails: {
               scheduledDate: item.scheduledDate,
               notes: item.notes || notes,
-              quantity: item.quantity || 1,
+              // Locked Decision 56: the booking records the units it was PRICED at — the same
+              // `resolveItemUnitCount` the charge multiplies by — so a per-booking line never
+              // records a stale seat count the charge did not multiply by.
+              quantity: resolveItemUnitCount(item),
               // V-26 (ledger `2026-09-15-v26-slot-units`): WHAT THE CLAIM ACTUALLY TOOK, per slot.
               // Deliberately NOT read back off `quantity` above: that is the cart line's priced
               // unit count, and a row born before this lane carries it while holding only ONE unit

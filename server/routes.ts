@@ -325,6 +325,7 @@ import { listingPriceGate } from "./services/listing-price-gate";
 // two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
 import { admitExpertOfferingTypeKey } from "./services/expert-offering-key.service";
 import { admitDeclaredArtifactDeliverable } from "./services/declared-artifact.service";
+import { admitPriceBasis } from "./services/price-basis.service";
 // The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`) — see the
 // cart quote below; it decides only which lines are concierge lines, never a rate or an amount.
 import { resolveBookingConciergeItems } from "./services/booking-concierge.service";
@@ -3931,6 +3932,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ? { declaredArtifactDeliverable: declaredArtifactAdmission.value }
         : {};
 
+      // Locked Decision 56 (migration 325, ledger `2026-09-25-price-basis`): is the price per
+      // person or for the whole booking? §19 — the generic body schema `.omit()`s the column, so
+      // this pick-based `.strict()` admission (ONE implementation, both rails) is the only way a
+      // request body reaches it. An invalid value is REFUSED, never coerced; an ABSENT key leaves
+      // the column untouched. A pricing setting ⇒ a SAFE edit under §23 (not an identity field).
+      const priceBasisAdmission = admitPriceBasis(bodyWithoutLocation);
+      if (priceBasisAdmission.refusal) {
+        return res.status(priceBasisAdmission.refusal.status).json(priceBasisAdmission.refusal.body);
+      }
+      const priceBasisPatch = priceBasisAdmission.present ? { priceBasis: priceBasisAdmission.value } : {};
+
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
       // listings (only enforced on this publish write).
@@ -4106,7 +4118,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cityPatch = await deriveCityPatch((input as any).neighborhood, {
         neighborhoodPresent: (input as any).neighborhood !== undefined,
       });
-      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, ...declaredArtifactPatch, userId });
+      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, ...declaredArtifactPatch, ...priceBasisPatch, userId });
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -4291,6 +4303,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const declaredArtifactPatch = declaredArtifactAdmission.present
         ? { declaredArtifactDeliverable: declaredArtifactAdmission.value }
         : {};
+
+      // Locked Decision 56 (migration 325, ledger `2026-09-25-price-basis`): is the price per
+      // person or for the whole booking? §19 — the generic body schema `.omit()`s the column, so
+      // this pick-based `.strict()` admission (ONE implementation, both rails) is the only way a
+      // request body reaches it. An invalid value is REFUSED, never coerced; an ABSENT key leaves
+      // the column untouched. A pricing setting ⇒ a SAFE edit under §23 (not an identity field).
+      const priceBasisAdmission = admitPriceBasis(bodyWithoutLocation);
+      if (priceBasisAdmission.refusal) {
+        return res.status(priceBasisAdmission.refusal.status).json(priceBasisAdmission.refusal.body);
+      }
+      const priceBasisPatch = priceBasisAdmission.present ? { priceBasis: priceBasisAdmission.value } : {};
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -4493,7 +4516,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Migration 292: the offering key joins the patch here, BEFORE the §23 edit split below —
       // it is an IDENTITY field (`IDENTITY_EDIT_FIELDS`, "Category and offering"), so on an
       // APPROVED listing it is staged for review rather than applied to the live row.
-      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch };
+      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch, ...priceBasisPatch };
 
       // ── Ruling 112 Q8 (CLAUDE.md §23) — the EDIT SPLIT, decided ONLY here ─────────────────
       // An APPROVED listing is never taken down for an edit. Identity-changing fields are

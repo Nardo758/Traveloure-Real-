@@ -49,6 +49,7 @@ import {
   archetypeAsks,
   cartCountLabel,
   cartUnitLabel,
+  cartLineUnitCount,
   resolveCartLineCounts,
   PINNED_UNIT_QUANTITY,
   type CartQuantityRule,
@@ -84,9 +85,9 @@ test("Q1: a bundle asks the party and is booked once", () => {
   );
 });
 
-test("Q1: a scheduled place service is sold by the seat — units FOLLOW the party", () => {
+test("Q1: a PER-PERSON place service is sold by the seat — units FOLLOW the party (Locked Decision 56)", () => {
   for (const method of ["in_person", "hybrid"]) {
-    const a = archetypeAsks({ deliveryMethod: method });
+    const a = archetypeAsks({ deliveryMethod: method, priceBasis: "per_person" });
     assert.equal(a.rule, "seats", method);
     assert.deepEqual(
       { u: a.asksUnits, p: a.asksParty, f: a.unitsFollowParty },
@@ -94,6 +95,48 @@ test("Q1: a scheduled place service is sold by the seat — units FOLLOW the par
       method,
     );
   }
+});
+
+test("Q1-LD56: a place service whose basis is per booking OR never stated is ONE booking — party asked, never multiplied", () => {
+  for (const method of ["in_person", "hybrid"]) {
+    for (const priceBasis of ["per_booking", null, undefined, "per_head"]) {
+      const a = archetypeAsks({ deliveryMethod: method, priceBasis });
+      assert.equal(a.rule, "booking", `${method} / ${String(priceBasis)}`);
+      assert.deepEqual(
+        { u: a.asksUnits, p: a.asksParty, f: a.unitsFollowParty },
+        { u: false, p: true, f: false },
+        `${method} / ${String(priceBasis)}`,
+      );
+    }
+  }
+  // A listing whose PRICING MODEL already says per person (price_type) and states no basis reads
+  // per person — it said so through the price-type select; an explicit basis still wins.
+  assert.equal(archetypeAsks({ deliveryMethod: "in_person", priceType: "per_person" }).rule, "seats");
+  assert.equal(archetypeAsks({ deliveryMethod: "in_person", priceType: "per_person", priceBasis: "per_booking" }).rule, "booking");
+  assert.equal(archetypeAsks({ deliveryMethod: "in_person", priceType: "fixed" }).rule, "booking");
+});
+
+test("Q1-LD56: a per-booking party of four is admitted as ONE unit with the party recorded", () => {
+  const r = resolveCartLineCounts({ deliveryMethod: "in_person" }, { partySize: 4 });
+  assert.equal(r.ok, true);
+  assert.equal(r.ok && r.quantity, undefined, "the unit count is not derived from the party");
+  assert.equal(r.ok && r.partySize, 4, "the party is still recorded");
+  assert.equal(r.ok && r.unitsDerivedFromParty, false);
+  const refused = resolveCartLineCounts({ deliveryMethod: "in_person" }, { quantity: 4 });
+  assert.equal(refused.ok, false, "a multi-unit body on a per-booking listing is refused, never clamped");
+});
+
+test("Q1-LD56: cartLineUnitCount — a per-booking line reads ONE unit whatever it stores; every other rule keeps the row's count", () => {
+  assert.equal(cartLineUnitCount({ deliveryMethod: "in_person" }, 4), 1, "a stale seat count is never charged");
+  assert.equal(cartLineUnitCount({ deliveryMethod: "hybrid", priceBasis: "per_booking" }, 3), 1);
+  assert.equal(cartLineUnitCount({ deliveryMethod: "in_person", priceBasis: "per_person" }, 4), 4);
+  assert.equal(cartLineUnitCount({ pricingUnit: "per_day", deliveryMethod: "async_messaging" }, 3), 3);
+  assert.equal(cartLineUnitCount({ deliveryMethod: "video" }, 5), 5);
+  assert.equal(cartLineUnitCount(null, 2), 2);
+  assert.equal(cartLineUnitCount(null, null), 1, "§13: an unstated count is one unit");
+  // Stays and bundles are NOT re-pinned by this rule — their own admission governs them.
+  assert.equal(cartLineUnitCount({ productShape: "bundle", deliveryMethod: "in_person" }, 2), 2);
+  assert.equal(cartUnitLabel("booking"), "1 booking");
 });
 
 test("Q1: an artifact / async listing asks neither", () => {
@@ -148,7 +191,8 @@ test("Q3: a property and a bundle are BOTH `in_person` — shape decides, or eve
 
 test("Q3: casing and padding are normalised — a row is classified by its value, not its spelling", () => {
   assert.equal(archetypeAsks({ productShape: " Property " }).rule, "stay");
-  assert.equal(archetypeAsks({ deliveryMethod: "IN_PERSON" }).rule, "seats");
+  assert.equal(archetypeAsks({ deliveryMethod: "IN_PERSON", priceBasis: "per_person" }).rule, "seats");
+  assert.equal(archetypeAsks({ deliveryMethod: "IN_PERSON", priceBasis: " PER_PERSON " }).rule, "seats");
   assert.equal(archetypeAsks({ deliveryMethod: "  " }).rule, "unruled");
 });
 
@@ -198,7 +242,7 @@ test("Q5: one unit, and an absent quantity, are always admitted on a pinned arch
 });
 
 test("Q5: a seat-shaped listing keeps its unit count — the refusal is scoped to the pinned three", () => {
-  const r = resolveCartLineCounts({ deliveryMethod: "in_person" }, { quantity: 6 });
+  const r = resolveCartLineCounts({ deliveryMethod: "in_person", priceBasis: "per_person" }, { quantity: 6 });
   assert.equal(r.ok, true);
   assert.equal(r.ok && r.quantity, 6);
 });
@@ -206,7 +250,7 @@ test("Q5: a seat-shaped listing keeps its unit count — the refusal is scoped t
 // ── Q6 — units follow the party, server-derived ─────────────────────────────────────────────────
 
 test("Q6: a stated seat count DERIVES the unit count, and a body-supplied quantity is not consulted", () => {
-  const r = resolveCartLineCounts({ deliveryMethod: "in_person" }, { quantity: 1, partySize: 7 });
+  const r = resolveCartLineCounts({ deliveryMethod: "in_person", priceBasis: "per_person" }, { quantity: 1, partySize: 7 });
   assert.equal(r.ok, true);
   assert.equal(r.ok && r.quantity, 7, "§14's posture one derivative up: the multiplier is derived");
   assert.equal(r.ok && r.partySize, 7);
@@ -214,7 +258,7 @@ test("Q6: a stated seat count DERIVES the unit count, and a body-supplied quanti
 });
 
 test("Q6: clearing the seat count returns the line to ONE unit — it may not keep billing for seats nobody claimed", () => {
-  const r = resolveCartLineCounts({ deliveryMethod: "hybrid" }, { partySize: null });
+  const r = resolveCartLineCounts({ deliveryMethod: "hybrid", priceBasis: "per_person" }, { partySize: null });
   assert.equal(r.ok, true);
   assert.equal(r.ok && r.quantity, PINNED_UNIT_QUANTITY);
   assert.equal(r.ok && r.partySize, null);
@@ -313,6 +357,6 @@ test("Q-D: a per-day async listing asks for DAYS (not pinned like an artifact), 
   const pinned = resolveCartLineCounts({ deliveryMethod: "async_messaging" }, { quantity: 4 });
   assert.equal(pinned.ok, false);
   // The other labels are unchanged.
-  assert.equal(cartCountLabel(archetypeAsks({ deliveryMethod: "in_person" })), "Seats");
+  assert.equal(cartCountLabel(archetypeAsks({ deliveryMethod: "in_person", priceBasis: "per_person" })), "Seats");
   assert.equal(cartCountLabel(archetypeAsks({ deliveryMethod: "video" })), "Quantity");
 });

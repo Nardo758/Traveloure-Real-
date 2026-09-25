@@ -44,6 +44,8 @@ export type PriceUnit = "night" | "day" | "person" | "hour" | "event" | "group";
 export interface PriceUnitInput {
   priceType?: string | null;
   pricingUnit?: string | null;
+  /** Locked Decision 56: `provider_services.price_basis` — `per_person` reads as "per person". */
+  priceBasis?: string | null;
 }
 
 /** The ONE derivation. `null` = not derivable; see §13 above for exactly what that covers. */
@@ -61,6 +63,9 @@ export function resolvePriceUnit(input: PriceUnitInput): PriceUnit | null {
     case "per_group":
       return "group";
   }
+  // Locked Decision 56: a listing that SAYS its price is per person (`price_basis`) reads so; a
+  // per-booking (or never-stated) basis adds no unit — the ordinary reading of a price.
+  if (input.priceBasis === "per_person") return "person";
   switch (input.priceType) {
     case "per_person":
       return "person";
