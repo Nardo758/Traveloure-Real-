@@ -291,7 +291,13 @@ for (const fx of PROVIDERS) {
     await shot(page, `S1-${fx.key}`, '04', 'listing-basics-filled');
 
     const drafted = await saveDraft(page);
-    const draftRow = await serviceByTitle(fx.listingTitleBase + ` [e2e:${RUN_ID}]`);
+    // Poll for the row: the save is async and a CI runner can take longer than saveDraft's
+    // settle wait, so an immediate read is a harness race, not a product finding.
+    let draftRow = await serviceByTitle(fx.listingTitleBase + ` [e2e:${RUN_ID}]`);
+    for (let i = 0; drafted && !draftRow && i < 30; i++) {
+      await page.waitForTimeout(500);
+      draftRow = await serviceByTitle(fx.listingTitleBase + ` [e2e:${RUN_ID}]`);
+    }
     if (!drafted || !draftRow) {
       fileFinding({
         journey: 'S1',
