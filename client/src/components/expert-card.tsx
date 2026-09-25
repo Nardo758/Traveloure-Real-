@@ -264,8 +264,8 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
 
   // Gaps 8 + 9 (ledger `2026-09-04-earn-contained-fixes`). The empty-array-is-truthy fix
   // (audit B2) survives inside `resolveExpertSpecializations`, which is now the ONE answer to
-  // "which store does an expert's specializations come from" — this card and `expert-detail.tsx`
-  // read the same function, so the browse card and the profile can no longer disagree. Each
+  // "which store does an expert's specializations come from" — this card reads it (the old
+  // `expert-detail.tsx` profile that also read it is deleted — `/experts/:id` renders the storefront). Each
   // value is then rendered through the ONE label map: an enum slug becomes its human label, an
   // offering key becomes that catalog row's display name, and anything else renders as-is.
   const specialties = resolveExpertSpecializations(expert).slice(0, 2);
