@@ -2073,6 +2073,39 @@ jobs:
       - name: A slot claim carries the line's unit count (S1-S8)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/slot-units.db.test.ts
 
+  profile-photo:
+    name: profile-photo (RC-10; ledger 2026-09-25-rc10-profile-photo)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # RC-10 (audit U2 CONFIRMED): /profile's "Upload Photo" read the file into a data URL, kept
+      # it in React state and toasted "Photo updated" — no request left the browser and a reload
+      # showed the old avatar. S1-S3 pin the one magic-byte sniff, K1-K2 the managed-URL → object
+      # key mapping, R1-R5 the real router with a DB and NO bucket (401 / 400-by-code with the row
+      # untouched / 503 with nothing saved / one 404 on the public proxy / an honest DELETE), C1-C3
+      # that the router is mounted, that the page posts the FILE and toasts only on the server's
+      # answer, and that the data-URL shape is gone.
+      - name: The profile photo is saved (S1-S3, K1-K2, R1-R5, C1-C3)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/profile-photo.db.test.ts
+
   reconciliation-detection:
     name: reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)
     runs-on: ubuntu-latest

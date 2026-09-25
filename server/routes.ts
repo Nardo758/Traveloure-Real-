@@ -256,6 +256,7 @@ import { ALL_DMO_SOURCES, getMarketGapSummary } from "./content/providers/DMOSou
 import savedItemsRoutes from "./routes/saved-items.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
+import profilePhotoRoutes from "./routes/profile-photo.routes";
 import planActivityRoutes from "./routes/plan-activity.routes";
 import upcomingRoutes from "./routes/upcoming.routes";
 import routingRoutes from "./routes/routing.routes";
@@ -1286,6 +1287,9 @@ export async function registerRoutes(
   // (inherits the blanket adminApiGuard registered above). New table, migration 123.
   app.use(serviceRequestsRoutes);
   app.use(tripContextRoutes);
+  // RC-10 (ledger `2026-09-25-rc10-profile-photo`): the profile photo's ONE file host —
+  // POST/DELETE /api/me/profile-photo (session-scoped) and the public /api/avatars/:file proxy.
+  app.use(profilePhotoRoutes);
   // "While you were away" digest (Console Realign R-H, Lane E7): GET /api/me/plan-activity —
   // read-only, session-scoped, cross-trip read of item_transition_log for non-traveler actors
   // (expert/agent/checkout). Zero writes. Mounted per §9.

@@ -208,26 +208,71 @@ export default function Profile() {
     },
   });
 
+  /**
+   * RC-10 (ledger `2026-09-25-rc10-profile-photo`; audit U2 CONFIRMED): "Upload Photo" read the
+   * file into a data URL, kept it in React state and toasted "Photo updated" — no request ever
+   * left the browser, and a reload showed the old avatar. The file now goes to the ONE photo host,
+   * `POST /api/me/profile-photo` (raw bytes, the cover-photo rail's shape), and the toast is the
+   * SERVER's answer: a refused upload says why (§13), and the preview shows only what was saved.
+   * The auth payload is refreshed so every surface that renders `profileImageUrl` agrees.
+   */
+  const uploadPhotoMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const res = await fetch("/api/me/profile-photo", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": file.type === "image/png" ? "image/png" : "image/jpeg" },
+        body: file,
+      });
+      const body = (await res.json().catch(() => ({}))) as { message?: string; profileImageUrl?: string };
+      if (!res.ok) throw new Error(body.message || "Couldn't upload your photo.");
+      return body;
+    },
+    onSuccess: (body) => {
+      setProfileImage(body.profileImageUrl ?? null);
+      void queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({ title: "Photo updated", description: "Your profile photo has been saved." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Photo not saved", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const removePhotoMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/me/profile-photo", { method: "DELETE", credentials: "include" });
+      const body = (await res.json().catch(() => ({}))) as { message?: string };
+      if (!res.ok) throw new Error(body.message || "Couldn't remove your photo.");
+      return body;
+    },
+    onSuccess: () => {
+      setProfileImage(null);
+      void queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({ title: "Photo removed", description: "Your profile photo has been removed." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Photo not removed", description: error.message, variant: "destructive" });
+    },
+  });
+
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast({ title: "File too large", description: "Please select an image under 5MB.", variant: "destructive" });
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfileImage(reader.result as string);
-        toast({ title: "Photo updated", description: "Your profile photo has been updated." });
-      };
-      reader.readAsDataURL(file);
+    // The input is reset either way so choosing the same file again fires a new change event.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Please select an image under 5MB.", variant: "destructive" });
+      return;
     }
+    if (file.type !== "image/jpeg" && file.type !== "image/png") {
+      toast({ title: "Unsupported image", description: "Please choose a JPEG or PNG image.", variant: "destructive" });
+      return;
+    }
+    uploadPhotoMutation.mutate(file);
   };
 
   const handleRemovePhoto = () => {
-    setProfileImage(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    toast({ title: "Photo removed", description: "Your profile photo has been removed." });
+    removePhotoMutation.mutate();
   };
 
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -303,14 +348,14 @@ export default function Profile() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png"
               className="hidden"
               onChange={handlePhotoUpload}
               data-testid="input-photo-file"
             />
             <div className="relative">
               <Avatar className="h-24 w-24 border-4 border-border">
-                <AvatarImage src={profileImage || user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
+                <AvatarImage src={profileImage ?? user?.profileImageUrl ?? undefined} alt={user?.firstName || "User"} />
                 <AvatarFallback className="bg-[#FFE3E8] text-primary text-2xl font-bold">
                   {user?.firstName?.[0] || "U"}
                 </AvatarFallback>
@@ -326,10 +371,10 @@ export default function Profile() {
               </Button>
             </div>
             <div>
-              <Button variant="outline" className="mr-2" onClick={() => fileInputRef.current?.click()} data-testid="button-upload-photo">
-                Upload Photo
+              <Button variant="outline" className="mr-2" onClick={() => fileInputRef.current?.click()} disabled={uploadPhotoMutation.isPending} data-testid="button-upload-photo">
+                {uploadPhotoMutation.isPending ? "Uploading…" : "Upload Photo"}
               </Button>
-              <Button variant="ghost" className="text-muted-foreground" onClick={handleRemovePhoto} data-testid="button-remove-photo">
+              <Button variant="ghost" className="text-muted-foreground" onClick={handleRemovePhoto} disabled={removePhotoMutation.isPending || !(profileImage ?? user?.profileImageUrl)} data-testid="button-remove-photo">
                 Remove
               </Button>
             </div>
