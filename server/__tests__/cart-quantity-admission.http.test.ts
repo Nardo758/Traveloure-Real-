@@ -20,7 +20,10 @@
  *       to three afterwards.
  *   V5  RE-ADD DOES NOT INCREMENT a units-pinned archetype. Adding the same villa twice is ONE
  *       booking; the dedupe branch's `+ 1` is how D-14 reached a charge.
- *   V6  a SEAT-shaped listing: `partySize: 7` DERIVES `quantity = 7` server-side (§14's posture on
+ *   V11 (Locked Decision 56, ledger `2026-09-25-price-basis`) a PER-BOOKING place service (basis
+ *       never stated) records `partySize: 4` and stays ONE unit at the add and PATCH rails, and a
+ *       multi-unit body is refused with `rule: "booking"`. On `main` the same add stored quantity 4.
+ *   V6  a SEAT-shaped (PER-PERSON) listing: `partySize: 7` DERIVES `quantity = 7` server-side (§14's posture on
  *       the multiplier), and a body-supplied `quantity` alongside it is not consulted.
  *   V7  clearing the seat count (`partySize: null`) returns the line to ONE unit.
  *   V8  the PARTY answer is admitted on an archetype that asks no units — the stated asymmetry: a
@@ -64,6 +67,7 @@ const ids = {
   bundle: `cartqty-${RUN}-svc-bundle`,
   artifact: `cartqty-${RUN}-svc-pdf`,
   seats: `cartqty-${RUN}-svc-seats`,
+  booking: `cartqty-${RUN}-svc-booking`,
   unruled: `cartqty-${RUN}-svc-video`,
 };
 let buyerId = "";
@@ -97,15 +101,15 @@ function api(path: string, cookie: string | undefined, method = "GET", body?: un
 /** A priced, approved listing carrying exactly the archetype facts under test. */
 async function makeService(
   id: string,
-  opts: { deliveryMethod: string; productShape?: string | null; pricingUnit?: string | null; price?: string },
+  opts: { deliveryMethod: string; productShape?: string | null; pricingUnit?: string | null; price?: string; priceBasis?: string | null },
 ): Promise<void> {
   await db.execute(sql`
     INSERT INTO provider_services
       (id, user_id, service_name, description, price, status, approval_status,
-       delivery_method, product_shape, pricing_unit)
+       delivery_method, product_shape, pricing_unit, price_basis)
     VALUES (${id}, ${ids.provider}, ${`Cart qty ${RUN}`}, 'fixture', ${opts.price ?? "100.00"},
             'active', 'approved', ${opts.deliveryMethod},
-            ${opts.productShape ?? null}, ${opts.pricingUnit ?? null})
+            ${opts.productShape ?? null}, ${opts.pricingUnit ?? null}, ${opts.priceBasis ?? null})
   `);
 }
 
@@ -160,7 +164,10 @@ before(async () => {
   await makeService(ids.stay, { deliveryMethod: "in_person", productShape: "property" });
   await makeService(ids.bundle, { deliveryMethod: "in_person", productShape: "bundle" });
   await makeService(ids.artifact, { deliveryMethod: "pdf" });
-  await makeService(ids.seats, { deliveryMethod: "in_person" });
+  // Locked Decision 56: the SEAT row is a listing whose price is PER PERSON; a place service that
+  // never stated a basis is ONE booking (V11).
+  await makeService(ids.seats, { deliveryMethod: "in_person", priceBasis: "per_person" });
+  await makeService(ids.booking, { deliveryMethod: "in_person" });
   await makeService(ids.unruled, { deliveryMethod: "video" });
 });
 
@@ -282,6 +289,32 @@ test("V9: an UNRULED listing is byte-for-byte unchanged — the lane states no r
   const res = await api("/api/cart", buyerCookie, "POST", { serviceId: ids.unruled, quantity: 3 });
   assert.equal(res.status, 201, await res.text().catch(() => ""));
   assert.equal((await cartRow(ids.unruled))!.quantity, 3);
+});
+
+// ── V11 ───────────────────────────────────────────────────────────────────────────────────────
+test("V11 (Locked Decision 56): a per-booking place service records the party and stays ONE unit at every rail", async () => {
+  await clearBuyerCart();
+  // The add rail: a party of four on a fixed-price, never-stated-basis listing is ONE booking.
+  const add = await api("/api/cart", buyerCookie, "POST", { serviceId: ids.booking, partySize: 4 });
+  assert.equal(add.status, 201, await add.text().catch(() => ""));
+  const row = await cartRow(ids.booking);
+  assert.ok(row);
+  assert.equal(row!.party_size, 4, "the party answer is still recorded");
+  assert.equal(row!.quantity, 1, "and it never multiplies a per-booking price (main stored 4 here)");
+
+  // The PATCH rail: a new party answer moves the party, never the unit count.
+  const patch = await api(`/api/cart/${row!.id}`, buyerCookie, "PATCH", { partySize: 6 });
+  assert.equal(patch.status, 200, await patch.text().catch(() => ""));
+  const after = await cartRow(ids.booking);
+  assert.equal(after!.party_size, 6);
+  assert.equal(after!.quantity, 1);
+
+  // And a multi-unit body is REFUSED with the rule named, never clamped (§13).
+  const refused = await api(`/api/cart/${row!.id}`, buyerCookie, "PATCH", { quantity: 4 });
+  assert.equal(refused.status, 400);
+  const body = await refused.json();
+  assert.equal(body.rule, "booking");
+  assert.equal((await cartRow(ids.booking))!.quantity, 1, "nothing moved");
 });
 
 // ── V10 ───────────────────────────────────────────────────────────────────────────────────────

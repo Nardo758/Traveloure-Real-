@@ -141,6 +141,8 @@ interface Service {
   categoryKey?: string | null;
   price: string;
   priceType: string | null;
+  /** Locked Decision 56: `per_person` | `per_booking` | null (never stated — read as per booking). */
+  priceBasis?: string | null;
   priceBasedOn: string | null;
   pricingTiers: PricingTier[] | null;
   location: string;
@@ -961,8 +963,10 @@ export default function ServiceDetailPage() {
   // returns null for them and they keep their own copy here; a null unit with no positive price
   // still ends at "contact the provider for pricing" — never a fabricated unit. The two NEW
   // cases (person, group) are gated on `priceNum > 0` for that reason.
-  const priceUnit = resolvePriceUnit({ priceType: service.priceType, pricingUnit: service.pricingUnit });
-  const priceTypeUnit = resolvePriceUnit({ priceType: service.priceType });
+  // Locked Decision 56: a listing whose `price_basis` is `per_person` reads "per person" through
+  // the SAME derivation; per booking (or never stated) adds nothing — the ordinary price reading.
+  const priceUnit = resolvePriceUnit({ priceType: service.priceType, pricingUnit: service.pricingUnit, priceBasis: service.priceBasis });
+  const priceTypeUnit = resolvePriceUnit({ priceType: service.priceType, priceBasis: service.priceBasis });
   const priceLabel = priceNum <= 0
     ? "Custom quote"
     : priceUnit
