@@ -38,7 +38,7 @@ import { db } from "../db";
 import { users, providerServices, readyMadeTrips, localExpertForms, serviceProviderForms, serviceReviews, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations, travelPulseHiddenGems } from "@shared/schema";
 import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
 // L23 (brief §11.5, ruling 9): the ONE author of a buy button, shipped on each card.
-import { buildListingBuyActions, resolveBuyerState } from "../services/buy-action-payload";
+import { buildListingBuyActions, resolveBuyerState, resolveNextAvailableSlots } from "../services/buy-action-payload";
 import type { BuyActionBuyer } from "@shared/buy-action";
 // Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9 2026):
 // business-level flag only, read here for the storefront's `away` field — never touches
@@ -648,6 +648,11 @@ async function loadStorefrontFromOwner(
       // = not declared, and the panel then says nothing (§13).
       leadTimeHours: providerServices.leadTimeHours,
       cancellationPolicyType: providerServices.cancellationPolicyType,
+      // Storefront booking actions (ledger `2026-09-25-storefront-booking-actions`): the offering
+      // card's primary-action mapper needs this to tell a chat Q&A Session (`ask_me_anything`
+      // delivered as `async_messaging`, Locked Decision 54(d)) apart from an ordinary listing —
+      // never re-derived client-side from a guess, read straight off the row.
+      expertOfferingTypeKey: providerServices.expertOfferingTypeKey,
     })
     .from(providerServices)
     .where(
@@ -755,6 +760,12 @@ async function loadStorefrontFromOwner(
         buyer,
       )
     : null;
+  // Storefront booking actions (ledger `2026-09-25-storefront-booking-actions`): the earliest
+  // future, capacity-remaining slot per listing — ONE batched query for the whole storefront
+  // (`resolveNextAvailableSlots`, shared with the public service detail were it ever wired there
+  // — §18 rule 1), never one query per card. §13: absent for a listing with no such slot, never
+  // a guessed date.
+  const nextAvailableByService = await resolveNextAvailableSlots(services.map((s) => s.id));
   let resolvedServices = services.map((s) => ({
     ...s,
     averageRating: null as string | null,
@@ -762,6 +773,7 @@ async function loadStorefrontFromOwner(
     showPrice: s.showPrice ?? true,
     bookingMode: resolveBookingMode(s.bookingMode, ownerInstantBooking),
     buyAction: storefrontBuyActions?.get(s.id),
+    nextAvailable: nextAvailableByService.get(s.id) ?? null,
     // Set true below only when the viewer's locale differs from the card's source and no
     // approved translation exists — the client renders the honest one-line note (§13).
     shownInOriginal: false,

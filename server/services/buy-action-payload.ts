@@ -38,7 +38,7 @@
  * `vendor_availability_slots`. An empty id set runs neither.
  */
 import type { Request } from "express";
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { getUserId } from "../utils/auth";
@@ -228,6 +228,49 @@ export async function buildListingBuyActions(
         buyer,
       ),
     );
+  }
+  return out;
+}
+
+export interface NextAvailableSlot {
+  date: string;
+  startTime: string | null;
+}
+
+/**
+ * The earliest FUTURE, capacity-remaining `vendor_availability_slots` row per listing — for the
+ * storefront card's "Next available: …" line (ledger `2026-09-25-storefront-booking-actions`).
+ *
+ * BATCHED BY CONSTRUCTION, one `DISTINCT ON (service_id)` query for the whole caller-supplied set
+ * — the same shape as the published-calendar query above, never one query per row. "Remaining
+ * capacity" is `booked_count < capacity` (treating a NULL capacity as the schema's own default of
+ * 1, mirroring `demand-rollup.service.ts`'s bookable predicate — §18 rule 1, not a second reading
+ * of the column) AND `status <> 'cancelled'`, so a fully-booked or cancelled slot is never offered
+ * as "next available".
+ *
+ * §13: a listing with no such row maps to `null` — never a guessed date. This function does not
+ * gate on approval/active; every caller already applies the F2 read-gate to the ids it passes in.
+ */
+export async function resolveNextAvailableSlots(
+  serviceIds: readonly string[],
+): Promise<Map<string, NextAvailableSlot | null>> {
+  const out = new Map<string, NextAvailableSlot | null>();
+  const ids = Array.from(new Set(serviceIds));
+  for (const id of ids) out.set(id, null);
+  if (ids.length === 0) return out;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = await db.execute(sql`
+    SELECT DISTINCT ON (service_id) service_id, date, start_time
+    FROM vendor_availability_slots
+    WHERE service_id IN (${sql.join(ids, sql`, `)})
+      AND date >= ${today}
+      AND status <> 'cancelled'
+      AND COALESCE(booked_count, 0) < COALESCE(capacity, 1)
+    ORDER BY service_id, date ASC, start_time ASC NULLS FIRST
+  `);
+  for (const r of (rows.rows ?? []) as any[]) {
+    out.set(r.service_id, { date: String(r.date).slice(0, 10), startTime: r.start_time ?? null });
   }
   return out;
 }

@@ -1159,6 +1159,24 @@ export default function ServiceDetailPage() {
   // `isLive: true` for every approved+active listing, so the descriptor cannot say "this provider
   // is away" — the `isAway` disabling below stays exactly as it was, on top of the descriptor.
   const buy = serviceDetailBuyRender(service.buyAction);
+
+  // A storefront card's "Book a session" / "Request a session" / "Request a quote" button lands
+  // here with `#book` or `#quote` (ledger `2026-09-25-storefront-booking-actions`, item 4). This
+  // is scroll-and-focus ONLY — it renders none of the buy controls and decides none of them; it
+  // focuses whichever the resolver already rendered (`button-book-now` or
+  // `button-request-to-book`), and does nothing when neither exists (§13 — no control to focus is
+  // not an error to surface, the panel itself is still in view from the scroll).
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash !== "#book" && hash !== "#quote") return;
+    const panel = document.getElementById("book");
+    if (!panel) return;
+    panel.scrollIntoView({ behavior: "smooth", block: "center" });
+    const target = document.querySelector<HTMLButtonElement>(
+      '[data-testid="button-book-now"], [data-testid="button-request-to-book"]',
+    );
+    target?.focus();
+  }, [service.id]);
   // THE TRUST PANEL'S PAYMENT CLAIM IS THE DESCRIPTOR'S TOO (ledger
   // `2026-09-14-direct-booking-panel-conditioned`, punchlist V-20). Until this lane the panel
   // below asserted "Payment is processed securely through Traveloure" on every listing, including
@@ -1795,8 +1813,14 @@ export default function ServiceDetailPage() {
 
             {/* Book Now panel — the continuity design's booking hierarchy: price, CTAs, the
                 Direct-Booking trust panel, the availability/slot picker, cancellation policy,
-                and the fee disclosure — all in one sticky sidebar column. */}
-            <div className="order-1 lg:order-2">
+                and the fee disclosure — all in one sticky sidebar column.
+                `id="book"` is the landing target for a storefront card's "Book a session" /
+                "Request a session" / "Request a quote" button (ledger
+                `2026-09-25-storefront-booking-actions`, item 4) — both `#book` and `#quote`
+                point here, since it is the one panel that holds whichever buy control the
+                resolver actually rendered; the scroll-and-focus effect below decides which
+                control to focus, never which one to render (that stays the resolver's). */}
+            <div className="order-1 lg:order-2" id="book">
               <DetailCard className="lg:sticky lg:top-4">
                 {/* F-2 trip handoff. The slip's CTA promised "for this trip"; say plainly what
                     that means HERE, at the booking CTAs, rather than letting the traveler find out
