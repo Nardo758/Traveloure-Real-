@@ -126,7 +126,7 @@ import {
   templateCartLineId,
   type TemplateExternalKind,
 } from "@/lib/template-external-add";
-import { isContentCartLine } from "@shared/cart-content-line";
+import { isContentCartLine, readCartContentCoordinates } from "@shared/cart-content-line";
 
 interface VenueResult {
   id: string;
@@ -416,6 +416,12 @@ interface CartItem {
    * no number to show and says so rather than rendering $0 (§13). Absent = the price is known.
    */
   priceStated?: boolean;
+  /**
+   * The pick's OWN coordinates (ledger `2026-09-26-partner-picks-map-coords`): set on the way IN
+   * from the partner result when it states them, and read back OUT of the server content line's
+   * envelope (`readCartContentCoordinates`). Absent = unlocated — drawn nowhere, never guessed.
+   */
+  coordinates?: { lat: number; lng: number } | null;
   metadata?: {
     cabin?: string;
     baggage?: string;
@@ -786,6 +792,8 @@ export default function ExperienceTemplatePage() {
     contentType?: string | null;
     isContentItem?: boolean;
     contentDisplay?: { name: string; city: string | null; description: string | null } | null;
+    /** The stored display envelope; read here ONLY for its validated coordinate pair. */
+    contentMeta?: Record<string, unknown> | null;
     quantity: number;
     service: { id: string; serviceName: string; price: string; location?: string } | null;
   }
@@ -838,7 +846,10 @@ export default function ExperienceTemplatePage() {
       if (!id) return [];
       if (isContentCartLine(item)) {
         // A partner/content line: the display envelope is the only source of facts, and it
-        // carries no price (the cart rail refuses one — §14), so none is shown (§13).
+        // carries no price (the cart rail refuses one — §14), so none is shown (§13). Its
+        // coordinates are the ones the partner result stated at add time, re-validated by the ONE
+        // reader; a line with no valid pair carries none and stays unlocated (§13 / LD 22).
+        const coordinates = readCartContentCoordinates(item.contentMeta);
         return [{
           id,
           cartItemId: item.id,
@@ -850,6 +861,7 @@ export default function ExperienceTemplatePage() {
           provider: "Partner",
           isExternal: true,
           ...(item.contentDisplay?.description ? { details: item.contentDisplay.description } : {}),
+          ...(coordinates ? { coordinates } : {}),
         }];
       }
       return [{
@@ -2076,31 +2088,34 @@ export default function ExperienceTemplatePage() {
 
   const selectedProviderIds = useMemo(() => cart.map(item => item.id), [cart]);
 
+  // Partner picks on the map (ledger `2026-09-26-partner-picks-map-coords`). Before RC-9 these read
+  // coordinates off the per-tab copy's `metadata` (`meetingPointCoordinates` for an activity,
+  // `rawData.hotel.latitude/longitude` for a hotel). The picks are server content lines now, so the
+  // coordinates come from the line's own envelope (`item.coordinates`, set in `cart` above) — the
+  // same hotel→activity transit routes as before, for LOCATED picks only. An unlocated pick is
+  // simply not drawn: no city centre, no geocode, no invented distance (§13 / LD 22).
   const activityLocations = useMemo(() => {
     return cart
-      .filter(item => item.type === "activities" && item.metadata?.meetingPointCoordinates)
+      .filter(item => (item.type === "activity" || item.type === "activities") && item.coordinates)
       .map(item => ({
         id: item.id,
         name: item.name,
-        lat: item.metadata!.meetingPointCoordinates!.lat,
-        lng: item.metadata!.meetingPointCoordinates!.lng,
-        meetingPoint: item.metadata?.meetingPoint,
-        duration: item.metadata?.duration,
+        lat: item.coordinates!.lat,
+        lng: item.coordinates!.lng,
       }));
   }, [cart]);
 
   const hotelLocation = useMemo(() => {
-    const hotelItem = cart.find(item => 
-      (item.type === "hotels" || item.type === "hotel" || item.type === "accommodations") && 
-      item.metadata?.rawData?.hotel?.latitude
+    const hotelItem = cart.find(item =>
+      (item.type === "hotels" || item.type === "hotel" || item.type === "accommodations") &&
+      item.coordinates
     );
-    if (hotelItem?.metadata?.rawData?.hotel) {
-      const hotel = hotelItem.metadata.rawData.hotel;
+    if (hotelItem?.coordinates) {
       return {
         id: hotelItem.id,
         name: hotelItem.name,
-        lat: hotel.latitude,
-        lng: hotel.longitude,
+        lat: hotelItem.coordinates.lat,
+        lng: hotelItem.coordinates.lng,
       };
     }
     return undefined;
@@ -2690,6 +2705,12 @@ export default function ExperienceTemplatePage() {
                     details: `${nights} nights${boardType ? `, ${boardType.replace(/_/g, " ").toLowerCase()}` : ''}${isRefundable ? ', refundable' : ''}`,
                     isExternal: true,
                     externalKind: "hotel",
+                    // The hotel result's OWN coordinates, when it states them — never the search
+                    // list's destination-centre fallback marker (§13).
+                    coordinates:
+                      typeof hotel.latitude === "number" && typeof hotel.longitude === "number"
+                        ? { lat: hotel.latitude, lng: hotel.longitude }
+                        : null,
                     metadata: {
                       refundable: isRefundable,
                       cancellationDeadline: cancellationDeadline,
@@ -2783,6 +2804,8 @@ export default function ExperienceTemplatePage() {
                     details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}${meetingPoint ? ` | ${meetingPoint}` : ''}`,
                     isExternal: true,
                     externalKind: "activity",
+                    // Viator's meeting-point coordinates, when the listing states them (§13).
+                    coordinates: meetingPointCoordinates ?? null,
                     metadata: {
                       refundable: isRefundable,
                       cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
