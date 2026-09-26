@@ -48,10 +48,12 @@ import {
   isArtifactDelivery,
   isClassifiable,
   isPlaceAnchored,
+  isStay,
   needsScheduling,
   PROVIDER_DECLARED_METHODS,
   type FundamentalsShape,
 } from "./service-fundamentals";
+import { QA_SESSION_OFFERING_KEY } from "./live-availability";
 
 // ─── Vocabularies ────────────────────────────────────────────────────────────────────────────
 
@@ -65,6 +67,7 @@ export type BuyActionKind =
   | "add_to_plan"
   | "book"
   | "request_to_book"
+  | "request_quote"
   | "plan_with"
   | "buy_ready_made"
   | "agent_rail"
@@ -72,8 +75,45 @@ export type BuyActionKind =
   | "message"
   | "none";
 
-/** Steps the one sheet walks, IN ORDER. Empty = nothing to ask. */
-export type BuyAsk = "sign_in" | "which_plan" | "slot" | "party";
+/**
+ * Steps the one sheet walks, IN ORDER. Empty = nothing to ask. `dates` (ledger
+ * `2026-09-25-provider-action-buttons`) is a STAY's check-in -> check-out range, asked INSTEAD of
+ * `slot`: a stay is never booked into a time slot, and asking "Pick a time" for a room was a
+ * question the room's own page never asks.
+ */
+export type BuyAsk = "sign_in" | "which_plan" | "slot" | "dates" | "party";
+
+/**
+ * WHAT is being bought, as the resolver classified it (ledger `2026-09-25-provider-action-buttons`).
+ * A surface that words its button per shape ("Check dates", "Book ride", "Book a session") reads
+ * THIS rather than re-testing the listing's columns itself — the resolver is the one place the
+ * listing's facts are read (§18 rule 1). ABSENT when the row states nothing that classifies it
+ * (§13 — never guessed).
+ *   · `bundle`     — `product_shape = 'bundle'`
+ *   · `stay`       — property / property_room / `per_night` (`isStay`)
+ *   · `ride`       — a PROVIDER category of private transport (`RIDE_CATEGORY_KEYS`), never a method
+ *   · `qa_session` — `ask_me_anything` delivered as `async_messaging` (LD 54(d))
+ *   · `session`    — a live `call` / `video`
+ *   · `in_person`  — `in_person` / `hybrid`
+ *   · `artifact`   — `pdf`
+ *   · `async`      — `async_messaging` / `voice_notes` (not a Q&A Session)
+ */
+export type BuySubject =
+  | "bundle"
+  | "stay"
+  | "ride"
+  | "qa_session"
+  | "session"
+  | "in_person"
+  | "artifact"
+  | "async";
+
+/**
+ * The PROVIDER category keys that are private transport (the registry's `private_transportation`;
+ * `aff_ground_transport` is an affiliate SOURCE and never a platform listing's category — LD 31).
+ * A ride is a category fact, not a delivery method: a chauffeur is delivered `in_person`.
+ */
+export const RIDE_CATEGORY_KEYS: ReadonlySet<string> = new Set(["private_transportation"]);
 
 export type BuyLandingStore =
   | "plan"
@@ -115,6 +155,23 @@ export interface BuyActionRow {
   productShape?: string | null;
   /** `instant | request | hidden`, already resolved from the account flag by `resolveBookingMode`. */
   bookingMode?: BuyBookingMode | null;
+  /**
+   * `provider_services.price_type`. `custom_quote` is the SELLER's statement that the price is
+   * quoted per request — so a quote listing is REQUESTED even when it also carries a price (a
+   * "from" figure), never checked out at that figure (ledger `2026-09-25-provider-action-buttons`).
+   */
+  priceType?: string | null;
+  /** `provider_services.pricing_unit` — `per_night` makes the row a stay (`isStay`). */
+  pricingUnit?: string | null;
+  /** The listing's `service_categories.category_key` (a ride is a category, not a method). */
+  categoryKey?: string | null;
+  /** `provider_services.expert_offering_type_key` — `ask_me_anything` names a Q&A Session. */
+  offeringTypeKey?: string | null;
+  /**
+   * The listing takes a DEPOSIT at checkout — a BOOLEAN the server derived from the listing's own
+   * deposit config through `resolveDepositPlan`. No amount ever reaches this module (§14).
+   */
+  takesDeposit?: boolean | null;
   bookability: Bookability;
   hasPrice: boolean;
   /** The listing publishes a calendar. Absent = NOT KNOWN by this payload, never "no". */
@@ -169,6 +226,10 @@ export interface BuyAction {
   ask: BuyAsk[];
   landing: BuyLanding;
   refusal?: { reason: BuyRefusalReason };
+  /** What is being bought (listing rows only). Absent = not classifiable (§13). */
+  subject?: BuySubject;
+  /** Present (true) only when the landing is a checkout AND the listing takes a deposit there. */
+  deposit?: true;
 }
 
 // ─── Helpers (the two halves; they never consult each other) ──────────────────────────────────
@@ -217,6 +278,23 @@ function landOnPlan(row: BuyActionRow, buyer: BuyActionBuyer): BuyLanding {
   };
 }
 
+/**
+ * WHAT a listing row is, from its own stated facts — first match wins, most specific first.
+ * The composite shapes (bundle, stay) outrank the category, the category outranks the method.
+ */
+export function listingSubject(row: BuyActionRow): BuySubject | undefined {
+  if (row.productShape === "bundle") return "bundle";
+  if (isStay({ productShape: row.productShape, pricingUnit: row.pricingUnit })) return "stay";
+  if (row.categoryKey && RIDE_CATEGORY_KEYS.has(row.categoryKey)) return "ride";
+  const method = row.deliveryMethod;
+  if (method === "async_messaging" && row.offeringTypeKey === QA_SESSION_OFFERING_KEY) return "qa_session";
+  if (method === "call" || method === "video") return "session";
+  if (method === "in_person" || method === "hybrid") return "in_person";
+  if (method === "pdf") return "artifact";
+  if (method === "async_messaging" || method === "voice_notes") return "async";
+  return undefined;
+}
+
 /** `async_messaging` / `voice_notes` — the provider declares completion; nothing is scheduled. */
 function isProviderDeclared(row: BuyActionRow): boolean {
   return !!row.deliveryMethod && PROVIDER_DECLARED_METHODS.has(row.deliveryMethod);
@@ -244,13 +322,27 @@ function isProviderDeclared(row: BuyActionRow): boolean {
  *     one here (refusing a guest, or asking `which_plan` where the table asks none) would be
  *     deciding something nobody ratified.
  *
- * WHAT REMAINS, NAMED (lane `2026-09-15-plan-work-one-rail`): `BuyActionRow` carries neither
- * `offeringTypeKey` nor `categoryKey`, so this module cannot see an impact class even if it wanted
- * one — threading them costs a join and a SELECT change at every payload caller
- * (`buildListingBuyActions` and its four rails). That is worth doing the day a ruling says a
- * plan-work CTA must differ; it is not worth doing to produce today's behaviour.
+ * WHAT REMAINS, NAMED (lane `2026-09-15-plan-work-one-rail`): the impact class is still not
+ * consulted. `BuyActionRow` now CARRIES `categoryKey` and `offeringTypeKey` (ledger
+ * `2026-09-25-provider-action-buttons`, threaded by `buildListingBuyActions` for every rail), but
+ * they are read ONLY to classify `subject` — the day a ruling says a plan-work CTA must differ,
+ * the facts are already here; until then consulting the class would restate the table.
  */
 export function resolveBuyAction(row: BuyActionRow, buyer: BuyActionBuyer): BuyAction {
+  const action = resolveBuyActionTable(row, buyer);
+  // The two DESCRIPTIVE facts ride only on a listing row that offers something (ledger
+  // `2026-09-25-provider-action-buttons`). They change no verb, no ask and no landing: a surface
+  // words its button from them, and `deposit` is stated only where a checkout actually happens.
+  if (row.kind !== "listing" || action.refusal?.reason === "not_available") return action;
+  const subject = listingSubject(row);
+  return {
+    ...action,
+    ...(subject ? { subject } : {}),
+    ...(row.takesDeposit === true && action.landing.store === "checkout" ? { deposit: true as const } : {}),
+  };
+}
+
+function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAction {
   // ── 1 · Not live, or the provider hid the CTA. No booking verb of any kind. ────────────────
   // §11.5 gives this row no `ask`, so a guest's Contact is left to the message rail's own
   // sign-in gate rather than pre-empted here; the table is followed verbatim.
@@ -347,6 +439,27 @@ export function resolveBuyAction(row: BuyActionRow, buyer: BuyActionBuyer): BuyA
 
   const scheduled = needsScheduling(shapeOf(row));
   const artifactOrAsync = isArtifactDelivery(shapeOf(row)) || isProviderDeclared(row);
+  const stay = isStay({ productShape: row.productShape, pricingUnit: row.pricingUnit });
+
+  // 10b · CUSTOM QUOTE — the seller's own statement that the price is quoted per request
+  //       (ledger `2026-09-25-provider-action-buttons`). It lands on `booking_request` — the
+  //       store the quote rail (`service_quotes`, D-30) admits — whether or not a "from" price is
+  //       also published: a quote listing is never checked out at a listed figure (§14). Checked
+  //       AFTER row 1 (a hidden quote listing is still hidden) and BEFORE row 11, whose reasons
+  //       are missing facts rather than the seller's choice, so no refusal is attached.
+  if (row.priceType === "custom_quote") {
+    return {
+      primary: { kind: "request_quote", label: "Request a quote" },
+      secondary: { kind: "add_to_plan", label: "Add to plan" },
+      ask: [...planAsks, "party"],
+      landing: {
+        store: "booking_request",
+        timed: scheduled,
+        placeAnchored: isPlaceAnchored(shapeOf(row)),
+        forksFinal: false,
+      },
+    };
+  }
 
   // 11 · `request` mode, or `instant` with no published availability, or `instant` with no price
   //      to charge. A `pending` booking on the plan's row — NEVER a charge (§14: the resolver
@@ -381,7 +494,8 @@ export function resolveBuyAction(row: BuyActionRow, buyer: BuyActionBuyer): BuyA
     return {
       primary: { kind: "book", label: "Book" },
       secondary: { kind: "add_to_plan", label: "Add to plan" },
-      ask: [...planAsks, "slot", "party"],
+      // A STAY picks a check-in -> check-out range, never a time slot.
+      ask: [...planAsks, stay ? "dates" : "slot", "party"],
       landing: {
         store: "checkout",
         timed: true,

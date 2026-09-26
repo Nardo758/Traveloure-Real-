@@ -65,7 +65,7 @@ import {
 import { db } from "../db";
 import { storage } from "../storage";
 import { quoteExpiresAt, resolveQuoteValidityDays } from "../config/quote-validity.config";
-import { buildListingBuyAction } from "./buy-action-payload";
+import { buildListingBuyAction, listingBuyFacts } from "./buy-action-payload";
 import { resolveServiceOwnerShareRate, serviceCategorySlugToFeeCategory } from "./commission";
 import { pickOwnerShareRate, resolveDirectProviderRate } from "./direct-charge-rate.service";
 import { resolveDepositPlan } from "./deposit.service";
@@ -422,6 +422,11 @@ export async function requestQuote(input: {
       productShape: (service as { productShape?: string | null }).productShape ?? null,
       price: service.price ?? null,
       isLive: true,
+      // Ledger `2026-09-25-provider-action-buttons`: a `custom_quote` listing now resolves to
+      // `request_quote` on `booking_request` even when it also shows a price, so this rail must
+      // pass the same facts every other caller does or it would refuse the very listings the
+      // button now sends here.
+      ...listingBuyFacts(service as any),
     },
     { principal: "member", plans: "none" },
   );

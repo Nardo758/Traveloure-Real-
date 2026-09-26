@@ -37,7 +37,7 @@ import { storage, ExpertApplicationExistsError, type BookingStatusNotification }
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
-import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
+import { buildListingBuyActions, listingBuyFacts, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
 import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
 // D-11 (ledger 2026-09-15-d11-no-item-booking-exception): the named no-item classes, the ONE
 // composer of their mark, and the refusal the item-referenceless birth rail answers with.
@@ -3094,6 +3094,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // True by construction: `getAllProviderServices` selects `status='active'`, `approved` was
         // filtered above, and `filterOutAwayOwners` has already dropped an away owner's rows.
         isLive: true,
+        ...listingBuyFacts(s as any),
       })),
       buyer,
     );
