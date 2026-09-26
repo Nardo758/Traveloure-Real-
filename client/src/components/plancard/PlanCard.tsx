@@ -740,7 +740,7 @@ function PlanCardSummary({
 
 // ── Main PlanCard component ────────────────────────────────────────────────
 
-export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay, proposal, suggestionsHome = "card", onShare }: PlanCardProps) {
+export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay, proposal, suggestionsHome = "card", onShare, routingReadOnly = false }: PlanCardProps) {
   // Mobile-lens audit #1: seed from the page's already-computed "today" index (when given)
   // so a mid-flight trip opens on today's day, not always Day 1 — the temporal engine
   // (Up Next / now-line / Live today) is already correct once the right day is showing.
@@ -1216,6 +1216,8 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                     timezone={planTimezone}
                     isOwner={isOwner}
                     isExpertViewer={isExpertViewer}
+                    routingReadOnly={routingReadOnly}
+                    expertAssigned={plancardData?.expertAssigned}
                   />
                 )}
 

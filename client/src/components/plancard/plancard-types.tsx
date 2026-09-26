@@ -493,6 +493,13 @@ export interface OptimizationDelta {
 
 export interface PlanCardData {
   tripRole?: PlanCardRole;
+  /**
+   * Ledger `2026-09-26-send-to-expert-needs-expert` (audit G2): an advisor in a §12 WRITE status
+   * (accepted/assigned) is on this plan — the SAME predicate the routing rail refuses "Send to
+   * expert" on. `false` ⇒ no "Send to expert" and no "with your expert" label. Absent on an older
+   * response ⇒ treated as not assigned (the server refuses the edge either way).
+   */
+  expertAssigned?: boolean;
   days: PlanCardDay[];
   changeLog: PlanCardChange[];
   metrics: PlanCardMetrics;
@@ -671,6 +678,13 @@ export interface PlanCardProps {
    * mobile bottom bar so the card has ONE share path when the page owns one.
    */
   onShare?: () => void;
+  /**
+   * The TRIP CARD is a read-out, not a planning surface (Locked Decision 42 D8; ledger
+   * `2026-09-26-card-routing-read-only`; audit G1). When true, no routing action renders on any
+   * item row — the badges still do. Routing a plan's items happens on the slip; the server refuses
+   * the planning transitions on a finalized plan regardless of what any client draws.
+   */
+  routingReadOnly?: boolean;
 }
 
 export interface PlanCardScore {

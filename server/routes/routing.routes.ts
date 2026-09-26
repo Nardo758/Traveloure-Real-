@@ -75,7 +75,7 @@ import { itineraryItems, notifications, tripCollaborators, trips, ROUTING_STATUS
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
 import { verifyTripOwnership } from "../utils/trip-ownership";
-import { isTripAdvisorWithWriteAccess } from "../utils/trip-advisor";
+import { isTripAdvisorWithWriteAccess, tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
 import { syncItemProjection } from "../services/cart-projection.service";
 import { logItemTransition } from "../services/item-transition-log.service";
 import { finalizeTrip, TripNotFoundError } from "../services/trip-finalize.service";
@@ -193,6 +193,52 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
     if (from === to) {
       const projection = await safeSync(itemId);
       return res.json({ itemId, tripId, from, to, changed: false, actor, projection });
+    }
+
+    // ── A FINALIZED PLAN IS NOT RE-PLANNED THROUGH THIS RAIL (ledger
+    // `2026-09-26-card-routing-read-only`; Locked Decision 42 D8; audit G1, VERIFIED: the Trip
+    // Card's "Send to expert" returned 200 on a finalized plan). Refused whatever the client draws:
+    // sending an item to an expert, and pulling one back into planning, are PLANNING changes and a
+    // finalized plan is Reopened on the slip first. Two edges stay open, by name:
+    //   · owner → ready_for_checkout — BOOKING a finalized plan is what Finalize is for: the
+    //     Finalize chooser's "Book it myself" lane (Locked Decision 42 D2, R-F: finalize is "a
+    //     rendering flip, not a money event") and LD 52's "Approve & book" both stage items here
+    //     after the flip. Whether the lock should also cover this edge is recorded as an open
+    //     question for the decision-maker, not decided in this lane.
+    //   · expert with_expert → in_planning — returning routed work, so an item routed before the
+    //     plan was finalized is never stranded with the expert.
+    const finalizedOpenEdge =
+      (actor === "owner" && to === "ready_for_checkout") ||
+      (actor === "expert" && from === "with_expert" && to === "in_planning");
+    if (!finalizedOpenEdge) {
+      const [tripRow] = await db
+        .select({ finalizedAt: trips.finalizedAt })
+        .from(trips)
+        .where(eq(trips.id, tripId))
+        .limit(1);
+      if (tripRow?.finalizedAt) {
+        return res.status(409).json({
+          code: "plan_finalized",
+          message: "This plan is finalized. Reopen it on the slip to change how its items are routed.",
+          from,
+          to,
+        });
+      }
+    }
+
+    // ── "SEND TO EXPERT" NEEDS AN EXPERT (ledger `2026-09-26-send-to-expert-needs-expert`; audit
+    // G2, VERIFIED: a plan with no advisor accepted the transition and the item then read "with
+    // your expert" while nobody would ever see it). An advisor in a §12 WRITE status (accepted /
+    // assigned) must be on the plan. Without one the traveler gets an expert first — the rail's
+    // "Hand off to a local expert", which runs the existing lead → admin-confirm path; this rail
+    // creates no lead of its own.
+    if (to === "with_expert" && !(await tripHasWriteAccessAdvisor(tripId))) {
+      return res.status(409).json({
+        code: "no_expert_assigned",
+        message: "No expert is assigned to this plan yet. Hand it off to a local expert first.",
+        from,
+        to,
+      });
     }
 
     // ── Legal-edge validation (contract §1 state machine, as drawn) ────────────────────

@@ -183,6 +183,13 @@ export interface SlipData extends PlanCardData {
    */
   aiSketch?: boolean;
   /**
+   * Ledger `2026-09-26-send-to-expert-needs-expert` (audit G2): an advisor in a §12 WRITE status
+   * (accepted/assigned) is on this plan — the SAME predicate the routing rail refuses "Send to
+   * expert" on. `false` ⇒ no "Send to expert" and no "with your expert" label. Absent on an older
+   * response ⇒ treated as not assigned (the server refuses the edge either way).
+   */
+  expertAssigned?: boolean;
+  /**
    * S6 (ledger `2026-09-06-slip-small-additions`) — the plan's ORDERED STOPS, migration 281 /
    * Locked Decision 34, exactly as the plancard route already ships them. Nothing new is requested
    * for this lane: the key was already on the wire with no reader on this surface.
@@ -584,7 +591,7 @@ function ExpertNoteBlock({ note, expertName }: { note: string; expertName: strin
 
 // ── Item + logistics rows ──────────────────────────────────────────────────────────────
 
-function secondaryLine(a: PlanCardActivity, expertName: string | null): string | null {
+function secondaryLine(a: PlanCardActivity, expertName: string | null, expertAssigned: boolean): string | null {
   if (isPurchasedRow(a)) {
     // "booked" + confirmation ref ONLY when a real ref exists (item's own confirmationNumber,
     // else the real booking row's short id) — no ref → just "booked", never a placeholder.
@@ -592,6 +599,8 @@ function secondaryLine(a: PlanCardActivity, expertName: string | null): string |
     return ref ? `booked · #${ref}` : "booked";
   }
   if (a.routingStatus === "with_expert") {
+    // Nobody is assigned: never "with your expert" (ledger `2026-09-26-send-to-expert-needs-expert`).
+    if (!expertAssigned) return "Not with an expert — none is assigned to this plan";
     // Render a name ONLY when the DTO actually carries one — never invented.
     return expertName ? `With ${expertName}` : "With your expert";
   }
@@ -609,6 +618,7 @@ function SlipItemRow({
   canEditItems,
   isExpertViewer,
   hasAdvisor,
+  expertAssigned,
   expertName,
   hasOptimized,
   highlighted,
@@ -629,6 +639,8 @@ function SlipItemRow({
    * query would be N requests for one fact about the plan.
    */
   hasAdvisor: boolean;
+  /** An advisor in a §12 WRITE status is on the plan (`SlipData.expertAssigned`). */
+  expertAssigned: boolean;
   expertName: string | null;
   hasOptimized: boolean;
   highlighted: boolean;
@@ -642,7 +654,7 @@ function SlipItemRow({
 }) {
   const a = activity;
   const purchased = isPurchasedRow(a);
-  const secondary = secondaryLine(a, expertName);
+  const secondary = secondaryLine(a, expertName, expertAssigned);
   // D16 — OWNER ONLY, and the money rules of the ratified `ItemRow` artboard: a paid row carries no
   // tools at all, a booked row keeps reorder and edit and loses ✕. Decided by the ONE shared
   // predicate the DELETE rail refuses on (`@shared/itinerary-item-money`), never a second copy.
@@ -725,6 +737,7 @@ function SlipItemRow({
                 routingStatus={a.routingStatus}
                 hasBooking={!!a.booking}
                 actor={isOwner ? "owner" : "expert"}
+                expertAssigned={expertAssigned}
               />
             </div>
           )}
@@ -758,7 +771,7 @@ function SlipItemRow({
             link columns on every render and stored nowhere, so it cannot drift from what checkout
             charges; unlike the other two it is total, so every item wears exactly one. */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <RoutingBadge activity={a} showPlanning />
+          <RoutingBadge activity={a} showPlanning expertAssigned={expertAssigned} />
           <ItemKindBadge activity={a} />
           <OriginBadge activity={a} />
         </div>
@@ -1879,6 +1892,7 @@ export function SlipView({
                       canEditItems={canEditItems}
                       isExpertViewer={isExpertViewer}
                       hasAdvisor={hasAdvisor}
+                      expertAssigned={data.expertAssigned === true}
                       expertName={expertName}
                       hasOptimized={hasOptimized}
                       highlighted={highlighted === a.id}

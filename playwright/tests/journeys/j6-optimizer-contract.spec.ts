@@ -70,6 +70,8 @@ import {
   confirmPaymentIntentTestMode,
   hasStripeTestKey,
   closePool,
+  assertDisposableDb,
+  pool,
 } from "./_journey-helpers";
 
 test.afterAll(async () => {
@@ -209,6 +211,20 @@ test.describe("J6 — Optimizer contract (Lane 5b), full TEST-mode journey", () 
     }
 
     const expertItem = await createItem(owner, tripId, "J6 Expert Delta", 4);
+    // "Send to expert" needs an ASSIGNED expert (ledger `2026-09-26-send-to-expert-needs-expert`).
+    // There is no lightweight app rail that mints an accepted advisor (every real writer is an admin
+    // lead-confirm or a booking-accept bridge), so the fixture is a disposable-DB-guarded row —
+    // the same pattern `lane1-phase1d-routing.spec.ts` uses.
+    {
+      const expertCtx = await pwRequest.newContext();
+      const { id: expertId } = await registerUser(expertCtx, "j6-expert", "J6", "Expert");
+      await assertDisposableDb(pool());
+      await pool().query(
+        `INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status)
+         VALUES (gen_random_uuid(), $1, $2, 'accepted')`,
+        [tripId, expertId],
+      );
+    }
     {
       const before = (await transitionLog(tripId)).length;
       const res = await routeItem(owner, tripId, expertItem, "with_expert");
