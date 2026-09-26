@@ -500,6 +500,9 @@ chooses config. Not scheduled.
 
 ## H. Trip Slip surface changes
 
+> **PAUSED (decision-maker, Sep 26, 2026).** Superseded in scope by `docs/planning/trip-slip-product-map.md`. Once that
+> map is approved, this section is rewritten as its first slice. Nothing below is to be built as written.
+
 **Design only.** This section says how the pipeline in §B reaches the traveler on `/plans/:tripId`. Every point cites
 the Trip Slip UI audit (`docs/planning/trip-slip-ui-audit.md`, code on `main` @ `da3174289`; screenshots under
 `img/trip-slip-audit/`). Audit ids are written as **audit F2**, **audit G3**, **audit E1**, and so on.
