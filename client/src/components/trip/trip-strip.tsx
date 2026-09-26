@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { MapPin, Calendar, CalendarDays, Users, ShoppingCart, Lock, Heart } from "lucide-react";
@@ -108,25 +107,12 @@ export function TripStrip() {
     staleTime: 30_000,
   });
 
-  // External (affiliate) items live only in sessionStorage, keyed by slug.
-  const external = useMemo(() => {
-    try {
-      const slug = ctx.experienceSlug;
-      if (!slug) return { count: 0, total: 0 };
-      const stored = sessionStorage.getItem(`externalCart_${slug}`);
-      const items: Array<{ price?: number; quantity?: number }> = stored ? JSON.parse(stored) : [];
-      return {
-        count: items.reduce((n, i) => n + (i.quantity || 1), 0),
-        total: items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 1), 0),
-      };
-    } catch {
-      return { count: 0, total: 0 };
-    }
-    // Re-derive whenever the context changes (slug switch or any update tick).
-  }, [ctx]);
-
-  const cartCount = (cart?.itemCount || 0) + external.count;
-  const cartTotal = parseFloat(cart?.total || "0") + external.total;
+  // RC-9 (ledger 2026-09-26-rc9-external-cart-lines): partner lines are server cart rows now, so
+  // the server's own count and total are the whole answer — there is no sessionStorage side-cart
+  // to add in. (A partner line carries no price, so it counts as an item and adds nothing to the
+  // total, which is the server's statement and not a $0 claim about the partner's price.)
+  const cartCount = cart?.itemCount || 0;
+  const cartTotal = parseFloat(cart?.total || "0");
 
   const hasContext = Object.keys(ctx).some(
     (k) => ["destination", "startDate", "endDate", "travelers", "experienceType", "tripId"].includes(k) && (ctx as any)[k],
