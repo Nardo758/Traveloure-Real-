@@ -186,7 +186,7 @@ interface Service {
   showPrice?: boolean;
   bookingMode?: "instant" | "request" | "hidden";
   // Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`): false = the mode
-  // above is the platform default, nobody chose it. Server-derived (`isBookingModeChosen`).
+  // above is the platform default (no account flag either), nobody chose it. Server-derived (`isBookingModeChosen`).
   bookingModeChosen?: boolean;
   // M-9 (gap #13, "Render it, or stop collecting it"): the map preview reads these answers back
   // in traveler words. All already on the wire (getProviderServices is an unfiltered db.select())
