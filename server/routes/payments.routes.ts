@@ -914,8 +914,12 @@ async function promoteAuthorizedCheckout(
   // SKIPPED ENTIRELY for the quote-born arm: that charge was never assembled from a cart, so
   // clearing one would silently discard lines the traveler is still shopping (see the
   // `quoteBorn` arg doc above).
+  //
+  // A PARTNER CONTENT LINE THE TRAVELER NEVER PUT ON A PLAN IS KEPT (ledger
+  // `2026-09-26-checkout-keeps-partner-lines`): checkout never charges it, so emptying the whole
+  // cart deleted a pick nothing had paid for and nothing else held. Every checked-out line still goes.
   if (opts.clearCart !== false) {
-    await cartProjection.clearCart(userId);
+    await cartProjection.clearCheckedOutCartLines(userId);
   }
 }
 

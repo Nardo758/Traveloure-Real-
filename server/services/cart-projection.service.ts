@@ -84,9 +84,17 @@ export async function removeFromCart(id: string): Promise<void> {
   return storage.removeFromCart(id);
 }
 
-/** DELETE /api/cart and the post-booking clear in /api/checkout. Passthrough. */
+/** DELETE /api/cart — the traveler's own "Clear cart". Empties everything. Passthrough. */
 export async function clearCart(userId: string, experienceSlug?: string): Promise<void> {
   return storage.clearCart(userId, experienceSlug);
+}
+
+/**
+ * The post-payment clear in /api/checkout (ledger `2026-09-26-checkout-keeps-partner-lines`): every
+ * checked-out line goes, an unlinked partner content line stays (`survivesCheckoutClear`). Passthrough.
+ */
+export async function clearCheckedOutCartLines(userId: string): Promise<void> {
+  return storage.clearCheckedOutCartLines(userId);
 }
 
 /**
