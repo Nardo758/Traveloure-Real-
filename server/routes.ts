@@ -37,7 +37,7 @@ import { storage, ExpertApplicationExistsError, type BookingStatusNotification }
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
-import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL, requestOnlyListingRefusals, requestOnlyRefusalBody, requestOnlyCartLines } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
+import { buildListingBuyActions, listingBuyFacts, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL, requestOnlyListingRefusals, requestOnlyRefusalBody, requestOnlyCartLines } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
 import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
 // D-11 (ledger 2026-09-15-d11-no-item-booking-exception): the named no-item classes, the ONE
 // composer of their mark, and the refusal the item-referenceless birth rail answers with.
@@ -109,6 +109,7 @@ import {
   bundleComponents,
   deliverableDownloads,
   resolveBookingMode,
+  isBookingModeChosen,
   convertCartToItinerarySchema,
 } from "@shared/schema";
 import {
@@ -232,6 +233,7 @@ import { insertAccessAuditLog } from "./services/admin-query.service";
 import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
+import bookingModePromptRoutes from "./routes/booking-mode-prompt.routes";
 import storefrontRoutes from "./routes/storefront.routes";
 import seoRoutes from "./routes/seo.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
@@ -298,6 +300,7 @@ import {
   getConciergeBookingCap,
   resolveConciergeBookingFee,
   resolveServiceOwnerShareRate,
+  serviceCategorySlugToFeeCategory,
   type CommissionRates,
 } from "./services/commission";
 // 1C direct-lane repoint (docs/DECISIONS.md ruling 69 disposition 6) — the cart quote must price a
@@ -324,6 +327,7 @@ import { listingPriceGate } from "./services/listing-price-gate";
 // two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
 import { admitExpertOfferingTypeKey } from "./services/expert-offering-key.service";
 import { admitDeclaredArtifactDeliverable } from "./services/declared-artifact.service";
+import { admitPriceBasis } from "./services/price-basis.service";
 // The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`) — see the
 // cart quote below; it decides only which lines are concierge lines, never a rate or an amount.
 import { resolveBookingConciergeItems } from "./services/booking-concierge.service";
@@ -352,17 +356,7 @@ import { locationQueryMatches } from "@shared/location-match";
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
 // "transportation-logistics"). booking_fee_configs.category uses broader domain
 // names ("transportation", "accommodation", …). This helper bridges the two.
-function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
-  if (!slug) return "default";
-  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
-  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
-  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
-  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
-  if (/flight|air|airline/.test(slug)) return "flights";
-  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
-  if (/insurance|safety|security/.test(slug)) return "insurance";
-  return "default";
-}
+// serviceCategorySlugToFeeCategory is imported from services/commission (one definition, §18 rule 1).
 
 // verifyTripOwnership now comes from ./utils/trip-ownership — the shared single source of
 // truth (it additionally handles raw-SQL snake_case rows and never throws). The local copy
@@ -1255,6 +1249,11 @@ export async function registerRoutes(
 
   // Provider supply tools — /api/provider/settings (Kyoto-supply activation); provider-role gated
   app.use(providerRoutes);
+
+  // Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`): the owner's
+  // live-listing mode status, the bulk decide for undecided listings, and the admin summary
+  // (its /api/admin path sits behind the blanket guard registered above).
+  app.use(bookingModePromptRoutes);
 
   // Listing Health (Catalog card meter, §13-deterministic checks). MUST mount before the inline
   // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as
@@ -3102,6 +3101,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // True by construction: `getAllProviderServices` selects `status='active'`, `approved` was
         // filtered above, and `filterOutAwayOwners` has already dropped an away owner's rows.
         isLive: true,
+        ...listingBuyFacts(s as any),
       })),
       buyer,
     );
@@ -3134,6 +3134,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       ...s,
       showPrice: (s as any).showPrice ?? true,
       bookingMode: resolveBookingMode((s as any).bookingMode, ownerInstantBooking),
+      // Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`): whether a
+      // seller CHOSE this mode or the platform default answered — the ONE predicate beside the
+      // resolver, fed the UNCOERCED account flag, so the Catalog row can say "not chosen yet".
+      bookingModeChosen: isBookingModeChosen((s as any).bookingMode, ownerForm ? ownerForm.instantBooking ?? null : undefined),
     }));
     res.json(withDisplayOptions);
   });
@@ -3940,6 +3944,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ? { declaredArtifactDeliverable: declaredArtifactAdmission.value }
         : {};
 
+      // Locked Decision 56 (migration 325, ledger `2026-09-25-price-basis`): is the price per
+      // person or for the whole booking? §19 — the generic body schema `.omit()`s the column, so
+      // this pick-based `.strict()` admission (ONE implementation, both rails) is the only way a
+      // request body reaches it. An invalid value is REFUSED, never coerced; an ABSENT key leaves
+      // the column untouched. A pricing setting ⇒ a SAFE edit under §23 (not an identity field).
+      const priceBasisAdmission = admitPriceBasis(bodyWithoutLocation);
+      if (priceBasisAdmission.refusal) {
+        return res.status(priceBasisAdmission.refusal.status).json(priceBasisAdmission.refusal.body);
+      }
+      const priceBasisPatch = priceBasisAdmission.present ? { priceBasis: priceBasisAdmission.value } : {};
+
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
       // listings (only enforced on this publish write).
@@ -4115,7 +4130,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cityPatch = await deriveCityPatch((input as any).neighborhood, {
         neighborhoodPresent: (input as any).neighborhood !== undefined,
       });
-      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, ...declaredArtifactPatch, userId });
+      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, ...declaredArtifactPatch, ...priceBasisPatch, userId });
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -4300,6 +4315,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const declaredArtifactPatch = declaredArtifactAdmission.present
         ? { declaredArtifactDeliverable: declaredArtifactAdmission.value }
         : {};
+
+      // Locked Decision 56 (migration 325, ledger `2026-09-25-price-basis`): is the price per
+      // person or for the whole booking? §19 — the generic body schema `.omit()`s the column, so
+      // this pick-based `.strict()` admission (ONE implementation, both rails) is the only way a
+      // request body reaches it. An invalid value is REFUSED, never coerced; an ABSENT key leaves
+      // the column untouched. A pricing setting ⇒ a SAFE edit under §23 (not an identity field).
+      const priceBasisAdmission = admitPriceBasis(bodyWithoutLocation);
+      if (priceBasisAdmission.refusal) {
+        return res.status(priceBasisAdmission.refusal.status).json(priceBasisAdmission.refusal.body);
+      }
+      const priceBasisPatch = priceBasisAdmission.present ? { priceBasis: priceBasisAdmission.value } : {};
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -4502,7 +4528,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Migration 292: the offering key joins the patch here, BEFORE the §23 edit split below —
       // it is an IDENTITY field (`IDENTITY_EDIT_FIELDS`, "Category and offering"), so on an
       // APPROVED listing it is staged for review rather than applied to the live row.
-      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch };
+      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch, ...priceBasisPatch };
 
       // ── Ruling 112 Q8 (CLAUDE.md §23) — the EDIT SPLIT, decided ONLY here ─────────────────
       // An APPROVED listing is never taken down for an edit. Identity-changing fields are
@@ -7192,9 +7218,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ownerIsProvider: isProviderRole(
           (await storage.getUser(service.userId ?? ""))?.role,
         ),
-        feeCategory: service.categoryId
-          ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
-          : null,
+        // Mapped to its fee category the way /api/checkout maps a cart line — a raw slug names no
+        // band, throws inside the resolver and leaves platform_fee at 0 (ledger
+        // `2026-09-25-quote-platform-fee`).
+        feeCategory: serviceCategorySlugToFeeCategory(
+          service.categoryId
+            ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
+            : null,
+        ),
       });
 
       // createServiceBookingAtomic wraps the insert + bookings_count increment in a single

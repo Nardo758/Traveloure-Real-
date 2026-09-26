@@ -38,7 +38,7 @@
  * `vendor_availability_slots`. An empty id set runs neither.
  */
 import type { Request } from "express";
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { db } from "../db";
 import { getUserId } from "../utils/auth";
@@ -52,10 +52,12 @@ import {
 } from "@shared/buy-action";
 import {
   resolveBookingMode,
+  serviceCategories,
   serviceProviderForms,
   trips,
   vendorAvailabilitySlots,
 } from "@shared/schema";
+import { resolveDepositPlan } from "./deposit.service";
 
 /** The columns a listing must carry for its buy action to be resolvable. */
 export interface ListingBuyRow {
@@ -73,6 +75,78 @@ export interface ListingBuyRow {
    * second check.
    */
   isLive: boolean;
+  // ── Ledger `2026-09-25-provider-action-buttons`: the facts the resolver needs to tell a quote,
+  //    a stay, a ride, a Q&A Session and a deposit listing apart. Every caller spreads them with
+  //    `listingBuyFacts(row)` so no rail hand-picks a different subset (§18 rule 1). ──
+  priceType?: string | null;
+  pricingUnit?: string | null;
+  /** `provider_services.category_id` — resolved to its `category_key` here, one batched query. */
+  categoryId?: string | null;
+  expertOfferingTypeKey?: string | null;
+  depositEnabled?: boolean | null;
+  depositType?: string | null;
+  depositPercentage?: number | null;
+  depositFlatAmount?: string | number | null;
+}
+
+/** The subset of a `provider_services` row `listingBuyFacts` reads. */
+export interface ListingBuyFactsSource {
+  priceType?: string | null;
+  pricingUnit?: string | null;
+  categoryId?: string | null;
+  expertOfferingTypeKey?: string | null;
+  depositEnabled?: boolean | null;
+  depositType?: string | null;
+  depositPercentage?: number | null;
+  depositFlatAmount?: string | number | null;
+}
+
+/**
+ * The shape-classifying facts off a listing row, in ONE place, so every `buildListingBuyActions`
+ * caller threads the same set (ledger `2026-09-25-provider-action-buttons`). An absent column is
+ * passed as `null`, never defaulted (§13).
+ */
+export function listingBuyFacts(row: ListingBuyFactsSource): Pick<
+  ListingBuyRow,
+  | "priceType"
+  | "pricingUnit"
+  | "categoryId"
+  | "expertOfferingTypeKey"
+  | "depositEnabled"
+  | "depositType"
+  | "depositPercentage"
+  | "depositFlatAmount"
+> {
+  return {
+    priceType: row.priceType ?? null,
+    pricingUnit: row.pricingUnit ?? null,
+    categoryId: row.categoryId ?? null,
+    expertOfferingTypeKey: row.expertOfferingTypeKey ?? null,
+    depositEnabled: row.depositEnabled ?? null,
+    depositType: row.depositType ?? null,
+    depositPercentage: row.depositPercentage ?? null,
+    depositFlatAmount: row.depositFlatAmount ?? null,
+  };
+}
+
+/**
+ * Whether the listing TAKES a deposit at checkout — a boolean only, derived through the ONE
+ * deposit derivation `resolveDepositPlan` (§18 rule 1) over the listing's published price. The
+ * split itself is re-derived at checkout from the real line total; nothing here is an amount (§14).
+ */
+function listingTakesDeposit(row: ListingBuyRow): boolean {
+  if (!row.depositEnabled || !hasPublishedPrice(row.price)) return false;
+  return (
+    resolveDepositPlan(
+      {
+        depositEnabled: row.depositEnabled,
+        depositType: row.depositType,
+        depositPercentage: row.depositPercentage,
+        depositFlatAmount: row.depositFlatAmount,
+      },
+      Number(row.price),
+    ) !== null
+  );
 }
 
 /**
@@ -190,6 +264,19 @@ export async function buildListingBuyActions(
     );
   for (const s of slotRows) if (s.serviceId) published.add(s.serviceId);
 
+  // ── Category keys, one query for every category in the batch (a ride is a category fact). ──
+  const categoryIds = Array.from(
+    new Set(rows.map((r) => r.categoryId).filter((id): id is string => !!id)),
+  );
+  const categoryKeyById = new Map<string, string | null>();
+  if (categoryIds.length > 0) {
+    const cats = await db
+      .select({ id: serviceCategories.id, categoryKey: serviceCategories.categoryKey })
+      .from(serviceCategories)
+      .where(inArray(serviceCategories.id, categoryIds));
+    for (const c of cats) categoryKeyById.set(c.id, c.categoryKey ?? null);
+  }
+
   for (const row of rows) {
     const ownerInstant = row.ownerUserId ? instantByOwner.get(row.ownerUserId) : undefined;
     // The stored value wins outright; an UNSET mode is resolved from the account flag by
@@ -212,10 +299,58 @@ export async function buildListingBuyActions(
           hasPrice: hasPublishedPrice(row.price),
           hasPublishedAvailability: published.has(row.id),
           isLive: row.isLive,
+          priceType: row.priceType ?? null,
+          pricingUnit: row.pricingUnit ?? null,
+          categoryKey: row.categoryId ? (categoryKeyById.get(row.categoryId) ?? null) : null,
+          offeringTypeKey: row.expertOfferingTypeKey ?? null,
+          takesDeposit: listingTakesDeposit(row),
         },
         buyer,
       ),
     );
+  }
+  return out;
+}
+
+export interface NextAvailableSlot {
+  date: string;
+  startTime: string | null;
+}
+
+/**
+ * The earliest FUTURE, capacity-remaining `vendor_availability_slots` row per listing — for the
+ * storefront card's "Next available: …" line (ledger `2026-09-25-storefront-booking-actions`).
+ *
+ * BATCHED BY CONSTRUCTION, one `DISTINCT ON (service_id)` query for the whole caller-supplied set
+ * — the same shape as the published-calendar query above, never one query per row. "Remaining
+ * capacity" is `booked_count < capacity` (treating a NULL capacity as the schema's own default of
+ * 1, mirroring `demand-rollup.service.ts`'s bookable predicate — §18 rule 1, not a second reading
+ * of the column) AND `status <> 'cancelled'`, so a fully-booked or cancelled slot is never offered
+ * as "next available".
+ *
+ * §13: a listing with no such row maps to `null` — never a guessed date. This function does not
+ * gate on approval/active; every caller already applies the F2 read-gate to the ids it passes in.
+ */
+export async function resolveNextAvailableSlots(
+  serviceIds: readonly string[],
+): Promise<Map<string, NextAvailableSlot | null>> {
+  const out = new Map<string, NextAvailableSlot | null>();
+  const ids = Array.from(new Set(serviceIds));
+  for (const id of ids) out.set(id, null);
+  if (ids.length === 0) return out;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = await db.execute(sql`
+    SELECT DISTINCT ON (service_id) service_id, date, start_time
+    FROM vendor_availability_slots
+    WHERE service_id IN (${sql.join(ids, sql`, `)})
+      AND date >= ${today}
+      AND status <> 'cancelled'
+      AND COALESCE(booked_count, 0) < COALESCE(capacity, 1)
+    ORDER BY service_id, date ASC, start_time ASC NULLS FIRST
+  `);
+  for (const r of (rows.rows ?? []) as any[]) {
+    out.set(r.service_id, { date: String(r.date).slice(0, 10), startTime: r.start_time ?? null });
   }
   return out;
 }

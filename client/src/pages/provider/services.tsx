@@ -185,6 +185,9 @@ interface Service {
   // concrete value (never null) with the SAME derivation the storefront uses; showPrice defaults true.
   showPrice?: boolean;
   bookingMode?: "instant" | "request" | "hidden";
+  // Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`): false = the mode
+  // above is the platform default, nobody chose it. Server-derived (`isBookingModeChosen`).
+  bookingModeChosen?: boolean;
   // M-9 (gap #13, "Render it, or stop collecting it"): the map preview reads these answers back
   // in traveler words. All already on the wire (getProviderServices is an unfiltered db.select())
   // — this only names them. Every one is optional: NULL means the provider never answered, and
@@ -875,6 +878,15 @@ function CardShowsControl({
             </button>
           ))}
         </div>
+        {service.bookingModeChosen === false && service.priceType !== "custom_quote" && (
+          <span
+            className="text-[11px] text-[#B45309]"
+            title="Nobody chose this yet — the platform default applies. Pick Instant or Request."
+            data-testid={`text-cardshows-booking-unchosen-${service.id}`}
+          >
+            Not chosen yet
+          </span>
+        )}
       </div>
     </div>
   );
@@ -1529,6 +1541,8 @@ export default function ProviderServices() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      // A chosen mode may clear the console's "Choose how travelers book" banner.
+      queryClient.invalidateQueries({ queryKey: ["/api/me/listings/booking-mode-status"] });
     },
     onError: (error: Error, vars) => {
       toastRefusal("display", error, services?.find((s) => s.id === vars.id));

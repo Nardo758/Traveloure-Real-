@@ -132,12 +132,15 @@ function api(path: string, cookie: string | undefined, method = "GET", body?: un
   });
 }
 
+// Locked Decision 56 (ledger `2026-09-25-price-basis`): the fixtures are PER-PERSON place services,
+// which is the seat shape this file was written against — G7's multi-unit round trip needs a
+// listing whose unit count is a real answer. A never-stated basis now reads per booking (one unit).
 async function makeService(id: string, price: string | null, name: string): Promise<void> {
   await db.execute(sql`
     INSERT INTO provider_services (id, user_id, service_name, short_description, description, price,
-                                   status, approval_status, delivery_method, location, booking_mode)
+                                   status, approval_status, delivery_method, location, price_basis, booking_mode)
     VALUES (${id}, ${ids.provider}, ${name}, 'fixture blurb', 'fixture', ${price},
-            'active', 'approved', 'in_person', 'Kyoto', 'instant')
+            'active', 'approved', 'in_person', 'Kyoto', 'per_person', 'instant')
   `);
   // ^ `instant` declared (ledger `2026-09-25-checkout-request-mode`): an unset mode on a form-less
   //   owner resolves `request`, and the LD 39 projection never holds a request-mode line.

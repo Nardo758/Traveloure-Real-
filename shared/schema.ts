@@ -6,6 +6,7 @@ import { relations, sql } from "drizzle-orm";
 import { users } from "./models/auth";
 import { withoutServerAuthoredBookingDetails } from "./booking-details-admission";
 import { PLAN_PROPOSAL_STATUSES } from "./plan-proposals";
+import { PRICE_BASIS_VALUES } from "./price-basis";
 // LAZY, and deliberately so — the same circularity `shared/models/chat.ts` documents from the
 // other side: this file re-exports that one (below), and that one imports `trips` from here.
 // Drizzle's `.references()` takes a CALLBACK it evaluates when the relation is built, never at
@@ -1133,6 +1134,30 @@ export function resolveBookingModeWithProvenance(
   };
 }
 
+/**
+ * HAS A SELLER CHOSEN HOW THIS LISTING IS BOOKED? (ledger `2026-09-25-seller-booking-mode-prompt`)
+ *
+ * The seller booking-mode prompt asks every seller whose live listing resolves its mode by
+ * default to pick Instant or Request, BEFORE checkout starts refusing request-mode lines (PR
+ * #1101, held until enough listings are instant). Delegates to `resolveBookingModeWithProvenance`
+ * and never re-decides the mode (§18 rule 1). Two provenances count as a choice:
+ *   • `listing_declared` — the seller set this listing's own `booking_mode` (incl. `hidden`).
+ *   • `account_declared` with the flag TRUE — the owner's account says instant booking.
+ * An account flag of FALSE is NOT counted as a choice, deliberately (§13): the column
+ * (`service_provider_forms.instant_booking`) DEFAULTS false and no seller surface writes it today —
+ * the one settings switch wrote the `provider_settings` twin nobody reads (provider/settings.tsx) —
+ * so a stored false is indistinguishable from "never asked". Provenance itself is unchanged: this
+ * answers the prompt's narrower question, not "where did the mode come from".
+ */
+export function isBookingModeChosen(
+  stored: string | null | undefined,
+  accountInstantBooking: boolean | null | undefined,
+): boolean {
+  const { provenance } = resolveBookingModeWithProvenance(stored, accountInstantBooking);
+  if (provenance === "listing_declared") return true;
+  return provenance === "account_declared" && accountInstantBooking === true;
+}
+
 export const providerServices = pgTable("provider_services", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -1326,6 +1351,15 @@ export const providerServices = pgTable("provider_services", {
   // can't be deleted while rooms exist — the bundle-components posture). Both additive
   // nullable, no DB CHECK.
   pricingUnit: varchar("pricing_unit", { length: 20 }),
+  // Locked Decision 56 (ledger `2026-09-25-price-basis`, migration 325): is a place-anchored
+  // listing's price PER PERSON (`per_person` — the cart's seat rule, units follow the party) or for
+  // the WHOLE BOOKING (`per_booking`)? Additive nullable, NO DEFAULT, NO DB CHECK (publish-trap
+  // posture), NO BACKFILL; the value set is app-enforced ONCE in `shared/price-basis.ts`.
+  // **NULL = never stated ⇒ read as PER BOOKING** (`effectivePriceBasis`) — a fixed price is never
+  // multiplied by a head-count nobody said it scaled with (§13). NEVER ADMITTED BY THE GENERIC BODY
+  // (§19): `.omit()`'d from `insertProviderServiceSchema` below and re-admitted by the pick-based
+  // `providerServicePriceBasisSchema`. A PRICING setting ⇒ a SAFE edit under §23 (applies live).
+  priceBasis: varchar("price_basis", { length: 20 }),
   parentServiceId: varchar("parent_service_id").references((): AnyPgColumn => providerServices.id, { onDelete: "restrict" }),
 
   // S8 property builder (Gate G2, migration 211, docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger
@@ -2981,7 +3015,7 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // clamped, so this was a false-audit-trail write, not an approval bypass; the real admin
 // approve/reject writers below unconditionally overwrite all four the moment a real review
 // happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, declaredArtifactDeliverable: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true }).extend({
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, declaredArtifactDeliverable: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true, priceBasis: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // deliveryMethod vocabulary — UNLIKE the publish-trap fields below, a DB CHECK exists here
@@ -3455,6 +3489,17 @@ export const providerServiceExpertOfferingSchema = createInsertSchema(providerSe
  */
 export const providerServiceDeclaredArtifactSchema = z
   .object({ declaredArtifactDeliverable: z.string().trim().min(1).max(200).nullable() })
+  .strict();
+
+/**
+ * Locked Decision 56 (§19): the ONE re-admission of `provider_services.price_basis`. The generic
+ * body schema `.omit()`s the column, so this `.strict()` pick is the only way a request body reaches
+ * it. The value set is `PRICE_BASIS_VALUES` (`shared/price-basis.ts`) — stated there once — and an
+ * explicit `null` returns the listing to "never stated" (read as per booking); an ABSENT key leaves
+ * the column untouched.
+ */
+export const providerServicePriceBasisSchema = z
+  .object({ priceBasis: z.enum(PRICE_BASIS_VALUES).nullable() })
   .strict();
 export type BundleComponent = typeof bundleComponents.$inferSelect;
 export type FAQ = typeof faqs.$inferSelect;

@@ -833,3 +833,81 @@ afterwards) is NOT PROVEN until a run against a real key or an overridable base 
 `client/src/components/EnhancedPlanningModal.tsx:416` does `window.location.href = "/api/login"`, which returned 404
 off-Replit (J1 R2). Every other guest gate opens the in-app `SignInModal`. Whether the route works on Replit was not
 verified.
+
+---
+
+## From the Supply → Demand e2e pass 2 (2026-09-25, `docs/audits/pass2/GAP_REGISTER_PASS2.md`, run `nu4fb2`)
+
+### FU-SD-1 — The server does not validate its Stripe key at boot
+
+A 401-stub `STRIPE_SECRET_KEY` (`sk_test_ci_stub…`) boots the server without complaint; the failure surfaces only at
+the first real Stripe call (`GET /v1/account` → 401), by which point every Connect/checkout/payout/Trip-Pass journey
+that reached that point has already run its non-Stripe setup for nothing. A boot-time `GET /v1/account` probe (warn
+or refuse to start, operator's choice) would turn a class of five-runs-in `HELD:stripe` skips into one clear startup
+log line. Not fixed here — this pass is observe-only (`$P2/BRIEF.md`).
+
+### FU-SD-2 — COORDS: a plan item must reference the listing's location at read time, never snapshot it onto the item
+
+Confirmed again this pass (`P2-D1-COORDS`, `GAP_REGISTER_PASS2.md`): a plan item added from a located
+`provider_services` row carries no `lat`/`lng`, so the slip map renders "No stops are located yet" even though every
+fixture listing has coordinates. **The fix must NOT copy the listing's coordinates onto the item at add-to-plan
+time** — the listing's location can change after the item is added (see Locked Decision 22's pattern for
+`service_route_points`, and the paused-listing propagation gap `P2-D7-4` in the same register, which shows the slip
+already going stale when a listing's *availability* changes after the fact). The correct shape is a read-time JOIN
+back to the listing's own `latitude`/`longitude` when rendering the slip map, falling back to "unlocated" only when
+the listing itself has none — never a booking-time snapshot, which belongs to a different decision (LD 22(c)'s
+"coordinates for a stop come only from an explicit user placement" pattern is the wrong model here; this is a
+provider-authored location, not a traveler placement).
+
+### FU-SD-3 — Resolver conflict `P2-RES-1`: two commission resolvers disagree for expert/provider quote-born bookings
+
+Static finding, money path, P1 candidate (`$P2/D5_RESOLVER.md`, `GAP_REGISTER_PASS2.md` §B). The authoritative
+`resolveProviderRate` (`server/services/fee-resolution.service.ts:178`) is never reached for an expert-owned
+listing; the legacy stamp (`resolveServiceOwnerShareRate`, `server/services/commission.ts:668-696`) is handed the
+**raw** category slug instead of the normalized fee category the cart checkout computes, throws internally, and is
+caught into a silent `null`. A quote-born booking on such a listing is therefore charged `platform_fee=0` end to
+end (quote accept → quote charge → completion mint), with no re-resolution at any stage. Behavioural leg not run
+this pass (no `custom_quote`-priced fixture existed, `P2-D6-1`) — needs no Stripe, only a fixture with
+`price_type='custom_quote'`, to prove or refute it against a live `service_bookings` row.
+
+### FU-SD-4 — A paused listing stays on the slip with no notice (D7)
+
+`P2-D7-4` (`GAP_REGISTER_PASS2.md`): after Provider A's listing is paused, the slip continues to show the item with
+no "no longer available" flag, so a traveler learns nothing until checkout. The slip renders from a copy of the
+item's facts made at add-to-plan time and never re-checks the live listing's `status`/`approval_status` at render.
+
+### FU-SD-5 — Born-submitted drafts are approvable mid-wizard
+
+`P2-S1-3` (`GAP_REGISTER_PASS2.md`, root cause RC2-B): migration 111's `provider_services.approval_status` DEFAULT
+`'submitted'` makes a Save-Draft snapshot a legitimate row in the admin queue the instant it exists, before Publish,
+before required category fields are filled. Reproduced live: an admin approved a provider's row while its own
+Publish button had never become enabled, and it went `active` carrying the pre-wizard snapshot (`location='Unknown'`,
+missing category fields). Nothing distinguishes "still actively editing" from "walked away, this is final" on the
+row the admin queue reads.
+
+### FU-SD-6 — A listing with no neighbourhood picked is invisible, and the wizard never says so
+
+`P2-S3-1` (`GAP_REGISTER_PASS2.md`, root cause RC2-D): `provider_services.location` defaults to the literal string
+`"Unknown"` when a provider's wizard never opens the neighbourhood picker, and `city` stays NULL — which fails every
+location-scoped surface (city page, location browse, paid optimizer) silently. Save/Submit gives no warning that the
+listing will be effectively invisible.
+
+### FU-SD-7 — No non-Stripe admin/ops path exists to mark identity or business verification
+
+Both the provider identity-verification gate (`service_provider_forms.identity_verification_status`/
+`business_verification_status`) and the expert identity-verification gate
+(`local_expert_forms.identity_verification_status`) flip ONLY via Stripe Identity/Connect webhooks
+(`server/utils/earner-verification.ts:37`; `ServiceForm.tsx:2082-2085`). There is no admin override for either — the
+only comparable control that exists is the separate category background-check flag on `/admin/providers`, which this
+pass used for a different gate. An operator with a live Stripe account still cannot unblock a stuck verification by
+hand; every environment without working Stripe webhooks (including this one) has to seed the columns directly to get
+past the wizard at all (`GAP_REGISTER_PASS2.md` §C). Ops note, not a code fix proposal — whether an admin override
+should exist at all is itself a decision for the decision-maker (it would create a second, human path to a state
+today reserved for Stripe's own verdict).
+
+### FU-SD-8 — Storefront booking buttons (being built)
+
+`P2-STORE-1` (`GAP_REGISTER_PASS2.md`): the expert storefront has no booking action — every card is a plain link to
+the service page. Proposed design documented in `$P2/LEAD_VERDICTS.md` ("Added by decision-maker request"). This is
+currently being built on branch `claude/storefront-booking-actions`; recorded here so it is not independently
+re-filed by a later pass before that branch lands.

@@ -141,6 +141,8 @@ interface Service {
   categoryKey?: string | null;
   price: string;
   priceType: string | null;
+  /** Locked Decision 56: `per_person` | `per_booking` | null (never stated — read as per booking). */
+  priceBasis?: string | null;
   priceBasedOn: string | null;
   pricingTiers: PricingTier[] | null;
   location: string;
@@ -465,8 +467,22 @@ export default function ServiceDetailPage() {
   // 2026-09-03-expert-templates-consumer-sunset. The seller's other offerings are still
   // reachable through the storefront return path below.
 
+  // A storefront card's "Book a session" carries the month of the EARLIEST slot it already knows
+  // about (ledger `2026-09-25-storefront-booking-actions`, v2 fix) — read once on mount so the
+  // calendar opens on that month rather than the current one (found in the v1 mockup: a card
+  // promising "Next available: Oct 2" landed on a September calendar reading "No availability
+  // published yet"). No new server read: the month rides the existing `?month=` param the link
+  // already builds from the storefront's own `nextAvailable.date`.
+  const monthParamRef = useRef<string | null>(
+    (() => {
+      const raw = new URLSearchParams(window.location.search).get("month");
+      return raw && /^\d{4}-\d{2}$/.test(raw) ? raw : null;
+    })(),
+  );
   // C2: read-only availability calendar, month-scoped.
-  const [availabilityMonth, setAvailabilityMonth] = useState(() => format(new Date(), "yyyy-MM"));
+  const [availabilityMonth, setAvailabilityMonth] = useState(
+    () => monthParamRef.current ?? format(new Date(), "yyyy-MM"),
+  );
   const { data: availability, isLoading: availabilityLoading } = useQuery<AvailabilityResponse>({
     queryKey: ["/api/services", id, "availability", availabilityMonth],
     queryFn: async () => {
@@ -478,6 +494,21 @@ export default function ServiceDetailPage() {
     },
     enabled: !!id,
   });
+  // §13: the linked month is only a HINT — a slot can vanish between the storefront's read and
+  // this page's. If the month the URL named turns out to hold nothing, fall back to today's
+  // month rather than stranding the traveler on a confirmed-empty calendar; a REAL empty month
+  // the traveler navigated to themselves is untouched (the ref is cleared after the one retry).
+  useEffect(() => {
+    if (!monthParamRef.current) return;
+    if (availabilityLoading || !availability) return;
+    if (availability.month !== monthParamRef.current) return;
+    const linkedMonthEmpty = availability.days.length === 0;
+    monthParamRef.current = null;
+    if (linkedMonthEmpty) {
+      const currentMonth = format(new Date(), "yyyy-MM");
+      if (currentMonth !== availabilityMonth) setAvailabilityMonth(currentMonth);
+    }
+  }, [availability, availabilityLoading, availabilityMonth]);
   const todayIso = format(new Date(), "yyyy-MM-dd");
   const upcomingAvailability = (availability?.days || [])
     .filter((d) => d.date >= todayIso)
@@ -894,6 +925,40 @@ export default function ServiceDetailPage() {
    * that mark is drawn from the server's own `roles_needed` list and chooses nothing: the row is
    * still un-selected until the traveler clicks it.
    */
+  // A storefront card's "Book a session" / "Request a session" / "Request a quote" button lands
+  // here with `#book` or `#quote` (ledger `2026-09-25-storefront-booking-actions`, item 4). This
+  // is scroll-and-focus ONLY — it renders none of the buy controls and decides none of them; it
+  // focuses whichever the resolver already rendered (`button-book-now` or
+  // `button-request-to-book`), and does nothing when neither exists (§13 — no control to focus is
+  // not an error to surface, the panel itself is still in view from the scroll). Declared ABOVE
+  // the loading/error early returns below (Rules of Hooks — a hook after a conditional return is
+  // called on some renders and not others), and guarded on `service` being loaded internally.
+  useEffect(() => {
+    if (!service) return;
+    const hash = window.location.hash;
+    // `#dates` (ledger `2026-09-25-provider-action-buttons`): a stay card's "Check dates" lands
+    // on the date-range picker — a ROOM's own check-in control, or a PROPERTY's room list, whose
+    // rooms each carry that picker. Scroll-and-focus only, like `#book` below.
+    if (hash === "#dates") {
+      const stay =
+        document.querySelector<HTMLElement>('[data-testid="card-room-stay"]') ??
+        document.querySelector<HTMLElement>('[data-testid="card-property-rooms"]') ??
+        document.getElementById("book");
+      if (!stay) return;
+      stay.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.querySelector<HTMLButtonElement>('[data-testid="button-room-checkin"]')?.focus();
+      return;
+    }
+    if (hash !== "#book" && hash !== "#quote") return;
+    const panel = document.getElementById("book");
+    if (!panel) return;
+    panel.scrollIntoView({ behavior: "smooth", block: "center" });
+    const target = document.querySelector<HTMLButtonElement>(
+      '[data-testid="button-book-now"], [data-testid="button-request-to-book"]',
+    );
+    target?.focus();
+  }, [service?.id]);
+
   if (serviceLoading) {
     return (
       <Layout>
@@ -961,8 +1026,10 @@ export default function ServiceDetailPage() {
   // returns null for them and they keep their own copy here; a null unit with no positive price
   // still ends at "contact the provider for pricing" — never a fabricated unit. The two NEW
   // cases (person, group) are gated on `priceNum > 0` for that reason.
-  const priceUnit = resolvePriceUnit({ priceType: service.priceType, pricingUnit: service.pricingUnit });
-  const priceTypeUnit = resolvePriceUnit({ priceType: service.priceType });
+  // Locked Decision 56: a listing whose `price_basis` is `per_person` reads "per person" through
+  // the SAME derivation; per booking (or never stated) adds nothing — the ordinary price reading.
+  const priceUnit = resolvePriceUnit({ priceType: service.priceType, pricingUnit: service.pricingUnit, priceBasis: service.priceBasis });
+  const priceTypeUnit = resolvePriceUnit({ priceType: service.priceType, priceBasis: service.priceBasis });
   const priceLabel = priceNum <= 0
     ? "Custom quote"
     : priceUnit
@@ -1795,8 +1862,14 @@ export default function ServiceDetailPage() {
 
             {/* Book Now panel — the continuity design's booking hierarchy: price, CTAs, the
                 Direct-Booking trust panel, the availability/slot picker, cancellation policy,
-                and the fee disclosure — all in one sticky sidebar column. */}
-            <div className="order-1 lg:order-2">
+                and the fee disclosure — all in one sticky sidebar column.
+                `id="book"` is the landing target for a storefront card's "Book a session" /
+                "Request a session" / "Request a quote" button (ledger
+                `2026-09-25-storefront-booking-actions`, item 4) — both `#book` and `#quote`
+                point here, since it is the one panel that holds whichever buy control the
+                resolver actually rendered; the scroll-and-focus effect below decides which
+                control to focus, never which one to render (that stays the resolver's). */}
+            <div className="order-1 lg:order-2" id="book">
               <DetailCard className="lg:sticky lg:top-4">
                 {/* F-2 trip handoff. The slip's CTA promised "for this trip"; say plainly what
                     that means HERE, at the booking CTAs, rather than letting the traveler find out

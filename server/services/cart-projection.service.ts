@@ -54,6 +54,8 @@ import { logger } from "../infrastructure/logger";
 // V-11's predicate, the ONE translation of `provider_services.price` into the `hasPrice` fact
 // `resolveBuyAction` decides on (ledger `2026-09-13-cart-priceless-gap`, s18 rule 1).
 import { hasPublishedPrice, requestOnlyListingRefusals } from "./buy-action-payload";
+// Locked Decision 56: the ONE reading of how many units a stored cart line holds (§18 rule 1).
+import { cartLineUnitCount } from "@shared/cart-quantity";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 1 — the funnel. Thin passthroughs, behavior-identical by construction.
@@ -565,6 +567,12 @@ type CartLineSubject =
         latitude: string | null;
         longitude: string | null;
         pricingUnit: string | null;
+        // D-14 / Locked Decision 56 archetype facts, read ONLY to count the line's units through
+        // `cartLineUnitCount` — never copied onto the item.
+        productShape: string | null;
+        deliveryMethod: string | null;
+        priceBasis: string | null;
+        priceType: string | null;
       };
     }
   | {
@@ -642,6 +650,10 @@ async function resolveCartLineSubject(
         latitude: providerServices.latitude,
         longitude: providerServices.longitude,
         pricingUnit: providerServices.pricingUnit,
+        productShape: providerServices.productShape,
+        deliveryMethod: providerServices.deliveryMethod,
+        priceBasis: providerServices.priceBasis,
+        priceType: providerServices.priceType,
         price: providerServices.price,
       })
       .from(providerServices)
@@ -700,7 +712,15 @@ function buildPlanItemValues(args: {
   // indistinguishable from an old one for no gain, since NULL ALREADY MEANS ONE UNIT and every
   // reader — `syncItemProjection` above included — resolves it that way. So the count is carried
   // only where it is a real, above-one answer, and the round trip is faithful either way.
-  const lineUnits = Number.isFinite(line.quantity as number) ? Math.floor(line.quantity as number) : null;
+  //
+  // Locked Decision 56: a SERVICE line's count is read through the ONE `cartLineUnitCount` the
+  // checkout charges by, so a per-booking place service admitted under the old seat rule (quantity
+  // = party size) is carried as the ONE unit it is charged for, never as a stale seat count.
+  const storedUnits = Number.isFinite(line.quantity as number) ? Math.floor(line.quantity as number) : null;
+  const lineUnits =
+    subject.kind === "service" && storedUnits !== null
+      ? cartLineUnitCount(subject.service, storedUnits)
+      : storedUnits;
   const carriedQuantity = lineUnits !== null && lineUnits > 1 ? { quantity: lineUnits } : {};
 
   const common = {

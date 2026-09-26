@@ -76,7 +76,7 @@ import { itemKindChipFor } from "@shared/item-kind";
 // D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): which count control this
 // line draws — units, seats, or none — is the SERVER'S OWN derivation, read here rather than
 // restated. A second copy of "does a stay have a quantity?" is the drift class §18 rule 1 names.
-import { archetypeAsks, cartCountLabel, cartUnitLabel } from "@shared/cart-quantity";
+import { archetypeAsks, cartCountLabel, cartLineUnitCount, cartUnitLabel } from "@shared/cart-quantity";
 import {
   REQUEST_ONLY_LINE_SENTENCE,
   isRequestOnlyReason,
@@ -136,6 +136,9 @@ interface CartItem {
     // read serves the listing row minus serviceFile/joinLink) — nothing new is published.
     productShape?: string | null;
     deliveryMethod?: string | null;
+    // Locked Decision 56 (migration 325): per person vs per booking. Rides the same listing row.
+    priceBasis?: string | null;
+    priceType?: string | null;
     // B1 (ruling 81): the listing's surcharge mode — non-'none' means this line prompts for a
     // pickup location so a travel surcharge can be applied honestly.
     surchargeMode?: string | null;
@@ -2277,6 +2280,13 @@ export default function CartPage() {
                             <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
                               {formatPrice(roomStay ? (roomTotal || 0) : parseFloat(item.service?.price || "0"))}
                             </p>
+                            {/* Locked Decision 56: a per-person place service says so; a per-booking
+                                price (or one never stated) is the ordinary reading and says nothing. */}
+                            {lineAsks.rule === "seats" && (
+                              <p className="text-xs text-muted-foreground" data-testid={`text-price-basis-${item.id}`}>
+                                per person
+                              </p>
+                            )}
                             {/* ── D-14 (ruling 2026-09-15): THE ARCHETYPE CHOOSES THE CONTROL ──────────
                                 Which question this line asks is the ONE server-side derivation, read
                                 here and never restated: a stay or a bundle is ONE unit whose GUESTS
@@ -3152,7 +3162,9 @@ export default function CartPage() {
                           // must not repeat the quantity-based lie for a room stay.
                           const roomStay = getRoomStay(item);
                           const rate = parseFloat(item.service?.price || "0");
-                          const lineTotal = roomStay ? rate * roomStay.nights : rate * item.quantity;
+                          // Locked Decision 56: the units the CHARGE multiplies by — the ONE shared reading
+                          // (`cartLineUnitCount`), so a per-booking line never displays a stale seat count.
+                          const lineTotal = roomStay ? rate * roomStay.nights : rate * cartLineUnitCount(item.service, item.quantity);
                           return (
                             <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
                               <div>
@@ -3165,7 +3177,7 @@ export default function CartPage() {
                                 <div className="text-sm text-muted-foreground">
                                   {roomStay
                                     ? `${format(parseISO(roomStay.checkIn), "MMM d")} → ${format(parseISO(roomStay.checkOut), "MMM d")} · ${roomStay.nights} night${roomStay.nights !== 1 ? "s" : ""}`
-                                    : `Qty: ${item.quantity}`}
+                                    : `Qty: ${cartLineUnitCount(item.service, item.quantity)}`}
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
