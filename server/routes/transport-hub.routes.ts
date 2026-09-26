@@ -13,7 +13,8 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { transportBookingOptions } from "@shared/schema";
 import { createTransportBookingCheckout } from "../services/stripe.service";
-import { populateBookingOptionsForVariant, populateBookingOptionsForLeg, getDestinationTransportOptions } from "../services/transport-booking-options.service";
+import { populateBookingOptionsForVariant, populateBookingOptionsForLeg, getDestinationTransportOptions, resolveDestinationTransportOptionLink } from "../services/transport-booking-options.service";
+import { z } from "zod";
 import { resolveViewerTransportBookings } from "../services/transport-viewer-booking.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { requireTestSeedEnabled } from "../middleware/test-only-endpoint";
@@ -502,6 +503,53 @@ router.get("/api/transport-options", async (req, res) => {
   } catch (error) {
     console.error("[transport-options] Error fetching destination transport options:", error);
     return res.status(500).json({ error: "Failed to fetch transport options" });
+  }
+});
+
+/**
+ * POST /api/transport-options/click — the TRACKED hop for a destination transfer's partner link
+ * (§16, ledger `2026-09-26-transfer-link-tracked`). The list above never ships a partner URL; this
+ * rail rebuilds the option server-side from the SAME builder, records an `affiliate_clicks` row, and
+ * only then returns the URL — the pattern `POST /api/transport-booking-options/:optionId/click`
+ * already uses for leg options. The body is a `.strict()` allowlist (§19) naming the option, never
+ * a URL; the actor is the session (§14). Unknown option or no partner link ⇒ one 404.
+ */
+const destinationTransportClickBody = z
+  .object({
+    optionId: z.string().min(1).max(200),
+    destination: z.string().min(1).max(200),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}/).optional(),
+    travelers: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+
+router.post("/api/transport-options/click", isAuthenticated, async (req, res) => {
+  const parsed = destinationTransportClickBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "invalid_request" });
+  const { optionId, destination, startDate, travelers } = parsed.data;
+  try {
+    const link = await resolveDestinationTransportOptionLink(destination, optionId, startDate, travelers ?? 1);
+    if (!link) return res.status(404).json({ error: "Transfer option not found" });
+    try {
+      await storage.createAffiliateClick({
+        partnerId: link.source,
+        userId: getUserId(req) || undefined,
+        referrer: req.get("referrer") || undefined,
+        userAgent: req.get("user-agent") || undefined,
+        ipAddress: (req.ip || "").split(":").pop(),
+        initiatedBy: "user",
+        agentType: null,
+        sessionId: null,
+        clickedAt: new Date(),
+      });
+    } catch (clickError) {
+      // A tracking failure never blocks the traveler's hop (§15b posture); it is logged.
+      console.error("[transport-options/click] affiliate click not recorded:", clickError);
+    }
+    return res.json({ tracked: true, redirectUrl: link.url });
+  } catch (error) {
+    console.error("[transport-options/click] error:", error);
+    return res.status(500).json({ error: "Failed to open transfer link" });
   }
 });
 
