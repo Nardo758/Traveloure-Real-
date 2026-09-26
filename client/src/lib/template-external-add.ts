@@ -16,7 +16,8 @@
  *     server-side from the cart row), so adding there would drop the partner identity. The cart
  *     line carries it, and the ONE projection (`materializeCartLinesAsItems`, LD 39) turns it into
  *     a plan item when the traveler resolves or converts the cart. No price is sent (§14): the
- *     server allowlists the display envelope to name/description/city/imageUrl.
+ *     server allowlists the display envelope to name/description/city/imageUrl, plus the pick's
+ *     own lat/lng pair when the partner result states one (display only — it draws the map).
  *
  *   transfer → the destination transfers list offers "Add" ONLY on a priced option, and the only
  *     priced options are PLATFORM `provider_services` rows (`platform-<serviceId>`, see
@@ -31,7 +32,11 @@
  *
  *   anything else → refused. A silent client-only copy is exactly what RC-9 removed.
  */
-import { isAdmissibleContentId, type CartContentType } from "@shared/cart-content-line";
+import {
+  isAdmissibleContentId,
+  normalizeCartContentCoordinates,
+  type CartContentType,
+} from "@shared/cart-content-line";
 
 export type TemplateExternalKind = "hotel" | "activity" | "event" | "transfer" | "place";
 
@@ -42,6 +47,13 @@ export interface TemplateExternalPick {
   /** Display detail line (duration, address, …). */
   details?: string;
   externalKind?: TemplateExternalKind;
+  /**
+   * The partner result's OWN coordinates, when it states them (ledger
+   * `2026-09-26-partner-picks-map-coords`): a hotel's `hotel.latitude/longitude`, a Viator
+   * activity's meeting-point `coordinates`, a Fever event's catalog `location`. Absent when the
+   * result has none — never a city centre, never a geocode (§13).
+   */
+  coordinates?: { lat: number; lng: number } | null;
 }
 
 export type TemplateExternalAdd =
@@ -50,7 +62,7 @@ export type TemplateExternalAdd =
       body: {
         contentType: CartContentType;
         contentId: string;
-        contentMeta: { name: string; description?: string; city?: string };
+        contentMeta: { name: string; description?: string; city?: string; lat?: string; lng?: string };
       };
     }
   | { rail: "service"; serviceId: string }
@@ -101,6 +113,11 @@ export function resolveTemplateExternalAdd(
     if (!isAdmissibleContentId(pick.id)) return refused("id_too_long");
     const description = nonEmpty(pick.details);
     const city = nonEmpty(ctx.city ?? undefined);
+    // The pick's coordinates travel ONLY as a valid pair, through the same rule the server's
+    // admission applies (§18 rule 1). An unlocated pick carries none and stays unlocated.
+    const coords = pick.coordinates
+      ? normalizeCartContentCoordinates(pick.coordinates.lat, pick.coordinates.lng)
+      : null;
     return {
       rail: "content",
       body: {
@@ -111,6 +128,7 @@ export function resolveTemplateExternalAdd(
           // §13: an absent fact is OMITTED, never an empty string.
           ...(description ? { description } : {}),
           ...(city ? { city } : {}),
+          ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
         },
       },
     };
