@@ -65,3 +65,33 @@ export function isContentCartLine(row: {
 }): boolean {
   return row.isContentItem === true || (!!row.contentId && !!row.contentType);
 }
+
+/**
+ * DOES THIS ROW SURVIVE THE POST-PAYMENT CART CLEAR? (ledger `2026-09-26-checkout-keeps-partner-lines`)
+ *
+ * A completed checkout used to empty the WHOLE cart, which silently deleted a partner line the
+ * traveler had never put on a plan: checkout does not charge a content line (every loop skips a line
+ * with no `service`), so nothing about the payment accounted for it, and it had no other home. The
+ * post-payment clear now spares exactly that row: a content line that names no listing, no custom
+ * venue and no plan item. A row LINKED to a plan item is the plan's projection (LD 39) and keeps its
+ * old behaviour — the projection rebuilds it from the item. The traveler's own "Clear cart"
+ * (`DELETE /api/cart`) still empties everything; this governs only the clear after a payment.
+ *
+ * `storage.clearCheckedOutCartLines` states the same condition in SQL; the DB test
+ * `server/__tests__/checkout-keeps-partner-lines.db.test.ts` pins the two together.
+ */
+export function survivesCheckoutClear(row: {
+  serviceId?: string | null;
+  customVenueId?: string | null;
+  itineraryItemId?: string | null;
+  contentType?: string | null;
+  contentId?: string | null;
+}): boolean {
+  return (
+    !row.serviceId &&
+    !row.customVenueId &&
+    !row.itineraryItemId &&
+    !!row.contentType &&
+    !!row.contentId
+  );
+}

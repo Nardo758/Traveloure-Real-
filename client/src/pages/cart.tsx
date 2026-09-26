@@ -184,12 +184,13 @@ function previewItemForCartLine(item: CartItem) {
  * RC-9: what the cart says about its content lines, ONCE for both mounts. Replaces "N external
  * bookings will need to be completed on the provider's website" — which sent the traveler off-site
  * (§16) and was not what happens. What is true (§13): checkout skips a line with no listing
- * (`if (!item.service) continue;`), so these are not in the total and are not paid for here; and
- * a completed checkout CLEARS the cart, so a line that was never put on a plan is gone afterwards.
+ * (`if (!item.service) continue;`), so these are not in the total and are not paid for here. A
+ * completed checkout KEEPS them (ledger `2026-09-26-checkout-keeps-partner-lines`): only the lines
+ * that were checked out are cleared, so the notice no longer warns that they will be lost.
  */
 function partnerLinesNotice(n: number): string {
   const lines = n === 1 ? "1 item in your cart isn't" : `${n} items in your cart aren't`;
-  return `${lines} a platform booking, so ${n === 1 ? "it isn't" : "they aren't"} in this total or paid for here. Add ${n === 1 ? "it" : "them"} to a plan to keep ${n === 1 ? "it" : "them"} — a completed checkout empties the cart.`;
+  return `${lines} a platform booking, so ${n === 1 ? "it isn't" : "they aren't"} in this total or paid for here. ${n === 1 ? "It stays" : "They stay"} in your cart after checkout — add ${n === 1 ? "it" : "them"} to a plan when you're ready to book.`;
 }
 
 interface Recommendation {
@@ -1096,7 +1097,7 @@ export default function CartPage() {
       if (data.paymentIntent) {
         // FP-4: snapshot the real, server-derived breakdown (incl. conciergeFee, which
         // the live GET /api/cart never computes) BEFORE invalidating — the cart is about
-        // to go empty (checkout already cleared it server-side), but the payment step
+        // to lose its checked-out lines (checkout already cleared them server-side), but the payment step
         // still needs to show the traveler exactly what they're paying for.
         setCheckoutOrderSnapshot({
           items: cart?.items || [],

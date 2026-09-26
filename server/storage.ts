@@ -154,7 +154,7 @@ import {
   PURCHASE_CLAIMABLE_FROM_STATUSES,
   type HumanPurchaseBookingAgentStatus,
 } from "@shared/booking-agent-vocabulary";
-import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp, getTableColumns } from "drizzle-orm";
+import { eq, ilike, and, not, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp, getTableColumns } from "drizzle-orm";
 type PayoutClaimResult<T> = {
   payout?: T;
   reason?: 'insufficient_releasable_earnings' | 'already_processing' | 'terminal';
@@ -570,6 +570,7 @@ export interface IStorage {
   removeFromCart(id: string): Promise<void>;
 
   clearCart(userId: string, experienceSlug?: string): Promise<void>;
+  clearCheckedOutCartLines(userId: string): Promise<void>;
 
   migrateGuestCart(guestSessionId: string, userId: string): Promise<{ migrated: number; deduplicated: number }>;
 
@@ -4409,6 +4410,29 @@ export class DatabaseStorage implements IStorage {
     } else {
       await db.delete(cartItems).where(eq(cartItems.userId, userId));
     }
+  }
+
+  /**
+   * The clear AFTER A PAYMENT (ledger `2026-09-26-checkout-keeps-partner-lines`): every line of the
+   * user's cart EXCEPT an unlinked partner content line — the SQL twin of `survivesCheckoutClear`
+   * (`@shared/cart-content-line`). Refuses an empty owner, so it can never become a table-wide delete.
+   */
+  async clearCheckedOutCartLines(userId: string): Promise<void> {
+    if (!userId) throw new Error("clearCheckedOutCartLines: owner required");
+    await db.delete(cartItems).where(
+      and(
+        eq(cartItems.userId, userId),
+        not(
+          and(
+            isNull(cartItems.serviceId),
+            isNull(cartItems.customVenueId),
+            isNull(cartItems.itineraryItemId),
+            isNotNull(cartItems.contentType),
+            isNotNull(cartItems.contentId),
+          )!,
+        ),
+      ),
+    );
   }
 
   // Contract Methods
