@@ -53,7 +53,7 @@ import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 // V-11's predicate, the ONE translation of `provider_services.price` into the `hasPrice` fact
 // `resolveBuyAction` decides on (ledger `2026-09-13-cart-priceless-gap`, s18 rule 1).
-import { hasPublishedPrice } from "./buy-action-payload";
+import { hasPublishedPrice, requestOnlyListingRefusals } from "./buy-action-payload";
 // Locked Decision 56: the ONE reading of how many units a stored cart line holds (§18 rule 1).
 import { cartLineUnitCount } from "@shared/cart-quantity";
 
@@ -173,7 +173,16 @@ export type ProjectionSyncResult =
       // listing the platform cannot price, so the CHECKOUT projection declines to hold it. It is
       // a reason, not a failure — the caller reports it and the item's own routing state is
       // untouched (s13: the traveler is told why, never silently given an empty cart).
-      reason: "item_missing" | "no_owner" | "not_projected" | "no_published_price";
+      // `listing_requires_request` / `listing_not_bookable` added by ledger
+      // `2026-09-25-checkout-request-mode`: the listing's seller must accept first, so the
+      // checkout view does not hold it.
+      reason:
+        | "item_missing"
+        | "no_owner"
+        | "not_projected"
+        | "no_published_price"
+        | "listing_requires_request"
+        | "listing_not_bookable";
     };
 
 /** contentType marker for a projected item that has no `providerServiceId`. */
@@ -272,6 +281,10 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
         // Ledger `2026-09-13-cart-priceless-gap`: read on the SAME single-row query that was
         // already being run for the pricing unit — no extra round trip.
         price: providerServices.price,
+        // Ledger `2026-09-25-checkout-request-mode`: the commitment facts, on the same read.
+        userId: providerServices.userId,
+        priceType: providerServices.priceType,
+        bookingMode: providerServices.bookingMode,
       })
       .from(providerServices)
       .where(eq(providerServices.id, item.providerServiceId))
@@ -291,6 +304,22 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
     if (svc && !hasPublishedPrice(svc.price)) {
       await deleteProjectionFor(itemId);
       return { action: "noop", reason: "no_published_price" };
+    }
+    // -- NOR IS A LISTING THE SELLER MUST ACCEPT (ledger `2026-09-25-checkout-request-mode`) -----
+    // Same posture, same placement, for the same reason: a `request`-mode, `hidden` or
+    // `custom_quote` listing is refused at checkout, so the checkout VIEW does not hold it. The
+    // item stays on the plan with its routing untouched, and the reason travels back (s13). ONE
+    // predicate with the add rails and checkout (s18 rule 1).
+    if (svc) {
+      const requestOnly = (
+        await requestOnlyListingRefusals([
+          { id: item.providerServiceId, userId: svc.userId, priceType: svc.priceType, bookingMode: svc.bookingMode },
+        ])
+      ).get(item.providerServiceId);
+      if (requestOnly) {
+        await deleteProjectionFor(itemId);
+        return { action: "noop", reason: requestOnly.reason };
+      }
     }
     if (svc?.pricingUnit === "per_night") {
       stayMeta = stayContentMeta(item.checkIn, item.checkOut);
