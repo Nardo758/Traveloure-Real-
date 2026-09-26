@@ -1142,20 +1142,20 @@ export function resolveBookingModeWithProvenance(
  * #1101, held until enough listings are instant). Delegates to `resolveBookingModeWithProvenance`
  * and never re-decides the mode (§18 rule 1). Two provenances count as a choice:
  *   • `listing_declared` — the seller set this listing's own `booking_mode` (incl. `hidden`).
- *   • `account_declared` with the flag TRUE — the owner's account says instant booking.
- * An account flag of FALSE is NOT counted as a choice, deliberately (§13): the column
- * (`service_provider_forms.instant_booking`) DEFAULTS false and no seller surface writes it today —
- * the one settings switch wrote the `provider_settings` twin nobody reads (provider/settings.tsx) —
- * so a stored false is indistinguishable from "never asked". Provenance itself is unchanged: this
- * answers the prompt's narrower question, not "where did the mode come from".
+ *   • `account_declared` — the owner's account flag is a real boolean. TRUE is a choice of
+ *     Instant; FALSE is a choice of Request (decision-maker ruled 2026-09-26, ledger
+ *     `2026-09-26-instant-false-is-request`, overriding this function's first reading that a
+ *     stored false was indistinguishable from "never asked").
+ * Only `platform_default` — no provider form row, or a NULL flag — is undecided (§13: nobody
+ * answered). Provenance itself is unchanged: this answers the prompt's narrower question, not
+ * "where did the mode come from".
  */
 export function isBookingModeChosen(
   stored: string | null | undefined,
   accountInstantBooking: boolean | null | undefined,
 ): boolean {
   const { provenance } = resolveBookingModeWithProvenance(stored, accountInstantBooking);
-  if (provenance === "listing_declared") return true;
-  return provenance === "account_declared" && accountInstantBooking === true;
+  return provenance !== "platform_default";
 }
 
 export const providerServices = pgTable("provider_services", {

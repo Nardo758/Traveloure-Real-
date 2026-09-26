@@ -1,7 +1,7 @@
 /**
  * Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`). DB-backed.
- *   M1 the predicate: a listing's own mode, or an account flag of TRUE, is a choice; a NULL mode with
- *      no form, a NULL flag, or the column-default FALSE is not (nothing writes that flag today).
+ *   M1 the predicate: a listing's own mode, or any real account flag (TRUE = Instant, FALSE = Request,
+ *      ruled 2026-09-26), is a choice; a NULL mode with no form or a NULL flag is not.
  *   M2 the owner status lists ONLY the session owner's approved+active listings, classifies each
  *      (chosen / undecided / quote), and never returns another seller's rows; an owner with none
  *      gets an empty list, not someone else's.
@@ -29,7 +29,7 @@ import {
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const expert = `bms-exp-${RUN}`; // no provider form ⇒ platform default
-const provider = `bms-prov-${RUN}`; // provider form with the column-default false
+const provider = `bms-prov-${RUN}`; // provider form with instant_booking = false (a Request choice)
 const instantProvider = `bms-inst-${RUN}`; // provider form with instant_booking = true
 const other = `bms-oth-${RUN}`;
 
@@ -88,7 +88,7 @@ before(async () => {
   await listing(ids.quote, expert, "E custom quote", { priceType: "custom_quote" });
   await listing(ids.draft, expert, "F draft", { status: "draft" });
   await listing(ids.submitted, expert, "G in review", { approval: "submitted" });
-  await listing(ids.provUndecided, provider, "H provider default-false");
+  await listing(ids.provUndecided, provider, "H provider account false");
   await listing(ids.instAccount, instantProvider, "I account instant");
   await listing(ids.otherUndecided, other, "J other seller undecided");
 });
@@ -97,15 +97,16 @@ after(async () => {
   await db.execute(sql`DELETE FROM users WHERE id IN (${expert}, ${provider}, ${instantProvider}, ${other})`);
 });
 
-test("M1 the predicate counts a listing's own mode or a TRUE account flag, and nothing else", () => {
+test("M1 the predicate counts a listing's own mode or any real account flag, and nothing else", () => {
   assert.equal(isBookingModeChosen("instant", undefined), true);
   assert.equal(isBookingModeChosen("request", false), true);
   assert.equal(isBookingModeChosen("hidden", null), true);
   assert.equal(isBookingModeChosen(null, true), true, "account says instant booking");
   assert.equal(isBookingModeChosen(null, undefined), false, "no form row at all");
   assert.equal(isBookingModeChosen(null, null), false, "flag never answered");
-  assert.equal(isBookingModeChosen(null, false), false, "the column default is not an answer");
-  assert.equal(isBookingModeChosen("INSTANT", false), false, "an off-vocabulary value is not a declaration");
+  assert.equal(isBookingModeChosen(null, false), true, "an account flag of false is a Request choice (2026-09-26)");
+  assert.equal(isBookingModeChosen("INSTANT", null), false, "an off-vocabulary value is not a declaration");
+  assert.equal(isBookingModeChosen("INSTANT", false), true, "off-vocabulary listing value falls to the account's Request choice");
 });
 
 test("M2 the owner status is the owner's live listings only, classified by the server", async () => {
@@ -125,7 +126,8 @@ test("M2 the owner status is the owner's live listings only, classified by the s
   for (const l of status.listings) assert.deepEqual(Object.keys(l).sort(), ["id", "mode", "name", "state"]);
 
   const prov = await loadOwnerBookingModeStatus(provider);
-  assert.equal(prov.listings[0].state, "undecided", "a default-false provider flag is not a choice");
+  assert.equal(prov.listings[0].state, "chosen", "an account flag of false is a Request choice");
+  assert.equal(prov.listings[0].mode, "request");
   const inst = await loadOwnerBookingModeStatus(instantProvider);
   assert.equal(inst.listings[0].state, "chosen");
   assert.equal(inst.listings[0].mode, "instant");
@@ -140,9 +142,9 @@ test("M4 the admin summary moves by exactly the seeded live rows", async () => {
   const d = (k: keyof typeof after.all) => (after.all[k] as number) - (summaryBefore.all[k] as number);
   assert.equal(d("total"), 8, "8 seeded live listings (draft + in-review excluded)");
   assert.equal(d("instantChosen"), 2, "chosen instant + account instant");
-  assert.equal(d("requestChosen"), 1);
-  assert.equal(d("undecided"), 4, "two expert, one provider default-false, one other seller");
-  assert.equal(d("undecidedResolvingRequest"), 4);
+  assert.equal(d("requestChosen"), 2, "chosen request + provider account false");
+  assert.equal(d("undecided"), 3, "two expert, one other seller");
+  assert.equal(d("undecidedResolvingRequest"), 3);
   assert.equal(d("quote"), 1);
 
   assert.deepEqual(
@@ -173,9 +175,9 @@ test("M3 the bulk decide touches only the owner's undecided, non-quote listings"
   assert.deepEqual(again.updatedIds, [], "a second press finds nothing undecided");
   assert.equal(await modeOf(ids.undecided1), "instant");
 
-  const keep = await decideUndecidedBookingModes(provider, "request");
-  assert.deepEqual(keep.updatedIds, [ids.provUndecided]);
-  assert.equal(await modeOf(ids.provUndecided), "request", "Keep request records an explicit choice");
+  const keep = await decideUndecidedBookingModes(provider, "instant");
+  assert.deepEqual(keep.updatedIds, [], "an account flag of false already chose Request; the bulk decide never overrides it");
+  assert.equal(await modeOf(ids.provUndecided), null);
 });
 
 test("M5 anonymous callers are refused on every rail", async (t) => {
