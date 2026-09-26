@@ -116,13 +116,15 @@ async function seedService(
     INSERT INTO provider_services
       (id, user_id, service_name, price, status, approval_status, delivery_method,
        party_size_min, party_size_max, earliest_start_time, latest_start_time, service_timezone,
-       lead_time_hours)
+       lead_time_hours, booking_mode)
     VALUES
       (${id}, ${CI_PROVIDER_ID}, ${`Elig ${label}`}, '100.00', 'active', 'approved', 'in_person',
        ${cfg.partySizeMin ?? null}, ${cfg.partySizeMax ?? null},
        ${cfg.earliestStartTime ?? null}, ${cfg.latestStartTime ?? null}, ${cfg.serviceTimezone ?? null},
-       ${cfg.leadTimeHours ?? null})
+       ${cfg.leadTimeHours ?? null}, 'instant')
   `);
+  // ^ `instant` declared (ledger `2026-09-25-checkout-request-mode`): these gates sit AFTER the
+  //   request-mode refusal, which an unset mode on the form-less ci-provider would trip first.
   createdServiceIds.push(id);
   return id;
 }

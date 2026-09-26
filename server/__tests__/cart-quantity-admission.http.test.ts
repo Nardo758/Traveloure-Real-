@@ -98,7 +98,9 @@ function api(path: string, cookie: string | undefined, method = "GET", body?: un
   });
 }
 
-/** A priced, approved listing carrying exactly the archetype facts under test. */
+/** A priced, approved listing carrying exactly the archetype facts under test. Declared `instant`
+ *  so a cart may hold it at all (ledger `2026-09-25-checkout-request-mode`: an unset mode on a
+ *  form-less owner resolves `request`, which is never a cart line). */
 async function makeService(
   id: string,
   opts: { deliveryMethod: string; productShape?: string | null; pricingUnit?: string | null; price?: string; priceBasis?: string | null },
@@ -106,10 +108,10 @@ async function makeService(
   await db.execute(sql`
     INSERT INTO provider_services
       (id, user_id, service_name, description, price, status, approval_status,
-       delivery_method, product_shape, pricing_unit, price_basis)
+       delivery_method, product_shape, pricing_unit, price_basis, booking_mode)
     VALUES (${id}, ${ids.provider}, ${`Cart qty ${RUN}`}, 'fixture', ${opts.price ?? "100.00"},
             'active', 'approved', ${opts.deliveryMethod},
-            ${opts.productShape ?? null}, ${opts.pricingUnit ?? null}, ${opts.priceBasis ?? null})
+            ${opts.productShape ?? null}, ${opts.pricingUnit ?? null}, ${opts.priceBasis ?? null}, 'instant')
   `);
 }
 

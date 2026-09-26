@@ -118,8 +118,10 @@ async function makeService(opts: {
   const id = `svd-${RUN}-svc-${crypto.randomUUID().slice(0, 6)}`;
   await readPool.query(
     `INSERT INTO provider_services
-       (id, user_id, service_name, description, price, status, approval_status, delivery_method, service_file)
-     VALUES ($1, $2, $3, 'fixture pdf service', '25.00', 'active', 'approved', $4, $5)`,
+       (id, user_id, service_name, description, price, status, approval_status, delivery_method, service_file, booking_mode)
+     VALUES ($1, $2, $3, 'fixture pdf service', '25.00', 'active', 'approved', $4, $5, 'instant')`,
+    // ^ `instant` declared (ledger `2026-09-25-checkout-request-mode`): D3-c4 carts this listing,
+    //   and an unset mode on a form-less owner resolves `request`, which is never a cart line.
     [id, opts.ownerId, `D3 service ${RUN}`, opts.deliveryMethod, opts.serviceFile ?? null],
   );
   createdServiceIds.push(id);

@@ -77,6 +77,12 @@ import { itemKindChipFor } from "@shared/item-kind";
 // line draws — units, seats, or none — is the SERVER'S OWN derivation, read here rather than
 // restated. A second copy of "does a stay have a quantity?" is the drift class §18 rule 1 names.
 import { archetypeAsks, cartCountLabel, cartLineUnitCount, cartUnitLabel } from "@shared/cart-quantity";
+import {
+  REQUEST_ONLY_LINE_SENTENCE,
+  isRequestOnlyReason,
+  requestOnlyListingHref,
+  type RequestOnlyReason,
+} from "@/lib/request-only-line";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -148,6 +154,11 @@ interface CartData {
   travelSurcharge?: string;
   total: string;
   itemCount: number;
+  // Ledger `2026-09-25-checkout-request-mode`: lines whose listing the SELLER must accept first
+  // (request mode, hidden, or a custom quote). Present only when there are some; these lines are
+  // NOT in `subtotal`/`total`, and checkout refuses them.
+  requestOnlyItemIds?: string[];
+  requestOnlyReasons?: Record<string, RequestOnlyReason>;
 }
 
 interface ExternalCartItem {
@@ -1162,6 +1173,19 @@ export default function CartPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
         return;
       }
+      if (isRequestOnlyReason(errorCode)) {
+        // Ledger 2026-09-25-checkout-request-mode: a line the seller must accept first. Nothing was
+        // claimed or charged; the refreshed cart names the line with a link to its listing.
+        setFlowStep("cart");
+        toast({
+          variant: "destructive",
+          title: "One item is booked by request",
+          description:
+            parsedBody?.message || REQUEST_ONLY_LINE_SENTENCE[errorCode],
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        return;
+      }
       if (errorCode === "checkout_key_spent") {
         setFlowStep("cart");
         toast({
@@ -2153,6 +2177,8 @@ export default function CartPage() {
                     }
 
                     const slotFlagged = !!(item.serviceId && flaggedSlotItemIds.has(item.serviceId));
+                    // Ledger 2026-09-25-checkout-request-mode: the server's own reason, or nothing.
+                    const requestOnlyReason = cart?.requestOnlyReasons?.[item.id];
                     // L1: a §17 property-room item is priced nights × rate, never
                     // quantity × price — mirror the server's own math (payments.routes.ts
                     // getRoomNights) so the display can never diverge from the charge.
@@ -2175,6 +2201,26 @@ export default function CartPage() {
                             <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                             <span>
                               This time slot was just booked by someone else. Pick a new time from the service page, or remove this item below.
+                            </span>
+                          </div>
+                        )}
+                        {isRequestOnlyReason(requestOnlyReason) && (
+                          <div
+                            className="mb-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                            data-testid={`banner-request-only-${item.id}`}
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>
+                              {REQUEST_ONLY_LINE_SENTENCE[requestOnlyReason]}{" "}
+                              {requestOnlyReason === "listing_requires_request" && item.serviceId && (
+                                <Link
+                                  href={requestOnlyListingHref(item.serviceId)}
+                                  className="font-medium underline"
+                                  data-testid={`link-request-listing-${item.id}`}
+                                >
+                                  Go to the listing
+                                </Link>
+                              )}
                             </span>
                           </div>
                         )}
