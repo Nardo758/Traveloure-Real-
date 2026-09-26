@@ -58,7 +58,7 @@ import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../s
 import { getProviderHealth } from "../services/provider-health.service";
 import { getBuildInfo } from "../services/build-info";
 // L23 (brief §11.5, ruling 9): the ONE author of a buy button, shipped on the payload.
-import { buildListingBuyAction, resolveBuyerState } from "../services/buy-action-payload";
+import { buildListingBuyAction, buildListingBuyActions, listingBuyFacts, resolveBuyerState } from "../services/buy-action-payload";
 import { applyPropertyLocationPrivacy } from "../services/property-location-privacy.service";
 import { nightDatesInclusive } from "../services/availability-materializer.service";
 import { attachRolesNeeded } from "../services/occasion-roles.service";
@@ -213,6 +213,7 @@ import {
 import {
   resolveCommissionRates,
   type CommissionRates,
+  serviceCategorySlugToFeeCategory,
 } from "../services/commission";
 import instagramRoutes from "./instagram";
 import bookingsRoutes from "./bookings";
@@ -323,17 +324,7 @@ function mapFeverCategoryToEventType(category: string): string {
   return categoryMap[category] || 'other';
 }
 
-function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
-  if (!slug) return "default";
-  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
-  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
-  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
-  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
-  if (/flight|air|airline/.test(slug)) return "flights";
-  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
-  if (/insurance|safety|security/.test(slug)) return "insurance";
-  return "default";
-}
+// serviceCategorySlugToFeeCategory is imported from services/commission (one definition, §18 rule 1).
 
 
 function mapFeverCategoryToEventTypeLocal(category: string): string {
@@ -2449,6 +2440,7 @@ router.get("/api/services/:id", async (req, res) => {
           productShape: service.productShape,
           price: service.price,
           isLive: true,
+          ...listingBuyFacts(service as any),
         },
         buyer,
       );
@@ -2858,10 +2850,32 @@ router.get("/api/discover", async (req, res) => {
       }).catch(err => console.error("Failed to track search pattern:", err));
     }
 
+    // Provider action buttons (ledger `2026-09-25-provider-action-buttons`): the Discover services
+    // card drew a hard-coded "Book now" for every listing. It now draws the SAME resolved action
+    // every other listing surface ships (ruling 9) — ONE gatherer, the buyer from the SESSION
+    // (§14; no session ⇒ `guest`), two batched queries for the page plus one for category keys.
+    // `isLive` is true by construction: `unifiedSearch` selects `status='active'` AND
+    // `approval_status='approved'` only (its F2 read-gate).
+    const buyer = await resolveBuyerState(req);
+    const discoverBuyActions = await buildListingBuyActions(
+      result.services.map((s: any) => ({
+        id: s.id,
+        ownerUserId: s.userId,
+        bookingMode: s.bookingMode ?? null,
+        deliveryMethod: s.deliveryMethod ?? null,
+        productShape: s.productShape ?? null,
+        price: s.price,
+        isLive: true,
+        ...listingBuyFacts(s),
+      })),
+      buyer,
+    );
+
     // `packages` (expert_templates) retired from unified search — see
     // ledger 2026-09-03-expert-templates-consumer-sunset.
     res.json({
       ...result,
+      services: result.services.map((s) => ({ ...s, buyAction: discoverBuyActions.get(s.id) })),
       hasMore: offset + result.services.length < result.total,
       limit,
       offset,

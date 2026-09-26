@@ -60,6 +60,7 @@ import { CancelBookingDialog } from "@/components/booking/CancelBookingDialog";
 // rails without. The quotes panel reads `/api/me/quotes` and calls the existing accept/decline
 // rails; the components panel reads the one new read and calls the existing traveler-cancel rail.
 import { TravelerQuotesPanel } from "@/components/quotes/TravelerQuotesPanel";
+import { myBookingsDefaultTab, myBookingsShowsEmptyState } from "@/lib/my-bookings-view";
 import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
 import { QaSessionPanel } from "@/components/live/QaSessionPanel";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -353,6 +354,18 @@ export default function MyBookingsPage() {
   }> }>({ queryKey: ["/api/ready-made/purchases/mine"], enabled: !!user });
   const rmPurchases = rmPurchasesData?.purchases ?? [];
 
+  // The SAME query key TravelerQuotesPanel reads, so this is one request and one cache entry.
+  // Only the count is read here: a quote keeps the tab block (and its Quotes tab) on screen.
+  const { data: quotesData, isLoading: quotesLoading } = useQuery<{ quotes: unknown[] }>({
+    queryKey: ["/api/me/quotes"],
+    enabled: !!user,
+  });
+  const viewCounts = {
+    bookingCount: bookings?.length ?? 0,
+    purchaseCount: rmPurchases.length,
+    quoteCount: quotesData?.quotes?.length ?? 0,
+  };
+
   const [concernFor, setConcernFor] = useState<{ id: string; title: string } | null>(null);
   const [concernReason, setConcernReason] = useState("");
   const rmConcern = useMutation({
@@ -416,12 +429,12 @@ export default function MyBookingsPage() {
       <div className="container py-8 max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold mb-6" data-testid="text-page-title">My Bookings</h1>
 
-        {isLoading ? (
+        {isLoading || quotesLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : (!bookings || bookings.length === 0) && rmPurchases.length === 0 ? (
+        ) : myBookingsShowsEmptyState(viewCounts) ? (
           <Card>
             <CardContent className="py-12 text-center">
               <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
@@ -434,11 +447,7 @@ export default function MyBookingsPage() {
           </Card>
         ) : (
           <Tabs
-            defaultValue={
-              (bookings?.length ?? 0) === 0 && rmPurchases.length > 0
-                ? "packages"
-                : "all"
-            }
+            defaultValue={myBookingsDefaultTab(viewCounts)}
             className="space-y-4"
           >
             <TabsList data-testid="tabs-booking-status">

@@ -7,6 +7,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLocationMismatchGate } from "@/hooks/use-location-mismatch-gate";
 import { earnerProfilePath } from "@/lib/earner-address";
 import { deliveryMethodLabel } from "@/lib/delivery-method-label";
+import { offeringActionLabel, offeringActionIsMessageOnly, buildStorefrontActionHref } from "@/lib/storefront-offering-action";
+import { useAskExpert } from "@/lib/use-ask-expert";
+import type { BuyAction } from "@shared/buy-action";
 import { LocationMismatchDialog } from "@/components/location-mismatch-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -357,6 +360,11 @@ type Service = {
   /** Seller role (source-link resolution, 2026-08-25-card-source-link): expert-family → /experts/:id,
    *  service_provider → their /providers card, when there is no claimed handle. */
   providerRole?: string | null;
+  /**
+   * The ONE resolved buy action (ruling 9; ledger `2026-09-25-provider-action-buttons`), shipped by
+   * `/api/discover`. The card's primary button is worded FROM it and never re-derives anything.
+   */
+  buyAction?: BuyAction;
 };
 
 type DiscoverResult = {
@@ -424,9 +432,18 @@ function ServiceCard({
   targetTripId?: string;
 }) {
   const [, navigateTo] = useLocation();
+  const askExpert = useAskExpert();
   // ONE resolver, ONE href builder (client/src/lib/trip-target.ts) — the detail page reads the
   // same `?tripId=` back off the URL. With no target trip this is the pre-existing plain link.
   const detailHref = serviceDetailHref(service.id, targetTripId);
+  // Provider action buttons (ledger `2026-09-25-provider-action-buttons`): the primary button
+  // used to read "Book now" for EVERY listing. It is now worded from the server-resolved action
+  // through the SAME mapper the storefront card uses (§18 rule 1), and lands on the detail page
+  // with the matching intent — `#dates` for a stay (the date-range picker), `#book` / `#quote`
+  // otherwise. `null` = the resolver offers no booking verb: Message only, no buy, no add.
+  const actionLabel = offeringActionLabel(service.buyAction);
+  const messageOnly = offeringActionIsMessageOnly(service.buyAction);
+  const actionHref = actionLabel ? buildStorefrontActionHref(detailHref, actionLabel, null) : detailHref;
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
   const reviewCount = service.reviewCount || 0;
@@ -578,17 +595,37 @@ function ServiceCard({
               className="text-[9.5px] uppercase tracking-wider text-[color:var(--earn-teal-ink)] mb-1.5"
               style={{ fontFamily: EARN_MONO }}
             >
-              Book on Traveloure
+              {messageOnly ? "Not open for booking" : "Book on Traveloure"}
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Button
-                size="sm"
-                className="bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)]"
-                onClick={() => navigateTo(detailHref)}
-              >
-                Book now
-              </Button>
-              {onAddToCart && (
+              {messageOnly ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-[var(--earn-border)] text-[color:var(--earn-ink)]"
+                  onClick={() =>
+                    askExpert({
+                      serviceId: service.id,
+                      subject: service.serviceName,
+                      returnTo: detailHref,
+                      fallbackName: providerName,
+                    })
+                  }
+                  data-testid={`button-service-message-${service.id}`}
+                >
+                  Message
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  className="bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)]"
+                  onClick={() => navigateTo(actionHref)}
+                  data-testid={`button-service-action-${service.id}`}
+                >
+                  {actionLabel}
+                </Button>
+              )}
+              {onAddToCart && !messageOnly && (
                 <Button
                   size="sm"
                   className={cn(
