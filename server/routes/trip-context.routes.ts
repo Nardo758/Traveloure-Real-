@@ -275,13 +275,14 @@ router.put("/api/trip-context", isAuthenticated, async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid trip context", issues: parsed.error.issues.slice(0, 5) });
     }
-    // A PLAN'S OCCASION IS WRITTEN ONLY BY AN OCCASION EDIT (ledger `2026-09-26-occasion-read-only`,
-    // `@shared/trip-context-occasion`). On a trip-scoped row a write that does not carry
-    // `occasionEdit: true` — every read surface's push: opening a slip, visiting a template page —
-    // contributes NO occasion keys, and the row keeps the ones it had. The legacy pre-trip row is a
-    // draft with no plan behind it and keeps full-replace semantics.
-    const occasionEdit = req.body?.occasionEdit === true;
-    const written = tripId && !occasionEdit ? withoutPenOccasion(parsed.data) : parsed.data;
+    // A PLAN'S OCCASION IS NEVER WRITTEN BY THE BULK PUSH (ledger `2026-09-26-occasion-read-only`,
+    // `@shared/trip-context-occasion`). On a trip-scoped row this push contributes NO occasion keys,
+    // whatever the body says, and the row keeps the ones it had: a read surface (opening a slip,
+    // visiting a template page) pushes the whole pen, and must not be able to rewrite the plan's
+    // occasion by carrying one along. The ONE writer is `PATCH /api/trips/:tripId/occasion`
+    // (`writePlanPenOccasion`). The legacy pre-trip row is a draft with no plan behind it and keeps
+    // full-replace semantics.
+    const written = tripId ? withoutPenOccasion(parsed.data) : parsed.data;
     const json = JSON.stringify(written);
     if (json.length > 32_768) {
       return res.status(413).json({ message: "Trip context too large" });
@@ -304,13 +305,9 @@ router.put("/api/trip-context", isAuthenticated, async (req, res) => {
             WHEN trip_contexts.context ? 'origin'
               THEN ${json}::jsonb || jsonb_build_object('origin', trip_contexts.context->'origin')
             ELSE ${json}::jsonb
-          END) || ${
-            occasionEdit
-              ? sql`'{}'::jsonb`
-              : sql`(SELECT COALESCE(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
-                     FROM jsonb_each(trip_contexts.context) e
-                     WHERE e.key IN (${sql.raw(OCCASION_KEYS_SQL)}))`
-          },
+          END) || (SELECT COALESCE(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+                   FROM jsonb_each(trip_contexts.context) e
+                   WHERE e.key IN (${sql.raw(OCCASION_KEYS_SQL)})),
           updated_at = NOW()
       `);
     } else {

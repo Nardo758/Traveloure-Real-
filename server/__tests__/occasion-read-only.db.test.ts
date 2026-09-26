@@ -1,5 +1,5 @@
 /**
- * A PLAN'S STORED OCCASION IS WRITTEN ONLY BY AN OCCASION EDIT (ledger
+ * A PLAN'S STORED OCCASION IS WRITTEN ONLY BY THE OCCASION ENDPOINT (ledger
  * `2026-09-26-occasion-read-only`; audit `docs/planning/trip-slip-ui-audit.md` G4/G5, both
  * VERIFIED in the running app: a wedding plan's `trip_contexts` row stored "vacation" after its
  * slip was opened, and `/experiences/wedding` relabelled an unrelated active plan).
@@ -11,7 +11,11 @@
  *       occasion — and its `trips.event_type` — exactly as they were. Together O1+O2 are the
  *       requested journey: neither plan's occasion changes.
  *   O3  a plan whose pen has never recorded an occasion does not acquire one from a non-edit push.
- *   O4  `occasionEdit: true` (the plan modal's commit; Clear plan) still changes it.
+ *   O4  `PATCH /api/trips/:tripId/occasion` with `experienceSlug` (the plan modal's commit) is the
+ *       one way it changes: pen occasion AND `trips.event_type`; `experienceSlug: null` clears it.
+ *   O7  a bulk push can NEVER change it — not even one carrying a would-be "edit" flag, and not an
+ *       empty "Clear plan" push either.
+ *   O8  an unknown slug on the occasion endpoint is a 400 and writes nothing.
  *   O5  the legacy pre-trip row keeps full-replace semantics — a draft's occasion rides.
  *   O6  first-touch `origin` is still preserved alongside the kept occasion.
  *
@@ -29,6 +33,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import tripContextRoutes from "../routes/trip-context.routes";
+import tripsRoutes from "../routes/trips.routes";
 
 const RUN = crypto.randomBytes(4).toString("hex");
 const owner = `oro-${RUN}-owner`;
@@ -67,6 +72,30 @@ async function put(body: Record<string, unknown>, tripId?: string): Promise<void
   }
 }
 
+async function patchOccasion(tripId: string, body: Record<string, unknown>): Promise<number> {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    (req as any).user = { claims: { sub: owner, name: "Test Actor" } };
+    (req as any).isAuthenticated = () => true;
+    next();
+  });
+  app.use(tripsRoutes);
+  const server = app.listen(0);
+  await new Promise<void>((r) => server.once("listening", () => r()));
+  const { port } = server.address() as AddressInfo;
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/trips/${tripId}/occasion`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.status;
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+}
+
 async function storedPen(tripId: string | null): Promise<Record<string, unknown>> {
   const rows: any = tripId
     ? await db.execute(sql`SELECT context FROM trip_contexts WHERE user_id = ${owner} AND trip_id = ${tripId}`)
@@ -89,6 +118,8 @@ const occasionOf = (pen: Record<string, unknown>) => ({
   eventType: pen.eventType,
 });
 
+const FIXTURE_SLUG = `oro-${RUN}`;
+const FIXTURE_NAME = `Occasion fixture ${RUN}`;
 let weddingTrip = "";
 let vacationTrip = "";
 let blankTrip = "";
@@ -99,6 +130,7 @@ before(async () => {
                        VALUES (${owner}, ${`oro-${RUN}@t.test`}, 'Occasion', 'Owner')`);
   const mk = async (title: string, eventType: string) =>
     (await storage.createTrip({ userId: owner, title, destination: "Kyoto", startDate: "2027-06-01", endDate: "2027-06-03", eventType } as any)).id;
+  await db.execute(sql`INSERT INTO experience_types (id, name, slug) VALUES (${crypto.randomUUID()}, ${FIXTURE_NAME}, ${FIXTURE_SLUG})`);
   weddingTrip = await mk(`Wedding ${RUN}`, "wedding");
   vacationTrip = await mk(`Vacation ${RUN}`, "vacation");
   blankTrip = await mk(`Blank ${RUN}`, "vacation");
@@ -110,6 +142,7 @@ after(async () => {
     if (t) await db.execute(sql`DELETE FROM trips WHERE id = ${t}`);
   }
   await db.execute(sql`DELETE FROM users WHERE id = ${owner}`);
+  await db.execute(sql`DELETE FROM experience_types WHERE slug = ${FIXTURE_SLUG}`).catch(() => {});
 });
 
 const WEDDING_OCCASION = { experienceSlug: "wedding", experienceType: "Wedding", eventType: "wedding" };
@@ -140,13 +173,34 @@ test("O3: a plan with no recorded occasion does not acquire one from a non-edit 
   assert.deepEqual(occasionOf(await storedPen(blankTrip)), { experienceSlug: undefined, experienceType: undefined, eventType: undefined });
 });
 
-test("O4: the explicit occasion edit still changes it", async () => {
+test("O4: the occasion endpoint is the one way it changes — pen and trip row together", async () => {
   await seedPen(vacationTrip, { tripId: vacationTrip, destination: "Kyoto", ...VACATION_OCCASION });
-  await put({ context: { tripId: vacationTrip, destination: "Kyoto", ...WEDDING_OCCASION }, occasionEdit: true }, vacationTrip);
-  assert.deepEqual(occasionOf(await storedPen(vacationTrip)), WEDDING_OCCASION);
-  // Clear plan: an empty blob flagged as an edit empties the occasion too.
-  await put({ context: {}, occasionEdit: true }, vacationTrip);
+  assert.equal(await patchOccasion(vacationTrip, { experienceSlug: FIXTURE_SLUG }), 200);
+  const pen = await storedPen(vacationTrip);
+  assert.equal(pen.experienceSlug, FIXTURE_SLUG);
+  assert.equal(pen.experienceType, FIXTURE_NAME);
+  assert.equal(pen.eventType, "other", "an unmapped slug's coarse type is 'other', never a guess");
+  assert.equal(await eventTypeOf(vacationTrip), "other", "trips.event_type moved with it");
+  assert.equal(pen.destination, "Kyoto", "the rest of the pen is untouched");
+  // An explicit null clears the pen's occasion.
+  assert.equal(await patchOccasion(vacationTrip, { experienceSlug: null }), 200);
   assert.deepEqual(occasionOf(await storedPen(vacationTrip)), { experienceSlug: undefined, experienceType: undefined, eventType: undefined });
+});
+
+test("O7: a bulk push can never change it — with a would-be edit flag, or as a Clear plan", async () => {
+  await seedPen(weddingTrip, { tripId: weddingTrip, destination: "Kyoto", ...WEDDING_OCCASION });
+  await put({ context: { tripId: weddingTrip, ...VACATION_OCCASION }, occasionEdit: true }, weddingTrip);
+  assert.deepEqual(occasionOf(await storedPen(weddingTrip)), WEDDING_OCCASION, "a flag in the body grants nothing");
+  await put({ context: {} }, weddingTrip);
+  assert.deepEqual(occasionOf(await storedPen(weddingTrip)), WEDDING_OCCASION, "an empty push keeps the plan's occasion");
+  assert.equal(await eventTypeOf(weddingTrip), "wedding");
+});
+
+test("O8: an unknown slug on the occasion endpoint is a 400 and writes nothing", async () => {
+  await seedPen(weddingTrip, { tripId: weddingTrip, destination: "Kyoto", ...WEDDING_OCCASION });
+  assert.equal(await patchOccasion(weddingTrip, { experienceSlug: `nope-${RUN}` }), 400);
+  assert.deepEqual(occasionOf(await storedPen(weddingTrip)), WEDDING_OCCASION);
+  assert.equal(await eventTypeOf(weddingTrip), "wedding");
 });
 
 test("O5: the legacy pre-trip draft keeps full-replace semantics", async () => {

@@ -100,7 +100,10 @@ export default function TripDetails() {
     isError: itineraryError,
     refetch: refetchItinerary,
   } = useQuery<PlanCardData>({
-    queryKey: [`/api/trips/${id}/plancard`],
+    // The Trip Card is the ONE reader of the frozen final; it asks for it explicitly (the plancard
+    // is live by default — ledger `2026-09-26-slip-renders-live`). Own cache key; every mutation's
+    // `[/api/trips/:id/plancard]` invalidation still prefix-matches it.
+    queryKey: [`/api/trips/${id}/plancard`, { surface: "card" }],
     enabled: !!id,
   });
   // T1-1: gates the regenerate confirmation dialog — true only once there's a plan with actual

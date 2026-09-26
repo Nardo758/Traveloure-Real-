@@ -771,7 +771,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   };
 
   const { data: plancardData } = useQuery<PlanCardData>({
-    queryKey: [`/api/trips/${trip.id}/plancard`],
+    // The Trip Card's read-out mode reads the frozen final (`surface: "card"`); every other mount
+    // reads the live plan, the default (ledger `2026-09-26-slip-renders-live`).
+    queryKey: routingReadOnly
+      ? [`/api/trips/${trip.id}/plancard`, { surface: "card" }]
+      : [`/api/trips/${trip.id}/plancard`],
     staleTime: 30000,
     // stage="proposal" renders entirely from the `proposal` prop (the page owns the canonical
     // reads) — a variant column must never fire a plancard fetch keyed on a non-trip id.

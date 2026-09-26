@@ -5,12 +5,15 @@ name: Slip Card Integrity Gate
 # all three VERIFIED in the running app). Driven over HTTP against a server booted in this job, on
 # the Adopt Version Semantics Gate's boot recipe:
 #
-#   L1-L2  the SLIP (`GET /api/trips/:id/plancard?surface=slip`) renders the LIVE plan — after
+#   L1-L2  the plancard is LIVE BY DEFAULT (`GET /api/trips/:id/plancard`, no parameter) — after
 #          finalize → reopen an added and an edited item show immediately — while the Trip Card's
-#          read keeps its frozen final.
+#          explicit `?surface=card` read keeps its frozen final.
 #   F1-F3  on a finalized plan the routing rail refuses "Send to expert" and recall-to-planning
-#          (409 plan_finalized, nothing written) whatever the client draws; the booking edge and the
-#          expert's return edge stay open, by name.
+#          (409 plan_finalized, nothing written) whatever the client draws; the expert's return
+#          edge stays open.
+#   B1-B5  add-to-checkout on a finalized plan: only an unpurchased item in the CURRENT final
+#          (409 already_purchased / not_in_final otherwise); the Finalize chooser, suggestion
+#          "Approve & book" and delivered-plan "Approve & book" still succeed.
 #   E1-E3  "Send to expert" needs an expert in a §12 WRITE status (409 no_expert_assigned for none
 #          and for a pending invite), and the plancard carries the same answer as `expertAssigned`.
 #
@@ -109,7 +112,7 @@ jobs:
           pgrep -a node || true
           exit 1
 
-      - name: Slip / Trip Card integrity (L1-L2, F1-F3, E1-E3)
+      - name: Slip / Trip Card integrity (L1-L2, F1-F3, E1-E3, B1-B5)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/slip-card-integrity.db.test.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure

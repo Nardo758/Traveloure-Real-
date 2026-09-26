@@ -249,15 +249,7 @@ export function getTripContext(): TripContext {
   }
 }
 
-/**
- * @param options.occasionEdit — this write is the traveler EXPLICITLY choosing the plan's occasion
- *   (the plan modal's commit). Only such a write may change a plan's stored occasion; every other
- *   write's occasion keys are ignored on a trip-scoped row (`@shared/trip-context-occasion`).
- */
-export function updateTripContext(
-  patch: TripContextPatch,
-  options: { occasionEdit?: boolean } = {},
-): TripContext {
+export function updateTripContext(patch: TripContextPatch): TripContext {
   const current = getTripContext();
   const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {
@@ -312,7 +304,7 @@ export function updateTripContext(
   } catch {
     /* non-browser env */
   }
-  schedulePush(next, options.occasionEdit === true);
+  schedulePush(next);
   return next;
 }
 
@@ -522,23 +514,8 @@ function tripScopedQuery(context: Pick<TripContext, "tripId">): string {
 }
 
 let pushTimer: ReturnType<typeof setTimeout> | undefined;
-/**
- * Whether a write since the last push was an EXPLICIT occasion edit (ledger
- * `2026-09-26-occasion-read-only`). The server keeps a plan's stored occasion on every trip-scoped
- * push that does not say so — opening a slip or reading a template page may not rewrite it. One
- * flag for the debounce window: the push carries the whole blob, so an edit anywhere in the window
- * is an edit of what that push sends. Consumed (reset) by whichever push goes out next.
- */
-let pendingOccasionEdit = false;
 
-function takeOccasionEdit(): boolean {
-  const edit = pendingOccasionEdit;
-  pendingOccasionEdit = false;
-  return edit;
-}
-
-function schedulePush(context: TripContext, occasionEdit = false): void {
-  if (occasionEdit) pendingOccasionEdit = true;
+function schedulePush(context: TripContext): void {
   if (typeof fetch !== "function") return;
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
@@ -547,7 +524,7 @@ function schedulePush(context: TripContext, occasionEdit = false): void {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ context, occasionEdit: takeOccasionEdit() }),
+      body: JSON.stringify({ context }),
     }).catch(() => {
       /* offline / guest — best-effort */
     });
@@ -595,7 +572,7 @@ export async function releasePendingEventsPen(): Promise<boolean> {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ context: next, occasionEdit: takeOccasionEdit() }),
+      body: JSON.stringify({ context: next }),
     });
     return res.ok;
   } catch {
@@ -869,10 +846,9 @@ function pushClear(tripId?: string): void {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      // Clear plan is an explicit traveler act on the whole pen, the occasion included — so it is
-      // an occasion edit and the server empties the stored occasion too (ledger
-      // `2026-09-26-occasion-read-only`).
-      body: JSON.stringify({ context: {}, occasionEdit: true }),
+      // A trip-scoped row keeps the plan's own occasion through a clear: the bulk push never writes
+      // occasion (ledger `2026-09-26-occasion-read-only`), and the plan itself still exists.
+      body: JSON.stringify({ context: {} }),
     }).catch(() => {
       /* offline / guest — best-effort */
     });

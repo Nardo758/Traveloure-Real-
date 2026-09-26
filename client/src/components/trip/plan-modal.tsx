@@ -1013,16 +1013,13 @@ export function PlanModal({
       if (Object.keys(held).length > 0) updateTripContext(held);
     }
     if (selectedOccasion) {
-      // The ONE explicit occasion edit of a plan's pen: only a write flagged like this may change
-      // a plan's stored occasion (ledger `2026-09-26-occasion-read-only`) — opening a slip or
-      // reading a template page may not.
-      updateTripContext(
-        {
-          experienceSlug: selectedOccasion.slug,
-          eventType: eventTypeForSlug(selectedOccasion.slug),
-        },
-        { occasionEdit: true },
-      );
+      // Local pen only for a bound plan: the server never takes an occasion from the bulk push
+      // (ledger `2026-09-26-occasion-read-only`). The plan's stored occasion is written by the
+      // occasion PATCH below, which carries `experienceSlug`.
+      updateTripContext({
+        experienceSlug: selectedOccasion.slug,
+        eventType: eventTypeForSlug(selectedOccasion.slug),
+      });
     }
 
     /**
@@ -1034,7 +1031,11 @@ export function PlanModal({
      */
     if (tripId) {
       const body: Record<string, unknown> = {};
-      if (selectedOccasion) body.eventType = eventTypeForSlug(selectedOccasion.slug);
+      if (selectedOccasion) {
+        body.eventType = eventTypeForSlug(selectedOccasion.slug);
+        // The ONE way a plan's occasion reaches its pen row (ledger `2026-09-26-occasion-read-only`).
+        body.experienceSlug = selectedOccasion.slug;
+      }
       if (partyAnswered) {
         // NULL, never 0: an unanswered party is not a party of none.
         body.adults = travelersForSave(adults) ?? null;

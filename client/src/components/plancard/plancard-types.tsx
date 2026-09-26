@@ -681,7 +681,9 @@ export interface PlanCardProps {
   /**
    * The TRIP CARD is a read-out, not a planning surface (Locked Decision 42 D8; ledger
    * `2026-09-26-card-routing-read-only`; audit G1). When true, no routing action renders on any
-   * item row — the badges still do. Routing a plan's items happens on the slip; the server refuses
+   * item row — the badges still do — and the card reads the plan's FROZEN FINAL
+   * (`/plancard?surface=card`); every other mount reads the live plan, the default (ledger
+   * `2026-09-26-slip-renders-live`). Routing a plan's items happens on the slip; the server refuses
    * the planning transitions on a finalized plan regardless of what any client draws.
    */
   routingReadOnly?: boolean;

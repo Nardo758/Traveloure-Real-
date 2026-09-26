@@ -7,8 +7,8 @@
  * a write out (§14 posture), so every assertion here is an HTTP call and a DB read:
  *
  *   L1  (G3) finalize → reopen → add an item and edit another: the SLIP's read
- *       (`GET …/plancard?surface=slip`) shows both immediately; the Trip Card's read (no surface)
- *       still renders the frozen final it was designed to.
+ *       (`GET …/plancard` with NO parameter — live is the default) shows both immediately; the
+ *       Trip Card's explicit read (`?surface=card`) still renders the frozen final it was designed to.
  *   L2  (G3) the slip's read of a CURRENTLY-final plan is the live plan too (no snapshot branch).
  *   F1  (G1) on a finalized plan "Send to expert" is refused 409 `plan_finalized` — with an
  *       accepted expert on the plan, so the finalized lock and not the no-expert rule is what
@@ -17,6 +17,18 @@
  *   F3  the two edges left open on a finalized plan, by name: owner → ready_for_checkout (the
  *       Finalize chooser's "Book it myself" and LD 52's "Approve & book" stage items here after the
  *       flip), and the expert returning routed work. Recorded as an open question in the PR.
+ *   B1  (ruling Sep 26) add-to-checkout on a finalized plan: an unpurchased item IN the current
+ *       final → 200. This is the Finalize chooser's "Book it myself" shape: finalize, then stage
+ *       every item.
+ *   B2  an in-final item that is already purchased → 409 `already_purchased`, nothing written.
+ *   B3  an item NOT in the current final (added after finalize) → 409 `not_in_final`. That is the
+ *       service-detail "Book now" flow into a FINALIZED plan: the item lands on the plan and the
+ *       page tells the traveler to send it to checkout from the plan. The same flow into an open
+ *       plan → 200.
+ *   B4  "Approve & book" on an expert's suggestion (LD 52 B) on a finalized plan: approving
+ *       re-finalizes (v+1), so the new item IS in the current final → 200.
+ *   B5  "Approve & book" on a delivered expert plan (PlanApprovalBanner) on a finalized plan:
+ *       plan-review approve, then staging the in-final items → 200.
  *   E1  (G2) with NO expert on the plan, "Send to expert" is refused 409 `no_expert_assigned` and the
  *       plancard says `expertAssigned: false`.
  *   E2  a PENDING invite is not an assigned expert — still refused.
@@ -136,14 +148,14 @@ test("L1: finalize → reopen → add + edit: the slip shows both immediately; t
   const patch = await call(owner, "PATCH", `/api/trips/${tripId}/itinerary-items/${itemIds[1]}`, { title: renamed });
   assert.ok(patch.status < 300, `edit: ${patch.status} ${patch.text}`);
 
-  const slip = await call(owner, "GET", `/api/trips/${tripId}/plancard?surface=slip`);
+  const slip = await call(owner, "GET", `/api/trips/${tripId}/plancard`);
   assert.equal(slip.status, 200);
   const slipTitles = titlesOf(slip.json);
   assert.ok(slipTitles.includes(added), `slip shows the added item: ${JSON.stringify(slipTitles)}`);
   assert.ok(slipTitles.includes(renamed), "slip shows the edited title");
   assert.ok(!slipTitles.includes(`Market ${RUN}`), "slip no longer shows the old title");
 
-  const card = await call(owner, "GET", `/api/trips/${tripId}/plancard`);
+  const card = await call(owner, "GET", `/api/trips/${tripId}/plancard?surface=card`);
   const cardTitles = titlesOf(card.json);
   assert.ok(!cardTitles.includes(added), "the Trip Card still renders the frozen final (by design)");
   assert.ok(cardTitles.includes(`Market ${RUN}`));
@@ -156,7 +168,7 @@ test("L2: a currently-final plan's slip read is the live plan as well", async ()
   // A row the final does not contain, written straight to the table (adopting it would re-version).
   await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, item_type, day_number)
                        VALUES (${crypto.randomUUID()}, ${tripId}, ${`Live only ${RUN}`}, 'activity', 1)`);
-  const slip = await call(owner, "GET", `/api/trips/${tripId}/plancard?surface=slip`);
+  const slip = await call(owner, "GET", `/api/trips/${tripId}/plancard`);
   assert.ok(titlesOf(slip.json).includes(`Live only ${RUN}`));
 });
 
@@ -197,7 +209,7 @@ test("E1/E2/E3: no expert ⇒ refused; a pending invite ⇒ refused; an accepted
   assert.equal(none.status, 409, none.text);
   assert.equal(none.json?.code, "no_expert_assigned");
   assert.equal(await routingStatusOf(itemIds[0]), "in_planning");
-  assert.equal((await call(owner, "GET", `/api/trips/${tripId}/plancard?surface=slip`)).json?.expertAssigned, false);
+  assert.equal((await call(owner, "GET", `/api/trips/${tripId}/plancard`)).json?.expertAssigned, false);
 
   await seedAdvisor(tripId, expert.id, "pending");
   const pending = await call(owner, "POST", `/api/trips/${tripId}/items/${itemIds[0]}/route`, { to: "with_expert" });
@@ -208,5 +220,72 @@ test("E1/E2/E3: no expert ⇒ refused; a pending invite ⇒ refused; an accepted
   const ok = await call(owner, "POST", `/api/trips/${tripId}/items/${itemIds[0]}/route`, { to: "with_expert" });
   assert.equal(ok.status, 200, ok.text);
   assert.equal(await routingStatusOf(itemIds[0]), "with_expert");
-  assert.equal((await call(owner, "GET", `/api/trips/${tripId}/plancard?surface=slip`)).json?.expertAssigned, true);
+  assert.equal((await call(owner, "GET", `/api/trips/${tripId}/plancard`)).json?.expertAssigned, true);
+});
+
+// ── Ruling Sep 26: add-to-checkout on a finalized plan — in the current final and unpurchased ──
+
+test("B1/B2/B3: in-final unpurchased → 200; in-final purchased → 409; not in final → 409", async () => {
+  const { tripId, itemIds } = await mintPlan(owner, [`Kiyomizu ${RUN}`, `Nishiki ${RUN}`, `Arashiyama ${RUN}`]);
+  // B2's item is bought BEFORE Finalize, so it is in the final and purchased.
+  await db.execute(sql`UPDATE itinerary_items SET routing_status = 'purchased' WHERE id = ${itemIds[2]}`);
+  assert.equal((await call(owner, "POST", `/api/trips/${tripId}/finalize`)).status, 200);
+
+  // B1 — the "Book it myself" shape: stage every unpurchased item of the plan just finalized.
+  for (const id of itemIds.slice(0, 2)) {
+    const r = await call(owner, "POST", `/api/trips/${tripId}/items/${id}/route`, { to: "ready_for_checkout" });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(await routingStatusOf(id), "ready_for_checkout");
+  }
+
+  // B2
+  const bought = await call(owner, "POST", `/api/trips/${tripId}/items/${itemIds[2]}/route`, { to: "ready_for_checkout" });
+  assert.equal(bought.status, 409, bought.text);
+  assert.equal(bought.json?.code, "already_purchased");
+  assert.equal(await routingStatusOf(itemIds[2]), "purchased");
+
+  // B3 — added after the plan was finalized (the service-detail "Book now" add, then its route).
+  const late = await addItem(owner, tripId, `Added after final ${RUN}`);
+  const notInFinal = await call(owner, "POST", `/api/trips/${tripId}/items/${late}/route`, { to: "ready_for_checkout" });
+  assert.equal(notInFinal.status, 409, notInFinal.text);
+  assert.equal(notInFinal.json?.code, "not_in_final");
+  assert.equal(await routingStatusOf(late), "in_planning", "the item stays on the plan, unstaged");
+
+  // The same service-detail flow into an OPEN plan still stages.
+  const open = await mintPlan(owner, [`Open plan ${RUN}`]);
+  const openRoute = await call(owner, "POST", `/api/trips/${open.tripId}/items/${open.itemIds[0]}/route`, { to: "ready_for_checkout" });
+  assert.equal(openRoute.status, 200, openRoute.text);
+});
+
+test("B4: approve & book an expert's suggestion on a finalized plan — approval re-finalizes, staging succeeds", async () => {
+  const { tripId } = await mintPlan(owner, [`Gion ${RUN}`]);
+  await seedAdvisor(tripId, expert.id, "accepted");
+  assert.equal((await call(owner, "POST", `/api/trips/${tripId}/finalize`)).status, 200);
+
+  const suggested = await call(expert, "POST", `/api/trips/${tripId}/suggestions`, { type: "activity", title: `Suggested ${RUN}`, dayNumber: 1 });
+  assert.ok(suggested.status < 300, `suggest: ${suggested.status} ${suggested.text}`);
+  const suggestionId = suggested.json?.suggestionId;
+  assert.ok(suggestionId, `suggestion id in ${suggested.text}`);
+
+  const approved = await call(owner, "PATCH", `/api/trips/${tripId}/suggestions/${suggestionId}`, { status: "approved" });
+  assert.equal(approved.status, 200, approved.text);
+  const itemId = approved.json?.itemId;
+  assert.ok(itemId, "approval materialized an item");
+
+  const staged = await call(owner, "POST", `/api/trips/${tripId}/items/${itemId}/route`, { to: "ready_for_checkout" });
+  assert.equal(staged.status, 200, staged.text);
+});
+
+test("B5: approve & book a delivered expert plan on a finalized plan — plan-review, then staging succeeds", async () => {
+  const { tripId, itemIds } = await mintPlan(owner, [`Fushimi ${RUN}`, `Tofuku-ji ${RUN}`]);
+  await seedAdvisor(tripId, expert.id, "accepted");
+  await db.execute(sql`UPDATE trip_expert_advisors SET workspace_status = 'delivered' WHERE trip_id = ${tripId}`);
+  assert.equal((await call(owner, "POST", `/api/trips/${tripId}/finalize`)).status, 200);
+
+  const review = await call(owner, "POST", `/api/trips/${tripId}/plan-review`, { decision: "approve" });
+  assert.equal(review.status, 200, review.text);
+  for (const id of itemIds) {
+    const r = await call(owner, "POST", `/api/trips/${tripId}/items/${id}/route`, { to: "ready_for_checkout" });
+    assert.equal(r.status, 200, r.text);
+  }
 });

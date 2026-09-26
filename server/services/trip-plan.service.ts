@@ -130,11 +130,11 @@ export interface AssembleTripPlanOptions {
   tripRole?: string | null;
   /**
    * WHICH PLAN RENDERS once a final exists (ledger `2026-09-26-slip-renders-live`; audit
-   * `docs/planning/trip-slip-ui-audit.md` G3). `"final"` (the default — the Trip Card) renders the
-   * latest `trip_finals` snapshot with live booking status overlaid. `"live"` (the slip, the ONE
-   * planning surface — Locked Decision 42) always renders the live `itinerary_items`: a reopened
-   * plan's adds and edits must be visible where they are made, not frozen until the next Finalize.
-   * `finalVersion` is emitted either way, so the slip still knows a final exists.
+   * `docs/planning/trip-slip-ui-audit.md` G3). **LIVE IS THE DEFAULT**: a caller that says nothing
+   * gets the live `itinerary_items`, so no planning surface can be handed a frozen plan by omission
+   * (a reopened plan's adds and edits must be visible where they are made). `"final"` is asked for
+   * EXPLICITLY by the Trip Card alone, and renders the latest `trip_finals` snapshot with live
+   * booking status overlaid. `finalVersion` is emitted either way.
    */
   render?: "final" | "live";
 }
@@ -653,8 +653,8 @@ export async function assembleTripPlan(
   // tools first, then leaving the notice-only page) — it is deliberately NOT done here to avoid a
   // half-stripped page. Do not treat this live-render branch as final behavior.
   const latestFinal = await getLatestTripFinal(tripId);
-  // The slip asks for the LIVE plan (`render: "live"`) and never gets a snapshot, reopened or not.
-  const renderingSnapshot = latestFinal != null && options.render !== "live";
+  // Only an explicit `render: "final"` (the Trip Card) gets the snapshot; the default is live.
+  const renderingSnapshot = latestFinal != null && options.render === "final";
   if (renderingSnapshot) {
     items = overlayLiveBookingStatus(((latestFinal!.snapshot as any)?.items ?? []) as any[], items);
   }

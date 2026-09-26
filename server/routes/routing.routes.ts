@@ -78,7 +78,7 @@ import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAdvisorWithWriteAccess, tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
 import { syncItemProjection } from "../services/cart-projection.service";
 import { logItemTransition } from "../services/item-transition-log.service";
-import { finalizeTrip, TripNotFoundError } from "../services/trip-finalize.service";
+import { finalizeTrip, getLatestTripFinal, TripNotFoundError } from "../services/trip-finalize.service";
 import { logger } from "../infrastructure/logger";
 
 const router = Router();
@@ -156,6 +156,7 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
         id: itineraryItems.id,
         tripId: itineraryItems.tripId,
         routingStatus: itineraryItems.routingStatus,
+        bookingId: itineraryItems.bookingId,
       })
       .from(itineraryItems)
       .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
@@ -200,29 +201,51 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
     // Card's "Send to expert" returned 200 on a finalized plan). Refused whatever the client draws:
     // sending an item to an expert, and pulling one back into planning, are PLANNING changes and a
     // finalized plan is Reopened on the slip first. Two edges stay open, by name:
-    //   · owner → ready_for_checkout — BOOKING a finalized plan is what Finalize is for: the
-    //     Finalize chooser's "Book it myself" lane (Locked Decision 42 D2, R-F: finalize is "a
-    //     rendering flip, not a money event") and LD 52's "Approve & book" both stage items here
-    //     after the flip. Whether the lock should also cover this edge is recorded as an open
-    //     question for the decision-maker, not decided in this lane.
+    //   · owner → ready_for_checkout — BOOKING a finalized plan is what Finalize is for (the
+    //     Finalize chooser's "Book it myself", LD 42 D2 / R-F, stages items here after the flip).
+    //     DECISION-MAKER RULING (Sep 26, 2026): allowed ONLY for an item IN THE CURRENT
+    //     `trip_finals` VERSION that is NOT already purchased; anything else is a 409. Staging stays
+    //     on this rail — it does not move into the finalize call.
     //   · expert with_expert → in_planning — returning routed work, so an item routed before the
     //     plan was finalized is never stranded with the expert.
-    const finalizedOpenEdge =
-      (actor === "owner" && to === "ready_for_checkout") ||
-      (actor === "expert" && from === "with_expert" && to === "in_planning");
-    if (!finalizedOpenEdge) {
-      const [tripRow] = await db
-        .select({ finalizedAt: trips.finalizedAt })
-        .from(trips)
-        .where(eq(trips.id, tripId))
-        .limit(1);
-      if (tripRow?.finalizedAt) {
+    const [tripRow] = await db
+      .select({ finalizedAt: trips.finalizedAt })
+      .from(trips)
+      .where(eq(trips.id, tripId))
+      .limit(1);
+    if (tripRow?.finalizedAt) {
+      const expertReturn = actor === "expert" && from === "with_expert" && to === "in_planning";
+      const ownerBooking = actor === "owner" && to === "ready_for_checkout";
+      if (!expertReturn && !ownerBooking) {
         return res.status(409).json({
           code: "plan_finalized",
           message: "This plan is finalized. Reopen it on the slip to change how its items are routed.",
           from,
           to,
         });
+      }
+      if (ownerBooking) {
+        // Already bought: a purchased row, or one carrying a booking, is never staged again.
+        if (from === "purchased" || item.bookingId) {
+          return res.status(409).json({
+            code: "already_purchased",
+            message: "This item is already purchased.",
+            from,
+            to,
+          });
+        }
+        // Only what the finalized plan actually contains: the CURRENT (latest) final version's items.
+        const latestFinal = await getLatestTripFinal(tripId);
+        const finalItems = ((latestFinal?.snapshot as any)?.items ?? []) as Array<{ id?: string }>;
+        if (!finalItems.some((f) => f?.id === itemId)) {
+          return res.status(409).json({
+            code: "not_in_final",
+            message:
+              "This item is not part of the finalized plan. Reopen the plan and finalize it again to book it.",
+            from,
+            to,
+          });
+        }
       }
     }
 

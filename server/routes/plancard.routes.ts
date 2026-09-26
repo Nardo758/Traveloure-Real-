@@ -423,10 +423,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // The gate above is authoritative — the assembler does NOT authorize; the redaction level is
     // the channel contract. This surface renders the full body for an authorized viewer, so it
     // asks for 'full'.
-    // `?surface=slip` — the slip is the planning surface and renders the LIVE plan, never the
-    // Trip Card's frozen final (ledger `2026-09-26-slip-renders-live`). Any other caller keeps the
-    // Trip Card's snapshot render. It widens nothing: the gate above already decided who may read.
-    const render = req.query.surface === "slip" ? "live" : "final";
+    // LIVE BY DEFAULT (ledger `2026-09-26-slip-renders-live`): a reader passing no parameter gets
+    // the live plan. The Trip Card — the one read-out of a finished plan — asks for its frozen final
+    // explicitly with `?surface=card`. It widens nothing: the gate above already decided who reads.
+    const render = req.query.surface === "card" ? "final" : "live";
     const plan = await assembleTripPlan(tripId, "full", { viewerId: userId, tripRole, render });
 
     // ── The plan's EVENTS (migration 277, ledger `2026-09-03-item-event-link`) ─────────────────

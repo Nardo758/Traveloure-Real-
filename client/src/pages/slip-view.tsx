@@ -17,10 +17,9 @@ export default function SlipViewPage() {
   const highlightItemId = new URLSearchParams(searchStr).get("item");
 
   const { data, isLoading, isError } = useQuery<SlipData>({
-    // The slip renders the LIVE plan (`?surface=slip`), never the Trip Card's frozen final — so it
-    // does NOT share the Trip Card's cache entry (ledger `2026-09-26-slip-renders-live`). Every
-    // mutation invalidates `[/api/trips/:id/plancard]`, which prefix-matches this key too.
-    queryKey: [`/api/trips/${tripId}/plancard`, { surface: "slip" }],
+    // The plancard is LIVE by default (ledger `2026-09-26-slip-renders-live`); only the Trip Card asks
+    // for its frozen final (`{ surface: "card" }`), under its own cache key.
+    queryKey: [`/api/trips/${tripId}/plancard`],
     enabled: !!tripId,
     staleTime: 30000,
   });
