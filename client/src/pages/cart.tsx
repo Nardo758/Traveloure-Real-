@@ -73,6 +73,7 @@ import { getAcquisitionRef } from "@/lib/acquisition";
 import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
 import { trackEvent } from "@/lib/analytics";
 import { itemKindChipFor } from "@shared/item-kind";
+import { isContentCartLine } from "@shared/cart-content-line";
 // D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`): which count control this
 // line draws — units, seats, or none — is the SERVER'S OWN derivation, read here rather than
 // restated. A second copy of "does a stay have a quantity?" is the drift class §18 rule 1 names.
@@ -150,42 +151,34 @@ interface CartData {
   itemCount: number;
 }
 
-interface ExternalCartItem {
-  id: string;
-  type: string;
-  name: string;
-  price: number;
-  quantity: number;
-  date?: string;
-  details?: string;
-  provider?: string;
-  isExternal?: boolean;
-  metadata?: {
-    cabin?: string;
-    baggage?: string;
-    stops?: number;
-    duration?: string;
-    airline?: string;
-    flightNumber?: string;
-    departureTime?: string;
-    arrivalTime?: string;
-    seatsLeft?: number;
-    lastTicketingDate?: string;
-    refundable?: boolean;
-    cancellationDeadline?: string;
-    boardType?: string;
-    bedInfo?: string;
-    roomCategory?: string;
-    taxTotal?: number;
-    nights?: number;
-    pricePerNight?: number;
-    checkInDate?: string;
-    checkOutDate?: string;
-    travelers?: number;
-    meetingPoint?: string;
-    meetingPointCoordinates?: { lat: number; lng: number };
-    rawData?: any;
+/**
+ * ONE mapping from a server cart line to the free `POST /api/optimization-preview` item (RC-9 — the
+ * nudge and the preview used to each concatenate a separate sessionStorage list). A content line
+ * names its own kind; it carries no platform price, so it contributes none (§14 — never a
+ * client-stated figure). The plan's `itinerary_item` projection is not a service kind, so it keeps
+ * the default every priceless line always had.
+ */
+function previewItemForCartLine(item: CartItem) {
+  const contentKind =
+    isContentCartLine(item) && item.contentType && item.contentType !== "itinerary_item" ? item.contentType : null;
+  return {
+    serviceType: contentKind ?? item.service?.serviceType ?? "sightseeing",
+    price: parseFloat(item.service?.price || "0"),
+    duration: 90,
+    dayNumber: 1,
   };
+}
+
+/**
+ * RC-9: what the cart says about its content lines, ONCE for both mounts. Replaces "N external
+ * bookings will need to be completed on the provider's website" — which sent the traveler off-site
+ * (§16) and was not what happens. What is true (§13): checkout skips a line with no listing
+ * (`if (!item.service) continue;`), so these are not in the total and are not paid for here; and
+ * a completed checkout CLEARS the cart, so a line that was never put on a plan is gone afterwards.
+ */
+function partnerLinesNotice(n: number): string {
+  const lines = n === 1 ? "1 item in your cart isn't" : `${n} items in your cart aren't`;
+  return `${lines} a platform booking, so ${n === 1 ? "it isn't" : "they aren't"} in this total or paid for here. Add ${n === 1 ? "it" : "them"} to a plan to keep ${n === 1 ? "it" : "them"} — a completed checkout empties the cart.`;
 }
 
 interface Recommendation {
@@ -611,7 +604,6 @@ export default function CartPage() {
   const [checkoutIdempotencyKey] = useState<string>(() => crypto.randomUUID());
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
-  const [externalItems, setExternalItems] = useState<ExternalCartItem[]>([]);
 
   // Optimization preview + payment state (G3 + G4)
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -726,28 +718,10 @@ export default function CartPage() {
   // page's live trip state (tripStartDate/tripEndDate above) already uses closes that gap.
   const experienceTitle = liveTripCtx.title || liveTripCtx.experienceType || null;
 
-  // Load external cart items from sessionStorage when experience slug changes
-  useEffect(() => {
-    if (experienceSlug) {
-      try {
-        const stored = sessionStorage.getItem(`externalCart_${experienceSlug}`);
-        setExternalItems(stored ? JSON.parse(stored) : []);
-      } catch {
-        setExternalItems([]);
-      }
-    }
-  }, [experienceSlug]);
-
-  // Save external items to sessionStorage whenever they change
-  useEffect(() => {
-    if (experienceSlug) {
-      if (externalItems.length > 0) {
-        sessionStorage.setItem(`externalCart_${experienceSlug}`, JSON.stringify(externalItems));
-      } else {
-        sessionStorage.removeItem(`externalCart_${experienceSlug}`);
-      }
-    }
-  }, [externalItems, experienceSlug]);
+  // RC-9 (ledger 2026-09-26-rc9-external-cart-lines): the `externalCart_<slug>` sessionStorage
+  // side-cart is GONE. Partner picks are server cart rows (content lines) and arrive on the ONE
+  // `GET /api/cart` read below with every other line; nothing here reads or writes that key, and
+  // whatever an old tab left under it is not migrated (it was never durable).
 
   // Check for step query param and stored optimization preview on mount
   // CON-A.P1: experience-template now hands off an OptimizationPreview (free heuristic).
@@ -800,7 +774,6 @@ export default function CartPage() {
   // (concierge-fee-less) estimate. Server-derived fields only, no invented numbers (§13/§14).
   const [checkoutOrderSnapshot, setCheckoutOrderSnapshot] = useState<{
     items: CartItem[];
-    externalItems: ExternalCartItem[];
     subtotal: string;
     platformFee: string;
     conciergeFee: string;
@@ -953,17 +926,21 @@ export default function CartPage() {
     orderSnapshotted: !!checkoutOrderSnapshot,
   });
 
-  // Redirect payment step to cart if no platform items exist (external-only carts cannot checkout)
+  // Redirect payment step to cart if no platform items exist (a cart of only partner/content lines
+  // has nothing checkout can charge — it skips every line with no listing).
   // But skip this check if we already have a payment intent (post-checkout state)
+  // RC-9: partner lines are server rows now, so "no platform items" is "no line with a listing",
+  // not "an empty cart"; and the words no longer send the traveler off-site (§16).
+  const platformLineCount = (cart?.items || []).filter((i) => !isContentCartLine(i) || !!i.service).length;
   useEffect(() => {
-    if (flowStep === "payment" && !isLoading && (cart?.items?.length || 0) === 0 && !checkoutPaymentIntent) {
+    if (flowStep === "payment" && !isLoading && platformLineCount === 0 && !checkoutPaymentIntent) {
       setFlowStep("cart");
       toast({
-        title: "External bookings only",
-        description: "Complete external bookings on their provider websites. Platform checkout requires at least one platform service."
+        title: "Nothing to pay for here",
+        description: "Partner items aren't platform bookings — add them to a plan. Checkout needs at least one platform service."
       });
     }
-  }, [flowStep, cart?.items?.length, isLoading, toast, checkoutPaymentIntent]);
+  }, [flowStep, platformLineCount, isLoading, toast, checkoutPaymentIntent]);
 
   // D-14: ONE line-update mutation, two fields. Which of `quantity` / `partySize` a line's control
   // writes is decided by `archetypeAsks` at the render below — never by a second mutation.
@@ -1112,7 +1089,6 @@ export default function CartPage() {
         // still needs to show the traveler exactly what they're paying for.
         setCheckoutOrderSnapshot({
           items: cart?.items || [],
-          externalItems,
           subtotal: data.subtotal,
           platformFee: data.platformFee,
           conciergeFee: data.conciergeFee ?? "0",
@@ -1202,21 +1178,12 @@ export default function CartPage() {
     },
   });
 
-  const updateExternalItem = (id: string, quantity: number) => {
-    const clampedQty = Math.max(1, Math.min(10, quantity));
-    setExternalItems(prev => prev.map(item => 
-      item.id === id ? { ...item, quantity: clampedQty } : item
-    ));
-  };
-
-  const removeExternalItem = (id: string) => {
-    setExternalItems(prev => prev.filter(item => item.id !== id));
-    toast({ title: "Item removed from cart" });
-  };
-
-  const externalSubtotal = externalItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  // RC-9: the subtotal is the SERVER's alone. A partner (content) line is on the server cart but
+  // carries no price the platform can charge, so it adds nothing here — which is why the partner
+  // notice below says those lines are not in this total (§13), rather than a client-stated figure
+  // being summed in beside the server's.
   const platformSubtotal = parseFloat(cart?.subtotal || "0");
-  const combinedSubtotal = platformSubtotal + externalSubtotal;
+  const combinedSubtotal = platformSubtotal;
   // `cart.platformFee` is DELIBERATELY NOT read here (ledger 2026-09-08-cart-fee-line): it is the
   // provider's withheld commission, still returned by the server as disclosure of what the PROVIDER
   // pays, and it is neither a line on the buyer's summary nor a term of their total.
@@ -1230,7 +1197,7 @@ export default function CartPage() {
   // nor summed here. The server composes the same three terms (`composeTravelerCharge`), so this
   // figure and the charge cannot disagree.
   const combinedTotal = combinedSubtotal + conciergeFee + travelSurcharge;
-  const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
+  const totalItemCount = cart?.itemCount || 0;
 
   const exchangeRates = exchangeRatesData?.rates ?? {};
   const formatPrice = (usdAmount: number): string => {
@@ -1256,9 +1223,10 @@ export default function CartPage() {
   // Content items (Discover saves) — eligible for "Start planning"
   // Require both contentId AND contentType to be non-empty; do NOT use
   // contentMeta alone since addToCart always writes {} for all cart items.
-  const contentItems = (cart?.items || []).filter(
-    (item) => item.isContentItem || (!!item.contentId && !!item.contentType)
-  );
+  // RC-9: ONE predicate for "is this a content line" (`@shared/cart-content-line`), shared with the
+  // server's admission and the experience template (§18 rule 1). These lines are also exactly the
+  // rows checkout skips (`if (!item.service) continue;`), so the partner notice counts them.
+  const contentItems = (cart?.items || []).filter(isContentCartLine);
 
   // Fix #970: the convert-to-trip control used to gate on `contentItems` alone (Discover
   // saves), so a cart holding ONLY a platform-service row (serviceId, no contentId/contentType)
@@ -1268,7 +1236,7 @@ export default function CartPage() {
   // gate exactly (content OR a real service), so the control renders whenever the cart has
   // ANY convertible item.
   const planCandidateItems = (cart?.items || []).filter(
-    (item) => item.isContentItem || (!!item.contentId && !!item.contentType) || !!item.serviceId
+    (item) => isContentCartLine(item) || !!item.serviceId
   );
 
   const openPlanningDialog = () => {
@@ -1331,26 +1299,13 @@ export default function CartPage() {
   useEffect(() => {
     if (flowStep !== "cart") return;
     const platformItems = cart?.items || [];
-    if (platformItems.length === 0 && externalItems.length === 0) {
+    if (platformItems.length === 0) {
       setCartNudge(null);
       return;
     }
     const ctxForEvent = getTripContext();
     const eventType: string | undefined = ctxForEvent.experienceType || ctxForEvent.eventType;
-    const items = [
-      ...platformItems.map((item: any) => ({
-        serviceType: item.service?.serviceType || "sightseeing",
-        price: parseFloat(item.service?.price || "0"),
-        duration: 90,
-        dayNumber: 1,
-      })),
-      ...externalItems.map((item, i) => ({
-        serviceType: item.type || "activity",
-        price: item.price,
-        duration: 120,
-        dayNumber: Math.floor(i / 3) + 1,
-      })),
-    ];
+    const items = platformItems.map(previewItemForCartLine);
     let cancelled = false;
     fetch("/api/optimization-preview", {
       method: "POST",
@@ -1362,7 +1317,7 @@ export default function CartPage() {
       .then((p) => { if (!cancelled) setCartNudge(p); })
       .catch(() => { /* nudge is best-effort */ });
     return () => { cancelled = true; };
-  }, [flowStep, cart?.items?.length, externalItems.length]);
+  }, [flowStep, cart?.items?.length]);
 
   // ── G4: Call heuristic preview before full optimization ──────────────────
   const fetchPreview = async () => {
@@ -1372,7 +1327,7 @@ export default function CartPage() {
       return;
     }
     const platformItems = cart?.items || [];
-    if (platformItems.length === 0 && externalItems.length === 0) {
+    if (platformItems.length === 0) {
       toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
       return;
     }
@@ -1380,20 +1335,7 @@ export default function CartPage() {
     const ctxForEvent = getTripContext();
     const eventType: string | undefined = ctxForEvent.experienceType || ctxForEvent.eventType;
 
-    const items = [
-      ...platformItems.map(item => ({
-        serviceType: item.service?.serviceType || "sightseeing",
-        price: parseFloat(item.service?.price || "0"),
-        duration: 90,
-        dayNumber: 1,
-      })),
-      ...externalItems.map((item, i) => ({
-        serviceType: item.type || "activity",
-        price: item.price,
-        duration: 120,
-        dayNumber: Math.floor(i / 3) + 1,
-      })),
-    ];
+    const items = platformItems.map(previewItemForCartLine);
 
     setPreviewLoading(true);
     try {
@@ -1438,13 +1380,9 @@ export default function CartPage() {
           endDate: effEnd || undefined,
           destination: ctxDestination,
           travelers: ctxAtResolve.travelers || undefined,
-          // External (affiliate/AI) items exist only in sessionStorage — send a
-          // minimal descriptor list so an external-only cart can resolve a trip.
-          // No prices sent: the server ignores them by design.
-          externalItems: externalItems.map((item) => ({
-            name: item.name,
-            date: item.date,
-          })),
+          // RC-9: no `externalItems` descriptor list any more — partner picks are server content
+          // lines, which this rail reads itself and turns into plan items through the ONE
+          // projection (`materializeCartLinesAsItems`, LD 39).
         }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || "Could not prepare trip"); }
@@ -1512,7 +1450,7 @@ export default function CartPage() {
       return;
     }
     const platformItems = cart?.items || [];
-    if (platformItems.length === 0 && externalItems.length === 0) {
+    if (platformItems.length === 0) {
       toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
       return;
     }
@@ -1663,66 +1601,48 @@ export default function CartPage() {
       toast({ title: "Loading cart...", description: "Please wait a moment" });
       return;
     }
-    if (platformItems.length === 0 && externalItems.length === 0) {
+    if (platformItems.length === 0) {
       toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
       return;
     }
     setCreatingComparison(true);
-    
+
     const experienceContext: TripContext | undefined = getTripContext();
 
-    // Build baseline items from platform items
-    const platformBaselineItems = platformItems.map(item => ({
-      name: item.service?.serviceName || "Service",
-      category: item.service?.serviceType || "service",
-      price: item.service?.price || "0",
-      provider: item.service?.providerName || "Provider",
-      location: item.service?.location || "",
-      description: item.service?.shortDescription || ""
-    }));
-    
-    // Build baseline items from external items
-    const externalBaselineItems = externalItems.map(item => ({
-      name: item.name,
-      category: item.type,
-      price: String(item.price),
-      provider: item.provider || "External Provider",
-      location: item.metadata?.meetingPoint || "",
-      description: item.details || ""
-    }));
-    
-    const baselineItems = [...platformBaselineItems, ...externalBaselineItems];
-    
-    // Derive destination from available data
+    // Build baseline items from the server cart lines. RC-9: a partner pick is a content line on
+    // this same read (there is no sessionStorage list to append), so it is described from its own
+    // display envelope — never with a client-stated price (it has none; §14).
+    const contentCity = (item: CartItem): string | null =>
+      item.contentDisplay?.city || ((item.contentMeta as { city?: string } | null)?.city ?? null);
+    const baselineItems = platformItems.map((item) =>
+      isContentCartLine(item) && !item.service
+        ? {
+            name: item.contentDisplay?.name || (item.contentMeta as { name?: string } | null)?.name || item.contentId || "Item",
+            category: item.contentType || "activity",
+            price: "0",
+            provider: "Partner",
+            location: contentCity(item) || "",
+            description: item.contentDisplay?.description || "",
+          }
+        : {
+            name: item.service?.serviceName || "Service",
+            category: item.service?.serviceType || "service",
+            price: item.service?.price || "0",
+            provider: item.service?.providerName || "Provider",
+            location: item.service?.location || "",
+            description: item.service?.shortDescription || "",
+          },
+    );
+
+    // Derive destination from available data — the trip context, a listing's own location, then
+    // a partner line's stated city. Nothing is guessed from a name (§13).
     const getComparisonDestination = () => {
       if (experienceContext?.destination) return experienceContext.destination;
       if (platformItems[0]?.service?.location) return platformItems[0].service.location;
-      
-      // Check external items for destination data
-      for (const extItem of externalItems) {
-        if (extItem?.metadata?.meetingPoint) return extItem.metadata.meetingPoint;
-        // Flight destination (from name like "NYC → LAX")
-        if (extItem?.name?.includes('→')) {
-          const destCode = extItem.name.split('→')[1]?.trim();
-          if (destCode) return destCode;
-        }
-        // Hotel location (from rawData if available)
-        if (extItem?.type === 'hotels' || extItem?.type === 'accommodations') {
-          const rawData = extItem?.metadata?.rawData;
-          // Check various Amadeus hotel location fields
-          if (rawData?.hotel?.address?.cityName) return rawData.hotel.address.cityName;
-          if (rawData?.hotel?.cityCode) return rawData.hotel.cityCode;
-          if (rawData?.destinationLocation) return rawData.destinationLocation;
-        }
-        // Flight destination from rawData
-        if (extItem?.type === 'flights') {
-          const rawData = extItem?.metadata?.rawData;
-          if (rawData?.itineraries?.[0]?.segments) {
-            const segments = rawData.itineraries[0].segments;
-            const lastSegment = segments[segments.length - 1];
-            if (lastSegment?.arrival?.iataCode) return lastSegment.arrival.iataCode;
-          }
-        }
+      for (const item of platformItems) {
+        if (!isContentCartLine(item)) continue;
+        const city = contentCity(item);
+        if (city) return city;
       }
       return null;
     };
@@ -1977,7 +1897,7 @@ export default function CartPage() {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : (cart?.items?.length || 0) === 0 && externalItems.length === 0 && guestPendingIds.length === 0 && flowStep === "cart" && !optimizationResult ? (
+        ) : (cart?.items?.length || 0) === 0 && guestPendingIds.length === 0 && flowStep === "cart" && !optimizationResult ? (
           <Card>
             <CardContent className="py-12 text-center">
               <ShoppingCart className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
@@ -2030,7 +1950,7 @@ export default function CartPage() {
                     </button>
                   )}
                   {(cart?.items || []).map((item) => {
-                    const isContent = item.isContentItem || (item.contentId && item.contentType);
+                    const isContent = isContentCartLine(item);
                     const contentDisplay = item.contentDisplay ?? (item.contentMeta ? {
                       name: (item.contentMeta as any).name || item.contentId || "Item",
                       imageUrl: (item.contentMeta as any).imageUrl || null,
@@ -2046,7 +1966,7 @@ export default function CartPage() {
                     // Discover badge/copy, which is simply false for something that came from the
                     // traveler's own trip plan, not a Discover save.
                     const isTripRoutedItem = item.contentType === "itinerary_item";
-                    const contentTypeLabel = isTripRoutedItem ? "From your trip" : item.contentType === "gem" ? "Hidden Gem" : item.contentType === "hotel" ? "Hotel" : item.contentType === "activity" ? "Activity" : "Discover Item";
+                    const contentTypeLabel = isTripRoutedItem ? "From your trip" : item.contentType === "gem" ? "Hidden Gem" : item.contentType === "hotel" ? "Hotel" : item.contentType === "activity" ? "Activity" : item.contentType === "event" ? "Event" : "Discover Item";
 
                     if (isContent && contentDisplay) {
                       return (
@@ -2130,7 +2050,7 @@ export default function CartPage() {
                                 <p className="text-xs text-muted-foreground mt-1">
                                   {isTripRoutedItem
                                     ? "Routed from your trip plan — shown for reference only, not included in this checkout total"
-                                    : "Saved from Discover — will be resolved at checkout"}
+                                    : "Partner item — not a platform booking, so not included in this checkout total"}
                                 </p>
                               </div>
                             </div>
@@ -2299,97 +2219,6 @@ export default function CartPage() {
                     );
                   })}
                   
-                  {externalItems.map((item) => (
-                    <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-primary/20">
-                      <CardContent className="p-4">
-                        <div className="flex gap-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold" data-testid={`text-service-name-${item.id}`}>
-                                {item.name}
-                              </h3>
-                              <Badge variant="outline" className="text-xs border-primary text-primary">
-                                {item.provider}
-                              </Badge>
-                            </div>
-                            {item.details && (
-                              <p className="text-sm text-muted-foreground mt-1">
-                                {item.details}
-                              </p>
-                            )}
-                            <div className="flex flex-wrap gap-3 mt-2 text-sm text-muted-foreground">
-                              {item.metadata?.meetingPoint && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3" />
-                                  {item.metadata.meetingPoint}
-                                </span>
-                              )}
-                              {item.metadata?.checkInDate && (
-                                <span className="flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {format(new Date(item.metadata.checkInDate), "PP")} - {format(new Date(item.metadata.checkOutDate || item.metadata.checkInDate), "PP")}
-                                </span>
-                              )}
-                              {item.metadata?.departureTime && (
-                                <span className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  {format(new Date(item.metadata.departureTime), "PP p")}
-                                </span>
-                              )}
-                              {item.metadata?.duration && (
-                                <span className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  {item.metadata.duration}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
-                              {formatPrice(item.price)}
-                            </p>
-                            <div className="flex items-center gap-2 mt-2">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => updateExternalItem(item.id, (item.quantity || 1) - 1)}
-                                disabled={item.quantity <= 1}
-                                data-testid={`button-decrease-${item.id}`}
-                              >
-                                <Minus className="w-3 h-3" />
-                              </Button>
-                              <span className="w-8 text-center" data-testid={`text-quantity-${item.id}`}>
-                                {item.quantity || 1}
-                              </span>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => updateExternalItem(item.id, (item.quantity || 1) + 1)}
-                                data-testid={`button-increase-${item.id}`}
-                              >
-                                <Plus className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex justify-end mt-3">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => removeExternalItem(item.id)}
-                            data-testid={`button-remove-${item.id}`}
-                          >
-                            <Trash2 className="w-4 h-4 mr-1" />
-                            Remove
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-
                   {/* Guest pending items — saved in localStorage before sign-in */}
                   {!user && guestPendingIds.map((serviceId) => (
                     <Card key={serviceId} data-testid={`cart-item-${serviceId}`} className="border-primary/20">
@@ -2553,7 +2382,7 @@ export default function CartPage() {
                             previewLoading ||
                             resolvingTrip ||
                             (migrationStartedRef.current && !migrationDone) ||
-                            ((cart?.items?.length || 0) === 0 && externalItems.length === 0 && guestPendingIds.length === 0)
+                            ((cart?.items?.length || 0) === 0 && guestPendingIds.length === 0)
                           }
                           data-testid="button-generate-itinerary-comparison"
                         >
@@ -2606,7 +2435,7 @@ export default function CartPage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <p className="text-sm text-muted-foreground">
-                        Our AI scanned your {(cart?.items?.length || 0) + externalItems.length} items and found room for improvement. 
+                        Our AI scanned your {cart?.items?.length || 0} items and found room for improvement. 
                         Unlock the full optimizer to get your personalised plan.
                       </p>
 
@@ -2968,12 +2797,12 @@ export default function CartPage() {
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">
-                      {externalItems.length > 0 && (
-                        <div className="w-full p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      {contentItems.length > 0 && (
+                        <div className="w-full p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg" data-testid="notice-partner-lines">
                           <div className="flex items-start gap-2">
                             <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                             <div className="text-sm text-amber-700 dark:text-amber-300">
-                              <strong>{externalItems.length} external booking{externalItems.length > 1 ? 's' : ''}</strong> (flights, hotels, activities) will need to be completed on the provider's website.
+                              {partnerLinesNotice(contentItems.length)}
                             </div>
                           </div>
                         </div>
@@ -3136,7 +2965,11 @@ export default function CartPage() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <div className="font-medium">
-                                  {formatPrice(lineTotal)}
+                                  {/* RC-9 / §13: a line with no listing is skipped by checkout —
+                                      it is not charged, so it is never shown as $0.00. */}
+                                  {item.service ? formatPrice(lineTotal) : (
+                                    <span className="text-xs font-normal text-muted-foreground">Not in this payment</span>
+                                  )}
                                 </div>
                                 {orderLinesRemovable && !checkoutMutation.isPending && (
                                   <Button
@@ -3155,17 +2988,6 @@ export default function CartPage() {
                             </div>
                           );
                         })}
-                        {externalItems.map((item) => (
-                          <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
-                            <div>
-                              <div className="font-medium">{item.name}</div>
-                              <div className="text-sm text-muted-foreground">Qty: {item.quantity} | {item.provider}</div>
-                            </div>
-                            <div className="font-medium">
-                              {formatPrice(item.price * item.quantity)}
-                            </div>
-                          </div>
-                        ))}
                       </div>
                     </CardContent>
                   </Card>
@@ -3238,12 +3060,12 @@ export default function CartPage() {
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">
-                      {externalItems.length > 0 && (
-                        <div className="w-full p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      {contentItems.length > 0 && (
+                        <div className="w-full p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg" data-testid="notice-partner-lines">
                           <div className="flex items-start gap-2">
                             <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                             <div className="text-sm text-amber-700 dark:text-amber-300">
-                              <strong>{externalItems.length} external booking{externalItems.length > 1 ? 's' : ''}</strong> (flights, hotels, activities) will need to be completed on the provider's website.
+                              {partnerLinesNotice(contentItems.length)}
                             </div>
                           </div>
                         </div>
@@ -3313,7 +3135,7 @@ export default function CartPage() {
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {planCandidateItems.map((item) => {
                   const meta = item.contentMeta as any || {};
-                  const isContent = item.isContentItem || (!!item.contentId && !!item.contentType);
+                  const isContent = isContentCartLine(item);
                   // Fix #970: a platform-service row has no contentMeta — its honest name/
                   // location/price come from the joined `service` (never invented; §13's
                   // "Unknown" location literal is filtered out, matching the rest of this file).

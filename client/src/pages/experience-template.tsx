@@ -121,6 +121,12 @@ import { EXPERT_REQUEST_FREE_PRICE } from "@/lib/expert-request-review";
 import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE } from "@/lib/plan-vocabulary";
 import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
 import { DestinationTransfersSection } from "@/components/destination-transfers-section";
+import {
+  resolveTemplateExternalAdd,
+  templateCartLineId,
+  type TemplateExternalKind,
+} from "@/lib/template-external-add";
+import { isContentCartLine } from "@shared/cart-content-line";
 
 interface VenueResult {
   id: string;
@@ -400,6 +406,16 @@ interface CartItem {
   details?: string;
   provider?: string;
   isExternal?: boolean;
+  /**
+   * RC-9: which durable rail a partner pick takes (`resolveTemplateExternalAdd`,
+   * client/src/lib/template-external-add.ts). Set at each call site — never guessed from an id.
+   */
+  externalKind?: TemplateExternalKind;
+  /**
+   * FALSE for a server content line: the cart rail admits no price for it (§14), so the page has
+   * no number to show and says so rather than rendering $0 (§13). Absent = the price is known.
+   */
+  priceStated?: boolean;
   metadata?: {
     cabin?: string;
     baggage?: string;
@@ -764,7 +780,12 @@ export default function ExperienceTemplatePage() {
 
   interface ServerCartItem {
     id: string;
-    serviceId: string;
+    serviceId: string | null;
+    customVenueId?: string | null;
+    contentId?: string | null;
+    contentType?: string | null;
+    isContentItem?: boolean;
+    contentDisplay?: { name: string; city: string | null; description: string | null } | null;
     quantity: number;
     service: { id: string; serviceName: string; price: string; location?: string } | null;
   }
@@ -804,47 +825,45 @@ export default function ExperienceTemplatePage() {
     .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())[0];
   const linkedTripId = linkedExperience?.tripId ?? null;
 
-  const [localExternalCart, setLocalExternalCart] = useState<CartItem[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const stored = sessionStorage.getItem(`externalCart_${slug}`);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const stored = sessionStorage.getItem(`externalCart_${slug}`);
-      setLocalExternalCart(stored ? JSON.parse(stored) : []);
-    } catch {
-      setLocalExternalCart([]);
-    }
-  }, [slug]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (localExternalCart.length > 0) {
-      sessionStorage.setItem(`externalCart_${slug}`, JSON.stringify(localExternalCart));
-    } else {
-      sessionStorage.removeItem(`externalCart_${slug}`);
-    }
-  }, [localExternalCart, slug]);
-
+  // RC-9 (ledger `2026-09-26-rc9-external-cart-lines`): there is NO client-side partner cart any
+  // more. Partner picks used to live only in `sessionStorage["externalCart_<slug>"]`, lost on a tab
+  // or device change; they are now server rows (content lines, service lines or plan items — see
+  // `resolveTemplateExternalAdd`), and this page's cart is the ONE server read above. Whatever an
+  // old tab left under that key is deliberately NOT migrated: it was never durable, carried
+  // client-stated prices the server would refuse (§14), and is simply no longer read.
   const cart: CartItem[] = useMemo(() => {
-    const platformItems: CartItem[] = serverCart?.items ? serverCart.items.map((item) => ({
-      id: item.serviceId,
-      cartItemId: item.id,
-      type: "service",
-      name: item.service?.serviceName || "Unknown Service",
-      price: parseFloat(item.service?.price || "0"),
-      quantity: item.quantity || 1,
-      provider: "Platform Provider",
-    })) : [];
-    return [...platformItems, ...localExternalCart];
-  }, [serverCart, localExternalCart]);
+    if (!serverCart?.items) return [];
+    return serverCart.items.flatMap((item): CartItem[] => {
+      const id = templateCartLineId(item);
+      if (!id) return [];
+      if (isContentCartLine(item)) {
+        // A partner/content line: the display envelope is the only source of facts, and it
+        // carries no price (the cart rail refuses one — §14), so none is shown (§13).
+        return [{
+          id,
+          cartItemId: item.id,
+          type: item.contentType || "content",
+          name: item.contentDisplay?.name || item.contentId || "Item",
+          price: 0,
+          priceStated: false,
+          quantity: item.quantity || 1,
+          provider: "Partner",
+          isExternal: true,
+          ...(item.contentDisplay?.description ? { details: item.contentDisplay.description } : {}),
+        }];
+      }
+      return [{
+        id,
+        cartItemId: item.id,
+        type: "service",
+        name: item.service?.serviceName || "Unknown Service",
+        price: parseFloat(item.service?.price || "0"),
+        quantity: item.quantity || 1,
+        provider: "Platform Provider",
+      }];
+    });
+  }, [serverCart]);
+  const cartHasUnpricedLines = cart.some((i) => i.priceStated === false);
 
   // Read query params for pre-filled destination
   const searchString = useSearch();
@@ -1743,14 +1762,6 @@ export default function ExperienceTemplatePage() {
     );
   };
 
-  const isExternalProviderItem = (itemOrId: CartItem | string) => {
-    if (typeof itemOrId === 'object') {
-      return itemOrId.isExternal === true;
-    }
-    const item = cart.find(i => i.id === itemOrId);
-    return item?.isExternal === true;
-  };
-
   const addToCart = async (item: CartItem) => {
     if (!user) {
       toast({ 
@@ -1764,40 +1775,71 @@ export default function ExperienceTemplatePage() {
       return;
     }
     
-    const isCustomVenue = item.id.startsWith("custom-");
-    // Check both the flag AND the ID prefix for external items (hotels, activities, flights from external APIs)
-    const isExternalByPrefix = item.id.startsWith("hotel-") || item.id.startsWith("activity-") || item.id.startsWith("flight-");
-    const isExternal = item.isExternal === true || isExternalByPrefix;
-    const existing = cart.find((i) => i.id === item.id);
     // Ledger 2026-09-03-slip-convergence — resolved once here because it decides BOTH which rail
     // the add takes (below) and where the traveler is sent afterwards (the tail of this function).
     const targetTripId = resolveTargetTripId(searchString, tripCtx);
     let landedOnPlan = false;
-    
-    if (isExternal) {
-      if (existing) {
-        setLocalExternalCart(prev => prev.map(i => 
-          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
-        ));
-        toast({ title: "Cart updated", description: "Item quantity increased" });
-      } else {
-        setLocalExternalCart(prev => [...prev, { ...item, quantity: item.quantity || 1 }]);
-        toast({ title: "Added to cart", description: `${item.name} added to your cart` });
+
+    // ── RC-9 (ledger 2026-09-26-rc9-external-cart-lines): a PARTNER pick goes to a DURABLE rail ──
+    // It used to be written only to a per-tab sessionStorage copy. `resolveTemplateExternalAdd` is
+    // the ONE decision of which server rail carries it (§18 rule 1); see that module for why a
+    // hotel/activity/event takes the cart content line even when a plan is in hand.
+    if (item.isExternal === true) {
+      const ext = resolveTemplateExternalAdd(item, { city: destination, targetTripId });
+      if (ext.rail === "refused") {
+        // §13: said out loud, never parked in a client-only copy.
+        toast({ variant: "destructive", title: "Couldn't add this item", description: ext.message });
+        return;
       }
-      // #972: identity fields via switchTripContextPreservingId — see the
-      // reverse-sync effect above for the reasoning.
-      switchTripContextPreservingId({
-                    title: `${experienceType?.name || slug} Experience`,
-                    experienceType: experienceType?.name || slug,
-                    destination,
-                    startDate,
-                    endDate,
-                    travelers: statedParty /* RC-12: never the search assumption */
-                  });
-      updateTripContext({ experienceSlug: slug });
-      return;
+      if (ext.rail === "service") {
+        // A priced transfer is a platform listing — the ordinary service rail below carries it.
+        item = { ...item, id: ext.serviceId, isExternal: false };
+      } else {
+        const existingLine = cart.find((i) => i.id === item.id);
+        try {
+          if (ext.rail === "content") {
+            if (existingLine?.cartItemId) {
+              await apiRequest("PATCH", `/api/cart/${existingLine.cartItemId}`, { quantity: existingLine.quantity + 1 });
+              toast({ title: "Cart updated", description: "Item quantity increased" });
+            } else {
+              await apiRequest("POST", "/api/cart", { ...ext.body, quantity: 1, experienceSlug: slug });
+              toast({ title: "Added to cart", description: `${item.name} added to your cart` });
+            }
+            queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+          } else {
+            // A venue on the plan as a plain traveler item: its name and address only — no cost,
+            // no invented type (the column default stands). Origin is stamped server-side (LD 12).
+            await apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, { ...ext.body, dayNumber: 1 });
+            queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
+            queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
+            toast({ title: ADDED_TO_PLAN_TITLE, description: `${item.name} is on your plan` });
+          }
+        } catch (error) {
+          toast({
+            variant: "destructive",
+            title: ext.rail === "content" ? "Failed to add to cart" : ADD_TO_PLAN_FAILED_TITLE,
+          });
+          return;
+        }
+        // #972: identity fields via switchTripContextPreservingId — see the
+        // reverse-sync effect above for the reasoning.
+        switchTripContextPreservingId({
+                      title: `${experienceType?.name || slug} Experience`,
+                      experienceType: experienceType?.name || slug,
+                      destination,
+                      startDate,
+                      endDate,
+                      travelers: statedParty /* RC-12: never the search assumption */
+                    });
+        updateTripContext({ experienceSlug: slug });
+        // The traveler keeps browsing, exactly as the partner add always behaved.
+        return;
+      }
     }
-    
+
+    const isCustomVenue = item.id.startsWith("custom-");
+    const existing = cart.find((i) => i.id === item.id);
+
     if (existing && existing.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${existing.cartItemId}`, { quantity: existing.quantity + 1 });
@@ -1870,13 +1912,9 @@ export default function ExperienceTemplatePage() {
     setLocation(landedOnPlan ? planningRouteForTrip(targetTripId, tripCtx.endDate) : "/cart");
   };
 
+  // RC-9: a partner line is a server row like any other, so removal and quantity go through the
+  // same `PATCH/DELETE /api/cart/:id` rails as a platform line — there is no local branch.
   const removeFromCart = async (id: string) => {
-    if (isExternalProviderItem(id)) {
-      setLocalExternalCart(prev => prev.filter(i => i.id !== id));
-      toast({ title: "Removed from cart" });
-      return;
-    }
-    
     const item = cart.find((i) => i.id === id);
     if (item?.cartItemId) {
       try {
@@ -1890,14 +1928,6 @@ export default function ExperienceTemplatePage() {
 
   const updateCartQuantity = async (id: string, quantity: number) => {
     const clampedQty = Math.max(1, Math.min(10, quantity));
-    
-    if (isExternalProviderItem(id)) {
-      setLocalExternalCart(prev => prev.map(i => 
-        i.id === id ? { ...i, quantity: clampedQty } : i
-      ));
-      return;
-    }
-    
     const item = cart.find((i) => i.id === id);
     if (item?.cartItemId) {
       try {
@@ -2396,7 +2426,15 @@ export default function ExperienceTemplatePage() {
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                   <Label className="text-xs text-muted-foreground">Quantity: {item.quantity}</Label>
-                                  <span className="text-sm font-medium">${item.price * item.quantity}</span>
+                                  {item.priceStated === false ? (
+                                    // §13: a partner line carries no price on the platform cart —
+                                    // never rendered as $0.
+                                    <span className="text-xs text-muted-foreground" data-testid={`text-unpriced-${item.id}`}>
+                                      Priced by the partner
+                                    </span>
+                                  ) : (
+                                    <span className="text-sm font-medium">${item.price * item.quantity}</span>
+                                  )}
                                 </div>
                                 <Slider
                                   value={[item.quantity]}
@@ -2427,6 +2465,11 @@ export default function ExperienceTemplatePage() {
                         <span className="font-medium">Total</span>
                         <span className="font-bold">${cartTotal}</span>
                       </div>
+                      {cartHasUnpricedLines && (
+                        <p className="text-xs text-muted-foreground -mt-3 mb-4" data-testid="text-total-excludes-partner">
+                          Excludes partner items, which are priced by the partner.
+                        </p>
+                      )}
                       <div className="space-y-2">
                         <Button 
                           className="w-full bg-primary "
@@ -2482,6 +2525,10 @@ export default function ExperienceTemplatePage() {
                     provider: option.provider,
                     details: option.description,
                     isExternal: true,
+                    // RC-9: a planner segment names no listing — resolveTemplateExternalAdd refuses
+                    // it by name rather than parking it client-side. (The planner never invokes
+                    // this callback today; the wiring is kept honest, not extended.)
+                    externalKind: "transfer",
                   });
                 }}
               />
@@ -2642,6 +2689,7 @@ export default function ExperienceTemplatePage() {
                     provider: "Amadeus Hotels",
                     details: `${nights} nights${boardType ? `, ${boardType.replace(/_/g, " ").toLowerCase()}` : ''}${isRefundable ? ', refundable' : ''}`,
                     isExternal: true,
+                    externalKind: "hotel",
                     metadata: {
                       refundable: isRefundable,
                       cancellationDeadline: cancellationDeadline,
@@ -2734,6 +2782,7 @@ export default function ExperienceTemplatePage() {
                     provider: "Viator",
                     details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}${meetingPoint ? ` | ${meetingPoint}` : ''}`,
                     isExternal: true,
+                    externalKind: "activity",
                     metadata: {
                       refundable: isRefundable,
                       cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
@@ -2767,6 +2816,7 @@ export default function ExperienceTemplatePage() {
                     ...item,
                     type: "event",
                     isExternal: true,
+                    externalKind: "event",
                   });
                 }}
               />
@@ -2790,6 +2840,9 @@ export default function ExperienceTemplatePage() {
                     provider: item.provider,
                     details: item.details,
                     isExternal: true,
+                    // RC-9: only a priced PLATFORM option offers Add here (`platform-<serviceId>`),
+                    // so this resolves to the ordinary service rail.
+                    externalKind: "transfer",
                   });
                 }}
               />
@@ -2815,7 +2868,9 @@ export default function ExperienceTemplatePage() {
                   location={destination}
                   tabId={activeTab}
                   onAddToCart={(item) => {
-                    addToCart(item);
+                    // RC-9: a venue-search result (a Google Places listing) is a PLACE — no cart
+                    // content type fits it, so it lands on the plan or is refused with a reason.
+                    addToCart({ ...item, externalKind: "place" });
                   }}
                   externalVendorType={currentTabType === "vendors" ? vendorType : undefined}
                   externalMinRating={minRating}
@@ -3025,6 +3080,9 @@ export default function ExperienceTemplatePage() {
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <span className="font-bold text-lg" data-testid="text-cart-total-persistent">
                     ${cartTotal.toLocaleString()}
+                    {cartHasUnpricedLines && (
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">+ partner items</span>
+                    )}
                   </span>
                   <Button
                     size="sm"

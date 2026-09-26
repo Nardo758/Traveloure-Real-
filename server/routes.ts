@@ -205,6 +205,7 @@ import { authoredItemPriceRefusal } from "@shared/item-kind";
 // question a cart rail admits is the ONE derivation in `@shared/cart-quantity`, called by all three
 // write rails below so they cannot disagree (§18 rule 1).
 import { archetypeAsks, resolveCartLineCounts, PINNED_UNIT_QUANTITY } from "@shared/cart-quantity";
+import { isCartContentType, isAdmissibleContentId, pickCartContentMeta } from "@shared/cart-content-line";
 import { enforceTripComparisonRetention } from "./services/comparison-retention.service";
 // LD 41 (ledger `2026-09-05-trip-pass-run-gate`): the ONE optimizer run-authorization predicate,
 // shared by the comparison create and regenerate handlers below.
@@ -9305,10 +9306,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Storage + cart UI already supported content rows; this is the missing
       // write path. contentMeta is DISPLAY-ONLY and whitelisted to string fields —
       // no price is accepted (§14: a client-supplied price must never reach a charge).
-      const CART_CONTENT_TYPES = new Set(["gem", "hotel", "activity", "event", "neighborhood"]);
-      const isContentAdd =
-        typeof contentType === "string" && CART_CONTENT_TYPES.has(contentType) &&
-        typeof contentId === "string" && contentId.length > 0 && contentId.length <= 200;
+      // The admission is stated ONCE in `@shared/cart-content-line` (ledger
+      // `2026-09-26-rc9-external-cart-lines`), so the experience template's partner picks and this
+      // rail read the same content types, id bound and meta allowlist (§18 rule 1).
+      const isContentAdd = isCartContentType(contentType) && isAdmissibleContentId(contentId);
 
       if (!serviceId && !customVenueId && !isContentAdd) {
         return res.status(400).json({ message: "Service ID, Custom Venue ID, or content item is required" });
@@ -9420,14 +9421,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
 
       // Whitelist display metadata for content items (strings only, capped).
-      let safeContentMeta: Record<string, string> | undefined;
-      if (isContentAdd && contentMeta && typeof contentMeta === "object") {
-        safeContentMeta = {};
-        for (const key of ["name", "description", "city", "imageUrl"]) {
-          const v = (contentMeta as Record<string, unknown>)[key];
-          if (typeof v === "string" && v.length > 0) safeContentMeta[key] = v.slice(0, 500);
-        }
-      }
+      const safeContentMeta: Record<string, string> | undefined =
+        isContentAdd ? pickCartContentMeta(contentMeta) : undefined;
 
       // ── D-14 (ruling 2026-09-15): WHICH COUNT THIS ARCHETYPE ACCEPTS ──────────────────────
       // `quantity` is UNITS of the listing and prices the line `rate × quantity`; `party_size` is
