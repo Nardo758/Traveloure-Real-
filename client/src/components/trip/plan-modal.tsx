@@ -1013,10 +1013,16 @@ export function PlanModal({
       if (Object.keys(held).length > 0) updateTripContext(held);
     }
     if (selectedOccasion) {
-      updateTripContext({
-        experienceSlug: selectedOccasion.slug,
-        eventType: eventTypeForSlug(selectedOccasion.slug),
-      });
+      // The ONE explicit occasion edit of a plan's pen: only a write flagged like this may change
+      // a plan's stored occasion (ledger `2026-09-26-occasion-read-only`) — opening a slip or
+      // reading a template page may not.
+      updateTripContext(
+        {
+          experienceSlug: selectedOccasion.slug,
+          eventType: eventTypeForSlug(selectedOccasion.slug),
+        },
+        { occasionEdit: true },
+      );
     }
 
     /**

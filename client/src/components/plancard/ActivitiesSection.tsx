@@ -57,9 +57,16 @@ const PILL_BASE =
 export function RoutingBadge({
   activity,
   showPlanning = false,
+  expertAssigned,
 }: {
   activity: PlanCardActivity;
   showPlanning?: boolean;
+  /**
+   * `false` ⇒ nobody is assigned to this plan, so a `with_expert` item wears NO "With your expert"
+   * pill (ledger `2026-09-26-send-to-expert-needs-expert`; audit G2). Undefined ⇒ the caller does
+   * not know, and the pill renders as before.
+   */
+  expertAssigned?: boolean;
 }) {
   if (activity.booking) {
     return (
@@ -86,6 +93,7 @@ export function RoutingBadge({
       </span>
     );
   }
+  if (status === "with_expert" && expertAssigned === false) return null;
   const tint = ROUTING_TINTS[status];
   const icon =
     status === "with_expert" ? (
@@ -238,12 +246,20 @@ export function RoutingActions({
   routingStatus,
   hasBooking,
   actor,
+  expertAssigned = false,
 }: {
   tripId: string;
   itemId: string;
   routingStatus: RoutingStatus | undefined;
   hasBooking: boolean;
   actor: "owner" | "expert";
+  /**
+   * An advisor in a §12 WRITE status is on the plan. `false` (the default) ⇒ "Send to expert" is
+   * not offered — the server refuses it (`no_expert_assigned`), and the traveler gets an expert
+   * through the rail's "Hand off to a local expert" first (ledger
+   * `2026-09-26-send-to-expert-needs-expert`).
+   */
+  expertAssigned?: boolean;
 }) {
   const { toast } = useToast();
 
@@ -291,7 +307,7 @@ export function RoutingActions({
     return (
       <RoutingActionButton
         icon={Undo2}
-        label="Recall from expert"
+        label={expertAssigned ? "Recall from expert" : "Back to planning"}
         busy={busy}
         onClick={() => mutation.mutate("in_planning")}
         testId={`button-route-recall-${itemId}`}
@@ -325,13 +341,15 @@ export function RoutingActions({
   // in_planning — the born/default/returned state.
   return (
     <>
-      <RoutingActionButton
-        icon={Users}
-        label="Send to expert"
-        busy={busy}
-        onClick={() => mutation.mutate("with_expert")}
-        testId={`button-route-send-expert-${itemId}`}
-      />
+      {expertAssigned && (
+        <RoutingActionButton
+          icon={Users}
+          label="Send to expert"
+          busy={busy}
+          onClick={() => mutation.mutate("with_expert")}
+          testId={`button-route-send-expert-${itemId}`}
+        />
+      )}
       <RoutingActionButton
         icon={ShoppingCart}
         label="Add to checkout"
@@ -366,6 +384,10 @@ interface ActivitiesSectionProps {
    * header). Never combined with owner actions on the same render — `isOwner` takes precedence.
    */
   isExpertViewer?: boolean;
+  /** The Trip Card's read-out mode (Locked Decision 42 D8): no routing action renders at all. */
+  routingReadOnly?: boolean;
+  /** The plancard's `expertAssigned` (ledger `2026-09-26-send-to-expert-needs-expert`). */
+  expertAssigned?: boolean;
 }
 
 interface ConnectorProps {
@@ -531,6 +553,8 @@ export function ActivitiesSection({
   timezone = null,
   isOwner = false,
   isExpertViewer = false,
+  routingReadOnly = false,
+  expertAssigned,
 }: ActivitiesSectionProps) {
   const [visited, toggleVisited] = useVisitedActivities(tripId, day);
   const now = useLiveNow();
@@ -818,11 +842,12 @@ export function ActivitiesSection({
                     const hasBadge =
                       !!a.booking || a.routingStatus === "with_expert" || a.routingStatus === "ready_for_checkout";
                     const hasActions =
+                      !routingReadOnly &&
                       (isOwner || isExpertViewer) && a.routingStatus != null && !a.booking && a.routingStatus !== "purchased";
                     if (!hasBadge && !hasActions) return null;
                     return (
                       <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`routing-row-${a.id}`}>
-                        <RoutingBadge activity={a} />
+                        <RoutingBadge activity={a} expertAssigned={expertAssigned} />
                         <ItemKindBadge activity={a} />
                         {hasActions && (
                           <RoutingActions
@@ -831,6 +856,7 @@ export function ActivitiesSection({
                             routingStatus={a.routingStatus}
                             hasBooking={!!a.booking}
                             actor={isOwner ? "owner" : "expert"}
+                            expertAssigned={expertAssigned === true}
                           />
                         )}
                       </div>

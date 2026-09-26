@@ -24,6 +24,7 @@ import { getTripDestinations } from "../services/trip-destinations.service";
 import { planComparisonRef } from "@shared/trip-plan";
 import { isUntouchedAiDraft } from "../services/ai-draft-eligibility";
 import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
+import { tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -422,7 +423,11 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // The gate above is authoritative — the assembler does NOT authorize; the redaction level is
     // the channel contract. This surface renders the full body for an authorized viewer, so it
     // asks for 'full'.
-    const plan = await assembleTripPlan(tripId, "full", { viewerId: userId, tripRole });
+    // `?surface=slip` — the slip is the planning surface and renders the LIVE plan, never the
+    // Trip Card's frozen final (ledger `2026-09-26-slip-renders-live`). Any other caller keeps the
+    // Trip Card's snapshot render. It widens nothing: the gate above already decided who may read.
+    const render = req.query.surface === "slip" ? "live" : "final";
+    const plan = await assembleTripPlan(tripId, "full", { viewerId: userId, tripRole, render });
 
     // ── The plan's EVENTS (migration 277, ledger `2026-09-03-item-event-link`) ─────────────────
     // A plan is one `trips` row; each event inside it is one `user_experiences` row bound by the
@@ -500,6 +505,12 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // claim ("this plan is yours"). Additive; existing consumers ignore the key.
     const aiSketch = await isUntouchedAiDraft(tripId);
 
+    // IS AN EXPERT ASSIGNED? (ledger `2026-09-26-send-to-expert-needs-expert`; audit G2.) An
+    // advisor in a §12 WRITE status (accepted/assigned) — the SAME predicate the routing rail refuses
+    // "Send to expert" on, so a surface never offers an edge the server will refuse and never labels
+    // an item "with your expert" when nobody is. `false` is an answer (no expert), not an unknown.
+    const expertAssigned = await tripHasWriteAccessAdvisor(tripId);
+
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
       tripRole: plan.plancard.tripRole,
@@ -540,6 +551,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // LD 41 (c) — see the note above. `true` ⇒ every item on this plan is still an untouched
       // free-draft row, which is the only state the slip's "starting sketch" line renders in.
       aiSketch,
+      // See the note above. ADDITIVE: existing consumers ignore the key.
+      expertAssigned,
     });
   } catch (error) {
     if (error instanceof TripPlanNotFoundError) {

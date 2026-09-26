@@ -117,7 +117,7 @@ test("D2 — the site list is DERIVED: no other client file writes a kind word o
 
 test("D3 — the kind chip and the routing pill are drawn as two chips, not folded into one", () => {
   const slip = read("client/src/components/plancard/SlipView.tsx");
-  const routingAt = slip.indexOf("<RoutingBadge activity={a} showPlanning />");
+  const routingAt = slip.indexOf("<RoutingBadge activity={a} showPlanning");
   const kindAt = slip.indexOf("<ItemKindBadge activity={a} />");
   assert.ok(routingAt > -1 && kindAt > -1, "both chips render on the slip row");
   assert.notEqual(routingAt, kindAt);

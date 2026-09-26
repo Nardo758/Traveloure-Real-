@@ -249,7 +249,15 @@ export function getTripContext(): TripContext {
   }
 }
 
-export function updateTripContext(patch: TripContextPatch): TripContext {
+/**
+ * @param options.occasionEdit — this write is the traveler EXPLICITLY choosing the plan's occasion
+ *   (the plan modal's commit). Only such a write may change a plan's stored occasion; every other
+ *   write's occasion keys are ignored on a trip-scoped row (`@shared/trip-context-occasion`).
+ */
+export function updateTripContext(
+  patch: TripContextPatch,
+  options: { occasionEdit?: boolean } = {},
+): TripContext {
   const current = getTripContext();
   const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {
@@ -304,7 +312,7 @@ export function updateTripContext(patch: TripContextPatch): TripContext {
   } catch {
     /* non-browser env */
   }
-  schedulePush(next);
+  schedulePush(next, options.occasionEdit === true);
   return next;
 }
 
@@ -396,12 +404,19 @@ export function replaceTripContextPlanAnswers(answers: {
   adults?: number | null;
   kids?: number | null;
   experienceSlug?: string | null;
+  /** The plan's own coarse event type. A PREVIOUS plan's is never carried (ledger
+   *  `2026-09-26-occasion-read-only`: a wedding plan opened after a vacation one stored "vacation"). */
+  eventType?: string | null;
 }): TripContext {
   const current = getTripContext();
   const next: Record<string, unknown> = { ...current };
   delete next.adults;
   delete next.kids;
   delete next.experienceSlug;
+  delete next.eventType;
+  if (typeof answers.eventType === "string" && answers.eventType.trim().length > 0) {
+    next.eventType = answers.eventType.trim();
+  }
   if (typeof answers.adults === "number" && Number.isFinite(answers.adults) && answers.adults > 0) {
     next.adults = answers.adults;
   }
@@ -507,8 +522,23 @@ function tripScopedQuery(context: Pick<TripContext, "tripId">): string {
 }
 
 let pushTimer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Whether a write since the last push was an EXPLICIT occasion edit (ledger
+ * `2026-09-26-occasion-read-only`). The server keeps a plan's stored occasion on every trip-scoped
+ * push that does not say so — opening a slip or reading a template page may not rewrite it. One
+ * flag for the debounce window: the push carries the whole blob, so an edit anywhere in the window
+ * is an edit of what that push sends. Consumed (reset) by whichever push goes out next.
+ */
+let pendingOccasionEdit = false;
 
-function schedulePush(context: TripContext): void {
+function takeOccasionEdit(): boolean {
+  const edit = pendingOccasionEdit;
+  pendingOccasionEdit = false;
+  return edit;
+}
+
+function schedulePush(context: TripContext, occasionEdit = false): void {
+  if (occasionEdit) pendingOccasionEdit = true;
   if (typeof fetch !== "function") return;
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
@@ -517,7 +547,7 @@ function schedulePush(context: TripContext): void {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ context }),
+      body: JSON.stringify({ context, occasionEdit: takeOccasionEdit() }),
     }).catch(() => {
       /* offline / guest — best-effort */
     });
@@ -565,7 +595,7 @@ export async function releasePendingEventsPen(): Promise<boolean> {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ context: next }),
+      body: JSON.stringify({ context: next, occasionEdit: takeOccasionEdit() }),
     });
     return res.ok;
   } catch {
@@ -839,7 +869,10 @@ function pushClear(tripId?: string): void {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ context: {} }),
+      // Clear plan is an explicit traveler act on the whole pen, the occasion included — so it is
+      // an occasion edit and the server empties the stored occasion too (ledger
+      // `2026-09-26-occasion-read-only`).
+      body: JSON.stringify({ context: {}, occasionEdit: true }),
     }).catch(() => {
       /* offline / guest — best-effort */
     });

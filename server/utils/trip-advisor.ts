@@ -57,7 +57,9 @@ export const TRIP_ADVISOR_READ_ACCESS_STATUSES = TRIP_ADVISOR_ACCESS_STATUSES;
  * SEPARATE constant, not a filter applied ad hoc at call sites, so the write allow-list can't
  * silently drift from the read one.
  */
-export const TRIP_ADVISOR_WRITE_ACCESS_STATUSES = ["accepted", "assigned"] as const;
+// Stated once in `@shared/trip-advisor-write-access` so the slip reads the same list (§18 rule 1).
+import { TRIP_ADVISOR_WRITE_ACCESS_STATUSES } from "@shared/trip-advisor-write-access";
+export { TRIP_ADVISOR_WRITE_ACCESS_STATUSES };
 
 /** Advisor statuses that explicitly DENY. Documentary — anything not in the allow-list denies. */
 export const TRIP_ADVISOR_DENIED_STATUSES = ["rejected"] as const;
@@ -128,6 +130,27 @@ export async function isTripAdvisorWithWriteAccess(
       and(
         eq(tripExpertAdvisors.tripId, tripId),
         eq(tripExpertAdvisors.localExpertId, userId),
+        inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_WRITE_ACCESS_STATUSES]),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
+/**
+ * True when ANY advisor on `tripId` holds a §12 WRITE status (accepted/assigned) — i.e. an expert
+ * is actually assigned and can receive routed work. "Send to expert" is refused without one (ledger
+ * `2026-09-26-send-to-expert-needs-expert`; audit G2): a `pending` invite has not accepted, and an
+ * item routed to nobody reads "with your expert" while no one will ever see it.
+ */
+export async function tripHasWriteAccessAdvisor(tripId: string | undefined | null): Promise<boolean> {
+  if (!tripId) return false;
+  const [row] = await db
+    .select({ id: tripExpertAdvisors.id })
+    .from(tripExpertAdvisors)
+    .where(
+      and(
+        eq(tripExpertAdvisors.tripId, tripId),
         inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_WRITE_ACCESS_STATUSES]),
       ),
     )

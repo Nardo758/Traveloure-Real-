@@ -1,0 +1,121 @@
+name: Slip Card Integrity Gate
+
+# Ledgers `2026-09-26-slip-renders-live`, `2026-09-26-card-routing-read-only` and
+# `2026-09-26-send-to-expert-needs-expert` (audit `docs/planning/trip-slip-ui-audit.md` G1/G2/G3,
+# all three VERIFIED in the running app). Driven over HTTP against a server booted in this job, on
+# the Adopt Version Semantics Gate's boot recipe:
+#
+#   L1-L2  the SLIP (`GET /api/trips/:id/plancard?surface=slip`) renders the LIVE plan — after
+#          finalize → reopen an added and an edited item show immediately — while the Trip Card's
+#          read keeps its frozen final.
+#   F1-F3  on a finalized plan the routing rail refuses "Send to expert" and recall-to-planning
+#          (409 plan_finalized, nothing written) whatever the client draws; the booking edge and the
+#          expert's return edge stay open, by name.
+#   E1-E3  "Send to expert" needs an expert in a §12 WRITE status (409 no_expert_assigned for none
+#          and for a pending invite), and the plancard carries the same answer as `expertAssigned`.
+#
+# Negative space (ruling 43): no browser — the Trip Card's hidden buttons and the slip's hidden
+# "Send to expert" are client render rules and are not asserted here; the server refusals are. It
+# says nothing about the cart (scoping is an open question) or about any money path.
+#
+# DB writes: the suite's assertDisposableDb guard refuses any non-localhost DB unless
+# JOURNEY_DB_WRITES_OK=1 is set deliberately. This job's Postgres is a THROWAWAY service
+# container, so the opt-in is safe here.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: slip-card-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  slip-card-integrity:
+    name: slip-card-integrity (slip is live, finalized plan is not re-routed, expert must exist)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      # Uses the composite action, never an inline migration-script step — ci-db-setup-lint
+      # forbids inline DB setup, so every workflow gets the same migration + sessions-table
+      # sequence.
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # The suites register their own travelers over HTTP; no seeded route auth involved.
+          seed-ci-users: 'false'
+
+      # Boot recipe mirrors payout-parity-gate.yml (build → prod bundle → /api/ready poll).
+      # Stub keys are DELIBERATE: no adopt/finalize path calls Stripe or an AI provider.
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # sk_test_ stub — never a real Stripe secret (server/validate-env.ts hard-stops a
+          # live key outside production; a test-shaped stub passes trivially).
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          # P0 fail-safe (server/index.ts): a production boot purges test accounts unless
+          # explicitly allowed. This CI DB is throwaway.
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          # Plain-http loopback: a `secure` session cookie is never replayed, so opt out.
+          # NEVER set this in production.
+          SESSION_COOKIE_INSECURE: '1'
+          # The suites register fresh users from the loopback IP; exempt loopback from the
+          # limiter so registration is never 429'd. NEVER set this in production.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Slip / Trip Card integrity (L1-L2, F1-F3, E1-E3)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/slip-card-integrity.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          # Disposable-DB opt-in: this is a throwaway service container (see header comment).
+          JOURNEY_DB_WRITES_OK: '1'
