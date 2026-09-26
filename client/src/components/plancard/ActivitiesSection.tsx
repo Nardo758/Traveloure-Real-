@@ -23,6 +23,8 @@ import {
 } from "./plancard-temporal";
 import { BOOKED_TINT, ROUTING_TINTS, tintPillStyle } from "./slip-tokens";
 import { itemOriginChip } from "@/lib/item-origin";
+import { humanizeRouteError } from "@/lib/slip-plan-actions";
+import { useRouteRefusalToast } from "./use-route-refusal-toast";
 import { itemKindChipFor } from "@shared/item-kind";
 
 // ── W7 — per-item routing (Trip-Canon Lane 1, Phase 1d) ─────────────────────
@@ -262,6 +264,7 @@ export function RoutingActions({
   expertAssigned?: boolean;
 }) {
   const { toast } = useToast();
+  const { showRefusal } = useRouteRefusalToast(tripId);
 
   const mutation = useMutation({
     mutationFn: async (to: RoutingStatus) =>
@@ -272,12 +275,17 @@ export function RoutingActions({
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
     },
-    onError: (err: any) => {
-      toast({
-        title: "Couldn't update item",
-        description: err?.message || "Please try again",
-        variant: "destructive",
-      });
+    onError: (err: unknown) => {
+      // Ledger `2026-09-26-finalized-checkout-messages`: the server's named refusal reads as itself
+      // (it showed the raw `409: {json}` before), with "Reopen plan" on a finalized plan — offered
+      // on the OWNER's rows only; the expert's one edge is never refused for finalization.
+      if (actor === "owner") showRefusal(err, "Couldn't update item");
+      else
+        toast({
+          title: "Couldn't update item",
+          description: humanizeRouteError(err),
+          variant: "destructive",
+        });
     },
   });
 
