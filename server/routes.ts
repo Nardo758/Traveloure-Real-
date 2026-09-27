@@ -14,6 +14,7 @@ import { OWNER_BOOKING_TRANSITIONS, ownerTransitionRefusal } from "./utils/booki
 import { describeCompletionDeclaration } from "@shared/declared-completion-window";
 import { declaredCompletionWindowDays } from "./config/completion-windows.config";
 import { describeAcceptance } from "./services/booking-acceptance.service";
+import { outOfBandFullyRefundedBookingIds } from "./services/out-of-band-refund.service";
 import {
   normalizeGeneratedActivityDurationMinutes,
   normalizeGeneratedDayNumber,
@@ -6444,6 +6445,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       return cache.get(id) ?? null;
     };
 
+    // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): which rows a Stripe-dashboard
+    // refund covered IN FULL, by the ONE refund reconciliation rule. Read once for the page; a row
+    // carries `refundedOutOfBand: true` only then (§13), and its `status` is left as the row holds it.
+    const refundedOutOfBand = await outOfBandFullyRefundedBookingIds(bookings.map((b) => b.id));
+
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
       const [reviews, serviceRow, providerRow, tripRow] = await Promise.all([
         storage.getReviewsByBookingId(booking.id),
@@ -6475,6 +6481,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // Bookings read a `confirmationCode` field this row never had, so every confirmed booking
         // said "Confirmation code not yet available". NULL only on a row that has none (§13).
         confirmationCode: (booking as any).confirmationCode ?? booking.trackingNumber ?? null,
+        ...(refundedOutOfBand.has(booking.id) ? { refundedOutOfBand: true as const } : {}),
         hasReview: reviews.length > 0,
         service: toBookingService(serviceRow),
         provider: toBookingProvider(providerRow),

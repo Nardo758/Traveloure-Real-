@@ -49,6 +49,7 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { itemBookingLabelStatus } from "@shared/booking-visibility";
 import { isBookingCancellable } from "@shared/booking-cancellation"; // §18 rule 1 — the cancel route's OWN from-state list, never a second copy
 // Ledger `2026-09-17-surfaces-acceptance-completion` (LD 46 / LD 47). The acceptance and
 // declared-window read-out and its four controls. `/api/my-bookings` now carries the SERVER's own
@@ -131,6 +132,9 @@ interface Booking {
   cancellationReason: string | null;
   createdAt: string;
   confirmationCode: string | null;
+  /** R163: the server's answer — a Stripe-dashboard refund covered this booking's whole share.
+   *  Present only when true; `status` stays the row's own. */
+  refundedOutOfBand?: true;
   hasReview?: boolean;
 }
 
@@ -160,6 +164,16 @@ function getStatusDisplay(status: string): { label: string; variant: "default" |
     ? status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     : "Unknown";
   return { label, variant: "outline", icon: AlertCircle };
+}
+
+/**
+ * R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): the status the badge and the tabs
+ * READ. A refund issued from the Stripe dashboard changes no `status`, so the server says so with
+ * `refundedOutOfBand` and the ONE shared reading turns it into `refunded`. Nothing money-shaped is
+ * derived here; the action gates below still read the row's own `status`.
+ */
+function displayStatusOf(b: Pick<Booking, "status" | "refundedOutOfBand">): string {
+  return itemBookingLabelStatus(b) ?? b.status;
 }
 
 // L3: the three status tabs (Pending/Active/Completed) must partition every real
@@ -409,14 +423,14 @@ export default function MyBookingsPage() {
     );
   }
 
-  const pendingBookings = bookings?.filter(b => PENDING_STATUSES.includes(b.status)) || [];
-  const activeBookings = bookings?.filter(b => ACTIVE_STATUSES.includes(b.status)) || [];
+  const pendingBookings = bookings?.filter(b => PENDING_STATUSES.includes(displayStatusOf(b))) || [];
+  const activeBookings = bookings?.filter(b => ACTIVE_STATUSES.includes(displayStatusOf(b))) || [];
   // L3: everything not caught by Pending/Active lands here — including any real-but-
   // not-yet-enumerated status (a resolved/terminal default) rather than falling through
   // every tab filter while still counting toward "All". The exact "All (2) / Pending (0)"
   // divergence this fix closes.
   const completedBookings = bookings?.filter(
-    b => !PENDING_STATUSES.includes(b.status) && !ACTIVE_STATUSES.includes(b.status)
+    b => !PENDING_STATUSES.includes(displayStatusOf(b)) && !ACTIVE_STATUSES.includes(displayStatusOf(b))
   ) || [];
 
   const openReviewDialog = (booking: Booking) => {
@@ -770,7 +784,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
   const [cancelOpen, setCancelOpen] = useState(false);
-  const status = getStatusDisplay(booking.status);
+  const status = getStatusDisplay(displayStatusOf(booking));
   const StatusIcon = status.icon;
   const canReview = booking.status === "completed" && !booking.hasReview;
   // Escrow Phase 3: once the provider marks the booking completed, the traveler can either confirm

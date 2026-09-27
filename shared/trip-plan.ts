@@ -185,6 +185,14 @@ export interface TripPlanBooking {
   serviceName: string | null;
   /** RAW `service_bookings.total_amount` as stored (decimal string). */
   totalAmount: string | null;
+  /**
+   * R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`). PRESENT ONLY WHEN TRUE: a refund
+   * our code did not issue (the Stripe dashboard) covered this booking's WHOLE share, by the
+   * server's refund reconciliation rule. `status` is left as the row holds it; a label reads
+   * `itemBookingLabelStatus` (shared/booking-visibility.ts), which reads this as `refunded`. A
+   * partial dashboard refund never sets it.
+   */
+  refundedOutOfBand?: true;
 }
 
 export interface TripPlanActivityChange {

@@ -15,7 +15,9 @@
  *   3. an admin alert names the bookings, once, on first detection.
  *
  * It moves no money and changes no booking status: it does not reverse earnings, refund, cancel or
- * decide who the refund was for. A human resolves the booking through the existing refund/cancel
+ * decide who the refund was for. R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`) makes
+ * the stamp VISIBLE: where it covers a booking's whole share (`outOfBandFullyRefundedBookingIds`
+ * below) the traveler's surfaces read "Refunded" — a label, still no status write. A human resolves the booking through the existing refund/cancel
  * rails. Idempotent: a redelivery rewrites the same stamp (the first `detectedAt` is kept), re-applies
  * the same hold, and raises no second alert.
  *
@@ -37,6 +39,7 @@ import {
   outOfBandRefunds,
   type StripeRefundLike,
 } from "../../shared/out-of-band-refund";
+import { bookingChargeShare, outOfBandRefundCoversShare, type PaymentIntentShareRow } from "./booking-charge-share";
 
 export interface RecordOutOfBandRefundResult {
   /** The refunds on the charge that our code did not issue. Empty ⇒ nothing was written. */
@@ -204,4 +207,63 @@ export async function listOutOfBandRefundBookings(limit = 200) {
      LIMIT ${limit}
   `);
   return r.rows ?? [];
+}
+
+/**
+ * R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`; supersedes #1288's leave-for-human
+ * reading for the LABEL only). Which of these bookings a refund we did not issue has refunded IN
+ * FULL, by the ONE rule `outOfBandRefundCoversShare` (server/services/booking-charge-share.ts): the
+ * booking's own stamp — Stripe's cumulative cents — against every still-live share on the same
+ * PaymentIntent. A partial dashboard refund answers no.
+ *
+ * READ-ONLY: this answers a status LABEL. It writes nothing, moves no money and changes no
+ * `service_bookings.status`; the stamp, the mint refusal, the earnings hold and the admin clear are
+ * exactly as #1288 left them. Only stamped rows cost a second query, and an empty input costs none.
+ */
+export async function outOfBandFullyRefundedBookingIds(bookingIds: readonly (string | null | undefined)[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  const ids = Array.from(new Set(bookingIds.filter((id): id is string => typeof id === "string" && id.length > 0)));
+  if (ids.length === 0) return out;
+  const stamped = await db.execute(sql`
+    SELECT id, stripe_payment_intent_id,
+           (booking_details #>> ${`{${OUT_OF_BAND_REFUND_KEY},amountCents}`}::text[]) AS foreign_cents
+      FROM service_bookings
+     WHERE id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+       AND (COALESCE(booking_details, '{}'::jsonb) -> ${OUT_OF_BAND_REFUND_KEY}::text) IS NOT NULL
+       AND stripe_payment_intent_id IS NOT NULL
+  `);
+  const targets = (stamped.rows ?? []) as Array<{ id: string; stripe_payment_intent_id: string; foreign_cents: string | null }>;
+  if (targets.length === 0) return out;
+  const intents = Array.from(new Set(targets.map((t) => t.stripe_payment_intent_id)));
+  const siblings = await db.execute(sql`
+    SELECT id, status, stripe_payment_intent_id, total_amount, platform_fee,
+           booking_details->'travelerCharge'->>'conciergeFee' AS concierge_fee,
+           booking_details->'travelerServiceFee'->>'charged' AS traveler_fee_charged
+      FROM service_bookings
+     WHERE stripe_payment_intent_id IN (${sql.join(intents.map((pi) => sql`${pi}`), sql`, `)})
+  `);
+  const byIntent = new Map<string, PaymentIntentShareRow[]>();
+  for (const r of (siblings.rows ?? []) as any[]) {
+    const list = byIntent.get(r.stripe_payment_intent_id) ?? [];
+    list.push({
+      id: String(r.id),
+      status: r.status ?? null,
+      share: bookingChargeShare({
+        totalAmount: r.total_amount,
+        platformFee: r.platform_fee,
+        conciergeFeeSnapshot: r.concierge_fee,
+        travelerFeeCharged: r.traveler_fee_charged,
+      }),
+    });
+    byIntent.set(r.stripe_payment_intent_id, list);
+  }
+  for (const t of targets) {
+    const covered = outOfBandRefundCoversShare({
+      bookingId: t.id,
+      foreignRefundedCents: t.foreign_cents == null ? null : Number(t.foreign_cents),
+      rowsOnPaymentIntent: byIntent.get(t.stripe_payment_intent_id) ?? [],
+    });
+    if (covered) out.add(t.id);
+  }
+  return out;
 }

@@ -125,7 +125,7 @@ import {
 // writes `ready_made_purchases.notified_at` through nothing of its own, ever.
 import { notifyBuyerOfReadyMadeDelivery } from "../services/ready-made-notifications.service";
 import { READY_MADE_ANNOUNCE_GRACE_MS, READY_MADE_ANNOUNCE_GRACE_MINUTES } from "../config/ready-made-announce.config";
-import { travelerChargeForRow } from "../services/traveler-charge";
+import { bookingChargeShare, chargeShareTolerance } from "../services/booking-charge-share";
 import {
   readNoItemReason,
   NO_ITEM_BOOKING_CLASSES,
@@ -165,15 +165,11 @@ const READY_MADE_SCAN_LIMIT = 1000;
 const READY_MADE_FULFILMENT_GRACE_MS = 15 * 60 * 1000;
 
 /**
- * Money comparison tolerance, in DOLLARS. NOT a fee, a rate or a margin (§8) — it is the exact
- * accumulated rounding error of the checkout arithmetic. Each booking row persists two
- * `.toFixed(2)` values (`total_amount`, `platform_fee`), each ≤ half a cent from the unrounded
- * float the Stripe total was composed from, and Stripe's own `Math.round` to cents adds one more.
- * So the honest bound is one cent per row plus one.
+ * Money comparison tolerance, in DOLLARS — `chargeShareTolerance` (server/services/booking-charge-share.ts),
+ * moved there unchanged by R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`) so the refund
+ * label and this job read ONE rounding bound (§18 rule 1).
  */
-function amountTolerance(rowCount: number): number {
-  return 0.01 * rowCount + 0.01;
-}
+const amountTolerance = chargeShareTolerance;
 
 /** Stripe statuses that mean the money actually moved. */
 const PI_SUCCEEDED = "succeeded";
@@ -375,16 +371,15 @@ interface CartBookingRow {
   noItemReason: string | null;
 }
 
-/** The expected Stripe amount for ONE row: the traveler's charge (ONE derivation, §18 rule 1)
- *  plus the traveler service fee, which is held in booking_details rather than in a column. */
+/** The expected Stripe amount for ONE row — `bookingChargeShare` (server/services/booking-charge-share.ts),
+ *  moved there unchanged by R163 so the refund label and this job read ONE per-booking share. */
 function expectedChargeForRow(r: CartBookingRow): number {
-  return (
-    travelerChargeForRow({
-      totalAmount: r.totalAmount,
-      platformFee: r.platformFee,
-      conciergeFeeSnapshot: r.travelerChargeConciergeFee,
-    }).amount + parseFloat(r.travelerFeeCharged || "0")
-  );
+  return bookingChargeShare({
+    totalAmount: r.totalAmount,
+    platformFee: r.platformFee,
+    conciergeFeeSnapshot: r.travelerChargeConciergeFee,
+    travelerFeeCharged: r.travelerFeeCharged,
+  });
 }
 
 function mapCartRow(r: any): CartBookingRow {
