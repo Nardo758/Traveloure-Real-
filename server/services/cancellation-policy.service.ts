@@ -21,6 +21,7 @@
  *     still refunds 0 — it is timing-independent.
  */
 
+import { tierRefundBreakdown, travelerFeeChargedOf } from './refund-breakdown';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { logger } from '../infrastructure/logger';
@@ -34,9 +35,20 @@ export interface CancellationRefundQuote {
   policyDefaulted: boolean;
   /** Whole-percent share of totalAmount refunded (0–100). */
   refundPercent: number;
-  /** Dollar amount refunded, rounded to cents. */
+  /**
+   * The WHOLE refund in dollars — the booking share plus the traveler-service-fee share, each at the
+   * tier's percent (R156). It is exactly what Stripe is asked for (ledger
+   * `2026-09-27-cancel-preview-equals-refund`; Terms §8.1).
+   */
   refundAmount: number;
+  /** Everything this booking charged the traveler: the booking share plus the fee actually charged. */
   totalAmount: number;
+  /** The booking share of `refundAmount` — what `refundServiceBooking` takes as its override. */
+  bookingRefundAmount: number;
+  /** The traveler-service-fee share of `refundAmount` (0 when no fee was charged). */
+  feeRefundAmount: number;
+  /** R156: never part of a refund — named, never priced (the platform charges the traveler neither). */
+  nonRefundable: readonly string[];
   /** Hours until scheduled start; null when no scheduled date could be resolved. */
   hoursUntilStart: number | null;
   /** False ONLY for non_refundable — automatic refunds must be refused outright. */
@@ -199,7 +211,10 @@ function describeOutcome(
 
 export function computeCancellationRefund(params: {
   policyType: string | null | undefined;
+  /** What the booking row charged the traveler, in dollars (`travelerChargeForRow`). */
   totalAmount: number;
+  /** The traveler service fee actually charged, in dollars (0 / omitted when waived or none). */
+  feeChargedDollars?: number;
   scheduledDate: string | null | undefined;
   now?: Date;
 }): CancellationRefundQuote {
@@ -207,19 +222,40 @@ export function computeCancellationRefund(params: {
   const now = params.now ?? new Date();
   const hoursUntilStart = hoursUntilScheduledStart(params.scheduledDate, now);
   const refundPercent = refundPercentFor(type, hoursUntilStart);
-  const total = isFinite(params.totalAmount) ? Math.max(params.totalAmount, 0) : 0;
-  const refundAmount = Math.round(total * refundPercent) / 100; // percent of dollars, rounded to cents
+  // ONE breakdown for the preview and the refund (§18 rule 1): both shares at the tier's percent.
+  const b = tierRefundBreakdown({
+    bookingChargedDollars: isFinite(params.totalAmount) ? params.totalAmount : 0,
+    feeChargedDollars: params.feeChargedDollars ?? 0,
+    percent: refundPercent,
+  });
+  const totalCharged = Math.round((b.bookingChargedDollars + b.feeChargedDollars) * 100) / 100;
 
   return {
     policyType: type,
     policyDefaulted: defaulted,
     refundPercent,
-    refundAmount,
-    totalAmount: total,
+    refundAmount: b.totalRefundDollars,
+    totalAmount: totalCharged,
+    bookingRefundAmount: b.bookingRefundDollars,
+    feeRefundAmount: b.feeRefundDollars,
+    nonRefundable: b.nonRefundable,
     hoursUntilStart,
     automaticRefundAllowed: type !== 'non_refundable',
-    message: describeOutcome(type, refundPercent, refundAmount, hoursUntilStart),
+    message: describeOutcome(type, refundPercent, b.totalRefundDollars, hoursUntilStart),
   };
+}
+
+/**
+ * The options `refundServiceBooking` must be given to refund EXACTLY what this quote previewed: the
+ * BOOKING share as the override and the tier's percent for the fee. Every caller that quoted a
+ * cancellation builds its refund through this — passing the previewed TOTAL as the booking share
+ * is the defect ledger `2026-09-27-cancel-preview-equals-refund` closed.
+ */
+export function refundOptionsForQuote(q: Pick<CancellationRefundQuote, 'bookingRefundAmount' | 'refundPercent'>): {
+  amountOverride: number;
+  feeRefundPercent: number;
+} {
+  return { amountOverride: q.bookingRefundAmount, feeRefundPercent: q.refundPercent };
 }
 
 /**
@@ -240,6 +276,7 @@ export async function quoteCancellationForBooking(bookingId: string): Promise<
     SELECT sb.status, sb.traveler_id, sb.total_amount, sb.platform_fee, sb.insurance_fee,
            sb.booking_details ->> 'scheduledDate' AS scheduled_date,
            sb.booking_details -> 'travelerCharge' ->> 'conciergeFee' AS traveler_charge_concierge_fee,
+           sb.booking_details -> 'travelerServiceFee' AS traveler_service_fee,
            sb.offering_contract_snapshot,
            ps.cancellation_policy_type
     FROM service_bookings sb
@@ -274,6 +311,8 @@ export async function quoteCancellationForBooking(bookingId: string): Promise<
   const quote = computeCancellationRefund({
     policyType,
     totalAmount: amountPaid,
+    // The fee actually charged (R156) — read by the SAME helper `refundServiceBooking` reads.
+    feeChargedDollars: travelerFeeChargedOf({ travelerServiceFee: row.traveler_service_fee }),
     scheduledDate: row.scheduled_date,
   });
   return { ...quote, bookingStatus: row.status, travelerId: row.traveler_id ?? null, policySource: source };
