@@ -44,7 +44,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { contentOriginFor } from "@shared/content-origin";
 import { plancardPartyCount } from "@shared/plan-vocabulary";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
-import { isClosedBooking } from "@shared/booking-visibility";
+import { itemBookingStatusEntry } from "@shared/booking-visibility";
 import {
   TRIP_PLAN_VERSION,
   isChauffeuredMode,
@@ -537,16 +537,23 @@ async function resolveTripBookings(tripId: string): Promise<TripPlanBooking[]> {
 
 /**
  * R145 (ledger `2026-09-27-refunded-item-status`) — the ONE place an item's linked booking is
- * turned into its booked-or-not presentation (§18 rule 1). A live booking is `booking` (the booked
- * state every surface reads); a CLOSED one (`CLOSED_BOOKING_STATUSES`, the existing shared list —
- * `cancelled` / `refunded`) is `endedBooking`, so the item says what happened instead of reading
- * "Booked". No booking ⇒ neither key. Read-side only: no row is written and no money path moves.
+ * turned into its booked-or-not presentation (§18 rule 1). A booking that COUNTS AS BOOKED is
+ * `booking` (the booked state every surface reads); any other is `endedBooking`, so the item says
+ * what happened instead of reading "Booked". No booking ⇒ neither key. Read-side only: no row is
+ * written and no money path moves.
+ *
+ * R154 (ledger `2026-09-27-booking-status-vocabulary`): "counts as booked" is no longer "not CLOSED"
+ * but the ONE shared vocabulary `itemBookingStatusEntry` (shared/booking-visibility.ts). So
+ * `payment_pending`, `failed` and `expired` ride `endedBooking` beside `cancelled` / `refunded` —
+ * the key now means "a linked booking that is not the booked state", and NO new DTO key was added —
+ * while `disputed` stays `booking` (it is a real, paid booking) and the client reads its status to
+ * say "Under review", never "Booked".
  */
 export function linkedBookingFields(
   b: TripPlanBooking | undefined,
 ): { booking?: TripPlanBooking; endedBooking?: TripPlanBooking } {
   if (!b) return {};
-  return isClosedBooking(b.status) ? { endedBooking: b } : { booking: b };
+  return itemBookingStatusEntry(b.status).countsAsBooked ? { booking: b } : { endedBooking: b };
 }
 
 /** Meeting points for items linked to a platform service. Bulk-read once per assembly. */

@@ -290,6 +290,13 @@ export interface TripPlanActivity {
    * with `booking`: an item carries at most one of the two. It exists so a surface can say what
    * happened ("Refunded" / "Cancelled") rather than either "Booked" (false) or nothing (hides it).
    * It is never the booked state and never a basis for the item-kind `included` rule.
+   *
+   * R154 (ledger `2026-09-27-booking-status-vocabulary`): WIDENED, not joined by a new key. It now
+   * carries ANY linked booking that does not count as booked under the ONE shared vocabulary
+   * (`ITEM_BOOKING_STATUS_VOCABULARY`, shared/booking-visibility.ts) — `payment_pending`, `failed`
+   * and `expired` as well as `cancelled` / `refunded`. `disputed` is the one it deliberately does
+   * NOT carry: a disputed booking is real and paid, so it stays `booking` and the client reads its
+   * status to say "Under review", never "Booked".
    */
   endedBooking?: TripPlanBooking;
 

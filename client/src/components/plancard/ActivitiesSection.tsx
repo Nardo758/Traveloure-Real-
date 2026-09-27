@@ -1,7 +1,17 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ENDED_BOOKING_LABELS, endedBookingState } from "@/lib/item-booking-state";
+import {
+  BOOKING_DETAIL_PATH,
+  ITEM_BOOKING_ACTION_LABELS,
+  ITEM_BOOKING_NOTES,
+  PAYMENT_FAILED_PILL_LABEL,
+  effectiveRoutingStatus,
+  itemBookingAction,
+  itemBookingLabel,
+  itemBookingState,
+} from "@/lib/item-booking-state";
+import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -71,7 +81,11 @@ export function RoutingBadge({
    */
   expertAssigned?: boolean;
 }) {
-  if (activity.booking) {
+  // R145/R154: the ONE reading of the linked booking (`@/lib/item-booking-state`, over the shared
+  // vocabulary in shared/booking-visibility.ts). "Booked" is drawn for `booked` ALONE — a disputed
+  // booking reads "Under review" (it counts as booked for money and counts, never for the word).
+  const bookingState = itemBookingState(activity);
+  if (bookingState === "booked") {
     return (
       <span
         className={PILL_BASE}
@@ -82,20 +96,45 @@ export function RoutingBadge({
       </span>
     );
   }
-  // R145: a closed booking is disclosed, never read as booked and never hidden (§13). Neutral
-  // outline pill — theme classes, no tint; the word lives in `@/lib/item-booking-state`.
-  const ended = endedBookingState(activity);
-  if (ended) {
+  if (bookingState === "under_review") {
+    // Gold (the attention tint the checkout pill already wears) — a dispute is NOT the green of done.
     return (
       <span
-        className={`${PILL_BASE} border border-border text-muted-foreground bg-transparent`}
-        data-testid={`badge-routing-${ended}-${activity.id}`}
+        className={PILL_BASE}
+        style={tintPillStyle(ROUTING_TINTS.ready_for_checkout)}
+        data-testid={`badge-routing-under-review-${activity.id}`}
       >
-        {ENDED_BOOKING_LABELS[ended]}
+        {itemBookingLabel("under_review")}
       </span>
     );
   }
-  const status = activity.routingStatus;
+  if (bookingState === "payment_failed") {
+    // The ruling: a failed payment puts the item back to "Ready to book" (the checkout tint).
+    return (
+      <span
+        className={PILL_BASE}
+        style={tintPillStyle(ROUTING_TINTS.ready_for_checkout)}
+        data-testid={`badge-routing-payment-failed-${activity.id}`}
+      >
+        <ShoppingCart className="w-3 h-3" /> {PAYMENT_FAILED_PILL_LABEL}
+      </span>
+    );
+  }
+  if (bookingState) {
+    // payment_processing / refunded / cancelled — disclosed, never read as booked, never hidden
+    // (§13). Neutral outline pill — theme classes, no tint.
+    return (
+      <span
+        className={`${PILL_BASE} border border-border text-muted-foreground bg-transparent`}
+        data-testid={`badge-routing-${bookingState.replace(/_/g, "-")}-${activity.id}`}
+      >
+        {itemBookingLabel(bookingState)}
+      </span>
+    );
+  }
+  // A not-booked linked booking whose item still says `purchased` (e.g. an expired claim) has NO
+  // routing bucket (§13) — `effectiveRoutingStatus` answers null and no pill is drawn.
+  const status = effectiveRoutingStatus(activity) as RoutingStatus | null;
   if (status == null) return null;
   if (status === "in_planning") {
     if (!showPlanning) return null;
@@ -128,6 +167,44 @@ export function RoutingBadge({
       data-testid={`badge-routing-${testKey}-${activity.id}`}
     >
       {icon} {tint.label}
+    </span>
+  );
+}
+
+/**
+ * THE BOOKING LINE'S ONE ACTION (R154, ledger `2026-09-27-booking-status-vocabulary`). Rendered for
+ * the plan's OWNER only — the traveler is the one who acts — and only for the two states the ruling
+ * gives an action: a DISPUTED booking gets a PROMINENT link to My Bookings, where the dispute lives
+ * (it reads "Under review", so the traveler must be able to reach it); a FAILED payment gets "Try
+ * again", which goes to the EXISTING checkout path (`BUY_NOW_CART_PATH`, the same door the Finalize
+ * modal and the approval banner use) — no new money path, and nothing here charges or writes.
+ */
+export function ItemBookingActionLink({
+  activity,
+  showNote = true,
+}: {
+  activity: PlanCardActivity;
+  /** The slip already prints the note as the row's secondary line; the PlanCard row does not. */
+  showNote?: boolean;
+}) {
+  const action = itemBookingAction(activity);
+  if (!action) return null;
+  const href = action === "open_booking" ? BOOKING_DETAIL_PATH : BUY_NOW_CART_PATH;
+  const state = itemBookingState(activity);
+  return (
+    <span className="inline-flex items-center gap-1.5 flex-wrap">
+      {showNote && state && ITEM_BOOKING_NOTES[state] && (
+        <span className="text-[11px] text-muted-foreground" data-testid={`text-item-booking-note-${activity.id}`}>
+          {ITEM_BOOKING_NOTES[state]}
+        </span>
+      )}
+      <Link
+        href={href}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border border-foreground/30 text-foreground hover:bg-muted"
+        data-testid={`link-item-booking-${action === "open_booking" ? "view-booking" : "try-again"}-${activity.id}`}
+      >
+        {ITEM_BOOKING_ACTION_LABELS[action]}
+      </Link>
     </span>
   );
 }
@@ -861,19 +938,21 @@ export function ActivitiesSection({
                       independently decide whether they have anything to show; the row itself
                       renders only when at least one of them does (no empty row, §13). */}
                   {(() => {
+                    const bookingAction = isOwner ? itemBookingAction(a) : null;
                     const hasBadge =
                       !!a.booking ||
-                      endedBookingState(a) != null ||
+                      itemBookingState(a) != null ||
                       a.routingStatus === "with_expert" ||
                       a.routingStatus === "ready_for_checkout";
                     const hasActions =
                       !routingReadOnly &&
                       (isOwner || isExpertViewer) && a.routingStatus != null && !a.booking && a.routingStatus !== "purchased";
-                    if (!hasBadge && !hasActions) return null;
+                    if (!hasBadge && !hasActions && !bookingAction) return null;
                     return (
                       <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`routing-row-${a.id}`}>
                         <RoutingBadge activity={a} expertAssigned={expertAssigned} />
                         <ItemKindBadge activity={a} />
+                        {bookingAction && <ItemBookingActionLink activity={a} />}
                         {hasActions && (
                           <RoutingActions
                             tripId={tripId}

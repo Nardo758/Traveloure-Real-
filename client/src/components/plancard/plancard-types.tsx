@@ -306,6 +306,9 @@ export interface PlanCardActivity {
    * R145 (ledger `2026-09-27-refunded-item-status`): the booking this item WAS bought through, when
    * it has since CLOSED (`cancelled` / `refunded`). Mutually exclusive with `booking`; never the
    * booked state. Read through `client/src/lib/item-booking-state.ts`, never directly.
+   * R154 (ledger `2026-09-27-booking-status-vocabulary`): also `payment_pending` / `failed` /
+   * `expired` — any linked booking the shared vocabulary says is not booked. A `disputed` booking is
+   * `booking` (real, paid) and reads "Under review", never "Booked".
    */
   endedBooking?: TripPlanBooking;
   /**

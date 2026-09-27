@@ -2287,6 +2287,11 @@ jobs:
       # routing counts above agree with it. No DOM, no DB, no network.
       - name: Item booking state pins (R145)
         run: npx tsx --test client/src/lib/__tests__/item-booking-state.test.ts
+      # R154 (ledger `2026-09-27-booking-status-vocabulary`): the ONE shared booking-status vocabulary —
+      # payment_pending / failed / expired are not booked, disputed counts as booked but reads "Under
+      # review" — plus a source pin that the Booked pill and line are drawn for `booked` alone.
+      - name: Booking status vocabulary pins (R154)
+        run: npx tsx --test client/src/lib/__tests__/booking-status-vocabulary.test.ts
 
   event-mint-dedupe:
     name: event-mint-dedupe (CLAUDE.md LD 30 (b) — 2026-09-06-event-mint-dedupe)
