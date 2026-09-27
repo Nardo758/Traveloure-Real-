@@ -885,12 +885,23 @@ class StripePaymentService {
     // the FIRST signal of success. Idempotent by atomic conditional: a booking the client
     // already confirmed matches 0 rows and is a no-op, never a double flip.
     try {
-      const { promotePaidCheckout } = await import('./checkout-claim.service');
-      await promotePaidCheckout({
+      const { promotePaidCheckout, refundLateSuccessOnFailedIntent } = await import('./checkout-claim.service');
+      const promotion = await promotePaidCheckout({
         paymentIntentId: paymentIntent.id,
         actor: 'webhook',
         metadataBookingIds: (bookingIds ?? '').split(',').map((id: string) => id.trim()).filter(Boolean),
       });
+      // R162 (ledger `2026-09-27-failed-is-final`): THE ONE PLACE A LATE SUCCESS IS REFUNDED. A success
+      // on a PaymentIntent whose booking is `failed` is never promoted (failed is final; the promotion
+      // recorded the exception). The traveler paid for a booking the platform no longer holds, so it is
+      // refunded here — once (the refund's own claim + PI-derived Stripe key), with one traveler notice
+      // and the fee record reversed. Only this signature-verified webhook arm calls it: client
+      // confirm-payment and one-click refuse without refunding, and the drift job only reports (CLAUDE.md
+      // §17; decision-maker ruling Sep 27, 2026). Never throws into the webhook.
+      if (promotion.exceptions.some((e) => e.status === 'failed' && e.reason === 'not_promotable')) {
+        const refund = await refundLateSuccessOnFailedIntent({ paymentIntentId: paymentIntent.id, actor: 'webhook' });
+        logger.info({ paymentIntentId: paymentIntent.id, outcome: refund.outcome }, '[webhook] late success on a failed booking');
+      }
     } catch (promoteErr: any) {
       // Never let the cart rail take the legacy rail (or the webhook) down.
       console.error('[webhook] cart-checkout payment promotion failed:', promoteErr?.message ?? promoteErr);

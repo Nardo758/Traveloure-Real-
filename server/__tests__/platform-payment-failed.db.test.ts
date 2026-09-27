@@ -258,43 +258,139 @@ after(async () => {
   await db.execute(sql`DELETE FROM refunds WHERE stripe_payment_intent_id LIKE ${`pi_${RUN}_%`}`).catch(() => {});
 });
 
-test("PF7: a late success on a FAILED booking stays failed, is an exception, and is refunded exactly once", async () => {
+/**
+ * Give a booking the traveler-fee snapshot checkout stamps at claim time and the `+traveler_service_fee`
+ * ledger row authorization writes — through the PRODUCTION resolver and writer, never a hand-built row.
+ */
+async function withTravelerFee(bookingId: string, price = 100): Promise<number> {
+  const { resolveTravelerServiceFee } = await import("../services/fee-resolution.service");
+  const { recordTravelerServiceFeeLedger } = await import("../services/fee-ledger.service");
+  const resolved = await resolveTravelerServiceFee(price);
+  const snapshot = {
+    charged: resolved.amount, wouldHaveBeen: resolved.amount, rate: resolved.rate, bandId: resolved.bandId,
+    bandKey: resolved.bandKey, capApplied: resolved.capApplied, waived: false, waiverBasis: null,
+  };
+  await db.execute(sql`
+    UPDATE service_bookings SET booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object('travelerServiceFee', ${JSON.stringify(snapshot)}::jsonb)
+    WHERE id = ${bookingId}
+  `);
+  await recordTravelerServiceFeeLedger({ bookingIds: [bookingId], actor: "test" });
+  return resolved.amount;
+}
+
+async function feeLedger(bookingId: string): Promise<{ net: number; reversals: number; fees: number }> {
+  const r = await db.execute(sql`
+    SELECT COALESCE(SUM(amount), 0)::numeric AS net,
+           COUNT(*) FILTER (WHERE fee_type = 'reversal')::int AS reversals,
+           COUNT(*) FILTER (WHERE fee_type = 'traveler_service_fee')::int AS fees
+    FROM fee_ledger WHERE booking_id = ${bookingId}
+      AND fee_type IN ('traveler_service_fee', 'reversal')
+  `);
+  const row = r.rows[0] as any;
+  return { net: Number(row.net), reversals: row.reversals, fees: row.fees };
+}
+
+async function refundNotices(): Promise<number> {
+  const r = await db.execute(sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${ids.user} AND type = 'payment_refunded'`);
+  return (r.rows[0] as any).n;
+}
+
+after(async () => {
+  await db.execute(sql`DELETE FROM notifications WHERE user_id = ${ids.user}`).catch(() => {});
+  for (const id of createdBookingIds) await db.execute(sql`DELETE FROM fee_ledger WHERE booking_id = ${id}`).catch(() => {});
+});
+
+/** The `payment_intent.succeeded` object the webhook hands `handlePaymentSucceeded`. */
+const succeededIntent = (pi: string, bookingIds: string[]) =>
+  ({ id: pi, object: "payment_intent", status: "succeeded", metadata: { bookingIds: bookingIds.join(",") } }) as any;
+
+test("PF7: a late success is refunded by the WEBHOOK only — once, with the fee reversed and one notice; confirm-payment's path never refunds", async () => {
   const pi = `pi_${RUN}_pf7`;
   const a = await makeBooking(pi);
-  const { markCheckoutPaymentFailed, promotePaidCheckout, refundLateSuccessOnFailedIntent } = await import(
-    "../services/checkout-claim.service"
-  );
+  const fee = await withTravelerFee(a);
+  assert.ok(fee > 0, "fixture: the traveler service fee band charges a fee");
+  assert.deepEqual(await feeLedger(a), { net: fee, reversals: 0, fees: 1 }, "authorization recorded the fee");
+  const { markCheckoutPaymentFailed, promotePaidCheckout } = await import("../services/checkout-claim.service");
+  const { stripePaymentService } = await import("../services/stripe-payment.service");
   await markCheckoutPaymentFailed({ paymentIntentId: pi, actor: "platform_webhook", sendEmail: async () => {} });
   assert.equal(await statusOf(a), "failed");
 
   await withFakeStripe({ [pi]: { status: "succeeded", amount_received: 12500 } }, async (calls) => {
-    // The traveler re-confirmed the SAME intent and it succeeded; the client fallback reports it.
+    // 1. The traveler re-confirmed the SAME intent and it succeeded; the CLIENT fallback reports it first.
+    //    The shared confirm only confirms: never promoted, exception recorded, and NO refund here.
     const first = await promotePaidCheckout({ paymentIntentId: pi, actor: "client", actorId: ids.user, bookingIds: [a] });
     assert.deepEqual(first.promoted, [], "failed is final — never promoted");
     assert.equal(first.exceptions[0]?.reason, "not_promotable");
-    assert.equal(first.lateSuccessRefund?.outcome, "refunded");
+    assert.equal(calls.refunds.length, 0, "the confirm path does not refund (decision-maker ruling Sep 27)");
     assert.equal(await statusOf(a), "failed", "DB FACT: the booking STAYS failed");
 
-    // Redelivery through every other path: the webhook, the drift job's hand-off, a concurrent pair.
-    await promotePaidCheckout({ paymentIntentId: pi, actor: "webhook", metadataBookingIds: [a] });
-    const [x, y] = await Promise.all([
-      refundLateSuccessOnFailedIntent({ paymentIntentId: pi, actor: "reconciliation" }),
-      refundLateSuccessOnFailedIntent({ paymentIntentId: pi, actor: "reconciliation" }),
-    ]);
-    assert.ok([x.outcome, y.outcome].every((o) => o === "already_refunded"), JSON.stringify([x, y]));
+    // 2. Stripe's payment_intent.succeeded arrives: the WEBHOOK arm refunds, exactly once.
+    await stripePaymentService.handlePaymentSucceeded(succeededIntent(pi, [a]));
+    assert.equal(calls.refunds.length, 1, "the webhook issued exactly one Stripe refund");
 
+    // 3. The same late success delivered TWICE more, concurrently: both are no-ops.
+    await Promise.all([
+      stripePaymentService.handlePaymentSucceeded(succeededIntent(pi, [a])),
+      stripePaymentService.handlePaymentSucceeded(succeededIntent(pi, [a])),
+    ]);
     const keys = new Set(calls.refunds.map((c) => c.options?.idempotencyKey));
     assert.deepEqual([...keys], [`late-success-refund-${pi}`], "ONE Stripe idempotency key, derived from the PI");
-    assert.equal(calls.refunds.length, 1, "exactly one Stripe refund call");
     assert.equal(calls.refunds[0].params.amount, 12500, "the amount is what Stripe says it received (§14)");
     assert.equal(calls.refunds[0].params.metadata.source, "late_success_on_failed_booking");
   });
+  assert.equal(await statusOf(a), "failed", "DB FACT: still failed after the refund");
   const rows = await refundRows(pi);
   assert.equal(rows.length, 1, "DB FACT: one refunds audit row");
   assert.equal(rows[0].reason, "late_success_on_failed_booking");
   const d = await db.execute(sql`SELECT booking_details->'lateSuccessRefund' AS l, booking_details->'reconciliationException' AS e FROM service_bookings WHERE id = ${a}`);
   assert.equal((d.rows[0] as any).l.refundId, rows[0].stripe_refund_id, "DB FACT: the claim records the refund id");
   assert.equal((d.rows[0] as any).e.reason, "not_promotable", "DB FACT: the reconciliation exception is recorded");
+  assert.deepEqual(await feeLedger(a), { net: 0, reversals: 1, fees: 1 }, "DB FACT: the traveler fee is reversed once and nets to 0");
+  assert.equal(await refundNotices(), 1, "DB FACT: ONE refund notice");
+  const n = await db.execute(sql`SELECT message FROM notifications WHERE user_id = ${ids.user} AND type = 'payment_refunded'`);
+  const msg = String((n.rows[0] as any).message);
+  for (const phrase of [/didn't go through/, /refunded/, /nothing was booked/, /not a new charge/]) assert.match(msg, phrase);
+});
+
+test("PF11: the drift job DETECTS a late success the webhook did not refund, and repairs nothing (§17)", async () => {
+  const { runStripeReconciliation } = await import("../jobs/stripeReconciliation");
+  const unrefunded = `pi_${RUN}_pf11a`;
+  const refunded = `pi_${RUN}_pf11b`;
+  const a = await makeBooking(unrefunded, "failed");
+  const b = await makeBooking(refunded, "failed");
+  // `b`'s late success was already refunded by the webhook (its record is on the row).
+  await db.execute(sql`
+    UPDATE service_bookings SET booking_details = jsonb_build_object('lateSuccessRefund', jsonb_build_object('refundId', ${`re_${RUN}_pf11b`}::text))
+    WHERE id = ${b}
+  `);
+  const succeeded = (id: string, booking: string) => ({
+    id, object: "payment_intent", status: "succeeded", amount: 12500, amount_received: 12500, currency: "usd",
+    latest_charge: `ch_${id}`, created: Math.floor(Date.now() / 1000), metadata: { bookingIds: booking },
+  });
+  await withFakeStripe({}, async (calls) => {
+    const res: any = await runStripeReconciliation({
+      triggeredBy: "test",
+      onlyBookingIds: [a, b],
+      stripeReader: {
+        listPaymentIntents: async () => [succeeded(unrefunded, a), succeeded(refunded, b)] as any,
+        listCharges: async () => [],
+        listRefunds: async () => [],
+        listSubscriptions: async () => [],
+      },
+    });
+    assert.equal(calls.refunds.length, 0, "the drift job never refunds");
+    assert.equal(calls.cancels.length, 0, "the drift job never cancels");
+    const rows = (await db.execute(sql`
+      SELECT kind, severity, booking_id FROM reconciliation_exceptions
+      WHERE payment_intent_id IN (${unrefunded}, ${refunded})
+    `)).rows as any[];
+    assert.deepEqual(rows.map((r) => [r.kind, r.severity, r.booking_id]), [["late_success_not_refunded", "critical", a]],
+      "ONE critical exception for the unrefunded late success; nothing for the one the webhook refunded");
+    assert.ok(res, "the run completed");
+  });
+  assert.equal(await statusOf(a), "failed", "DB FACT: nothing repaired — still failed");
+  assert.equal((await refundRows(unrefunded)).length, 0, "DB FACT: no refund row written by the job");
+  await db.execute(sql`DELETE FROM reconciliation_exceptions WHERE payment_intent_id IN (${unrefunded}, ${refunded})`);
 });
 
 test("PF8: no refund when Stripe says the intent did not succeed; no refund for a booking that is not failed", async () => {
@@ -368,6 +464,28 @@ test("PF10: 'Try again' retires the OLD intent of the same plan item after the n
       assert.equal(r.ok, false);
     },
   );
+  // The OLD intent already SUCCEEDED (a late success). "Try again" never refunds it: until the WEBHOOK's
+  // refund is recorded, checkout does not open (refundPending); once recorded, retiring is complete.
+  const oldPi3 = `pi_${RUN}_pf10old3`, newPi3 = `pi_${RUN}_pf10new3`;
+  const oldB3 = await makeBooking(oldPi3, "failed");
+  const newB3 = await makeBooking(newPi3);
+  for (const id of [oldB3, newB3]) {
+    await db.execute(sql`UPDATE service_bookings SET booking_details = jsonb_build_object('itineraryItemId', ${`${item}-3`}::text) WHERE id = ${id}`);
+  }
+  await withFakeStripe({ [oldPi3]: { status: "succeeded", amount_received: 12500 } }, async (calls) => {
+    const pending = await retireStalePaymentIntentsForCheckout({ travelerId: ids.user, bookingIds: [newB3], newPaymentIntentId: newPi3 });
+    assert.equal(pending.ok, false, "checkout waits for the webhook's refund");
+    assert.equal(pending.stale[0]?.refundPending, true);
+    assert.equal(calls.refunds.length, 0, "'Try again' never refunds");
+    assert.equal(calls.cancels.length, 0, "a succeeded intent is never cancelled");
+    await db.execute(sql`
+      UPDATE service_bookings SET booking_details = booking_details || jsonb_build_object('lateSuccessRefund', jsonb_build_object('refundId', ${`re_${RUN}_pf10`}::text))
+      WHERE id = ${oldB3}
+    `);
+    const done = await retireStalePaymentIntentsForCheckout({ travelerId: ids.user, bookingIds: [newB3], newPaymentIntentId: newPi3 });
+    assert.equal(done.ok, true, "the webhook refunded it: retiring is complete");
+    assert.equal(calls.refunds.length, 0);
+  });
   const { isTerminalUnpromotable } = await import("../services/checkout-claim.service");
   assert.equal(isTerminalUnpromotable("failed"), true, "the same-key re-POST never hands back a failed row's intent");
   assert.equal(isTerminalUnpromotable("payment_pending"), false);

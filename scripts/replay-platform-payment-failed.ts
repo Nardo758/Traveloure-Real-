@@ -12,8 +12,11 @@
  *   Scenario A (R162, real Stripe test mode) — LATE SUCCESS. A real intent is DECLINED, its booking is
  *     marked `failed` by the signed webhook, the SAME intent is then confirmed with a good card and
  *     SUCCEEDS (the old card form re-submitting). The client fallback `POST /api/bookings/confirm-payment`
- *     is refused, the booking STAYS `failed`, the exception is recorded, and Stripe shows exactly ONE
- *     refund. A signed `payment_intent.succeeded` redelivery and a second confirm refund nothing more.
+ *     is refused with `payment_after_failure` and refunds NOTHING (the shared confirm only confirms); the
+ *     booking STAYS `failed` and the exception is recorded. A SIGNED `payment_intent.succeeded` to the
+ *     PLATFORM endpoint then refunds it: exactly ONE Stripe refund, ONE traveler notice, the traveler
+ *     service fee reversed to net zero. The same late success delivered twice more (the same event id,
+ *     and a second event for the same intent) and a second confirm are all no-ops.
  *   Scenario B (R162, real Stripe test mode) — "TRY AGAIN". After the decline, the item is back in the
  *     cart through R157's real "Try again" routing rail, and the traveler checks out again
  *     through the real `POST /api/checkout`: a NEW intent is minted and stamped on a NEW booking row,
@@ -148,6 +151,7 @@ async function cleanup() {
   await pool.query(`DELETE FROM item_transition_log WHERE trip_id = $1`, [ids.trip]).catch(() => {});
   await pool.query(`DELETE FROM itinerary_items WHERE trip_id = $1`, [ids.trip]).catch(() => {});
   await pool.query(`DELETE FROM fee_ledger WHERE booking_id IN (SELECT id FROM service_bookings WHERE traveler_id = $1)`, [ids.user]).catch(() => {});
+  await pool.query(`DELETE FROM notifications WHERE user_id = $1`, [ids.user]).catch(() => {});
   await pool.query(`DELETE FROM service_bookings WHERE traveler_id = $1`, [ids.user]).catch(() => {});
   await pool.query(`DELETE FROM webhook_events WHERE stripe_event_id LIKE $1`, [`evt_replay_${RUN}%`]).catch(() => {});
   await pool.query(`DELETE FROM trip_collaborators WHERE trip_id = $1`, [ids.trip]).catch(() => {});
@@ -245,6 +249,38 @@ async function declinedIntent(bookingIds: string[]): Promise<Stripe.PaymentInten
   return stripe!.paymentIntents.retrieve(pi.id);
 }
 
+/**
+ * The traveler service fee exactly as checkout's authorization leaves it: the snapshot on the booking
+ * and its `fee_ledger` row, written through the app's own resolver and ledger writer (no literal).
+ */
+async function withTravelerFee(bookingId: string): Promise<void> {
+  const { resolveTravelerServiceFee } = await import("../server/services/fee-resolution.service");
+  const { recordTravelerServiceFeeLedger } = await import("../server/services/fee-ledger.service");
+  const resolved = await resolveTravelerServiceFee(120);
+  const snapshot = {
+    charged: resolved.amount, wouldHaveBeen: resolved.amount, rate: resolved.rate, bandId: resolved.bandId,
+    bandKey: resolved.bandKey, capApplied: resolved.capApplied, waived: false, waiverBasis: null,
+  };
+  await pool.query(
+    `UPDATE service_bookings SET booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object('travelerServiceFee', $2::jsonb)
+      WHERE id = $1`, [bookingId, JSON.stringify(snapshot)]);
+  await recordTravelerServiceFeeLedger({ bookingIds: [bookingId], actor: "replay" });
+}
+
+async function feeLedger(bookingId: string): Promise<{ net: number; reversals: number; fees: number }> {
+  const r = await pool.query(
+    `SELECT COALESCE(SUM(amount), 0)::numeric AS net,
+            COUNT(*) FILTER (WHERE fee_type = 'reversal')::int AS reversals,
+            COUNT(*) FILTER (WHERE fee_type = 'traveler_service_fee')::int AS fees
+       FROM fee_ledger WHERE booking_id = $1 AND fee_type IN ('traveler_service_fee', 'reversal')`, [bookingId]);
+  return { net: Number(r.rows[0].net), reversals: r.rows[0].reversals, fees: r.rows[0].fees };
+}
+
+async function refundNotices(): Promise<number> {
+  const r = await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND type = 'payment_refunded'`, [ids.user]);
+  return r.rows[0].n;
+}
+
 // ── Scenario 0 (R161) ────────────────────────────────────────────────────────────────────────
 async function scenarioPlatformFailed() {
   console.log("── Scenario 0: platform payment_failed marks the cart booking failed (R161)");
@@ -283,6 +319,8 @@ async function scenarioLateSuccess() {
   const pi = await declinedIntent([bookingId]);
   check("Stripe: a declined intent is requires_payment_method (not terminal)", pi.status === "requires_payment_method", pi.status);
   await seedClaim({ bookingId, itemId, pi: pi.id });
+  await withTravelerFee(bookingId);
+  check("fixture: authorization recorded the traveler service fee", (await feeLedger(bookingId)).fees === 1);
 
   check("signed payment_failed → 200",
     (await deliver(piEvent("payment_intent.payment_failed", `evt_replay_${RUN}_a_failed`, { id: pi.id, status: pi.status }, [bookingId]))) === 200);
@@ -292,31 +330,47 @@ async function scenarioLateSuccess() {
   const paid = await stripe!.paymentIntents.confirm(pi.id, { payment_method: "pm_card_visa" });
   check("Stripe: the SAME intent now SUCCEEDS", paid.status === "succeeded", paid.status);
 
-  // The client fallback reports it (the platform endpoint is not subscribed to payment_intent.succeeded).
+  // The client fallback reports it first. Its shared confirm only CONFIRMS (decision-maker ruling
+  // Sep 27): refused, and nothing is refunded here — the refund follows from the webhook.
   const c1 = await api("POST", "/api/bookings/confirm-payment", { bookingId, paymentIntentId: pi.id });
-  check("confirm-payment is refused with payment_after_failure_refunded (409)",
-    c1.status === 409 && c1.json?.error === "payment_after_failure_refunded", c1);
+  check("confirm-payment is refused with payment_after_failure (409)",
+    c1.status === 409 && c1.json?.error === "payment_after_failure", c1);
   check("booking STAYS 'failed' (failed is final)", (await statusOf(bookingId)) === "failed");
-  const row = await pool.query(
-    `SELECT booking_details->'reconciliationException'->>'reason' AS reason,
-            booking_details->'lateSuccessRefund'->>'refundId' AS refund_id
-       FROM service_bookings WHERE id = $1`, [bookingId]);
-  check("reconciliation exception recorded (not_promotable)", row.rows[0]?.reason === "not_promotable", row.rows[0]);
+  const exc = await pool.query(
+    `SELECT booking_details->'reconciliationException'->>'reason' AS reason FROM service_bookings WHERE id = $1`, [bookingId]);
+  check("reconciliation exception recorded (not_promotable)", exc.rows[0]?.reason === "not_promotable", exc.rows[0]);
   let refunds = await stripe!.refunds.list({ payment_intent: pi.id, limit: 10 });
+  check("Stripe: confirm-payment issued NO refund", refunds.data.length === 0, refunds.data.length);
+
+  // Stripe's own word: a SIGNED payment_intent.succeeded to the PLATFORM endpoint refunds it.
+  const succeeded = piEvent("payment_intent.succeeded", `evt_replay_${RUN}_a_succeeded`, { id: pi.id, status: "succeeded" }, [bookingId]);
+  check("signed payment_intent.succeeded to the platform endpoint → 200", (await deliver(succeeded)) === 200);
+  const row = await pool.query(
+    `SELECT booking_details->'lateSuccessRefund'->>'refundId' AS refund_id FROM service_bookings WHERE id = $1`, [bookingId]);
+  refunds = await stripe!.refunds.list({ payment_intent: pi.id, limit: 10 });
   check("Stripe: exactly ONE refund, full amount, tagged late_success_on_failed_booking",
     refunds.data.length === 1 && refunds.data[0].amount === 13200 && refunds.data[0].metadata?.source === "late_success_on_failed_booking",
     refunds.data.map((r) => ({ id: r.id, amount: r.amount, source: r.metadata?.source })));
   check("the claim records the Stripe refund id", row.rows[0]?.refund_id === refunds.data[0]?.id, row.rows[0]?.refund_id);
+  check("the traveler got exactly ONE refund notice", (await refundNotices()) === 1, await refundNotices());
+  const fee = await feeLedger(bookingId);
+  check("the traveler service fee is reversed: fee rows net to zero", fee.fees === 1 && fee.reversals === 1 && fee.net === 0, fee);
 
-  // Redelivery through every door: a signed succeeded webhook, and the client confirm again.
-  check("signed payment_intent.succeeded redelivery → 200",
-    (await deliver(piEvent("payment_intent.succeeded", `evt_replay_${RUN}_a_succeeded`, { id: pi.id, status: "succeeded" }, [bookingId]))) === 200);
+  // The SAME late success delivered twice more: Stripe's redelivery of the same event id, and a
+  // second distinct event for the same intent (which passes the webhook's event dedupe and reaches
+  // the refund claim). Both are no-ops.
+  check("redelivery of the same signed event → 200", (await deliver(succeeded)) === 200);
+  check("a second signed payment_intent.succeeded for the same intent → 200",
+    (await deliver(piEvent("payment_intent.succeeded", `evt_replay_${RUN}_a_succeeded_2`, { id: pi.id, status: "succeeded" }, [bookingId]))) === 200);
   const c2 = await api("POST", "/api/bookings/confirm-payment", { bookingId, paymentIntentId: pi.id });
-  check("a second confirm is refused the same way (already refunded)", c2.status === 409 && c2.json?.error === "payment_after_failure_refunded", c2.status);
+  check("a second confirm is refused the same way", c2.status === 409 && c2.json?.error === "payment_after_failure", c2.status);
   refunds = await stripe!.refunds.list({ payment_intent: pi.id, limit: 10 });
   const audit = await pool.query(`SELECT count(*)::int AS n FROM refunds WHERE stripe_payment_intent_id = $1`, [pi.id]);
-  check("redelivery is a no-op: still ONE Stripe refund and ONE audit row",
+  check("second delivery is a no-op: still ONE Stripe refund and ONE audit row",
     refunds.data.length === 1 && audit.rows[0].n === 1, { stripe: refunds.data.length, audit: audit.rows[0].n });
+  check("still exactly ONE refund notice", (await refundNotices()) === 1, await refundNotices());
+  const fee2 = await feeLedger(bookingId);
+  check("still one fee reversal, net zero", fee2.fees === 1 && fee2.reversals === 1 && fee2.net === 0, fee2);
   check("booking still 'failed'", (await statusOf(bookingId)) === "failed");
 }
 

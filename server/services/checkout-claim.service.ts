@@ -925,7 +925,6 @@ export interface PaymentPromotionResult {
   /** Diary rows written (rulings 12/16/18). */
   diaryRows: number;
   /** R162: present when this success landed on `failed` booking(s) — the automatic refund's outcome. */
-  lateSuccessRefund?: LateSuccessRefundResult;
 }
 
 const TERMINAL_UNPROMOTABLE = new Set([
@@ -1119,16 +1118,14 @@ export async function promotePaidCheckout(opts: {
     }
   }
 
-  // ── R162: A SUCCESS ON A `failed` BOOKING IS REFUNDED, NEVER PROMOTED ────────────────────────
-  // `failed` is final (above: it is TERMINAL_UNPROMOTABLE, the exception is already recorded). If
-  // the signal is a success on that booking's OWN stamped PI, the traveler paid for a booking the
-  // platform no longer holds — refund it automatically, exactly once, whichever caller heard it
-  // (client confirm-payment, the webhook, the drift job, one-click). The refund reads Stripe's own
-  // status before moving money, so a client-supplied PI cannot trigger a refund of anything that
-  // did not really succeed. Never throws into the promotion.
-  if (result.exceptions.some((e) => e.status === "failed" && e.reason === "not_promotable")) {
-    result.lateSuccessRefund = await refundLateSuccessOnFailedIntent({ paymentIntentId, actor: `promotion:${actor}` });
-  }
+  // ── R162: A SUCCESS ON A `failed` BOOKING IS NEVER PROMOTED — AND IS NOT REFUNDED HERE ───────
+  // `failed` is final (TERMINAL_UNPROMOTABLE above: the exception is already recorded). The late-
+  // success REFUND lives on the WEBHOOK path only (`handlePaymentSucceeded` →
+  // `refundLateSuccessOnFailedIntent`), by decision-maker ruling Sep 27, 2026: this function is the
+  // ONE confirm for every caller (client confirm-payment, one-click, the webhook, the drift job), and
+  // a refund reachable from here would reach the drift job, which CLAUDE.md §17 keeps DETECT-ONLY.
+  // Stripe delivers `payment_intent.succeeded` whichever way the traveler paid, so the webhook
+  // always hears it; this function only confirms.
 
   // Plan-side catch-up, AFTER the money leg and outside its transaction. Only for rows this call
   // promoted, and only through `markItemPurchased`, which is an atomic conditional flip paired
@@ -1568,7 +1565,13 @@ export async function refundLateSuccessOnFailedIntent(opts: {
     }
     const bookingIds = rows.map((r) => r.id);
     const recorded = rows.find((r) => r.lsr && typeof r.lsr.refundId === "string");
-    if (recorded) return { outcome: "already_refunded", refundId: recorded.lsr.refundId, bookingIds };
+    if (recorded) {
+      // A redelivery: the refund exists. Finish the aftermath if a crash left it half-done — both
+      // halves are idempotent (fee reversal by key, the notice by its own claim), so this never
+      // reverses twice or notifies twice.
+      await settleLateSuccessAftermath(paymentIntentId, recorded.lsr.refundId);
+      return { outcome: "already_refunded", refundId: recorded.lsr.refundId, bookingIds };
+    }
 
     const { stripePaymentService } = await import("./stripe-payment.service");
     let facts: Awaited<ReturnType<typeof stripePaymentService.retrievePaymentIntentFacts>>;
@@ -1606,7 +1609,10 @@ export async function refundLateSuccessOnFailedIntent(opts: {
         `)
       ).rows as Array<{ lsr: any }>;
       const done = again.find((r) => r.lsr && typeof r.lsr.refundId === "string");
-      if (done) return { outcome: "already_refunded", refundId: done.lsr.refundId, bookingIds };
+      if (done) {
+        await settleLateSuccessAftermath(paymentIntentId, done.lsr.refundId);
+        return { outcome: "already_refunded", refundId: done.lsr.refundId, bookingIds };
+      }
     }
 
     let refund: { id: string; status: string | null };
@@ -1637,6 +1643,7 @@ export async function refundLateSuccessOnFailedIntent(opts: {
       "[late-success] a PaymentIntent SUCCEEDED after its booking was marked failed — booking stays failed, " +
         "traveler refunded automatically (R162)",
     );
+    await settleLateSuccessAftermath(paymentIntentId, refund.id);
     return { outcome: "refunded", refundId: refund.id, amountCents, bookingIds };
   } catch (err: any) {
     logger.error({ paymentIntentId, actor, err: err?.message }, "[late-success] unexpected error — nothing assumed");
@@ -1644,10 +1651,138 @@ export async function refundLateSuccessOnFailedIntent(opts: {
   }
 }
 
+/** The notification `type` of the one late-success refund notice. Stated once. */
+export const LATE_SUCCESS_REFUND_NOTICE_TYPE = "payment_refunded";
+
+/**
+ * R162 — WHAT FOLLOWS A LATE-SUCCESS REFUND, both halves idempotent and neither able to fail the
+ * refund (§15b: an ancillary effect never undoes the money event that authorized it).
+ *
+ *  (a) THE FEE RECORD. The traveler service fee written to `fee_ledger` at authorization is reversed
+ *      through the ONE shared writer every refund uses (`recordTravelerServiceFeeReversal`, the same
+ *      call `refundServiceBooking` makes via `recordIssuedRefund`), at the fee the booking's own
+ *      snapshot says was CHARGED (a waived fee was never billed and is not reversed). Its key is
+ *      per (booking, amount), so a redelivery or a second confirm never reverses twice, and the
+ *      plan's fee record nets to zero once all the money has gone back.
+ *  (b) THE TRAVELER IS TOLD, ONCE. One in-app notification and one email per traveler, behind their
+ *      own claim — `lateSuccessRefund.noticeClaimedAt`, set by an atomic conditional only once the
+ *      refund id is recorded. A redelivery finds the claim taken and sends nothing. The wording says
+ *      what happened: the payment went through after it had failed, it was refunded automatically,
+ *      nothing was booked, and this is not a new charge.
+ */
+async function settleLateSuccessAftermath(paymentIntentId: string, refundId: string): Promise<void> {
+  try {
+    const rows = (
+      await db.execute(sql`
+        SELECT id, booking_details -> 'travelerServiceFee' AS tfee
+        FROM service_bookings
+        WHERE stripe_payment_intent_id = ${paymentIntentId} AND status = 'failed'
+      `)
+    ).rows as Array<{ id: string; tfee: any }>;
+    const { recordTravelerServiceFeeReversal } = await import("./fee-ledger.service");
+    for (const r of rows) {
+      const charged = r.tfee && r.tfee.waived !== true ? Number(r.tfee.charged) || 0 : 0;
+      if (charged <= 0) continue;
+      const res = await recordTravelerServiceFeeReversal({
+        bookingId: r.id,
+        refundAmount: charged,
+        actor: LATE_SUCCESS_REFUND_ACTOR,
+        stripeRefundRef: refundId,
+        reason: "late_success_on_failed_booking",
+      });
+      if (!res.reversed && res.reason === "original_row_missing") {
+        logger.error({ bookingId: r.id, paymentIntentId, refundId }, "[late-success] fee reversal skipped: original fee row not found (ledger gap)");
+      }
+    }
+  } catch (err: any) {
+    logger.error({ paymentIntentId, refundId, err: err?.message }, "[late-success] fee reversal failed (refund stands; the next signal retries)");
+  }
+
+  try {
+    const claimed = (
+      await db.execute(sql`
+        UPDATE service_bookings
+        SET booking_details = jsonb_set(booking_details, ${`{${LATE_SUCCESS_REFUND_KEY},noticeClaimedAt}`}::text[], to_jsonb(NOW()::text), true)
+        WHERE stripe_payment_intent_id = ${paymentIntentId}
+          AND status = 'failed'
+          AND (booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text) ? 'refundId'
+          AND NOT ((booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text) ? 'noticeClaimedAt')
+        RETURNING id, traveler_id, service_id, (booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text ->> 'amountCents') AS amount_cents
+      `)
+    ).rows as Array<{ id: string; traveler_id: string | null; service_id: string | null; amount_cents: string | null }>;
+    if (claimed.length === 0) return; // someone else holds the notice claim, or it was already sent
+    const byTraveler = new Map<string, (typeof claimed)[number]>();
+    for (const r of claimed) if (r.traveler_id && !byTraveler.has(r.traveler_id)) byTraveler.set(r.traveler_id, r);
+    const { storage } = await import("../storage");
+    const { sendLateSuccessRefundEmail } = await import("./email.service");
+    for (const [travelerId, r] of Array.from(byTraveler.entries())) {
+      const amount = Number(r.amount_cents ?? 0) / 100;
+      const detail = (
+        await db.execute(sql`
+          SELECT u.email, u.first_name, ps.service_name
+          FROM users u LEFT JOIN provider_services ps ON ps.id = ${r.service_id}
+          WHERE u.id = ${travelerId} LIMIT 1
+        `)
+      ).rows?.[0] as any;
+      const what = detail?.service_name ? `your payment for ${detail.service_name}` : "your payment";
+      try {
+        await storage.createNotification({
+          userId: travelerId,
+          type: LATE_SUCCESS_REFUND_NOTICE_TYPE,
+          title: "Your payment was refunded — nothing was booked",
+          message:
+            `Earlier we told you ${what} didn't go through. It went through afterwards, but the booking had ` +
+            `already been closed, so nothing was booked. We refunded $${amount.toFixed(2)} to your ` +
+            `original payment method automatically. This is not a new charge.`,
+          relatedId: r.id,
+          relatedType: "booking",
+          data: { bookingId: r.id, paymentIntentId, refundId, refundAmount: amount, reason: "late_success_on_failed_booking" },
+        } as any);
+      } catch (err: any) {
+        logger.error({ bookingId: r.id, err: err?.message }, "[late-success] refund notification failed");
+      }
+      if (detail?.email) {
+        await sendLateSuccessRefundEmail({
+          toEmail: detail.email,
+          travelerName: detail.first_name ?? null,
+          serviceName: detail.service_name ?? null,
+          refundAmount: amount,
+        }).catch((err: any) => logger.error({ bookingId: r.id, err: err?.message }, "[late-success] refund email failed"));
+      }
+    }
+  } catch (err: any) {
+    logger.error({ paymentIntentId, refundId, err: err?.message }, "[late-success] refund notice failed (refund stands)");
+  }
+}
+
+const LATE_SUCCESS_REFUND_ACTOR = "late_success_refund";
+
+/** Has the webhook's late-success refund been recorded on this PaymentIntent's rows? Read-only. */
+async function lateSuccessRefundRecorded(paymentIntentId: string): Promise<boolean> {
+  try {
+    const r = await db.execute(sql`
+      SELECT 1 FROM service_bookings
+      WHERE stripe_payment_intent_id = ${paymentIntentId}
+        AND (booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text) ? 'refundId'
+      LIMIT 1
+    `);
+    return r.rows.length > 0;
+  } catch (err: any) {
+    logger.error({ paymentIntentId, err: err?.message }, "[stale-pi] could not read the late-success refund record — treated as pending");
+    return false;
+  }
+}
+
 export type RetireStaleResult = {
   /** false ⇒ at least one stale intent could not be retired; the caller must NOT open checkout. */
   ok: boolean;
-  stale: Array<{ bookingIds: string[]; paymentIntentId: string; result: CancelStaleOutcome; lateSuccess?: LateSuccessRefundResult }>;
+  stale: Array<{
+    bookingIds: string[];
+    paymentIntentId: string;
+    result: CancelStaleOutcome;
+    /** The old intent SUCCEEDED and its webhook refund is not recorded yet — checkout waits for it. */
+    refundPending?: boolean;
+  }>;
 };
 
 /**
@@ -1706,9 +1841,14 @@ export async function retireStalePaymentIntentsForCheckout(opts: {
     const result = await cancelStalePaymentIntent({ paymentIntentId, context });
     const entry: RetireStaleResult["stale"][number] = { bookingIds: oldIds, paymentIntentId, result };
     if (result.outcome === "not_cancellable" && result.status === "succeeded") {
-      // The old intent already succeeded: a late success. Refund it; retiring it is then complete.
-      entry.lateSuccess = await refundLateSuccessOnFailedIntent({ paymentIntentId, actor: "try_again" });
-      if (entry.lateSuccess.outcome !== "refunded" && entry.lateSuccess.outcome !== "already_refunded") out.ok = false;
+      // The old intent already SUCCEEDED: a late success. It is refunded by the WEBHOOK only
+      // (`handlePaymentSucceeded`; decision-maker ruling Sep 27, 2026) — this path never refunds.
+      // Retiring it is complete once that refund is recorded on the old rows; until then checkout
+      // does not open, so the traveler is never asked to pay again while their earlier payment is
+      // still out. The caller says why (`refundPending`).
+      const recorded = await lateSuccessRefundRecorded(paymentIntentId);
+      entry.refundPending = !recorded;
+      if (!recorded) out.ok = false;
     } else if (result.outcome !== "canceled" && result.outcome !== "already_canceled") {
       out.ok = false;
     }

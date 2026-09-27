@@ -322,16 +322,18 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
         return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
       }
       const exception = promotion.exceptions[0];
-      // R162 (ledger `2026-09-27-failed-is-final`): a success on a `failed` booking is refunded,
-      // never confirmed. Say that — never "our team has been alerted" for money already on its way back.
-      const lsr = promotion.lateSuccessRefund;
-      if (lsr && (lsr.outcome === 'refunded' || lsr.outcome === 'already_refunded')) {
+      // R162 (ledger `2026-09-27-failed-is-final`): a success on a `failed` booking is never confirmed,
+      // and this client route does NOT refund it. The refund follows from Stripe's own
+      // `payment_intent.succeeded` webhook (`handlePaymentSucceeded`), which Stripe delivers whichever
+      // way the traveler paid — decision-maker ruling Sep 27, 2026. Say that plainly, never "our team
+      // has been alerted" and never a claim that money has already moved.
+      if (exception && exception.status === 'failed' && exception.reason === 'not_promotable') {
         return res.status(409).json({
           success: false,
-          error: 'payment_after_failure_refunded',
+          error: 'payment_after_failure',
           message:
-            "This booking's payment had already failed, so it could not be confirmed. The payment that " +
-            'went through afterwards has been refunded to your card in full.',
+            "This booking's payment had already failed, so it could not be confirmed. If a payment went " +
+            "through afterwards, it will be refunded to your card automatically and you'll get a notice when it is.",
           detail: 'failed_is_final',
         });
       }

@@ -945,12 +945,11 @@ Both now call the ONE `markCheckoutPaymentFailed` (`server/services/checkout-cla
 arms of `handlePaymentFailed`/`handlePaymentCanceled`/`handlePaymentSucceeded` are deleted at retirement, the shared
 cart-rail calls in those handlers (`markCheckoutPaymentFailed`, `promotePaidCheckout`) must stay** — they are the
 cart rail's only platform-endpoint reachers — and so must R162's (`2026-09-27-failed-is-final`) late-success
-refund, which rides the shared promotion.
+refund, which lives on the `payment_intent.succeeded` webhook arm (`handlePaymentSucceeded`) only.
 
-**Operator step recorded by R162 (not done — no Stripe config was changed):** the live PLATFORM endpoint is not
-subscribed to `payment_intent.succeeded`, so a platform cart success reaches the server only through the client
-`confirm-payment`, the inline one-click promotion and the daily drift job. Subscribing it would make §15c's
-authoritative webhook path real for cart checkout. **G2 (later lane):** a sweep that cancels the open intent of every
+**Operator step (done by the decision-maker, Sep 27, 2026):** the live PLATFORM endpoint is now subscribed to
+`payment_intent.succeeded`, which makes §15c's webhook path real for cart checkout and is what R162's late-success
+refund rides. The `charge.dispute.*` events stay unsubscribed until the G3 lane lands. **G2 (later lane):** a sweep that cancels the open intent of every
 `failed` booking through the ONE `cancelStalePaymentIntent` — R162 cancels only on "Try again" and only for
 item-linked bookings. Still open and NOT fixed by R161: `payment_intent.canceled` on the
 platform endpoint touches only the legacy table (a canceled cart PI is left to the TTL sweep), and the Connect

@@ -669,6 +669,18 @@ async function authorizeAndPromote(
     bookingIds,
     newPaymentIntentId: paymentIntent.paymentIntentId,
   });
+  if (!retired.ok && paymentIntent?.status !== "succeeded" && retired.stale.some((e) => e.refundPending)) {
+    // R162: the earlier payment went through AFTER it failed. The webhook refunds it (never this
+    // route); until that refund is recorded, no new payment is started.
+    return res.status(409).json({
+      success: false,
+      error: "previous_payment_refund_pending",
+      message:
+        "Your earlier payment went through after it had failed. We're refunding it to your card " +
+        "automatically — you'll get a notice when it's done, and then you can book again. Nothing new was charged.",
+      retryable: true,
+    });
+  }
   if (!retired.ok && paymentIntent?.status !== "succeeded") {
     return res.status(409).json({
       success: false,
