@@ -138,8 +138,10 @@ export async function issueExceptionRefund(input: {
   const done = await refundServiceBookingWithLedger(input.bookingId, {
     // Kept verbatim on the `refunds` audit row; Stripe gets its own enum value (toStripeRefundReason).
     reason: `admin_exception_refund: ${input.reason}`,
-    ...(full ? { feeRefundPercent: 100 } : { amountOverride: b.bookingRefundDollars, feeRefundPercent: b.feeRefundPercent }),
-    refundFraction: quote.chargedCents > 0 ? totalCents / quote.chargedCents : 1,
+    // A full refund sends no booking override (the whole charge, fee at the breakdown's make-whole
+    // percent); a partial sends both shares. `b` is non-null only when something was charged.
+    ...(full ? { feeRefundPercent: b.feeRefundPercent } : { amountOverride: b.bookingRefundDollars, feeRefundPercent: b.feeRefundPercent }),
+    refundFraction: totalCents / quote.chargedCents,
   });
   if (!done.ok) return { ok: false, refusal: "lost_chargeback", message: "A lost chargeback already returned this money.", body: done.lostChargeback };
   const r: any = done.refund;
