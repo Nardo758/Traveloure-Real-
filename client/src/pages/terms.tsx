@@ -342,6 +342,9 @@ export default function TermsOfServicePage() {
             <p className="text-muted-foreground leading-relaxed">
               Refunds are issued to your original payment method and typically appear within 5-10 business days, depending on your bank or card issuer. Refunds are calculated on the full amount charged — including the Traveloure platform fee and any insurance fee — at the percentage set by the applicable cancellation policy (see Section 8.1). In cases of force majeure (natural disasters, pandemics, etc.), special cancellation and refund policies may apply.
             </p>
+            <p className="text-muted-foreground leading-relaxed mt-4" data-testid="terms-refund-exclusions">
+              Refunds cover only amounts Traveloure charged you, including Traveloure's service fee at the same percentage as the booking. Payment-processing costs are never deducted from your refund. Fees your bank or card issuer charges you, such as foreign-transaction or currency-conversion fees, are not charged by Traveloure and are not refunded by us.
+            </p>
           </section>
 
           <section>

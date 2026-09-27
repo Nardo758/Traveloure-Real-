@@ -167,3 +167,29 @@ test("computeRefundBreakdown keeps refundServiceBooking's existing rules for cal
   // An override above what was charged is clamped to the charge.
   assert.equal(computeRefundBreakdown({ bookingChargedDollars: 105, feeChargedDollars: 0, amountOverride: 500 }).bookingRefundDollars, 105);
 });
+
+test("Terms §8.3 'the service fee at the same percentage as the booking' is what the breakdown does, for every tier", () => {
+  for (const percent of [0, 50, 100]) {
+    const b = tierRefundBreakdown({ bookingChargedDollars: 105, feeChargedDollars: 10, percent });
+    assert.equal(b.feeRefundPercent, percent, "the fee takes the booking's tier percent");
+    assert.equal(Math.round(b.bookingRefundDollars * 100), Math.round(105 * percent), "the booking share is the same percent");
+    assert.equal(Math.round(b.feeRefundDollars * 100), Math.round(10 * percent), "the fee share is the same percent");
+  }
+  // A provider/expert cancellation is a made-whole refund: 100% of both (the cancel route passes the
+  // whole booking charge and feeRefundPercent 100 — ruling 2026-09-02-traveler-fee-refundability).
+  const provider = computeRefundBreakdown({ bookingChargedDollars: 105, feeChargedDollars: 10, amountOverride: 105, feeRefundPercent: 100 });
+  assert.equal(provider.totalRefundDollars, 115);
+});
+
+test("Terms §8.3 carries the approved exclusions sentence verbatim", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const terms = fs.readFileSync(path.join(process.cwd(), "client/src/pages/terms.tsx"), "utf8");
+  assert.ok(
+    terms.includes(
+      "Refunds cover only amounts Traveloure charged you, including Traveloure's service fee at the same percentage as the booking. " +
+        "Payment-processing costs are never deducted from your refund. Fees your bank or card issuer charges you, such as " +
+        "foreign-transaction or currency-conversion fees, are not charged by Traveloure and are not refunded by us.",
+    ),
+  );
+});
