@@ -141,20 +141,45 @@ export function sanitizeUsersForRole<T extends Record<string, any>>(
 }
 
 /**
- * Keys inside `service_bookings.booking_details` that name the TRAVELER's payment or refund by its
- * Stripe identity, or record who resolved a refund. Never shown to an expert or provider (R163
- * amendment); an admin (`canSeeFull`) still sees the whole row.
+ * FU-R167-1 (R165, G3; ledger `2026-09-27-dispute-hardening`) — the keys inside
+ * `service_bookings.booking_details` an EXPERT or PROVIDER may see. An ALLOWLIST: every other key is
+ * dropped, so a money, refund, Stripe or admin key added to `booking_details` later is hidden by
+ * default instead of leaking by default. The named denylist it replaces (eight keys) had already
+ * missed three live ones — `lostChargebacks` (charge, PaymentIntent and event ids),
+ * `chargebackReconciliation` (an admin id) and `balancePaidByUserId` (a user id) — plus the fee,
+ * surcharge and rail snapshots (`travelerCharge`, `travelerServiceFee`, `railsAttribution`, …).
+ *
+ * WHAT IS ON IT, AND WHY: the OPERATIONAL answers about what was booked and when — the date, the
+ * traveler's note, the unit count, the pickup point, a stay's property/room/nights, a transport's
+ * mode, party and requests. An inventory of the expert and provider consoles (Sep 27, 2026) found
+ * no earner screen reading any other `booking_details` key; every other earner use of the column
+ * is SERVER-side against the raw row (completion, calendar, components, Q&A sessions), which this
+ * projection does not touch. Adding a key here is a decision that an earner should see it.
  */
-export const EARNER_HIDDEN_BOOKING_DETAIL_KEYS = [
-  'stripeIdempotencyKey',        // the checkout's Stripe idempotency key (§15b sibling of stripeAttemptAt)
-  'stripeAttemptAt',             // §15b pre-flight marker
-  'reconciliationException',     // §15c record; carries the PaymentIntent id
-  'lateSuccessRefund',           // R162 claim; carries the refund id
-  'outOfBandRefund',             // #1288 stamp; carries refund ids and the charge id
-  'outOfBandRefundCleared',      // the admin clear history; carries refund ids and the admin id
-  'serviceBookingRefundAttempt', // R163 amendment: the app refund's claim; carries its idempotency key
-  'serviceBookingRefund',        // R163 amendment: the app refund's record; carries the refund id
+export const EARNER_VISIBLE_BOOKING_DETAIL_KEYS = [
+  'scheduledDate',
+  'notes',
+  'quantity',
+  'pickupLocation',
+  'checkIn',
+  'checkOut',
+  'nights',
+  'propertyName',
+  'roomName',
+  'travelers',
+  'specialRequests',
+  'bookingType',
+  'transportMode',
 ] as const;
+
+/** Project a `booking_details` object down to the earner allowlist. */
+export function earnerBookingDetails(details: Record<string, unknown>): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  for (const key of EARNER_VISIBLE_BOOKING_DETAIL_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(details, key)) kept[key] = details[key];
+  }
+  return kept;
+}
 
 /**
  * Sanitize booking data for experts - they only need relevant trip info
@@ -200,17 +225,13 @@ export function sanitizeBookingForExpert<T extends Record<string, any>>(
     }
   }
 
-  // R163 amendment (decision-maker, Sep 27, 2026): the strip above covered the COLUMNS only, but the
-  // traveler's refund and payment-identity records live INSIDE `booking_details` — the app refund's
-  // claim carries its Stripe idempotency key, its record the refund id, R162's late-success claim and
-  // #1288's stamp carry refund ids. An expert or provider reading their booking never sees them. The
-  // rest of `booking_details` (the operational answers) is kept.
+  // R163 amendment + FU-R167-1: the strip above covers the COLUMNS; the traveler's refund, payment
+  // and fee records live INSIDE `booking_details`. An expert or provider sees only the operational
+  // keys on `EARNER_VISIBLE_BOOKING_DETAIL_KEYS` — everything else is dropped.
   for (const detailsField of ['bookingDetails', 'booking_details']) {
     const details = (sanitized as any)[detailsField];
     if (details && typeof details === 'object' && !Array.isArray(details)) {
-      const kept = { ...details };
-      for (const key of EARNER_HIDDEN_BOOKING_DETAIL_KEYS) delete (kept as any)[key];
-      (sanitized as any)[detailsField] = kept;
+      (sanitized as any)[detailsField] = earnerBookingDetails(details);
     }
   }
 
