@@ -7927,6 +7927,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
         });
       }
+      // R163: a bundle whose whole share a Stripe-dashboard refund already covered has nothing left to
+      // cancel — the component settlement would attempt a second refund. Checked only for the
+      // booking's own traveler, so a stranger still gets the recorder's one 404 below (LD 40).
+      {
+        const own = await storage.getServiceBooking(req.params.id);
+        if (own && own.travelerId === userId) {
+          const { isFullyRefundedOutOfBand, REFUNDED_OUT_OF_BAND_REFUSAL } = await import(
+            "./services/out-of-band-refund.service"
+          );
+          if (await isFullyRefundedOutOfBand(own.id)) {
+            return res.status(409).json({ ...REFUNDED_OUT_OF_BAND_REFUSAL });
+          }
+        }
+      }
       const { recordBundleComponentCancellation } = await import("./services/booking-completion.service");
       const outcome = await recordBundleComponentCancellation({
         bookingId: req.params.id,
@@ -8117,6 +8131,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): a booking whose share a Stripe-
+      // dashboard refund already covered reads "Refunded", whatever its row status. Refuse FIRST —
+      // before the cancellable check (so the traveler is told the true reason) and before the ledger
+      // reversal and the Stripe call below, which would be refused by Stripe after the ledger moved.
+      {
+        const { isFullyRefundedOutOfBand, REFUNDED_OUT_OF_BAND_REFUSAL } = await import(
+          "./services/out-of-band-refund.service"
+        );
+        if (await isFullyRefundedOutOfBand(booking.id)) {
+          return res.status(409).json({ ...REFUNDED_OUT_OF_BAND_REFUSAL });
+        }
       }
       if (!isBookingCancellable(booking.status)) {
         return res.status(400).json({ message: "Cannot cancel this booking" });

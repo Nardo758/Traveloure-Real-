@@ -24,9 +24,17 @@
  *   D4. a sibling our own rail already refunded + a dashboard refund of the remaining share ⇒ the
  *       remaining booking reads refunded.
  *   D5. an admin CLEAR of the stamp ⇒ back to "Booked".
+ *   D6. the refund lands while the booking is still `payment_pending` ⇒ it reads "Refunded", never
+ *       "Payment processing" — the flag outranks every non-final status.
  *   H1. (needs the running app, as CI's suite-server-tests job provides) a SIGNED `charge.refunded`
  *       delivered to the platform endpoint flips the label end to end: `GET /api/my-bookings` carries
  *       `refundedOutOfBand` and the plancard reads "Refunded"; a partial one flips nothing.
+ *   H2. the traveler's cancel and dispute rails refuse a fully dashboard-refunded booking with a 409
+ *       `refunded_out_of_band` BEFORE any write or Stripe call (§14 — the hidden button is not the
+ *       guard); a partial refund is not refused that way.
+ *   H3. the same for a flagged `payment_pending` booking, read through My Bookings; and, because a
+ *       Stripe call cannot be seen from outside the app, the source the app was built from is pinned
+ *       so each refusal returns before the handler's first refund, ledger or status write.
  *
  * Run with:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
@@ -95,12 +103,13 @@ async function seedBookedItem(
   paymentIntentId: string,
   title: string,
   totalAmount = "120.00",
+  status = "confirmed",
 ): Promise<{ itemId: string; bookingId: string }> {
   const [b] = await db.insert(serviceBookings).values({
     travelerId: owner,
     tripId,
     totalAmount,
-    status: "confirmed",
+    status,
     stripePaymentIntentId: paymentIntentId,
   } as any).returning();
   const [it] = await db.insert(itineraryItems).values({
@@ -239,6 +248,22 @@ test("D5 an admin CLEAR of the stamp reads Booked again", async () => {
   assert.equal(itemBookingState((await activityOf(tripId, itemId)).a), "booked");
 });
 
+test("D6 a full dashboard refund on a payment_pending booking reads Refunded, NOT Payment processing", async () => {
+  const tripId = await seedTrip(userId);
+  const pi = newIntent();
+  // Authorized (the PI is stamped) but not yet promoted: the `charge.refunded` arrives first.
+  const { itemId, bookingId } = await seedBookedItem(tripId, userId, pi, `Night market ${RUN}`, "120.00", "payment_pending");
+  await recordOutOfBandRefund({ paymentIntentId: pi, chargeId: `ch_${RUN}_d6`, refunds: [dashboardRefund(12000)] });
+
+  const { plan, a } = await activityOf(tripId, itemId);
+  assert.equal(a.endedBooking?.refundedOutOfBand, true);
+  assert.equal(a.endedBooking?.status, "payment_pending", "the row's own status is untouched");
+  assert.equal(itemBookingState(a), "refunded", "the refund flag takes precedence over payment_pending");
+  const listed = (plan.bookings ?? []).find((b: any) => b.id === bookingId);
+  assert.equal(readPurchaseStatus(itemBookingLabelStatus(listed))?.label, "refunded", "never 'Prepared · awaiting purchase'");
+  assert.equal(await rowStatus(bookingId), "payment_pending", "LABEL ONLY: no status write");
+});
+
 test("H1 a SIGNED charge.refunded through the platform endpoint flips the label end to end", async (t) => {
   const baseUrl = process.env.JOURNEY_BASE_URL;
   const secret = process.env.STRIPE_WEBHOOK_SECRET_TEST;
@@ -314,4 +339,137 @@ test("H1 a SIGNED charge.refunded through the platform endpoint flips the label 
 
   assert.equal(itemBookingState((await activityOf(tripId, full.itemId)).a), "refunded");
   assert.equal(itemBookingState((await activityOf(tripId, partial.itemId)).a), "booked");
+});
+
+test("H2 cancel and dispute refuse a fully dashboard-refunded booking with a 409 and write nothing", async (t) => {
+  const baseUrl = process.env.JOURNEY_BASE_URL;
+  if (!baseUrl) {
+    t.skip("needs the running app (JOURNEY_BASE_URL) — CI's suite-server-tests job sets it");
+    return;
+  }
+  const email = `r163-h2-${RUN}@t.test`;
+  const reg = await fetch(`${baseUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password: `R163-${RUN}-pass!`, firstName: "R163", lastName: "Canceller" }),
+  });
+  const regText = await reg.text();
+  assert.equal(reg.status, 201, regText);
+  const cookie = reg.headers.get("set-cookie")!.split(";")[0];
+  const traveler = (JSON.parse(regText) as any).user.id as string;
+  createdUsers.push(traveler);
+
+  const tripId = await seedTrip(traveler);
+  const pi = newIntent();
+  const { bookingId } = await seedBookedItem(tripId, traveler, pi, `Kimono rental ${RUN}`);
+  // The #1288 writer exactly as the webhook arm calls it, with the whole charge refunded.
+  await recordOutOfBandRefund({ paymentIntentId: pi, chargeId: `ch_${RUN}_h2`, refunds: [dashboardRefund(12000)] });
+
+  const post = (path: string, body: unknown) =>
+    fetch(`${baseUrl}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify(body),
+    });
+
+  const cancel = await post(`/api/bookings/${bookingId}/cancel`, { reason: "changed plans" });
+  const cancelBody = (await cancel.json()) as any;
+  assert.equal(cancel.status, 409, JSON.stringify(cancelBody));
+  assert.equal(cancelBody.error, "refunded_out_of_band");
+
+  const dispute = await post(`/api/bookings/${bookingId}/dispute`, { reason: "never happened" });
+  const disputeBody = (await dispute.json()) as any;
+  assert.equal(dispute.status, 409, JSON.stringify(disputeBody));
+  assert.equal(disputeBody.error, "refunded_out_of_band");
+
+  const [row] = await db
+    .select({
+      status: serviceBookings.status,
+      meta: serviceBookings.bookingMetadata,
+      cancelledAt: serviceBookings.cancelledAt,
+    })
+    .from(serviceBookings)
+    .where(eq(serviceBookings.id, bookingId));
+  assert.equal(row.status, "confirmed", "no status was written");
+  assert.equal((row.meta as any)?.disputeReason, undefined, "the dispute wrote nothing");
+  assert.equal(row.cancelledAt ?? null, null, "the cancel wrote nothing");
+  const refunds = await db.execute(sql`SELECT count(*)::int AS n FROM refunds WHERE stripe_payment_intent_id = ${pi}`);
+  assert.equal((refunds.rows[0] as any).n, 0, "no second refund was attempted or recorded");
+
+  // Control: a PARTIAL dashboard refund leaves the cancel rail alone (it reaches the ordinary path,
+  // which on this stub key cannot reach Stripe — so only the refusal's ABSENCE is asserted).
+  const partialPi = newIntent();
+  const partial = await seedBookedItem(tripId, traveler, partialPi, `Tea set ${RUN}`);
+  await recordOutOfBandRefund({ paymentIntentId: partialPi, chargeId: `ch_${RUN}_h2p`, refunds: [dashboardRefund(3000)] });
+  const partialDispute = await post(`/api/bookings/${partial.bookingId}/dispute`, { reason: "late" });
+  const partialBody = (await partialDispute.json()) as any;
+  assert.notEqual(partialBody.error, "refunded_out_of_band", "a partial refund is not refused as refunded");
+});
+
+test("H3 a flagged payment_pending booking: My Bookings reads Refunded, and cancel/dispute are refused before any Stripe call", async (t) => {
+  const baseUrl = process.env.JOURNEY_BASE_URL;
+  if (!baseUrl) {
+    t.skip("needs the running app (JOURNEY_BASE_URL) — CI's suite-server-tests job sets it");
+    return;
+  }
+  const email = `r163-h3-${RUN}@t.test`;
+  const reg = await fetch(`${baseUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password: `R163-${RUN}-pass!`, firstName: "R163", lastName: "Pending" }),
+  });
+  const regText = await reg.text();
+  assert.equal(reg.status, 201, regText);
+  const cookie = reg.headers.get("set-cookie")!.split(";")[0];
+  const traveler = (JSON.parse(regText) as any).user.id as string;
+  createdUsers.push(traveler);
+
+  const tripId = await seedTrip(traveler);
+  const pi = newIntent();
+  const { bookingId } = await seedBookedItem(tripId, traveler, pi, `Pottery class ${RUN}`, "120.00", "payment_pending");
+  await recordOutOfBandRefund({ paymentIntentId: pi, chargeId: `ch_${RUN}_h3`, refunds: [dashboardRefund(12000)] });
+
+  const res = await fetch(`${baseUrl}/api/my-bookings`, { headers: { cookie } });
+  assert.equal(res.status, 200);
+  const row = ((await res.json()) as any[]).find((r) => r.id === bookingId);
+  assert.equal(row?.status, "payment_pending");
+  assert.equal(row?.refundedOutOfBand, true);
+  assert.equal(itemBookingLabelStatus(row), "refunded", "My Bookings reads Refunded, not Payment pending");
+
+  const post = (path: string, body: unknown) =>
+    fetch(`${baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body) });
+  for (const path of [`/api/bookings/${bookingId}/cancel`, `/api/bookings/${bookingId}/dispute`]) {
+    const r = await post(path, { reason: "r163" });
+    const body = (await r.json()) as any;
+    assert.equal(r.status, 409, `${path}: ${JSON.stringify(body)}`);
+    assert.equal(body.error, "refunded_out_of_band", path);
+  }
+  assert.equal(await rowStatus(bookingId), "payment_pending", "nothing was written");
+  const refunds = await db.execute(sql`SELECT count(*)::int AS n FROM refunds WHERE stripe_payment_intent_id = ${pi}`);
+  assert.equal((refunds.rows[0] as any).n, 0, "no refund row");
+
+  // NO STRIPE CALL, structurally: in each handler the refusal returns before the first line that can
+  // reach Stripe or move the ledger. (Over HTTP a Stripe call cannot be observed from outside the
+  // process, so the order is pinned in the source the app was built from.)
+  const { readFileSync } = await import("node:fs");
+  const { resolve } = await import("node:path");
+  const ROOT = resolve(import.meta.dirname, "../..");
+  const routes = readFileSync(resolve(ROOT, "server/routes.ts"), "utf8");
+  const cancelStart = routes.indexOf('app.post("/api/bookings/:id/cancel"');
+  const cancel = routes.slice(cancelStart, routes.indexOf("\n  app.", cancelStart + 10));
+  const cancelGuard = cancel.indexOf("REFUNDED_OUT_OF_BAND_REFUSAL })");
+  assert.ok(cancelGuard > 0, "the cancel handler carries the refusal");
+  for (const effect of ["refundServiceBooking(", "reversePlatformRevenueForBooking(", "reverseEarningsForBooking(", "updateServiceBookingStatus("]) {
+    const at = cancel.indexOf(effect);
+    assert.ok(at > cancelGuard, `cancel: the refusal precedes ${effect}`);
+  }
+  const bookingsRouter = readFileSync(resolve(ROOT, "server/routes/bookings.ts"), "utf8");
+  const disputeStart = bookingsRouter.indexOf("router.post('/:id/dispute'");
+  const dispute = bookingsRouter.slice(disputeStart, bookingsRouter.indexOf("\nrouter.", disputeStart + 10));
+  const disputeGuard = dispute.indexOf("REFUNDED_OUT_OF_BAND_REFUSAL })");
+  assert.ok(disputeGuard > 0, "the dispute handler carries the refusal");
+  for (const effect of ["db.update(", "setBookingEarningsDispute("]) {
+    const at = dispute.indexOf(effect);
+    assert.ok(at > disputeGuard, `dispute: the refusal precedes ${effect}`);
+  }
 });

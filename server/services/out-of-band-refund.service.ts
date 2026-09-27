@@ -210,6 +210,23 @@ export async function listOutOfBandRefundBookings(limit = 200) {
 }
 
 /**
+ * R163, the traveler-action half. A booking whose share a refund we did not issue covered IN FULL
+ * reads "Refunded", so the traveler's cancel and dispute rails refuse it with this ONE 409 body —
+ * BEFORE any ledger reversal or Stripe call, so no second refund is ever attempted (§14: the button
+ * being hidden is not the guard). Same rule as the label (`outOfBandFullyRefundedBookingIds`).
+ */
+export const REFUNDED_OUT_OF_BAND_REFUSAL = {
+  error: "refunded_out_of_band",
+  message:
+    "This booking has already been refunded in full, so there is nothing left to cancel or dispute. " +
+    "Nothing was changed and no further refund was attempted.",
+} as const;
+
+export async function isFullyRefundedOutOfBand(bookingId: string): Promise<boolean> {
+  return (await outOfBandFullyRefundedBookingIds([bookingId])).has(bookingId);
+}
+
+/**
  * R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`; supersedes #1288's leave-for-human
  * reading for the LABEL only). Which of these bookings a refund we did not issue has refunded IN
  * FULL, by the ONE rule `outOfBandRefundCoversShare` (server/services/booking-charge-share.ts): the
