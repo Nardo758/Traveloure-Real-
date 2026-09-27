@@ -2020,8 +2020,11 @@ This document captures architectural decisions to maintain consistency across co
     caller passes. **§13, and it is the load-bearing half: A CANCELLED PARENT MINTS NOTHING** — the
     retained remainder of a late strict traveler-cancel is recorded on the immutable settlement row
     and is deliberately NOT minted, because minting on a cancelled parent is a new money event
-    nobody has ratified. **Left, named, not built:** no notification for the parent cancel, and
-    `revertPurchasedItemsForBooking` is not called on this path.
+    nobody has ratified. **Left, named, not built:** no notification for the parent cancel.
+    **The plan item IS reverted (ledger `2026-09-27-bundle-all-undelivered-reverts-item`, R152):**
+    `settleBundleAllUndelivered` calls the ONE `revertPurchasedItemsForBooking` after the parent
+    flip and on its recovery arm, idempotent by the revert's own atomic conditional, never failing
+    the cancel (§15b); `booking_id` stays on the item as history.
 
 51. **THE BOOKING CONCIERGE FEE IS CAPPED, AND ITS EXPERT SHARE IS SPLIT AT COMPLETION — ALL
     PLATFORM-SET, NEVER EXPERT-SETTABLE (decision-maker ratified Sep 18, 2026 — ledger
