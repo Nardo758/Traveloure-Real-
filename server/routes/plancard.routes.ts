@@ -24,6 +24,7 @@ import { getTripDestinations } from "../services/trip-destinations.service";
 import { planComparisonRef } from "@shared/trip-plan";
 import { isUntouchedAiDraft } from "../services/ai-draft-eligibility";
 import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
+import { isTripPayer } from "../services/balance-payer.service";
 import { tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
@@ -418,16 +419,28 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // as "delegate" — it edits for the owner but is never shown as "your expert" and never gets
       // the owner's pay/finalize controls (the slip decides that from this role).
       const isManagingEa = isAssignedExpert || isAuthor ? false : await isManagingEaForTrip(tripId, userId);
-      if (!isAssignedExpert && !isAuthor && !isManagingEa) {
+      // LD 42 D9 (ledger `2026-09-27-payer-reads-plancard`): a `payer`-role `trip_participants` row
+      // on THIS trip is half of the bookings section's audience (owner + payer), so it READS the
+      // plan the balance belongs to. The role test is the ONE `balance-payer.service.ts` comparison
+      // `canPayBalance` also uses (§18 rule 1). READ-ONLY: this arm lives on this read gate alone —
+      // no write rail, owner-tier read (guest roster / PII), trip pass or proposal rail admits it,
+      // and `authorizeTripLogistics` is untouched. Rendered as "payer" so the slip draws no tools.
+      const isPayer =
+        isAssignedExpert || isAuthor || isManagingEa ? false : await isTripPayer(tripId, userId);
+      if (!isAssignedExpert && !isAuthor && !isManagingEa && !isPayer) {
         return res.status(403).json({ error: "Access denied" });
       }
       if (isManagingEa) tripRole = "delegate";
+      else if (isPayer) tripRole = "payer";
     }
 
     // ── Thin caller (L3a): the assembly lives in the ONE TripPlan assembler ────────────────
     // The gate above is authoritative — the assembler does NOT authorize; the redaction level is
     // the channel contract. This surface renders the full body for an authorized viewer, so it
-    // asks for 'full'.
+    // asks for 'full'. A `payer` viewer (LD 42 D9) takes 'full' too, deliberately: it is the LEAST
+    // level that carries `bookings` — `teaser`/`preview` return before bookings are read — and the
+    // bookings section is the whole reason a payer reads this plan. 'full' carries the traveler-
+    // facing Expert Notes (§21), never the private `trips.expert_notes`, and no guest roster.
     // LIVE BY DEFAULT (ledger `2026-09-26-slip-renders-live`): a reader passing no parameter gets
     // the live plan. The Trip Card — the one read-out of a finished plan — asks for its frozen final
     // explicitly with `?surface=card`. It widens nothing: the gate above already decided who reads.

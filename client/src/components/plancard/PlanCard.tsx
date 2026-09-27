@@ -909,7 +909,8 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
       : null);
 
   const effectiveRole: PlanCardRole = plancardData?.tripRole ?? role ?? "viewer";
-  const isViewer = effectiveRole === "viewer" || effectiveRole === "friend";
+  // A `payer` (LD 42 D9) reads the plan to settle a balance; it is a viewer here, never an editor.
+  const isViewer = effectiveRole === "viewer" || effectiveRole === "friend" || effectiveRole === "payer";
   const isOwner = effectiveRole === "owner";
   // W7 expert-return edge (routing.routes.ts): the trip's assigned expert gets the ONE
   // with_expert → in_planning write; ActivitiesSection/RoutingActions enforce the rest.

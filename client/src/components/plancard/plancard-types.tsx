@@ -574,7 +574,9 @@ export interface PlanCardTrip {
   eventType?: string;
 }
 
-export type PlanCardRole = "owner" | "expert" | "friend" | "viewer";
+// `payer` (LD 42 D9, ledger `2026-09-27-payer-reads-plancard`): a `payer`-role trip participant.
+// It reads the plan and is rendered as a VIEWER — no owner or expert controls (render rule only).
+export type PlanCardRole = "owner" | "expert" | "friend" | "viewer" | "payer";
 /** `proposal` — Spec C variant-comparison column (SLIP_EXPERIENCE_DISPATCH §4): a compact,
  *  day-ordered, read-only rendering of ONE optimizer variant, with the trip's purchased items
  *  rendered from CANONICAL trip rows (identical across columns by construction). */
