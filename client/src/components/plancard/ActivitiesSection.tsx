@@ -4,6 +4,8 @@ import { Link, useLocation } from "wouter";
 import {
   BOOKING_DETAIL_PATH,
   ITEM_BOOKING_ACTION_LABELS,
+  ITEM_BOOKING_HELP_ARTICLE,
+  ITEM_BOOKING_HELP_LINK_LABEL,
   ITEM_BOOKING_NOTES,
   ITEM_BOOKING_RETRY_TO_PLAN_LABEL,
   PAYMENT_FAILED_PILL_LABEL,
@@ -14,6 +16,7 @@ import {
   retryGoesToPlan,
 } from "@/lib/item-booking-state";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
+import { helpArticlePath } from "@shared/help-articles";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -229,6 +232,15 @@ export function ItemBookingActionLink({
         <span className="text-[11px] text-muted-foreground" data-testid={`text-item-booking-note-${activity.id}`}>
           {ITEM_BOOKING_NOTES[state]}
         </span>
+      )}
+      {state && ITEM_BOOKING_HELP_ARTICLE[state] && (
+        <Link
+          href={helpArticlePath(ITEM_BOOKING_HELP_ARTICLE[state]!)}
+          className="text-[11px] underline underline-offset-2 text-muted-foreground hover:text-foreground"
+          data-testid={`link-item-booking-help-${activity.id}`}
+        >
+          {ITEM_BOOKING_HELP_LINK_LABEL}
+        </Link>
       )}
       {action === "open_booking" ? (
         <Link

@@ -43,6 +43,7 @@
  * with no public address gets a sentence, not a dead button; a card whose rows are all gated away
  * is not rendered at all.
  */
+import { helpArticlePath } from "@shared/help-articles";
 import { useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
@@ -1249,7 +1250,10 @@ function FinishCard({
           ) : (
             <span className="line-through">${slipFeeDisplay.wouldHaveBeen.toFixed(2)}</span>
           )}{" "}
-          {slipFeeDisplay.note}
+          {slipFeeDisplay.note}{" "}
+          <Link href={helpArticlePath("trip-pass-and-fees")} className="underline underline-offset-2" data-testid="link-slip-fee-help">
+            About this fee
+          </Link>
         </RailNote>
       )}
       {chooser}

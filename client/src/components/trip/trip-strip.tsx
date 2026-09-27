@@ -38,9 +38,11 @@ import type { ExperienceType, UserExperience } from "@shared/schema";
 const STRIP_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 const MARKETING_PATHS = new Set([
-  "/", "/about", "/pricing", "/faq", "/how-it-works", "/features",
+  "/", "/about", "/pricing", "/how-it-works", "/features",
   "/careers", "/press", "/blog", "/help", "/support",
 ]);
+// Help articles (/help/:slug) are marketing pages too (Lane B); /faq now redirects to /help.
+const MARKETING_PREFIXES = ["/help/"];
 
 const LOCKED_PREFIXES = ["/checkout", "/payment", "/booking/confirmation"];
 
@@ -122,7 +124,7 @@ export function TripStrip() {
 
   const vocab = classify(ctx.experienceType);
   const locked = LOCKED_PREFIXES.some((p) => location.startsWith(p));
-  const marketing = MARKETING_PATHS.has(location);
+  const marketing = MARKETING_PATHS.has(location) || MARKETING_PREFIXES.some((p) => location.startsWith(p));
 
   const destination = ctx.destination || ctx.city || "";
   // A3 (docs/briefs/04): invite-aware Event-class variant — a context born from a

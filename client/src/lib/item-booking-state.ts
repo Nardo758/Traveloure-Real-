@@ -17,6 +17,7 @@
  *
  * NOTHING HERE WRITES, CHARGES OR AUTHORIZES. It reads three DTO fields and returns a word.
  */
+import type { HelpArticleSlug } from "@shared/help-articles";
 import {
   ITEM_BOOKING_LABELS,
   itemBookingLabelStatus,
@@ -141,6 +142,17 @@ export const ITEM_BOOKING_NOTES: Readonly<Record<ItemBookingState, string | null
   refunded: "Refunded — the booking was refunded",
   cancelled: "Cancelled — the booking was cancelled",
 };
+
+/**
+ * Lane B (Sep 27, 2026): the Help center article a row's note links to, where one explains it —
+ * "Payment didn't go through" and "Under review" each have one. A state with no article links to
+ * nothing (no generic "help" link that answers a different question).
+ */
+export const ITEM_BOOKING_HELP_ARTICLE: Readonly<Partial<Record<ItemBookingState, HelpArticleSlug>>> = {
+  payment_failed: "payment-didnt-go-through",
+  under_review: "disputes-and-under-review",
+};
+export const ITEM_BOOKING_HELP_LINK_LABEL = "What this means";
 
 /** The copy a failed row's action and a disputed row's link carry. Written once. */
 export const ITEM_BOOKING_ACTION_LABELS: Readonly<Record<ItemBookingAction, string>> = {

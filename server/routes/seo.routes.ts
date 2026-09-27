@@ -22,6 +22,7 @@ import { db } from "../db";
 import { users, providerServices, readyMadeTrips } from "@shared/schema";
 import { transformDevHtml } from "../vite-dev-html";
 import { injectIntoHead } from "../utils/html-head";
+import { HELP_ARTICLE_SLUGS, helpArticlePath } from "@shared/help-articles";
 
 const router = Router();
 
@@ -42,6 +43,11 @@ const STATIC_ROUTES = [
   "/about",
   "/contact",
   "/visa-help",
+  "/press",
+  "/careers",
+  // Lane B: the Help center and each article (one slug per article, shared/help-articles.ts).
+  "/help",
+  ...HELP_ARTICLE_SLUGS.map(helpArticlePath),
 ];
 
 const escXml = (s: string) =>

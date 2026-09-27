@@ -27,6 +27,7 @@
  */
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
+import { helpArticlePath } from "@shared/help-articles";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -159,6 +160,16 @@ export function CancelBookingDialog({
             <p className="text-sm text-muted-foreground" data-testid={`text-refund-policy-message-${suffix}`}>
               {cancelPreview.message}
             </p>
+            {/* Lane B: the tier table behind this number (opens in a new tab so the dialog stays). */}
+            <a
+              href={helpArticlePath("cancellations-and-refunds")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-muted-foreground underline underline-offset-2"
+              data-testid={`link-cancel-help-${suffix}`}
+            >
+              How cancellations and refunds work
+            </a>
           </div>
         )}
         <DialogFooter>
