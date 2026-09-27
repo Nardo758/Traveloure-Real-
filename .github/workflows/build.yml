@@ -2282,6 +2282,11 @@ jobs:
       # No DOM, no DB, no network.
       - name: Plan row model pins
         run: npx tsx --test client/src/lib/__tests__/plan-row-model.test.ts
+      # R145 (ledger `2026-09-27-refunded-item-status`): the ONE client reading of the plancard's
+      # `booking` / `endedBooking` split — a refunded or cancelled item never reads booked, and the
+      # routing counts above agree with it. No DOM, no DB, no network.
+      - name: Item booking state pins (R145)
+        run: npx tsx --test client/src/lib/__tests__/item-booking-state.test.ts
 
   event-mint-dedupe:
     name: event-mint-dedupe (CLAUDE.md LD 30 (b) — 2026-09-06-event-mint-dedupe)

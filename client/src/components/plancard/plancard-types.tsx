@@ -303,6 +303,12 @@ export interface PlanCardActivity {
    */
   booking?: TripPlanBooking;
   /**
+   * R145 (ledger `2026-09-27-refunded-item-status`): the booking this item WAS bought through, when
+   * it has since CLOSED (`cancelled` / `refunded`). Mutually exclusive with `booking`; never the
+   * booked state. Read through `client/src/lib/item-booking-state.ts`, never directly.
+   */
+  endedBooking?: TripPlanBooking;
+  /**
    * Item 2 Phase 2 (ledger 2026-08-23-item2-affiliate): present ONLY when the build-time slip
    * resolver grounded this item to an affiliate product bookable via the agent rail (§16). Carries
    * an opaque server-minted `bookingToken` — never the affiliate URL. Presence-guarded like the
