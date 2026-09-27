@@ -15,6 +15,12 @@ import {
   commitCartQuantity,
   parseCartQuantityInput,
 } from "@/lib/cart-quantity";
+import {
+  travelerFeePreviewAddend,
+  travelerFeePreviewDisplay,
+  type TravelerFeePreviewBlock,
+  type TravelerFeePreviewDisplay,
+} from "@/lib/traveler-fee-preview";
 import { getTripContext, updateTripContext, switchTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
 import { Link, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -160,6 +166,10 @@ interface CartData {
   // NOT in `subtotal`/`total`, and checkout refuses them.
   requestOnlyItemIds?: string[];
   requestOnlyReasons?: Record<string, RequestOnlyReason>;
+  // R144 (ledger `2026-09-27-service-fee-before-checkout`): the traveler service fee, resolved
+  // server-side through the charge's own resolver and shown BEFORE checkout. Omitted when the server
+  // has no answer — never read as $0.
+  travelerFeePreview?: TravelerFeePreviewBlock;
 }
 
 /**
@@ -599,6 +609,37 @@ async function confirmCheckoutPayment(
         body: JSON.stringify({ bookingId, paymentIntentId }),
       }).catch(() => undefined),
     ),
+  );
+}
+
+/**
+ * R144: the traveler service fee line on the pre-checkout summaries. Draws nothing when the rule
+ * says so (§13); a covered fee is struck through and named as covered, never shown as "$0".
+ */
+function TravelerFeePreviewRow({
+  display,
+  formatPrice,
+  testId,
+}: {
+  display: TravelerFeePreviewDisplay | null;
+  formatPrice: (usd: number) => string;
+  testId: string;
+}) {
+  if (!display) return null;
+  return (
+    <div className="flex justify-between gap-2" data-testid={testId}>
+      <span className="text-muted-foreground">
+        {display.label}
+        <span className="block text-[11px] text-muted-foreground/80">{display.note}</span>
+      </span>
+      {display.kind === "charged" ? (
+        <span data-testid={`${testId}-amount`}>{formatPrice(display.amount)}</span>
+      ) : (
+        <span className="line-through text-muted-foreground" data-testid={`${testId}-covered`}>
+          {formatPrice(display.wouldHaveBeen)}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -1236,6 +1277,11 @@ export default function CartPage() {
       minimumFractionDigits: displayCurrency === "JPY" ? 0 : 2,
     }).format(usdAmount * rate);
   };
+
+  // R144 (ledger `2026-09-27-service-fee-before-checkout`): the traveler service fee BEFORE checkout.
+  // The amount is the server's; the ONE wording/omission rule decides whether a line is drawn.
+  const travelerFeeDisplay = travelerFeePreviewDisplay(cart?.travelerFeePreview, formatPrice);
+  const travelerFeeAddend = travelerFeePreviewAddend(travelerFeeDisplay);
 
   const handleCurrencyChange = (code: string) => {
     setDisplayCurrency(code);
@@ -2333,10 +2379,11 @@ export default function CartPage() {
                           <span data-testid="text-travel-surcharge">{formatPrice(travelSurcharge)}</span>
                         </div>
                       )}
+                      <TravelerFeePreviewRow display={travelerFeeDisplay} formatPrice={formatPrice} testId="text-traveler-fee-preview" />
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
-                        <span>Total</span>
-                        <span data-testid="text-total">{formatPrice(combinedTotal)}</span>
+                        <span>{travelerFeeDisplay?.kind === "charged" ? "Estimated total" : "Total"}</span>
+                        <span data-testid="text-total">{formatPrice(combinedTotal + travelerFeeAddend)}</span>
                       </div>
                       {displayCurrency !== "USD" && (
                         <p className="text-xs text-muted-foreground" data-testid="text-currency-disclaimer">
@@ -2837,10 +2884,11 @@ export default function CartPage() {
                           <span>{formatPrice(conciergeFee)}</span>
                         </div>
                       )}
+                      <TravelerFeePreviewRow display={travelerFeeDisplay} formatPrice={formatPrice} testId="text-traveler-fee-preview-review" />
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
-                        <span>Total</span>
-                        <span>{formatPrice(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0))}</span>
+                        <span>{travelerFeeDisplay?.kind === "charged" ? "Estimated total" : "Total"}</span>
+                        <span>{formatPrice(combinedTotal + travelerFeeAddend - (optimizationResult?.estimatedTotal?.savings || 0))}</span>
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">

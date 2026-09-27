@@ -37,6 +37,8 @@ import { storage, ExpertApplicationExistsError, type BookingStatusNotification }
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
+import { buildTravelerFeePreview, type TravelerFeePreviewInputLine } from "./services/traveler-fee-preview.service"; // R144 (ledger 2026-09-27-service-fee-before-checkout)
+import { resolveTripPassCoveredTripIds, tripPassCoversLine, lineFeeWaiverBasis } from "./services/trip-pass-line-coverage.service"; // R148 (ledger 2026-09-27-trip-pass-waiver-per-line)
 import { buildListingBuyActions, listingBuyFacts, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL, requestOnlyListingRefusals, requestOnlyRefusalBody, requestOnlyCartLines } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
 import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
 // D-11 (ledger 2026-09-15-d11-no-item-booking-exception): the named no-item classes, the ONE
@@ -9021,6 +9023,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // S11 (§14, ledger row 107): the SAME per-night rate resolver /api/checkout and
     // /api/cart/fee-preview call — a room's live cart total cannot diverge from the charge.
     const cartStayRates = await resolveStayNightlyRates(items);
+    // R144 (ledger `2026-09-27-service-fee-before-checkout`): the lines the traveler service fee
+    // will be charged on, collected in the SAME loop and at the SAME `price` the charge loop hands
+    // `resolveTravelerServiceFeeSnapshot` — a listing line, priced, not request-only.
+    const travelerFeePreviewLines: TravelerFeePreviewInputLine[] = [];
+    // R148 (ledger `2026-09-27-trip-pass-waiver-per-line`): the SAME per-line Trip Pass basis the
+    // charge uses — each line's OWN `cart_items.trip_id`, owner-verified against the session user,
+    // through the ONE `resolveTripPassCoveredTripIds` (§18 rule 1). Fails closed per trip; a
+    // standalone line is never covered.
+    let travelerFeeCoveredTripIds = new Set<string>();
+    try {
+      travelerFeeCoveredTripIds = await resolveTripPassCoveredTripIds(
+        userId,
+        items.filter((i: any) => i.service),
+      );
+    } catch (tpErr: any) {
+      console.error("[Cart] trip-pass coverage for the fee preview failed — no waiver shown:", tpErr?.message ?? tpErr);
+    }
     for (const item of items) {
       // A request-only line is named above and quoted at nothing — checkout will refuse it.
       if (cartRequestOnly.isRequestOnly(item)) continue;
@@ -9070,8 +9089,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       const sc = cartSurcharges.get(item.id);
       if (sc?.eligible) surchargeTotal += sc.amount;
+      if (item.service && hasPublishedPrice(item.service.price)) {
+        travelerFeePreviewLines.push({
+          cartItemId: item.id as string,
+          tripId: ((item as any).tripId as string | null) ?? null,
+          subtotal: price,
+          // THE WAIVER BASIS IS THE ONE THE CHARGE WILL USE (§13). Since R148 (ledger
+          // `2026-09-27-trip-pass-waiver-per-line`) `POST /api/checkout` waives per line from the
+          // line's OWN plan, owner-verified — the basis read here through the SAME
+          // `tripPassCoversLine` + `lineFeeWaiverBasis`, so preview and charge agree. A
+          // referral-link ("rails") waiver depends on a `ref` this read does not carry; it can only
+          // LOWER the charge, which the surfaces' "estimate" wording states.
+          waiverBasis: lineFeeWaiverBasis({
+            railsWaived: false,
+            tripPassCovered: tripPassCoversLine(item, travelerFeeCoveredTripIds),
+          }),
+        });
+      }
     }
     surchargeTotal = Math.round(surchargeTotal * 100) / 100;
+    // R144: null ⇒ the key is OMITTED (§13 — an unresolvable band, or no line to fee, is no answer,
+    // never a $0 fee). The ONE resolver computes it; this read writes nothing.
+    const travelerFeePreview = await buildTravelerFeePreview(travelerFeePreviewLines);
 
     res.json({
       items,
@@ -9102,6 +9141,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Ledger `2026-09-25-checkout-request-mode`: OMITTED when empty. When present, these lines
       // are NOT in `subtotal`/`total` and `POST /api/checkout` answers 409 for them.
       ...cartRequestOnly.named,
+      // R144 (ledger `2026-09-27-service-fee-before-checkout`): the traveler service fee, shown
+      // BEFORE checkout as an estimate. Deliberately NOT folded into `total` above: `total` keeps
+      // its existing meaning, and the checkout's own snapshot is what is billed. OMITTED when null.
+      ...(travelerFeePreview ? { travelerFeePreview } : {}),
     });
     } catch (err) {
       console.error("[Cart] GET /api/cart failed:", err);
