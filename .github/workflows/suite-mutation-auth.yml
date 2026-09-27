@@ -121,6 +121,13 @@ jobs:
       # a drift detector. Needs no server and no database.
       - name: scripts/mutation-auth generator + extractor tests
         run: npx tsx --test scripts/mutation-auth/extractor.test.ts scripts/mutation-auth/coverage.test.ts
+      # Every field a client form submits is admitted or explicitly rejected by its
+      # route (ledger `2026-09-27-form-fields-admitted`). Reads the same mounted route
+      # graph as the extractor above, plus the TypeScript checker; its fixtures run
+      # first in the same file, and it prints its unchecked/unmatched counts every run
+      # (stated negative space, §18d). Needs no server and no database.
+      - name: Form fields are admitted or rejected by their routes
+        run: npx tsx --test scripts/form-field-allowlist/scan.test.ts
       - name: Manifest drift predicate self-test
         run: npx tsx scripts/generate-mutation-auth-manifest.ts --self-test
       - name: Generated mutation-auth manifest is current (rail set, not bytes)
