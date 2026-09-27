@@ -20,10 +20,12 @@
  *       unresolvable (the band row deactivated) carries NO block — never a zero fee.
  *   V6  THE TRIP PASS WAIVER, STATED AS WAIVED: the ONE builder, handed the `trip_pass` basis, answers
  *       `charged: 0`, `waived: true` and the real `wouldHaveBeen` — byte-equal to the snapshot the
- *       charge would stamp. (The cart read itself passes no waiver today; see the ledger row: the one
- *       cart checkout caller sends no `tripId`, so the charge applies no pass either, and the preview
- *       must say what the charge will do.)
+ *       charge would stamp. (V8 proves the cart read hands it the charge's own per-line basis.)
  *   V7  `total` IS UNCHANGED: the preview is disclosed beside it, never folded into it.
+ *   V8  THE CART READ PREVIEWS THE CHARGE'S OWN TRIP PASS BASIS (R148, ledger
+ *       `2026-09-27-trip-pass-waiver-per-line`): a line on the buyer's OWN covered plan previews as
+ *       waived; a standalone line and a line on SOMEONE ELSE's covered trip do not — the same
+ *       per-line, owner-verified `resolveTripPassCoveredTripIds` the checkout calls.
  *
  * NO FEE LITERALS (§8): every expected figure is read off the `fee_bands` row or computed by the
  * resolver itself. SERVER REQUIRED (JOURNEY_BASE_URL, default :5000) + DISPOSABLE DB ONLY.
@@ -40,6 +42,7 @@ import { db, pool } from "../db";
 import { readBand, resolveTravelerServiceFeeSnapshot } from "../services/fee-resolution.service";
 import { TRAVELER_SERVICE_FEE_BAND } from "../services/fee-band-requirements";
 import { buildTravelerFeePreview } from "../services/traveler-fee-preview.service";
+import { grantTripPass } from "../services/trip-entitlement.service";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -55,6 +58,9 @@ const ids = {
   lineSmall: `feepv-${RUN}-line-small`,
   lineBig: `feepv-${RUN}-line-big`,
   lineNoTrip: `feepv-${RUN}-line-notrip`,
+  foreignUser: `feepv-${RUN}-foreign`,
+  foreignTrip: `feepv-${RUN}-trip-foreign`,
+  lineForeign: `feepv-${RUN}-line-foreign`,
   linePriceless: `feepv-${RUN}-line-null`,
 };
 let buyerId = "";
@@ -143,7 +149,9 @@ before(async () => {
 after(async () => {
   try {
     await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${buyerId}`);
-    await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`);
+    await db.execute(sql`DELETE FROM trip_entitlements WHERE trip_id IN (${ids.trip}, ${ids.foreignTrip})`);
+    await db.execute(sql`DELETE FROM trips WHERE id IN (${ids.trip}, ${ids.foreignTrip})`);
+    await db.execute(sql`DELETE FROM users WHERE id = ${ids.foreignUser}`);
     await db.execute(sql`DELETE FROM provider_services WHERE id IN (${ids.small}, ${ids.big}, ${ids.priceless})`);
     await db.execute(sql`DELETE FROM users WHERE id = ${ids.provider}`);
     await db.execute(sql`DELETE FROM users WHERE email = ${buyerEmail}`);
@@ -185,7 +193,7 @@ test("V1–V4, V7 the cart read carries the charge's own per-line fee, capped, g
     assert.equal(l.charged, exp.charged, "V1: charged === the charge's snapshot");
     assert.equal(l.wouldHaveBeen, exp.wouldHaveBeen);
     assert.equal(l.capApplied, exp.capApplied);
-    assert.equal(l.waived, false, "the cart's checkout applies no waiver (see the ledger row)");
+    assert.equal(l.waived, false, "no Trip Pass on this plan yet — nothing is waived");
     assert.equal(l.waiverBasis, null);
   }
 
@@ -245,4 +253,45 @@ test("V6 a Trip-Pass-covered line is stated as waived with its real would-have-b
   assert.equal(pv!.waivedLineCount, 2);
   assert.ok(pv!.wouldHaveBeenTotal > 0);
   assert.equal(pv!.byTrip[ids.trip].waivedLineCount, 2);
+});
+
+test("V8 the cart read previews the charge's per-line Trip Pass basis (R148)", async () => {
+  // Someone else's plan holding an active pass, and a pass on the buyer's own plan.
+  await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role)
+    VALUES (${ids.foreignUser}, ${`feepv-${RUN}-foreign@t.test`}, 'Foreign', 'Owner', 'user')`);
+  await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
+    VALUES (${ids.foreignTrip}, ${ids.foreignUser}, 'Foreign trip', 'Kyoto', CURRENT_DATE + 30, CURRENT_DATE + 35)`);
+  for (const tid of [ids.trip, ids.foreignTrip]) {
+    const { created } = await grantTripPass({
+      tripId: tid,
+      sourcePaymentId: `feepv-${RUN}-pi-${tid.slice(-8)}`,
+      allowancesSnapshot: { priceCents: 1900 },
+    });
+    assert.equal(created, true, `an active pass on ${tid}`);
+  }
+  await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${buyerId}`);
+  await addLine(ids.lineSmall, ids.small, ids.trip);
+  await addLine(ids.lineNoTrip, ids.small, null);
+  await addLine(ids.lineForeign, ids.small, ids.foreignTrip);
+
+  const pv = (await getCart()).travelerFeePreview;
+  assert.ok(pv, "the block is present");
+  const byId = new Map<string, any>(pv.lines.map((l: any) => [l.cartItemId, l]));
+  const covered = await resolveTravelerServiceFeeSnapshot(smallPrice, "trip_pass");
+  const charged = await resolveTravelerServiceFeeSnapshot(smallPrice, null);
+
+  const own = byId.get(ids.lineSmall);
+  assert.equal(own.waived, true, "a line on the buyer's OWN covered plan previews as waived");
+  assert.equal(own.waiverBasis, "trip_pass");
+  assert.equal(own.charged, covered.charged);
+  assert.equal(own.wouldHaveBeen, charged.charged, "the real fee is still named");
+
+  for (const lineId of [ids.lineNoTrip, ids.lineForeign]) {
+    const l = byId.get(lineId);
+    assert.equal(l.waived, false, `${lineId}: a standalone or foreign-plan line is never waived`);
+    assert.equal(l.waiverBasis, null);
+    assert.equal(l.charged, charged.charged);
+  }
+  assert.equal(pv.waivedLineCount, 1);
+  assert.equal(pv.byTrip[ids.trip].waivedLineCount, 1);
 });
