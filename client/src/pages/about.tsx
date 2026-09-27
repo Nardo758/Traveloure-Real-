@@ -1,4 +1,7 @@
 import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
+import { usePlanning } from "@/contexts/PlanningContext";
+import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import { SEOHead } from "@/components/seo-head";
 import { CompanyPage, CompanySection } from "@/components/company/company-page";
 import {
@@ -20,6 +23,9 @@ import {
  */
 export default function AboutPage() {
   const cityCount = marketCountWord();
+  // The page's one plan entry — the SAME opener as the hero (ruling 2026-08-28-single-planning-entry);
+  // planning-entry.spec asserts it opens the modal.
+  const { open: openPlanning } = usePlanning();
   return (
     <>
       <SEOHead
@@ -73,9 +79,12 @@ export default function AboutPage() {
           <p className="text-sm italic" style={{ color: "var(--earn-muted)" }} data-testid="text-about-updated">
             Last updated: {ABOUT_LAST_UPDATED}. This page changes as markets open.
           </p>
-          <p className="text-sm">
-            <Link href="/earn" className="underline underline-offset-2">Work with travelers in your city →</Link>
-          </p>
+          <div className="flex flex-wrap items-center gap-4 pt-2">
+            <Button onClick={() => openPlanning()} data-testid="button-start-planning">
+              {START_PLAN_LABEL}
+            </Button>
+            <Link href="/earn" className="text-sm underline underline-offset-2">Work with travelers in your city →</Link>
+          </div>
         </CompanySection>
       </CompanyPage>
     </>
