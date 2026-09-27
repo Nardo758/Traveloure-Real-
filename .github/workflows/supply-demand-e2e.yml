@@ -1,4 +1,4 @@
-# Non-blocking until 5 consecutive green runs, then promote (dispatch D-6)
+# REQUIRED (decision-maker, Sep 27, 2026 — ledger `2026-09-27-supply-demand-e2e-required`).
 #
 # Supply → Demand content-journey e2e harness (Pass 2). Builds and serves a
 # PR/main artifact locally on localhost:5000 (never a shared deployment),
@@ -7,9 +7,13 @@
 # the Kyoto fixture content the supply specs mint. Stripe stays the CI stub
 # (sk_test_ci_stub…) — every Stripe-dependent step is `test.skip('HELD:stripe')`.
 #
-# NON-BLOCKING: continue-on-error at the job level, and NOT added to any
-# required-check list. Modeled on .github/workflows/selection-controls-gate.yml
-# (e2e-journey-2 job) for the local-server pattern.
+# Status context (for branch-protection required checks):
+#   * supply-demand-e2e — safe to mark as a REQUIRED branch-protection check.
+#
+# It runs on EVERY pull request to main, with no `paths:` filter: a required check that a PR never
+# triggers reports nothing and leaves that PR waiting forever. `continue-on-error` is gone for the
+# same reason — a required check has to be able to fail. Modeled on
+# .github/workflows/selection-controls-gate.yml (e2e-journey-2 job) for the local-server pattern.
 name: Supply-Demand E2E
 
 on:
@@ -18,25 +22,12 @@ on:
     - cron: '17 3 * * *'
   pull_request:
     branches: [main]
-    paths:
-      - 'server/routes/**'
-      - 'server/routes.ts'
-      - 'server/services/**'
-      - 'client/src/pages/provider/**'
-      - 'client/src/pages/expert/**'
-      - 'client/src/pages/admin/service-approvals.tsx'
-      - 'client/src/components/trip/**'
-      - 'client/src/components/plancard/**'
-      - 'client/src/pages/discover*.tsx'
-      - 'shared/schema.ts'
-      - 'e2e/supply-demand/**'
 
 jobs:
   supply-demand:
-    name: supply-demand-e2e (non-blocking)
+    name: supply-demand-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 

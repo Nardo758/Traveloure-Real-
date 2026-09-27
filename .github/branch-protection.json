@@ -40,7 +40,8 @@
       "acceptance-rails (D-24..D-27, D-32..D-40; four ledgers, see comment)",
       "plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)",
       "quote-born-charge (LD 49's charge lane; ledger 2026-09-18-quote-born-charge)",
-      "leads-door-and-trip-read-gate (V-32, V-33; ledger 2026-09-15-v32-v33-leads-door-item-read-gate)"
+      "leads-door-and-trip-read-gate (V-32, V-33; ledger 2026-09-15-v32-v33-leads-door-item-read-gate)",
+      "supply-demand-e2e"
     ]
   }
 }
