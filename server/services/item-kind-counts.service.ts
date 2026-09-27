@@ -9,9 +9,9 @@
  * snapshots this count into `insideCounts.byKind`, which the public store card then shows.
  *
  * The fix is on the INPUT, never a second derivation (§18 rule 1): the item's own `booking_id` is
- * passed to the ONE `itemKind` only while its booking is not in the ONE shared closed list
- * (`isClosedBooking` over `CLOSED_BOOKING_STATUSES`, shared/booking-visibility.ts — `cancelled` /
- * `refunded`, no list invented here). A closed-booking item then falls through the unchanged rules
+ * passed to the ONE `itemKind` only while its booking counts as booked in the ONE shared vocabulary
+ * (`itemBookingStatusEntry`, shared/booking-visibility.ts — R154: `cancelled`/`refunded` and the
+ * payment states `payment_pending`/`failed`/`expired` do not; no list invented here). A closed-booking item then falls through the unchanged rules
  * to what it names — its listing (`bookable_separately`), a partner product, or a recommendation.
  * This is the same list PR #1112's `linkedBookingFields` (trip-plan.service.ts) reads for the
  * slip/Trip Card, so the admin count and the traveler surfaces cannot disagree.
@@ -21,7 +21,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, serviceBookings } from "@shared/schema";
-import { isClosedBooking } from "@shared/booking-visibility";
+import { itemBookingStatusEntry } from "@shared/booking-visibility";
 import { itemKind, type ItemKind, type ItemKindInput } from "@shared/item-kind";
 
 export interface LinkedBookingKindRow extends ItemKindInput {
@@ -35,7 +35,12 @@ export interface LinkedBookingKindRow extends ItemKindInput {
  * status (no row joined) leaves the id as it was, which is `itemKind`'s own contract.
  */
 export function itemKindForLinkedBooking(row: LinkedBookingKindRow): ItemKind {
-  const bookingId = row.bookingId && isClosedBooking(row.bookingStatus ?? null) ? null : row.bookingId;
+  // R154 (ledger `2026-09-27-booking-status-vocabulary`): "is this a booking the item holds?" is
+  // the ONE vocabulary `linkedBookingFields` reads — closed, in-flight, failed and expired payments
+  // are not booked; `disputed` still is. An absent status (no row joined) keeps the id.
+  const status = row.bookingStatus ?? null;
+  const heldBooking = status === null || itemBookingStatusEntry(status).countsAsBooked;
+  const bookingId = row.bookingId && !heldBooking ? null : row.bookingId;
   return itemKind({
     bookingId,
     providerServiceId: row.providerServiceId,

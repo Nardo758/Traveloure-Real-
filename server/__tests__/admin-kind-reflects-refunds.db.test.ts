@@ -220,7 +220,7 @@ describe("R151 — the admin item-kind label treats a CLOSED (cancelled/refunded
     assert.equal(byKind.recommended, 2, "the refunded and the cancelled items name nothing else, so rule 4");
   });
 
-  it("K2: the input rule reads the ONE shared closed list and nothing else", async () => {
+  it("K2: the input rule reads the ONE shared booking vocabulary (R154) and nothing else", async () => {
     const { itemKindForLinkedBooking } = await import("../services/item-kind-counts.service");
     for (const status of CLOSED_BOOKING_STATUSES) {
       assert.equal(itemKindForLinkedBooking({ bookingId: "b", bookingStatus: status }), "recommended", status);
@@ -229,6 +229,10 @@ describe("R151 — the admin item-kind label treats a CLOSED (cancelled/refunded
         "bookable_separately",
         `${status}: a closed booking falls through to the listing it names`,
       );
+    }
+    // R154: a payment in flight, failed or expired is not a booking the item holds either.
+    for (const status of ["payment_pending", "failed", "expired"]) {
+      assert.equal(itemKindForLinkedBooking({ bookingId: "b", bookingStatus: status }), "recommended", status);
     }
     for (const status of ["confirmed", "completed", "deposit_paid", "disputed", null, undefined]) {
       assert.equal(
