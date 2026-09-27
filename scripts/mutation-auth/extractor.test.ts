@@ -144,8 +144,11 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
+  // POST /api/itinerary-comparisons/:id/adopt-stop moved session-self -> resource-owner (ledger
+  // 2026-09-26-adopt-stop-write-access, R130): it now calls authorizeTripLogistics with
+  // requireWriteAccess, so the plan's owner or a write-status advisor is verified before any write.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 151, "session-self": 319, "resource-owner": 94,
+    "admin-role": 151, "session-self": 318, "resource-owner": 95,
     signature: 6, "public-or-system": 38, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
