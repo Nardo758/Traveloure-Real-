@@ -2,7 +2,8 @@
 
 > **Target:** ten real Kyoto travelers using the Trips slice in November 2026.
 
-**Status:** DESIGN ONLY. HARD STOP after this part — no code, no migration, no data change until ratified.
+**Status:** RATIFIED (decision-maker, Sep 27, 2026) as the Trips golden path and the slice's acceptance test (Appendix A).
+Still design only — each build step is its own Track A lane (Part 3).
 **Build order:** superseded by Track A (Part 3, not yet written). The product map is the TARGET architecture; this
 document names what the slice needs from it and in what order a traveler meets it.
 **Code base:** `origin/main` @ `c99acfa8b` (claims re-checked at `d59f1b3ef`). The product map's own `path:line` citations are on `da3174289`; where the
