@@ -327,7 +327,12 @@ describe("A3 — the call sites (a composition is worth what its callers are)", 
 
   it("S8 the reconciliation job derives the expected charge through the SAME helper", () => {
     assert.match(recon, /function expectedChargeForRow\(r: CartBookingRow\): number \{/);
-    assert.match(recon, /travelerChargeForRow\(\{/);
+    // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`) MOVED the per-row share into
+    // `server/services/booking-charge-share.ts` so the refund label and this job read ONE derivation;
+    // the job now delegates to `bookingChargeShare`, which is where `travelerChargeForRow` is called.
+    // The pin follows the delegation — still one composition, never a copy in the job.
+    assert.match(recon, /return bookingChargeShare\(\{/);
+    assert.match(read("server/services/booking-charge-share.ts"), /travelerChargeForRow\(\{/);
     // ONE DERIVATION, EVERY CALLER — and the pin derives its count from the FILE rather than
     // restating a literal (the operating procedure's static-pin rule). It previously asserted
     // exactly three call sites and went red when D-11's `trip_booking_without_item` detector added
