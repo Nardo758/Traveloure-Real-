@@ -219,6 +219,18 @@ async function serveWithHead(
   }
 }
 
+// ─── /blog: noindex while it is an empty state ──────────────────────────────
+// The blog has no post store yet, so /blog is ALWAYS its empty state, and an empty
+// page must not be indexed (footer lane, Sep 2026 — the route stays so inbound links
+// resolve; the footer hides the link until five posts are published). The header
+// works for crawlers that never run the SPA; `BlogPage` also sets a robots meta tag.
+// When a post store exists this must become conditional on it — never a blanket
+// noindex over published, reviewed posts.
+router.get("/blog", (_req, res, next) => {
+  res.setHeader("X-Robots-Tag", "noindex, follow");
+  next();
+});
+
 for (const [routePath, meta] of Object.entries(ROUTE_META)) {
   router.get(routePath, (req, res, next) => serveWithHead(req, res, next, meta, routePath));
 }

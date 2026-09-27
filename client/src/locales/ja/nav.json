@@ -78,33 +78,40 @@
     "todaysDeals": "本日のお得情報"
   },
   "footer": {
-    "tagline": "ローカルエキスパートとトリッププランナーの知見に、先進の AI 技術を組み合わせた、あなただけの旅行プランニングをお届けします。",
+    "tagline": "どんな体験も、どこででも。そこに暮らす人と一緒に計画しよう。",
     "rights": "© {{year}} Traveloure. All rights reserved.",
     "sections": {
-      "product": "プロダクト",
+      "plan": "プラン",
+      "locals": "ローカル",
       "company": "会社情報",
       "support": "サポート"
     },
     "links": {
-      "planAnExperience": "体験を計画する",
-      "marketplace": "マーケットプレイス",
-      "talkToExperts": "エキスパートに相談する",
+      "startAPlan": "プランを始める",
+      "occasions": "シーンから探す",
+      "destinations": "行き先",
       "howItWorks": "ご利用の流れ",
       "pricing": "料金",
-      "features": "機能",
-      "globalCalendar": "イベント",
-      "executiveAssistant": "エグゼクティブアシスタント",
-      "aboutUs": "私たちについて",
-      "waysToEarn": "収入を得る方法",
-      "careers": "採用情報",
-      "blog": "ブログ",
+      "meetTheLocals": "地元の人に会う",
+      "localBusinesses": "地元のお店・事業者",
+      "becomeALocalExpert": "ローカルエキスパートになる",
+      "tripPlanners": "トリッププランナー",
+      "eventPlanners": "イベントプランナー",
+      "serviceProviders": "サービス提供者",
+      "about": "私たちについて",
       "press": "プレス",
+      "careers": "採用情報",
       "helpCenter": "ヘルプセンター",
-      "contactUs": "お問い合わせ",
+      "faq": "よくあるご質問",
+      "contact": "お問い合わせ",
       "visaHelp": "ビザのサポート",
-      "privacyPolicy": "プライバシーポリシー",
-      "termsOfService": "利用規約",
-      "faq": "よくあるご質問"
+      "privacy": "プライバシー",
+      "terms": "利用規約"
     }
+  },
+  "closing": {
+    "startMyPlan": "プランを始める",
+    "meetTheLocals": "地元の人に会う",
+    "seePricing": "料金を見る"
   }
 }

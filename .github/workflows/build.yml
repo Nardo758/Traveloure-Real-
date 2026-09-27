@@ -534,6 +534,11 @@ jobs:
       # exist in every locale on disk.
       - name: Nav i18n key pin
         run: npx tsx --test client/src/lib/__tests__/nav-i18n-keys.test.ts
+      # Footer lane (Sep 2026): the footer is shown to every visitor, and it carried `/chat` — a
+      # ProtectedRoute — so a guest was bounced to "/". The footer-links smoke only refuses the
+      # 404 page. This pin refuses a footer href whose App.tsx route is ProtectedRoute/requiredRole.
+      - name: Footer guest-route pin
+        run: npx tsx --test client/src/lib/__tests__/footer-guest-routes.test.ts
       # F-2: ONE trip-target resolver for the /services grid and the service-detail page — the
       # "?tripId= first, then TripContext, else none" order, plus the detail href that carries the
       # handoff forward. A second copy of that order is how the two surfaces drifted apart.

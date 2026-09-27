@@ -1,16 +1,22 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Compass } from "lucide-react";
+import { SEOHead } from "@/components/seo-head";
 
 /**
  * §13: this page previously rendered six fabricated articles attributed to
  * invented "platform experts". There is no article store or CMS behind /blog,
  * so the honest state is an empty one — a real post can only appear once there
  * is a real source for it.
+ *
+ * An empty page is NOT indexed (footer lane, Sep 2026): the route stays so inbound links
+ * resolve, the footer hides the Blog link until five posts are published, and this state
+ * carries `noindex` here and as an `X-Robots-Tag` header (server/routes/seo.routes.ts).
  */
 export default function BlogPage() {
   return (
     <div className="min-h-screen bg-background">
+      <SEOHead title="Blog" url="/blog" noindex />
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground py-16">
         <div className="container mx-auto px-4 max-w-6xl">
