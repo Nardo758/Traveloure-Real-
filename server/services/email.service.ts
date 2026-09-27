@@ -956,6 +956,76 @@ export async function sendBookingCancellationWithRefundEmail(
   }
 }
 
+// ─── Late payment refunded (R162, ledger `2026-09-27-failed-is-final`) ─────
+
+export interface LateSuccessRefundEmailParams {
+  toEmail: string;
+  travelerName?: string | null;
+  serviceName?: string | null;
+  /** Dollars refunded — what Stripe says the payment took, all of it. */
+  refundAmount: number;
+}
+
+/**
+ * R162: the traveler was told "Payment didn't go through", then the SAME payment went through
+ * anyway. `failed` is final, so nothing was booked and the money was refunded automatically. This
+ * says exactly that, so money reappearing on the card is never unexplained — and it says it is NOT a
+ * new charge. Sent ONCE, by the caller that holds the notice claim (`refundLateSuccessOnFailedIntent`).
+ * Uses `sendEmail`, so the platform email kill switch applies. Never throws.
+ */
+export async function sendLateSuccessRefundEmail(params: LateSuccessRefundEmailParams): Promise<void> {
+  const greeting = params.travelerName ? `Hi ${escHtml(params.travelerName)},` : "Hi,";
+  const what = params.serviceName ? `your payment for <strong>${escHtml(params.serviceName)}</strong>` : "your payment";
+  const whatPlain = params.serviceName ? `your payment for "${params.serviceName}"` : "your payment";
+  const refundStr = params.refundAmount.toFixed(2);
+  const bookingsUrl = `${getAppBaseUrl()}/my-bookings`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #374151; margin-bottom: 8px;">Your payment was refunded</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Earlier we told you ${what} didn't go through. The payment then went through after that,
+        but by then the booking had already been closed, so <strong>nothing was booked</strong>.
+      </p>
+      <p style="color: #374151;">
+        We have refunded <strong>$${escHtml(refundStr)}</strong> to your original payment method
+        automatically. <strong>This is not a new charge</strong> — it is that payment coming back to you.
+        Refunds typically appear within 5–10 business days depending on your bank.
+      </p>
+      <p style="color: #374151;">If you still want this booking, you can book it again from your plan.</p>
+      <a href="${bookingsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View My Bookings
+      </a>
+    </div>
+  `;
+  const text = [
+    `Your payment was refunded`,
+    ``,
+    params.travelerName ? `Hi ${params.travelerName},` : "Hi,",
+    ``,
+    `Earlier we told you ${whatPlain} didn't go through. The payment then went through after that,`,
+    `but by then the booking had already been closed, so nothing was booked.`,
+    ``,
+    `We have refunded $${refundStr} to your original payment method automatically.`,
+    `This is not a new charge — it is that payment coming back to you.`,
+    ``,
+    `If you still want this booking, you can book it again from your plan: ${bookingsUrl}`,
+  ].join("\n");
+  const result = await sendEmail({
+    to: params.toEmail,
+    subject: "Your payment was refunded — nothing was booked",
+    html,
+    text,
+  });
+  if (!result.ok) {
+    console.warn(`[email] sendLateSuccessRefundEmail failed for ${params.toEmail}:`, result.error);
+  } else {
+    console.log(`[email] late-success refund email sent to ${params.toEmail}`);
+  }
+}
+
 // ─── Admin Daily Digest ────────────────────────────────────────────────────
 
 interface DigestNotification {

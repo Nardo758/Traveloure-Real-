@@ -224,6 +224,17 @@ jobs:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY || 'sk_test_ci_stub_no_real_calls' }}
           JOURNEY_DB_WRITES_OK: '1'
 
+      - name: Failed-is-final proof (R162 — live Stripe test mode, skips visibly without the secret)
+        # LS1–LS3 against the REAL Stripe test API: a declined intent that later succeeds on a
+        # `failed` booking is refunded exactly once; "Try again" cancels the old intent; a succeeded
+        # intent is never cancelled. Same skip contract as the one-click proof above.
+        if: always() && steps.run-journeys.outcome != 'skipped'
+        run: npx tsx --test server/__tests__/checkout-payment-failed-final.stripe.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY || 'sk_test_ci_stub_no_real_calls' }}
+          JOURNEY_DB_WRITES_OK: '1'
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4

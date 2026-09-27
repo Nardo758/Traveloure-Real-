@@ -53,6 +53,14 @@ export const BUNDLE_SETTLEMENT_REFUND_SOURCE = 'bundle_partial_settlement';
 export const AI_TASK_PROPOSAL_REFUND_SOURCE = 'ai_task_proposal';
 
 /**
+ * R162 (ledger `2026-09-27-failed-is-final`): the `metadata.source` and the `refunds.reason` of the
+ * automatic refund a LATE SUCCESS on a `failed` booking receives. Stated ONCE. The source tag is what
+ * tells the `charge.refunded` webhook this refund was ours (never out-of-band).
+ */
+export const LATE_SUCCESS_REFUND_SOURCE = 'late_success_on_failed_booking';
+export const LATE_SUCCESS_REFUND_REASON = 'late_success_on_failed_booking';
+
+/**
  * LD 46 / D-27's money outcome (ledger `2026-09-17-ld50-remainder-and-artifact-refund`): the
  * `metadata.source` an artifact-rejection refund carries, so the `charge.refunded` webhook can tell it
  * from a whole-row refund (`service_booking`) and from a partial settlement. Stated ONCE. The webhook
@@ -99,6 +107,10 @@ const INTERNAL_REFUND_REASON_MAP: Readonly<Record<string, StripeRefundReason>> =
   // platform could not deliver as read — money returned for an undelivered product, which is the
   // customer-facing class, never `duplicate` or `fraudulent`.
   ai_task_proposal_refused: 'requested_by_customer',
+  // R162: a payment that succeeded AFTER its booking was marked `failed` (failed is final). The
+  // traveler is owed money for a booking the platform does not hold — customer-facing, never
+  // `duplicate` (it is not a second charge for one booking) and never `fraudulent`.
+  late_success_on_failed_booking: 'requested_by_customer',
   // Traveller/admin-initiated cancellation refunds (POST /api/bookings/refund).
   cancelled: 'requested_by_customer',
   canceled: 'requested_by_customer',
@@ -873,12 +885,23 @@ class StripePaymentService {
     // the FIRST signal of success. Idempotent by atomic conditional: a booking the client
     // already confirmed matches 0 rows and is a no-op, never a double flip.
     try {
-      const { promotePaidCheckout } = await import('./checkout-claim.service');
-      await promotePaidCheckout({
+      const { promotePaidCheckout, refundLateSuccessOnFailedIntent } = await import('./checkout-claim.service');
+      const promotion = await promotePaidCheckout({
         paymentIntentId: paymentIntent.id,
         actor: 'webhook',
         metadataBookingIds: (bookingIds ?? '').split(',').map((id: string) => id.trim()).filter(Boolean),
       });
+      // R162 (ledger `2026-09-27-failed-is-final`): THE ONE PLACE A LATE SUCCESS IS REFUNDED. A success
+      // on a PaymentIntent whose booking is `failed` is never promoted (failed is final; the promotion
+      // recorded the exception). The traveler paid for a booking the platform no longer holds, so it is
+      // refunded here — once (the refund's own claim + PI-derived Stripe key), with one traveler notice
+      // and the fee record reversed. Only this signature-verified webhook arm calls it: client
+      // confirm-payment and one-click refuse without refunding, and the drift job only reports (CLAUDE.md
+      // §17; decision-maker ruling Sep 27, 2026). Never throws into the webhook.
+      if (promotion.exceptions.some((e) => e.status === 'failed' && e.reason === 'not_promotable')) {
+        const refund = await refundLateSuccessOnFailedIntent({ paymentIntentId: paymentIntent.id, actor: 'webhook' });
+        logger.info({ paymentIntentId: paymentIntent.id, outcome: refund.outcome }, '[webhook] late success on a failed booking');
+      }
     } catch (promoteErr: any) {
       // Never let the cart rail take the legacy rail (or the webhook) down.
       console.error('[webhook] cart-checkout payment promotion failed:', promoteErr?.message ?? promoteErr);
@@ -993,17 +1016,23 @@ class StripePaymentService {
   private async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
     const { bookingIds } = paymentIntent.metadata;
 
-    // Update payment intent status
-    await db.execute(sql`
-      UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntent.id}
-    `);
+    // THE CART RAIL (ledger `2026-09-27-platform-payment-failed`, R161). A cart checkout's PI is a
+    // PLATFORM PI, so its failure arrives HERE -- and this handler used to update only the legacy
+    // `bookings` table below, by `service_bookings` ids that matched nothing, so a declined cart
+    // checkout was never marked `failed` (the success-side twin of this bug was §15c / #212). The
+    // ONE shared flip -- also the Connect endpoint's -- keys on the row's own stamped PI id, never
+    // demotes, emails only what it flipped, and updates the payment_intents ledger row (formerly
+    // written inline here). Runs for every PI: it no-ops on PIs no `service_bookings` row carries.
+    const { markCheckoutPaymentFailed } = await import('./checkout-claim.service');
+    await markCheckoutPaymentFailed({ paymentIntentId: paymentIntent.id, actor: 'platform_webhook' });
 
     if (!bookingIds) {
       this.logNonCartTerminalPayment(paymentIntent, 'failed');
       return;
     }
 
-    // Update bookings
+    // THE LEGACY RAIL -- still live (D-12 dated cutoff; §15c: both rails run, each no-ops on ids it
+    // does not own). The `service_bookings` ids a cart PI carries match nothing here, harmlessly.
     const bookingIdList = bookingIds.split(',').map((id) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
       await db.execute(sql`
@@ -1014,7 +1043,8 @@ class StripePaymentService {
       `);
     }
 
-    // TODO: Notify user of payment failure
+    // The cart rail's traveler notice is sent by markCheckoutPaymentFailed above; the legacy rail
+    // still sends none (unchanged).
   }
 
   /**
@@ -1626,6 +1656,88 @@ class StripePaymentService {
       onceByStripeRefundId: true,
     });
     return { id: refund.id, status: refund.status ?? null };
+  }
+
+  /**
+   * R162 (ledger `2026-09-27-failed-is-final`) — A LATE SUCCESS ON A `failed` BOOKING IS REFUNDED.
+   * The FOURTH caller of the shared call site above, never a second `stripe.refunds.create` site
+   * (§18 rule 1). `failed` is final: when a PaymentIntent whose booking(s) were marked `failed`
+   * later SUCCEEDS, the booking stays `failed` and the money goes back.
+   *
+   * The CLAIM is not here: `refundLateSuccessOnFailedIntent` (`checkout-claim.service.ts`) stamps
+   * `booking_details.lateSuccessRefund` on the PI's rows with an atomic conditional BEFORE calling
+   * this (§15b). The AMOUNT arrives from Stripe's own read of the PaymentIntent (§14 — what it
+   * actually received, less anything already refunded), and the KEY is derived from the PI alone,
+   * so a retry, a concurrent loser and a webhook redelivery all get the SAME refund back from Stripe.
+   * The audit row is written ONCE per Stripe refund id. Throws the raw Stripe error: the claim stays
+   * claimed-but-unrefunded and the next signal re-drives the same key (never a compensating rollback).
+   */
+  async refundLateSuccessOnFailedBooking(input: {
+    paymentIntentId: string;
+    amountCents: number;
+    idempotencyKey: string;
+    /** The booking the audit row names (the first of the PI's rows); all of them ride the metadata. */
+    bookingId: string;
+    bookingIds: string[];
+  }): Promise<{ id: string; status: string | null }> {
+    const refund = await this.createStripeRefundForBooking({
+      paymentIntentId: input.paymentIntentId,
+      amountCents: input.amountCents,
+      stripeReason: toStripeRefundReason(LATE_SUCCESS_REFUND_REASON),
+      idempotencyKey: input.idempotencyKey,
+      metadata: {
+        bookingId: input.bookingId,
+        bookingIds: input.bookingIds.join(','),
+        source: LATE_SUCCESS_REFUND_SOURCE,
+      },
+    });
+    await this.recordIssuedRefund({
+      bookingId: input.bookingId,
+      paymentIntentId: input.paymentIntentId,
+      refund,
+      amount: Math.round(input.amountCents) / 100,
+      internalReason: LATE_SUCCESS_REFUND_REASON,
+      feeRefund: 0,
+      feeReversalActor: LATE_SUCCESS_REFUND_SOURCE,
+      onceByStripeRefundId: true,
+    });
+    return { id: refund.id, status: refund.status ?? null };
+  }
+
+  /**
+   * R162 — Stripe's own facts about a PaymentIntent, for the two decisions that must never be taken
+   * on a guess: whether it is safe to CANCEL (never `processing`/`succeeded`), and whether money
+   * MOVED (a late success to refund). Throws when Stripe cannot be consulted; callers treat that as
+   * "unknown" and act on nothing.
+   */
+  async retrievePaymentIntentFacts(
+    paymentIntentId: string,
+  ): Promise<{ id: string; status: string; amountReceivedCents: number; amountRefundedCents: number }> {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+    const charge = (pi as any).latest_charge;
+    const amountRefundedCents =
+      charge && typeof charge === 'object' && Number.isFinite(charge.amount_refunded) ? Number(charge.amount_refunded) : 0;
+    return {
+      id: pi.id,
+      status: pi.status,
+      amountReceivedCents: Number(pi.amount_received ?? 0),
+      amountRefundedCents,
+    };
+  }
+
+  /**
+   * R162 — THE ONE `stripe.paymentIntents.cancel` CALL SITE. The first time the platform cancels a
+   * PaymentIntent. `cancelStalePaymentIntent` (`checkout-claim.service.ts`) owns the decision (it
+   * reads the intent first and never cancels one that is `processing` or `succeeded`); this is only
+   * the call, under a key derived from the PI, so a retry is the same single cancel.
+   */
+  async cancelPaymentIntent(paymentIntentId: string, idempotencyKey: string): Promise<{ id: string; status: string }> {
+    const pi = await stripe.paymentIntents.cancel(
+      paymentIntentId,
+      { cancellation_reason: 'abandoned' },
+      { idempotencyKey },
+    );
+    return { id: pi.id, status: pi.status };
   }
 
   /**
