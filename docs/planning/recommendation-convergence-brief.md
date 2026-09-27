@@ -419,6 +419,70 @@ version; replace `profileMatchScore: 0.5` with "omit + re-normalise" (no profile
 `content-gap-taxonomy.ts` matrix copy in favour of the table; verify the Trip Card `RoutingActions` leak.
 Depends on: nothing. Verify: existing `upsell-trust-contract` green; new unit tests for the mapping and the omit rule;
 a DB test that one server call writes exactly one impression row.
+
+**Phase 0 scope additions (decision-maker, Sep 26, 2026 — ledger `2026-09-26-slip-step0-scope`, R132). Design only;
+not built.** These three join phase 0 because the Trip Slip product map's grouping, completeness and §J table all read
+them (`docs/planning/trip-slip-product-map.md` §G step 0).
+
+*0a. `trips.experience_type_id` per LD 42 D1.*
+- **Column:** additive, nullable `varchar`, `FK → experience_types(id) ON DELETE SET NULL`, no DEFAULT, no CHECK, plus
+  `idx_trips_experience_type_id`. Column and index are **declared in `shared/schema.ts`** (deploy-push rule). The one
+  writer is the owner-gated `PATCH /api/trips/:tripId/occasion`, which already resolves `experienceSlug` to a row
+  (#1109). It stores the row id beside `event_type`. A client never sends an id (LD 42 D1).
+- **Readers:** `useOccasionSwitches` and the group resolver read the id first. They fall back explicitly, and say so in
+  a comment: first to the plan's events (0b), then to the lossy `event_type` lookup.
+- **Backfill plan: exact evidence only, one data migration, idempotent, `WHERE experience_type_id IS NULL`, so a second
+  run changes nothing.**
+  - **Tier A — the plan's own events.** Every `user_experiences` row on the trip names the same `experience_type_id`.
+    That is the match LD 42 D1 already calls exact on the client, and nothing is guessed.
+  - **Tier B — an `event_type` that names exactly one occasion:** `wedding`, `proposal`, `honeymoon`. For these the
+    enum value is the occasion's own name, stamped by `eventTypeForSlug` at mint.
+  - **Everything else stays NULL:** `vacation` (→ `travel`/`romance`/`golf-trip`), `birthday` (→ `birthday`/
+    `milestone-birthday`), `corporate` (→ `corporate-events`/`corporate`), `anniversary`, `other`, `adventure`,
+    `cultural`.
+  - **Not used as evidence:** the pen's `experienceSlug`. Before #1109 the pen could be overwritten by reading another
+    plan or a template page (audit G4/G5), so its value on an old row proves nothing.
+  - A read-only preview script prints the counts per tier against production before the migration is published — the
+    `preview-category-key-repair.cjs` posture.
+  - **Needs a ruling:** LD 42 D1 says **NO BACKFILL**. Tier A and Tier B are what the existing readers already derive,
+    so storing them adds no claim. It is still an amendment to D1's text, and it is not applied without that ruling.
+    The alternative is no backfill at all: the readers keep deriving at read time, and old plans stay NULL until the
+    traveler next chooses an occasion.
+- **How the lossy `vacation` mapping is resolved:** it is resolved at the **group** level, not the occasion level. All
+  three occasions `vacation` can mean are in the same group (Trips). So a NULL-occasion plan whose `event_type` is
+  `vacation` gets the Trips group defaults with no occasion claimed. The same holds for `birthday` → Celebrations.
+  `corporate` spans two groups, and `other` names nothing, so both keep the plain-plan shape (LD 28's NULL fallback,
+  said on screen). The slip header offers "Choose your occasion", which writes through the one occasion rail. That
+  choice, and nothing inferred, is what fills the id.
+
+*0b. The slip passes events to `useOccasionSwitches` (audit F15).* `SlipView` already fetches the plan's events for
+its event groups. It passes them as the hook's `events` argument, so the exact events-first resolution LD 42 D1
+ratified actually runs on the slip. Once 0a lands, the id outranks the events. Pinned by a source test on the call
+site.
+
+*0c. `venue` rows in `template_category_matrix`; the matrix becomes the single source and `roles_needed` derives from
+it.* This settles §G-2 as the decision-maker ruled it.
+- **Keys:** the matrix gains **one key per occasion slug** (all 28), seeded by a data-only migration (idempotent). The
+  seven family keys stay, so today's readers keep working until the phase-0 mapping module sends each plan to its
+  slug key. Each slug's rows start from its family's rows (§A2's proposed column in the product map). The slug's own
+  `roles_needed` entries are then raised to at least REC. The reconciliations below are the explicit changes.
+- **Order:** `roles_needed` order is meaningful ("venue first"). The matrix therefore gains one additive, nullable
+  `position smallint`, declared in `shared/schema.ts`, with no CHECK. NULL means unordered (OPT rows).
+- **Derivation:** the seeder derives `roles_needed` from the slug's REQ and REC rows (`aff_*` excluded, per LD 31),
+  ordered by `position`. `check-roles-needed-reachability.cjs` gains a second assertion: the seeded `roles_needed`
+  equals the derivation. Two authors of the list becomes a CI failure, not a drift.
+- **Reconciliations** (found by comparing the seed with migration 035 on `main` @ `da3174289`):
+
+  | Occasion(s) | Disagreement today | Proposed |
+  |---|---|---|
+  | `wedding`, `birthday`, `milestone-birthday`, `corporate-events`, `corporate` | `venue` is first in `roles_needed` but has no matrix row; the matrix makes `dining_venue` REQ and `roles_needed` omits it | Add `venue` REQ at position 1. Move `dining_venue` to REC: a restaurant is not the hired hall, which is the ledger `2026-09-04-venue-category` reasoning. |
+  | `reunions`, `engagement-party` | `venue` first in roles; family `custom` has every category at OPT only | Slug rows: `venue` REQ, then their roles at REC |
+  | `proposal` | Matrix REQ `dining_venue`; roles omit it (photography, florist, private_chef, videographer) | Keep `dining_venue` REQ (the setting has to be booked) and add it to the derived roles. **For the decision-maker:** the alternative is REC, since a proposal can happen outdoors. |
+  | `bachelor-bachelorette`, `retreats`, `boys-trip`, `girls-trip`, `date-night` | Roles name categories absent from the `travel` / `date_night` rows (`event_coordinator`, `entertainment`, `hair_makeup`) | Slug rows add them at REC |
+  | The seven `day` parties (`baby-shower`, `graduation-party`, `housewarming-party`, `retirement-party`, `career-achievement-party`, `farewell-party`, `holiday-party`), `wedding-anniversaries`, `family-occasion` | Family `custom` = everything OPT, so no REQ at all, yet `roles_needed` lists specific hires | Slug rows: their roles at REC. REQ is set only where the slip's completeness should block ("3 of 5 essentials"), which needs a per-occasion call, so they ship as REC. |
+- **Not changed:** the seven family keys' own rows (other readers use them), the `aff_*` rows, and every category's
+  existence (no new category — LD 31 registry).
+
 **HARD STOP.**
 
 **Phase 1 — Item grain + one profile reader.**
@@ -475,7 +539,8 @@ chooses config. Not scheduled.
    the profile version, so a later move to a config table (the `template_category_matrix` pattern, with a change log)
    is a data migration, not a redesign. Admin-editable now would invite tuning without evidence.
 
-2. **One authority for "what this occasion needs": the matrix or `roles_needed`?**
+2. **One authority for "what this occasion needs": the matrix or `roles_needed`?** **RULED (Sep 26, 2026, R132):
+   the matrix is the single source and `roles_needed` derives from it — design in §F phase 0 (0c).**
    *Proposed default:* **the matrix** (it already has REQ/REC/OPT and feeds the engine); `roles_needed` becomes its
    REQ/REC projection for the role chips, and the template-key mapping module (phase 0) joins the two vocabularies.
    The alternative — keep both — guarantees drift.
@@ -500,8 +565,10 @@ chooses config. Not scheduled.
 
 ## H. Trip Slip surface changes
 
-> **PAUSED (decision-maker, Sep 26, 2026).** Superseded in scope by `docs/planning/trip-slip-product-map.md`. Once that
-> map is approved, this section is rewritten as its first slice. Nothing below is to be built as written.
+> **PAUSED (decision-maker, Sep 26, 2026; re-confirmed the same day with the map rulings, ledger
+> `2026-09-26-slip-map-ratification-gate`).** Superseded in scope by `docs/planning/trip-slip-product-map.md`. Once the
+> map is ratified — which waits on its §J, §K and §L — this section is rewritten as the map's steps 1–2. Nothing below
+> is to be built as written.
 
 **Design only.** This section says how the pipeline in §B reaches the traveler on `/plans/:tripId`. Every point cites
 the Trip Slip UI audit (`docs/planning/trip-slip-ui-audit.md`, code on `main` @ `da3174289`; screenshots under

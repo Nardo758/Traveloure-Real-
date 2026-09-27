@@ -1,14 +1,18 @@
 # Trip Slip product map — one Slip, capability modules, experience groups
 
-**Status:** DESIGN ONLY — no code. HARD STOP at the end; nothing here is authorized to build until the decision-maker
-ratifies it and answers §I. Every schema change below is **PROPOSED and needs ratification**.
+**Status:** DESIGN ONLY — no code. **§I is RULED** (decision-maker, Sep 26, 2026; ledger R124–R129). The map as a
+whole is **not yet ratified**: ratification waits on §J (per-experience specification), §K (information levels) and §L
+(ingredient inventory), per ledger `2026-09-26-slip-map-ratification-gate`. Nothing here is authorized to build until
+then. Every schema change below is **PROPOSED and needs ratification**, except the option tables that §I Q1 approved.
 **Code base:** `origin/main` @ `da3174289` (the same commit as the UI audit). Every `path:line` is on that commit.
 **Inputs:** `docs/planning/trip-slip-ui-audit.md` (cited as **audit F2**, **audit G3**, …) and
 `docs/planning/recommendation-convergence-brief.md` (cited as **brief §B1**, …). The brief's section H is paused; once
-this map is approved, H is rewritten as this map's first slice (§G step 1–2).
+this map is ratified, H is rewritten as this map's steps 1–2 (§G).
 **Markers:** **DOC-ONLY** = stated in a doc, not seen in code. **GAP** = docs and code disagree; code wins.
-**Not designed here (open elsewhere):** per-plan cart scoping; P1 lead routing. **Assumed pending, not landed:** draft PR
-#1109 (slip reads the live plan; finalized plans refuse planning edits; "send to expert" needs an assigned expert).
+**Not designed here (open elsewhere):** per-plan cart scoping (pending the decision-maker's ruling); P1 lead routing.
+**#1109** (slip reads the live plan; finalized plans refuse planning edits; "send to expert" needs an assigned expert;
+the client names each finalized-plan refusal and offers Reopen) is assumed landed. **#1110** closes the adopt-stop
+write gate and turns comparison apply-to-cart off (§F1 GAPs).
 
 ### Source documents
 
@@ -18,7 +22,22 @@ this map is approved, H is rewritten as this map's first slice (§G step 1–2).
 | `TRAVELOURE_MASTER_IMPLEMENTATION_ARCHITECTURE.md` | **Not in repo** (searched the whole filesystem). **GAP** | Code wins: the template list is the `experience_types` seed |
 | `docs/design/ADOPT_OPTIMIZATION_SPEC.md` | Yes | Adopt contracts R-A/R-B/R-C |
 | `docs/audits/adopt-finalize-conformance.md` | Yes | What of R-A/R-B/R-C landed |
-| "Option A first-draft-free" ruling | **The label is not found** in code or docs. The only "Option A" in `docs/DECISIONS.md` is the cart ruling (`:780`, `2026-09-24-cart-two-paths`). The *substance* is recorded as ledger `2026-09-05-draft-only-on-empty` (`docs/DECISIONS.md:520`) and `2026-09-05-draft-sketch-optimize-plan` (`:524`) = LD 41 (b)/(c). **GAP (naming only)** | This doc treats "Option A" = LD 41 (b)/(c) |
+| The free-first-draft ruling | **The "Option A" label is RETIRED** (decision-maker, Sep 26, 2026; ledger `2026-09-26-option-a-label-retired`, R133). Cite ledger `2026-09-05-draft-only-on-empty` (`docs/DECISIONS.md:520`) and `2026-09-05-draft-sketch-optimize-plan` (`:524`) = LD 41 (b)/(c). The only "Option A" left in the ledger is the unrelated cart ruling (`:780`). | LD 41 (b)/(c), by those two slugs |
+
+**Spec documents cited in code but missing from the repo** (checked on `main` @ `da3174289`; the decision-maker will
+supply the authoritative copies — until then the code wins):
+
+| Cited as | Where cited | Status |
+|---|---|---|
+| `MASTER_INTEGRATION_BRIEF.md` ("Master Integration Brief") | 18 files: migrations 031–044 and 049, `server/services/commission.ts`, `upsell-engine.service.ts`, `server/routes/upsell.routes.ts` | Missing. `docs/planning/master-integration-phase-0-audit.md:4` says it read it. |
+| `SEED_DATA.md` (§1–§7) | migrations 033–043 (§1 fee bands, §2 categories, §3 template matrix, §4/§5 offering types, §6 neighborhoods, §7 coverage), `server/services/content-gap-taxonomy.ts:190` | Missing |
+| `UPSELL_ENGINE_AND_SERVICE_TAXONOMY_SPEC.md` | `server/services/upsell-engine.service.ts:22` | Missing |
+| `TRAVELOURE_MASTER_IMPLEMENTATION_ARCHITECTURE.md` | `GAP_REPORT.md` (and this map's inputs) | Missing |
+| `WAYS_TO_EARN_SERVICE_CATALOG.md` | `server/routes/upsell.routes.ts:21` | Missing |
+| `docs/testing/CONSOLE_TABS_EXERCISE.md` | `shared/booking-visibility.ts:4`, `client/src/pages/provider/settings.tsx:537`, two `fp5-*` tests, two client-lib tests | Missing |
+| `docs/runbooks/travelpulse-city-reconciliation.md` | `server/migrations/249_restore_travel_pulse_cities_unique_index.sql` | Missing |
+| `SELECTION_CONTROL_MODEL_SPEC_v2.md` | audit U1 input | Present only under `attached_assets/`, not `docs/` |
+| `docs/design/wedding-flow/ModalEvents.dc.html` | `shared/plan-events.ts:47` | Stale name, not missing: renamed `Step5Events.dc.html` (LD 33) |
 
 ---
 
@@ -134,20 +153,29 @@ no-guests row is a one-reservation evening).
 | 4 | `range` + guests + `venue` ∈ roles | **Hosted events** | venue | yes (for guests) |
 | 5 | `range` + guests + no `venue` | **Group travel** | shared lodging | yes, independent arrivals |
 
-Counts: Moments 2 · Celebrations 12 · Trips 6 · Hosted events 3 · Group travel 5 = **28**. Proposed home: a pure
+Counts: Moments 2 · Celebrations 12 · Trips 6 · Hosted events 3 · Group travel 5 = **28**. Home: a pure
 `experienceGroupFor(row)` in `shared/` beside `shared/occasions.ts`, reading the existing switch readers
-(`client/src/lib/occasion-switches.ts:64,88,113`) rather than restating them. **No schema change** (§I Q4 asks whether
-the group should become a stored column instead).
+(`client/src/lib/occasion-switches.ts:64,88,113`) rather than restating them. **No schema change — RULED (§I Q4, R127).**
+
+**Group names are INTERNAL (R127).** "Moments", "Celebrations", "Trips", "Hosted events", "Group travel" and "Plain plan"
+are keys for choosing module defaults. **They are never rendered in the UI.** The traveler sees the occasion's own name
+(`experience_types.name`) and the plan's shape, never the group. A guard for this lands with step 1: a source test
+that no client string contains a group name as display text.
+
+**A NULL occasion can still have a group (R132, brief §F phase 0 0a).** When `event_type` can name several occasions
+that all sit in one group, the group is used without claiming an occasion: `vacation` → Trips (`travel`, `romance`,
+`golf-trip`), `birthday` → Celebrations (`birthday`, `milestone-birthday`). `corporate` spans two groups and `other`
+names nothing, so both stay Plain plan.
 
 ### B3. Edge cases, and where this differs from the owner's guess
 
 | Occasion | Owner's guess | This map | Why |
 |---|---|---|---|
-| `corporate-events` | Hosted events | **Celebrations** | The seed made it `day` on purpose (ledger `2026-09-04-reaudit-fixes`, comment at `experience-template-tabs.seed.ts:4812-4814`): a run of show inside one day. It keeps vendor coordination as an *optional* module (§D), which is the only thing Hosted adds for a one-day event. |
+| `corporate-events` | Hosted events | **Celebrations** (RULED, R127) | The seed made it `day` on purpose (ledger `2026-09-04-reaudit-fixes`, comment at `experience-template-tabs.seed.ts:4812-4814`): a run of show inside one day. It keeps vendor coordination as an *optional* module (§D), which is the only thing Hosted adds for a one-day event. |
 | `corporate` (Corporate Retreats) | Hosted events | Hosted events | Agrees: `range` + guests + `venue` first in roles (`:4881-4883`). |
-| `reunions` | Group travel | **Hosted events** | Its roles are venue, event_coordinator, caterer, accommodation, photography, rentals (`:4843-4845`) — someone hosts. It still gets arrivals (on by default for Hosted). |
+| `reunions` | Group travel | **Hosted events** (RULED, R127) | Its roles are venue, event_coordinator, caterer, accommodation, photography, rentals (`:4843-4845`) — someone hosts. It still gets arrivals (on by default for Hosted). |
 | `retreats` | Group travel | Group travel | Agrees. Vocabulary `attendees` like corporate, but no `venue` role (`:4818-4820`). |
-| `family-occasion` | (not listed) | Group travel | `range` + guests, no `venue` role (`:4887-4889`). `stops: one`, so the stops module is off. |
+| `family-occasion` | (not listed) | Group travel (RULED, R127) | `range` + guests, no `venue` role (`:4887-4889`). `stops: one`, so the stops module is off. |
 | `wedding-anniversaries` | (not listed) | Celebrations | `day` + guests (`:4825-4827`). Not the couple's `anniversary-trip` (Trips) — the split `shared/occasions.ts:95-104` already draws. |
 | `romance` | (Moments?) | Trips | `range`, one stop, no guests (`:4878-4880`): a getaway, not an evening. |
 | `sports-event`, `golf-trip` | (Trips) | Trips | `range`, no guests; `schedule: true` turns the event-schedule module on inside Trips. |
@@ -207,10 +235,14 @@ Free/paid key: **Free** = no charge. **Paid-run** = the optimizer run (LD 41 (a)
 | A7 | Split activities | An item for a subset of the party | `itinerary_items.participant_ids` / `attendance_requirement` (`shared/schema.ts:5603-5870`, both columns present, no slip UI) | A3 | Free |
 | A8 | Expert handoff | Hire, message, Finalize "my expert handles these" (LD 42 D2/D19/D22) | `HireExpertDialog`, `POST /api/trips/:id/advisors`, routing rail | #1109 (assigned expert required) | Free to hand off; expert services priced as listings |
 
-**LD 41 (b) line, stated once:** the only free AI write is B5 on an empty slip. S3 and engine-fed S1 options are
-deterministic catalog ranking and write nothing until the traveler presses (brief H-Q2). Any AI that picks between
-options or rewrites items on a non-empty slip is A1 (paid-run) or S8 (paid-task). The three rows that can charge are
-A1, S8 and bookings reached through B7.
+**LD 41 (b) line, stated once (ledgers `2026-09-05-draft-only-on-empty`, `2026-09-05-draft-sketch-optimize-plan`; §I
+Q3 as RULED, R126):** the only free AI write is B5 on an empty slip. "Empty" stays the ratified bare count of
+`itinerary_items` (`docs/DECISIONS.md:520`, unchanged) — **an open option set does not make the slip non-empty.**
+The free draft may **build around** open sets (their slots and categories are held, not filled with another item of
+that category) but **never chooses between their options: choosing is the paid line.** S3 and engine-fed S1 options
+are deterministic catalog ranking and write nothing until the traveler presses (brief H-Q2). Comparing options the
+traveler picked is free. Any AI that picks between options, or rewrites items on a non-empty slip, is A1 (paid-run) or
+S8 (paid-task). The three rows that can charge are A1, S8 and bookings reached through B7.
 
 ---
 
@@ -270,7 +302,7 @@ own answer (LD 28), and the traveler can still flip it inside the plan.
 | `backup_plan_id` / `is_backup_plan` | Means "weather fallback" (`server/services/itinerary-intelligence.service.ts:253, 574-575`); one writer; the plancard, cart and optimizer never read it. Overloading it would give a live column two meanings. |
 | **Child table** (chosen) | Invisible to every existing reader by construction. **LD 39 holds:** `itinerary_items` stays the one store of plan *contents*; an unchosen option is a *candidate*, with the same standing as a proposal or an expert suggestion, which already live outside it. Only the chosen option ever becomes an item. |
 
-### E2. Schema (PROPOSED — needs ratification)
+### E2. Schema (APPROVED — §I Q1, R124; build waits on map ratification)
 
 All additive; nullable except where stated; **no DB CHECK, no DEFAULT on status** (publish-trap posture); tables and
 indexes **declared in `shared/schema.ts`** (deploy-push durability rule). Both are born empty, so the partial UNIQUE
@@ -324,11 +356,13 @@ index qualifies for the §20 new-object carve-out.
 | `POST /api/trips/:tripId/option-sets` `{ itineraryItemId? , dayNumber?, userExperienceId?, categoryKey?, label? }` | owner, delegate, §12 WRITE advisor | Opens a set. With an item: refused unless the item is `in_planning` and `booking_id IS NULL`; the item becomes option 0 (`incumbent`). |
 | `POST …/option-sets/:setId/options` `{ providerServiceId \| affiliateProductId \| savedPlaceId \| custom:{title, locationName} }` | owner, delegate, WRITE advisor | Adds a candidate; the server copies title/price/coords from the source. 409 at the cap. |
 | `DELETE …/options/:optionId` | whoever may add | Not the incumbent. |
-| `POST …/option-sets/:setId/choose` `{ optionId }` | **owner or delegate only** | See E3. |
+| `POST …/option-sets/:setId/choose` `{ optionId }` | **owner or delegate only** (RULED, §I Q6, R129) | See E3. |
 | `POST …/option-sets/:setId/close` | owner, delegate | Keep the current item; set → `closed`. |
 | `PUT …/options/:optionId/recommendation` `{ note }` | §12 WRITE advisor only | "Recommended by your expert" |
 
-A `pending` advisor (LD 12, LD 51 concierge) reads sets on the plan it may read and writes nothing.
+A `pending` advisor (LD 12, LD 51 concierge) reads sets on the plan it may read and writes nothing. **No mode lets an
+expert choose (R129).** Any future expert-chooses mode needs an **explicit traveler grant** (a recorded, revocable
+permission from the owner, never inferred from the advisor's §12 status), and that is a separate ruling.
 
 ### E3. Choose, adopt, finalize, money
 
@@ -353,17 +387,23 @@ A `pending` advisor (LD 12, LD 51 concierge) reads sets on the plan it may read 
 | An option carries no amount into money | `price_snapshot` is display only. Checkout prices from the cart row (§14), as today. |
 
 **Finalize:** `finalizeTrip` snapshots `itinerary_items` only (`trip-finalize.service.ts:145`), so an unchosen option can
-never be in a Trip Card version. Default (§I Q2): Finalize is **refused** while any set is `open`, with the list of open
-sets and three actions per set — choose, keep current, discard. Reopen allows new sets. The Trip Card (LD 42 D8) shows
-no sets.
+never be in a Trip Card version. **RULED (§I Q2, R125):** Finalize is **refused** while any set is `open` (409
+`open_option_sets`, listing them). The Finalize surface lists the open sets with three actions per set: **choose**,
+**keep current** (close the set, keep the incumbent), **discard** (close an empty-slot set). Reopen allows new sets.
+The Trip Card (LD 42 D8) shows no sets.
 
 **Optimize / Ask AI with open sets:** see §F2. Until F2 lands, the optimizer sees only the incumbent (an open set's
 incumbent is an ordinary `in_planning` item); an empty-slot set is invisible to it. apply-to-trip deletes `in_planning`
 non-expert rows (`plancard.routes.ts:147-151`), so an incumbent can be deleted; the set's FK is SET NULL and it becomes
 an empty-slot set — honest, not lost.
 
-**Free draft:** today "empty" is a bare count of `itinerary_items` (`docs/DECISIONS.md:520`). A plan holding only
-empty-slot sets counts as empty and would get a free draft. §I Q3 asks whether an open set makes the slip non-empty.
+**Free draft (RULED, §I Q3, R126 — the decision-maker overrode the default):** "empty" stays the bare count of
+`itinerary_items` (`docs/DECISIONS.md:520`, unchanged). A plan holding only empty-slot sets **is empty** and may get
+the free draft. The draft **builds around** each open set: the set's slot (its day, event and `category_key`) is passed
+to the generator as a held slot that it must not fill with another item of that category. The draft **never picks one
+of the set's options**, and never closes or chooses a set. Choosing is the paid line (A1). Server side:
+`ai-draft-eligibility.pure.ts` keeps its count unchanged. The draft writer skips a slot an open set holds, and a test
+pins that a draft on a plan with an empty-slot set leaves the set `open` with its options untouched.
 
 ### E4. The comparison view — attributes per category
 
@@ -417,9 +457,12 @@ with "not stated"**, never zero.
   whose default admits a `pending` advisor (`server/utils/trip-logistics-auth.ts:29-34, 50-52`). Its own comment says
   "same auth spine as apply-to-trip", which passes `requireWriteAccess: true` (`:84-89`). LD 12 / LD 42 D17 say a
   pending advisor never writes. Reach is narrow (the comparison-owner check at `:299` comes first) but the gate is wrong.
+  **Fix: PR #1110 (R130)** adds `requireWriteAccess: true`.
 - `POST /api/itinerary-comparisons/:id/apply-to-cart` (`server/routes.ts:10396-10421`) writes a version straight into
   `cart_items` as non-projection rows, replacing the user's cart, and the board still renders it
   (`client/src/pages/itinerary-comparison.tsx:2479`). LD 39 / LD 45 (4): the cart is the projection of routed items.
+  **Contained by PR #1110 (R131):** behind `COMPARISON_APPLY_TO_CART_ENABLED`, default off (410
+  `apply_to_cart_disabled`), and the board button is hidden. Full retirement stays in step 7.
 - `ADOPT_OPTIMIZATION_SPEC.md` §1 cites the generate handler at `server/routes.ts:8777`; it is at `:10105` now.
 
 ### F2. The delta
@@ -431,12 +474,15 @@ objectives every run carries:
 |---|---|---|
 | **Best value** | Lowest total cost that keeps every REQ category covered | `total_cost` |
 | **Least travel** | Tightest days around the anchor | `total_travel_time` |
-| **Best fit** | Highest fit to the occasion and the traveler (the engine's fit term, brief §B4) and rating | `average_rating`, REQ coverage |
+| **Best fit** | **Until the engine's fit term is real** (today `profileMatchScore` is a constant 0.5 — brief phase 0): highest rating, then REQ coverage. After that, fit to the occasion and the traveler (brief §B4). | `average_rating`, REQ coverage |
 
 Why: today "Romance Optimized" vs "Premium Upgrade" is a claim nothing verifies. The three proposed names each map to
 a column the version row already stores, so the label can be **checked after generation**: a version keeps its badge
 ("Lowest cost", "Least travel", "Best rated") only if its metric actually wins among the three, else it shows no badge
-(§13). Feedback chips and occasion signals stay — as modifiers *inside* each objective's prompt, not as the choice of
+(§13). **RULED (§I Q5, R128).** **Best fit must not claim personalization** while it is computed from rating and REQ
+coverage. Its badge reads "Best rated" (or "Covers every essential" when coverage alone wins). No copy says "for you",
+"matches your preferences" or "personalized" until the fit term is a measured profile match. Feedback chips and
+occasion signals stay — as modifiers *inside* each objective's prompt, not as the choice of
 objectives. The auto-anchor per version (`:962`) stays; the pinned anchor still applies to all three.
 
 **(2) Compared options feed the run.** `loadTripOptimizerInputs` also reads open sets. The prompt says, per set,
@@ -452,7 +498,7 @@ plans" view.
 | Action | Rail | Change |
 |---|---|---|
 | Adopt entire version | apply-to-trip | Same transaction also **chooses** each open set the version decided (E3 claim), so the set and the items agree. Undecided sets stay open. |
-| Adopt one stop | adopt-stop | If the stop carries an `optionId`, it chooses that set. Fix the write gate (F1 GAP). |
+| Adopt one stop | adopt-stop | If the stop carries an `optionId`, it chooses that set. The write gate is fixed in #1110. |
 | Adopt several stops / a whole day | **new** `POST /api/itinerary-comparisons/:id/adopt-stops` `{ variantItemIds[] }` (R-A) | One transaction; the adopt-stop dedupe predicate; §12 WRITE gate; re-press is a no-op by the dedupe; stops with `optionId` choose their sets; `in_planning` only, purchased / with-expert / ready rows untouched (the mock's footer). "Adopt Day 2" is the client selecting that day's stops. |
 
 **(4) Free vs paid — unchanged line.**
@@ -475,14 +521,14 @@ Each step ships something usable and waits for ratification of the next.
 
 | Step | Ships | Modules | Prerequisites |
 |---|---|---|---|
-| 0 | Nothing visible | — | **#1109** (live slip read — audit G3; no routing on finalized plans — G1; assigned expert for send — G2). Slip passes `events` to `useOccasionSwitches` (audit F15). **Brief phase 0:** the template-key mapping module (feeds B4 and §A2's proposed column); omit-and-renormalize instead of `profileMatchScore: 0.5`; one impression row per call with `added` written (needed for S1's `source_impression_id`). LD 42 D1 `trips.experience_type_id` (ratified, unbuilt — GAP) makes the group exact instead of events-first. |
+| 0 | Nothing visible | — | **#1109** (live slip read — audit G3; no routing on finalized plans — G1; assigned expert for send — G2) and **#1110** (adopt-stop gate; apply-to-cart off). **Brief phase 0** (`recommendation-convergence-brief.md` §F): the template-key mapping module (feeds B4 and §A2's proposed column); omit-and-renormalize instead of `profileMatchScore: 0.5`; one impression row per call with `added` written (needed for S1's `source_impression_id`). **Plus the three R132 additions (brief §F phase 0, 0a–0c):** `trips.experience_type_id` declared per LD 42 D1, with an exact-evidence backfill that needs a D1 amendment and the lossy `vacation` resolved at the group level; the slip passes `events` to `useOccasionSwitches` (audit F15); `venue` rows in the matrix, with the matrix as the single source and `roles_needed` derived from it. |
 | 1 | The module frame: `experienceGroupFor`, a module registry, today's zones rendered as modules in group order; list before rail on mobile (audit F11) | B1–B3, B5–B7 as-is | Step 0 |
 | 2 | Completeness + day jump + move-to-day (brief H1, H6 subset) | B4, S4 | Brief phase 0 mapping |
 | 3 | Compare options, traveler-picked only (listing, saved place, custom), with the routing and finalize guards | S1 | **Schema ratification (§E2)** |
 | 4 | Bookings section | S5 | — |
 | 5 | Engine suggestions, and engine-fed options | S3 (+ S1 source) | Brief phase 1 |
 | 6 | Anchor pin and travel-time labels; option travel times upgrade from straight-line to matrix | S2 | Brief phase 2 |
-| 7 | Three versions delta: fixed objectives, open sets in the run, batch adopt, adopt-stop gate fix, apply-to-cart retired | A1 | Step 3 |
+| 7 | Three versions delta: fixed objectives (R128), open sets in the run, batch adopt, apply-to-cart **retired** (contained behind a default-off flag by #1110 until then) | A1 | Step 3 |
 | 8 | Group-specific ADVANCED modules re-homed into the frame (event schedule, party & arrivals, guests, vendor chips, temporal anchors) and split activities (new UI on existing columns) | A2–A7 | Step 1 |
 
 A8 (expert handoff) and S6/S8 exist today and move into the frame at step 1 unchanged.
@@ -510,22 +556,17 @@ Rule carried from LD 42 D16: the render mode never grants anything — each rail
 
 ---
 
-## I. Open questions (each changes the design)
+## I. Rulings (decision-maker, Sep 26, 2026)
 
-1. **Option storage.** *Default:* the two child tables in §E2 (additive, no CHECK, declared in `shared/schema.ts`).
-   Alternative: a flag on `itinerary_items` — rejected in §E1 because every existing reader would see options as items.
-2. **Finalize with open sets.** *Default:* refuse and list them (choose / keep current / discard). Alternative:
-   finalize keeps each incumbent and closes the set silently — faster, but decides for the traveler.
-3. **Does an open set make the slip "non-empty" for LD 41 (b)?** *Default:* yes — a traveler comparing hotels has
-   started a plan, so the free draft is off and AI help is Optimize. This amends the ratified count
-   (`docs/DECISIONS.md:520`), so it needs a ruling.
-4. **Groups: derived or stored?** *Default:* derived by `experienceGroupFor` from the switches and `roles_needed` (no
-   schema). Also confirm the three placements that differ from the owner's guess: `corporate-events` → Celebrations,
-   `reunions` → Hosted events, `family-occasion` → Group travel. Alternative: a nullable `experience_types.group`
-   column seeded by slug — explicit, but a seventh switch-like field LD 42 D20 warns against.
-5. **Three versions by fixed objectives.** *Default:* Best value / Least travel / Best fit, badges assigned by measured
-   metrics. Alternative: keep today's preference-driven strategy names (`itinerary-optimizer.ts:281-482`).
-6. **Who may choose.** *Default:* owner or delegate; a §12 WRITE advisor may add options and recommend, never choose.
-   Alternative: a WRITE advisor may choose on the traveler's behalf, as they can edit items in the Workstation.
+| Q | Question | Ruling | Ledger |
+|---|---|---|---|
+| 1 | Option storage | **Approved:** `plan_option_sets` + `plan_options` as §E2 specifies. | R124 `2026-09-26-plan-option-tables` |
+| 2 | Finalize with open sets | **Approved:** Finalize refused while any set is open; list the open sets with choose / keep current / discard. | R125 `2026-09-26-finalize-refuses-open-sets` |
+| 3 | Does an open set make the slip non-empty? | **OVERRIDE:** no. `docs/DECISIONS.md:520` stands unchanged. The free first draft may build around open sets but never chooses between their options — choosing is the paid line. | R126 `2026-09-26-open-sets-not-non-empty` |
+| 4 | Groups derived or stored | **Approved:** derived by `experienceGroupFor`, no schema. Placements approved: `corporate-events` → Celebrations, `reunions` → Hosted events, `family-occasion` → Group travel. Group names are internal and never rendered. | R127 `2026-09-26-experience-groups-derived` |
+| 5 | Three versions by fixed objectives | **Approved:** Best value / Least travel / Best fit; a badge only when the version's metric actually wins. Until the fit term is real (`profileMatchScore` 0.5), Best fit = rating + REQ coverage and claims no personalization. | R128 `2026-09-26-three-versions-fixed-objectives` |
+| 6 | Who may choose | **Approved:** owner or delegate chooses; a WRITE advisor adds options and recommends, never chooses. A future expert-chooses mode requires an explicit traveler grant. | R129 `2026-09-26-owner-chooses-options` |
+
+Open questions that remain are raised by §J–§L and listed at the end of §L.
 
 *HARD STOP — design only; no code until ratified.*
