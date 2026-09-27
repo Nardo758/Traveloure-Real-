@@ -23,7 +23,7 @@ export default function TermsOfServicePage() {
 
       <main className="container mx-auto px-4 py-12 max-w-4xl">
         <h1 className="text-4xl font-bold mb-2" data-testid="text-terms-title">Terms and Conditions</h1>
-        <p className="text-muted-foreground mb-8">Effective Date: August 10, 2026</p>
+        <p className="text-muted-foreground mb-8">Effective Date: September 27, 2026</p>
 
         <div className="prose prose-gray dark:prose-invert max-w-none space-y-8">
           <section>
@@ -536,10 +536,19 @@ export default function TermsOfServicePage() {
             </div>
           </section>
 
+          <section data-testid="terms-changelog">
+            <h2 className="text-2xl font-semibold mb-4">Changes to These Terms</h2>
+            <ul className="list-disc pl-6 text-muted-foreground space-y-2">
+              <li>
+                <strong>September 27, 2026:</strong> Section 8.3 clarifies that refunds include Traveloure's service fee at the same percentage as the booking, that payment-processing costs are never deducted from a refund, and that fees charged by your bank or card issuer are not charged or refunded by Traveloure. This clarification removes no right and changes no obligation.
+              </li>
+            </ul>
+          </section>
+
           <div className="p-4 bg-muted/50 rounded-lg mt-8">
             <p className="text-sm text-muted-foreground text-center">
               By using Traveloure, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.
-              <br />Last Updated: August 10, 2026 | Version 1.1
+              <br />Last Updated: September 27, 2026 | Version 1.1
             </p>
           </div>
         </div>

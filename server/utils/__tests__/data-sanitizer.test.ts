@@ -16,7 +16,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeBookingForExpert } from "../data-sanitizer";
+import { EARNER_HIDDEN_BOOKING_DETAIL_KEYS, sanitizeBookingForExpert } from "../data-sanitizer";
 
 /**
  * A raw `service_bookings` row with EVERY column populated, camelCase field names exactly as
@@ -129,4 +129,50 @@ test("P2: admin/EA roles (canSeeFull) are untouched — sanitization is role-gat
   for (const field of PAYMENT_IDENTITY_FIELDS) {
     assert.equal(field in sanitized, true, `admin must still see ${field}`);
   }
+});
+
+// ── R163 amendment: the traveler's refund and payment-identity records INSIDE booking_details ──────
+
+function rowWithRefundRecords() {
+  return {
+    ...rawServiceBookingRow(),
+    bookingDetails: {
+      scheduledDate: "2026-10-01",
+      notes: "window seat",
+      stripeIdempotencyKey: "idem_nested_should_never_appear",
+      stripeAttemptAt: "2026-09-27T10:00:00.000Z",
+      reconciliationException: { paymentIntentId: "pi_nested_should_never_appear" },
+      lateSuccessRefund: { refundId: "re_late_should_never_appear" },
+      outOfBandRefund: { refundIds: ["re_oob_should_never_appear"], chargeId: "ch_should_never_appear" },
+      outOfBandRefundCleared: [{ refundIds: ["re_cleared_should_never_appear"], clearedBy: "admin-1" }],
+      serviceBookingRefundAttempt: { state: "processing", idempotencyKey: "refund-sb-should-never-appear" },
+      serviceBookingRefund: { refundId: "re_app_should_never_appear", amountCents: 5000 },
+    },
+  };
+}
+
+test("N6: an expert or provider never sees the traveler's refund claim, refund record or Stripe keys inside booking_details", () => {
+  for (const role of ["provider", "expert"]) {
+    const sanitized: any = sanitizeBookingForExpert(rowWithRefundRecords(), role, `${role}-1`);
+    for (const key of EARNER_HIDDEN_BOOKING_DETAIL_KEYS) {
+      assert.equal(key in sanitized.bookingDetails, false, `${key} must be stripped from bookingDetails for role=${role}`);
+    }
+    const raw = JSON.stringify(sanitized);
+    assert.equal(/should-never-appear|should_never_appear/.test(raw), false, `no refund or Stripe identifier leaks for role=${role}`);
+    // The operational answers survive.
+    assert.equal(sanitized.bookingDetails.scheduledDate, "2026-10-01");
+    assert.equal(sanitized.bookingDetails.notes, "window seat");
+  }
+});
+
+test("N7: the two refund keys this lane added are on the hidden list, by name (a tidy-up that drops them fails here)", () => {
+  for (const key of ["serviceBookingRefundAttempt", "serviceBookingRefund", "lateSuccessRefund", "outOfBandRefund", "stripeIdempotencyKey"]) {
+    assert.ok((EARNER_HIDDEN_BOOKING_DETAIL_KEYS as readonly string[]).includes(key), `${key} must stay hidden from earners`);
+  }
+});
+
+test("P3: an admin (canSeeFull) still receives booking_details whole", () => {
+  const row = rowWithRefundRecords();
+  const sanitized: any = sanitizeBookingForExpert(row, "admin", "admin-1");
+  assert.deepEqual(sanitized.bookingDetails, row.bookingDetails);
 });

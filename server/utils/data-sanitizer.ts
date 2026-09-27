@@ -141,6 +141,22 @@ export function sanitizeUsersForRole<T extends Record<string, any>>(
 }
 
 /**
+ * Keys inside `service_bookings.booking_details` that name the TRAVELER's payment or refund by its
+ * Stripe identity, or record who resolved a refund. Never shown to an expert or provider (R163
+ * amendment); an admin (`canSeeFull`) still sees the whole row.
+ */
+export const EARNER_HIDDEN_BOOKING_DETAIL_KEYS = [
+  'stripeIdempotencyKey',        // the checkout's Stripe idempotency key (§15b sibling of stripeAttemptAt)
+  'stripeAttemptAt',             // §15b pre-flight marker
+  'reconciliationException',     // §15c record; carries the PaymentIntent id
+  'lateSuccessRefund',           // R162 claim; carries the refund id
+  'outOfBandRefund',             // #1288 stamp; carries refund ids and the charge id
+  'outOfBandRefundCleared',      // the admin clear history; carries refund ids and the admin id
+  'serviceBookingRefundAttempt', // R163 amendment: the app refund's claim; carries its idempotency key
+  'serviceBookingRefund',        // R163 amendment: the app refund's record; carries the refund id
+] as const;
+
+/**
  * Sanitize booking data for experts - they only need relevant trip info
  */
 export function sanitizeBookingForExpert<T extends Record<string, any>>(
@@ -181,6 +197,20 @@ export function sanitizeBookingForExpert<T extends Record<string, any>>(
   for (const field of sensitiveFields) {
     if (field in sanitized) {
       delete (sanitized as any)[field];
+    }
+  }
+
+  // R163 amendment (decision-maker, Sep 27, 2026): the strip above covered the COLUMNS only, but the
+  // traveler's refund and payment-identity records live INSIDE `booking_details` — the app refund's
+  // claim carries its Stripe idempotency key, its record the refund id, R162's late-success claim and
+  // #1288's stamp carry refund ids. An expert or provider reading their booking never sees them. The
+  // rest of `booking_details` (the operational answers) is kept.
+  for (const detailsField of ['bookingDetails', 'booking_details']) {
+    const details = (sanitized as any)[detailsField];
+    if (details && typeof details === 'object' && !Array.isArray(details)) {
+      const kept = { ...details };
+      for (const key of EARNER_HIDDEN_BOOKING_DETAIL_KEYS) delete (kept as any)[key];
+      (sanitized as any)[detailsField] = kept;
     }
   }
 
