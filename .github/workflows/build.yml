@@ -1448,7 +1448,11 @@ jobs:
         run: npx tsx --test --test-force-exit client/src/lib/__tests__/plan-dates.test.ts
 
   acceptance-rails:
-    name: acceptance-rails (D-24..D-27 + D-40 + D-36..D-39 + D-32..D-35; ledgers 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt, 2026-09-15-d36-d39-completion-declared, 2026-09-16-d32-d35-bundle-components)
+    # Ledgers: 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt,
+    # 2026-09-15-d36-d39-completion-declared, 2026-09-16-d32-d35-bundle-components. The job NAME is
+    # kept under 100 characters because it is a REQUIRED status context (.github/branch-protection.json;
+    # ledger 2026-09-27-required-checks-promotion) and GitHub truncates a longer check-run name.
+    name: acceptance-rails (D-24..D-27, D-32..D-40; four ledgers, see comment)
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
@@ -2907,7 +2911,8 @@ jobs:
   # `scripts/test-orphan-baseline.txt` and is owed an app-backed lane.
   # ---------------------------------------------------------------------------
   unit-suite-server-units:
-    name: unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine __tests__ — whole directories)
+    # Kept under 100 characters: a REQUIRED status context (ledger 2026-09-27-required-checks-promotion).
+    name: unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine — whole dirs)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
