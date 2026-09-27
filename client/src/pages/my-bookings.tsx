@@ -119,6 +119,11 @@ interface Booking {
     scheduledDate?: string;
     notes?: string;
     quantity?: number;
+    chargeRefund?: {
+      amountCents: number;
+      chargeAmountCents: number;
+      sharedPayment: boolean;
+    };
   };
   bookingMetadata?: VisaBookingMetadata;
   status: string;
@@ -797,6 +802,10 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   // L12: the provider's public name, as projected by the server. A blank display name means the
   // account row is gone (§13) — the card says so rather than rendering an empty "with ".
   const providerName = booking.provider?.displayName?.trim() || null;
+  const chargeRefund = booking.bookingDetails?.chargeRefund;
+  const hasPartialChargeRefund = chargeRefund
+    && chargeRefund.amountCents > 0
+    && chargeRefund.amountCents < chargeRefund.chargeAmountCents;
   // L12: an outstanding balance is NOTED here and PAID on the slip (LD 42 D9). One derivation
   // (`outstandingBalance`), no amount computed on this surface, and no copy of who-may-pay —
   // `POST /api/bookings/:id/pay-balance` and `canPayBalance` remain the authorities (§14/§18).
@@ -1155,6 +1164,13 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
             <p className="font-bold text-lg" data-testid={`text-amount-${booking.id}`}>
               ${parseFloat(booking.totalAmount).toFixed(2)}
             </p>
+            {hasPartialChargeRefund && chargeRefund && (
+              <p className="text-xs text-muted-foreground mt-1" data-testid={`text-charge-refund-${booking.id}`}>
+                {chargeRefund.sharedPayment
+                  ? `Shared-payment refund: $${(chargeRefund.amountCents / 100).toFixed(2)} of $${(chargeRefund.chargeAmountCents / 100).toFixed(2)} charge`
+                  : `Partial refund: $${(chargeRefund.amountCents / 100).toFixed(2)}`}
+              </p>
+            )}
             <div className="flex gap-2 mt-2 flex-wrap justify-end">
               {canCancel && (
                 <Button

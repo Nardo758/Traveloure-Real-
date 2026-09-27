@@ -90,6 +90,7 @@ function chargeRefundedEvent(paymentIntentId: string, refunds: Array<{ id: strin
       object: {
         id: `ch_${paymentIntentId}`,
         payment_intent: paymentIntentId,
+        amount: 100000, // A partial charge refund; the out-of-band marker must not make it terminal.
         amount_refunded: refunds.reduce((s, r) => s + r.amount, 0),
         currency: "usd",
         refunds: { data: refunds.map((r) => ({ ...r, metadata: r.metadata ?? {} })), has_more: false },

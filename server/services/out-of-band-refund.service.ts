@@ -14,10 +14,11 @@
  *      `setBookingEarningsDispute` hold, so the release job and the payout summary skip them;
  *   3. an admin alert names the bookings, once, on first detection.
  *
- * It moves no money and changes no booking status: it does not reverse earnings, refund, cancel or
- * decide who the refund was for. A human resolves the booking through the existing refund/cancel
- * rails. Idempotent: a redelivery rewrites the same stamp (the first `detectedAt` is kept), re-applies
- * the same hold, and raises no second alert.
+ * This recorder itself moves no money and changes no booking status: it only stamps, holds and alerts.
+ * The caller then runs the shared Charge reconciler; an authoritative full-Charge refund reverses
+ * held/releasable earnings and recognized platform revenue without clearing this marker or alert.
+ * A partial refund still makes no booking allocation guess. Idempotent: a redelivery merges the
+ * cumulative refund IDs/amount (first `detectedAt` kept), re-applies the hold, and raises no second alert.
  *
  * NOT COVERED, stated (§18d): earnings already PAID OUT (no automatic claw-back; the alert says so);
  * PaymentIntents that are not on `service_bookings` (Trip Pass, ready-made purchases, coordination
@@ -79,8 +80,19 @@ export async function recordOutOfBandRefund(input: {
       const cleared = clearedOutOfBandRefundIds(r.booking_details);
       const pending = foreign.filter((f) => !cleared.has(f.id));
       if (pending.length === 0) continue;
-      const refundIds = pending.map((f) => f.id);
-      const amountCents = pending.reduce((sum, f) => sum + (Number.isFinite(f.amount) ? f.amount : 0), 0);
+      const existing = outOfBandRefundOf(r.booking_details);
+      const refundIds = Array.from(
+        new Set([
+          ...(Array.isArray(existing?.refundIds) ? existing.refundIds.filter((id) => typeof id === "string") : []),
+          ...pending.map((f) => f.id),
+        ]),
+      );
+      const incomingAmountCents = pending.reduce(
+        (sum, f) => sum + (Number.isSafeInteger(f.amount) && f.amount > 0 ? f.amount : 0),
+        0,
+      );
+      // Charge events can arrive out of order. The SQL-side GREATEST below preserves the
+      // committed cumulative amount while this row lock lets us union the previous refund IDs.
       await tx.execute(sql`
         UPDATE service_bookings
            SET booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(
@@ -90,7 +102,13 @@ export async function recordOutOfBandRefund(input: {
                    'paymentIntentId', ${input.paymentIntentId}::text,
                    'chargeId', ${input.chargeId ?? null}::text,
                    'refundIds', ${JSON.stringify(refundIds)}::jsonb,
-                   'amountCents', ${amountCents}::int
+                    'amountCents', GREATEST(
+                      COALESCE(
+                        (booking_details -> ${OUT_OF_BAND_REFUND_KEY}::text ->> 'amountCents')::bigint,
+                        0
+                      ),
+                      ${incomingAmountCents}::bigint
+                    )
                  )),
                updated_at = NOW()
          WHERE id = ${r.id}

@@ -6401,48 +6401,134 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
-   * Reverse a booking's recognised platform revenue. platform_revenue totals sum every row
-   * regardless of status, so a reversal is a compensating NEGATIVE entry (double-entry) — that also
-   * flows through recordPlatformRevenue into the daily summary, keeping both nets correct without
-   * touching any reader. The original row's status is flipped to 'reversed' as the idempotency guard:
-   * an atomic claim (WHERE status <> 'reversed') means a second call finds nothing and inserts no
-   * second compensating row. Returns the number of original rows reversed.
-   */
-  /**
-   * `fraction` (default 1) scales the compensating negative rows for POLICY PARTIAL refunds
-   * (cancellation-policy.service.ts): a 50% refund inserts -0.5× rows, so the summed net keeps
-   * the RETAINED half recognised as platform revenue instead of zeroing the whole booking.
-   * The original row's status flip remains the idempotency guard either way — a retry (at any
-   * fraction) finds nothing to reverse and inserts no second compensating row.
+   * Reverse a cumulative fraction of a booking's recognised platform revenue. `fraction` is the
+   * target cumulative share refunded (not this call's incremental share). Reversal rows carry
+   * `reversalOf` + `cumulativeFraction`; the original remains eligible for a later delta until
+   * fraction 1. The original row lock and daily-summary update share one transaction, so concurrent
+   * partial/full refund deliveries cannot duplicate or strand a compensation. Legacy one-shot
+   * reversal rows are measured and topped up rather than duplicated.
    */
   async reversePlatformRevenueForBooking(bookingId: string, now: Date = new Date(), fraction: number = 1): Promise<number> {
-    const f = Math.min(Math.max(fraction, 0), 1);
-    const originals = await db.update(platformRevenue)
-      .set({ status: 'reversed' })
-      .where(and(eq(platformRevenue.sourceId, bookingId), sqlOp`${platformRevenue.status} <> 'reversed'`))
-      .returning();
-    for (const o of originals) {
-      const neg = (v: string | null) => (-(Math.round(parseFloat(v || '0') * f * 100) / 100)).toFixed(2);
-      await this.recordPlatformRevenue({
-        sourceType: o.sourceType,
-        sourceId: o.sourceId,
-        trackingNumber: o.trackingNumber,
-        grossAmount: neg(o.grossAmount),
-        platformFee: neg(o.platformFee),
-        netAmount: neg(o.netAmount),
-        processingFees: neg(o.processingFees),
-        currency: o.currency,
-        expertId: o.expertId,
-        expertEarnings: neg(o.expertEarnings),
-        providerId: o.providerId,
-        providerEarnings: neg(o.providerEarnings),
-        description: `Reversal of platform revenue ${o.id} (booking ${bookingId})`,
-        metadata: { reversalOf: o.id, reason: 'escrow_reversal' },
-        status: 'reversed',
-        transactionDate: now,
-      } as any);
-    }
-    return originals.length;
+    const targetFraction = Math.min(Math.max(fraction, 0), 1);
+    if (targetFraction === 0) return 0;
+
+    return db.transaction(async (tx) => {
+      await tx.execute(sqlOp`
+        SELECT pg_advisory_xact_lock(hashtext(${bookingId}), hashtext('platform-revenue-cumulative-refund'))
+      `);
+      const originals = await tx.select().from(platformRevenue)
+        .where(and(
+          eq(platformRevenue.sourceId, bookingId),
+          sqlOp`${platformRevenue.metadata}->>'reversalOf' IS NULL`,
+        ))
+        .orderBy(platformRevenue.id)
+        .for("update");
+      let changed = 0;
+      const moneyColumns = [
+        ["grossAmount", "gross_amount"],
+        ["platformFee", "platform_fee"],
+        ["netAmount", "net_amount"],
+        ["processingFees", "processing_fees"],
+        ["expertEarnings", "expert_earnings"],
+        ["providerEarnings", "provider_earnings"],
+      ] as const;
+      const cents = (value: string | null | undefined) => Math.round(Number(value || 0) * 100);
+
+      for (const original of originals) {
+        const previousRows = await tx.select().from(platformRevenue)
+          .where(sqlOp`${platformRevenue.metadata}->>'reversalOf' = ${original.id}`)
+          .orderBy(platformRevenue.id);
+        let alreadyFraction = 0;
+        for (const previous of previousRows) {
+          const meta = previous.metadata as Record<string, unknown> | null;
+          const recordedFraction = Number(meta?.cumulativeFraction);
+          if (Number.isFinite(recordedFraction)) {
+            alreadyFraction = Math.max(alreadyFraction, recordedFraction);
+            continue;
+          }
+          // Migration-free compatibility with reversal rows written by the old one-shot
+          // implementation, whose metadata has reversalOf but no fraction.
+          const inferred = moneyColumns.reduce((found, [property]) => {
+            if (found !== null) return found;
+            const originalCents = cents(original[property] as string | null);
+            const reversedCents = cents(previous[property] as string | null);
+            return originalCents !== 0 ? Math.min(Math.abs(reversedCents / originalCents), 1) : null;
+          }, null as number | null);
+          if (inferred !== null) alreadyFraction = Math.max(alreadyFraction, inferred);
+        }
+        if (original.status === "reversed" && previousRows.length === 0) {
+          throw new Error(
+            `Cannot safely reconcile platform revenue ${original.id}: it is marked reversed without a reversal row`,
+          );
+        }
+        const effectiveFraction = Math.max(targetFraction, alreadyFraction);
+        if (effectiveFraction <= alreadyFraction) continue;
+
+        const amounts: Record<string, string> = {};
+        let hasDelta = false;
+        for (const [property] of moneyColumns) {
+          const originalCents = cents(original[property] as string | null);
+          const previousCents = previousRows.reduce(
+            (sum, previous) => sum + cents(previous[property] as string | null),
+            0,
+          );
+          const targetCompensationCents = -Math.round(originalCents * effectiveFraction);
+          const deltaCents = targetCompensationCents - previousCents;
+          amounts[property] = (deltaCents / 100).toFixed(2);
+          if (deltaCents !== 0) hasDelta = true;
+        }
+
+        if (hasDelta) {
+          const reversal = {
+            sourceType: original.sourceType,
+            sourceId: original.sourceId,
+            trackingNumber: original.trackingNumber,
+            grossAmount: amounts.grossAmount,
+            platformFee: amounts.platformFee,
+            netAmount: amounts.netAmount,
+            processingFees: amounts.processingFees,
+            currency: original.currency,
+            expertId: original.expertId,
+            expertEarnings: amounts.expertEarnings,
+            providerId: original.providerId,
+            providerEarnings: amounts.providerEarnings,
+            description: `Cumulative reversal of platform revenue ${original.id} (booking ${bookingId})`,
+            metadata: {
+              reversalOf: original.id,
+              reason: "escrow_reversal",
+              cumulativeFraction: effectiveFraction,
+            },
+            status: "reversed",
+            transactionDate: now,
+          } as any;
+          const [inserted] = await tx.insert(platformRevenue).values(reversal).returning();
+          if (!inserted) throw new Error(`Could not record platform-revenue reversal for ${original.id}`);
+
+          const date = now.toISOString().split("T")[0];
+          await tx.insert(dailyRevenueSummary).values({
+            date,
+            totalGross: amounts.grossAmount,
+            totalPlatformFee: amounts.platformFee,
+            totalNet: amounts.netAmount,
+            transactionCount: 1,
+          }).onConflictDoUpdate({
+            target: dailyRevenueSummary.date,
+            set: {
+              totalGross: sqlOp`COALESCE(${dailyRevenueSummary.totalGross}, 0) + excluded.total_gross`,
+              totalPlatformFee: sqlOp`COALESCE(${dailyRevenueSummary.totalPlatformFee}, 0) + excluded.total_platform_fee`,
+              totalNet: sqlOp`COALESCE(${dailyRevenueSummary.totalNet}, 0) + excluded.total_net`,
+              transactionCount: sqlOp`COALESCE(${dailyRevenueSummary.transactionCount}, 0) + 1`,
+              updatedAt: now,
+            },
+          });
+        }
+        if (effectiveFraction >= 1 && original.status !== "reversed") {
+          await tx.update(platformRevenue).set({ status: "reversed" }).where(eq(platformRevenue.id, original.id));
+        }
+        changed++;
+      }
+      return changed;
+    });
   }
 
   async getProviderPayouts(providerId: string): Promise<ProviderPayout[]> {

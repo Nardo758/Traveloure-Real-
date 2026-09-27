@@ -18,6 +18,7 @@
  *   - stripe.paymentIntents.retrieve  — payment intent status lookup
  *   - stripe.checkout.sessions.create — expert service hosted checkout
  *   - stripe.refunds.create           — booking refunds
+ *   - stripe.charges.retrieve         — authoritative post-refund charge reconciliation
  */
 
 import Stripe from 'stripe';
@@ -27,11 +28,8 @@ import { handleStripePaymentSuccess } from './stripe.service';
 import { enqueueBookingConfirmationEmail } from './email-outbox.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
-// RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
-// slot set (see its docblock in checkout-claim.service.ts) — used here so refundServiceBooking's
-// release can never drift from voidClaim's / updateServiceBookingStatus's.
-import { deriveClaimedSlotIds, deriveClaimedSlotUnits } from './checkout-claim.service';
 import { travelerChargeForRow } from './traveler-charge';
+import { reconcileChargeRefund } from './charge-refund-reconciliation.service';
 import { getStripeSecretKey } from '../utils/stripe-key';
 import { upsertStripeMembership } from "./plan-membership-writer.service";
 
@@ -1076,17 +1074,16 @@ class StripePaymentService {
    * Handle refund
    */
   private async handleRefund(charge: Stripe.Charge) {
-    const paymentIntentId = charge.payment_intent as string;
-    const refundAmount = charge.amount_refunded / 100;
+    const paymentIntentId =
+      typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : charge.payment_intent?.id ?? null;
 
     // ── #1288 (ledger `2026-09-24-out-of-band-refund-blocks-mint`): A REFUND WE DID NOT ISSUE ──
     // Runs FIRST and is allowed to throw: it is idempotent, so a failure answers the delivery with an
     // error and Stripe's retry re-runs it. Since API 2022-11-15 the charge in this event does not
     // carry its refund list, so it is fetched when absent or truncated.
-    let chargeRefunds = ((charge as any).refunds?.data ?? null) as Stripe.Refund[] | null;
-    if (!chargeRefunds || (charge as any).refunds?.has_more) {
-      chargeRefunds = (await stripe.refunds.list({ charge: charge.id, limit: 100 })).data;
-    }
+    const chargeRefunds = await this.listRefundsForCharge(charge);
     const { recordOutOfBandRefund } = await import('./out-of-band-refund.service');
     await recordOutOfBandRefund({
       paymentIntentId,
@@ -1094,16 +1091,10 @@ class StripePaymentService {
       refunds: chargeRefunds.map((r) => ({ id: r.id, amount: r.amount, metadata: r.metadata as Record<string, string> | null })),
     });
 
-    // Create refund record
-    await db.execute(sql`
-      INSERT INTO refunds (
-        stripe_charge_id, stripe_payment_intent_id,
-        amount, currency, status, created_at
-      ) VALUES (${charge.id}, ${paymentIntentId}, ${refundAmount}, ${charge.currency}, 'completed', NOW())
-    `);
-
-    // TODO: Update booking status
-    // TODO: Return inventory
+    // Both signed Platform deliveries and app-issued refunds use this exact amount/status
+    // decision. The routine audits each Stripe refund ID once and treats the cumulative
+    // Charge fields—not refund metadata—as authoritative for terminal booking state.
+    await reconcileChargeRefund(charge, chargeRefunds);
 
     // ── D-51 (ledger `2026-09-16-bundle-partial-settlement`): THE WEBHOOK IS THE SECOND PROMOTER ──
     // A refund this charge carries whose metadata names a bundle partial settlement promotes that
@@ -1124,6 +1115,23 @@ class StripePaymentService {
         logger.error({ err, bookingId: md.bookingId, refundId: r.id }, '[WEBHOOK] bundle partial settlement promote failed');
       }
     }
+  }
+
+  /** Return the complete refund list for a Charge; reject a truncated list rather than
+   * recording only a subset of the actual money movements. */
+  private async listRefundsForCharge(charge: Stripe.Charge): Promise<Stripe.Refund[]> {
+    const embedded = (charge as any).refunds as
+      | { data?: Stripe.Refund[]; has_more?: boolean }
+      | null
+      | undefined;
+    if (Array.isArray(embedded?.data) && !embedded.has_more && (embedded.data.length > 0 || charge.amount_refunded === 0)) {
+      return embedded.data;
+    }
+    const listed = await stripe.refunds.list({ charge: charge.id, limit: 100 });
+    if (listed.has_more) {
+      throw new Error(`Charge ${charge.id} has more than 100 refunds; reconcile its complete refund list before acknowledging`);
+    }
+    return listed.data;
   }
 
   // NOTE: the legacy `createRefund(bookingId, amount, reason)` was DELETED here (L5 money
@@ -1207,10 +1215,9 @@ class StripePaymentService {
    * service_bookings' OWN stripe_payment_intent_id + total_amount — the real booking rail where
    * disputes live. Amount is server-derived from the row (never client-supplied — §14).
    *
-   * Idempotent (§15) on BOTH layers: (a) an atomic status claim (WHERE status <> 'refunded') so two
-   * concurrent callers can't both proceed — reverted if the Stripe call then fails; (b) a
-   * deterministic Stripe idempotencyKey so even a cross-process retry returns the same refund rather
-   * than issuing a second one.
+    * Idempotent (§15) on BOTH layers: (a) an atomic non-terminal booking_details claim prevents
+    * concurrent app callers without announcing a refund before Stripe confirms it; (b) a
+    * deterministic Stripe idempotencyKey makes a cross-process retry return the same refund.
    */
   async refundServiceBooking(
     bookingId: string,
@@ -1249,18 +1256,6 @@ class StripePaymentService {
     const paymentIntentId = row.stripe_payment_intent_id;
     if (!paymentIntentId) throw new Error('Booking has no payment intent to refund');
 
-    // Atomic claim: flip to 'refunded' only if it isn't already. A concurrent caller claims 0 rows.
-    const claim = await db.execute(sql`
-      UPDATE service_bookings SET status = 'refunded', updated_at = NOW()
-      WHERE id = ${bookingId} AND status <> 'refunded'
-      RETURNING id
-    `);
-    if (!claim.rows || claim.rows.length === 0) {
-      return { alreadyRefunded: true, amount: totalRefund, status: 'refunded' as const };
-    }
-
-    const priorStatus = row.status;
-
     // The internal reason is kept VERBATIM for the audit row below (`refunds.reason`, TEXT);
     // Stripe gets a value from its 3-value enum. See toStripeRefundReason above for why:
     // forwarding 'dispute_upheld' or the traveler's free text 400s at Stripe, and because this
@@ -1272,8 +1267,8 @@ class StripePaymentService {
     // key reuse with different params, so a policy-scaled partial refund cannot share the plain
     // `refund-sb-<id>` key a full refund may have attempted earlier (or vice versa, or a retry
     // after the policy window shifted the computed amount). Amount-scoped keys keep each distinct
-    // refund attempt retry-safe while the atomic status claim above still guarantees at most ONE
-    // refund actually proceeds per booking.
+    // refund attempt retry-safe while the atomic booking_details claim guarantees at most ONE
+    // app-issued refund proceeds per booking.
     // Amount-scoped on the TOTAL (booking + fee) so a fee-inclusive refund and a bare-booking refund
     // of the same booking are retry-distinct at Stripe.
     const amountCents = Math.round(totalRefund * 100);
@@ -1281,6 +1276,43 @@ class StripePaymentService {
       options?.amountOverride !== undefined
         ? `refund-sb-${bookingId}-${amountCents}`
         : `refund-sb-${bookingId}`;
+
+    // A non-terminal, durable claim replaces the old pre-confirmation status='refunded' write.
+    // Keep it after success to prevent another app-issued refund on this booking; only Stripe's
+    // authoritative Charge reconciliation is allowed to make the booking terminal.
+    const claim = await db.execute(sql`
+      UPDATE service_bookings
+         SET booking_details = COALESCE(booking_details, '{}'::jsonb) ||
+               jsonb_build_object('serviceBookingRefundAttempt', jsonb_build_object(
+                 'state', 'processing',
+                 'idempotencyKey', ${idempotencyKey}::text
+               )),
+             updated_at = NOW()
+       WHERE id = ${bookingId}
+         AND status <> 'refunded'
+         AND booking_details->'serviceBookingRefundAttempt' IS NULL
+       RETURNING id
+    `);
+    if (!claim.rows || claim.rows.length === 0) {
+      const latestRows = await db.execute(sql`
+        SELECT status, booking_details FROM service_bookings WHERE id = ${bookingId} LIMIT 1
+      `);
+      const latest = latestRows.rows?.[0] as any;
+      if (!latest) throw new Error('Service booking not found');
+      if (latest.status === 'refunded') {
+        return { alreadyRefunded: true, amount: totalRefund, status: 'refunded' as const };
+      }
+      const priorAttempt = (latest.booking_details as any)?.serviceBookingRefundAttempt;
+      if (priorAttempt?.state === 'issued' && priorAttempt.refundId) {
+        return {
+          alreadyRefunded: true,
+          amount: Number(priorAttempt.amountCents ?? 0) / 100,
+          refundId: String(priorAttempt.refundId),
+          status: latest.status,
+        };
+      }
+      throw new Error('A refund is already processing for this booking; reconcile it before retrying');
+    }
 
     let refund: Stripe.Refund;
     try {
@@ -1294,79 +1326,89 @@ class StripePaymentService {
         metadata: { bookingId, source: 'service_booking' },
       });
     } catch (err: any) {
-      // Stripe failed — revert the optimistic status claim so a later retry can proceed cleanly.
-      await db.execute(sql`UPDATE service_bookings SET status = ${priorStatus}, updated_at = NOW() WHERE id = ${bookingId}`);
+      // Stripe failed — release the in-flight claim without changing booking status.
+      await db.execute(sql`
+        UPDATE service_bookings
+           SET booking_details = COALESCE(booking_details, '{}'::jsonb) - 'serviceBookingRefundAttempt',
+               updated_at = NOW()
+         WHERE id = ${bookingId}
+           AND booking_details #>> '{serviceBookingRefundAttempt,idempotencyKey}' = ${idempotencyKey}
+      `);
       console.error('Service-booking refund error:', err);
       // A lost-chargeback refusal keeps its type so the caller can answer 409 with the reason.
       if (err?.name === 'LostChargebackRefundBlockedError') throw err;
       throw new Error(`Refund failed: ${err.message}`);
     }
 
-    await this.recordIssuedRefund({
-      bookingId,
-      paymentIntentId,
-      refund,
-      amount: totalRefund,
-      internalReason,
-      feeRefund,
-      feeReversalActor: 'refund',
-    });
+    await db.execute(sql`
+      UPDATE service_bookings
+         SET booking_details = COALESCE(booking_details, '{}'::jsonb) ||
+               jsonb_build_object('serviceBookingRefundAttempt', jsonb_build_object(
+                 'state', 'issued',
+                 'idempotencyKey', ${idempotencyKey}::text,
+                 'refundId', ${refund.id}::text,
+                 'amountCents', ${refund.amount}::bigint
+               )),
+             updated_at = NOW()
+       WHERE id = ${bookingId}
+         AND booking_details #>> '{serviceBookingRefundAttempt,idempotencyKey}' = ${idempotencyKey}
+    `);
 
-    // COMPLETION/REFUND RACE SWEEP (task 1091 review): callers reverse the ledger BEFORE this
-    // atomic claim (ledger-first order). A completion mint can commit in between — the caller's
-    // reversal finds nothing, the mint wins the confirmed-status guard, and the booking would end
-    // 'refunded' with live positive earnings. Now that this refund EXCLUSIVELY owns the terminal
-    // status (the claim above), re-run the reversals to sweep any mint that raced in. Both are
-    // idempotent flips: if the caller's earlier reversal already did the work, these no-op.
-    // Earnings are only swept for FULL refunds (partial refunds deliberately keep the retained
-    // share's earnings); platform revenue is swept proportionally, matching caller semantics.
     try {
-      const { storage } = await import('../storage');
-      const fraction = amountCharged > 0 ? Math.min(amount / amountCharged, 1) : 1;
-      if (fraction >= 1) {
-        await storage.reverseEarningsForBooking(bookingId);
-      }
-      await storage.reversePlatformRevenueForBooking(bookingId, new Date(), fraction);
-    } catch (sweepErr) {
-      // The refund already succeeded; a sweep failure must not undo it. The admin refund rail
-      // re-runs the same idempotent reversals on retry.
-      console.error(`[refund] post-claim ledger sweep failed for booking ${bookingId}:`, sweepErr);
+      await this.recordIssuedRefund({
+        bookingId,
+        paymentIntentId,
+        refund,
+        amount: refund.amount / 100,
+        internalReason,
+        feeRefund,
+        feeReversalActor: 'refund',
+      });
+    } catch (err: any) {
+      throw new Error(
+        `Stripe accepted refund ${refund.id}, but its local audit/reconciliation is pending; allow the signed webhook to reconcile it (${err?.message ?? 'audit write failed'})`,
+      );
     }
 
-    // C3 filed follow-up: a refunded slot-bound booking gives its capacity back so another
-    // traveler can book the time. Runs only under this refund's atomic status claim (the flip
-    // above matched exactly one caller — §15), so a repeat refund cannot double-release; the
-    // release itself floors at 0 and never un-blocks a provider-blocked slot. Best-effort:
-    // the refund already succeeded, a release failure must not undo it.
-    //
-    // RELEASE-ALL-NIGHTS hotfix (§18b-class defect): `row.slot_id` is only the FIRST night of a
-    // multi-night stay. `deriveClaimedSlotIds` returns the whole per-night list when the booking
-    // carries it (`booking_details.claimedSlotIds`) and falls back to the single `slot_id`
-    // otherwise — a pre-fix row releases exactly as it always did. `storage.releaseSlot` is called
-    // once PER slot, mirroring its existing floor-at-0 / re-open-if-under-capacity shape per slot
-    // (unchanged from before this fix for the single-slot case).
-    const slotIdsToRelease = deriveClaimedSlotIds(
-      (row.booking_details ?? null) as Record<string, unknown> | null,
-      row.slot_id ? String(row.slot_id) : null,
-    );
-    // V-26 (ledger `2026-09-15-v26-slot-units`): a claim can hold MORE THAN ONE unit of a slot, so
-    // the refund gives back exactly what the booking RECORDED it claimed (`claimedSlotUnits`) —
-    // not the cart line's priced quantity, and not a flat 1. A pre-V-26 row carries no record and
-    // releases 1, which is precisely what it took (§13).
-    const slotUnitsToRelease = deriveClaimedSlotUnits(
-      (row.booking_details ?? null) as Record<string, unknown> | null,
-    );
-    if (slotIdsToRelease.length > 0) {
-      const { storage } = await import('../storage');
-      // Each slot released independently — one slot's failure must not stop the others (a
-      // multi-night stay must not leak the remaining nights because night 1's release threw).
-      for (const slotId of slotIdsToRelease) {
-        try {
-          await storage.releaseSlot(slotId, slotUnitsToRelease);
-        } catch (releaseErr) {
-          console.error(`[refund] slot release failed for booking ${bookingId}, slot ${slotId} (non-critical):`, releaseErr);
+    const chargeId = typeof refund.charge === 'string' ? refund.charge : refund.charge?.id;
+    if (!chargeId) {
+      throw new Error(`Refund ${refund.id} succeeded but Stripe returned no Charge; webhook reconciliation is required`);
+    }
+    try {
+      const charge = await stripe.charges.retrieve(chargeId);
+      const chargeRefunds = await this.listRefundsForCharge(charge);
+      const reconciliation = await reconcileChargeRefund(charge, chargeRefunds);
+      const listedCurrentRefund = chargeRefunds.find((listedRefund) => listedRefund.id === refund.id);
+      const succeededRefundCents = chargeRefunds
+        .filter((listedRefund) => listedRefund.status === 'succeeded')
+        .reduce((sum, listedRefund) => sum + listedRefund.amount, 0);
+      const currentRefundIsActive =
+        !!listedCurrentRefund &&
+        listedCurrentRefund.status === 'succeeded' &&
+        succeededRefundCents === charge.amount_refunded &&
+        charge.amount_refunded > 0;
+      if (
+        !reconciliation.fullyRefunded &&
+        currentRefundIsActive &&
+        amount > 0 &&
+        amountCharged > 0
+      ) {
+        // Preserve the existing policy-partial platform-revenue reversal for this booking share.
+        // Provider earnings and slot capacity remain untouched until the full Charge is refunded.
+        const fraction = Math.min(Math.max(amount / amountCharged, 0), 1);
+        if (fraction > 0) {
+          try {
+            const { storage } = await import('../storage');
+            await storage.reversePlatformRevenueForBooking(bookingId, new Date(), fraction);
+          } catch (sweepErr) {
+            console.error(`[refund] partial platform-revenue reversal failed for booking ${bookingId}:`, sweepErr);
+          }
         }
       }
+    } catch (err: any) {
+      throw new Error(
+        `Stripe accepted refund ${refund.id}, but Charge reconciliation is pending; allow the signed webhook to reconcile it (${err?.message ?? 'Charge read failed'})`,
+      );
     }
 
     return { refundId: refund.id, amount: totalRefund, bookingRefund: amount, feeRefund, status: refund.status };
@@ -1374,14 +1416,14 @@ class StripePaymentService {
 
   /**
    * THE ONE `stripe.refunds.create` CALL SITE for a service booking (D-51, ledger
-   * `2026-09-16-bundle-partial-settlement`; §18 rule 1). Three callers drive it: `refundServiceBooking`
-   * (the whole-row refund, whose claim is `status = 'refunded'`), `refundBundlePartialSettlement`
+    * `2026-09-16-bundle-partial-settlement`; §18 rule 1). Three callers drive it: `refundServiceBooking`
+    * (with a non-terminal booking_details claim), `refundBundlePartialSettlement`
    * (the partial settlement, whose claim is the `bundle_partial_settlements` row) and
    * `refundAiTaskProposalFee` (the AI-proposal fee, whose claim is the `plan_proposals` status flip
    * to `refunded` — OPTION B, ledger `2026-09-16-l16-lane1-review-fixes`). It takes NO claim
-   * and flips NO status — each caller owns its own §15b claim and decides what a Stripe failure means
-   * for it — and it throws the RAW Stripe error so the caller can apply its posture (the whole-row
-   * rail reverts its status claim; the settlement leaves its claim reclaimable). The amount and the
+    * and flips NO status — each caller owns its own §15b claim and decides what a Stripe failure means
+    * for it — and it throws the RAW Stripe error so the caller can apply its posture (the whole-row
+    * rail clears its non-terminal claim; the settlement leaves its claim reclaimable). The amount and the
    * idempotency key arrive SERVER-DERIVED from the caller's own rows (§14/§15); nothing here reads a
    * request.
    */
@@ -1418,8 +1460,9 @@ class StripePaymentService {
    * THE ONE RECORDER of an issued refund (the other half of the split above): the `refunds` audit
    * row (migration 156 — the money record that outlives the booking) and the traveler-service-fee
    * `reversal` ledger row (ruling 2026-09-02-traveler-fee-refundability). Best-effort on the ledger
-   * half exactly as before: the money already moved, so a recording failure is logged, never undoes
-   * the refund. Idempotent per (booking, amount). Skipped when no fee was billed — `feeRefund` is 0.
+    * half exactly as before: the money already moved, so a recording failure is logged, never undoes
+    * the refund. The audit row is idempotent per Stripe refund ID. Skipped when no fee was billed —
+    * `feeRefund` is 0.
    */
   private async recordIssuedRefund(input: {
     /**
@@ -1436,37 +1479,38 @@ class StripePaymentService {
     /** DOLLARS of traveler service fee inside `amount` — 0 when none was billed or refunded. */
     feeRefund: number;
     feeReversalActor: string;
-    /**
-     * Record at most ONE audit row per Stripe refund id. Used by callers whose CLAIM lives on
-     * another table and whose retry legitimately re-drives the same idempotency key (a second
-     * `refunds.create` with the same key returns the SAME refund, and a second audit row for it
-     * would double-count a single money movement). `false` (the default) keeps the two existing
-     * callers' unconditional insert byte-for-byte.
-     */
-    onceByStripeRefundId?: boolean;
   }): Promise<void> {
     const { bookingId, paymentIntentId, refund, amount, internalReason, feeRefund } = input;
-    if (input.onceByStripeRefundId) {
-      // ONE statement — the NOT EXISTS is evaluated inside the same INSERT, never a SELECT followed
-      // by a decision (§15). A concurrent pair may still both pass on a table with no UNIQUE over
-      // `stripe_refund_id`; that duplicates an AUDIT row, never a Stripe call, and is the stated
-      // limit of a guard that adds no index (publish-trap posture).
-      await db.execute(sql`
+    const chargeId = typeof refund.charge === 'string' ? refund.charge : refund.charge?.id ?? null;
+    const currency = refund.currency || 'usd';
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(hashtext(${refund.id}), hashtext('stripe-refund-audit'))
+      `);
+      await tx.execute(sql`
         INSERT INTO refunds (
-          booking_id, stripe_refund_id, stripe_payment_intent_id,
+          booking_id, stripe_refund_id, stripe_charge_id, stripe_payment_intent_id,
           amount, currency, status, reason, created_at
         )
-        SELECT ${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${internalReason}, NOW()
-        WHERE NOT EXISTS (SELECT 1 FROM refunds WHERE stripe_refund_id = ${refund.id})
+        SELECT ${bookingId}, ${refund.id}, ${chargeId}, ${paymentIntentId},
+               ${amount}, ${currency}, ${refund.status}, ${internalReason}, NOW()
+         WHERE NOT EXISTS (SELECT 1 FROM refunds WHERE stripe_refund_id = ${refund.id})
       `);
-    } else {
-      await db.execute(sql`
-        INSERT INTO refunds (
-          booking_id, stripe_refund_id, stripe_payment_intent_id,
-          amount, currency, status, reason, created_at
-        ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${internalReason}, NOW())
+      // If the signed webhook won the race, enrich its one audit row with the booking/reason
+      // learned by the app issuer rather than adding a duplicate.
+      await tx.execute(sql`
+        UPDATE refunds
+           SET booking_id = COALESCE(booking_id, ${bookingId}),
+               stripe_charge_id = COALESCE(stripe_charge_id, ${chargeId}),
+                 stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ${paymentIntentId}),
+                 status = CASE
+                   WHEN status IN ('succeeded', 'failed', 'canceled') THEN status
+                   ELSE COALESCE(${refund.status}, status)
+                 END,
+               reason = COALESCE(reason, ${internalReason})
+         WHERE stripe_refund_id = ${refund.id}
       `);
-    }
+    });
 
     if (feeRefund > 0 && bookingId === null) {
       // A traveler service fee is billed on a BOOKING; a booking-less refund (the AI-proposal fee)
@@ -1623,7 +1667,6 @@ class StripePaymentService {
       internalReason: input.auditReason,
       feeRefund: 0,
       feeReversalActor: AI_TASK_PROPOSAL_REFUND_SOURCE,
-      onceByStripeRefundId: true,
     });
     return { id: refund.id, status: refund.status ?? null };
   }
