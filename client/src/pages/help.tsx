@@ -10,6 +10,7 @@ import {
   PUBLISHED_HELP_ARTICLES,
   getPublishedHelpArticle,
   helpArticlePath,
+  helpTextParts,
   resolveHelpArticle,
   searchHelpArticles,
   type HelpPricing,
@@ -31,6 +32,23 @@ import {
 function usePricing(): HelpPricing | null {
   const { data } = useQuery<HelpPricing>({ queryKey: ["/api/pricing"], staleTime: 5 * 60_000 });
   return data ?? null;
+}
+
+/** A sentence with its `[[slug]]` cross-references rendered as links to the named article. */
+function HelpText({ text }: { text: string }) {
+  return (
+    <>
+      {helpTextParts(text).map((part, i) =>
+        typeof part === "string" ? (
+          part
+        ) : (
+          <Link key={i} href={helpArticlePath(part.slug)} className="underline underline-offset-2" data-testid={`link-help-ref-${part.slug}`}>
+            {part.title}
+          </Link>
+        ),
+      )}
+    </>
+  );
 }
 
 function ContactCard() {
@@ -141,7 +159,7 @@ export function HelpArticlePage() {
               return (
                 <p key={i}>
                   {b.lead && <strong>{b.lead} </strong>}
-                  {b.text}
+                  <HelpText text={b.text} />
                 </p>
               );
             }
@@ -151,7 +169,7 @@ export function HelpArticlePage() {
                   {b.items.map((it, j) => (
                     <li key={j}>
                       {it.lead && <strong>{it.lead}: </strong>}
-                      {it.text}
+                      <HelpText text={it.text} />
                     </li>
                   ))}
                 </ul>

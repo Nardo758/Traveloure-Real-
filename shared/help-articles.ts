@@ -144,6 +144,49 @@ export function resolveHelpText(text: string, pricing: HelpPricing | null): stri
   return missing ? null : out;
 }
 
+/**
+ * Cross-references: `[[slug]]` in an article sentence names another article. It renders as that
+ * article's title, linked to it (decision-maker, Sep 27, 2026: articles carry no visible number, so
+ * "article 5" pointed at nothing). Placeholder resolution leaves these markers in place; the page
+ * splits them with `helpTextParts`, and plain text (search, tests) reads the quoted title.
+ */
+export type HelpTextPart = string | { slug: HelpArticleSlug; title: string };
+
+const ARTICLE_REF = /\[\[([a-z0-9-]+)\]\]/g;
+
+export function helpTextParts(text: string): HelpTextPart[] {
+  const parts: HelpTextPart[] = [];
+  let last = 0;
+  const re = new RegExp(ARTICLE_REF.source, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const ref = m[1];
+    const a = HELP_ARTICLES.find((x) => x.slug === ref);
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(a ? { slug: a.slug, title: a.title } : m[0]);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+/** The sentence as plain text: each cross-reference becomes the referenced title in quotes. */
+export function helpPlainText(text: string): string {
+  return helpTextParts(text).map((p) => (typeof p === "string" ? p : `"${p.title}"`)).join("");
+}
+
+/** Every `[[slug]]` an article's sentences name, in order. */
+export function helpArticleRefs(a: HelpArticle): string[] {
+  const texts = a.blocks.flatMap((b) => (b.kind === "p" ? [b.text] : b.kind === "list" ? b.items.map((i) => i.text) : []));
+  const refs: string[] = [];
+  for (const t of texts) {
+    const re = new RegExp(ARTICLE_REF.source, "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t)) !== null) refs.push(m[1]); // unknown slugs included, so a test can refuse them
+  }
+  return refs;
+}
+
 /** Whether a conditional block shows. With no pricing answer, neither variant shows (§13). */
 export function helpConditionHolds(when: HelpCondition | undefined, pricing: HelpPricing | null): boolean {
   if (!when) return true;
@@ -159,7 +202,7 @@ export function helpArticleSearchText(a: HelpArticle): string {
     else if (b.kind === "list") for (const i of b.items) parts.push(i.lead ?? "", i.text);
     else parts.push(b.text);
   }
-  return parts.join(" ").replace(/\{\w+\}/g, " ").toLowerCase();
+  return helpPlainText(parts.join(" ")).replace(/\{\w+\}/g, " ").toLowerCase();
 }
 
 /** Articles whose searchable text contains every word of the query (case-insensitive). */
@@ -215,7 +258,7 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     keywords: ["free", "paid", "cost", "optimization", "ai", "draft"],
     blocks: [
       { kind: "p", lead: "Free:", text: "creating a plan, the first AI draft on an empty plan, comparing options you've picked yourself, suggestions, and everything a local expert offers to review at no charge." },
-      { kind: "p", lead: "Paid:", text: "an AI optimization run, which produces three complete versions of your plan (best value, least travel, best fit) that you can adopt in whole or part; a Trip Pass covers this. Additional AI tasks after the first draft are charged per task. Bookings are priced by the person offering them, and carry the service fee described in \"Trip Pass, Plus, and the service fee\"." },
+      { kind: "p", lead: "Paid:", text: "an AI optimization run, which produces three complete versions of your plan (best value, least travel, best fit) that you can adopt in whole or part; a Trip Pass covers this. Additional AI tasks after the first draft are charged per task. Bookings are priced by the person offering them, and carry the service fee described in [[trip-pass-and-fees]]." },
     ],
   },
   {
@@ -238,7 +281,7 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     summary: "One checkout, our terms and a booking your expert can see — or book elsewhere and keep the item on your plan.",
     keywords: ["book", "booking", "checkout", "elsewhere", "back to plan"],
     blocks: [
-      { kind: "p", text: "Every item on your plan can be booked through Traveloure or noted as booked elsewhere. Booking through us means one checkout, the service fee described in \"Trip Pass, Plus, and the service fee\", our cancellation terms in \"Cancellations and refunds\", and a booking a local expert can see and act on." },
+      { kind: "p", text: "Every item on your plan can be booked through Traveloure or noted as booked elsewhere. Booking through us means one checkout, the service fee described in [[trip-pass-and-fees]], our cancellation terms in [[cancellations-and-refunds]], and a booking a local expert can see and act on." },
       { kind: "p", text: "Booking on your own means none of that, and the item still sits in your plan so the schedule stays right. Some items can't be booked through us yet (a listing without a published price, or one that needs the provider to accept first); those show \"Back to plan\" instead of a checkout." },
     ],
   },

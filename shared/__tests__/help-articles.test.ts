@@ -7,7 +7,8 @@
  * pricing answer every number is omitted and Pricing is pointed at instead. H5 article 8's hold
  * windows are the shared constants the server's sweeps import. H6 search. H7 held articles (a feature
  * not yet on `main`) are unlisted, unsearchable, unroutable and out of the sitemap. H8 article 1's
- * occasion count is the seed's own count, never typed.
+ * occasion count is the seed's own count, never typed. H9 cross-references name real articles, a
+ * published article never links to a held one, and they render as the linked title.
  *
  * Run: npx tsx --test shared/__tests__/help-articles.test.ts
  */
@@ -23,6 +24,9 @@ import {
   SEEDED_OCCASION_COUNT,
   getHelpArticle,
   getPublishedHelpArticle,
+  helpArticleRefs,
+  helpPlainText,
+  helpTextParts,
   isHelpArticlePublished,
   resolveHelpArticle,
   searchHelpArticles,
@@ -154,4 +158,31 @@ test("H8 article 1's occasion count is the experience_types seed's count, never 
   const a1 = text("how-planning-works", null);
   assert.ok(a1.all.includes(`one of ${seeded.length})`), "article 1 renders the seeded count");
   assert.doesNotMatch(rawText("how-planning-works"), /one of \d/, "the count is a placeholder, never typed");
+});
+
+test("H9 cross-references name real articles and never a held one", () => {
+  // Decision-maker, Sep 27, 2026: "article 5" / "article 7" become the linked titles.
+  for (const a of HELP_ARTICLES) {
+    for (const slug of helpArticleRefs(a)) {
+      assert.ok(getHelpArticle(slug), `${a.slug} references unknown article ${slug}`);
+      if (isHelpArticlePublished(a.slug)) {
+        assert.ok(isHelpArticlePublished(slug as never), `published ${a.slug} must not link to held ${slug}`);
+      }
+    }
+  }
+  assert.deepEqual(helpArticleRefs(getHelpArticle("free-vs-paid")!), ["trip-pass-and-fees"]);
+  assert.deepEqual(helpArticleRefs(getHelpArticle("booking-through-us")!), ["trip-pass-and-fees", "cancellations-and-refunds"]);
+  const six = getHelpArticle("booking-through-us")!.blocks[0];
+  assert.ok(six.kind === "p");
+  assert.match(helpPlainText(six.text), /the service fee described in "Trip Pass, Plus, and the service fee", our cancellation terms in "Cancellations and refunds",/);
+  assert.deepEqual(
+    helpTextParts(six.text).filter((p) => typeof p !== "string"),
+    [
+      { slug: "trip-pass-and-fees", title: "Trip Pass, Plus, and the service fee" },
+      { slug: "cancellations-and-refunds", title: "Cancellations and refunds" },
+    ],
+  );
+  for (const a of HELP_ARTICLES) {
+    assert.doesNotMatch(JSON.stringify(a.blocks), /\barticle \d/, `${a.slug} must not cite an article by number`);
+  }
 });
