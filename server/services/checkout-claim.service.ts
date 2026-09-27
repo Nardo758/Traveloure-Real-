@@ -733,7 +733,14 @@ export function assertPositiveSlotUnits(units: number, caller: string): void {
  */
 async function voidClaim(
   row: ProvisionalClaimRow,
-  reason: "never_attempted" | "stripe_has_no_intent",
+  reason: "never_attempted" | "stripe_has_no_intent" | "stripe_canceled" | "stale_unpaid",
+  /**
+   * R164 (G2): a STAMPED claim is voided only while it still carries THIS PaymentIntent, in the same
+   * statement — the promotion's own predicate (`status='payment_pending' AND
+   * stripe_payment_intent_id=<pi>`), so a promote and a void on the same row can never both win
+   * (§15b rule 1). Omitted ⇒ the unstamped-claim predicate, unchanged.
+   */
+  stampedPaymentIntentId?: string,
 ): Promise<{ voided: boolean; slotsReleased: number; diaryRows: number }> {
   try {
     return await db.transaction(async (tx) => {
@@ -745,7 +752,7 @@ async function voidClaim(
             updated_at = NOW()
         WHERE id = ${row.id}
           AND status = 'payment_pending'
-          AND stripe_payment_intent_id IS NULL
+          AND ${stampedPaymentIntentId ? sql`stripe_payment_intent_id = ${stampedPaymentIntentId}` : sql`stripe_payment_intent_id IS NULL`}
         RETURNING id
       `);
       if (claimed.rows.length === 0) {
@@ -879,7 +886,7 @@ async function voidClaim(
  * SERVER-VERIFIED Stripe source exactly as `webhook` is — see `SERVER_VERIFIED_ACTORS` below for
  * why that distinction, and not the transport, is what ordering 1 actually turns on.
  */
-export type PromotionActor = "webhook" | "client" | "reconciliation" | "checkout";
+export type PromotionActor = "webhook" | "client" | "reconciliation" | "checkout" | "sweep";
 
 /**
  * Ordering-1 capability (resolve bookings from `pi.metadata.bookingIds` and stamp a PI onto an
@@ -906,9 +913,13 @@ const SERVER_VERIFIED_ACTORS: ReadonlySet<PromotionActor> = new Set<PromotionAct
 
 /** The diary `actorType` for a promotion actor (item-transition-log vocabulary). A client-driven
  *  promotion is the traveler's own confirm poll, hence `traveler`. */
-function diaryActorType(actor: PromotionActor): "webhook" | "reconciliation" | "traveler" {
+function diaryActorType(actor: PromotionActor): "webhook" | "reconciliation" | "traveler" | "system" {
   if (actor === "webhook") return "webhook";
   if (actor === "reconciliation") return "reconciliation";
+  // R164 (G2): the stale-intent sweep promotes a claim it found PAID when it read Stripe. Recorded as
+  // the system, never as the traveler (§13: the diary says who moved it). NOT server-verified for
+  // ordering 1 — the rows it promotes are already stamped, so it never needs to stamp anything.
+  if (actor === "sweep") return "system";
   return "traveler";
 }
 
@@ -1516,6 +1527,179 @@ export async function cancelStalePaymentIntent(opts: {
     logger.error({ ...ctx, err: err?.message }, "[stale-pi] Stripe refused or failed the cancel");
     return { outcome: "error", message: err?.message ?? String(err) };
   }
+}
+
+/**
+ * R164 (G2, decision-maker ruled Sep 27, 2026): how long an AUTHORIZED claim may sit unpaid before the
+ * sweep gives up on it and cancels its PaymentIntent. Not a fee or a rate (§8) — a staleness window.
+ */
+export const STALE_AUTHORIZED_CLAIM_HOURS = 24;
+
+export interface StaleAuthorizedSweepResult {
+  /** PaymentIntents read. */
+  examined: number;
+  /** Stripe says succeeded ⇒ handed to the ONE shared promotion. */
+  promoted: number;
+  /** Stripe already says canceled ⇒ the claim is voided and its capacity released. */
+  voidedCanceled: number;
+  /** Unpaid past STALE_AUTHORIZED_CLAIM_HOURS ⇒ cancelled at Stripe, then voided and released. */
+  voidedStale: number;
+  /** `processing` — money may be in flight; never touched. */
+  leftProcessing: number;
+  /** Unpaid but not yet stale — left for the traveler to finish. */
+  leftYoung: number;
+  /** Stripe could not be read, or refused the cancel — nothing changed; the next pass retries. */
+  quarantined: number;
+  slotsReleased: number;
+  itemsReverted: number;
+}
+
+/** The Stripe reads/writes the sweep needs, injectable so its tests run with no network. */
+export interface StaleSweepStripe {
+  retrieveStatus: (paymentIntentId: string) => Promise<string>;
+  cancel: (paymentIntentId: string) => Promise<CancelStaleOutcome>;
+}
+
+const defaultStaleSweepStripe: StaleSweepStripe = {
+  retrieveStatus: async (pi) => {
+    const { stripePaymentService } = await import("./stripe-payment.service");
+    return (await stripePaymentService.retrievePaymentIntentFacts(pi)).status;
+  },
+  cancel: (pi) => cancelStalePaymentIntent({ paymentIntentId: pi, context: { source: "stale-authorized-sweep" } }),
+};
+
+/**
+ * R164 (G2) — THE STALE AUTHORIZED-CLAIM SWEEP. `sweepExpiredCheckoutClaims` reclaims UNSTAMPED claims
+ * only; a claim that WAS authorized (a PaymentIntent stamped on it, cart cleared, item flipped to
+ * `purchased`) and then never paid — the traveler closed the tab on 3-D Secure, the card form was
+ * abandoned — sat `payment_pending` forever, holding its slot and showing the item as bought. The
+ * ruling, per PaymentIntent, read from STRIPE (never guessed):
+ *   - `succeeded` ⇒ promote, through the ONE `promotePaidCheckout` (actor `sweep`);
+ *   - `canceled` ⇒ void the claim and release its capacity;
+ *   - `processing` ⇒ NEVER touched (money may be moving);
+ *   - otherwise unpaid and older than STALE_AUTHORIZED_CLAIM_HOURS ⇒ cancel through the ONE
+ *     `cancelStalePaymentIntent` (which re-reads Stripe and never cancels processing/succeeded), then
+ *     void and release; younger ⇒ left for the traveler to finish.
+ * A voided claim's plan item goes back to planning through the ONE reverser, guarded on the booking
+ * still being `expired` in the same statement. Stripe unreadable ⇒ nothing changes (quarantine).
+ * Every write is an atomic conditional on the row's own stamped PaymentIntent (§15b), so a webhook
+ * promote racing this sweep leaves exactly one winner. Never throws.
+ */
+export async function sweepStaleAuthorizedClaims(opts?: {
+  /** Claims younger than the checkout TTL are never considered (the traveler is still paying). */
+  minAgeMinutes?: number;
+  staleHours?: number;
+  limit?: number;
+  onlyBookingIds?: string[];
+  stripe?: StaleSweepStripe;
+}): Promise<StaleAuthorizedSweepResult> {
+  const minAge = opts?.minAgeMinutes ?? CHECKOUT_CLAIM_TTL_MINUTES;
+  const staleHours = opts?.staleHours ?? STALE_AUTHORIZED_CLAIM_HOURS;
+  const limit = opts?.limit ?? 200;
+  const scope = opts?.onlyBookingIds;
+  const stripeOps = opts?.stripe ?? defaultStaleSweepStripe;
+  const result: StaleAuthorizedSweepResult = {
+    examined: 0, promoted: 0, voidedCanceled: 0, voidedStale: 0, leftProcessing: 0, leftYoung: 0,
+    quarantined: 0, slotsReleased: 0, itemsReverted: 0,
+  };
+  if (scope && scope.length === 0) return result;
+
+  let rows: Array<ProvisionalClaimRow & { paymentIntentId: string }>;
+  try {
+    const r = await db.execute(sql`
+      SELECT id, trip_id, slot_id, traveler_id, booking_details, idempotency_key, created_at, stripe_payment_intent_id
+      FROM service_bookings
+      WHERE status = 'payment_pending'
+        AND stripe_payment_intent_id IS NOT NULL
+        AND created_at < NOW() - (${String(minAge)} || ' minutes')::interval
+        ${scope ? sql`AND id IN (${sql.join(scope.map((id) => sql`${id}`), sql`, `)})` : sql``}
+      ORDER BY created_at ASC
+      LIMIT ${limit}
+    `);
+    rows = (r.rows as any[]).map((x) => ({
+      id: String(x.id),
+      tripId: x.trip_id ?? null,
+      slotId: x.slot_id ?? null,
+      travelerId: x.traveler_id ?? null,
+      bookingDetails: (x.booking_details ?? null) as Record<string, unknown> | null,
+      idempotencyKey: x.idempotency_key ?? null,
+      createdAt: x.created_at instanceof Date ? x.created_at : new Date(String(x.created_at)),
+      paymentIntentId: String(x.stripe_payment_intent_id),
+    }));
+  } catch (err) {
+    logger.error({ err }, "[stale-authorized-sweep] candidate query failed — no rows touched");
+    return result;
+  }
+
+  const byPi = new Map<string, typeof rows>();
+  for (const row of rows) byPi.set(row.paymentIntentId, [...(byPi.get(row.paymentIntentId) ?? []), row]);
+
+  const voidAll = async (pi: string, group: typeof rows, reason: "stripe_canceled" | "stale_unpaid") => {
+    let voided = 0;
+    for (const row of group) {
+      const v = await voidClaim(row, reason, pi);
+      if (!v.voided) continue;
+      voided += 1;
+      result.slotsReleased += v.slotsReleased;
+      try {
+        const { revertPurchasedItemsForBooking } = await import("./item-routing.service");
+        const rv = await revertPurchasedItemsForBooking(row.id, {
+          actorType: "system",
+          requireBookingStatusIn: [CLAIM_EXPIRED_STATUS],
+        });
+        result.itemsReverted += rv.reverted;
+      } catch (err) {
+        logger.error({ err, bookingId: row.id }, "[stale-authorized-sweep] item revert failed (booking voided; item re-runnable)");
+      }
+    }
+    return voided;
+  };
+
+  for (const [pi, group] of Array.from(byPi.entries())) {
+    result.examined += 1;
+    let status: string;
+    try {
+      status = await stripeOps.retrieveStatus(pi);
+    } catch (err: any) {
+      result.quarantined += 1;
+      logger.warn({ paymentIntentId: pi, err: err?.message }, "[stale-authorized-sweep] Stripe could not be read — nothing changed");
+      continue;
+    }
+
+    if (status === "succeeded") {
+      const promo = await promotePaidCheckout({ paymentIntentId: pi, actor: "sweep", bookingIds: group.map((g) => g.id) });
+      result.promoted += promo.promoted.length;
+      continue;
+    }
+    if (status === "processing") {
+      result.leftProcessing += 1;
+      continue;
+    }
+    if (status === "canceled") {
+      result.voidedCanceled += await voidAll(pi, group, "stripe_canceled");
+      continue;
+    }
+    const oldest = Math.min(...group.map((g) => g.createdAt.getTime()));
+    if (Date.now() - oldest < staleHours * 3600 * 1000) {
+      result.leftYoung += 1;
+      continue;
+    }
+    const cancel = await stripeOps.cancel(pi);
+    if (cancel.outcome === "canceled" || cancel.outcome === "already_canceled") {
+      result.voidedStale += await voidAll(pi, group, "stale_unpaid");
+    } else if (cancel.outcome === "not_cancellable" && cancel.status === "succeeded") {
+      // Paid between our read and the cancel: the same promotion, never a void.
+      const promo = await promotePaidCheckout({ paymentIntentId: pi, actor: "sweep", bookingIds: group.map((g) => g.id) });
+      result.promoted += promo.promoted.length;
+    } else if (cancel.outcome === "not_cancellable") {
+      result.leftProcessing += 1;
+    } else {
+      result.quarantined += 1;
+    }
+  }
+
+  if (result.examined > 0) logger.info({ ...result, staleHours }, "[stale-authorized-sweep] pass complete");
+  return result;
 }
 
 export type LateSuccessRefundResult =
@@ -2140,6 +2324,8 @@ class CheckoutClaimSweepScheduler {
 
   private async run(): Promise<void> {
     await runBackgroundJob("checkout-sweep", () => sweepExpiredCheckoutClaims());
+    // R164 (G2): the stamped-claim half of the same reclaim, on the same cadence.
+    await runBackgroundJob("stale-authorized-sweep", () => sweepStaleAuthorizedClaims());
   }
 }
 
