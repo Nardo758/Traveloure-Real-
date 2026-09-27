@@ -14,7 +14,7 @@ import { OWNER_BOOKING_TRANSITIONS, ownerTransitionRefusal } from "./utils/booki
 import { describeCompletionDeclaration } from "@shared/declared-completion-window";
 import { declaredCompletionWindowDays } from "./config/completion-windows.config";
 import { describeAcceptance } from "./services/booking-acceptance.service";
-import { outOfBandFullyRefundedBookingIds } from "./services/out-of-band-refund.service";
+import { outOfBandFullyRefundedBookingIds, refundSummariesFor } from "./services/out-of-band-refund.service";
 import {
   normalizeGeneratedActivityDurationMinutes,
   normalizeGeneratedDayNumber,
@@ -6449,6 +6449,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // refund covered IN FULL, by the ONE refund reconciliation rule. Read once for the page; a row
     // carries `refundedOutOfBand: true` only then (§13), and its `status` is left as the row holds it.
     const refundedOutOfBand = await outOfBandFullyRefundedBookingIds(bookings.map((b) => b.id));
+    // R163 amendment: what went back, stated by the server from the booking's own refund record or
+    // the cumulative #1288 stamp (never computed by the client). OMITTED when there is no refund.
+    const refundSummaries = await refundSummariesFor(bookings as any);
 
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
       const [reviews, serviceRow, providerRow, tripRow] = await Promise.all([
@@ -6482,6 +6485,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // said "Confirmation code not yet available". NULL only on a row that has none (§13).
         confirmationCode: (booking as any).confirmationCode ?? booking.trackingNumber ?? null,
         ...(refundedOutOfBand.has(booking.id) ? { refundedOutOfBand: true as const } : {}),
+        ...(refundSummaries.has(booking.id) ? { refundSummary: refundSummaries.get(booking.id) } : {}),
         hasReview: reviews.length > 0,
         service: toBookingService(serviceRow),
         provider: toBookingProvider(providerRow),

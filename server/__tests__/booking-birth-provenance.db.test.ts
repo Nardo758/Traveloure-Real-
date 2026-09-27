@@ -706,6 +706,12 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
       "componentCompletions",
       // LD 54: the Q&A Session stamp (ledger 2026-09-24-live-chat-qa-sessions).
       "qaSession",
+      // R163 amendment + R162: the out-of-band stamp, the late-success refund claim, and the app
+      // refund's non-final claim and its record (ledger 2026-09-27-dashboard-refund-reads-refunded).
+      "outOfBandRefund",
+      "lateSuccessRefund",
+      "serviceBookingRefundAttempt",
+      "serviceBookingRefund",
     ],
     "the server-authored key family — see shared/booking-details-admission.ts for each one's reader",
   );

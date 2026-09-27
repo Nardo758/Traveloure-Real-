@@ -304,6 +304,8 @@ test("H1 a SIGNED charge.refunded through the platform endpoint flips the label 
           id: chargeId,
           object: "charge",
           payment_intent: pi,
+          // R163 amendment: the webhook refuses a charge with no trustworthy cents; a real charge has its amount.
+          amount: amountCents,
           amount_refunded: amountCents,
           currency: "usd",
           refunds: { data: [dashboardRefund(amountCents)], has_more: false },

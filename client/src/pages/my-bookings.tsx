@@ -50,6 +50,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { bookingDisplayStatus } from "@/lib/booking-display-status";
+import { refundedBadgeLabel, refundSummaryLine, type RefundSummary } from "@shared/booking-refund-record";
 import { isBookingCancellable } from "@shared/booking-cancellation"; // §18 rule 1 — the cancel route's OWN from-state list, never a second copy
 // Ledger `2026-09-17-surfaces-acceptance-completion` (LD 46 / LD 47). The acceptance and
 // declared-window read-out and its four controls. `/api/my-bookings` now carries the SERVER's own
@@ -135,6 +136,8 @@ interface Booking {
   /** R163: the server's answer — a Stripe-dashboard refund covered this booking's whole share.
    *  Present only when true; `status` stays the row's own. */
   refundedOutOfBand?: true;
+  /** R163 amendment: what went back, stated by the SERVER (omitted when nothing was refunded). */
+  refundSummary?: RefundSummary;
   hasReview?: boolean;
 }
 
@@ -992,7 +995,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Badge variant={status.variant} data-testid={`badge-status-${booking.id}`}>
                 <StatusIcon className="w-3 h-3 mr-1" />
-                {status.label}
+                {actionStatus === "refunded" ? refundedBadgeLabel(status.label, booking.refundSummary) : status.label}
               </Badge>
               {showVisaTimeline && (
                 <Badge variant="outline" className="text-primary border-primary/30" data-testid={`badge-visa-${booking.id}`}>
@@ -1167,6 +1170,13 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
             <p className="font-bold text-lg" data-testid={`text-amount-${booking.id}`}>
               ${parseFloat(booking.totalAmount).toFixed(2)}
             </p>
+            {refundSummaryLine(booking.refundSummary) && (
+              // R163 amendment: the server's own sentence about what went back — "$40.00 of $80.00
+              // refunded", or a shared-payment refund that is never attributed to this one booking.
+              <p className="text-xs text-muted-foreground mt-1" data-testid={`text-refund-summary-${booking.id}`}>
+                {refundSummaryLine(booking.refundSummary)}
+              </p>
+            )}
             <div className="flex gap-2 mt-2 flex-wrap justify-end">
               {canCancel && (
                 <Button

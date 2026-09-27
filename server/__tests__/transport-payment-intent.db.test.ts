@@ -413,11 +413,20 @@ test("T5: the cancel route derives its amount, and the refunder carries a key an
   assert.ok(handoff >= 0, "the whole-row refunder must reach the ONE call site");
   assert.match(refunder.slice(handoff, refunder.indexOf("});", handoff)), /\bidempotencyKey\b/, "the whole-row refunder must pass a key to the helper");
   assert.match(refunder, /`refund-sb-\$\{bookingId\}-\$\{amountCents\}`/, "the key stays amount-scoped: a policy-scaled partial and a full refund are retry-distinct at Stripe");
+  // R163 amendment (merged design, decision-maker Sep 27, 2026): the claim is a NON-FINAL atomic
+  // conditional taken BEFORE the Stripe call, and `refunded` is written only AFTER it, by a second
+  // conditional keyed on that same claim — never a check-then-update, and never before Stripe.
+  const claimAt = refunder.search(/\(COALESCE\(booking_details, '\{\}'::jsonb\) -> \$\{REFUND_ATTEMPT_KEY\}::text\) IS NULL/);
+  assert.ok(claimAt >= 0 && claimAt < handoff, "the non-final claim is an atomic conditional taken before the Stripe call");
+  assert.match(refunder.slice(0, handoff), /AND status NOT IN \(/, "the claim refuses the refused states in the same statement (§18b)");
+  const finalizeAt = refunder.search(/SET status = 'refunded',/);
+  assert.ok(finalizeAt > handoff, "status 'refunded' is written only after Stripe returned the refund");
   assert.match(
-    refunder,
-    /UPDATE service_bookings SET status = 'refunded', updated_at = NOW\(\)\s*\n?\s*WHERE id = \$\{bookingId\} AND status <> 'refunded'/,
-    "the status claim must be the atomic conditional, never a check-then-update",
+    refunder.slice(finalizeAt, finalizeAt + 600),
+    /AND status <> 'refunded'\s*\n\s*AND booking_details #>> \$\{`\{\$\{REFUND_ATTEMPT_KEY\},idempotencyKey\}`\}::text\[\] = \$\{idempotencyKey\}/,
+    "the finalize is an atomic conditional keyed on this attempt's claim",
   );
+  assert.equal(refunder.slice(0, handoff).includes("SET status = 'refunded'"), false, "nothing writes 'refunded' before the Stripe call");
 });
 
 // ══ T6 — provenance: the id can only ever be Stripe's own word, and ONE file writes the column ══

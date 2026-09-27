@@ -41,6 +41,7 @@ import {
   type StripeRefundLike,
 } from "../../shared/out-of-band-refund";
 import { bookingChargeShare, outOfBandRefundCoversShare, type PaymentIntentShareRow } from "./booking-charge-share";
+import { REFUND_RECORD_KEY, refundSummaryFor, type RefundSummary } from "../../shared/booking-refund-record";
 
 export interface RecordOutOfBandRefundResult {
   /** The refunds on the charge that our code did not issue. Empty ⇒ nothing was written. */
@@ -290,6 +291,42 @@ export async function outOfBandFullyRefundedBookingIds(bookingIds: readonly (str
       rowsOnPaymentIntent: byIntent.get(t.stripe_payment_intent_id) ?? [],
     });
     if (covered) out.add(t.id);
+  }
+  return out;
+}
+
+/**
+ * R163 amendment (decision-maker Sep 27, 2026): the refund a traveler surface may STATE for each
+ * booking — the ONE pure `refundSummaryFor` (shared/booking-refund-record.ts) over the booking's own
+ * refund record or its #1288 stamp, plus how many bookings share its payment (so a partial refund on
+ * a shared payment is never attributed to one booking, §13). Read-only; one query, and only for the
+ * rows that carry a refund at all.
+ */
+export async function refundSummariesFor(
+  rows: ReadonlyArray<{ id: string; bookingDetails?: unknown; stripePaymentIntentId?: string | null }>,
+): Promise<Map<string, RefundSummary>> {
+  const out = new Map<string, RefundSummary>();
+  const withRefund = rows.filter((r) => {
+    const bd = (r.bookingDetails ?? {}) as Record<string, unknown>;
+    return bd && typeof bd === "object" && (bd[REFUND_RECORD_KEY] != null || bd[OUT_OF_BAND_REFUND_KEY] != null);
+  });
+  if (withRefund.length === 0) return out;
+  const intents = Array.from(new Set(withRefund.map((r) => r.stripePaymentIntentId).filter((pi): pi is string => !!pi)));
+  const counts = new Map<string, number>();
+  if (intents.length > 0) {
+    const r = await db.execute(sql`
+      SELECT stripe_payment_intent_id AS pi, count(*)::int AS n FROM service_bookings
+       WHERE stripe_payment_intent_id IN (${sql.join(intents.map((pi) => sql`${pi}`), sql`, `)})
+       GROUP BY 1
+    `);
+    for (const row of (r.rows ?? []) as Array<{ pi: string; n: number }>) counts.set(row.pi, row.n);
+  }
+  for (const r of withRefund) {
+    const summary = refundSummaryFor({
+      bookingDetails: r.bookingDetails,
+      bookingsOnPayment: r.stripePaymentIntentId ? counts.get(r.stripePaymentIntentId) ?? 1 : 1,
+    });
+    if (summary) out.set(r.id, summary);
   }
   return out;
 }
