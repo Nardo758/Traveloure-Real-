@@ -176,6 +176,12 @@ const ALLOWED_ADDITIONS = {
   // used to print an invented "1 traveler", the OWNER of a plan with no stated party is asked. It
   // opens the one plan modal on step 4 of this plan; nobody else sees it.
   "slip-meta-ask-party": "RC-12 — 'Who's coming?' on a plan whose party nobody stated (owner only)",
+  // Ledger `2026-09-27-service-fee-before-checkout` (R144). A LATER ruling's control: the Finish
+  // card states the traveler service fee (or its Trip Pass waiver) beside "Go to checkout", from the
+  // server's own `travelerFeePreview` on `GET /api/cart` — the same per-line basis the charge uses
+  // (R148). It carries NO handler — it is a sentence, not an action — and renders only when there is
+  // something ready for checkout and the server answered with a figure (§13: no answer, no number).
+  "slip-traveler-fee-preview": "R144 — the service fee stated before checkout (no handler)",
 } as const;
 
 /**
