@@ -2,7 +2,18 @@
 
 > **Target: ten real Kyoto travelers using the Trips slice in November 2026.**
 
-**Status: DESIGN ONLY — needs ratification. HARD STOP after this part.** No code, no migration, no dashboard.
+**Status: RATIFIED AS DESIGN (decision-maker, Sep 27, 2026), with three conditions that bind the build:**
+1. Events store **ids and enums only** — never tokens, secrets or free text.
+2. Every event carries the **actor id** (LD 44 (f)'s posture: the acting user, server-derived, never client-supplied).
+3. The §7 defaults are accepted **except** any that adds a table, takes a client-supplied amount, or takes a
+   client-supplied actor — those come back to the decision-maker. Checked on ratification: none of the nine adds a
+   table or takes a client amount/actor. **Q6 (retention) is reported back**: its default nulls `user_id` on account
+   deletion, which conflicts with condition 2, and the doc already marks it as needing its own ruling.
+The three defects in §1 (share token in T7 properties, T6 "revenue" on an unpaid request, the undeclared
+`funnel_events` indexes) are fixed in their own lanes (ledger `2026-09-27-funnel-share-token-purged`,
+`2026-09-27-funnel-revenue-on-paid`, `2026-09-27-migration-indexes-declared`). The free-draft event, the adopt-stop
+diary row and the `upsell_impressions` actor/outcome/double-log gaps are this Part's build scope. No code, no migration,
+no dashboard in this document.
 **Brief:** handoff pack 2026-09-27, section C, Part 4 (`docs/planning/briefs/vertical-slice.md`, on main).
 **Code base:** `main` @ `c99acfa8b`. Every `path:line` is on that commit.
 **Sources:** `docs/planning/trip-slip-product-map.md` (§E option sets, §F versions, §G rollout);
