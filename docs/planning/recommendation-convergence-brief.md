@@ -1,5 +1,8 @@
 # Recommendation convergence brief — one engine for the Trip Slip and the marketplace feeds
 
+> **Status header (Sep 27, 2026):** Target architecture. Build order superseded by the vertical-slice plan
+> (`golden-path-trips-kyoto.md`, pending). §G to be re-sequenced in Part 3.
+
 **Status:** DESIGN ONLY — no code. HARD STOP after this document; nothing below is authorized to build until the
 decision-maker ratifies it and answers §G and §H11.
 **Section H** is grounded in `docs/planning/trip-slip-ui-audit.md` (code @ `da3174289`) and assumes the Dispatch 1
@@ -566,7 +569,7 @@ chooses config. Not scheduled.
 
 ## H. Trip Slip surface changes — the product map's steps 1 and 2
 
-> **Rewritten Sep 27, 2026** (decision-maker: the map is ratified except for its §J overrides; ledger
+> **Rewritten Sep 27, 2026** (decision-maker: the map is ratified as target; M/N amendments pending — except for its §J overrides; ledger
 > `2026-09-27-slip-map-ratified`, R146). This section **is** steps 1 and 2 of `docs/planning/trip-slip-product-map.md` §G,
 > in build detail. The earlier H1–H11 (Sep 26) were absorbed into the map. Their later-step content is indexed in H3 so
 > nothing is lost. **Design only; nothing is built until the decision-maker releases step 1.**

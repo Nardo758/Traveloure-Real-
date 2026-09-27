@@ -13,6 +13,18 @@
  *
  * Also enforces append-only shape minimally: numeric ruling IDs must be unique.
  *
+ * R-NUMBER RULES (ledger `2026-09-27-r-number-lint`, R155) — run over the WHOLE ledger, not only
+ * new rows:
+ *   (a) a row whose ruling column opens with the R heading `**R<n> —` must carry the citation
+ *       column `numeric citation R<n>` as its LAST cell, naming the SAME <n>;
+ *   (b) every `numeric citation R<n>` number appears on exactly ONE row;
+ *   (c) no cited R-number reuses a FROZEN numeric row id (the 1–122 series, ruling 25 —
+ *       "never reused"). The frozen set is read from the ledger's own numeric rows.
+ *   NEGATIVE SPACE: a lane-LOCAL R series that predates the global numbering (the partner-demand
+ *   lane's R1–R38) is not a global R-id; its rows are exempted BY NAME in
+ *   LANE_LOCAL_R_SERIES_ROWS and printed on every run (§18d — an exemption is never silent). An
+ *   R-number mentioned in prose (not as the row's opening heading) is not checked.
+ *
  * Node built-ins only — no npm ci needed. Self-test: --self-test
  */
 const fs = require("fs");
@@ -105,6 +117,65 @@ function parseLedger(text) {
   return { entries, ids, malformed };
 }
 
+/**
+ * Rows whose opening `**R<n> —` heading belongs to a LANE-LOCAL series that predates the global
+ * R numbering. They are exempt from rule (a) by name and printed on every run.
+ */
+const LANE_LOCAL_R_SERIES_ROWS = {
+  "2026-08-18-supersession-stamp": "partner-demand lane R28",
+  "2026-08-20-partner-demand-floor-class": "partner-demand lane R29",
+  "2026-08-20-partner-demand-onepager-floor": "partner-demand lane R30",
+  "2026-08-20-partner-demand-onepager-variant": "partner-demand lane R31",
+  "2026-08-20-partner-demand-onepager-lifecycle": "partner-demand lane R32",
+  "2026-08-20-partner-demand-onepager-spotlight": "partner-demand lane R33",
+  "2026-08-20-partner-demand-onepager-trend-lock": "partner-demand lane R34",
+  "2026-08-20-partner-demand-onepager-gap-pairing": "partner-demand lane R35",
+  "2026-08-20-partner-demand-onepager-context-map": "partner-demand lane R36",
+  "2026-08-20-partner-demand-onepager-map-position": "partner-demand lane R37",
+  "2026-08-20-partner-demand-r38-provenance": "partner-demand lane R38",
+};
+
+/** The cells of one ledger table row (outer pipes stripped). */
+function rowCells(line) {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(" | ").map((c) => c.trim());
+}
+
+function lintRNumbers(ledgerText, exempt = LANE_LOCAL_R_SERIES_ROWS) {
+  const failures = [];
+  const exempted = [];
+  const frozen = new Set();
+  const cited = new Map(); // n -> [row ids]
+  for (const line of ledgerText.split("\n")) {
+    const prefix = line.match(ROW_ID_PREFIX_RE);
+    if (!prefix) continue;
+    const id = prefix[1];
+    if (/^\d+$/.test(id)) frozen.add(Number(id));
+    const cells = rowCells(line);
+    const body = cells[3] ?? "";
+    const last = cells[cells.length - 1] ?? "";
+    const head = body.match(/^\*\*R(\d+) —/);
+    const cite = last.match(/^numeric citation R(\d+)\b/);
+    if (head) {
+      if (id in exempt) {
+        exempted.push(`${id} (${exempt[id]})`);
+      } else if (!cite) {
+        failures.push(`Ruling ${id}: opens with R${head[1]} but its last column is not "numeric citation R${head[1]}" (R-rows require the citation column).`);
+      } else if (cite[1] !== head[1]) {
+        failures.push(`Ruling ${id}: heading says R${head[1]} but the citation column says R${cite[1]}.`);
+      }
+    }
+    if (cite) {
+      const n = Number(cite[1]);
+      cited.set(n, [...(cited.get(n) ?? []), id]);
+    }
+  }
+  for (const [n, ids] of cited) {
+    if (ids.length > 1) failures.push(`Duplicate R-number R${n} cited by ${ids.length} rows: ${ids.join(", ")}.`);
+    if (frozen.has(n)) failures.push(`R${n} (row ${ids.join(", ")}) reuses frozen numeric row id ${n} (ruling 25: never reused).`);
+  }
+  return { failures, exempted };
+}
+
 function lint({ ledgerText, workflowText }) {
   const failures = [];
   const warnings = [];
@@ -118,6 +189,10 @@ function lint({ ledgerText, workflowText }) {
   if (dupes.length) failures.push(`Duplicate ruling ids (append-only violated): ${[...new Set(dupes)].join(", ")}`);
 
   if (entries.length === 0) failures.push("No [guarded: ...] entries parsed from the ledger — tag format drifted?");
+
+  const r = lintRNumbers(ledgerText);
+  failures.push(...r.failures);
+  for (const e of r.exempted) warnings.push(`Lane-local R series (exempt by name, not a global R-id): ${e}`);
 
   for (const e of entries) {
     for (const g of e.guards) {
@@ -192,15 +267,39 @@ function selfTest() {
     workflowText,
   });
   const ok5 = bad.failures.some((f) => f.includes("Malformed"));
-  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8) {
+  // R-number rules (R155). (d) an R-row missing its citation column fails.
+  const rNoCite = lintRNumbers("| 2026-01-01-r-lane | 2026-01-01 | [advisory] | **R200 — X.** body | some refs |", {});
+  const ok9 = rNoCite.failures.some((f) => f.includes("R200") && f.includes("citation"));
+  // (e) a mismatched heading/citation fails.
+  const rMismatch = lintRNumbers("| 2026-01-01-r-lane | 2026-01-01 | [advisory] | **R200 — X.** body | numeric citation R201; refs |", {});
+  const ok10 = rMismatch.failures.some((f) => f.includes("R200") && f.includes("R201"));
+  // (f) the same R-number on two rows fails.
+  const rDupe = lintRNumbers([
+    "| 2026-01-01-a | 2026-01-01 | [advisory] | **R200 — A.** | numeric citation R200 |",
+    "| 2026-01-02-b | 2026-01-02 | [advisory] | **R200 — B.** | numeric citation R200 |",
+  ].join("\n"), {});
+  const ok11 = rDupe.failures.some((f) => f.includes("Duplicate R-number R200"));
+  // (g) an R-number reusing a frozen numeric row id fails.
+  const rFrozen = lintRNumbers([
+    "| 7 | 2026-01-01 | [advisory] | frozen row | refs |",
+    "| 2026-01-02-b | 2026-01-02 | [advisory] | **R7 — B.** | numeric citation R7 |",
+  ].join("\n"), {});
+  const ok12 = rFrozen.failures.some((f) => f.includes("frozen numeric row id 7"));
+  // (h) a well-formed R-row passes; an exempt lane-local row is reported, not failed.
+  const rGood = lintRNumbers([
+    "| 2026-01-01-a | 2026-01-01 | [advisory] | **R200 — A.** | numeric citation R200; refs |",
+    "| 2026-01-02-local | 2026-01-02 | [advisory] | **R3 — LOCAL.** | lane refs |",
+  ].join("\n"), { "2026-01-02-local": "some lane R3" });
+  const ok13 = rGood.failures.length === 0 && rGood.exempted.length === 1;
+  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13) {
     console.error("SELF-TEST FAILED", {
-      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8,
+      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13,
       failures, warnings, dupe: dupe.failures, bad: bad.failures,
       slugGhost: slugGhost.failures, slugDupe: slugDupe.failures, slugBad: slugBad.failures,
     });
     process.exit(1);
   }
-  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed)");
+  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse)");
   process.exit(0);
 }
 
@@ -215,4 +314,5 @@ if (failures.length) {
   for (const f of failures) console.error(`FAIL  ${f}`);
   process.exit(1);
 }
-console.log(`decision-guards lint OK (${warnings.length} deferred warning(s))`);
+const laneLocal = warnings.filter((w) => w.startsWith("Lane-local R series")).length;
+console.log(`decision-guards lint OK (${warnings.length - laneLocal} deferred warning(s), ${laneLocal} lane-local R row(s) exempt by name)`);

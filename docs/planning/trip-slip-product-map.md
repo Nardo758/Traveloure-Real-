@@ -1,9 +1,12 @@
 # Trip Slip product map — one Slip, capability modules, experience groups
 
-**Status: RATIFIED except the §J overrides** (decision-maker, Sep 27, 2026; ledger `2026-09-27-slip-map-ratified`,
+> **Status header (Sep 27, 2026):** Target architecture. Build order superseded by the vertical-slice plan
+> (`golden-path-trips-kyoto.md`, pending). §G to be re-sequenced in Part 3.
+
+**Status: RATIFIED AS TARGET; M/N amendments pending** — except the §J overrides (decision-maker, Sep 27, 2026; ledger `2026-09-27-slip-map-ratified`,
 R146). §I was ruled Sep 26 (R124–R129) and §J–§L's questions Sep 27 (R136–R142). The §J override record holds the one
-confirmed override (R147). Build proceeds step by step from §G. Brief section H is now steps
-1–2 in build detail. Schema named here is ratified as designed, but each migration still lands in its own lane under
+confirmed override (R147). Build order: superseded — see the status header above. Brief section H is now steps
+1–2 in build detail. Schema named here is ratified as target; M/N amendments pending, but each migration still lands in its own lane under
 the Coordination Prevention rules.
 **Code base:** `origin/main` @ `da3174289` (the same commit as the UI audit). Every `path:line` is on that commit.
 **Inputs:** `docs/planning/trip-slip-ui-audit.md` (cited as **audit F2**, **audit G3**, …) and
@@ -947,7 +950,7 @@ never written), **absent**. "→ K" marks an ingredient §K now carries because 
 | **… trend** | absent in the engine | TravelPulse `trendScore` lives in `recommendation.service.ts:602-636` only. | Brief phase 4. |
 | **… quality** | absent in the engine | Rating used by `location-view.service.ts` and `recommendation.service.ts`, not the upsell engine. | Needed by R128's interim Best fit (rating) — the optimizer's own `average_rating` metric is the source there. |
 | **… boost** | partial | `featured-sort.ts` (`FEATURED_BOOST`) on city pages; the engine's "boosts" are expert endorsement (0.15) and revenue (≤0.15). | Brief §C; revenue weight 0 on the slip (brief G-4 default). |
-| **Cancellation + refund by tier (R114)** | found (off-slip) | Tiers in `cancellation-policy.service.ts:11-14, 160-185`; snapshotted at purchase; `GET /api/bookings/:id/cancel-preview`, `POST …/cancel` (`routes.ts:8081-8200`); R114 fee refundability. Read by `my-bookings.tsx` only. | S5 Bookings (DT). The slip has no cancel control; paid rows get no tools (`slip-item-tools.ts:87-96`). |
+| **Cancellation + refund by tier (R156, formerly R114)** | found (off-slip) | Tiers in `cancellation-policy.service.ts:11-14, 160-185`; snapshotted at purchase; `GET /api/bookings/:id/cancel-preview`, `POST …/cancel` (`routes.ts:8081-8200`); R156 fee refundability. Read by `my-bookings.tsx` only. | S5 Bookings (DT). The slip has no cancel control; paid rows get no tools (`slip-item-tools.ts:87-96`). |
 | **Refund → item state** | partial — **suspected defect** | `revertPurchasedItemsForBooking` flips `purchased → in_planning` but **keeps `booking_id`** (`item-routing.service.ts:117-156`), and the assembler attaches a booking of any status (`trip-plan.service.ts:505-526, 821-823`). A refunded item would still read **"Booked"**. Inferred from code, not reproduced. | Filed for a fix lane; S5 depends on it. |
 | **Booking changes / reschedule** | absent | No route; `offering-contract-snapshot.ts:71` says `reschedulePolicyId` is not recorded. | Missing ingredient for S5. |
 | **Reopen on a partly-purchased plan** | found | `POST /api/trips/:tripId/reopen` clears `finalized_at` only; purchased items untouched. Since #1109, add-to-checkout on a finalized plan is limited to the current final version, and the client offers Reopen on `not_in_final` (R123). | B7. |
