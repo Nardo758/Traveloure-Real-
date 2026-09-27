@@ -378,3 +378,19 @@ export const PARTIAL_COMPLETION_FROM_STATUSES: readonly string[] = ["confirmed"]
  * claim.
  */
 export const ALL_UNDELIVERED_CANCEL_FROM_STATUSES: readonly string[] = ["confirmed"];
+
+/**
+ * ── R163 AMENDMENT (merged design; decision-maker Sep 27, 2026) — WHICH BOOKINGS THE APP-ISSUED
+ * WHOLE-ROW REFUND (`refundServiceBooking`) MAY NOT TOUCH ─────────────────────────────────────────
+ *
+ * That refund serves every PAID state on the rail (a traveler or provider cancel, an admin refund, a
+ * dispute upheld), so its guard is written as the states it REFUSES, and the refusal is enforced
+ * in the same atomic conditional that takes its claim (§15/§18b):
+ *   - `payment_pending` — an unauthorized claim by construction (§15b); the claim machine owns it.
+ *   - `failed` — failed is final (R162); a late success on it is refunded by the webhook only.
+ *   - `disputed` — a refund while a dispute is open goes through the DISPUTE path, never races it.
+ *     The admin dispute-uphold route IS that path: it passes `allowDisputed` explicitly, and it
+ *     already refuses while a chargeback is open.
+ *   - `refunded` — already done.
+ */
+export const APP_REFUND_REFUSED_FROM_STATUSES: readonly string[] = ["payment_pending", "failed", "disputed", "refunded"];

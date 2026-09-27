@@ -731,6 +731,11 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       const { lostChargebackRefusalBody } = await import('../services/lost-chargeback-guard.service');
       return res.status(409).json({ success: false, ...lostChargebackRefusalBody(error.result) });
     }
+    if (error?.name === 'ServiceBookingRefundRefusedError') {
+      // R163 amendment: payment_pending, failed and disputed are never refunded here — a dispute
+      // is refunded only by resolving it. Refused before the claim; nothing changed.
+      return res.status(409).json({ success: false, error: 'refund_refused_status', status: error.bookingStatus, message: error.message });
+    }
     res.status(500).json({
       success: false,
       error: error.message,

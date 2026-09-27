@@ -1729,6 +1729,11 @@ async function loadKnownRefundIds(stripeRefundIds: string[]): Promise<Set<string
   const rows = await db.execute(sql`
     SELECT stripe_refund_id FROM refunds
     WHERE stripe_refund_id IN (${sql.join(stripeRefundIds.map((v) => sql`${v}`), sql`, `)})
+      -- R163 amendment: the charge.refunded webhook now writes an audit row per refund id for
+      -- EVERY refund on the charge, dashboard refunds included, and never names a booking. "Known"
+      -- keeps its meaning — an app path recorded this refund against a booking — so a refund we did
+      -- not issue still surfaces as refund_not_reversed (#1288's backstop is unchanged).
+      AND booking_id IS NOT NULL
   `);
   return new Set((rows.rows as any[]).map((r) => String(r.stripe_refund_id)));
 }

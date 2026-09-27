@@ -7504,6 +7504,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               const { lostChargebackRefusalBody } = await import("./services/lost-chargeback-guard.service");
               return res.status(409).json(lostChargebackRefusalBody(refundErr.result));
             }
+            if (refundErr?.name === "ServiceBookingRefundRefusedError") {
+              // R163 amendment: a state the app refund never touches (payment_pending, failed,
+              // disputed). Refused before the claim — no Stripe call, nothing changed.
+              return res.status(409).json({ error: "refund_refused_status", status: refundErr.bookingStatus, message: refundErr.message });
+            }
             return res.status(502).json({
               message: "The refund could not be issued, so the booking was NOT cancelled. Please try again.",
               error: refundErr?.message,
@@ -8197,8 +8202,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           { amountOverride: quote.refundAmount, feeRefundPercent: quote.refundPercent },
         );
 
-        // Refund succeeded (status now 'refunded') — stamp the cancellation audit fields
-        // without touching the terminal status.
+        // Refund issued (status now 'refunded' — set by refundServiceBooking only after Stripe
+        // returned the refund, R163 amendment) — stamp the cancellation audit fields without
+        // touching the terminal status.
         const { db } = await import("./db");
         const { sql } = await import("drizzle-orm");
         await db.execute(sql`

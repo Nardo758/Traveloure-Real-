@@ -35,6 +35,7 @@ import {
   OUT_OF_BAND_REFUND_CLEARED_KEY,
   OUT_OF_BAND_REFUND_KEY,
   clearedOutOfBandRefundIds,
+  mergeRefundSnapshots,
   outOfBandRefundOf,
   outOfBandRefunds,
   type StripeRefundLike,
@@ -55,6 +56,8 @@ export interface RecordOutOfBandRefundResult {
 export async function recordOutOfBandRefund(input: {
   paymentIntentId: string | null | undefined;
   chargeId: string | null | undefined;
+  /** The charge's own `amount` in cents, recorded on the stamp so a surface can say "$X of $Y". */
+  chargeAmountCents?: number | null;
   refunds: readonly StripeRefundLike[];
   now?: Date;
 }): Promise<RecordOutOfBandRefundResult> {
@@ -82,8 +85,12 @@ export async function recordOutOfBandRefund(input: {
       const cleared = clearedOutOfBandRefundIds(r.booking_details);
       const pending = foreign.filter((f) => !cleared.has(f.id));
       if (pending.length === 0) continue;
-      const refundIds = pending.map((f) => f.id);
-      const amountCents = pending.reduce((sum, f) => sum + (Number.isFinite(f.amount) ? f.amount : 0), 0);
+      // R163 amendment: merged BY REFUND ID with what the stamp already holds, so the amount is
+      // cumulative and out-of-order snapshots cannot lower it (`mergeRefundSnapshots`).
+      const priorMarker = outOfBandRefundOf(r.booking_details);
+      const merged = mergeRefundSnapshots(priorMarker?.refunds ?? null, pending);
+      const refundIds = merged.refundIds.filter((id) => !cleared.has(id));
+      const amountCents = merged.amountCents;
       await tx.execute(sql`
         UPDATE service_bookings
            SET booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(
@@ -93,7 +100,9 @@ export async function recordOutOfBandRefund(input: {
                    'paymentIntentId', ${input.paymentIntentId}::text,
                    'chargeId', ${input.chargeId ?? null}::text,
                    'refundIds', ${JSON.stringify(refundIds)}::jsonb,
-                   'amountCents', ${amountCents}::int
+                   'refunds', ${JSON.stringify(merged.refunds)}::jsonb,
+                   'chargeAmountCents', ${input.chargeAmountCents ?? null}::bigint,
+                   'amountCents', ${amountCents}::bigint
                  )),
                updated_at = NOW()
          WHERE id = ${r.id}

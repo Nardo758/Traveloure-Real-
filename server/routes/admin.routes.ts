@@ -1643,6 +1643,9 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // the full-refund default).
     const refund = await stripePaymentService.refundServiceBooking(bookingId, reason || "dispute_upheld", {
       feeRefundPercent: 100, // fee-literal-ok: 100 = full make-whole refund %, not a fee_bands rate
+      // R163 amendment: this route IS the dispute path, the one caller that may refund a
+      // `disputed` booking (it refused above while a chargeback is still open).
+      allowDisputed: true,
     });
 
     // 4: Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its
@@ -1685,6 +1688,9 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     if (err?.name === "LostChargebackRefundBlockedError") {
       const { lostChargebackRefusalBody } = await import("../services/lost-chargeback-guard.service");
       return res.status(409).json(lostChargebackRefusalBody(err.result));
+    }
+    if (err?.name === "ServiceBookingRefundRefusedError") {
+      return res.status(409).json({ error: "refund_refused_status", status: err.bookingStatus, message: err.message });
     }
     res.status(500).json({ message: `Failed to uphold dispute: ${err.message}` });
   }
