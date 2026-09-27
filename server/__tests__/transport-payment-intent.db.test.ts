@@ -77,7 +77,7 @@ import {
   stampTransportPaymentIntent,
   TRANSPORT_PI_STAMPABLE_FROM,
 } from "../services/checkout-claim.service";
-import { quoteCancellationForBooking } from "../services/cancellation-policy.service";
+import { quoteCancellationForBooking, refundOptionsForQuote } from "../services/cancellation-policy.service";
 import { storage } from "../storage";
 import { BOOKING_CANCELLABLE_FROM_STATUSES } from "@shared/booking-cancellation";
 import { travelerChargeForRow } from "../services/traveler-charge";
@@ -326,17 +326,18 @@ test("T4: the refund branch — refused without the id, reachable with it, amoun
     insuranceFee: row.insurance_fee,
     conciergeFeeSnapshot: (row.booking_details as any)?.travelerCharge?.conciergeFee ?? null,
   });
-  assert.equal(quote!.refundAmount, charged, "the refund basis is the row's own charged amount");
+  // R166: the quote's BOOKING share is the row's own charged amount; its whole refund adds the
+  // traveler service fee actually charged, at the same percent (here the full tier).
+  assert.equal(quote!.bookingRefundAmount, charged, "the booking share's basis is the row's own charged amount");
+  const feeCharged = Number((row.booking_details as any)?.travelerServiceFee?.charged ?? 0);
+  assert.equal(quote!.refundAmount, Math.round((charged + feeCharged) * 100) / 100, "the quote is the whole refund — booking + fee");
 
   // BEFORE the stamp: the refunder refuses outright. This is the defect, reproduced at the
   // service — the route never even reaches here, because its third conjunct is false first.
   assert.equal(row.stripe_payment_intent_id, null);
   const { stripePaymentService } = await import("../services/stripe-payment.service");
   await assert.rejects(
-    () => stripePaymentService.refundServiceBooking(bookingId, "requested_by_customer", {
-      amountOverride: quote!.refundAmount,
-      feeRefundPercent: quote!.refundPercent,
-    }),
+    () => stripePaymentService.refundServiceBooking(bookingId, "requested_by_customer", refundOptionsForQuote(quote!)),
     /no payment intent to refund/i,
     "without the id there is nothing to refund against — the traveler's money stays put",
   );
@@ -364,8 +365,9 @@ test("T5: the cancel route derives its amount, and the refunder carries a key an
     "the refund gate must still read the policy quote AND the row's own PaymentIntent",
   );
   // §14: what is refunded comes from the server-derived quote, never from the request.
-  assert.match(routes, /amountOverride: quote\.refundAmount/, "the refund amount is the quote's, not the body's");
-  assert.match(routes, /feeRefundPercent: quote\.refundPercent/);
+  // R166: the refund options are built from the QUOTE by the ONE builder, never from the body.
+  assert.match(routes, /refundOptionsForQuote\(quote\)/, "the refund amount is the quote's, not the body's");
+  assert.ok(!/amountOverride: quote\.refundAmount/.test(routes), "the previewed TOTAL is never passed as the booking share (R166)");
   const cancelHandler = routes.slice(routes.indexOf('app.post("/api/bookings/:id/cancel"'));
   const handlerBody = cancelHandler.slice(0, cancelHandler.indexOf('app.post("/api/expert/reviews/:id/respond"'));
   assert.ok(handlerBody.length > 0, "the cancel handler must still be locatable");
