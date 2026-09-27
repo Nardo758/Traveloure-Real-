@@ -22,7 +22,7 @@ import { db } from "../db";
 import { users, providerServices, readyMadeTrips } from "@shared/schema";
 import { transformDevHtml } from "../vite-dev-html";
 import { injectIntoHead } from "../utils/html-head";
-import { HELP_ARTICLE_SLUGS, helpArticlePath } from "@shared/help-articles";
+import { PUBLISHED_HELP_ARTICLE_SLUGS, helpArticlePath } from "@shared/help-article-slugs";
 
 const router = Router();
 
@@ -45,9 +45,10 @@ const STATIC_ROUTES = [
   "/visa-help",
   "/press",
   "/careers",
-  // Lane B: the Help center and each article (one slug per article, shared/help-articles.ts).
+  // Lane B: the Help center and each PUBLISHED article — a held article (an unshipped feature)
+  // is never in the sitemap (shared/help-article-slugs.ts).
   "/help",
-  ...HELP_ARTICLE_SLUGS.map(helpArticlePath),
+  ...PUBLISHED_HELP_ARTICLE_SLUGS.map(helpArticlePath),
 ];
 
 const escXml = (s: string) =>

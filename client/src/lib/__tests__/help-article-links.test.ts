@@ -1,7 +1,8 @@
 /**
  * Every in-app link to a Help article names a real article (Lane B, Sep 27, 2026).
  *
- * L1 every `helpArticlePath("…")` call under client/src names a slug in `HELP_ARTICLE_SLUGS` (the
+ * L1 every `helpArticlePath("…")` call under client/src names a PUBLISHED slug — a held article
+ * (its feature not yet on `main`) fails here as surely as a typo (the
  * TS union already refuses a typo; this also covers a cast or a plain-JS call site). L2 no raw
  * "/help/<slug>" string literal names a slug that is not an article. L3 the ruled link sites carry
  * their link: the failed-payment note and checkout error → payment-didnt-go-through, the cancel
@@ -16,7 +17,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { HELP_ARTICLE_SLUGS } from "@shared/help-articles";
+import { HELP_ARTICLE_SLUGS, PUBLISHED_HELP_ARTICLE_SLUGS } from "@shared/help-article-slugs";
 
 const ROOT = process.cwd();
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -34,6 +35,8 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const SOURCES = walk(path.join(ROOT, "client/src")).map((f) => ({ f: path.relative(ROOT, f), src: fs.readFileSync(f, "utf8") }));
 const SLUGS = new Set<string>(HELP_ARTICLE_SLUGS);
+// A HELD article (its feature is not on `main` yet) may not be linked from anywhere in the app.
+const PUBLISHED = new Set<string>(PUBLISHED_HELP_ARTICLE_SLUGS);
 
 test("L1 every helpArticlePath call names a real article", () => {
   const bad: string[] = [];
@@ -41,18 +44,20 @@ test("L1 every helpArticlePath call names a real article", () => {
   for (const { f, src } of SOURCES) {
     for (const m of src.matchAll(/helpArticlePath\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) {
       calls++;
-      if (!SLUGS.has(m[1])) bad.push(`${f}: ${m[1]}`);
+      if (!SLUGS.has(m[1])) bad.push(`${f}: ${m[1]} (no such article)`);
+      else if (!PUBLISHED.has(m[1])) bad.push(`${f}: ${m[1]} (held — its feature is not on main)`);
     }
   }
   assert.ok(calls >= 5, `expected the ruled link sites to call helpArticlePath, found ${calls}`);
   assert.deepEqual(bad, []);
 });
 
-test("L2 no raw /help/<slug> literal names a missing article", () => {
+test("L2 no raw /help/<slug> literal names a missing or held article", () => {
   const bad: string[] = [];
   for (const { f, src } of SOURCES) {
     for (const m of src.matchAll(/["'`]\/help\/([a-z0-9-]+)["'`]/g)) {
-      if (!SLUGS.has(m[1])) bad.push(`${f}: /help/${m[1]}`);
+      if (!SLUGS.has(m[1])) bad.push(`${f}: /help/${m[1]} (no such article)`);
+      else if (!PUBLISHED.has(m[1])) bad.push(`${f}: /help/${m[1]} (held — its feature is not on main)`);
     }
   }
   assert.deepEqual(bad, []);

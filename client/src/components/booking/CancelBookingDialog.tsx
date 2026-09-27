@@ -27,7 +27,7 @@
  */
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { helpArticlePath } from "@shared/help-articles";
+import { helpArticlePath } from "@shared/help-article-slugs";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";

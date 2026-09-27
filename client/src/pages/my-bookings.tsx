@@ -1,4 +1,4 @@
-import { helpArticlePath } from "@shared/help-articles";
+import { helpArticlePath } from "@shared/help-article-slugs";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";

@@ -43,7 +43,7 @@
  * with no public address gets a sentence, not a dead button; a card whose rows are all gated away
  * is not rendered at all.
  */
-import { helpArticlePath } from "@shared/help-articles";
+import { helpArticlePath } from "@shared/help-article-slugs";
 import { useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {

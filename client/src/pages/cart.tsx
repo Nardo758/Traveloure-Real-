@@ -1,4 +1,4 @@
-import { helpArticlePath } from "@shared/help-articles";
+import { helpArticlePath } from "@shared/help-article-slugs";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { canRemoveBeforePayment, readCartIntentParam, resolveCartIntent } from "@/lib/cart-intent";
 import { useQuery, useMutation } from "@tanstack/react-query";

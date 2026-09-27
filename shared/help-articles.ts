@@ -29,28 +29,30 @@
 import { CANCELLATION_POLICY_TYPES, CANCELLATION_SCHEDULE, cancellationTierSchedule } from "./cancellation-schedule";
 import { CHECKOUT_CLAIM_TTL_MINUTES, STALE_AUTHORIZED_CLAIM_HOURS } from "./checkout-hold";
 
-export const HELP_ARTICLE_SLUGS = [
-  "how-planning-works",
-  "what-a-local-does",
-  "comparing-options",
-  "free-vs-paid",
-  "trip-pass-and-fees",
-  "booking-through-us",
-  "cancellations-and-refunds",
-  "payment-didnt-go-through",
-  "disputes-and-under-review",
-  "become-a-local-expert",
-] as const;
-export type HelpArticleSlug = (typeof HELP_ARTICLE_SLUGS)[number];
+import {
+  HELP_ARTICLE_SLUGS,
+  isHelpArticlePublished,
+  type HelpArticleSlug,
+} from "./help-article-slugs";
+// The occasion count (article 1) is READ from the generated §J spec — itself generated from the
+// experience_types seed by docs/planning/tools/trip-slip-spec.mjs — never typed here.
+// shared/__tests__/help-articles.test.ts parses the seed directly and fails if the spec is stale.
+import tripSlipSpec from "../docs/planning/tools/trip-slip-spec.json";
 
-/** The ONE way the app links to an article. */
-export function helpArticlePath(slug: HelpArticleSlug): string {
-  return `/help/${slug}`;
-}
+export {
+  HELP_ARTICLE_SLUGS,
+  PUBLISHED_HELP_ARTICLE_SLUGS,
+  helpArticlePath,
+  isHelpArticleSlug,
+  isHelpArticlePublished,
+  type HelpArticleSlug,
+  type TrackAStep,
+} from "./help-article-slugs";
 
-export function isHelpArticleSlug(value: string): value is HelpArticleSlug {
-  return (HELP_ARTICLE_SLUGS as readonly string[]).includes(value);
-}
+/** The seeded occasions (the §J spec's rows, less its synthetic "(plain plan)" row). */
+export const SEEDED_OCCASION_COUNT: number = (tripSlipSpec as { rows: Array<{ slug: string }> }).rows.filter(
+  (r) => !r.slug.startsWith("("),
+).length;
 
 /** The slice of `GET /api/pricing` the articles read. Field names are that route's own. */
 export interface HelpPricing {
@@ -93,6 +95,7 @@ type PricingToken = (typeof HELP_PRICING_TOKENS)[number];
 /** Static placeholders — resolved from the shared constants the server itself reads. */
 const STATIC_TOKENS: Readonly<Record<string, string>> = {
   holdMinutes: `${CHECKOUT_CLAIM_TTL_MINUTES} minutes`,
+  occasionCount: String(SEEDED_OCCASION_COUNT),
   staleWindow: STALE_AUTHORIZED_CLAIM_HOURS === 24 ? "a day" : `${STALE_AUTHORIZED_CLAIM_HOURS} hours`,
 };
 
@@ -159,7 +162,7 @@ export function helpArticleSearchText(a: HelpArticle): string {
 }
 
 /** Articles whose searchable text contains every word of the query (case-insensitive). */
-export function searchHelpArticles(query: string, articles: readonly HelpArticle[] = HELP_ARTICLES): HelpArticle[] {
+export function searchHelpArticles(query: string, articles: readonly HelpArticle[] = PUBLISHED_HELP_ARTICLES): HelpArticle[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [...articles];
   return articles.filter((a) => {
@@ -180,7 +183,7 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     summary: "Start with an occasion and a place; we build a plan around one anchor.",
     keywords: ["plan", "occasion", "anchor", "draft", "finalize", "start"],
     blocks: [
-      { kind: "p", text: "You start with two things: the occasion (a trip, a wedding, an anniversary dinner, one of 28) and where in the world you want it. From that we create a plan built around one anchor: your hotel for a trip, the venue for an event, the table for an evening." },
+      { kind: "p", text: "You start with two things: the occasion (a trip, a wedding, an anniversary dinner, one of {occasionCount}) and where in the world you want it. From that we create a plan built around one anchor: your hotel for a trip, the venue for an event, the table for an evening." },
       { kind: "p", text: "The plan is a list of days and items you can add to, move and remove. Our AI drafts the first version for free on an empty plan. A local expert can check it, add to it or take it over. When you're ready, you finalize the plan and book the items you want, either through us or on your own." },
     ],
   },
@@ -325,6 +328,15 @@ export function resolveHelpArticle(
   return { blocks, pricingOmitted };
 }
 
+/** Any article, held or not — for tests and tooling. Pages use `getPublishedHelpArticle`. */
 export function getHelpArticle(slug: string): HelpArticle | undefined {
   return HELP_ARTICLES.find((a) => a.slug === slug);
+}
+
+/** The articles a visitor can see: listed, searchable, in the sitemap, routable. */
+export const PUBLISHED_HELP_ARTICLES: readonly HelpArticle[] = HELP_ARTICLES.filter((a) => isHelpArticlePublished(a.slug));
+
+/** A published article, or undefined for an unknown OR held slug (the page answers "not found"). */
+export function getPublishedHelpArticle(slug: string): HelpArticle | undefined {
+  return PUBLISHED_HELP_ARTICLES.find((a) => a.slug === slug);
 }

@@ -13,7 +13,7 @@ import {
   useElements,
 } from '@stripe/react-stripe-js';
 import { CreditCard, Lock, AlertCircle } from 'lucide-react';
-import { helpArticlePath } from '@shared/help-articles';
+import { helpArticlePath } from '@shared/help-article-slugs';
 
 // Phase 5: memoized getter — defers loadStripe until first render of a checkout surface.
 // Key selection mirrors the server resolver: in dev, prefer the TEST publishable key so the

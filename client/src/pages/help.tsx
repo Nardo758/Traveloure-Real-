@@ -7,8 +7,8 @@ import { SEOHead } from "@/components/seo-head";
 import { CompanyPage, CompanySection, FRAUNCES } from "@/components/company/company-page";
 import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 import {
-  HELP_ARTICLES,
-  getHelpArticle,
+  PUBLISHED_HELP_ARTICLES,
+  getPublishedHelpArticle,
   helpArticlePath,
   resolveHelpArticle,
   searchHelpArticles,
@@ -108,7 +108,8 @@ export default function HelpPage() {
 
 export function HelpArticlePage() {
   const params = useParams<{ slug: string }>();
-  const article = getHelpArticle(params.slug ?? "");
+  // A held article (its feature is not on `main` yet) answers exactly like an unknown slug.
+  const article = getPublishedHelpArticle(params.slug ?? "");
   const pricing = usePricing();
 
   if (!article) {
@@ -127,8 +128,8 @@ export function HelpArticlePage() {
   }
 
   const { blocks, pricingOmitted } = resolveHelpArticle(article, pricing);
-  const index = HELP_ARTICLES.findIndex((a) => a.slug === article.slug);
-  const next = HELP_ARTICLES[index + 1];
+  const index = PUBLISHED_HELP_ARTICLES.findIndex((a) => a.slug === article.slug);
+  const next = PUBLISHED_HELP_ARTICLES[index + 1];
 
   return (
     <>

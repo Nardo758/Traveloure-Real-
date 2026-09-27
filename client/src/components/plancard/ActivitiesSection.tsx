@@ -16,7 +16,7 @@ import {
   retryGoesToPlan,
 } from "@/lib/item-booking-state";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
-import { helpArticlePath } from "@shared/help-articles";
+import { helpArticlePath } from "@shared/help-article-slugs";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {

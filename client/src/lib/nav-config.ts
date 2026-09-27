@@ -370,7 +370,7 @@ export const footerSectionsConfig: FooterSectionConfig[] = [
     i18nKey: 'footer.sections.support',
     links: [
       { label: 'Help center', i18nKey: 'footer.links.helpCenter', href: '/help' },
-      { label: 'FAQ', i18nKey: 'footer.links.faq',                href: '/faq' },
+      // No FAQ link: /faq redirects to /help, and two links to one page is one too many (Lane B).
       { label: 'Contact', i18nKey: 'footer.links.contact',        href: '/contact' },
       { label: 'Visa help', i18nKey: 'footer.links.visaHelp',     href: '/visa-help' },
       { label: 'Privacy', i18nKey: 'footer.links.privacy',        href: '/privacy' },

@@ -17,7 +17,7 @@
  *
  * NOTHING HERE WRITES, CHARGES OR AUTHORIZES. It reads three DTO fields and returns a word.
  */
-import type { HelpArticleSlug } from "@shared/help-articles";
+import type { HelpArticleSlug } from "@shared/help-article-slugs";
 import {
   ITEM_BOOKING_LABELS,
   itemBookingLabelStatus,
