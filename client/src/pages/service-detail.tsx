@@ -49,6 +49,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { format, addMonths, subMonths, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useRouteRefusalToast } from "@/components/plancard/use-route-refusal-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocale } from "@/hooks/use-locale";
@@ -524,6 +525,7 @@ export default function ServiceDetailPage() {
   const searchString = useSearch();
   const [tripCtx] = useTripContext();
   const targetTripId = resolveTargetTripId(searchString, tripCtx);
+  const { showRefusal } = useRouteRefusalToast(targetTripId);
 
   // ── "WHICH EVENT?" (ledger 2026-09-04-which-event-picker; migration 277) ─────────────────
   // A plan is ONE `trips` row and an event inside it is ONE `user_experiences` row bound by
@@ -613,11 +615,15 @@ export default function ServiceDetailPage() {
       if (body?.projection?.action === "error") throw new Error("projection failed");
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       navigate(BUY_NOW_CART_PATH);
-    } catch {
-      toast({
-        title: "Added to your plan",
-        description: "It couldn't be moved to checkout automatically — send it to checkout from your plan.",
-      });
+    } catch (err) {
+      // Ledger `2026-09-26-finalized-checkout-messages`: into a FINALIZED plan the rail answers
+      // `not_in_final` — the item is on the plan but not in its finalized version. The traveler is
+      // told the plan is finalized and offered Reopen, never a generic failure.
+      showRefusal(
+        err,
+        "Added to your plan",
+        "It couldn't be moved to checkout automatically — send it to checkout from your plan.",
+      );
       navigate(planRoute);
     }
   };

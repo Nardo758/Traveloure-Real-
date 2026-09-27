@@ -66,9 +66,10 @@ const statusOptions = [
   { value: "completed", label: "Completed" },
 ];
 
-const NEXT_ACTION_LABELS: Record<string, (n: number) => string> = {
+const NEXT_ACTION_LABELS: Record<string, (n: number, expertAssigned: boolean) => string> = {
   ready_for_checkout: (n) => `${n} ready for checkout`,
-  with_expert: (n) => `${n} with your expert`,
+  // Never "with your expert" when nobody is assigned (ledger `2026-09-26-send-to-expert-needs-expert`).
+  with_expert: (n, expertAssigned) => (expertAssigned ? `${n} with your expert` : `${n} not with an expert — none assigned`),
   in_planning: (n) => `${n} in planning`,
 };
 
@@ -178,7 +179,7 @@ function TripRow({ trip, viewMode, now }: { trip: any; viewMode: "grid" | "list"
                       {model.hasAdvisor && model.nextAction && " · "}
                       {model.nextAction && (
                         <span data-testid={`next-action-${trip.id}`}>
-                          Next: {NEXT_ACTION_LABELS[model.nextAction.status]?.(model.nextAction.n)}
+                          Next: {NEXT_ACTION_LABELS[model.nextAction.status]?.(model.nextAction.n, plancard?.expertAssigned === true)}
                         </span>
                       )}
                     </p>

@@ -280,8 +280,9 @@ test.describe("Lane 1 Phase 1d — Trip Card routing UI (browser)", () => {
     await page.goto(`${BASE_URL}/plans/${tripId}`);
     await page.waitForSelector(`[data-testid="slip-item-${itemId}"]`, { timeout: 30_000 });
 
-    // Owner sees BOTH edges available from in_planning.
-    await expect(page.locator(`[data-testid="button-route-send-expert-${itemId}"]`)).toBeVisible();
+    // With NO expert on the plan the owner is not offered "Send to expert" (ledger
+    // `2026-09-26-send-to-expert-needs-expert`) — only the checkout edge.
+    await expect(page.locator(`[data-testid="button-route-send-expert-${itemId}"]`)).toHaveCount(0);
     const addToCheckoutBtn = page.locator(`[data-testid="button-route-add-checkout-${itemId}"]`);
     await expect(addToCheckoutBtn).toBeVisible();
 
@@ -311,17 +312,20 @@ test.describe("Lane 1 Phase 1d — Trip Card routing UI (browser)", () => {
     await registerUser(page.request, ownerEmail, "UiOwner2", "Traveler");
     const tripId = await createTrip(page.request);
     const itemId = await createItem(page.request, tripId, "Gion District Walk");
-    const routeRes = await page.request.post(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/route`, {
-      data: { to: "with_expert" },
-    });
-    expect(routeRes.status()).toBe(200);
 
     // Expert side: a SEPARATE browser context (own cookie jar) — never the owner's session.
+    // Granted BEFORE the route: "Send to expert" needs an assigned expert (ledger
+    // `2026-09-26-send-to-expert-needs-expert`), so routing to nobody is now a 409.
     const expertCtx = await browser.newContext();
     const expertPage = await expertCtx.newPage();
     const expertEmail = `e2e-p1d-ui-expert-${uid()}@example.com`;
     const expertId = await registerUser(expertPage.request, expertEmail, "UiProbe", "Expert");
     grantAcceptedAdvisor(tripId, expertId);
+
+    const routeRes = await page.request.post(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/route`, {
+      data: { to: "with_expert" },
+    });
+    expect(routeRes.status()).toBe(200);
 
     await expertPage.goto(`${BASE_URL}/expert/workspace/${tripId}`);
     await expertPage.waitForSelector(`[data-testid="card-plan-${tripId}"]`, { timeout: 30_000 });

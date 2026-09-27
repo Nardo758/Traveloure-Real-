@@ -18,6 +18,7 @@ import {
   tripAccessibilityNoteSchema,
 } from "@shared/schema";
 import { aiRateLimit } from "../middleware/rateLimiter";
+import { PEN_OCCASION_KEYS, withoutPenOccasion } from "@shared/trip-context-occasion";
 // The stop cap has ONE definition (§18 rule 1). Imported from the DB-free half of the trip
 // destinations service so this route pulls in no database at import time.
 import { MAX_TRIP_DESTINATIONS } from "../services/trip-destinations.pure";
@@ -89,6 +90,9 @@ async function resolveTripIdParam(
 }
 
 const str = (max: number) => z.string().max(max);
+
+// The occasion key list as a SQL literal list, built from the ONE constant (never from input).
+const OCCASION_KEYS_SQL = PEN_OCCASION_KEYS.map((k) => `'${k}'`).join(", ");
 
 // Mirrors client/src/lib/trip-context.ts TripContext. Unknown keys are stripped.
 const tripContextSchema = z
@@ -271,7 +275,15 @@ router.put("/api/trip-context", isAuthenticated, async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid trip context", issues: parsed.error.issues.slice(0, 5) });
     }
-    const json = JSON.stringify(parsed.data);
+    // A PLAN'S OCCASION IS NEVER WRITTEN BY THE BULK PUSH (ledger `2026-09-26-occasion-read-only`,
+    // `@shared/trip-context-occasion`). On a trip-scoped row this push contributes NO occasion keys,
+    // whatever the body says, and the row keeps the ones it had: a read surface (opening a slip,
+    // visiting a template page) pushes the whole pen, and must not be able to rewrite the plan's
+    // occasion by carrying one along. The ONE writer is `PATCH /api/trips/:tripId/occasion`
+    // (`writePlanPenOccasion`). The legacy pre-trip row is a draft with no plan behind it and keeps
+    // full-replace semantics.
+    const written = tripId ? withoutPenOccasion(parsed.data) : parsed.data;
+    const json = JSON.stringify(written);
     if (json.length > 32_768) {
       return res.status(413).json({ message: "Trip context too large" });
     }
@@ -289,11 +301,13 @@ router.put("/api/trip-context", isAuthenticated, async (req, res) => {
         INSERT INTO trip_contexts (user_id, trip_id, context, updated_at)
         VALUES (${userId}, ${tripId}, ${json}::jsonb, NOW())
         ON CONFLICT (user_id, trip_id) WHERE trip_id IS NOT NULL
-        DO UPDATE SET context = CASE
+        DO UPDATE SET context = (CASE
             WHEN trip_contexts.context ? 'origin'
               THEN ${json}::jsonb || jsonb_build_object('origin', trip_contexts.context->'origin')
             ELSE ${json}::jsonb
-          END,
+          END) || (SELECT COALESCE(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+                   FROM jsonb_each(trip_contexts.context) e
+                   WHERE e.key IN (${sql.raw(OCCASION_KEYS_SQL)})),
           updated_at = NOW()
       `);
     } else {
