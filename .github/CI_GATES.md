@@ -36,8 +36,38 @@ Add all of them to branch protection now.
 | `relevance-dominance (pure unit)` | `upsell-trust-contract.yml` | Revenue-reordering bug in upsell engine; pure unit, zero flakiness |
 | `ci-db-setup-lint (no inline migration steps)` | `ci-db-setup-lint.yml` | Guards the composite action contract — detects inline `migrate-entry.ts` / `create-sessions-table.ts` run steps in any of the 6 Playwright workflow files |
 | `test-file-reachability (ratchet - new orphans fail)` | `build.yml` | A test file no workflow command can reach. Ratchets against `scripts/test-orphan-baseline.txt`: a NEW orphan fails, and a baseline row since wired or deleted fails until its line goes. The baseline is RECORDED DEBT and may only shrink — it exempts nothing (`2026-09-14-test-files-wired-orphans`). Blind to `e2e/` by ruling, and to runners reached through constructs its tokenizer does not model. |
+| `suite-mutation-auth (server/__tests__/mutation-auth — live authorization probes, DB + app)` | `build.yml` | Every mutation route answers anonymous / wrong-role / wrong-owner callers as its manifest says (already required; row added for completeness) |
+| `unit-suite-shared (shared/__tests__ — whole directory)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine — whole dirs)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `unit-suite-client-lib (client/src/lib/__tests__ — whole directory)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `unit-suite-client-components (client component __tests__ — whole directories)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `migration-chain-integrity (DECISIONS.md rulings 19, 27)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `lockfile-purity (no replit.local)` | `selection-controls-gate.yml` / `neighborhoods-gate.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `guard-batch (26 grep/logic guards — each a named step)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `suite-server-services (server/services/__tests__ — DB-backed)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `suite-server-routes-migrations (server/routes/__tests__ + server/migrations/__tests__ — DB-backed)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `traveler-charge-composition (docs/ROADMAP.md §A A3 — the commission is never billed to the buyer)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `concierge-fee-split (Locked Decision 51; ledger 2026-09-18-concierge-fee-cap-split)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `slip-card-integrity (slip is live, finalized plan is not re-routed, expert must exist)` | `slip-card-integrity-gate.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `booking-birth-provenance (rulings 41/46; ledger 2026-09-12-booking-birth-holes)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `slot-units (V-26; ledger 2026-09-15-v26-slot-units)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `legacy-rail-traveler-charge (2026-09-08-legacy-rail-fee — the same fix on the legacy rail)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `transport-payment-intent (punchlist R-1; ledger 2026-09-14-transport-confirm-stamps-pi)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `acceptance-rails (D-24..D-27, D-32..D-40; four ledgers, see comment)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `quote-born-charge (LD 49's charge lane; ledger 2026-09-18-quote-born-charge)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
+| `leads-door-and-trip-read-gate (V-32, V-33; ledger 2026-09-15-v32-v33-leads-door-item-read-gate)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
 
 ### Tier 2 — RECOMMENDED (add once a green baseline exists)
+
+> **Held optional by R153 (2026-09-27):** `suite-server-tests (server/__tests__ as a class — DB + app)` passed 93.4% over Sep 20–27
+> (below the 95% bar). Its 19 failures (6 on `main`, 13 on PRs) must be triaged into real breaks vs flakes by
+> **2026-10-04**; if they are not, it is an UNOWNED suite and ownership is assigned before anything else is
+> promoted from it. `footer-links-smoke`, `verify-neighborhoods` and `e2e-selection-controls` stay here for one
+> more week of observation.
 
 These are safe to require but may need one green CI run first to establish the baseline before
 enforcement. Promote to Tier 1 as each gets a passing run.
@@ -46,10 +76,9 @@ enforcement. Promote to Tier 1 as each gets a passing run.
 |---|---|---|
 | `verify-neighborhoods (logic gate, no DB)` | `neighborhoods-gate.yml` | Phase 8.3 neighborhood logic (16 assertions, pure script) |
 | `e2e-selection-controls (DOM gate)` | `selection-controls-gate.yml` | Full DOM render/narrow/parity/tab-isolation for selection controls |
-| `lockfile-purity (no replit.local)` | `selection-controls-gate.yml` **or** `neighborhoods-gate.yml` | package-lock.json must not contain Replit firewall URLs |
 | `footer-links-smoke (Playwright DOM gate)` | `footer-links-gate.yml` | Every configured footer link resolves without rendering the NotFound page |
 
-> **lockfile-purity note:** This job name exists in both `selection-controls-gate.yml` and
+> **lockfile-purity note (now Tier 1):** This job name exists in both `selection-controls-gate.yml` and
 > `neighborhoods-gate.yml`. GitHub tracks status contexts per-workflow/job combination, so
 > adding the status context once will only cover one workflow. Add it from the workflow that
 > runs on every PR (both do). If you require it from one workflow, the other's `lockfile-purity`
@@ -69,30 +98,19 @@ enforcement. Promote to Tier 1 as each gets a passing run.
 
 ## How to configure branch protection
 
-> ### ⚠️ PREREQUISITE — `BRANCH_PROTECTION_PAT`, and it is currently MISSING
+> ### How it is applied — `BRANCH_PROTECTION_PAT` (working since 2026-09-22)
 >
 > `.github/branch-protection.json` is applied to `main` by
-> `.github/workflows/enforce-branch-protection.yml`. Updating branch protection requires repo
-> **administration** rights, which a `GITHUB_TOKEN` cannot be granted, so that workflow
-> authenticates with the repository secret **`BRANCH_PROTECTION_PAT`** (a repo-scoped PAT carrying
-> the `administration` scope) and falls back to `GITHUB_TOKEN` only to make the failure legible.
+> `.github/workflows/enforce-branch-protection.yml` on every push to `main` that touches it. That
+> needs repo **administration** rights, which a `GITHUB_TOKEN` cannot be granted, so the workflow
+> authenticates with the repository secret **`BRANCH_PROTECTION_PAT`**. The secret was added on
+> 2026-09-22 and every enforcer run since has succeeded; the earlier "enforcer is dead" brief
+> (`docs/briefs/BRANCH_PROTECTION_ENFORCER_IS_DEAD.md`) is SUPERSEDED. The applied set can be read
+> back without credentials: `GET /repos/Nardo758/Traveloure-Real-/branches/main` →
+> `protection.required_status_checks.contexts`. Read it back after a change rather than assuming.
 >
-> **As of 2026-09-22 that secret is absent, and the workflow has failed every run since at least
-> 2026-08-30** with `Resource not accessible by integration (HTTP 403)` — including the run right
-> after PR #1034 merged. **While that is true, editing `branch-protection.json` changes nothing
-> that is enforced:** the file is a declaration, not an enforcement, and any protection live on
-> `main` was applied by hand.
->
-> It went unnoticed because the enforcer is deliberately **not** itself a required check, it runs
-> only on `main` pushes touching three paths, and — until this note — this document never mentioned
-> the secret, so its absence was on nobody's checklist.
->
-> **Fix:** create the PAT, store it as `BRANCH_PROTECTION_PAT`, re-run the workflow via
-> `workflow_dispatch`, and confirm the applied set matches the declared one. Full write-up:
-> `docs/briefs/BRANCH_PROTECTION_ENFORCER_IS_DEAD.md`.
->
-> Until then, steps 1–6 below (the manual UI route) are the ONLY way a gate actually becomes
-> required.
+> The manual UI route below remains for an emergency only; a hand edit is overwritten by the next
+> enforcer run.
 
 1. Go to **GitHub → repository → Settings → Branches**
 2. Click **Edit** on the `main` branch protection rule (or create one)
