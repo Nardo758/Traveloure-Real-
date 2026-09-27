@@ -10,6 +10,7 @@
  *   C  requires_payment_method, 25h old    ⇒ CANCELLED at Stripe (abandoned), expired, released
  *   D  requires_payment_method, 2h old     ⇒ left alone; Stripe still requires_payment_method
  *   E  the same pass run again              ⇒ nothing changes, nothing cancelled twice
+ *   F  the expired-claim email               ⇒ exactly one per released booking (B and C), none for A/D, none on E
  *
  * DISPOSABLE DB ONLY; needs a real sk_test_ key in STRIPE_SECRET_KEY. Every seeded row is deleted.
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure STRIPE_SECRET_KEY=sk_test_… \
@@ -88,7 +89,9 @@ async function main() {
   const C = await claim("c", piC.id, 25 * 60);
   const D = await claim("d", piD.id, 120);
 
-  const r = await sweepStaleAuthorizedClaims({ onlyBookingIds: [A.bookingId, B.bookingId, C.bookingId, D.bookingId] });
+  const mails: Array<{ toEmail: string; serviceName: string | null; tripId: string | null }> = [];
+  const sendExpiredClaimEmail = async (p: any) => { mails.push(p); };
+  const r = await sweepStaleAuthorizedClaims({ onlyBookingIds: [A.bookingId, B.bookingId, C.bookingId, D.bookingId], sendExpiredClaimEmail });
   console.log("[replay] pass 1:", JSON.stringify(r));
 
   console.log("── A succeeded");
@@ -112,10 +115,17 @@ async function main() {
   check("Stripe: D is still requires_payment_method", (await stripe.paymentIntents.retrieve(piD.id)).status === "requires_payment_method");
 
   console.log("── E the same pass again");
-  const r2 = await sweepStaleAuthorizedClaims({ onlyBookingIds: [A.bookingId, B.bookingId, C.bookingId, D.bookingId] });
+  const mailsAfterPass1 = mails.length;
+  const r2 = await sweepStaleAuthorizedClaims({ onlyBookingIds: [A.bookingId, B.bookingId, C.bookingId, D.bookingId], sendExpiredClaimEmail });
   check("second pass changes nothing (only D examined, left young)", r2.examined === 1 && r2.leftYoung === 1 && r2.voidedStale === 0 && r2.voidedCanceled === 0, r2);
   const c2 = await read(C);
   check("C's slot not released twice", c2.booked === 0);
+
+
+  console.log("── F the expired-claim email");
+  check("pass 1 sent exactly two emails (B and C released), none for A or D", mailsAfterPass1 === 2 && r.noticesSent === 2, { mailsAfterPass1, noticesSent: r.noticesSent });
+  check("each email names the booking's service and plan", mails.slice(0, 2).every((m) => m.serviceName === "G2 replay" && m.tripId === ids.trip));
+  check("pass 2 sent nothing", mails.length === mailsAfterPass1 && r2.noticesSent === 0, { total: mails.length });
 
   await stripe.paymentIntents.cancel(piD.id).catch(() => {});
 }

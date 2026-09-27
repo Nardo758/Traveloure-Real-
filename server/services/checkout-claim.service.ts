@@ -1552,6 +1552,8 @@ export interface StaleAuthorizedSweepResult {
   quarantined: number;
   slotsReleased: number;
   itemsReverted: number;
+  /** Expired-claim emails sent (one per released booking, at most — see `notifyExpiredStampedClaim`). */
+  noticesSent: number;
 }
 
 /** The Stripe reads/writes the sweep needs, injectable so its tests run with no network. */
@@ -1567,6 +1569,75 @@ const defaultStaleSweepStripe: StaleSweepStripe = {
   },
   cancel: (pi) => cancelStalePaymentIntent({ paymentIntentId: pi, context: { source: "stale-authorized-sweep" } }),
 };
+
+/**
+ * R164 (G2): the server-authored `booking_details` key recording that the traveler was told their
+ * stamped claim was released. Its presence IS the one-per-booking guard (§19d — never body-settable).
+ */
+export const EXPIRED_CLAIM_NOTICE_KEY = "expiredClaimNotice";
+
+export type ExpiredClaimEmailSender = (p: {
+  toEmail: string;
+  travelerName: string | null;
+  serviceName: string | null;
+  tripId: string | null;
+}) => Promise<void>;
+
+/**
+ * R164 (G2, decision-maker Sep 27, 2026): ONE email when the sweep releases a STAMPED claim — "Your
+ * booking for X wasn't completed, so we released it. It's back in your plan; you can book it again."
+ * The claim is an atomic conditional (`status='expired' AND stripe_payment_intent_id IS NOT NULL AND
+ * the notice key absent`), taken BEFORE the send, so a second pass, a concurrent pass or a re-run
+ * finds it taken and sends nothing: at most one email per booking. An UNSTAMPED claim can never pass
+ * the predicate, so its traveler — who never reached payment — is never emailed. A failed send is
+ * logged and not retried (one per booking wins over a second attempt). Never throws.
+ */
+export async function notifyExpiredStampedClaim(
+  bookingId: string,
+  send?: ExpiredClaimEmailSender,
+): Promise<{ sent: boolean; reason?: "not_claimed" | "no_email" | "send_failed" }> {
+  try {
+    const claimed = (
+      await db.execute(sql`
+        UPDATE service_bookings
+        SET booking_details = COALESCE(booking_details, '{}'::jsonb)
+              || jsonb_build_object(${EXPIRED_CLAIM_NOTICE_KEY}::text, jsonb_build_object('claimedAt', NOW()::text))
+        WHERE id = ${bookingId}
+          AND status = ${CLAIM_EXPIRED_STATUS}
+          AND stripe_payment_intent_id IS NOT NULL
+          AND NOT (COALESCE(booking_details, '{}'::jsonb) ? ${EXPIRED_CLAIM_NOTICE_KEY}::text)
+        RETURNING traveler_id, service_id, trip_id
+      `)
+    ).rows?.[0] as { traveler_id: string | null; service_id: string | null; trip_id: string | null } | undefined;
+    if (!claimed) return { sent: false, reason: "not_claimed" };
+    if (!claimed.traveler_id) return { sent: false, reason: "no_email" };
+    const detail = (
+      await db.execute(sql`
+        SELECT u.email, u.first_name, ps.service_name
+        FROM users u LEFT JOIN provider_services ps ON ps.id = ${claimed.service_id}
+        WHERE u.id = ${claimed.traveler_id} LIMIT 1
+      `)
+    ).rows?.[0] as { email: string | null; first_name: string | null; service_name: string | null } | undefined;
+    if (!detail?.email) return { sent: false, reason: "no_email" };
+    const sender: ExpiredClaimEmailSender =
+      send ?? (async (p) => (await import("./email.service")).sendExpiredClaimEmail(p));
+    try {
+      await sender({
+        toEmail: detail.email,
+        travelerName: detail.first_name ?? null,
+        serviceName: detail.service_name ?? null,
+        tripId: claimed.trip_id ?? null,
+      });
+    } catch (err: any) {
+      logger.error({ bookingId, err: err?.message }, "[stale-authorized-sweep] expired-claim email failed (claim kept; not retried)");
+      return { sent: false, reason: "send_failed" };
+    }
+    return { sent: true };
+  } catch (err: any) {
+    logger.error({ bookingId, err: err?.message }, "[stale-authorized-sweep] expired-claim notice failed (booking stays released)");
+    return { sent: false, reason: "send_failed" };
+  }
+}
 
 /**
  * R164 (G2) — THE STALE AUTHORIZED-CLAIM SWEEP. `sweepExpiredCheckoutClaims` reclaims UNSTAMPED claims
@@ -1592,6 +1663,8 @@ export async function sweepStaleAuthorizedClaims(opts?: {
   limit?: number;
   onlyBookingIds?: string[];
   stripe?: StaleSweepStripe;
+  /** Test seam for the expired-claim email; production sends through `sendExpiredClaimEmail`. */
+  sendExpiredClaimEmail?: ExpiredClaimEmailSender;
 }): Promise<StaleAuthorizedSweepResult> {
   const minAge = opts?.minAgeMinutes ?? CHECKOUT_CLAIM_TTL_MINUTES;
   const staleHours = opts?.staleHours ?? STALE_AUTHORIZED_CLAIM_HOURS;
@@ -1600,7 +1673,7 @@ export async function sweepStaleAuthorizedClaims(opts?: {
   const stripeOps = opts?.stripe ?? defaultStaleSweepStripe;
   const result: StaleAuthorizedSweepResult = {
     examined: 0, promoted: 0, voidedCanceled: 0, voidedStale: 0, leftProcessing: 0, leftYoung: 0,
-    quarantined: 0, slotsReleased: 0, itemsReverted: 0,
+    quarantined: 0, slotsReleased: 0, itemsReverted: 0, noticesSent: 0,
   };
   if (scope && scope.length === 0) return result;
 
@@ -1651,6 +1724,10 @@ export async function sweepStaleAuthorizedClaims(opts?: {
       } catch (err) {
         logger.error({ err, bookingId: row.id }, "[stale-authorized-sweep] item revert failed (booking voided; item re-runnable)");
       }
+      // After the release and the item's return to the plan: tell the traveler, once (§15b — the
+      // notice follows the operation that authorizes it, and can never undo it).
+      const n = await notifyExpiredStampedClaim(row.id, opts?.sendExpiredClaimEmail);
+      if (n.sent) result.noticesSent += 1;
     }
     return voided;
   };
