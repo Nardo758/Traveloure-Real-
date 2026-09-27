@@ -655,6 +655,43 @@ async function authorizeAndPromote(
     });
   }
 
+  // ── R162 (ledger `2026-09-27-failed-is-final`): "TRY AGAIN" RETIRES THE OLD INTENT ─────────────
+  // The NEW PaymentIntent exists (above); now the OLD one — the traveler's earlier `failed` booking
+  // of the same plan item — is cancelled in Stripe BEFORE anything is stamped or a client secret
+  // leaves the server. If it cannot be retired, checkout does NOT open: nothing is stamped, the
+  // claim stays provisional (the same-key re-POST re-drives this whole step under the same Stripe
+  // key, and the TTL sweep reconciles it otherwise), the plan item keeps its failed booking and its
+  // "Payment didn't go through" note. A one-click charge that already SUCCEEDED is the exception:
+  // the money has moved, so the response proceeds and the failure is logged.
+  const { retireStalePaymentIntentsForCheckout } = await import("../services/checkout-claim.service");
+  const retired = await retireStalePaymentIntentsForCheckout({
+    travelerId: userId,
+    bookingIds,
+    newPaymentIntentId: paymentIntent.paymentIntentId,
+  });
+  if (!retired.ok && paymentIntent?.status !== "succeeded" && retired.stale.some((e) => e.refundPending)) {
+    // R162: the earlier payment went through AFTER it failed. The webhook refunds it (never this
+    // route); until that refund is recorded, no new payment is started.
+    return res.status(409).json({
+      success: false,
+      error: "previous_payment_refund_pending",
+      message:
+        "Your earlier payment went through after it had failed. We're refunding it to your card " +
+        "automatically — you'll get a notice when it's done, and then you can book again. Nothing new was charged.",
+      retryable: true,
+    });
+  }
+  if (!retired.ok && paymentIntent?.status !== "succeeded") {
+    return res.status(409).json({
+      success: false,
+      error: "previous_payment_not_closed",
+      message:
+        "We couldn't close your previous payment attempt, so we haven't started a new one. Nothing new " +
+        "was charged. Please try again in a moment.",
+      retryable: true,
+    });
+  }
+
   // The AUTHORIZE→PROMOTE gate: an atomic, all-or-nothing conditional stamp on the provisional
   // predicate. If the TTL sweep voided these rows first this returns false and we refuse to
   // promote — handing back a clientSecret for a voided booking is precisely the outcome the
@@ -1094,7 +1131,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // by 155, DECLARED in shared/schema.ts so the deploy push maintains it).
       const priorClaim = await findPriorClaim(userId, checkoutKey);
       if (priorClaim.length > 0) {
-        const authorized = priorClaim.find((r) => r.stripePaymentIntentId);
+        // R162 (ledger `2026-09-27-failed-is-final`): only a claim the promotion could still confirm
+        // gets its PaymentIntent back. A `failed` (or expired/cancelled/refunded) row's intent is dead
+        // to us — handing it back is how a card form re-confirms a payment its booking can never
+        // receive — so such a key falls through to "spent" below.
+        const { isTerminalUnpromotable } = await import("../services/checkout-claim.service");
+        const authorized = priorClaim.find((r) => r.stripePaymentIntentId && !isTerminalUnpromotable(r.status));
         if (authorized) {
           const { stripePaymentService } = await import("../services/stripe-payment.service");
           const pi = await stripePaymentService
