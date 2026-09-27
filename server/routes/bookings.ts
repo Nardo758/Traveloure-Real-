@@ -33,7 +33,6 @@ import {
   LEGACY_BOOKINGS_CLOSED_REASON,
   legacyBookingsClosedToNewWrites,
 } from '../config/legacy-bookings.config';
-import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
 import Stripe from 'stripe';
 import { getStripeSecretKey, getStripeWebhookSecret } from '../utils/stripe-key';
 import { processPlatformWebhookEvent, PLATFORM_EVENT_TYPES } from '../services/stripe-dispute.service';
@@ -676,59 +675,21 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       }
     }
 
-    // PR #1066: a lost chargeback already returned the disputed money. Refuse BEFORE the ledger moves
-    // when this refund would reach into it — same options the refund below is given.
-    {
-      const { checkServiceBookingRefundPreflight, lostChargebackRefusalBody } = await import(
-        '../services/lost-chargeback-guard.service'
-      );
-      const guard = await checkServiceBookingRefundPreflight(bookingId, {
-        ...(amountOverride !== undefined ? { amountOverride } : {}),
-        ...(feeRefundPercent !== undefined ? { feeRefundPercent } : {}),
-      });
-      if (!guard.allowed) return res.status(409).json({ success: false, ...lostChargebackRefusalBody(guard) });
-    }
-
-    // Escrow Phase 4 (closes §14 A2): a refund also reverses the linked earnings ledger + the
-    // recognised platform revenue, so a refunded booking doesn't leave the provider/expert
-    // credited. Both are idempotent no-ops when the booking has no in-escrow earnings, so this
-    // is safe on any refund. paid_out earnings are never auto-clawed-back (ratified "reversal
-    // only while in escrow") — they are surfaced via skippedPaidOut for manual handling.
-    //
-    // ORDER: ledger-first, Stripe-second — matching the admin dispute-uphold path
-    // (admin.routes.ts POST /api/admin/disputes/:bookingId/uphold) and the §18 Phase 4
-    // rationale. The reversals are idempotent atomic flips, so a Stripe failure leaves a
-    // fully-reversed ledger that a retry simply re-confirms as a no-op. The previous
-    // Stripe-first order had the opposite failure mode: money out the door with the ledger
-    // still crediting the earner if the reversal then threw.
-    // PROPORTIONAL for policy partial refunds: a 50% refund reverses only half the recognised
-    // platform revenue (retained share stays recognised) and does NOT reverse earnings — the
-    // in-escrow earnings correspond to the provider's retained economics, and zeroing them for a
-    // partial refund undercounted every partial cancellation. Full refunds keep the original
-    // full-reversal behavior.
-    const reversal =
-      refundFraction >= 1
-        ? await storage.reverseEarningsForBooking(bookingId)
-        : { reversed: 0, skippedPaidOut: 0 };
-    const reversedRevenueRows = await storage.reversePlatformRevenueForBooking(bookingId, new Date(), refundFraction);
-
-    // Amount server-derived from service_bookings.total_amount (policy-scaled when partial);
-    // idempotent (atomic status claim + amount-unambiguous Stripe idempotencyKey).
-    const refundOpts: { amountOverride?: number; feeRefundPercent?: number } = {};
-    if (amountOverride !== undefined) refundOpts.amountOverride = amountOverride;
-    if (feeRefundPercent !== undefined) refundOpts.feeRefundPercent = feeRefundPercent;
-    const result = await stripePaymentService.refundServiceBooking(
-      bookingId,
+    // The lost-chargeback preflight, the ledger reversal (ledger-first, Stripe-second — §18 Phase 4;
+    // PROPORTIONAL for a policy partial), the refund itself and the plan-item reversal are ONE shared
+    // implementation with the admin exception refund (ledger `2026-09-27-admin-exception-refund`).
+    const { refundServiceBookingWithLedger } = await import('../services/service-booking-refund.service');
+    const done = await refundServiceBookingWithLedger(bookingId, {
       reason,
-      Object.keys(refundOpts).length ? refundOpts : undefined,
-    );
-
-    // Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its
-    // SOLE writer). Without it the Trip Card keeps showing as `purchased` an item the traveler was
-    // refunded for — H2's mirror image. Runs AFTER the refund succeeds, so the ledger-first /
-    // Stripe-second ordering above is untouched; the helper is atomic, idempotent, and never
-    // throws (a plan flag must never surface as a refund failure).
-    const routingReversal = await revertPurchasedItemsForBooking(bookingId);
+      amountOverride,
+      feeRefundPercent,
+      refundFraction,
+    });
+    if (!done.ok) return res.status(409).json({ success: false, ...(done.lostChargeback as object) });
+    const result = done.refund;
+    const reversal = { reversed: done.reversedEarnings, skippedPaidOut: done.skippedPaidOut };
+    const reversedRevenueRows = done.reversedRevenueRows;
+    const routingReversal = { reverted: done.revertedPlanItems };
 
     res.json({
       success: true,

@@ -7,7 +7,8 @@
  * single source of truth for how much a traveler gets back when cancelling, computed from
  * the policy type and the time remaining until the booking's scheduled start.
  *
- * Schedule (percent of total refunded, by hours until the scheduled start):
+ * Schedule (percent of total refunded, by hours until the scheduled start) — stated ONCE in
+ * shared/cancellation-schedule.ts; this summary is a reading aid, the table there is the authority:
  *   flexible        — 100% when ≥24h before start; 0% inside 24h.
  *   moderate        — 100% when ≥5 days; 50% when ≥48h; 0% inside 48h.
  *   strict          — 50% when ≥7 days; 0% inside 7 days.
@@ -26,8 +27,10 @@ import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { logger } from '../infrastructure/logger';
 import { travelerChargeForRow } from './traveler-charge';
+import { scheduleRefundPercent, CANCELLATION_POLICY_TYPES } from '@shared/cancellation-schedule';
 
-export type CancellationPolicyType = 'flexible' | 'moderate' | 'strict' | 'non_refundable';
+export type { CancellationPolicyType } from '@shared/cancellation-schedule';
+import type { CancellationPolicyType } from '@shared/cancellation-schedule';
 
 export interface CancellationRefundQuote {
   policyType: CancellationPolicyType;
@@ -57,7 +60,7 @@ export interface CancellationRefundQuote {
   message: string;
 }
 
-const POLICY_TYPES: readonly CancellationPolicyType[] = ['flexible', 'moderate', 'strict', 'non_refundable'];
+const POLICY_TYPES: readonly CancellationPolicyType[] = CANCELLATION_POLICY_TYPES;
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const NAIVE_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/i;
 
@@ -170,21 +173,9 @@ export function hoursUntilScheduledStart(scheduledDate: string | null | undefine
 
 /** Percent refunded for a policy given hours-until-start (null = unknown → most generous tier). */
 export function refundPercentFor(policy: CancellationPolicyType, hoursUntilStart: number | null): number {
-  switch (policy) {
-    case 'non_refundable':
-      return 0;
-    case 'flexible':
-      if (hoursUntilStart === null) return 100;
-      return hoursUntilStart >= 24 ? 100 : 0;
-    case 'moderate':
-      if (hoursUntilStart === null) return 100;
-      if (hoursUntilStart >= 120) return 100;
-      if (hoursUntilStart >= 48) return 50;
-      return 0;
-    case 'strict':
-      if (hoursUntilStart === null) return 50;
-      return hoursUntilStart >= 168 ? 50 : 0;
-  }
+  // The windows live ONCE, in shared/cancellation-schedule.ts (§18 rule 1) — the labels, the seller
+  // form and help article 7 read the same table, so a label can never promise a window this refuses.
+  return scheduleRefundPercent(policy, hoursUntilStart);
 }
 
 function describeOutcome(

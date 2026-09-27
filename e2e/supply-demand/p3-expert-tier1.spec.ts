@@ -37,9 +37,10 @@ test.describe.configure({ mode: 'serial' });
 
 const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
 
+/** Padding after a navigation. NOT a confirmation: every caller follows it with `must()`, which is. */
 async function settle(page: Page, ms = 800) {
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-  await page.waitForTimeout(ms);
+  await page.waitForTimeout(ms); // settle-ok: padding only — the caller's next must() confirms the page
 }
 
 async function must(page: Page, j: string, id: string, nn: string, timeoutMs = 10_000) {

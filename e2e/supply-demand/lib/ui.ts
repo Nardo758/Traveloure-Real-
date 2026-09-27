@@ -23,10 +23,49 @@
  * gating check in this harness — "is this control here yet" — must use
  * `appears()` (backed by `Locator.waitFor`, which DOES poll) instead of a
  * bare `isVisible()` call with a timeout that was silently doing nothing.
+ *
+ * THE RULE FOR EVERY HELPER (ledger `2026-09-27-e2e-helpers-confirm-effect`): a helper returns
+ * only after it has CONFIRMED the effect it was called for — a response received, an element
+ * present, a state set, a session valid. A helper that returns on a timer is a defect, not a
+ * style choice (R159, `2026-09-27-s1-login-must-land`). `actAndAwait` is the one way to perform an
+ * action that has a server effect; `appears` is the one way to decide an element is (or is not)
+ * there. A `waitForTimeout` in a helper module carries a `settle-ok:` note saying why it is not a
+ * confirmation — `scripts/check-e2e-helper-waits.cjs` fails on one that does not.
  */
 import type { Page, Locator } from '@playwright/test';
 
 export const ACTION_TIMEOUT_MS = 3000;
+/** How long an async LIST (an admin queue, a checklist) may take to render before "absent" is believed. */
+export const LIST_LOAD_MS = 15_000;
+/** How long an action's own server response may take. */
+export const RESPONSE_MS = 20_000;
+
+export type ApiMatch = { method: string | string[]; path: RegExp };
+
+/**
+ * Perform `act` and return the HTTP status of the first response matching `match`, with the wait
+ * registered BEFORE the action (so a fast response is never missed). `null` = the action produced
+ * no such request — the silent case every helper used to report as success.
+ */
+export async function actAndAwait(
+  page: Page,
+  act: () => Promise<unknown>,
+  match: ApiMatch,
+  timeoutMs: number = RESPONSE_MS,
+): Promise<number | null> {
+  const methods = Array.isArray(match.method) ? match.method : [match.method];
+  const answered = page
+    .waitForResponse(
+      (r) => methods.includes(r.request().method()) && match.path.test(new URL(r.url()).pathname),
+      { timeout: timeoutMs },
+    )
+    .then((r) => r.status())
+    .catch(() => null);
+  await act().catch(() => {});
+  return answered;
+}
+
+export const ok2xx = (status: number | null): boolean => status !== null && status >= 200 && status < 300;
 
 /**
  * Waits up to `timeoutMs` for `locator` to become visible, returning true/false rather than
@@ -40,54 +79,41 @@ export async function appears(locator: Locator, timeoutMs: number = ACTION_TIMEO
     .catch(() => false);
 }
 
-export async function fillIfVisible(page: Page, testid: string, value: string): Promise<boolean> {
-  const loc = page.locator(`[data-testid="${testid}"]`);
-  if ((await loc.count()) === 0) return false;
-  const el = loc.first();
-  if (!(await appears(el, ACTION_TIMEOUT_MS))) return false;
+/** Fill a field that may legitimately be absent. true ONLY when the field now holds `value`. */
+export async function fillIfVisible(page: Page, testid: string, value: string, probeMs: number = ACTION_TIMEOUT_MS): Promise<boolean> {
+  const el = page.locator(`[data-testid="${testid}"]`).first();
+  if (!(await appears(el, probeMs))) return false;
   await el.fill(value, { timeout: ACTION_TIMEOUT_MS }).catch(() => {});
-  return true;
+  return (await el.inputValue().catch(() => null)) === value;
 }
 
-export async function clickIfVisible(page: Page, testid: string): Promise<boolean> {
-  const loc = page.locator(`[data-testid="${testid}"]`);
-  if ((await loc.count()) === 0) return false;
-  const el = loc.first();
-  if (!(await appears(el, ACTION_TIMEOUT_MS))) return false;
+/** Click a control that may legitimately be absent. true ONLY when the click itself succeeded. */
+export async function clickIfVisible(page: Page, testid: string, probeMs: number = ACTION_TIMEOUT_MS): Promise<boolean> {
+  const el = page.locator(`[data-testid="${testid}"]`).first();
+  if (!(await appears(el, probeMs))) return false;
+  return el.click({ timeout: ACTION_TIMEOUT_MS }).then(() => true, () => false);
+}
+
+async function isChecked(el: Locator): Promise<boolean> {
+  const state = await el.getAttribute('data-state').catch(() => null);
+  if (state === 'checked') return true;
+  if ((await el.getAttribute('aria-checked').catch(() => null)) === 'true') return true;
+  return el.isChecked().catch(() => false);
+}
+
+/** Tick a checkbox that may legitimately be absent. true ONLY when it is now checked. */
+export async function checkIfVisible(page: Page, testid: string, probeMs: number = ACTION_TIMEOUT_MS): Promise<boolean> {
+  const el = page.locator(`[data-testid="${testid}"]`).first();
+  if (!(await appears(el, probeMs))) return false;
+  if (await isChecked(el)) return true;
   await el.click({ timeout: ACTION_TIMEOUT_MS }).catch(() => {});
-  return true;
-}
-
-export async function checkIfVisible(page: Page, testid: string): Promise<boolean> {
-  const loc = page.locator(`[data-testid="${testid}"]`);
-  if ((await loc.count()) === 0) return false;
-  const el = loc.first();
-  if (!(await appears(el, ACTION_TIMEOUT_MS))) return false;
-  const alreadyChecked = await el.getAttribute('data-state').then((s) => s === 'checked').catch(() => false);
-  if (!alreadyChecked) await el.click({ timeout: ACTION_TIMEOUT_MS }).catch(() => {});
-  return true;
+  for (let i = 0; i < 20; i++) {
+    if (await isChecked(el)) return true;
+    await page.waitForTimeout(100); // settle-ok: polling the checkbox's own state — the loop IS the confirmation
+  }
+  return false;
 }
 
 export function testid(page: Page, id: string): Locator {
   return page.locator(`[data-testid="${id}"]`);
-}
-
-/** Click a "next" control repeatedly (ServiceForm's button-step-next), up to `max` times, stopping when it disappears or a target testid appears. */
-export async function advanceWizard(
-  page: Page,
-  nextTestId: string,
-  stopWhenVisible: string,
-  max = 10,
-): Promise<number> {
-  let clicks = 0;
-  for (let i = 0; i < max; i++) {
-    if (await appears(testid(page, stopWhenVisible), ACTION_TIMEOUT_MS)) break;
-    const btn = testid(page, nextTestId);
-    if (!(await appears(btn, ACTION_TIMEOUT_MS))) break;
-    if (await btn.isDisabled().catch(() => false)) break;
-    await btn.click({ timeout: ACTION_TIMEOUT_MS }).catch(() => {});
-    clicks += 1;
-    await page.waitForTimeout(400);
-  }
-  return clicks;
 }
