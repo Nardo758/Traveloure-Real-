@@ -75,10 +75,10 @@ import { itineraryItems, notifications, tripCollaborators, trips, ROUTING_STATUS
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
 import { verifyTripOwnership } from "../utils/trip-ownership";
-import { isTripAdvisorWithWriteAccess } from "../utils/trip-advisor";
+import { isTripAdvisorWithWriteAccess, tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
 import { syncItemProjection } from "../services/cart-projection.service";
 import { logItemTransition } from "../services/item-transition-log.service";
-import { finalizeTrip, TripNotFoundError } from "../services/trip-finalize.service";
+import { finalizeTrip, getLatestTripFinal, TripNotFoundError } from "../services/trip-finalize.service";
 import { logger } from "../infrastructure/logger";
 
 const router = Router();
@@ -156,6 +156,7 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
         id: itineraryItems.id,
         tripId: itineraryItems.tripId,
         routingStatus: itineraryItems.routingStatus,
+        bookingId: itineraryItems.bookingId,
       })
       .from(itineraryItems)
       .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
@@ -193,6 +194,74 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
     if (from === to) {
       const projection = await safeSync(itemId);
       return res.json({ itemId, tripId, from, to, changed: false, actor, projection });
+    }
+
+    // ── A FINALIZED PLAN IS NOT RE-PLANNED THROUGH THIS RAIL (ledger
+    // `2026-09-26-card-routing-read-only`; Locked Decision 42 D8; audit G1, VERIFIED: the Trip
+    // Card's "Send to expert" returned 200 on a finalized plan). Refused whatever the client draws:
+    // sending an item to an expert, and pulling one back into planning, are PLANNING changes and a
+    // finalized plan is Reopened on the slip first. Two edges stay open, by name:
+    //   · owner → ready_for_checkout — BOOKING a finalized plan is what Finalize is for (the
+    //     Finalize chooser's "Book it myself", LD 42 D2 / R-F, stages items here after the flip).
+    //     DECISION-MAKER RULING (Sep 26, 2026): allowed ONLY for an item IN THE CURRENT
+    //     `trip_finals` VERSION that is NOT already purchased; anything else is a 409. Staging stays
+    //     on this rail — it does not move into the finalize call.
+    //   · expert with_expert → in_planning — returning routed work, so an item routed before the
+    //     plan was finalized is never stranded with the expert.
+    const [tripRow] = await db
+      .select({ finalizedAt: trips.finalizedAt })
+      .from(trips)
+      .where(eq(trips.id, tripId))
+      .limit(1);
+    if (tripRow?.finalizedAt) {
+      const expertReturn = actor === "expert" && from === "with_expert" && to === "in_planning";
+      const ownerBooking = actor === "owner" && to === "ready_for_checkout";
+      if (!expertReturn && !ownerBooking) {
+        return res.status(409).json({
+          code: "plan_finalized",
+          message: "This plan is finalized. Reopen it on the slip to change how its items are routed.",
+          from,
+          to,
+        });
+      }
+      if (ownerBooking) {
+        // Already bought: a purchased row, or one carrying a booking, is never staged again.
+        if (from === "purchased" || item.bookingId) {
+          return res.status(409).json({
+            code: "already_purchased",
+            message: "This item is already purchased.",
+            from,
+            to,
+          });
+        }
+        // Only what the finalized plan actually contains: the CURRENT (latest) final version's items.
+        const latestFinal = await getLatestTripFinal(tripId);
+        const finalItems = ((latestFinal?.snapshot as any)?.items ?? []) as Array<{ id?: string }>;
+        if (!finalItems.some((f) => f?.id === itemId)) {
+          return res.status(409).json({
+            code: "not_in_final",
+            message:
+              "This item is not part of the finalized plan. Reopen the plan and finalize it again to book it.",
+            from,
+            to,
+          });
+        }
+      }
+    }
+
+    // ── "SEND TO EXPERT" NEEDS AN EXPERT (ledger `2026-09-26-send-to-expert-needs-expert`; audit
+    // G2, VERIFIED: a plan with no advisor accepted the transition and the item then read "with
+    // your expert" while nobody would ever see it). An advisor in a §12 WRITE status (accepted /
+    // assigned) must be on the plan. Without one the traveler gets an expert first — the rail's
+    // "Hand off to a local expert", which runs the existing lead → admin-confirm path; this rail
+    // creates no lead of its own.
+    if (to === "with_expert" && !(await tripHasWriteAccessAdvisor(tripId))) {
+      return res.status(409).json({
+        code: "no_expert_assigned",
+        message: "No expert is assigned to this plan yet. Hand it off to a local expert first.",
+        from,
+        to,
+      });
     }
 
     // ── Legal-edge validation (contract §1 state machine, as drawn) ────────────────────

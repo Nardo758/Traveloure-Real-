@@ -57,7 +57,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useSignInModal } from "@/contexts/SignInModalContext";
-import { updateTripContext, useTripContext } from "@/lib/trip-context";
+import { getTripContext, updateTripContext, useTripContext } from "@/lib/trip-context";
 import { mintTripSlip } from "@/lib/trip-slip";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
@@ -245,8 +245,12 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     setCommitted(null);
     // The door already named the occasion — record it on the planning context so every
     // downstream surface reads the same slug. Additive merge, never a switch: this does not
-    // touch trip identity.
-    if (next?.experienceSlug) updateTripContext({ experienceSlug: next.experienceSlug });
+    // touch trip identity. NOT onto a pen bound to a plan (ledger `2026-09-26-occasion-read-only`):
+    // opening the modal is not choosing — the modal reads `source.experienceSlug` itself, and only
+    // its commit may change a plan's occasion.
+    if (next?.experienceSlug && !getTripContext().tripId) {
+      updateTripContext({ experienceSlug: next.experienceSlug });
+    }
     setModalOpen(true);
   }, []);
 

@@ -128,6 +128,15 @@ export interface AssembleTripPlanOptions {
   viewerId?: string | null;
   /** Role already resolved by the caller's gate; passed through so auth is not duplicated here. */
   tripRole?: string | null;
+  /**
+   * WHICH PLAN RENDERS once a final exists (ledger `2026-09-26-slip-renders-live`; audit
+   * `docs/planning/trip-slip-ui-audit.md` G3). **LIVE IS THE DEFAULT**: a caller that says nothing
+   * gets the live `itinerary_items`, so no planning surface can be handed a frozen plan by omission
+   * (a reopened plan's adds and edits must be visible where they are made). `"final"` is asked for
+   * EXPLICITLY by the Trip Card alone, and renders the latest `trip_finals` snapshot with live
+   * booking status overlaid. `finalVersion` is emitted either way.
+   */
+  render?: "final" | "live";
 }
 
 // ── Display mappings (moved verbatim from plancard.routes.ts — the existing contract) ──────────
@@ -644,9 +653,10 @@ export async function assembleTripPlan(
   // tools first, then leaving the notice-only page) — it is deliberately NOT done here to avoid a
   // half-stripped page. Do not treat this live-render branch as final behavior.
   const latestFinal = await getLatestTripFinal(tripId);
-  const renderingSnapshot = latestFinal != null;
-  if (latestFinal) {
-    items = overlayLiveBookingStatus(((latestFinal.snapshot as any)?.items ?? []) as any[], items);
+  // Only an explicit `render: "final"` (the Trip Card) gets the snapshot; the default is live.
+  const renderingSnapshot = latestFinal != null && options.render === "final";
+  if (renderingSnapshot) {
+    items = overlayLiveBookingStatus(((latestFinal!.snapshot as any)?.items ?? []) as any[], items);
   }
 
   // Resolve-on-write: fill + persist any missing pin coordinates via the single server geocode

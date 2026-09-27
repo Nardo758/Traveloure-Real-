@@ -11,6 +11,8 @@ import crypto from "crypto";
 import { Router } from "express";
 import type { Response } from "express";
 import { storage } from "../storage";
+import { eventTypeForSlug } from "@shared/occasions";
+import { writePlanPenOccasion } from "../services/plan-pen-occasion.service";
 import { db } from "../db";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // NOTE: the apply-to-cart handler below is a §9 SHADOWED copy (this router mounts LAST, so the
@@ -3367,6 +3369,11 @@ const tripOccasionBody = createInsertSchema(trips)
     budgetApproverName: tripBudgetApproverNameSchema,
     budgetApproverEmail: tripBudgetApproverEmailSchema,
     accessibilityNote: tripAccessibilityNoteSchema,
+    // Ledger `2026-09-26-occasion-read-only`: the plan's FINE occasion (an `experience_types` slug).
+    // Not a `trips` column — it is resolved server-side against the catalog (an unknown slug is a
+    // 400) and written into the plan's pen by the ONE pen-occasion writer, because the bulk pen push
+    // may never carry an occasion. `null` clears it.
+    experienceSlug: z.string().trim().min(1).max(120).nullable().optional(),
   });
 
 /**
@@ -3442,12 +3449,35 @@ router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) =>
       if (total !== undefined) patch.numberOfTravelers = total;
     }
 
-    if (Object.keys(patch).length === 0) {
+    // ── THE PLAN'S FINE OCCASION (ledger `2026-09-26-occasion-read-only`) ─────────────────────
+    // Resolved against the catalog BEFORE any write, so an unknown slug writes nothing at all. The
+    // coarse `trips.event_type` follows the slug when the body did not state one — the same
+    // `eventTypeForSlug` the modal uses, stated once in `@shared/occasions`.
+    let penOccasion: { experienceSlug: string; experienceType: string; eventType: string } | null | undefined;
+    if ("experienceSlug" in body) {
+      const slug = parsed.data.experienceSlug ?? null;
+      if (slug === null) {
+        penOccasion = null;
+      } else {
+        const row = await storage.getExperienceTypeBySlug(slug);
+        if (!row) return res.status(400).json({ message: "Unknown occasion" });
+        if (patch.eventType === undefined) patch.eventType = eventTypeForSlug(row.slug);
+        penOccasion = { experienceSlug: row.slug, experienceType: row.name, eventType: patch.eventType as string };
+      }
+    }
+
+    if (Object.keys(patch).length === 0 && penOccasion === undefined) {
       return res.status(400).json({ message: "Nothing to update" });
     }
 
-    await storage.updateTrip(tripId, patch as any);
-    res.json({ ok: true, ...patch });
+    if (Object.keys(patch).length > 0) await storage.updateTrip(tripId, patch as any);
+    // The pen follows the plan: only this rail writes a plan's occasion into its `trip_contexts` row.
+    if (penOccasion !== undefined) {
+      await writePlanPenOccasion(userId, tripId, penOccasion);
+    } else if (patch.eventType !== undefined) {
+      await writePlanPenOccasion(userId, tripId, { eventType: patch.eventType as string });
+    }
+    res.json({ ok: true, ...patch, ...(penOccasion ? { experienceSlug: penOccasion.experienceSlug } : {}) });
   } catch (err: any) {
     console.error("[trips] set occasion failed:", err?.message);
     res.status(500).json({ message: "Failed to save the occasion" });

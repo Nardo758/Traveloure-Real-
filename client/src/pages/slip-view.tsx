@@ -17,7 +17,8 @@ export default function SlipViewPage() {
   const highlightItemId = new URLSearchParams(searchStr).get("item");
 
   const { data, isLoading, isError } = useQuery<SlipData>({
-    // Same key the PlanCard uses, so React Query shares the cache across surfaces.
+    // The plancard is LIVE by default (ledger `2026-09-26-slip-renders-live`); only the Trip Card asks
+    // for its frozen final (`{ surface: "card" }`), under its own cache key.
     queryKey: [`/api/trips/${tripId}/plancard`],
     enabled: !!tripId,
     staleTime: 30000,

@@ -104,11 +104,11 @@ import { CuratedContentSection } from "@/components/curated-content-section";
 import {
   updateTripContext,
   useTripContext,
-  switchTripContextPreservingId,
   getTripContext,
   SEARCH_SETTINGS_PREFIX,
   TRIP_CONTEXT_CLEARED_EVENT,
 } from "@/lib/trip-context";
+import { writeTemplatePen } from "@/lib/template-pen";
 import { calendarDateToIso } from "@/lib/calendar-date";
 // §18 rule 1: the "URL first, then the active TripContext" order is written ONCE, in
 // client/src/lib/trip-target.ts, and every marketplace add resolves through it.
@@ -1203,16 +1203,16 @@ export default function ExperienceTemplatePage() {
     // party nobody stated is not a plan (§13). The occasion SLUG still rides: it is which
     // template you are reading, not a plan, and it is not one of the fields the strip appears for.
     if (ctxApplied) {
-      if (destination.trim()) {
-        switchTripContextPreservingId({
-          destination: destination.trim(),
-          startDate,
-          endDate,
-          travelers: statedParty /* RC-12: never the search assumption */,
-          experienceType: experienceType?.name,
-        });
-      }
-      updateTripContext({ experienceSlug: slug });
+      // Ledger `2026-09-26-occasion-read-only`: a bound plan keeps its own occasion and title —
+      // reading this page never relabels it (`writeTemplatePen`).
+      writeTemplatePen({
+        slug,
+        occasionName: experienceType?.name,
+        destination,
+        startDate,
+        endDate,
+        travelers: statedParty /* RC-12: never the search assumption */,
+      });
     }
   }, [
     slug, destination, originCity, originCode, startDate, endDate, activeTab,
@@ -1540,23 +1540,23 @@ export default function ExperienceTemplatePage() {
     // YYYY-MM-DD by the module — the previous full-ISO write broke date inputs).
     // #972: identity fields via switchTripContextPreservingId (never a bare
     // merge) — see the reverse-sync effect above for the same reasoning.
-    switchTripContextPreservingId({
-      experienceType: experienceType?.name,
+    writeTemplatePen({
+      slug,
+      occasionName: experienceType?.name,
       destination,
       startDate,
       endDate,
       travelers: statedParty /* RC-12: never the search assumption */,
-    });
-    updateTripContext({
-      experienceSlug: slug,
-      // P4: include DB contextField values in AI itinerary prompt payload
-      contextFields: Object.keys(contextValues).length > 0 ? contextValues : undefined,
-      selectedServices: cart.map(item => ({
-        name: item.name,
-        provider: item.provider,
-        price: item.price,
-        category: item.type
-      }))
+      extra: {
+        // P4: include DB contextField values in AI itinerary prompt payload
+        contextFields: Object.keys(contextValues).length > 0 ? contextValues : undefined,
+        selectedServices: cart.map(item => ({
+          name: item.name,
+          provider: item.provider,
+          price: item.price,
+          category: item.type
+        })),
+      },
     });
     
     // CON-A.P1: free preview path. Full LLM lives behind /api/optimization-payments
@@ -1835,15 +1835,7 @@ export default function ExperienceTemplatePage() {
         }
         // #972: identity fields via switchTripContextPreservingId — see the
         // reverse-sync effect above for the reasoning.
-        switchTripContextPreservingId({
-                      title: `${experienceType?.name || slug} Experience`,
-                      experienceType: experienceType?.name || slug,
-                      destination,
-                      startDate,
-                      endDate,
-                      travelers: statedParty /* RC-12: never the search assumption */
-                    });
-        updateTripContext({ experienceSlug: slug });
+        writeTemplatePen({ slug, title: `${experienceType?.name || slug} Experience`, occasionName: experienceType?.name || slug, destination, startDate, endDate, travelers: statedParty /* RC-12: never the search assumption */ });
         // The traveler keeps browsing, exactly as the partner add always behaved.
         return;
       }
@@ -1909,15 +1901,7 @@ export default function ExperienceTemplatePage() {
     // Store experience context and navigate to full cart page
     // #972: identity fields via switchTripContextPreservingId — see the
     // reverse-sync effect above for the reasoning.
-    switchTripContextPreservingId({
-                    title: `${experienceType?.name || slug} Experience`,
-                    experienceType: experienceType?.name || slug,
-                    destination,
-                    startDate,
-                    endDate,
-                    travelers: statedParty /* RC-12: never the search assumption */
-                  });
-    updateTripContext({ experienceSlug: slug });
+    writeTemplatePen({ slug, title: `${experienceType?.name || slug} Experience`, occasionName: experienceType?.name || slug, destination, startDate, endDate, travelers: statedParty /* RC-12: never the search assumption */ });
     // An item that landed on the PLAN is not in the cart — sending the traveler to /cart would
     // show an empty cart and break the promise the click just made. The slip is where they route
     // it to checkout (ledger 2026-08-28-single-planning-entry / 2026-09-03-slip-convergence).
@@ -3112,15 +3096,7 @@ export default function ExperienceTemplatePage() {
                     onClick={() => {
                       // #972: identity fields via switchTripContextPreservingId
                       // — see the reverse-sync effect above for the reasoning.
-                      switchTripContextPreservingId({
-                    title: `${experienceType?.name} Experience`,
-                    experienceType: experienceType?.name,
-                    destination,
-                    startDate,
-                    endDate,
-                    travelers: statedParty /* RC-12: never the search assumption */
-                  });
-                      updateTripContext({ experienceSlug: slug });
+                      writeTemplatePen({ slug, title: `${experienceType?.name} Experience`, occasionName: experienceType?.name, destination, startDate, endDate, travelers: statedParty /* RC-12: never the search assumption */ });
                       setLocation("/cart");
                     }}
                     className="bg-primary"

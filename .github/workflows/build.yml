@@ -2115,6 +2115,11 @@ jobs:
       # account's most recently written row, whichever scope. T1/T4/T5 fail on the old route.
       - name: A new session recovers the active plan (T1-T6)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/trip-context-recovery.db.test.ts
+      # Ledger `2026-09-26-occasion-read-only` — the server half of the same pen: a trip-scoped PUT
+      # that is not an explicit occasion edit keeps the row's stored occasion (O1/O2/O3/O6 fail on
+      # the old route; O4/O5 pin that the modal's edit and the pre-trip draft still write).
+      - name: A plan's stored occasion changes only on an occasion edit (O1-O6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/occasion-read-only.db.test.ts
 
   profile-photo:
     name: profile-photo (RC-10; ledger 2026-09-25-rc10-profile-photo)
