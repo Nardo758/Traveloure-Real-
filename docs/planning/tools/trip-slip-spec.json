@@ -1,0 +1,3769 @@
+{
+ "generatedFrom": [
+  "server/seeds/experience-template-tabs.seed.ts",
+  "server/migrations/035_phase1_seed_template_matrix.sql"
+ ],
+ "groups": [
+  "Plain plan",
+  "Moments",
+  "Celebrations",
+  "Trips",
+  "Hosted events",
+  "Group travel"
+ ],
+ "modules": [
+  [
+   "B1",
+   "Plan header"
+  ],
+  [
+   "B2",
+   "Days & items"
+  ],
+  [
+   "B3",
+   "Map"
+  ],
+  [
+   "B4",
+   "Completeness"
+  ],
+  [
+   "B5",
+   "First draft"
+  ],
+  [
+   "B6",
+   "Share & export"
+  ],
+  [
+   "B7",
+   "Finish"
+  ],
+  [
+   "S1",
+   "Compare options"
+  ],
+  [
+   "S2",
+   "Anchor & travel time"
+  ],
+  [
+   "S3",
+   "Suggestions"
+  ],
+  [
+   "S4",
+   "Move / jump to day"
+  ],
+  [
+   "S5",
+   "Bookings"
+  ],
+  [
+   "S6",
+   "Expert suggestions"
+  ],
+  [
+   "S7",
+   "Optimize preview"
+  ],
+  [
+   "S8",
+   "Ask AI"
+  ],
+  [
+   "S9",
+   "Stops"
+  ],
+  [
+   "A1",
+   "Three versions"
+  ],
+  [
+   "A2",
+   "Event schedule"
+  ],
+  [
+   "A3",
+   "Party & arrivals"
+  ],
+  [
+   "A4",
+   "Guests & RSVP"
+  ],
+  [
+   "A5",
+   "Vendor coordination"
+  ],
+  [
+   "A6",
+   "Temporal anchors"
+  ],
+  [
+   "A7",
+   "Split activities"
+  ],
+  [
+   "A8",
+   "Expert handoff"
+  ]
+ ],
+ "overrides": {
+  "corporate-events": {
+   "A5": [
+    "on",
+    "A run of show with AV, catering and a coordinator; coordination is the product that the one-day switch hides."
+   ]
+  }
+ },
+ "rows": [
+  {
+   "slug": "bachelor-bachelorette",
+   "name": "Bachelor/Bachelorette Party",
+   "group": "Group travel",
+   "switches": {
+    "duration": "range",
+    "guests": true,
+    "stops": "many",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "event_coordinator",
+    "entertainment",
+    "private_transportation",
+    "accommodation",
+    "activity_provider"
+   ],
+   "lead": "Arrivals (A3) and the lodging compare (S1)",
+   "anchor": "shared lodging (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "on",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "on",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "anniversary-trip",
+   "name": "Anniversary Trip",
+   "group": "Trips",
+   "switches": {
+    "duration": "range",
+    "guests": false,
+    "stops": "many",
+    "schedule": false,
+    "visibility": "shown",
+    "vocabulary": "travelers"
+   },
+   "roles": [
+    "accommodation",
+    "dining_venue",
+    "private_transportation",
+    "tour_guide"
+   ],
+   "lead": "Day list with the hotel anchor (S2)",
+   "anchor": "hotel (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "off",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "off",
+     "by": null
+    },
+    "A5": {
+     "value": "off",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "opt",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "travel",
+   "name": "Travel",
+   "group": "Trips",
+   "switches": {
+    "duration": "range",
+    "guests": false,
+    "stops": "many",
+    "schedule": false,
+    "visibility": "shown",
+    "vocabulary": "travelers"
+   },
+   "roles": [
+    "accommodation",
+    "tour_guide",
+    "private_transportation",
+    "activity_provider"
+   ],
+   "lead": "Day list with the hotel anchor (S2)",
+   "anchor": "hotel (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "off",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "off",
+     "by": null
+    },
+    "A5": {
+     "value": "off",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "opt",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "wedding",
+   "name": "Wedding",
+   "group": "Hosted events",
+   "switches": {
+    "duration": "range",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "venue",
+    "event_coordinator",
+    "florist",
+    "photography",
+    "videographer",
+    "caterer",
+    "officiant",
+    "hair_makeup",
+    "entertainment",
+    "printing_materials",
+    "rentals",
+    "private_transportation"
+   ],
+   "lead": "Completeness by vendor role (B4 + A5)",
+   "anchor": "venue (ceremony_time)",
+   "req": [
+    "venue",
+    "event_coordinator",
+    "photography",
+    "caterer"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": "switch"
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "on",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "on",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "opt",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "date-night",
+   "name": "Date Night",
+   "group": "Moments",
+   "switches": {
+    "duration": "day",
+    "guests": false,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "travelers"
+   },
+   "roles": [
+    "dining_venue",
+    "private_chef",
+    "entertainment"
+   ],
+   "lead": "The one reservation (A6) and its compare set (S1)",
+   "anchor": "dinner_reservation (temporal anchor)",
+   "req": [
+    "dining_venue"
+   ],
+   "compare": "dining_venue",
+   "compareOverridden": false,
+   "a1": "not available",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "off",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "off",
+     "by": null
+    },
+    "A4": {
+     "value": "off",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "birthday",
+   "name": "Birthday",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "venue",
+    "event_coordinator",
+    "caterer",
+    "entertainment",
+    "photography",
+    "rentals"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "corporate-events",
+   "name": "Corporate Events",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "attendees"
+   },
+   "roles": [
+    "venue",
+    "event_coordinator",
+    "av_tech",
+    "caterer",
+    "accommodation",
+    "private_transportation",
+    "printing_materials"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "on",
+     "by": "override"
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "retreats",
+   "name": "Retreats",
+   "group": "Group travel",
+   "switches": {
+    "duration": "range",
+    "guests": true,
+    "stops": "many",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "attendees"
+   },
+   "roles": [
+    "accommodation",
+    "activity_provider",
+    "private_chef",
+    "event_coordinator",
+    "private_transportation"
+   ],
+   "lead": "Arrivals (A3) and the lodging compare (S1)",
+   "anchor": "shared lodging (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "on",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "on",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "wedding-anniversaries",
+   "name": "Wedding Anniversary",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "dining_venue",
+    "photography",
+    "florist",
+    "private_chef"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "proposal",
+   "name": "Proposal",
+   "group": "Moments",
+   "switches": {
+    "duration": "day",
+    "guests": false,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "hidden",
+    "vocabulary": "travelers"
+   },
+   "roles": [
+    "photography",
+    "florist",
+    "private_chef",
+    "videographer"
+   ],
+   "lead": "The one reservation (A6) and its compare set (S1)",
+   "anchor": "proposal_moment (temporal anchor)",
+   "req": [
+    "photography",
+    "dining_venue"
+   ],
+   "compare": "dining_venue",
+   "compareOverridden": false,
+   "a1": "not available",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "opt",
+     "by": "switch"
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "off",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "off",
+     "by": null
+    },
+    "A4": {
+     "value": "off",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "boys-trip",
+   "name": "Boys Trip",
+   "group": "Group travel",
+   "switches": {
+    "duration": "range",
+    "guests": true,
+    "stops": "many",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "travelers"
+   },
+   "roles": [
+    "accommodation",
+    "activity_provider",
+    "private_transportation",
+    "entertainment"
+   ],
+   "lead": "Arrivals (A3) and the lodging compare (S1)",
+   "anchor": "shared lodging (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "on",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "on",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "girls-trip",
+   "name": "Girls Trip",
+   "group": "Group travel",
+   "switches": {
+    "duration": "range",
+    "guests": true,
+    "stops": "many",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "accommodation",
+    "activity_provider",
+    "private_transportation",
+    "hair_makeup"
+   ],
+   "lead": "Arrivals (A3) and the lodging compare (S1)",
+   "anchor": "shared lodging (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "on",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "on",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "reunions",
+   "name": "Reunions",
+   "group": "Hosted events",
+   "switches": {
+    "duration": "range",
+    "guests": true,
+    "stops": "many",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "venue",
+    "event_coordinator",
+    "caterer",
+    "accommodation",
+    "photography",
+    "rentals"
+   ],
+   "lead": "Completeness by vendor role (B4 + A5)",
+   "anchor": "venue",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "on",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "on",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "opt",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "baby-shower",
+   "name": "Baby Shower",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "event_coordinator",
+    "caterer",
+    "florist",
+    "photography",
+    "rentals"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "graduation-party",
+   "name": "Graduation Party",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "event_coordinator",
+    "caterer",
+    "photography",
+    "entertainment",
+    "rentals"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "engagement-party",
+   "name": "Engagement Party",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "venue",
+    "event_coordinator",
+    "florist",
+    "photography",
+    "caterer",
+    "entertainment"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "housewarming-party",
+   "name": "Housewarming Party",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": false,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "caterer",
+    "florist",
+    "entertainment"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "off",
+     "by": "switch"
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "retirement-party",
+   "name": "Retirement Party",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "event_coordinator",
+    "caterer",
+    "photography",
+    "entertainment",
+    "rentals"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "career-achievement-party",
+   "name": "Career Achievement Party",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "event_coordinator",
+    "caterer",
+    "photography",
+    "av_tech"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "farewell-party",
+   "name": "Farewell Party",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "event_coordinator",
+    "caterer",
+    "photography",
+    "entertainment"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "holiday-party",
+   "name": "Holiday Party",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "event_coordinator",
+    "caterer",
+    "entertainment",
+    "rentals",
+    "florist"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "sports-event",
+   "name": "Sports Event",
+   "group": "Trips",
+   "switches": {
+    "duration": "range",
+    "guests": false,
+    "stops": "many",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "travelers"
+   },
+   "roles": [
+    "private_transportation",
+    "dining_venue",
+    "accommodation"
+   ],
+   "lead": "Day list with the hotel anchor (S2)",
+   "anchor": "hotel (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": "switch"
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "off",
+     "by": null
+    },
+    "A5": {
+     "value": "off",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "opt",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "romance",
+   "name": "Romantic Getaways",
+   "group": "Trips",
+   "switches": {
+    "duration": "range",
+    "guests": false,
+    "stops": "one",
+    "schedule": false,
+    "visibility": "shown",
+    "vocabulary": "travelers"
+   },
+   "roles": [
+    "dining_venue",
+    "private_chef",
+    "accommodation",
+    "photography"
+   ],
+   "lead": "Day list with the hotel anchor (S2)",
+   "anchor": "hotel (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": "switch"
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "off",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "off",
+     "by": null
+    },
+    "A5": {
+     "value": "off",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "opt",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "corporate",
+   "name": "Corporate Retreats",
+   "group": "Hosted events",
+   "switches": {
+    "duration": "range",
+    "guests": true,
+    "stops": "many",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "attendees"
+   },
+   "roles": [
+    "venue",
+    "event_coordinator",
+    "av_tech",
+    "caterer",
+    "accommodation",
+    "private_transportation",
+    "activity_provider"
+   ],
+   "lead": "Completeness by vendor role (B4 + A5)",
+   "anchor": "venue",
+   "req": [
+    "venue",
+    "event_coordinator",
+    "av_tech",
+    "caterer"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "on",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "on",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "opt",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "milestone-birthday",
+   "name": "Milestone Birthday",
+   "group": "Celebrations",
+   "switches": {
+    "duration": "day",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "venue",
+    "event_coordinator",
+    "caterer",
+    "entertainment",
+    "photography",
+    "videographer",
+    "rentals",
+    "florist"
+   ],
+   "lead": "Completeness (B4) and the venue compare (S1)",
+   "anchor": "venue (event location)",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "family-occasion",
+   "name": "Family Occasion",
+   "group": "Group travel",
+   "switches": {
+    "duration": "range",
+    "guests": true,
+    "stops": "one",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "guests"
+   },
+   "roles": [
+    "event_coordinator",
+    "caterer",
+    "photography",
+    "childcare_family",
+    "rentals"
+   ],
+   "lead": "Arrivals (A3) and the lodging compare (S1)",
+   "anchor": "shared lodging (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": "switch"
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "on",
+     "by": null
+    },
+    "A4": {
+     "value": "on",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "on",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "honeymoon",
+   "name": "Honeymoon",
+   "group": "Trips",
+   "switches": {
+    "duration": "range",
+    "guests": false,
+    "stops": "many",
+    "schedule": false,
+    "visibility": "shown",
+    "vocabulary": "travelers"
+   },
+   "roles": [
+    "accommodation",
+    "private_transportation",
+    "tour_guide",
+    "dining_venue"
+   ],
+   "lead": "Day list with the hotel anchor (S2)",
+   "anchor": "hotel (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "off",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "off",
+     "by": null
+    },
+    "A5": {
+     "value": "off",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "opt",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "golf-trip",
+   "name": "Golf trip",
+   "group": "Trips",
+   "switches": {
+    "duration": "range",
+    "guests": false,
+    "stops": "many",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "travelers"
+   },
+   "roles": [
+    "accommodation",
+    "activity_provider",
+    "private_transportation",
+    "concierge_vip",
+    "dining_venue"
+   ],
+   "lead": "Day list with the hotel anchor (S2)",
+   "anchor": "hotel (hotel_checkin)",
+   "req": [
+    "accommodation"
+   ],
+   "compare": "accommodation",
+   "compareOverridden": false,
+   "a1": "on",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": null
+    },
+    "A1": {
+     "value": "on",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": "switch"
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "off",
+     "by": null
+    },
+    "A5": {
+     "value": "off",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "opt",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
+   "slug": "(plain plan)",
+   "name": "Plain plan (occasion unresolved — LD 28 NULL fallback)",
+   "group": "Plain plan",
+   "switches": null,
+   "roles": [],
+   "lead": "Days & items, with a “Choose an occasion” prompt",
+   "anchor": "none until set",
+   "req": [],
+   "compare": "none (no occasion)",
+   "compareOverridden": false,
+   "a1": "available (optional)",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "opt",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "on",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "on",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "off",
+     "by": null
+    },
+    "A1": {
+     "value": "opt",
+     "by": null
+    },
+    "A2": {
+     "value": "off",
+     "by": null
+    },
+    "A3": {
+     "value": "opt",
+     "by": null
+    },
+    "A4": {
+     "value": "off",
+     "by": null
+    },
+    "A5": {
+     "value": "off",
+     "by": null
+    },
+    "A6": {
+     "value": "opt",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  }
+ ]
+}
