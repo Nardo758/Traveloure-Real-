@@ -143,8 +143,9 @@ test("H7 held articles are kept but unlisted, unsearchable, unroutable and out o
 });
 
 test("H8 article 1's occasion count is the experience_types seed's count, never typed", () => {
-  // Parse the seed exactly as docs/planning/tools/trip-slip-spec.mjs does for §J; if the seed moves
-  // and the generated spec is not regenerated, this fails.
+  // Parse the seed exactly as docs/planning/tools/trip-slip-spec.mjs does for §J. The same drift is
+  // also caught by guard-batch's `trip-slip-spec.mjs --check` step; either failure is fixed by
+  // regenerating the spec in the same PR as the seed change.
   const seed = read("server/seeds/experience-template-tabs.seed.ts");
   const re = /\{ slug: "([^"]+)", name: "([^"]+)"[\s\S]*?switches: \{ stops: "(\w+)"/g;
   const seeded = [...seed.matchAll(re)].map((m) => m[1]);

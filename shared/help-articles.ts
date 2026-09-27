@@ -36,7 +36,8 @@ import {
 } from "./help-article-slugs";
 // The occasion count (article 1) is READ from the generated §J spec — itself generated from the
 // experience_types seed by docs/planning/tools/trip-slip-spec.mjs — never typed here.
-// shared/__tests__/help-articles.test.ts parses the seed directly and fails if the spec is stale.
+// A stale spec fails CI twice over: guard-batch runs `trip-slip-spec.mjs --check`, and
+// shared/__tests__/help-articles.test.ts (H8) parses the seed directly.
 import tripSlipSpec from "../docs/planning/tools/trip-slip-spec.json";
 
 export {
