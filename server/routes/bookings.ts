@@ -746,6 +746,11 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       const { lostChargebackRefusalBody } = await import('../services/lost-chargeback-guard.service');
       return res.status(409).json({ success: false, ...lostChargebackRefusalBody(error.result) });
     }
+    if (error?.name === 'ServiceBookingRefundRefusedError') {
+      // R163 amendment: payment_pending, failed and disputed are never refunded here — a dispute
+      // is refunded only by resolving it. Refused before the claim; nothing changed.
+      return res.status(409).json({ success: false, error: 'refund_refused_status', status: error.bookingStatus, message: error.message });
+    }
     res.status(500).json({
       success: false,
       error: error.message,
@@ -846,6 +851,16 @@ router.post('/:id/dispute', isAuthenticated, async (req, res) => {
     const ownerId = await getServiceBookingOwnerId(bookingId);
     if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
     if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can dispute this booking' });
+
+    // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): a booking whose share a Stripe-
+    // dashboard refund already covered reads "Refunded"; there is nothing left to dispute. Refused
+    // before any write, by the SAME rule the label reads.
+    {
+      const { isFullyRefundedOutOfBand, REFUNDED_OUT_OF_BAND_REFUSAL } = await import('../services/out-of-band-refund.service');
+      if (await isFullyRefundedOutOfBand(bookingId)) {
+        return res.status(409).json({ ...REFUNDED_OUT_OF_BAND_REFUSAL });
+      }
+    }
 
     // Escrow decisions 3 + 4 (docs/design/escrow-spine.md): a traveler may dispute ONLY during the
     // clearance window. Once it elapses the held earning matures → releasable → paid_out, and per

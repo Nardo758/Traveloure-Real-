@@ -127,3 +127,19 @@ test("I9 a listing the checkout cannot hold reads 'Back to plan' and opens the s
   assert.ok(block.includes("const toPlan = retryGoesToPlan(activity);"), "the label is decided from the server's field");
   assert.ok(block.includes("toPlan ? ITEM_BOOKING_RETRY_TO_PLAN_LABEL : ITEM_BOOKING_ACTION_LABELS[action]"), "the label follows it");
 });
+
+/**
+ * I10 — R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`). A Stripe-dashboard refund
+ * changes no status; the SERVER's `refundedOutOfBand` answer (whole share covered) reads as
+ * Refunded, and its absence (a partial refund) changes nothing. The DB half is
+ * server/__tests__/dashboard-refund-reads-refunded.db.test.ts.
+ */
+test("I10 the server's refundedOutOfBand answer reads Refunded; without it a confirmed row reads Booked", () => {
+  const dashRefunded = { endedBooking: { id: "b9", status: "confirmed", refundedOutOfBand: true }, routingStatus: "purchased" };
+  assert.equal(itemBookingState(dashRefunded), "refunded");
+  assert.equal(isBookedActivity(dashRefunded), false);
+  assert.equal(itemBookingLabel(itemBookingState(dashRefunded)!), "Refunded");
+  const partial = { booking: { id: "b9", status: "confirmed" }, routingStatus: "purchased" };
+  assert.equal(itemBookingState(partial), "booked");
+  assert.equal(isBookedActivity(partial), true);
+});

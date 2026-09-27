@@ -44,7 +44,8 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { contentOriginFor } from "@shared/content-origin";
 import { plancardPartyCount } from "@shared/plan-vocabulary";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
-import { itemBookingStatusEntry } from "@shared/booking-visibility";
+import { itemBookingLabelStatus, itemBookingStatusEntry } from "@shared/booking-visibility";
+import { outOfBandFullyRefundedBookingIds } from "./out-of-band-refund.service";
 import {
   TRIP_PLAN_VERSION,
   isChauffeuredMode,
@@ -527,12 +528,18 @@ async function resolveTripBookings(tripId: string): Promise<TripPlanBooking[]> {
     .where(eq(serviceBookings.tripId, tripId))
     .orderBy(desc(serviceBookings.createdAt));
 
+  // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): a refund issued from the Stripe
+  // dashboard changes no status; the ONE refund reconciliation rule decides whether it covered the
+  // booking's whole share, and only then does the DTO carry `refundedOutOfBand` (§13 — present only
+  // when true; `status` is left exactly as the row holds it).
+  const refundedOutOfBand = await outOfBandFullyRefundedBookingIds(rows.map((r) => r.id));
   return rows.map((r) => ({
     id: r.id,
     serviceId: r.serviceId ?? null,
     status: r.status ?? null,
     serviceName: r.serviceName ?? null,
     totalAmount: r.totalAmount != null ? String(r.totalAmount) : null,
+    ...(refundedOutOfBand.has(r.id) ? { refundedOutOfBand: true as const } : {}),
   }));
 }
 
@@ -554,7 +561,8 @@ export function linkedBookingFields(
   b: TripPlanBooking | undefined,
 ): { booking?: TripPlanBooking; endedBooking?: TripPlanBooking } {
   if (!b) return {};
-  return itemBookingStatusEntry(b.status).countsAsBooked ? { booking: b } : { endedBooking: b };
+  // R163: the status a label reads — a dashboard refund that covered the whole share reads `refunded`.
+  return itemBookingStatusEntry(itemBookingLabelStatus(b)).countsAsBooked ? { booking: b } : { endedBooking: b };
 }
 
 /** Meeting points for items linked to a platform service. Bulk-read once per assembly. */
@@ -808,7 +816,7 @@ export async function assembleTripPlan(
   // few rows that offer the retry. Absent for every other item (§13: present-only-when-real).
   const retryItems = items.filter(
     (i: any) =>
-      i.bookingId && itemBookingStatusEntry(bookingById.get(i.bookingId)?.status ?? null).action === "retry_checkout",
+      i.bookingId && itemBookingStatusEntry(itemBookingLabelStatus(bookingById.get(i.bookingId))).action === "retry_checkout",
   );
   const retryListingIds = Array.from(
     new Set(retryItems.map((i: any) => i.providerServiceId).filter((id: unknown): id is string => typeof id === "string")),

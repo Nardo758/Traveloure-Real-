@@ -19,6 +19,7 @@
  */
 import {
   ITEM_BOOKING_LABELS,
+  itemBookingLabelStatus,
   itemBookingStatusEntry,
   type ItemBookingAction,
   type ItemBookingLabelKey,
@@ -29,16 +30,25 @@ export type { ItemBookingAction };
 
 export interface ItemBookingLike {
   booking?: { status?: string | null } | null | unknown;
-  endedBooking?: { status?: string | null } | null;
+  endedBooking?: { status?: string | null; refundedOutOfBand?: boolean | null } | null;
   routingStatus?: string | null;
   /** R157: server-derived — can a failed payment's "Try again" open a checkout that holds this item? */
   retryOpensCheckout?: boolean;
 }
 
+/**
+ * The status a row's LABEL reads. R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): the
+ * server's `refundedOutOfBand` answer — a dashboard refund that covered the booking's whole share —
+ * reads as `refunded` through the ONE shared reading `itemBookingLabelStatus`; nothing money-shaped
+ * is derived here.
+ */
 function statusOf(b: unknown): string | null {
-  if (b && typeof b === "object" && "status" in b) {
-    const s = (b as { status?: unknown }).status;
-    return typeof s === "string" ? s : null;
+  if (b && typeof b === "object") {
+    const o = b as { status?: unknown; refundedOutOfBand?: unknown };
+    return itemBookingLabelStatus({
+      status: typeof o.status === "string" ? o.status : null,
+      refundedOutOfBand: o.refundedOutOfBand === true,
+    });
   }
   return null;
 }
