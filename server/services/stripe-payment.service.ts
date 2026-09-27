@@ -1335,6 +1335,16 @@ class StripePaymentService {
     return { amount, amountCharged, feeRefund, totalRefund };
   }
 
+  /**
+   * What this booking charged the traveler, as the two shares a refund works in: the booking share
+   * (`travelerChargeForRow`) and the traveler service fee actually charged. The SAME derivation
+   * `refundServiceBooking` uses (a full refund's shares), read by the admin exception refund's quote.
+   */
+  chargedSharesForRow(row: any): { bookingChargedDollars: number; feeChargedDollars: number } {
+    const full = this.computeServiceBookingRefund(row, undefined);
+    return { bookingChargedDollars: full.amountCharged, feeChargedDollars: full.feeRefund };
+  }
+
   /** The cents `refundServiceBooking` would send for these options, with no side effects. */
   async previewServiceBookingRefundCents(
     bookingId: string,
