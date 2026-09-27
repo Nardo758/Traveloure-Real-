@@ -135,6 +135,7 @@ import {
   type BundlePartialSettlementResult,
 } from "./bundle-partial-settlement.service";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
+import { revertPurchasedItemsForBooking } from "./item-routing.service";
 import { deriveClaimedSlotIds, deriveClaimedSlotUnits } from "./checkout-claim.service";
 import { storage } from "../storage";
 
@@ -1859,6 +1860,9 @@ export async function settleBundleAllUndelivered(input: {
     // flip, never a re-derivation (a component's status can move on under a settlement, §13).
     const recordedCause = already?.cause ?? cause;
     if (!already) await writeAllUndeliveredRecord(bookingId, { at: now.toISOString(), cause: recordedCause, componentIds }, now);
+    // R152: re-drive the ONE revert as well — a process that died between the flip and the revert
+    // must not leave the plan item `purchased`. Idempotent: it only moves rows still at `purchased`.
+    await revertItemsAfterAllUndeliveredCancel(bookingId);
     const settlementOnRetry = await issueBundlePartialSettlement({ bookingId, now, actor: input.actor });
     return {
       bookingId,
@@ -1893,9 +1897,30 @@ export async function settleBundleAllUndelivered(input: {
     }
   }
 
+  // 3b. R152 (ledger `2026-09-27-bundle-all-undelivered-reverts-item`; amends LD 50's "not built"
+  //     note): the plan item bought through this booking goes back to `in_planning` through the ONE
+  //     existing revert the refund paths call (§18 rule 1 — never a second copy). It runs after the
+  //     parent flip has committed, is idempotent (only `purchased` rows move, so a retry reverts
+  //     nothing twice), and can never fail the cancel or the settlement (§15b) — see the wrapper.
+  await revertItemsAfterAllUndeliveredCancel(bookingId);
+
   // 4. THE EXISTING MONEY LEG. No Stripe call is made here.
   const settlement = await issueBundlePartialSettlement({ bookingId, now, actor: input.actor });
   return { bookingId, cancelled: true, flipped: true, alreadyCancelled: false, cause, settlement, evidence };
+}
+
+/**
+ * R152 — the all-undelivered parent's plan-item revert. A thin §15b wrapper over the ONE
+ * `revertPurchasedItemsForBooking`: that function already swallows and logs its own failure, and
+ * this catch exists only so that no future change to it can let an ancillary plan flag break the
+ * cancel and the money leg that authorize it.
+ */
+async function revertItemsAfterAllUndeliveredCancel(bookingId: string): Promise<void> {
+  try {
+    await revertPurchasedItemsForBooking(bookingId);
+  } catch (err) {
+    console.error("[booking-completion] plan-item revert failed after an all-undelivered parent cancel (settlement unaffected):", err);
+  }
 }
 
 /** The ONE write of the marker — a jsonb MERGE, never an assignment, so nothing on the row is lost. */

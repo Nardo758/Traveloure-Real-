@@ -1560,6 +1560,10 @@ jobs:
       # traveler-cancelled one at its pinned percent as ONE refund, and a cancelled parent MINTS NOTHING;
       # U8 the whole-row cancel rail is refused by its own from-state list, so capacity is never handed
       # back twice. Stripe.refunds.create is stubbed.
+      # U9 (R152, ledger 2026-09-27-bundle-all-undelivered-reverts-item) rides this same file: the
+      # parent cancel now reverts its linked plan item purchased -> in_planning through the ONE
+      # revertPurchasedItemsForBooking, once, and a retry reverts nothing twice. The step name keeps
+      # its U1-U8 spelling because earlier ledger rows cite it verbatim.
       - name: The all-undelivered parent (U1-U8)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/bundle-all-undelivered.db.test.ts
       # OC-B1's LAST GAP + LD 46/D-27's MONEY OUTCOME (ledger 2026-09-17-ld50-remainder-and-artifact-refund).
