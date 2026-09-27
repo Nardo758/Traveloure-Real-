@@ -1323,6 +1323,113 @@ async function recordReconciliationException(
   }
 }
 
+// ══ THE FAILURE LEG — ONE payment-failed flip, TWO callers (ledger `2026-09-27-platform-payment-failed`, R161) ══
+//
+// §15c made the SUCCESS side one implementation with two callers (`promotePaidCheckout`). The
+// FAILURE side was left behind: the ONLY code that moved a cart checkout's `service_bookings` row
+// to `failed` sat inline in the CONNECT endpoint (`POST /api/webhooks/stripe`,
+// STRIPE_CONNECT_WEBHOOK_SECRET). A cart checkout's PaymentIntent is a PLATFORM PaymentIntent, and
+// Stripe delivers platform PI events to the PLATFORM endpoint (`POST /api/bookings/webhooks/stripe`
+// → `stripePaymentService.handlePaymentFailed`), which updated the LEGACY `bookings` table by the
+// `metadata.bookingIds` it was handed — `service_bookings` ids, so it matched nothing, exactly the
+// disjoint-id-space failure §15c fixed one event over. A declined card therefore left the booking
+// at `payment_pending` until the TTL sweep expired it, and "Payment didn't go through" never showed.
+//
+// Both endpoints now call THIS function. Rules that must not be weakened:
+//   1. The flip is an ATOMIC CONDITIONAL keyed on the row's OWN server-stamped PaymentIntent id
+//      (`WHERE stripe_payment_intent_id = <pi> AND status = 'payment_pending'`). A redelivery, or
+//      the same event reaching BOTH endpoints, flips each row exactly once; the loser matches zero.
+//   2. It never demotes: a row already `confirmed` (or `expired`, `cancelled`, …) is not
+//      `payment_pending` and is untouched. A late failure after a promotion moves nothing.
+//   3. The traveler email is sent ONLY for rows THIS call flipped (the RETURNING set), so it is
+//      exactly-once for the same reason the flip is. Best-effort; it never fails the flip.
+//   4. It keys on the PI id only — it does NOT resolve rows from `metadata.bookingIds`. An
+//      unstamped claim (server died mid-authorization) stays the TTL sweep's to reconcile against
+//      Stripe (§15b); a failure signal is not licence to touch a row that never carried this PI.
+//   5. It does NOT touch the legacy `bookings` table. That rail is still live and its own caller
+//      keeps its own update (§15c: both rails run, each no-ops on ids it does not own).
+
+export type PaymentFailedActor = "platform_webhook" | "connect_webhook";
+
+export interface PaymentFailedResult {
+  /** `service_bookings` ids THIS call moved `payment_pending → failed`. */
+  failedBookingIds: string[];
+}
+
+type PaymentFailedEmailSender = (params: {
+  toEmail: string;
+  userName: string | null;
+  bookingTitle: string | null;
+}) => Promise<void>;
+
+/**
+ * @param sendEmail test seam only — defaults to `email.service`'s `sendPaymentFailedEmail`.
+ */
+export async function markCheckoutPaymentFailed(opts: {
+  paymentIntentId: string;
+  actor: PaymentFailedActor;
+  sendEmail?: PaymentFailedEmailSender;
+}): Promise<PaymentFailedResult> {
+  const { paymentIntentId, actor } = opts;
+  const result: PaymentFailedResult = { failedBookingIds: [] };
+  if (!paymentIntentId) return result;
+
+  // The payment_intents ledger row, where one exists (not every PI flow writes one). Non-fatal.
+  try {
+    await db.execute(sql`
+      UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntentId}
+    `);
+  } catch (err: any) {
+    logger.warn({ paymentIntentId, actor, err: err?.message }, "[payment-failed] payment_intents update failed (non-fatal)");
+  }
+
+  // The flip. Throws on a DB error so the caller decides (the platform rail lets Stripe retry).
+  const flipped = await db.execute(sql`
+    UPDATE service_bookings
+    SET status     = 'failed',
+        updated_at = NOW()
+    WHERE stripe_payment_intent_id = ${paymentIntentId}
+      AND status = 'payment_pending'
+    RETURNING id, traveler_id, service_id
+  `);
+  const rows = (flipped.rows ?? []) as Array<{ id: string; traveler_id: string | null; service_id: string | null }>;
+  result.failedBookingIds = rows.map((r) => r.id);
+  if (rows.length === 0) return result;
+
+  logger.info(
+    { paymentIntentId, actor, bookingIds: result.failedBookingIds },
+    `[payment-failed] marked ${rows.length} service_booking(s) failed`,
+  );
+
+  // Best-effort traveler email, ONLY for rows this call flipped (rule 3).
+  let sendEmail = opts.sendEmail;
+  for (const r of rows) {
+    if (!r.traveler_id) continue;
+    try {
+      const detail = await db.execute(sql`
+        SELECT u.email, u.first_name, u.last_name, ps.service_name AS title
+        FROM users u
+        LEFT JOIN provider_services ps ON ps.id = ${r.service_id}
+        WHERE u.id = ${r.traveler_id}
+        LIMIT 1
+      `);
+      const row = detail.rows?.[0] as any;
+      if (!row?.email) continue;
+      if (!sendEmail) {
+        sendEmail = (await import("./email.service")).sendPaymentFailedEmail;
+      }
+      sendEmail({
+        toEmail: row.email,
+        userName: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
+        bookingTitle: row.title ?? null,
+      }).catch((e: any) => logger.error({ bookingId: r.id, err: e?.message }, "[payment-failed] email send error"));
+    } catch (mailErr: any) {
+      logger.error({ bookingId: r.id, err: mailErr?.message }, "[payment-failed] email resolve error");
+    }
+  }
+  return result;
+}
+
 // ══ LANE 7 — THE BALANCE LEG (deposits / partial payments, DECISIONS.md ruling 72) ═══════════════
 //
 // A deposit-partial booking sits in `status='deposit_paid'` with the DEPOSIT PI stamped on

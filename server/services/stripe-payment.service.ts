@@ -993,17 +993,23 @@ class StripePaymentService {
   private async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
     const { bookingIds } = paymentIntent.metadata;
 
-    // Update payment intent status
-    await db.execute(sql`
-      UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntent.id}
-    `);
+    // THE CART RAIL (ledger `2026-09-27-platform-payment-failed`, R161). A cart checkout's PI is a
+    // PLATFORM PI, so its failure arrives HERE -- and this handler used to update only the legacy
+    // `bookings` table below, by `service_bookings` ids that matched nothing, so a declined cart
+    // checkout was never marked `failed` (the success-side twin of this bug was §15c / #212). The
+    // ONE shared flip -- also the Connect endpoint's -- keys on the row's own stamped PI id, never
+    // demotes, emails only what it flipped, and updates the payment_intents ledger row (formerly
+    // written inline here). Runs for every PI: it no-ops on PIs no `service_bookings` row carries.
+    const { markCheckoutPaymentFailed } = await import('./checkout-claim.service');
+    await markCheckoutPaymentFailed({ paymentIntentId: paymentIntent.id, actor: 'platform_webhook' });
 
     if (!bookingIds) {
       this.logNonCartTerminalPayment(paymentIntent, 'failed');
       return;
     }
 
-    // Update bookings
+    // THE LEGACY RAIL -- still live (D-12 dated cutoff; §15c: both rails run, each no-ops on ids it
+    // does not own). The `service_bookings` ids a cart PI carries match nothing here, harmlessly.
     const bookingIdList = bookingIds.split(',').map((id) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
       await db.execute(sql`
@@ -1014,7 +1020,8 @@ class StripePaymentService {
       `);
     }
 
-    // TODO: Notify user of payment failure
+    // The cart rail's traveler notice is sent by markCheckoutPaymentFailed above; the legacy rail
+    // still sends none (unchanged).
   }
 
   /**

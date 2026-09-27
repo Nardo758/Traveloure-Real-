@@ -915,3 +915,35 @@ re-filed by a later pass before that branch lands.
 ## P1 lead-routing / money-guard lane — carried items
 
 - **Parent bundle cancel notification:** when `settleBundleAllUndelivered` (Locked Decision 50) flips a bundle's parent booking to `cancelled`, no notification is sent to the traveler or seller. Deferred by the decision-maker (Sep 27, 2026) to this lane; not built. (Ledger `2026-09-27-bundle-cancel-notice-deferred`, R158.)
+
+## From the platform-payment-failed lane (R161, ledger `2026-09-27-platform-payment-failed`)
+
+### FU-PF-1 — D-12 legacy `bookings` retirement: the live writers, and the two webhook endpoints write different tables
+
+Recorded against the D-12 legacy-rail cutoff (`docs/PUNCHLIST.md` D-12; `LEGACY_BOOKINGS_NO_NEW_WRITES_FROM`,
+set to `2026-10-01` by ledger `2026-09-15-d12-legacy-cutoff-date`, operator step still owed). The cutoff closes the
+rail's only INSERT door; it does not make the table read-only. **When the legacy `bookings` table is retired, these
+are the writers still live on `main` (grepped `INSERT INTO bookings` / `UPDATE bookings` / `.update(bookings)` under
+`server/`, 2026-09-27):**
+
+- `server/services/booking.service.ts` — the INSERT behind `POST /api/bookings/process-cart` (closed from the cutoff
+  by the 410), and the legacy confirm-payment `UPDATE bookings SET status='confirmed'`.
+- `server/services/booking-expiry-scheduler.service.ts` — the expiry sweep's `UPDATE bookings`.
+- `server/services/stripe-dispute.service.ts` — `conn.update(bookings)` on a dispute.
+- `server/services/stripe-payment.service.ts` — the platform webhook's legacy arms: `handlePaymentSucceeded`
+  (`confirmed`), `handlePaymentFailed` (`status='payment_failed', payment_status='failed'`) and
+  `handlePaymentCanceled` (`canceled`). `handleRefund` writes NO `bookings` row (a standing `TODO`).
+- Readers that must survive retirement, per D-12: the rail's GET, `confirm-payment`, `bulk-status`,
+  `POST /api/bookings/refund`, `statements.routes.ts`, and §17's `scanLegacyRail` (`server/jobs/stripeReconciliation.ts`).
+
+**The dual-table finding (fixed in R161, recorded here so retirement does not undo it):** there are TWO Stripe
+webhook endpoints and, before R161, they wrote DIFFERENT tables for the same `payment_intent.payment_failed`:
+`POST /api/bookings/webhooks/stripe` (platform secret) wrote only the LEGACY `bookings` table, while
+`POST /api/webhooks/stripe` (Connect secret) was the only code that wrote `service_bookings.status='failed'`. A cart
+checkout's PaymentIntent is a PLATFORM PaymentIntent, so its failure reached the endpoint that could not mark it.
+Both now call the ONE `markCheckoutPaymentFailed` (`server/services/checkout-claim.service.ts`). **When the legacy
+arms of `handlePaymentFailed`/`handlePaymentCanceled`/`handlePaymentSucceeded` are deleted at retirement, the shared
+cart-rail calls in those handlers (`markCheckoutPaymentFailed`, `promotePaidCheckout`) must stay** — they are the
+cart rail's only platform-endpoint reachers. Still open and NOT fixed by R161: `payment_intent.canceled` on the
+platform endpoint touches only the legacy table (a canceled cart PI is left to the TTL sweep), and the Connect
+endpoint's payment-failed arm is only reachable for events Stripe routes to a Connect-secret endpoint.
