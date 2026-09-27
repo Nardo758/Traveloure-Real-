@@ -295,12 +295,23 @@ export const authNavConfig: AuthNavConfig[] = [
  * reach production.
  */
 
-export interface FooterLinkConfig {
+/**
+ * A footer entry is EITHER a route link (`href`) OR an in-page action (`action`), never both.
+ *
+ * `action: "startPlan"` opens the ONE planning modal through `usePlanning().open()` — the
+ * same opener the landing hero's "Plan my trip" calls (ruling 2026-08-28-single-planning-entry,
+ * Locked Decision 33). It has no URL on purpose: the chooser is not a page, and a second
+ * route standing in for it would be the second front door ruling 33 / LD 42 D14 retired.
+ * An action entry carries no href, so it is outside every href smoke gate by construction.
+ */
+export type FooterLinkConfig = {
   label: string;
   /** Ruling 60 Phase A — see the NavLeafConfig note above; `label` remains the fallback. */
   i18nKey?: string;
-  href: string;
-}
+} & (
+  | { href: string; action?: never }
+  | { action: "startPlan"; href?: never }
+);
 
 export interface FooterSectionConfig {
   title: string;
@@ -308,42 +319,62 @@ export interface FooterSectionConfig {
   links: FooterLinkConfig[];
 }
 
+/*
+ * Footer IA (decision-maker, Sep 2026 — footer and closing-section lane).
+ *
+ * REMOVED, deliberately: `/chat` (a signed-in inbox — a guest clicking it was bounced to "/"
+ * behind a sign-in modal) and `/executive-assistant`. `footer-guest-routes.test.ts` refuses a
+ * footer href whose route is wrapped in `ProtectedRoute`, so neither can drift back.
+ *
+ * BLOG IS HIDDEN, NOT DELETED: the footer shows no Blog link until five posts are published.
+ * The `/blog` route stays (inbound links keep resolving) and its empty state is `noindex`.
+ * There is no post store yet, so there is no count to read — when one exists, the link returns
+ * behind that count, never a hand-flipped flag.
+ */
 export const footerSectionsConfig: FooterSectionConfig[] = [
   {
-    title: 'Product',
-    i18nKey: 'footer.sections.product',
+    title: 'Plan',
+    i18nKey: 'footer.sections.plan',
     links: [
-      { label: 'Plan an Experience', i18nKey: 'footer.links.planAnExperience',     href: '/experiences' },
-      { label: 'Marketplace', i18nKey: 'footer.links.marketplace',            href: '/destinations' },
-      { label: 'Talk to Experts', i18nKey: 'footer.links.talkToExperts',        href: '/chat' },
-      { label: 'How It Works', i18nKey: 'footer.links.howItWorks',           href: '/how-it-works' },
-      { label: 'Pricing', i18nKey: 'footer.links.pricing',                href: '/pricing' },
-      { label: 'Features', i18nKey: 'footer.links.features',               href: '/features' },
-      { label: 'Events', i18nKey: 'footer.links.globalCalendar',        href: '/events' },
-      { label: 'Executive Assistant', i18nKey: 'footer.links.executiveAssistant',    href: '/executive-assistant' },
+      // Same target as the hero CTA: the planning modal, occasion step first.
+      { label: 'Start a plan', i18nKey: 'footer.links.startAPlan', action: 'startPlan' },
+      { label: 'Occasions', i18nKey: 'footer.links.occasions',       href: '/experiences' },
+      { label: 'Destinations', i18nKey: 'footer.links.destinations', href: '/destinations' },
+      { label: 'How it works', i18nKey: 'footer.links.howItWorks',   href: '/how-it-works' },
+      { label: 'Pricing', i18nKey: 'footer.links.pricing',           href: '/pricing' },
+    ],
+  },
+  {
+    title: 'Locals',
+    i18nKey: 'footer.sections.locals',
+    links: [
+      { label: 'Meet the locals', i18nKey: 'footer.links.meetTheLocals',             href: '/experts' },
+      { label: 'Local businesses', i18nKey: 'footer.links.localBusinesses',          href: '/providers' },
+      { label: 'Become a local expert', i18nKey: 'footer.links.becomeALocalExpert',  href: '/earn?role=local_expert' },
+      { label: 'Trip planners', i18nKey: 'footer.links.tripPlanners',                href: '/earn?role=trip_planner' },
+      { label: 'Event planners', i18nKey: 'footer.links.eventPlanners',              href: '/earn?role=event_planner' },
+      { label: 'Service providers', i18nKey: 'footer.links.serviceProviders',        href: '/earn?role=service_provider' },
     ],
   },
   {
     title: 'Company',
     i18nKey: 'footer.sections.company',
     links: [
-      { label: 'About Us', i18nKey: 'footer.links.aboutUs',       href: '/about' },
-      { label: 'Ways to Earn', i18nKey: 'footer.links.waysToEarn',   href: '/earn' },
-      { label: 'Careers', i18nKey: 'footer.links.careers',        href: '/careers' },
-      { label: 'Blog', i18nKey: 'footer.links.blog',           href: '/blog' },
-      { label: 'Press', i18nKey: 'footer.links.press',          href: '/press' },
+      { label: 'About', i18nKey: 'footer.links.about',     href: '/about' },
+      { label: 'Press', i18nKey: 'footer.links.press',     href: '/press' },
+      { label: 'Careers', i18nKey: 'footer.links.careers', href: '/careers' },
     ],
   },
   {
     title: 'Support',
     i18nKey: 'footer.sections.support',
     links: [
-      { label: 'Help Center', i18nKey: 'footer.links.helpCenter',       href: '/help' },
-      { label: 'Contact Us', i18nKey: 'footer.links.contactUs',        href: '/contact' },
-      { label: 'Visa Help', i18nKey: 'footer.links.visaHelp',         href: '/visa-help' },
-      { label: 'Privacy Policy', i18nKey: 'footer.links.privacyPolicy',    href: '/privacy' },
-      { label: 'Terms of Service', i18nKey: 'footer.links.termsOfService',  href: '/terms' },
-      { label: 'FAQ', i18nKey: 'footer.links.faq',               href: '/faq' },
+      { label: 'Help center', i18nKey: 'footer.links.helpCenter', href: '/help' },
+      { label: 'FAQ', i18nKey: 'footer.links.faq',                href: '/faq' },
+      { label: 'Contact', i18nKey: 'footer.links.contact',        href: '/contact' },
+      { label: 'Visa help', i18nKey: 'footer.links.visaHelp',     href: '/visa-help' },
+      { label: 'Privacy', i18nKey: 'footer.links.privacy',        href: '/privacy' },
+      { label: 'Terms', i18nKey: 'footer.links.terms',            href: '/terms' },
     ],
   },
 ];
@@ -357,7 +388,8 @@ export function getAllFooterHrefs(): string[] {
   const seen = new Set<string>();
   for (const section of footerSectionsConfig) {
     for (const link of section.links) {
-      seen.add(link.href);
+      // An action entry (the planning modal) has no URL to smoke-test.
+      if (link.href) seen.add(link.href);
     }
   }
   return Array.from(seen);
