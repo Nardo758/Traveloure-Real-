@@ -138,22 +138,27 @@ function anchorFor(o, group) {
   if (group === "Hosted events") return o.slug === "wedding" ? "venue (ceremony_time)" : "venue";
   return "shared lodging (hotel_checkin)";
 }
-const RECONCILE_VENUE_REQ = new Set(["wedding", "birthday", "milestone-birthday", "corporate-events", "corporate", "reunions", "engagement-party"]);
+// REQ rules (brief §F phase 0 0c, as RULED Sep 27, 2026 — R137, R138, R141):
+//   R138: every Celebrations occasion has exactly ONE REQ, `venue`; nothing else is REQ in that group.
+//   R137: every multi-day (`range`) occasion with no `venue` role has `accommodation` REQ.
+//   R141: `proposal` keeps `dining_venue` REQ.
+//   Hosted events keep their family REQ with `venue` first and `dining_venue` at REC (0c).
 function reqFor(o, mat) {
   if (!o) return [];
+  const group = groupFor(o);
+  if (group === "Celebrations") return ["venue"];
   const fam = { ...(mat[FAMILY[o.slug] ?? "custom"] ?? {}) };
   for (const r of o.roles) if (!fam[r] || fam[r] === "OPT") fam[r] = "REC";
-  if (RECONCILE_VENUE_REQ.has(o.slug)) { fam.venue = "REQ"; if (fam.dining_venue === "REQ") fam.dining_venue = "REC"; }
+  if (o.roles.includes("venue")) { fam.venue = "REQ"; if (fam.dining_venue === "REQ") fam.dining_venue = "REC"; }
+  if (o.duration === "range" && !o.roles.includes("venue")) fam.accommodation = "REQ";
   if (o.slug === "proposal") fam.dining_venue = "REQ";
   const order = (k) => { const i = o.roles.indexOf(k); return i < 0 ? 1000 : i; }; // roles_needed order first ("venue first")
   return Object.entries(fam).filter(([k, s]) => s === "REQ" && !k.startsWith("aff_")).map(([k]) => k).sort((a, b) => order(a) - order(b));
 }
-function compareDefault(o, group) {
+function compareDefault(o, group, req) {
   if (!o) return "none (no occasion)";
-  if (o.roles.includes("venue")) return "venue";
+  for (const k of ["venue", "accommodation", "dining_venue"]) if (req.includes(k)) return k; // the anchor's category, from REQ
   if (group === "Moments") return "dining_venue";
-  if (o.duration === "range" && o.roles.includes("accommodation")) return "accommodation";
-  if (o.roles.includes("dining_venue")) return "dining_venue";
   return o.roles[0] ?? "none";
 }
 
@@ -173,7 +178,7 @@ function resolve1(o, mat) {
     slug: o?.slug ?? "(plain plan)", name: o?.name ?? "Plain plan (occasion unresolved — LD 28 NULL fallback)", group,
     switches: o ? { duration: o.duration, guests: o.guests, stops: o.stops, schedule: o.schedule, visibility: o.visibility, vocabulary: o.vocabulary } : null,
     roles: o?.roles ?? [], lead: LEAD[group], anchor: anchorFor(o, group), req: reqFor(o, mat),
-    compare: (o && OVERRIDES[o.slug]?.compare?.[0]) ?? compareDefault(o, group),
+    compare: (o && OVERRIDES[o.slug]?.compare?.[0]) ?? compareDefault(o, group, reqFor(o, mat)),
     compareOverridden: !!(o && OVERRIDES[o.slug]?.compare), a1: modules.A1.value === "off" ? "not available" : modules.A1.value === "on" ? "on" : "available (optional)",
     modules,
   };

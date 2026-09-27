@@ -431,23 +431,18 @@ them (`docs/planning/trip-slip-product-map.md` §G step 0).
   (#1109). It stores the row id beside `event_type`. A client never sends an id (LD 42 D1).
 - **Readers:** `useOccasionSwitches` and the group resolver read the id first. They fall back explicitly, and say so in
   a comment: first to the plan's events (0b), then to the lossy `event_type` lookup.
-- **Backfill plan: exact evidence only, one data migration, idempotent, `WHERE experience_type_id IS NULL`, so a second
+- **Backfill (RULED Sep 27, 2026 — R136): exact evidence only, Tier A only, one data migration, idempotent, `WHERE experience_type_id IS NULL`, so a second
   run changes nothing.**
   - **Tier A — the plan's own events.** Every `user_experiences` row on the trip names the same `experience_type_id`.
     That is the match LD 42 D1 already calls exact on the client, and nothing is guessed.
-  - **Tier B — an `event_type` that names exactly one occasion:** `wedding`, `proposal`, `honeymoon`. For these the
-    enum value is the occasion's own name, stamped by `eventTypeForSlug` at mint.
-  - **Everything else stays NULL:** `vacation` (→ `travel`/`romance`/`golf-trip`), `birthday` (→ `birthday`/
-    `milestone-birthday`), `corporate` (→ `corporate-events`/`corporate`), `anniversary`, `other`, `adventure`,
-    `cultural`.
-  - **Not used as evidence:** the pen's `experienceSlug`. Before #1109 the pen could be overwritten by reading another
-    plan or a template page (audit G4/G5), so its value on an old row proves nothing.
-  - A read-only preview script prints the counts per tier against production before the migration is published — the
+  - **Tier B is REJECTED (R136):** `event_type` is not evidence. Plans with no Tier A evidence stay NULL.
+  - **Not used as evidence:** the pen's `experienceSlug`, which before #1109 could be overwritten by reading another
+    plan or a template page (audit G4/G5).
+  - **Every backfilled row is logged with its evidence** in `trip_occasion_backfill_log` (section H1), so each can be
+    reversed individually.
+  - A read-only preview script prints the Tier A count against production before the migration is published — the
     `preview-category-key-repair.cjs` posture.
-  - **Needs a ruling:** LD 42 D1 says **NO BACKFILL**. Tier A and Tier B are what the existing readers already derive,
-    so storing them adds no claim. It is still an amendment to D1's text, and it is not applied without that ruling.
-    The alternative is no backfill at all: the readers keep deriving at read time, and old plans stay NULL until the
-    traveler next chooses an occasion.
+  - **Ruled:** LD 42 D1 is amended to allow exactly this Tier A backfill (R136).
 - **How the lossy `vacation` mapping is resolved:** it is resolved at the **group** level, not the occasion level. All
   three occasions `vacation` can mean are in the same group (Trips). So a NULL-occasion plan whose `event_type` is
   `vacation` gets the Trips group defaults with no occasion claimed. The same holds for `birthday` → Celebrations.
@@ -480,6 +475,12 @@ it.* This settles §G-2 as the decision-maker ruled it.
   | `proposal` | Matrix REQ `dining_venue`; roles omit it (photography, florist, private_chef, videographer) | Keep `dining_venue` REQ (the setting has to be booked) and add it to the derived roles. **For the decision-maker:** the alternative is REC, since a proposal can happen outdoors. |
   | `bachelor-bachelorette`, `retreats`, `boys-trip`, `girls-trip`, `date-night` | Roles name categories absent from the `travel` / `date_night` rows (`event_coordinator`, `entertainment`, `hair_makeup`) | Slug rows add them at REC |
   | The seven `day` parties (`baby-shower`, `graduation-party`, `housewarming-party`, `retirement-party`, `career-achievement-party`, `farewell-party`, `holiday-party`), `wedding-anniversaries`, `family-occasion` | Family `custom` = everything OPT, so no REQ at all, yet `roles_needed` lists specific hires | Slug rows: their roles at REC. REQ is set only where the slip's completeness should block ("3 of 5 essentials"), which needs a per-occasion call, so they ship as REC. |
+- **RULED Sep 27, 2026, superseding the table above where they differ:**
+  - **R137:** `accommodation` is REQ for the 11 multi-day occasions with no venue role. "Not needed" closes the gap.
+  - **R138:** every Celebrations occasion has exactly one REQ, `venue`; nothing else is REQ in that group, so
+    `corporate-events`' event coordinator, caterer and AV fall to REC.
+  - **R141:** `proposal` keeps `dining_venue` REQ.
+  - The generated §J in the product map carries the resulting REQ per occasion.
 - **Not changed:** the seven family keys' own rows (other readers use them), the `aff_*` rows, and every category's
   existence (no new category — LD 31 registry).
 
@@ -563,287 +564,153 @@ chooses config. Not scheduled.
 
 ---
 
-## H. Trip Slip surface changes
+## H. Trip Slip surface changes — the product map's steps 1 and 2
 
-> **PAUSED (decision-maker, Sep 26, 2026; re-confirmed the same day with the map rulings, ledger
-> `2026-09-26-slip-map-ratification-gate`).** Superseded in scope by `docs/planning/trip-slip-product-map.md`. Once the
-> map is ratified — which waits on its §J, §K and §L — this section is rewritten as the map's steps 1–2. Nothing below
-> is to be built as written.
+> **Rewritten Sep 27, 2026** (decision-maker: the map is ratified except for its §J overrides; ledger
+> `2026-09-27-slip-map-ratified`, R146). This section **is** steps 1 and 2 of `docs/planning/trip-slip-product-map.md` §G,
+> in build detail. The earlier H1–H11 (Sep 26) were absorbed into the map. Their later-step content is indexed in H3 so
+> nothing is lost. **Design only; nothing is built until the decision-maker releases step 1.**
 
-**Design only.** This section says how the pipeline in §B reaches the traveler on `/plans/:tripId`. Every point cites
-the Trip Slip UI audit (`docs/planning/trip-slip-ui-audit.md`, code on `main` @ `da3174289`; screenshots under
-`img/trip-slip-audit/`). Audit ids are written as **audit F2**, **audit G3**, **audit E1**, and so on.
+**Already landed, and assumed by everything below:**
+- #1109 (merged `b8e0ff22`): the slip reads the live plan; finalized plans refuse re-planning; "Send to expert" needs
+  an assigned expert; the occasion is written only by `PATCH /api/trips/:tripId/occasion`; finalized-plan refusals are
+  named and offer Reopen (R123).
+- #1110: the adopt-stop write gate (R130); comparison apply-to-cart off by default (R131).
 
-**Assumed landed: the Dispatch 1 integrity fixes (draft PR #1109).** Everything below depends on them:
+**Rules that bind both steps:**
+- Every module reads the plan live and writes only through its existing rail (LD 39, LD 42 D16).
+- Group names are never shown (R127).
+- No field is shown that its source does not state (map §K1).
+- No fee literal (§8).
 
-| Fix | What it guarantees for this section |
-|---|---|
-| audit G3 | The slip reads the **live** plan (`GET …/plancard?surface=slip`), never a `trip_finals` snapshot. Suggestions added after a Reopen are therefore visible. |
-| audit G1 | The Trip Card draws no routing actions and the server refuses re-planning a finalized plan. None of this section's controls ever appears on the Card. |
-| audit G2 | "Send to expert" needs an assigned expert, and the plancard carries `expertAssigned`. |
-| audit G4/G5 | Reading a plan never rewrites its occasion, so the template key below can be trusted. |
+### H1. Step 1 — the module frame
 
-Audit H3, H5 and H11 recorded those four as contradictions with this brief's assumptions. With #1109 in place they no
-longer are.
+**Ships:** the slip rendered as modules in the order its group defines, with no new capability. A traveler sees the same
+content, reordered by occasion, with the list first on a phone.
 
-**Reuse before build.** Each element names the component it extends (from audit E) or says why a new one is needed. A
-new component is justified only where the audit found nothing that renders the concept.
-
-### H1. Completeness header, driven by the experience template
-
-**Extends:** the slip's view bar, which today shows status counts and the List | Map toggle (SV:1708-1751; audit E8).
-It is the only summary strip on the slip. A second header beside it would give the page two summaries that can
-disagree.
-
-**Today:** the header shows dates, party and stops, and the view bar shows routing counts. Nothing says what a plan of
-this occasion is missing (audit F2; `slip-f1-fold-desktop.jpg`, `slip-f3-fold-desktop.jpg`). The wedding plan (f3) and
-the vacation plan (f1) have the same structure (audit F6).
-
-**Change:**
-- **A "coverage" row is added to the view bar**, above the routing counts. It reads "3 of 5 essentials", then one chip
-  per REQ category for the plan's template: covered (an item of that category is on the plan) or missing.
-- **Tapping a missing chip** scrolls to that category's gap card (H2), or to the unplaced-gaps strip. It also filters
-  the suggestions panel (H3) to that category.
-- **Tapping a covered chip** scrolls to the item that covers it.
-- **The routing counts stay** as their own row. Coverage is about what the plan contains; routing is about who books
-  it. They are never merged.
-
-**Source — one server derivation, never restated on the client:**
-- The slip plancard gains a `coverage` block: `{ templateKey, required: [{ categoryKey, label, coveredBy: itemIds[] }] }`.
-- It is computed by the shared derivation §B6 already proposes: `computeEmptySlots` / `derivePlanCardGapData`, moved to
-  one module. That module also feeds the existing pretrip upsell slate, which today lives on PlanCard, not the slip
-  (audit H4).
-- The client counts nothing itself.
-
-**Prerequisites:**
-- **The §F phase 0 template-key mapping.** Without it a `vacation` plan resolves to no matrix rows (§A6).
-- **The slip passes the plan's events to `useOccasionSwitches`** (audit F15). Today SV:1464 and SR:961 call it without
-  events, so the exact occasion resolution LD 42 D1 describes is unused on the slip.
-
-**States:**
-- **Template unresolved:** the row reads "Choose an occasion to see what this plan needs" and opens the one planning
-  modal at step 1. It never assumes `travel` (§13).
-- **Custom template** (every category OPT): no REQ, so no coverage row — only the suggestions panel.
-
-**Mobile:** the row collapses to one line ("3 of 5 essentials ▸"), which opens the chip list as a sheet (see H10 on
-audit F11).
-
-### H2. Gap cards inside each day
-
-**New component, `SlipGapCard`.** Justified because no component anywhere draws an *absence* inside a day list. The
-audit's inventory of slip renderers (audit B1) has rows for items, events and logistics only.
-
-It uses the pill tokens in `slip-tokens.ts` and `ItemKindBadge`'s neutral outline, so it reads as part of the list, not
-an advert. It renders inside the existing day list (SV:1801-1952) and inside `SlipEventGroupBlock` (SV:1045-1140).
-
-**Two kinds of gap, one card:**
-
-1. **An empty REQ slot** (from H1's `coverage`). Placement follows the plan's own facts, never a guess:
-   - **Bound to an event:** a wedding's venue or photographer, where an event row carries `event_date`. The card sits
-     in that event's group on that day.
-   - **Bound to a day:** a date night's dinner, whose one day is the plan's day.
-   - **Neither:** the card sits in a single "Not placed yet" strip above day 1. It is never put on day 1 by default
-     (that would repeat audit G17's day-1 rule).
-2. **A heuristic gap** — anchor conflicts, a day with no transport between two items, day-boundary overruns, energy per
-   day. Its source is the **deterministic** Advisor fundamentals checklist the expert workspace already shows under its
-   "AI Gaps" heading (audit A3, H1; `expert-ws-f4-advisor-aigaps-desktop.jpg`, `expert-ws-f4-aigaps-section-desktop.jpg`;
-   LD 21: "a check with insufficient data is omitted with a reason, never guessed"). The card sits on the day the
-   check names. **Paid optimizer output is not a gap source.** An itinerary comparison is a paid proposal and stays on
-   its own board (audit F14).
-
-**Card content:**
-- What is missing, in the traveler's words: "No photographer yet", "Nothing gets you from Fushimi to Gion on Day 2".
-- One primary action: **"See options"**, which opens H3 filtered to that category or day.
-- One secondary action: **"Not needed"**. Where a dismissal is stored is an open question (H-Q1), so nothing is
-  persisted until that is ruled.
-
-**States:** a check that lacked data renders no card at all — never a green "all good" (§13). A REQ slot whose category
-has no eligible supply in this market still shows the gap, but its "See options" reads "Nothing listed in Kyoto yet"
-rather than an empty panel.
-
-### H3. Suggestions panel for REC and OPT
-
-**Extends:**
-- **The rail pattern** (audit E1): a fixed 320px column of independent cards, SR:1305-1338. The panel is a new rail
-  card, "Suggestions", placed between Build and Ask AI (`slip-f1-rail-desktop.jpg`).
-- **`UpsellSlot`'s data hook** (audit E2; `UpsellSlot.tsx`), with the two new slot keys §B7 already names:
-  `slip_gaps` and `slip_suggestions`.
-
-**Contents, top to bottom:**
-1. **"From your expert"** — the existing `ExpertSuggestionsPanel` (SV:1969; audit E5), moved into this card. It is
-   **unchanged**: those are a person's suggestions, awaiting Accept/Decline, and never ranked by the engine.
-2. **"Suggested for this plan"** — engine-ranked item candidates (§B1), grouped by category, REC before OPT, capped per
-   `slip_suggestions.maxItems`. Filtered by whatever the traveler tapped last (a coverage chip, a gap card, a day). Each
-   entry is the one recommendation card (H4).
-
-**Out of scope for the panel:** Ask AI proposals stay in their drawer (`slip-f1-askai-open-desktop.jpg`), because they
-are paid (H8). Saved places keep their own section (audit E10) and join the panel as a candidate source in §F phase 1,
-not as a second list.
-
-**Revenue weight is 0 on this panel** (§B7, §G-4).
-
-### H4. One recommendation card for every surface
-
-**New component, `RecommendationCard`.** It is built as the presentation `UpsellSlot` renders (so it extends
-`UpsellSlot` rather than sitting beside it). It replaces these duplicates from audit B3:
-
-| Replaced | Where |
-|---|---|
-| Partner card "Traveloure Partner" | `unified-result-card.tsx:295` |
-| Partner card "Paid partner" | `city-feed-card-recommendation.tsx` |
-| Pinned curated content row, **unlabeled** | curated section (audit D5) |
-| Two `ServiceCard`s | marketplace and Discover variants |
-| `UpsellSlot`'s own default presentation | `UpsellSlot.tsx:251-324`, which never renders `sourceType` (audit D5) |
-
-A new component is justified because none of the five can carry the fields below: each was written for one surface and
-one source type.
-
-**Fields — every one rendered only from what the server sent (§13):**
-
-| Field | Rule |
-|---|---|
-| **Why suggested** | One line built from the impression's top present scoring terms (§B4): "Fits a date night · 8 min walk · rated 4.8 (212)". Lists only terms that were scored; the client composes nothing. |
-| **Travel time with mode** | "12 min walk from your hotel". "~15 min transit" when it came from the neighborhood matrix (approximate, §B8). Omitted entirely when there is no anchor — never "0 min". Labelled "centroid" when the item's pin has only neighborhood precision (§A2). |
-| **Trend badge** | Only when the trend term is present **and** carries provenance (`scoring_run_id` plus contributing source families, §B4). Tapping shows "Why trending: <sources>, as of <date>". Below the confidence floor or uncorroborated, no badge (the creation-burst guard). |
-| **Disclosure label** | Exactly **one** label vocabulary, replacing the three variants above (audit F7; `reco-discover-kyoto-desktop.jpg` shows "HIDDEN GEM", "PAID PARTNER", "Featured", "WANTED HERE" and "recommended for this trip type" on one page). Values: *none* (organic native), **"Traveloure pick"** (only when §C's boost actually changed its rank), **"Partner offer"** (affiliate — an operator wording decision, H-Q3). The strings live once in `shared/content-origin.ts`, which already holds "Paid partner" (§A5). "Why am I seeing this?" reuses the "Why recommended" modal (`city-feed-card-recommendation.tsx:274-302`). |
-| **Expert endorsement** | "Recommended by @handle", only when the engine's `expertEndorsed` term is backed by a real endorsement row. Addressed by handle, never a user id (LD 40). |
-| **Kind chip** | The existing `ItemKindBadge`. Audit G9 (the "RECOMMENDED" chip on a traveler's own free-text item) is a defect to fix separately; the card does not copy it. |
-| **Price** | From the candidate's price snapshot. A priceless listing is never shown as free (V-11). A request-only listing says "Request to book" (#1101). |
-
-**Actions:** "Add to Day N ▾" (H6) and "Details". **No routing action ever appears on a card.**
-
-### H5. Map
-
-**Extends:** `MapControlCenter` — layers (`MapControlCenter.tsx:406`), fit-bounds (:139-150), the honest "X of Y
-located" line (audit E6). Already shared by the slip and the Trip Card. Every planning addition below is a slip-only
-prop; the Card keeps its read-only map (§D).
-
-> **UNVERIFIED — every map item in this subsection is designed from code only.** The audit environment had no
-> `VITE_GOOGLE_MAPS_API_KEY`, so every Google map rendered "Map unavailable" (audit H10; `slip-f1-map-desktop.jpg`,
-> `slip-f1-map-unlocated-desktop.jpg`). Centering, markers, labels and sync must be re-checked in a browser with a Maps
-> key before §F phase 3 is called done.
-
-| Element | Design | Status |
-|---|---|---|
-| **Anchor pin — set / move** | A labelled marker for the resolved plan anchor (§B5: "Your hotel", "Your pin", "Gion (neighborhood)"). "Set a base" places it by an explicit tap-then-confirm (the LD 22 meeting-pin posture — never inferred). Dragging it is the same confirm. Today the only anchor is `BuildAroundDialog`'s, used for Optimize and never drawn (audit F3). Storage is §G-3 (one nullable column pair on `trips`). | UNVERIFIED |
-| **Travel-time labels** | On plan pins, between consecutive located items of the selected day, and from the anchor to each pin. Same wording rules as H4. Where the route is only a sequence, the LD 22 dashed "sequence, not routing" connector is reused (audit E9) and carries no minutes. Audit F4: no travel time appears anywhere today. | UNVERIFIED |
-| **Suggestions layer** | Secondary, visually distinct pins for H3's current filter, never mixed with plan pins. Tapping one opens its card. On by default only while a gap is selected. | UNVERIFIED |
-| **Per-template default layers** | Exactly §D's table — not restated here, so there is one copy. Read from the resolved template key (H1). | UNVERIFIED |
-| **List ↔ map sync** | Audit F8. At `xl` and wider, list and map sit side by side instead of today's either/or. Hovering or selecting a row highlights its pin, and tapping a pin scrolls to its row. The fixed `h-[420px]` becomes the list's height. Audit F9: the "X of Y located" line always names its scope ("Day 2: 4 of 5 located" / "Plan: 11 of 13"). | UNVERIFIED |
-| **Mobile list/map toggle** | Below `lg`: a sticky List \| Map segmented control at the top of the list. Map opens full-height with the selected day's pins and a bottom sheet for the tapped item. It replaces the 420px block that today sits under a rail stacked about 1100px down (audit G19; `slip-f1-map-mobile.jpg`, `slip-f1-fold-mobile.jpg`). | UNVERIFIED |
-
-**Not in this programme:** converging the other plan maps. The audit counts at least five; the workspace alone has
-`CanvasMapSection`/`LeafletPlanMap` plus an inline Google Map (audit H8, B3). Only the slip and Card share
-`MapControlCenter`; the rest are listed in H9 as later work.
-
-### H6. Add to a chosen day, move to another day, re-validate at once
-
-**Extends:**
-- **The existing add rail** (audit E3): `POST /api/trips/:tripId/itinerary-items`, the body `SlipItemTools`,
-  `SlipSavedPlaces` and the Add-to-plan dialog already send. It already carries `dayNumber`.
-- **The existing item PATCH**: `PATCH …/itinerary-items/:itemId`, whose handler strips named fields and passes
-  `dayNumber` through today. Only the client's `buildSlipEditItemBody` (`slip-item-tools.ts:207-216`) omits it.
-
-No new write path.
-
-**Add from a card or gap:**
-- "Add to Day N ▾" defaults to the gap's own day (H2), else the day whose located items are nearest by the matrix,
-  else asks.
-- The same picker replaces `SlipSavedPlaces`' hard-coded `dayNumber: 1` (audit G17).
-
-**Move to day (audit F12):** a "Move to day…" entry in the existing `SlipItemTools` menu (↑ ↓ ✎ ✕;
-`slip-f1-item-edit-desktop.jpg`), sending `{ dayNumber }` through the existing PATCH. Owner-only per LD 42 D16, plus
-the delegate per LD 52 C. Drag reordering is deferred (H10).
-
-**Re-validation — the response, not a second call.** After an add or move, the server returns a `validation` block for
-the affected days. The slip renders it as an inline notice on the moved or added item:
-
-| Check | What it compares |
-|---|---|
-| Proximity | Travel time to the item before and after it, from the matrix, against the template's tolerance. |
-| Schedule | Overlap with timed items, `temporal_anchors` and event `start_time`s on that day. Opening hours only where known; otherwise omitted. |
-
-It never moves anything by itself, and it clears when the traveler acts. A day with no located items gets no
-proximity notice.
-
-### H7. States for missing data
-
-Each state says what is missing. None of them shows a zero, a default or filler.
-
-| Missing | Slip renders | Never renders |
-|---|---|---|
-| **No anchor** | "Set a base to see distances" in the coverage row and on the map. Cards and labels show no travel time. The ranking omits proximity (§B5). | "0 min", or a city-centre fallback (LD 22) |
-| **Dropped scoring terms** (no profile, no trend, no coordinates) | Each card's why-line lists only the terms scored. The panel footer says "Ranked without: your preferences, distance" from the server's `omittedTerms`. | a 0.5 "match" (today's `profileMatchScore` stub, §A0) |
-| **AI unavailable** | Gaps, suggestions and re-validation keep working — the engine is deterministic, not a model. Only Ask AI and Draft with AI show their own unavailable message. Today Draft shows a 503 "high demand" toast; `slip-f2-draft-ai-desktop.jpg`. | a disabled suggestions panel |
-| **A paid action failed** | Optimize's payment failure says so in the dialog (audit G8 is silent today). | a dialog that simply stays put |
-| **No supply for a category in this market** | "Nothing listed in Kyoto yet" on the gap card and panel. | filler from another city |
-| **Template unresolved** | H1's "Choose an occasion…" | an assumed `travel` |
-| **No Maps key / map fails to load** | List-only, with today's "Map unavailable" line. | an empty frame |
-| **Plan read failed** | Distinct not-found, no-access and try-again states with a retry (audit F16, G11). A skeleton while loading instead of the bare spinner (audit G24). | one message for every failure |
-
-### H8. Free vs paid — where the line sits on screen
-
-| Free (no charge, no Trip Pass needed) | Paid (existing prices, from `fee_bands`, never a literal — §8) |
-|---|---|
-| Coverage row, gap cards, suggestions panel | **Optimize** — reorganizes the whole plan into versions on the comparison board (`slip-f1-optimize-desktop.jpg`; observed $5.99 vacation vs $19.99 wedding, audit G15) |
-| Add / move / re-validation | **Ask AI task** — charged only when a proposal is applied (observed $2.99; LD 45(3)) |
-| Map layers, anchor pin | Trip Pass covers both (LD 41) |
-| The free heuristic preview beside Optimize (LD 41 d) | |
-
-**On screen:**
-- Both paid actions stay in the rail's **Build** card, where they are today.
-- The suggestions panel ends with one line: "Want the whole plan reorganized? **Optimize** — $X · included with Trip
-  Pass". The figure is read from the same server money block the Ask-AI drawer already reads (LD 45(3)), never typed on
-  the client.
-- A recommendation card has no price-of-service action. Adding it is a traveler write through the add rail, and no
-  card, gap or chip can start a charge.
-
-**Why this does not reopen LD 41(b)** ("any AI action on a slip that already holds items is Optimize"): engine
-suggestions are deterministic catalog ranking, not an AI write. Nothing changes the plan until the traveler adds one
-item. H-Q2 asks the decision-maker to confirm that reading.
-
-### H9. Shared components, and how the expert workspace adopts them
-
-| Shared piece | Consolidates (audit B3) | Slip | Expert workspace |
+| Piece | Design | Reuses | Test that must fail on `main` first |
 |---|---|---|---|
-| `RecommendationCard` (H4) | 3 partner cards with 3 disclosure wordings, 2 `ServiceCard`s, `UpsellSlot`'s default presentation | suggestions panel, gap "See options" | the Add tab's **Platform services** and **Partner inventory** sources render ranked `RecommendationCard`s for the client's plan (`expert-ws-f4-add-platform-services-desktop.jpg`) |
-| `PlanGapPanel` — H1's coverage derivation plus H2's gap cards | the pretrip gap slate on PlanCard (audit H4) and the workspace's "AI Gaps" heading (audit H1) — two renderers of "what this plan lacks" | coverage row and gap cards | **replaces** the "AI Gaps" section inside the Advisor tab (`workspace.tsx:4911`), fed by the same server derivation, so expert and traveler see the same gaps |
-| Engine proximity (§B4) | the Advisor tab's haversine "stays" ranking (`advisor.routes.ts:296-316`; audit G22) | — | the stays card becomes an engine call with the plan anchor |
-| `MapControlCenter` slip layers (H5) | — (slip and Card already share it) | anchor, labels, suggestions | not adopted in this programme; the workspace's three maps converge later (audit H8) |
+| **`experienceGroupFor(row)`** | Pure, in `shared/experience-group.ts`. Implements map §B2 exactly, reading the existing switch readers (`client/src/lib/occasion-switches.ts`), never restating them. **Input order (R136):** `trips.experience_type_id` → the plan's events when they all name one occasion → the NULL fallback. The NULL fallback resolves a group without claiming an occasion: `vacation` → Trips, `birthday` → Celebrations, anything else → Plain plan (0a). | switch readers; `findOccasionByEventType` | A pure test over all 28 seeded rows + the plain plan, pinned to §J's JSON (29 rows). |
+| **`shared/experience-spec.ts`** | The one resolver of **group default → switch → override → module state**, and of lead zone, anchor, REQ and compare default. `docs/planning/tools/trip-slip-spec.mjs` then imports it instead of restating it. **The override record ships empty** until the decision-maker confirms the §J override list. | §D matrix as data | The same 29-row pin. |
+| **`trip-slip-spec.mjs --check` in CI (R146)** | A named step in `build.yml`'s guard batch: `node docs/planning/tools/trip-slip-spec.mjs --check`. A seed change that moves a switch, a role or an occasion fails CI until §J is regenerated in the same PR. | — | The self-check: with a seed fixture whose switch was flipped, `--check` exits 1. |
+| **Module registry** | `client/src/components/plancard/slip-modules.ts` maps each module id (B1–A8) to its existing component and its depth renderers (§K). `SlipView` renders the registry in the order `experienceSpecFor(plan)` returns. No component is copied; each existing section is registered once. | every existing slip section (map §L1) | A source pin: every section `SlipView` rendered before step 1 is registered exactly once. |
+| **Occasion switches get the events (0b, audit F15)** | `SlipView` and `SlipRail` pass the plan's `events` to `useOccasionSwitches` (today SV:1464 and SR:961 do not). | `useOccasionSwitches` | A test with a `vacation`-typed plan whose events all name `romance`, which resolves to `romance`. It fails on `main`. |
+| **Mobile: list first (audit F11)** | Below `lg` the day list comes first and the rail follows. GLANCE and PLAN are the default depth; each row gains a DETAIL toggle (§K1 rule 2), and the expert note becomes one line at PLAN. | `SlipItemRow` | A DOM test at 390px: the first day heading comes before the Build card. |
+| **§K1 honesty fixes** | Stop printing "Duration needed" when `duration_minutes` is NULL (emit the column; omit when NULL). Count only truly confirmed items in `confirmedActivities`. Stop labelling `notes` as the expert's note. Drop the `partnerName` = product-name label. Emit the traveler's own note (`description`) at DETAIL. | `trip-plan.service.ts` builders | One DB/DTO test per fix, each failing on `main`. |
+| **`trips.experience_type_id` (0a, R136)** | Declared in `shared/schema.ts` with its index; written only by the occasion PATCH. The Tier A backfill runs once, from a data migration that writes every backfilled row to **`trip_occasion_backfill_log`**. | occasion PATCH (#1109) | A migration test that Tier A fills only unanimous-event plans and logs each one; a second run changes nothing; the reversal script restores NULL. |
 
-**Workspace-specific rules:**
-- The expert **suggests**; the traveler adds. From the workspace, a card's primary action is "Suggest to traveler",
-  which writes a `trip_suggestions` row. It may name the listing (LD 52 B, `provider_service_id`, server-verified). It
-  never adds to the plan directly, so an expert's pick reaches the slip through H3's "From your expert" group.
-- A write-status advisor editing their own Workstation build keeps today's item rails.
-- Workspace defects the audit recorded stay separate lanes and are not fixed by adopting these components: search
-  misses an approved listing (audit G12); day count and client name wrong (G13); duplicate test id (G22).
+**`trip_occasion_backfill_log` (R136, proposed schema).** One append-only table, declared in `shared/schema.ts`:
 
-### H10. The nine additional gaps (audit F8–F16): in scope or deferred
+| Column | Notes |
+|---|---|
+| `id` | varchar primary key |
+| `trip_id` | FK `trips` ON DELETE CASCADE |
+| `experience_type_id` | the id the backfill wrote |
+| `evidence` | jsonb: `{ rule: "tier_a_all_events_agree", userExperienceIds: [...] }` |
+| `migration` | the migration file that wrote it |
+| `applied_at` | when |
+| `reversed_at` | NULL until reversed |
 
-| Gap | Decision | Reason |
-|---|---|---|
-| **F8** list ↔ map sync | **In** (H5) | Suggestions and gaps are spatial; an either/or view hides the thing being recommended. |
-| **F9** located-count scopes differ | **In** (H5) | A one-line label fix once the map follows the selected day. |
-| **F10** no day jump | **In** | Gap cards and "Add to Day N" need the traveler to reach a day. A sticky row of day chips, which doubles as the mobile day selector. |
-| **F11** no mobile layout (rail stacks above the list) | **In** | On a phone the suggestions panel would otherwise sit about 1100px above the plan it serves (audit G19). Below `lg` the rail cards become the header's sheets (H1) and a bottom "Suggestions" sheet (H3); the list comes first. |
-| **F12** no move-to-day / no drag | **Move-to-day in** (H6); **drag deferred** | Move-to-day is the missing half of "add to a chosen day". Drag needs pointer and keyboard accessibility work that nothing in this section depends on. |
-| **F13** no D9 bookings section | **Deferred** | A money surface (balance payment, §15d, `canPayBalance`), not a recommendation surface; its own lane. |
-| **F14** proposal effect not shown on the slip | **Deferred** | Belongs to the paid Optimize / comparison lane (LD 41 e). H8 only links to it. |
-| **F15** events not passed to `useOccasionSwitches` | **In — prerequisite** | H1's template key must be the exact occasion (LD 42 D1), not the lossy lookup. |
-| **F16** no retry / one error message | **In** (H7) | This section adds reads to the slip; each needs honest failure states, and the page's own load is the first. |
+- **Other rules:** no CHECK, and no UPDATE path except the one reversal script.
+- **Reversal:** clears `trips.experience_type_id` only where it still equals the logged value, so a traveler's later
+  choice is never undone. It stamps `reversed_at`.
+- **Why not `item_transition_log`:** its row count is the plan's version number (LD 45 (6)), so a backfill row there
+  would change what the traveler sees.
 
-### H11. Open questions this section adds
+**Not in step 1:** any new write, any gap, any suggestion, any charge.
 
-- **H-Q1 — Where does "Not needed" on a gap card live?** Proposed: a per-plan child row (e.g. `plan_gap_dismissals`,
-  CASCADE on `trips`, declared in `shared/schema.ts`). Never the pen (`trip_contexts` is not an authority, audit D3), and
-  never localStorage for a fact the expert should also see. It is schema, so it needs ratification before §F phase 3.
-- **H-Q2 — Are engine suggestions outside LD 41(b)?** Proposed: yes — they are deterministic ranking and write nothing.
-  If the decision-maker reads LD 41(b) as covering them, the suggestions panel becomes part of the paid tier and H8's
-  table moves.
-- **H-Q3 — The one affiliate disclosure wording.** "Partner offer", "Paid partner" (today's `shared/content-origin.ts`)
-  or "Sponsored". It is an operator/legal wording choice. The design needs only that there is exactly one.
+### H2. Step 2 — completeness, day jump, move to day
 
----
+**Ships:** the plan says what it still needs, and the traveler can reach and rearrange days.
+
+**B4 Completeness ("N of M essentials").**
+- **Where it shows:**
+  - GLANCE: a coverage row in the slip's view bar, above the routing counts (SV:1708-1751). The two are never merged.
+  - PLAN: per-day gap cards.
+  - DETAIL: the list per REQ category.
+- **REQ source:** the phase-0 slug keys as ruled:
+  - Celebrations: `venue` only (R138).
+  - The 11 multi-day occasions with no venue role: `accommodation` (R137).
+  - `proposal`: `dining_venue` (R141).
+  - Hosted events: the family REQ, `venue` first.
+  - §J lists every occasion's REQ.
+- **One derivation, server-side:** the plancard gains `coverage: { required: [{ categoryKey, coveredBy: itemIds[],
+  dismissed: boolean }] }`. It is computed once in a shared module that replaces the dead `computeEmptySlots` (map §L3)
+  and the pretrip slate's own copy. The client counts nothing.
+- **Item → category:** an item covers a category only through its listing (`provider_services.category_id` →
+  `service_categories.category_key`), since `itinerary_items` has no category column. A free-text item covers nothing,
+  and the traveler closes that gap with "Not needed" (§13: the category is never guessed from a title).
+- **"Not needed" closes a gap (R137):** the approved dismissal. Stored per plan in **`plan_gap_dismissals`**
+  (`trip_id` FK CASCADE, `category_key`, `dismissed_by`, `created_at`, UNIQUE `(trip_id, category_key)`), declared in
+  `shared/schema.ts`. It is written by the owner or delegate and is visible to the expert. It is born empty, so the
+  UNIQUE index qualifies for the §20 new-object carve-out. A dismissed category counts as covered in "N of M" and
+  shows as "not needed".
+- **States:**
+  - Plan with no occasion: "Choose an occasion to see what this plan needs", which opens the one planning modal at
+    step 1.
+  - Occasion with no REQ: no coverage row. Since R137/R138, only the plain plan has none.
+  - REQ category with no supply in this market: the gap still shows. Its action reads "Nothing listed in <city> yet"
+    until the supply read (map §L2) exists.
+- **Gap cards (PLAN):** one card per missing REQ category, placed by the plan's own facts:
+  - An event's day when the category belongs to an event.
+  - The plan's single day for a day-shaped occasion.
+  - Otherwise a "Not placed yet" strip above day 1, never day 1 by default (audit G17).
+- **Card actions:**
+  - **"Not needed"**.
+  - **"Browse <category>"**: the existing marketplace browse filtered by `category_key` with the plan's id, landing on
+    the add rail (LD 42 D6).
+  - Engine-ranked "See options" arrives in step 5.
+
+**S4 Day jump.** A sticky row of day chips at the top of the list; on a phone it is also the day selector. The same
+chips drive the map's day scope (audit F9, "Day 2: 4 of 5 located").
+
+**S4 Move to day (audit F12).** "Move to day…" in `SlipItemTools` sends `{ dayNumber }` through the existing item PATCH
+(`buildSlipEditItemBody` gains the field). It is owner and delegate only (LD 42 D16, LD 52 C) and never for a
+purchased row. Drag reordering stays deferred. `SlipSavedPlaces`' hard-coded `dayNumber: 1` becomes the same day
+picker.
+
+**Tests that must fail on `main` first:**
+- Coverage for a wedding plan lists `venue` missing, then covered after a venue listing is added.
+- A dismissal counts as covered and survives reload.
+- Move to day changes `day_number` and refuses a purchased row.
+- A pending advisor cannot dismiss.
+
+### H3. Where the Sep 26 H1–H11 content went
+
+| Old | Now |
+|---|---|
+| H1 coverage row, H2 gap cards | H2 above (step 2) |
+| H3 suggestions panel, H4 `RecommendationCard` | Map step 5 (S3), with brief phase 1 |
+| H5 map anchor, labels, layers, list ↔ map sync | Map step 6 (S2), brief phase 2; the day-scope label is in step 2 |
+| H6 add to a chosen day / move / re-validate | Move-to-day and day picker in step 2; re-validation with step 6's matrix |
+| H7 missing-data states | Map §K1 + each step's states |
+| H8 free vs paid | Map §C (LD 41 (b) line, R126) |
+| H9 shared components / workspace | Map §H |
+| H10 F8–F16 | F9/F10/F12/F15/F11 in steps 1–2; F8 step 6; F13 step 4 (with the payer read, R143); F14 step 7; F16 with step 1's read states |
+| H11 H-Q1 dismissal storage | Settled: `plan_gap_dismissals` (step 2, R137) |
+| H-Q2 engine suggestions outside LD 41 (b) | Settled by R126: deterministic ranking is free; choosing between options is paid |
+| H-Q3 affiliate disclosure wording | Still open (operator/legal), needed by step 5 |
+
+### H4. Cart (R142 — design only, no code)
+
+**The ruling:** every cart line is **plan-scoped** or **standalone**, decided when the line is created and never
+changed afterwards. Checkout **groups lines by plan, plus one "Standalone" group**, and **nothing is blocked**.
+**Whole-cart checkout stands** (`2026-09-24-cart-two-paths` option A); per-plan checkout is deferred.
+
+- **Which one a line is:** `cart_items.itinerary_item_id` already records the plan link for a projected line (LD 39).
+  A plan-scoped line is one created by the projection (`syncItemProjection`) or a plan-aware door. A standalone line
+  is a trip-less add: a listing's Book with no plan, a guest cart line (until G2), or visa-help.
+- **The rule "never changed":** no rail may attach a standalone line to a plan or detach a plan-scoped one; it is
+  removed and re-added instead. Today no such rail exists, and the design adds none. Whether the scope needs its own
+  column (`plan_scope`), or is fully determined by the existing link plus the trip it resolves to, is the one schema
+  question. **Proposed:** derive it (no column): `itinerary_item_id` set ⇒ plan-scoped (group = the item's `trip_id`),
+  else standalone.
+- **Checkout view:** the order review groups lines under each plan's title, then "Standalone". Each line stays
+  removable until payment (`canRemoveBeforePayment`). `/api/checkout` is unchanged — the whole cart is one payment
+  (§14/§15 untouched). The group headers are presentation only.
+- **What this does not do:** it does not require a plan before checkout (that proposal is superseded), and it does not
+  split checkout per plan (deferred; that is a money-path change needing its own ruling).
+- **Where it lands:** with map step 4 (bookings), so the cart and the slip's bookings section say the same thing about
+  which plan a purchase belongs to.
 
 *End of brief. HARD STOP — no implementation until ratified.*

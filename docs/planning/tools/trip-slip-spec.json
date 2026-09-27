@@ -185,7 +185,9 @@
    ],
    "lead": "Arrivals (A3) and the lodging compare (S1)",
    "anchor": "shared lodging (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": false,
    "a1": "on",
@@ -308,7 +310,9 @@
    ],
    "lead": "Day list with the hotel anchor (S2)",
    "anchor": "hotel (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": false,
    "a1": "on",
@@ -431,7 +435,9 @@
    ],
    "lead": "Day list with the hotel anchor (S2)",
    "anchor": "hotel (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": false,
    "a1": "on",
@@ -945,10 +951,7 @@
    "lead": "Completeness (B4) and the venue compare (S1)",
    "anchor": "venue (event location)",
    "req": [
-    "venue",
-    "event_coordinator",
-    "av_tech",
-    "caterer"
+    "venue"
    ],
    "compare": "venue",
    "compareOverridden": false,
@@ -1073,7 +1076,9 @@
    ],
    "lead": "Arrivals (A3) and the lodging compare (S1)",
    "anchor": "shared lodging (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": false,
    "a1": "on",
@@ -1196,8 +1201,10 @@
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
    "anchor": "event location (user_experiences.location)",
-   "req": [],
-   "compare": "dining_venue",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
    "compareOverridden": false,
    "a1": "available (optional)",
    "modules": {
@@ -1445,7 +1452,9 @@
    ],
    "lead": "Arrivals (A3) and the lodging compare (S1)",
    "anchor": "shared lodging (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": false,
    "a1": "on",
@@ -1568,7 +1577,9 @@
    ],
    "lead": "Arrivals (A3) and the lodging compare (S1)",
    "anchor": "shared lodging (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": false,
    "a1": "on",
@@ -1819,8 +1830,10 @@
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
    "anchor": "event location (user_experiences.location)",
-   "req": [],
-   "compare": "event_coordinator",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
    "compareOverridden": false,
    "a1": "available (optional)",
    "modules": {
@@ -1943,8 +1956,10 @@
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
    "anchor": "event location (user_experiences.location)",
-   "req": [],
-   "compare": "event_coordinator",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
    "compareOverridden": false,
    "a1": "available (optional)",
    "modules": {
@@ -2192,8 +2207,10 @@
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
    "anchor": "event location (user_experiences.location)",
-   "req": [],
-   "compare": "caterer",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
    "compareOverridden": false,
    "a1": "available (optional)",
    "modules": {
@@ -2316,8 +2333,10 @@
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
    "anchor": "event location (user_experiences.location)",
-   "req": [],
-   "compare": "event_coordinator",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
    "compareOverridden": false,
    "a1": "available (optional)",
    "modules": {
@@ -2439,8 +2458,10 @@
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
    "anchor": "event location (user_experiences.location)",
-   "req": [],
-   "compare": "event_coordinator",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
    "compareOverridden": false,
    "a1": "available (optional)",
    "modules": {
@@ -2562,8 +2583,10 @@
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
    "anchor": "event location (user_experiences.location)",
-   "req": [],
-   "compare": "event_coordinator",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
    "compareOverridden": false,
    "a1": "available (optional)",
    "modules": {
@@ -2686,8 +2709,10 @@
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
    "anchor": "event location (user_experiences.location)",
-   "req": [],
-   "compare": "event_coordinator",
+   "req": [
+    "venue"
+   ],
+   "compare": "venue",
    "compareOverridden": false,
    "a1": "available (optional)",
    "modules": {
@@ -2808,7 +2833,9 @@
    ],
    "lead": "Day list with the hotel anchor (S2)",
    "anchor": "hotel (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": false,
    "a1": "on",
@@ -2931,7 +2958,9 @@
    ],
    "lead": "Day list with the hotel anchor (S2)",
    "anchor": "hotel (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": false,
    "a1": "on",
@@ -3315,7 +3344,9 @@
    ],
    "lead": "Arrivals (A3) and the lodging compare (S1)",
    "anchor": "shared lodging (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": true,
    "a1": "on",
@@ -3438,7 +3469,9 @@
    ],
    "lead": "Day list with the hotel anchor (S2)",
    "anchor": "hotel (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": false,
    "a1": "on",
@@ -3562,7 +3595,9 @@
    ],
    "lead": "Day list with the hotel anchor (S2)",
    "anchor": "hotel (hotel_checkin)",
-   "req": [],
+   "req": [
+    "accommodation"
+   ],
    "compare": "accommodation",
    "compareOverridden": false,
    "a1": "on",
