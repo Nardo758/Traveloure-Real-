@@ -150,29 +150,47 @@ export function resolveHelpText(text: string, pricing: HelpPricing | null): stri
  * "article 5" pointed at nothing). Placeholder resolution leaves these markers in place; the page
  * splits them with `helpTextParts`, and plain text (search, tests) reads the quoted title.
  */
-export type HelpTextPart = string | { slug: HelpArticleSlug; title: string };
+export type HelpTextPart = string | { slug: HelpArticleSlug; title: string } | { strong: string };
 
 const ARTICLE_REF = /\[\[([a-z0-9-]+)\]\]/g;
+/**
+ * `**Label**` marks a string the traveler sees in the UI verbatim — a button or a badge — so the
+ * article shows it the way the screen does (decision-maker, Sep 27, 2026: "bold is what tells them
+ * it's a button or a badge, not prose"). It is for UI labels only, never emphasis; H10 pins each
+ * bolded string to the source file that renders it.
+ */
+const INLINE = /\[\[([a-z0-9-]+)\]\]|\*\*([^*]+)\*\*/g;
 
 export function helpTextParts(text: string): HelpTextPart[] {
   const parts: HelpTextPart[] = [];
   let last = 0;
-  const re = new RegExp(ARTICLE_REF.source, "g");
+  const re = new RegExp(INLINE.source, "g");
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
-    const ref = m[1];
-    const a = HELP_ARTICLES.find((x) => x.slug === ref);
     if (m.index > last) parts.push(text.slice(last, m.index));
-    parts.push(a ? { slug: a.slug, title: a.title } : m[0]);
+    if (m[2] !== undefined) {
+      parts.push({ strong: m[2] });
+    } else {
+      const a = HELP_ARTICLES.find((x) => x.slug === m![1]);
+      parts.push(a ? { slug: a.slug, title: a.title } : m[0]);
+    }
     last = m.index + m[0].length;
   }
   if (last < text.length) parts.push(text.slice(last));
   return parts;
 }
 
-/** The sentence as plain text: each cross-reference becomes the referenced title in quotes. */
+/** The sentence as plain text: each cross-reference becomes the referenced title in quotes; a UI label reads as itself. */
 export function helpPlainText(text: string): string {
-  return helpTextParts(text).map((p) => (typeof p === "string" ? p : `"${p.title}"`)).join("");
+  return helpTextParts(text)
+    .map((p) => (typeof p === "string" ? p : "strong" in p ? p.strong : `"${p.title}"`))
+    .join("");
+}
+
+/** Every `**Label**` an article's sentences mark as a UI string, in order. */
+export function helpArticleUiLabels(a: HelpArticle): string[] {
+  const texts = a.blocks.flatMap((b) => (b.kind === "p" ? [b.text] : b.kind === "list" ? b.items.map((i) => i.text) : []));
+  return texts.flatMap((t) => helpTextParts(t).flatMap((p) => (typeof p !== "string" && "strong" in p ? [p.strong] : [])));
 }
 
 /** Every `[[slug]]` an article's sentences name, in order. */
@@ -303,7 +321,7 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     summary: "What happens when a card is declined or checkout is left unfinished, and how to try again.",
     keywords: ["payment", "declined", "failed", "card", "try again", "hold", "checkout", "apple pay", "google pay", "link", "paypal", "wallet"],
     blocks: [
-      { kind: "p", text: "If your card is declined, the booking isn't made and the item shows \"Payment didn't go through.\" Tap Try again to put it back in your cart and check out with a new payment; the declined attempt is cancelled so it can't charge you later." },
+      { kind: "p", text: "If your card is declined, the booking isn't made and the item shows \"Payment didn't go through.\" Tap **Try again** to put it back in your cart and check out with a new payment; the declined attempt is cancelled so it can't charge you later." },
       { kind: "p", text: "If you leave checkout without paying, we release the hold after {holdMinutes} and the item goes back to your plan unbooked. If a payment was started but never completed, we check with your bank and clear it within {staleWindow}, and we'll email you if the item was released." },
       { kind: "p", text: "If a declined payment somehow goes through afterwards, we refund it automatically and tell you. Items that can't be booked through checkout show \"Back to plan\" instead." },
       // LD 43(e): the payment-methods answer moved here from the retired /faq page, word for word —
@@ -317,7 +335,7 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     summary: "What \"Under review\" means while a bank dispute is open, and why contacting us first is faster.",
     keywords: ["dispute", "under review", "chargeback", "bank", "refunded"],
     blocks: [
-      { kind: "p", text: "If you dispute a charge with your bank, the booking shows Under review while the dispute is open. Money is held; the booking still exists until the dispute closes. If the dispute is decided in your favour, the booking shows Dispute closed – refunded to you." },
+      { kind: "p", text: "If you dispute a charge with your bank, the booking shows **Under review** while the dispute is open. Money is held; the booking still exists until the dispute closes. If the dispute is decided in your favour, the booking shows **Dispute closed – refunded to you**." },
       { kind: "p", text: "If you have a problem with a booking, contacting us first is faster than a bank dispute, and a booking we've already refunded or cancelled can't be disputed again." },
     ],
   },

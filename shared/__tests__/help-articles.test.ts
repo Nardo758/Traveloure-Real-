@@ -25,6 +25,8 @@ import {
   getHelpArticle,
   getPublishedHelpArticle,
   helpArticleRefs,
+  helpArticleSearchText,
+  helpArticleUiLabels,
   helpPlainText,
   helpTextParts,
   isHelpArticlePublished,
@@ -185,4 +187,25 @@ test("H9 cross-references name real articles and never a held one", () => {
   for (const a of HELP_ARTICLES) {
     assert.doesNotMatch(JSON.stringify(a.blocks), /\barticle \d/, `${a.slug} must not cite an article by number`);
   }
+});
+
+test("H10 a bolded string is a UI label the traveler sees verbatim, pinned to the file that renders it", () => {
+  // Decision-maker, Sep 27, 2026: bold marks a button or a badge, never prose. Each label must still
+  // be spelled this way where the screen draws it — a renamed button would leave the article naming
+  // something the traveler cannot find.
+  const expected: Record<string, string> = {
+    "Try again": "client/src/lib/item-booking-state.ts",
+    "Under review": "shared/booking-visibility.ts",
+    "Dispute closed – refunded to you": "client/src/pages/my-bookings.tsx",
+  };
+  const labels = HELP_ARTICLES.flatMap((a) => helpArticleUiLabels(a));
+  assert.deepEqual([...labels].sort(), Object.keys(expected).sort(), "exactly the three ruled UI labels are bold");
+  for (const [label, file] of Object.entries(expected)) {
+    const src = fs.readFileSync(path.join(process.cwd(), file), "utf8");
+    assert.ok(src.includes(`"${label}"`), `${file} must render the label "${label}" verbatim`);
+  }
+  // Plain text (search) reads the label without its markers.
+  const art8 = HELP_ARTICLES.find((a) => a.slug === "payment-didnt-go-through")!;
+  assert.match(helpArticleSearchText(art8), /tap try again to put/);
+  assert.doesNotMatch(helpArticleSearchText(art8), /\*\*/);
 });

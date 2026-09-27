@@ -34,13 +34,15 @@ function usePricing(): HelpPricing | null {
   return data ?? null;
 }
 
-/** A sentence with its `[[slug]]` cross-references rendered as links to the named article. */
+/** A sentence with its `[[slug]]` cross-references rendered as links and its `**UI labels**` in bold. */
 function HelpText({ text }: { text: string }) {
   return (
     <>
       {helpTextParts(text).map((part, i) =>
         typeof part === "string" ? (
           part
+        ) : "strong" in part ? (
+          <strong key={i} className="font-semibold">{part.strong}</strong>
         ) : (
           <Link key={i} href={helpArticlePath(part.slug)} className="underline underline-offset-2" data-testid={`link-help-ref-${part.slug}`}>
             {part.title}
