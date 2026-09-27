@@ -429,9 +429,9 @@ export default function ProviderStatusPage() {
                     <MessageSquare className="w-4 h-4 mr-2" />Contact Support
                   </Button>
                 </Link>
-                <Link href="/faq">
+                <Link href="/help">
                   <Button variant="ghost" className="w-full" data-testid="link-faq">
-                    View FAQ<ArrowRight className="w-4 h-4 ml-2" />
+                    Help center<ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
               </CardContent>

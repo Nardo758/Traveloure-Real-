@@ -102,8 +102,8 @@ describe("Footer hrefs are open to a guest", () => {
 
   it("the retired footer links stay retired", () => {
     const hrefs = getAllFooterHrefs();
-    for (const retired of ["/chat", "/executive-assistant"]) {
-      assert.ok(!hrefs.includes(retired), `${retired} was removed from the footer and must not return`);
+    for (const retired of ["/chat", "/executive-assistant", "/faq"]) {
+      assert.ok(!hrefs.includes(retired), `${retired} was removed from the footer and must not return (/faq redirects to the Help center link beside it)`);
     }
   });
 

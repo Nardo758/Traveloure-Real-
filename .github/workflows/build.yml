@@ -3202,6 +3202,17 @@ jobs:
       - name: roles-needed-reachability-guard · Roles-needed reachability guard
         if: ${{ !cancelled() }}
         run: node scripts/check-roles-needed-reachability.cjs
+      # R146 / Trip Slip product map step 1 (docs/planning/recommendation-convergence-brief.md): the
+      # generated §J table and its JSON must match the experience_types seed + the 035 matrix. A seed
+      # change that moves an occasion, a switch or a role fails here until the spec is regenerated in
+      # the SAME PR (`node docs/planning/tools/trip-slip-spec.mjs`). Also protects help article 1's
+      # occasion count (shared/help-articles.ts reads the JSON; ledger
+      # 2026-09-27-help-center-and-company-pages). Node built-ins only. NEGATIVE SPACE (§18d): it
+      # compares the spec to the two sources it parses — it does not check that the seed has run
+      # against any database. The job's check name is a required context, so it is not renamed.
+      - name: trip-slip-spec-check · §J spec matches the experience_types seed
+        if: ${{ !cancelled() }}
+        run: node docs/planning/tools/trip-slip-spec.mjs --check
       # 
       - name: earn-planner-keys-guard · Earn-planner-keys guard predicate self-test
         if: ${{ !cancelled() }}

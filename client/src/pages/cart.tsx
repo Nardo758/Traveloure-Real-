@@ -1,3 +1,4 @@
+import { helpArticlePath } from "@shared/help-article-slugs";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { canRemoveBeforePayment, readCartIntentParam, resolveCartIntent } from "@/lib/cart-intent";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -630,7 +631,12 @@ function TravelerFeePreviewRow({
     <div className="flex justify-between gap-2" data-testid={testId}>
       <span className="text-muted-foreground">
         {display.label}
-        <span className="block text-[11px] text-muted-foreground/80">{display.note}</span>
+        <span className="block text-[11px] text-muted-foreground/80">
+          {display.note}{" "}
+          <Link href={helpArticlePath("trip-pass-and-fees")} className="underline underline-offset-2" data-testid={`${testId}-help`}>
+            About this fee
+          </Link>
+        </span>
       </span>
       {display.kind === "charged" ? (
         <span data-testid={`${testId}-amount`}>{formatPrice(display.amount)}</span>

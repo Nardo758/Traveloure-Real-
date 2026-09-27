@@ -22,6 +22,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
+import { helpArticlePath } from "@shared/help-article-slugs";
 
 interface ApplicationStep {
   id: number;
@@ -349,9 +350,9 @@ export default function ExpertStatusPage() {
                     <MessageSquare className="w-4 h-4 mr-2" />Contact Support
                   </Button>
                 </Link>
-                <Link href="/faq">
+                <Link href={helpArticlePath("become-a-local-expert")}>
                   <Button variant="ghost" className="w-full" data-testid="link-faq">
-                    View FAQ<ArrowRight className="w-4 h-4 ml-2" />
+                    Help center<ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
               </CardContent>

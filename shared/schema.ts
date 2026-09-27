@@ -7,6 +7,7 @@ import { users } from "./models/auth";
 import { withoutServerAuthoredBookingDetails } from "./booking-details-admission";
 import { PLAN_PROPOSAL_STATUSES } from "./plan-proposals";
 import { PRICE_BASIS_VALUES } from "./price-basis";
+import { CANCELLATION_POLICY_TYPES, CANCELLATION_TIER_LABELS } from "./cancellation-schedule";
 // LAZY, and deliberately so — the same circularity `shared/models/chat.ts` documents from the
 // other side: this file re-exports that one (below), and that one imports `trips` from here.
 // Drizzle's `.references()` takes a CALLBACK it evaluates when the relation is built, never at
@@ -995,18 +996,13 @@ export const serviceStatusEnum = ["active", "paused", "draft"] as const;
 // X1 (§13 hardcoded-copy arm) — structured cancellation-policy TYPE vocabulary. Column is varchar
 // with no DB CHECK (migration 144: app-enforced, like deliveryMethodEnum pre-109); NULL = the owner
 // hasn't declared a policy type (the honest state — never a fabricated blanket claim).
-export const cancellationPolicyTypeEnum = ["flexible", "moderate", "strict", "non_refundable"] as const;
+export const cancellationPolicyTypeEnum = CANCELLATION_POLICY_TYPES;
 // Deposit CONFIG vocabulary (Lane 7, ruling 72). App-enforced (no DB CHECK): 'percentage' collects
 // depositPercentage% of the line total now; 'flat' collects depositFlatAmount dollars now.
 export const depositTypeEnum = ["percentage", "flat"] as const;
-export const CANCELLATION_POLICY_TYPE_LABELS: Record<typeof cancellationPolicyTypeEnum[number], string> = {
-  // Concrete windows mirror the server enforcement schedule in
-  // server/services/cancellation-policy.service.ts (refundPercentFor).
-  flexible: "Flexible — full refund if cancelled at least 24 hours before the start",
-  moderate: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before",
-  strict: "Strict — 50% refund if cancelled at least 7 days before the start",
-  non_refundable: "Non-refundable — no refund once booked",
-};
+// The labels are GENERATED from the one schedule the server's refund math reads
+// (shared/cancellation-schedule.ts) — never typed here, so a label cannot drift from the refund.
+export const CANCELLATION_POLICY_TYPE_LABELS: Record<typeof cancellationPolicyTypeEnum[number], string> = CANCELLATION_TIER_LABELS;
 
 // ── D7 service-logistics vocabularies (docs/DECISIONS.md ruling 62, migration 195) ───────────
 // Both columns are varchar with NO DB CHECK — the migration-144 posture (app-enforced
