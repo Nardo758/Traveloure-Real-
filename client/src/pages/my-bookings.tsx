@@ -51,6 +51,7 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { bookingDisplayStatus } from "@/lib/booking-display-status";
 import { refundedBadgeLabel, refundSummaryLine, type RefundSummary } from "@shared/booking-refund-record";
+import { expiredBookingNextStep } from "@/lib/expired-booking";
 import { isBookingCancellable } from "@shared/booking-cancellation"; // §18 rule 1 — the cancel route's OWN from-state list, never a second copy
 // Ledger `2026-09-17-surfaces-acceptance-completion` (LD 46 / LD 47). The acceptance and
 // declared-window read-out and its four controls. `/api/my-bookings` now carries the SERVER's own
@@ -121,6 +122,7 @@ interface Booking {
     scheduledDate?: string;
     notes?: string;
     quantity?: number;
+    itineraryItemId?: string;
   };
   bookingMetadata?: VisaBookingMetadata;
   status: string;
@@ -1236,7 +1238,22 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                   Review
                 </Button>
               )}
-              {booking.tripId && (
+              {(() => {
+                // R164/R165 follow-up: an expired row says what happened next and where to go —
+                // never a dead row (the checkout was released; the item went back to the plan).
+                const next = expiredBookingNextStep({ ...booking, status: actionStatus });
+                return next ? (
+                  <>
+                    <span className="text-xs text-muted-foreground self-center" data-testid={`text-expired-next-${booking.id}`}>
+                      {next.line}
+                    </span>
+                    <Button variant="default" size="sm" asChild data-testid={`button-expired-next-${booking.id}`}>
+                      <Link href={next.href}>{next.cta}</Link>
+                    </Button>
+                  </>
+                ) : null;
+              })()}
+              {booking.tripId && actionStatus !== "expired" && (
                 <Button variant="outline" size="sm" asChild data-testid={`button-view-itinerary-${booking.id}`}>
                   <Link href={`/my-itinerary/${booking.tripId}`}>
                     <Package className="w-4 h-4 mr-1" />
