@@ -924,6 +924,8 @@ export interface PaymentPromotionResult {
   lateAuthorized: string[];
   /** Diary rows written (rulings 12/16/18). */
   diaryRows: number;
+  /** R162: present when this success landed on `failed` booking(s) — the automatic refund's outcome. */
+  lateSuccessRefund?: LateSuccessRefundResult;
 }
 
 const TERMINAL_UNPROMOTABLE = new Set([
@@ -1115,6 +1117,17 @@ export async function promotePaidCheckout(opts: {
       // the OTHER signal won the race. Idempotent no-op: no second flip, no second diary row.
       result.alreadyConfirmed.push(row.id);
     }
+  }
+
+  // ── R162: A SUCCESS ON A `failed` BOOKING IS REFUNDED, NEVER PROMOTED ────────────────────────
+  // `failed` is final (above: it is TERMINAL_UNPROMOTABLE, the exception is already recorded). If
+  // the signal is a success on that booking's OWN stamped PI, the traveler paid for a booking the
+  // platform no longer holds — refund it automatically, exactly once, whichever caller heard it
+  // (client confirm-payment, the webhook, the drift job, one-click). The refund reads Stripe's own
+  // status before moving money, so a client-supplied PI cannot trigger a refund of anything that
+  // did not really succeed. Never throws into the promotion.
+  if (result.exceptions.some((e) => e.status === "failed" && e.reason === "not_promotable")) {
+    result.lateSuccessRefund = await refundLateSuccessOnFailedIntent({ paymentIntentId, actor: `promotion:${actor}` });
   }
 
   // Plan-side catch-up, AFTER the money leg and outside its transaction. Only for rows this call
@@ -1428,6 +1441,283 @@ export async function markCheckoutPaymentFailed(opts: {
     }
   }
   return result;
+}
+
+// ══ R162 — `failed` IS FINAL (ledger `2026-09-27-failed-is-final`; decision-maker, Sep 27, 2026) ══
+//
+// A Stripe `payment_intent.payment_failed` is NOT terminal: the same PaymentIntent returns to
+// `requires_payment_method` and can still succeed. The platform's `failed` IS terminal — it is in
+// TERMINAL_UNPROMOTABLE and never goes back to `confirmed` (option 1, "failed then confirmed", was
+// refused: every reader would have to handle the transition, and "your payment failed" silently
+// followed by "actually it went through" is how double bookings and confused refunds start). Three
+// pieces make the two agree:
+//   1. `cancelStalePaymentIntent` — "Try again" mints the NEW PaymentIntent first, then cancels the
+//      OLD one, then opens checkout (`retireStalePaymentIntentsForCheckout`, called by the checkout
+//      authorization). The first place the platform cancels a PaymentIntent.
+//   2. Every confirm path already refuses a PI that is not the booking's CURRENT stamped one
+//      (`promoteOneBooking`'s WHERE, `confirm-payment`'s pre-check), and a `failed` row is never
+//      promotable; the same-key re-POST no longer hands back a PI whose booking is terminal
+//      (`isTerminalUnpromotable`, read by `POST /api/checkout`).
+//   3. `refundLateSuccessOnFailedIntent` — if the OLD intent succeeds anyway, the booking stays
+//      `failed`, the success is a reconciliation exception, and the traveler is refunded
+//      automatically, exactly once, whichever path hears about it.
+
+/** True for a booking status the promotion refuses — a PI stamped on such a row is dead to us. */
+export function isTerminalUnpromotable(status: string | null | undefined): boolean {
+  return status != null && TERMINAL_UNPROMOTABLE.has(status);
+}
+
+export const LATE_SUCCESS_REFUND_KEY = "lateSuccessRefund";
+export const lateSuccessRefundIdempotencyKey = (paymentIntentId: string) => `late-success-refund-${paymentIntentId}`;
+export const cancelStalePaymentIntentIdempotencyKey = (paymentIntentId: string) => `cancel-stale-pi-${paymentIntentId}`;
+
+/** Stripe statuses a PaymentIntent must NEVER be cancelled from: money is moving or has moved. */
+const NEVER_CANCEL_PI_STATUSES = new Set(["processing", "succeeded"]);
+
+export type CancelStaleOutcome =
+  | { outcome: "canceled"; status: string }
+  | { outcome: "already_canceled"; status: string }
+  /** Stripe reports `processing` or `succeeded` — cancelling is refused; the caller must not open a retry. */
+  | { outcome: "not_cancellable"; status: string }
+  /** Stripe could not be consulted or refused the cancel. Nothing is known to have changed. */
+  | { outcome: "error"; message: string };
+
+/**
+ * R162 — cancel a PaymentIntent the platform has given up on. Reads Stripe's own status FIRST and
+ * never cancels an intent that is `processing` or `succeeded`; an already-`canceled` intent is a
+ * no-op; everything else is cancelled with `cancellation_reason: 'abandoned'` under a PI-derived
+ * idempotency key, so a retry is the same single cancel. Never throws. Reused by the G2 sweep.
+ */
+export async function cancelStalePaymentIntent(opts: {
+  paymentIntentId: string;
+  /** Carried into every log line (the booking(s) and the new PI, when there is one). */
+  context?: Record<string, unknown>;
+}): Promise<CancelStaleOutcome> {
+  const { paymentIntentId } = opts;
+  const ctx = { paymentIntentId, ...(opts.context ?? {}) };
+  const { stripePaymentService } = await import("./stripe-payment.service");
+  let status: string;
+  try {
+    status = (await stripePaymentService.retrievePaymentIntentFacts(paymentIntentId)).status;
+  } catch (err: any) {
+    logger.error({ ...ctx, err: err?.message }, "[stale-pi] could not read the PaymentIntent — nothing cancelled");
+    return { outcome: "error", message: err?.message ?? String(err) };
+  }
+  if (status === "canceled") return { outcome: "already_canceled", status };
+  if (NEVER_CANCEL_PI_STATUSES.has(status)) {
+    logger.warn({ ...ctx, status }, "[stale-pi] PaymentIntent is processing/succeeded — NOT cancelled");
+    return { outcome: "not_cancellable", status };
+  }
+  try {
+    const res = await stripePaymentService.cancelPaymentIntent(
+      paymentIntentId,
+      cancelStalePaymentIntentIdempotencyKey(paymentIntentId),
+    );
+    logger.info({ ...ctx, status: res.status }, "[stale-pi] cancelled a stale PaymentIntent");
+    return { outcome: "canceled", status: res.status };
+  } catch (err: any) {
+    logger.error({ ...ctx, err: err?.message }, "[stale-pi] Stripe refused or failed the cancel");
+    return { outcome: "error", message: err?.message ?? String(err) };
+  }
+}
+
+export type LateSuccessRefundResult =
+  | { outcome: "refunded"; refundId: string; amountCents: number; bookingIds: string[] }
+  | { outcome: "already_refunded"; refundId: string | null; bookingIds: string[] }
+  /** No row carries this PI, or not every row on it is `failed` — not this rule's case. */
+  | { outcome: "not_applicable"; reason: string }
+  /** Stripe says the intent did not succeed, or nothing is left to refund. No money to return. */
+  | { outcome: "nothing_to_refund"; status: string; bookingIds: string[] }
+  /** Stripe could not be consulted or the refund call failed; the next signal re-drives. */
+  | { outcome: "error"; message: string };
+
+/**
+ * R162 — THE LATE-SUCCESS REFUND. A PaymentIntent whose booking row(s) are `failed` has succeeded:
+ * the booking STAYS `failed` (the caller has already recorded the reconciliation exception) and the
+ * traveler is refunded automatically through the ONE shared refund call site.
+ *
+ * Exactly once, by three layers: (1) the §15b CLAIM — an atomic conditional stamping
+ * `booking_details.lateSuccessRefund` on the PI's `failed` rows, taken BEFORE the Stripe call;
+ * (2) the Stripe idempotency key `late-success-refund-<pi>`; (3) a row that already records a
+ * `refundId` answers `already_refunded` with no Stripe call. A signal that loses the claim to a
+ * caller that crashed before the refund re-drives the SAME key (Stripe returns the same refund).
+ *
+ * The amount is Stripe's own (§14): what the intent received less what its charge already
+ * refunded. Money is refunded ONLY when Stripe says `succeeded`. Applies only when EVERY row on the
+ * PI is `failed` — a PI that also backs a live booking is not this rule's case and is left to the
+ * exception a human reads. Never throws.
+ */
+export async function refundLateSuccessOnFailedIntent(opts: {
+  paymentIntentId: string;
+  actor: string;
+}): Promise<LateSuccessRefundResult> {
+  const { paymentIntentId, actor } = opts;
+  if (!paymentIntentId) return { outcome: "not_applicable", reason: "no_payment_intent" };
+  try {
+    const rows = (
+      await db.execute(sql`
+        SELECT id, status, booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text AS lsr
+        FROM service_bookings
+        WHERE stripe_payment_intent_id = ${paymentIntentId}
+        ORDER BY id
+      `)
+    ).rows as Array<{ id: string; status: string | null; lsr: any }>;
+    if (rows.length === 0) return { outcome: "not_applicable", reason: "no_booking_on_intent" };
+    if (!rows.every((r) => r.status === "failed")) {
+      return { outcome: "not_applicable", reason: "not_every_booking_failed" };
+    }
+    const bookingIds = rows.map((r) => r.id);
+    const recorded = rows.find((r) => r.lsr && typeof r.lsr.refundId === "string");
+    if (recorded) return { outcome: "already_refunded", refundId: recorded.lsr.refundId, bookingIds };
+
+    const { stripePaymentService } = await import("./stripe-payment.service");
+    let facts: Awaited<ReturnType<typeof stripePaymentService.retrievePaymentIntentFacts>>;
+    try {
+      facts = await stripePaymentService.retrievePaymentIntentFacts(paymentIntentId);
+    } catch (err: any) {
+      logger.error({ paymentIntentId, actor, bookingIds, err: err?.message }, "[late-success] Stripe unreachable — no refund, re-driven by the next signal");
+      return { outcome: "error", message: err?.message ?? String(err) };
+    }
+    const amountCents = facts.amountReceivedCents - facts.amountRefundedCents;
+    if (facts.status !== "succeeded" || amountCents <= 0) {
+      return { outcome: "nothing_to_refund", status: facts.status, bookingIds };
+    }
+
+    // §15b CLAIM, before the Stripe call. The WHERE is the guard; a loser matches zero rows.
+    const claimed = await db.execute(sql`
+      UPDATE service_bookings
+      SET booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(
+            ${LATE_SUCCESS_REFUND_KEY}::text, jsonb_build_object(
+              'claimedAt', NOW()::text, 'paymentIntentId', ${paymentIntentId}::text,
+              'actor', ${actor}::text, 'amountCents', ${amountCents}::int)),
+          updated_at = NOW()
+      WHERE stripe_payment_intent_id = ${paymentIntentId}
+        AND status = 'failed'
+        AND NOT (COALESCE(booking_details, '{}'::jsonb) ? ${LATE_SUCCESS_REFUND_KEY}::text)
+      RETURNING id
+    `);
+    if (claimed.rows.length === 0) {
+      // Someone claimed first. If they finished, say so; if not (in flight, or crashed after the
+      // claim), re-drive the SAME key — Stripe returns the same refund, never a second one.
+      const again = (
+        await db.execute(sql`
+          SELECT booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text AS lsr
+          FROM service_bookings WHERE stripe_payment_intent_id = ${paymentIntentId}
+        `)
+      ).rows as Array<{ lsr: any }>;
+      const done = again.find((r) => r.lsr && typeof r.lsr.refundId === "string");
+      if (done) return { outcome: "already_refunded", refundId: done.lsr.refundId, bookingIds };
+    }
+
+    let refund: { id: string; status: string | null };
+    try {
+      refund = await stripePaymentService.refundLateSuccessOnFailedBooking({
+        paymentIntentId,
+        amountCents,
+        idempotencyKey: lateSuccessRefundIdempotencyKey(paymentIntentId),
+        bookingId: bookingIds[0],
+        bookingIds,
+      });
+    } catch (err: any) {
+      logger.error(
+        { paymentIntentId, actor, bookingIds, err: err?.message },
+        "[late-success] refund call failed — claim kept; the next signal re-drives the same key",
+      );
+      return { outcome: "error", message: err?.message ?? String(err) };
+    }
+    await db.execute(sql`
+      UPDATE service_bookings
+      SET booking_details = jsonb_set(booking_details, ${`{${LATE_SUCCESS_REFUND_KEY},refundId}`}::text[], to_jsonb(${refund.id}::text), true),
+          updated_at = NOW()
+      WHERE stripe_payment_intent_id = ${paymentIntentId} AND status = 'failed'
+        AND booking_details ? ${LATE_SUCCESS_REFUND_KEY}::text
+    `);
+    logger.error(
+      { paymentIntentId, actor, bookingIds, refundId: refund.id, amountCents },
+      "[late-success] a PaymentIntent SUCCEEDED after its booking was marked failed — booking stays failed, " +
+        "traveler refunded automatically (R162)",
+    );
+    return { outcome: "refunded", refundId: refund.id, amountCents, bookingIds };
+  } catch (err: any) {
+    logger.error({ paymentIntentId, actor, err: err?.message }, "[late-success] unexpected error — nothing assumed");
+    return { outcome: "error", message: err?.message ?? String(err) };
+  }
+}
+
+export type RetireStaleResult = {
+  /** false ⇒ at least one stale intent could not be retired; the caller must NOT open checkout. */
+  ok: boolean;
+  stale: Array<{ bookingIds: string[]; paymentIntentId: string; result: CancelStaleOutcome; lateSuccess?: LateSuccessRefundResult }>;
+};
+
+/**
+ * R162 step 1 — "TRY AGAIN" RETIRES THE OLD INTENT AFTER THE NEW ONE EXISTS. Called by the checkout
+ * authorization after the NEW PaymentIntent is created and BEFORE it is stamped or handed to the
+ * client. For each plan item this checkout buys, the traveler's EARLIER booking of that item that is
+ * `failed` with a different stamped PaymentIntent is the stale one; it is cancelled through
+ * `cancelStalePaymentIntent`. A stale intent Stripe reports `succeeded` is a LATE SUCCESS and is
+ * refunded (it cannot be cancelled); one that is `processing` or could not be cancelled makes
+ * `ok: false`, and the caller opens no checkout. Only a PI whose EVERY row is `failed` is touched.
+ *
+ * NEGATIVE SPACE: the link is the plan item (`booking_details.itineraryItemId`), the identity R157's
+ * "Try again" re-projects. A failed booking with no plan item is not found here; the G2 sweep is the
+ * backstop for those, and the late-success refund covers any of them that succeeds.
+ */
+export async function retireStalePaymentIntentsForCheckout(opts: {
+  travelerId: string;
+  bookingIds: string[];
+  newPaymentIntentId: string;
+}): Promise<RetireStaleResult> {
+  const { travelerId, bookingIds, newPaymentIntentId } = opts;
+  const out: RetireStaleResult = { ok: true, stale: [] };
+  if (!travelerId || bookingIds.length === 0) return out;
+  let rows: Array<{ id: string; pi: string }>;
+  try {
+    rows = (
+      await db.execute(sql`
+        SELECT old.id, old.stripe_payment_intent_id AS pi
+        FROM service_bookings old
+        WHERE old.traveler_id = ${travelerId}
+          AND old.status = 'failed'
+          AND old.stripe_payment_intent_id IS NOT NULL
+          AND old.stripe_payment_intent_id <> ${newPaymentIntentId}
+          AND old.id NOT IN (${sql.join(bookingIds.map((id) => sql`${id}`), sql`, `)})
+          AND old.booking_details ->> 'itineraryItemId' IN (
+            SELECT nb.booking_details ->> 'itineraryItemId'
+            FROM service_bookings nb
+            WHERE nb.id IN (${sql.join(bookingIds.map((id) => sql`${id}`), sql`, `)})
+              AND nb.booking_details ? 'itineraryItemId'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM service_bookings live
+            WHERE live.stripe_payment_intent_id = old.stripe_payment_intent_id
+              AND live.status IS DISTINCT FROM 'failed'
+          )
+      `)
+    ).rows as Array<{ id: string; pi: string }>;
+  } catch (err: any) {
+    logger.error({ travelerId, bookingIds, newPaymentIntentId, err: err?.message }, "[stale-pi] stale lookup failed — checkout not opened");
+    return { ok: false, stale: [] };
+  }
+  const byPi = new Map<string, string[]>();
+  for (const r of rows) byPi.set(r.pi, [...(byPi.get(r.pi) ?? []), r.id]);
+  for (const [paymentIntentId, oldIds] of Array.from(byPi.entries())) {
+    const context = { oldBookingIds: oldIds, newBookingIds: bookingIds, oldPaymentIntentId: paymentIntentId, newPaymentIntentId };
+    const result = await cancelStalePaymentIntent({ paymentIntentId, context });
+    const entry: RetireStaleResult["stale"][number] = { bookingIds: oldIds, paymentIntentId, result };
+    if (result.outcome === "not_cancellable" && result.status === "succeeded") {
+      // The old intent already succeeded: a late success. Refund it; retiring it is then complete.
+      entry.lateSuccess = await refundLateSuccessOnFailedIntent({ paymentIntentId, actor: "try_again" });
+      if (entry.lateSuccess.outcome !== "refunded" && entry.lateSuccess.outcome !== "already_refunded") out.ok = false;
+    } else if (result.outcome !== "canceled" && result.outcome !== "already_canceled") {
+      out.ok = false;
+    }
+    if (!out.ok) {
+      logger.error({ ...context, outcome: result }, "[stale-pi] the previous PaymentIntent was NOT retired — checkout will not open");
+    }
+    out.stale.push(entry);
+  }
+  return out;
 }
 
 // ══ LANE 7 — THE BALANCE LEG (deposits / partial payments, DECISIONS.md ruling 72) ═══════════════

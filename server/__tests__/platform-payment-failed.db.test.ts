@@ -206,6 +206,174 @@ test("PF4: the Connect caller's function flips; the platform path still runs the
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
+// PF7–PF10 — R162 `failed` IS FINAL (ledger `2026-09-27-failed-is-final`). No network: the SERVICE'S
+// OWN Stripe client (`stripe` exported by stripe-payment.service) has its three methods replaced by
+// recorders, so the real claim, refund call site, audit writer and cancel decision all run.
+// `checkout-payment-failed-final.stripe.db.test.ts` proves the same chain against Stripe test mode.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+type FakePi = { status: string; amount_received: number; amount_refunded?: number };
+async function withFakeStripe<T>(pis: Record<string, FakePi>, fn: (calls: { refunds: any[]; cancels: any[] }) => Promise<T>): Promise<T> {
+  const { stripe } = await import("../services/stripe-payment.service");
+  const s: any = stripe;
+  const orig = { retrieve: s.paymentIntents.retrieve, cancel: s.paymentIntents.cancel, create: s.refunds.create };
+  const calls = { refunds: [] as any[], cancels: [] as any[] };
+  const refundByKey = new Map<string, any>();
+  s.paymentIntents.retrieve = async (id: string) => {
+    const p = pis[id];
+    if (!p) throw new Error(`no such PaymentIntent ${id}`);
+    return { id, status: p.status, amount_received: p.amount_received, latest_charge: { amount_refunded: p.amount_refunded ?? 0 } };
+  };
+  s.paymentIntents.cancel = async (id: string, params: any, options: any) => {
+    calls.cancels.push({ id, params, options });
+    if ((pis[id] as any)?.cancelThrows) throw new Error("stripe cancel refused");
+    pis[id].status = "canceled";
+    return { id, status: "canceled" };
+  };
+  s.refunds.create = async (params: any, options: any) => {
+    calls.refunds.push({ params, options });
+    const key = options?.idempotencyKey;
+    if (!refundByKey.has(key)) {
+      refundByKey.set(key, { id: `re_${RUN}_${refundByKey.size}`, status: "succeeded", amount: params.amount, metadata: params.metadata });
+      const p = pis[params.payment_intent];
+      if (p) p.amount_refunded = (p.amount_refunded ?? 0) + params.amount;
+    }
+    return refundByKey.get(key);
+  };
+  try {
+    return await fn(calls);
+  } finally {
+    s.paymentIntents.retrieve = orig.retrieve;
+    s.paymentIntents.cancel = orig.cancel;
+    s.refunds.create = orig.create;
+  }
+}
+
+async function refundRows(pi: string): Promise<any[]> {
+  const r = await db.execute(sql`SELECT stripe_refund_id, amount, reason FROM refunds WHERE stripe_payment_intent_id = ${pi}`);
+  return r.rows as any[];
+}
+
+after(async () => {
+  await db.execute(sql`DELETE FROM refunds WHERE stripe_payment_intent_id LIKE ${`pi_${RUN}_%`}`).catch(() => {});
+});
+
+test("PF7: a late success on a FAILED booking stays failed, is an exception, and is refunded exactly once", async () => {
+  const pi = `pi_${RUN}_pf7`;
+  const a = await makeBooking(pi);
+  const { markCheckoutPaymentFailed, promotePaidCheckout, refundLateSuccessOnFailedIntent } = await import(
+    "../services/checkout-claim.service"
+  );
+  await markCheckoutPaymentFailed({ paymentIntentId: pi, actor: "platform_webhook", sendEmail: async () => {} });
+  assert.equal(await statusOf(a), "failed");
+
+  await withFakeStripe({ [pi]: { status: "succeeded", amount_received: 12500 } }, async (calls) => {
+    // The traveler re-confirmed the SAME intent and it succeeded; the client fallback reports it.
+    const first = await promotePaidCheckout({ paymentIntentId: pi, actor: "client", actorId: ids.user, bookingIds: [a] });
+    assert.deepEqual(first.promoted, [], "failed is final — never promoted");
+    assert.equal(first.exceptions[0]?.reason, "not_promotable");
+    assert.equal(first.lateSuccessRefund?.outcome, "refunded");
+    assert.equal(await statusOf(a), "failed", "DB FACT: the booking STAYS failed");
+
+    // Redelivery through every other path: the webhook, the drift job's hand-off, a concurrent pair.
+    await promotePaidCheckout({ paymentIntentId: pi, actor: "webhook", metadataBookingIds: [a] });
+    const [x, y] = await Promise.all([
+      refundLateSuccessOnFailedIntent({ paymentIntentId: pi, actor: "reconciliation" }),
+      refundLateSuccessOnFailedIntent({ paymentIntentId: pi, actor: "reconciliation" }),
+    ]);
+    assert.ok([x.outcome, y.outcome].every((o) => o === "already_refunded"), JSON.stringify([x, y]));
+
+    const keys = new Set(calls.refunds.map((c) => c.options?.idempotencyKey));
+    assert.deepEqual([...keys], [`late-success-refund-${pi}`], "ONE Stripe idempotency key, derived from the PI");
+    assert.equal(calls.refunds.length, 1, "exactly one Stripe refund call");
+    assert.equal(calls.refunds[0].params.amount, 12500, "the amount is what Stripe says it received (§14)");
+    assert.equal(calls.refunds[0].params.metadata.source, "late_success_on_failed_booking");
+  });
+  const rows = await refundRows(pi);
+  assert.equal(rows.length, 1, "DB FACT: one refunds audit row");
+  assert.equal(rows[0].reason, "late_success_on_failed_booking");
+  const d = await db.execute(sql`SELECT booking_details->'lateSuccessRefund' AS l, booking_details->'reconciliationException' AS e FROM service_bookings WHERE id = ${a}`);
+  assert.equal((d.rows[0] as any).l.refundId, rows[0].stripe_refund_id, "DB FACT: the claim records the refund id");
+  assert.equal((d.rows[0] as any).e.reason, "not_promotable", "DB FACT: the reconciliation exception is recorded");
+});
+
+test("PF8: no refund when Stripe says the intent did not succeed; no refund for a booking that is not failed", async () => {
+  const pi = `pi_${RUN}_pf8`;
+  const a = await makeBooking(pi, "failed");
+  const conf = `pi_${RUN}_pf8c`;
+  await makeBooking(conf, "confirmed");
+  const { refundLateSuccessOnFailedIntent } = await import("../services/checkout-claim.service");
+  await withFakeStripe(
+    { [pi]: { status: "requires_payment_method", amount_received: 0 }, [conf]: { status: "succeeded", amount_received: 12500 } },
+    async (calls) => {
+      assert.equal((await refundLateSuccessOnFailedIntent({ paymentIntentId: pi, actor: "t" })).outcome, "nothing_to_refund");
+      assert.equal((await refundLateSuccessOnFailedIntent({ paymentIntentId: conf, actor: "t" })).outcome, "not_applicable");
+      assert.equal(calls.refunds.length, 0);
+    },
+  );
+  assert.equal(await statusOf(a), "failed");
+});
+
+test("PF9: cancelStalePaymentIntent cancels an open intent once, and never one that is processing or succeeded", async () => {
+  const { cancelStalePaymentIntent } = await import("../services/checkout-claim.service");
+  const open = `pi_${RUN}_pf9o`, proc = `pi_${RUN}_pf9p`, won = `pi_${RUN}_pf9s`, gone = `pi_${RUN}_pf9c`;
+  await withFakeStripe(
+    {
+      [open]: { status: "requires_payment_method", amount_received: 0 },
+      [proc]: { status: "processing", amount_received: 0 },
+      [won]: { status: "succeeded", amount_received: 100 },
+      [gone]: { status: "canceled", amount_received: 0 },
+    },
+    async (calls) => {
+      assert.equal((await cancelStalePaymentIntent({ paymentIntentId: open })).outcome, "canceled");
+      assert.equal((await cancelStalePaymentIntent({ paymentIntentId: open })).outcome, "already_canceled", "idempotent");
+      assert.deepEqual((await cancelStalePaymentIntent({ paymentIntentId: proc })), { outcome: "not_cancellable", status: "processing" });
+      assert.deepEqual((await cancelStalePaymentIntent({ paymentIntentId: won })), { outcome: "not_cancellable", status: "succeeded" });
+      assert.equal((await cancelStalePaymentIntent({ paymentIntentId: gone })).outcome, "already_canceled");
+      assert.equal(calls.cancels.length, 1, "exactly one Stripe cancel, for the open intent only");
+      assert.deepEqual(calls.cancels[0].params, { cancellation_reason: "abandoned" });
+      assert.equal(calls.cancels[0].options.idempotencyKey, `cancel-stale-pi-${open}`);
+    },
+  );
+});
+
+test("PF10: 'Try again' retires the OLD intent of the same plan item after the new one exists; a failed cancel blocks", async () => {
+  const { retireStalePaymentIntentsForCheckout } = await import("../services/checkout-claim.service");
+  const item = `pfail-${RUN}-item`;
+  const oldPi = `pi_${RUN}_pf10old`, newPi = `pi_${RUN}_pf10new`;
+  const oldB = await makeBooking(oldPi, "failed");
+  const newB = await makeBooking(newPi);
+  for (const id of [oldB, newB]) {
+    await db.execute(sql`UPDATE service_bookings SET booking_details = jsonb_build_object('itineraryItemId', ${item}::text) WHERE id = ${id}`);
+  }
+  await withFakeStripe(
+    { [oldPi]: { status: "requires_payment_method", amount_received: 0 }, [newPi]: { status: "requires_payment_method", amount_received: 0 } },
+    async (calls) => {
+      const r = await retireStalePaymentIntentsForCheckout({ travelerId: ids.user, bookingIds: [newB], newPaymentIntentId: newPi });
+      assert.equal(r.ok, true);
+      assert.deepEqual(calls.cancels.map((c) => c.id), [oldPi], "the OLD intent is cancelled, never the new one");
+    },
+  );
+  // A cancel Stripe refuses ⇒ ok:false ⇒ the checkout route opens nothing.
+  const oldPi2 = `pi_${RUN}_pf10old2`, newPi2 = `pi_${RUN}_pf10new2`;
+  const oldB2 = await makeBooking(oldPi2, "failed");
+  const newB2 = await makeBooking(newPi2);
+  for (const id of [oldB2, newB2]) {
+    await db.execute(sql`UPDATE service_bookings SET booking_details = jsonb_build_object('itineraryItemId', ${`${item}-2`}::text) WHERE id = ${id}`);
+  }
+  await withFakeStripe(
+    { [oldPi2]: { status: "requires_payment_method", amount_received: 0, cancelThrows: true } as any },
+    async () => {
+      const r = await retireStalePaymentIntentsForCheckout({ travelerId: ids.user, bookingIds: [newB2], newPaymentIntentId: newPi2 });
+      assert.equal(r.ok, false);
+    },
+  );
+  const { isTerminalUnpromotable } = await import("../services/checkout-claim.service");
+  assert.equal(isTerminalUnpromotable("failed"), true, "the same-key re-POST never hands back a failed row's intent");
+  assert.equal(isTerminalUnpromotable("payment_pending"), false);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
 // PF5/PF6 — SIGNED HTTP DELIVERY to the RUNNING app (the `platform-refund-webhook.signed.db.test.ts`
 // pattern). The defect lived between Stripe's routing and the endpoints, so these drive the real
 // routes: raw body, `stripe-signature`, `constructEvent`. CI's suite-server-tests job starts the app

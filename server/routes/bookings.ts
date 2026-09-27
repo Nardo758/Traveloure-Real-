@@ -322,6 +322,19 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
         return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
       }
       const exception = promotion.exceptions[0];
+      // R162 (ledger `2026-09-27-failed-is-final`): a success on a `failed` booking is refunded,
+      // never confirmed. Say that — never "our team has been alerted" for money already on its way back.
+      const lsr = promotion.lateSuccessRefund;
+      if (lsr && (lsr.outcome === 'refunded' || lsr.outcome === 'already_refunded')) {
+        return res.status(409).json({
+          success: false,
+          error: 'payment_after_failure_refunded',
+          message:
+            "This booking's payment had already failed, so it could not be confirmed. The payment that " +
+            'went through afterwards has been refunded to your card in full.',
+          detail: 'failed_is_final',
+        });
+      }
       return res.status(409).json({
         success: false,
         error: 'reconciliation_exception',

@@ -111,7 +111,7 @@ import { db } from "../db";
 import { bookings, adminNotifications } from "@shared/schema";
 import type { ReconciliationExceptionKind } from "@shared/schema";
 import type { ReconciliationRail } from "@shared/reconciliation-kinds";
-import { promotePaidCheckout } from "../services/checkout-claim.service";
+import { promotePaidCheckout, refundLateSuccessOnFailedIntent } from "../services/checkout-claim.service";
 // Ledger `2026-09-21-membership-reconciliation`: §17's narrow exception, THIRD instance. The job
 // hands a drifted subscription to the ONE writer of `plan_memberships` and writes that table
 // through nothing of its own — and it IMPORTS the status mapping rather than re-deriving it, so the
@@ -863,6 +863,18 @@ async function scanCartRail(args: {
     }
 
     // A3 — a succeeded PI whose booking is VOIDED/terminal. Ruling 39: never resurrect.
+    //
+    // R162 (ledger `2026-09-27-failed-is-final`) AMENDS §17's narrow exception by exactly one more
+    // hand-off, of the same shape as the promotion hand-off above: a succeeded PI whose bookings are
+    // `failed` is handed to the EXISTING shared `refundLateSuccessOnFailedIntent` — the ONE
+    // late-success refund every confirm path uses, exactly-once by its own claim and PI-derived
+    // Stripe key. The platform endpoint is not subscribed to `payment_intent.succeeded`, so for a
+    // traveler who paid on a dead intent and closed the tab, THIS pass is the path that hears it.
+    // The exception is still recorded; the job composes no refund of its own.
+    let lateSuccess: Awaited<ReturnType<typeof refundLateSuccessOnFailedIntent>> | null = null;
+    if (linked.some((r) => r.status === "failed")) {
+      lateSuccess = await refundLateSuccessOnFailedIntent({ paymentIntentId: pi.id, actor: "reconciliation" });
+    }
     for (const r of linked) {
       if (!TERMINAL_STATUSES.includes(r.status ?? "")) continue;
       exceptions.push({
@@ -877,8 +889,13 @@ async function scanCartRail(args: {
         details: {
           bookingStatus: r.status,
           alreadyFlaggedOnRow: r.hasReconciliationException,
+          ...(r.status === "failed" && lateSuccess ? { lateSuccessRefund: lateSuccess } : {}),
           note:
-            r.status === "refunded"
+            r.status === "failed"
+              ? "A PaymentIntent SUCCEEDED after its booking was marked failed (R162: failed is final). " +
+                "The booking stays failed; the traveler is refunded automatically — see lateSuccessRefund " +
+                "for the outcome (anything but refunded/already_refunded needs a human)."
+              : r.status === "refunded"
               ? "A succeeded PaymentIntent whose booking is marked refunded — confirm the refund exists at Stripe."
               : "A PaymentIntent SUCCEEDED for a booking in a terminal, unpromotable state (ruling 39: " +
                 "the void wins, the row is never resurrected). If the charge is real it needs a manual " +
