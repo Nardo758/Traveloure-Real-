@@ -155,6 +155,11 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   disputed: { label: "Disputed", variant: "destructive", icon: AlertTriangle },
   cancelled: { label: "Cancelled", variant: "destructive", icon: XCircle },
   refunded: { label: "Refunded", variant: "outline", icon: DollarSign },
+  // R165 (G3): two statuses the server writes that rendered as raw words and sat in no tab.
+  // `expired` — a checkout that was never paid and was released (R164); `dispute_lost` — the bank
+  // decided a chargeback for the traveler, so the money went back to them (decision-maker's wording).
+  expired: { label: "Not completed", variant: "outline", icon: XCircle },
+  dispute_lost: { label: "Dispute closed – refunded to you", variant: "outline", icon: DollarSign },
 };
 
 // L3: a status the server writes that isn't (yet) in statusConfig above must never
@@ -178,7 +183,7 @@ const displayStatusOf = bookingDisplayStatus;
 // matching none of the tab filters (visible nowhere but the All list).
 const PENDING_STATUSES = ["pending", "payment_pending"];
 const ACTIVE_STATUSES = ["confirmed", "in_progress"];
-const COMPLETED_STATUSES = ["completed", "disputed", "cancelled", "refunded", "failed"];
+const COMPLETED_STATUSES = ["completed", "disputed", "cancelled", "refunded", "failed", "expired", "dispute_lost"];
 
 const VISA_STATUS_STEPS: Array<{
   key: VisaBookingMetadata["visaApplicationStatus"];
