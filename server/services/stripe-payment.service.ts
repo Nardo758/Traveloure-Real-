@@ -32,6 +32,7 @@ import { logger } from '../infrastructure/logger';
 // release can never drift from voidClaim's / updateServiceBookingStatus's.
 import { deriveClaimedSlotIds, deriveClaimedSlotUnits } from './checkout-claim.service';
 import { travelerChargeForRow } from './traveler-charge';
+import { computeRefundBreakdown, travelerFeeChargedOf } from './refund-breakdown';
 import { APP_REFUND_REFUSED_FROM_STATUSES } from '../utils/booking-from-states';
 import { REFUND_ATTEMPT_KEY, REFUND_RECORD_KEY } from '../../shared/booking-refund-record';
 import { getStripeSecretKey } from '../utils/stripe-key';
@@ -1282,12 +1283,6 @@ class StripePaymentService {
    * two callers: `refundServiceBooking` and `previewServiceBookingRefundCents`, which the refund
    * entry points use to check a lost chargeback BEFORE they touch the ledger (PR #1066).
    */
-  /** The traveler service fee this booking billed, in dollars (0 when waived or absent). */
-  private feeChargedOf(row: any): number {
-    const feeSnap = (row.booking_details as any)?.travelerServiceFee ?? null;
-    return feeSnap && feeSnap.waived !== true ? (Number(feeSnap.charged) || 0) : 0;
-  }
-
   private computeServiceBookingRefund(
     row: any,
     options?: { amountOverride?: number; feeRefundPercent?: number },
@@ -1307,29 +1302,22 @@ class StripePaymentService {
       insuranceFee: row.insurance_fee,
       conciergeFeeSnapshot: (row.booking_details as any)?.travelerCharge?.conciergeFee ?? null,
     });
-    // A FULL refund (no override) is the fee-inclusive charged amount — same ruling. Callers
-    // wanting the old service-price-only behaviour must pass it explicitly as an override.
-    const amount =
-      options?.amountOverride !== undefined
-        ? Math.min(Math.max(options.amountOverride, 0), amountCharged)
-        : amountCharged;
-
-    // ── Traveler service fee refund (ruling 2026-09-02-traveler-fee-refundability) ──────────────
-    // The fee lives in `booking_details.travelerServiceFee.charged`, NOT in total_amount/platform_fee,
-    // so it is refunded SEPARATELY and added to the Stripe amount. A suppressed (waived) booking billed
-    // no fee → nothing to refund (its `fee_waiver` leg is untouched, per the ruling). The refund % is
-    // the caller's: the cancellation-tier % for a traveler cancel, 100% for a provider/expert cancel.
-    const feeSnap = (row.booking_details as any)?.travelerServiceFee ?? null;
-    const feeCharged = feeSnap && feeSnap.waived !== true ? (Number(feeSnap.charged) || 0) : 0;
-    const feeRefundPct =
-      options?.feeRefundPercent !== undefined
-        ? Math.min(Math.max(options.feeRefundPercent, 0), 100)
-        : options?.amountOverride === undefined
-          ? 100 // a full booking refund makes the traveler whole on the fee too
-          : 0; // a policy-scaled refund with no explicit fee % refunds no fee (conservative)
-    const feeRefund = feeCharged > 0 ? Math.round(feeCharged * (feeRefundPct / 100) * 100) / 100 : 0;
-    // The total Stripe refund = the booking share + the fee share. Both server-derived (§14).
-    const totalRefund = Math.round((amount + feeRefund) * 100) / 100;
+    // The two shares — the booking's and the traveler service fee's — are ONE computation shared
+    // with the cancellation preview (`computeRefundBreakdown`, ledger
+    // `2026-09-27-cancel-preview-equals-refund`), so the number a traveler is shown is the number
+    // Stripe is asked for. A FULL refund (no override) is the fee-inclusive charged amount; the fee
+    // (ruling 2026-09-02-traveler-fee-refundability, R156) lives in
+    // `booking_details.travelerServiceFee`, NOT in total_amount/platform_fee, and refunds at the
+    // caller's percent. Both server-derived (§14).
+    const b = computeRefundBreakdown({
+      bookingChargedDollars: amountCharged,
+      feeChargedDollars: travelerFeeChargedOf(row.booking_details),
+      amountOverride: options?.amountOverride,
+      feeRefundPercent: options?.feeRefundPercent,
+    });
+    const amount = b.bookingRefundDollars;
+    const feeRefund = b.feeRefundDollars;
+    const totalRefund = b.totalRefundDollars;
     return { amount, amountCharged, feeRefund, totalRefund };
   }
 
@@ -1530,7 +1518,7 @@ class StripePaymentService {
     // refunded is recorded beside the final status, so a partial policy refund reads "Refunded (50%)"
     // — the status is final either way (decision-maker Sep 27, 2026: a cancelled booking must reach
     // a final status or the completion timer pays out on it).
-    const chargedCents = Math.round(amountCharged * 100) + Math.round(this.feeChargedOf(row) * 100);
+    const chargedCents = Math.round(amountCharged * 100) + Math.round(travelerFeeChargedOf(row.booking_details) * 100);
     const refundRecord = JSON.stringify({
       refundId: refund.id,
       amountCents,

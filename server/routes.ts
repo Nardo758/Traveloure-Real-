@@ -8185,10 +8185,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const { checkServiceBookingRefundPreflight, lostChargebackRefusalBody } = await import(
             "./services/lost-chargeback-guard.service"
           );
-          const guard = await checkServiceBookingRefundPreflight(req.params.id, {
-            amountOverride: quote.refundAmount,
-            feeRefundPercent: quote.refundPercent,
-          });
+          // Ledger `2026-09-27-cancel-preview-equals-refund`: the SAME options the refund below takes.
+          const { refundOptionsForQuote } = await import("./services/cancellation-policy.service");
+          const guard = await checkServiceBookingRefundPreflight(req.params.id, refundOptionsForQuote(quote));
           if (!guard.allowed) return res.status(409).json(lostChargebackRefusalBody(guard));
         }
         const refundFraction = quote.refundPercent / 100;
@@ -8202,8 +8201,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           req.params.id,
           reason || "requested_by_customer",
           // Ruling 2026-09-02-traveler-fee-refundability: a TRAVELER cancellation refunds the
-          // traveler service fee at the SAME cancellation-tier % as the booking.
-          { amountOverride: quote.refundAmount, feeRefundPercent: quote.refundPercent },
+          // traveler service fee at the SAME cancellation-tier % as the booking. The booking share
+          // and the fee percent come from the quote the traveler was SHOWN (ledger
+          // `2026-09-27-cancel-preview-equals-refund`), so Stripe is asked for `quote.refundAmount`.
+          (await import("./services/cancellation-policy.service")).refundOptionsForQuote(quote),
         );
 
         // Refund issued (status now 'refunded' — set by refundServiceBooking only after Stripe

@@ -954,3 +954,14 @@ refund rides. The `charge.dispute.*` events stay unsubscribed until the G3 lane 
 item-linked bookings. Still open and NOT fixed by R161: `payment_intent.canceled` on the
 platform endpoint touches only the legacy table (a canceled cart PI is left to the TTL sweep), and the Connect
 endpoint's payment-failed arm is only reachable for events Stripe routes to a Connect-secret endpoint.
+
+## From the earner-projection fix (2026-09-27, R167)
+
+### FU-R167-1 — Turn the earner `booking_details` strip into an ALLOWLIST (G3's lane)
+`sanitizeBookingForExpert` hides eight NAMED keys inside `booking_details` from experts and providers
+(`EARNER_HIDDEN_BOOKING_DETAIL_KEYS`). A named list means the next money key added to `booking_details`
+leaks by default. Replace it with an allowlist of the keys an earner may see (the operational answers:
+scheduled date, notes, party details and the like), pinned by `server/utils/__tests__/data-sanitizer.test.ts`,
+so an unlisted key is dropped rather than leaked. Before choosing the list, inventory what the expert
+and provider consoles actually read from `bookingDetails`, and drop nothing they render. Decision-maker
+asked for this Sep 27, 2026; not a blocker for #1122 or lane 2.

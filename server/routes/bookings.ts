@@ -665,9 +665,12 @@ router.post('/refund', isAuthenticated, async (req, res) => {
           });
         }
         // The fee tracks the booking's cancellation-tier % (100 when the tier gives a full refund).
+        // The booking share is the quote's BOOKING share, never its total (ledger
+        // `2026-09-27-cancel-preview-equals-refund`) — one options builder for every quoted refund.
+        const { refundOptionsForQuote } = await import('../services/cancellation-policy.service');
         feeRefundPercent = quote.refundPercent;
         if (quote.refundPercent < 100) {
-          amountOverride = quote.refundAmount;
+          amountOverride = refundOptionsForQuote(quote).amountOverride;
           refundFraction = quote.refundPercent / 100;
         }
       }
