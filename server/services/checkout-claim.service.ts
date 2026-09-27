@@ -1640,6 +1640,90 @@ export async function notifyExpiredStampedClaim(
 }
 
 /**
+ * R164/R165 — RELEASE ONE STAMPED CLAIM whose PaymentIntent Stripe says will never be paid. ONE
+ * implementation, two callers (§18 rule 1): the stale-authorized sweep and the platform
+ * `payment_intent.canceled` webhook (`releaseClaimsForCanceledIntent`). In order, each step behind its
+ * own guard: the void (`voidClaim`, keyed on the row's own stamped PaymentIntent — a promote racing
+ * this leaves exactly one winner), the plan item back to planning (guarded on the booking still being
+ * `expired`), then the traveler's one email (`notifyExpiredStampedClaim`, its own atomic claim).
+ * Nothing after the void runs unless this call won it. Never throws.
+ */
+export async function releaseStampedClaim(
+  row: ProvisionalClaimRow,
+  paymentIntentId: string,
+  reason: "stripe_canceled" | "stale_unpaid",
+  sendExpiredClaimEmail?: ExpiredClaimEmailSender,
+): Promise<{ voided: boolean; slotsReleased: number; itemsReverted: number; noticeSent: boolean }> {
+  const v = await voidClaim(row, reason, paymentIntentId);
+  if (!v.voided) return { voided: false, slotsReleased: 0, itemsReverted: 0, noticeSent: false };
+  let itemsReverted = 0;
+  try {
+    const { revertPurchasedItemsForBooking } = await import("./item-routing.service");
+    const rv = await revertPurchasedItemsForBooking(row.id, {
+      actorType: "system",
+      requireBookingStatusIn: [CLAIM_EXPIRED_STATUS],
+    });
+    itemsReverted = rv.reverted;
+  } catch (err) {
+    logger.error({ err, bookingId: row.id }, "[stamped-claim-release] item revert failed (booking voided; item re-runnable)");
+  }
+  // After the release and the item's return to the plan: tell the traveler, once (§15b — the
+  // notice follows the operation that authorizes it, and can never undo it).
+  const n = await notifyExpiredStampedClaim(row.id, sendExpiredClaimEmail);
+  return { voided: true, slotsReleased: v.slotsReleased, itemsReverted, noticeSent: n.sent };
+}
+
+/**
+ * R165 (G3, decision-maker Sep 27, 2026) — the PLATFORM `payment_intent.canceled` webhook releases
+ * the stamped claims on that intent. Until this, the handler updated `payment_intents` and the LEGACY
+ * `bookings` table only, so a cart checkout whose intent was cancelled (in the dashboard, by the
+ * sweep, by Stripe's own expiry) stayed `payment_pending`, holding its slot, until the 24-hour sweep
+ * noticed. A signature-verified `canceled` event is Stripe's word and `canceled` is final, so the
+ * claim is released at once through the SAME `releaseStampedClaim` the sweep uses — same void
+ * predicate, same item revert, same one email. Only `payment_pending` rows carrying THIS intent match:
+ * a confirmed/failed/refunded row, a deposit row (whose balance leg rides `stripe_balance_intent_id`)
+ * and a legacy-rail row are never touched. A redelivery finds the rows already `expired` and does
+ * nothing. Never throws.
+ */
+export async function releaseClaimsForCanceledIntent(
+  paymentIntentId: string,
+  opts?: { sendExpiredClaimEmail?: ExpiredClaimEmailSender },
+): Promise<{ matched: number; released: number; slotsReleased: number; itemsReverted: number; noticesSent: number }> {
+  const out = { matched: 0, released: 0, slotsReleased: 0, itemsReverted: 0, noticesSent: 0 };
+  let rows: ProvisionalClaimRow[];
+  try {
+    const r = await db.execute(sql`
+      SELECT id, trip_id, slot_id, traveler_id, booking_details, idempotency_key, created_at
+      FROM service_bookings
+      WHERE status = 'payment_pending' AND stripe_payment_intent_id = ${paymentIntentId}
+    `);
+    rows = (r.rows as any[]).map((x) => ({
+      id: String(x.id),
+      tripId: x.trip_id ?? null,
+      slotId: x.slot_id ?? null,
+      travelerId: x.traveler_id ?? null,
+      bookingDetails: (x.booking_details ?? null) as Record<string, unknown> | null,
+      idempotencyKey: x.idempotency_key ?? null,
+      createdAt: x.created_at instanceof Date ? x.created_at : new Date(String(x.created_at)),
+    }));
+  } catch (err: any) {
+    logger.error({ paymentIntentId, err: err?.message }, "[canceled-intent] lookup failed — the sweep will release these claims");
+    return out;
+  }
+  out.matched = rows.length;
+  for (const row of rows) {
+    const r = await releaseStampedClaim(row, paymentIntentId, "stripe_canceled", opts?.sendExpiredClaimEmail);
+    if (!r.voided) continue;
+    out.released += 1;
+    out.slotsReleased += r.slotsReleased;
+    out.itemsReverted += r.itemsReverted;
+    if (r.noticeSent) out.noticesSent += 1;
+  }
+  if (out.released > 0) logger.info({ paymentIntentId, ...out }, "[canceled-intent] released stamped claims on a canceled PaymentIntent");
+  return out;
+}
+
+/**
  * R164 (G2) — THE STALE AUTHORIZED-CLAIM SWEEP. `sweepExpiredCheckoutClaims` reclaims UNSTAMPED claims
  * only; a claim that WAS authorized (a PaymentIntent stamped on it, cart cleared, item flipped to
  * `purchased`) and then never paid — the traveler closed the tab on 3-D Secure, the card form was
@@ -1710,24 +1794,12 @@ export async function sweepStaleAuthorizedClaims(opts?: {
   const voidAll = async (pi: string, group: typeof rows, reason: "stripe_canceled" | "stale_unpaid") => {
     let voided = 0;
     for (const row of group) {
-      const v = await voidClaim(row, reason, pi);
-      if (!v.voided) continue;
+      const r = await releaseStampedClaim(row, pi, reason, opts?.sendExpiredClaimEmail);
+      if (!r.voided) continue;
       voided += 1;
-      result.slotsReleased += v.slotsReleased;
-      try {
-        const { revertPurchasedItemsForBooking } = await import("./item-routing.service");
-        const rv = await revertPurchasedItemsForBooking(row.id, {
-          actorType: "system",
-          requireBookingStatusIn: [CLAIM_EXPIRED_STATUS],
-        });
-        result.itemsReverted += rv.reverted;
-      } catch (err) {
-        logger.error({ err, bookingId: row.id }, "[stale-authorized-sweep] item revert failed (booking voided; item re-runnable)");
-      }
-      // After the release and the item's return to the plan: tell the traveler, once (§15b — the
-      // notice follows the operation that authorizes it, and can never undo it).
-      const n = await notifyExpiredStampedClaim(row.id, opts?.sendExpiredClaimEmail);
-      if (n.sent) result.noticesSent += 1;
+      result.slotsReleased += r.slotsReleased;
+      result.itemsReverted += r.itemsReverted;
+      if (r.noticeSent) result.noticesSent += 1;
     }
     return voided;
   };

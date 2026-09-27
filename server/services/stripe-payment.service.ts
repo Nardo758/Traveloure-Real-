@@ -723,20 +723,28 @@ class StripePaymentService {
     // one row. This is a RECORD, not a claim — see below.
     //
     // THIS RAIL DOES NOT OWN THE ROW'S STATE, AND MUST NOT START TO (§18 rule 1).
-    // `webhook_events` is shared by TWO signature-verified endpoints with two different
-    // secrets, and they overlap on `payment_intent.succeeded` and `payment_intent.payment_failed`:
+    // `webhook_events` is shared by TWO signature-verified endpoints with two different secrets:
     //
-    //   server/routes/bookings.ts:568        STRIPE_WEBHOOK_SECRET          → handleWebhook (here)
-    //   server/routes/webhooks.routes.ts:597 STRIPE_CONNECT_WEBHOOK_SECRET  → processStripeWebhookEvent
+    //   server/routes/bookings.ts (`handleWebhook`, here)            STRIPE_WEBHOOK_SECRET          — the platform ACCOUNT endpoint
+    //   server/routes/webhooks.routes.ts (`processStripeWebhookEvent`) STRIPE_CONNECT_WEBHOOK_SECRET — the CONNECT endpoint
     //
-    // Stripe delivers ONE event object, with the same `evt_` id, to every endpoint subscribed
-    // to that type. `processStripeWebhookEvent` reads `processed` before doing its work and is
-    // the single author of this row's lifecycle (webhooks.routes.ts:108-129). If this rail also
-    // claimed the row or wrote `processed`, whichever endpoint arrived second would skip its
-    // ENTIRE switch — and the two do not do the same work. The Connect arm's revenue tracking
-    // and expert/provider earnings mint exist only there, so a lost race there loses real money
-    // silently: both endpoints answer 200, so Stripe never retries, and §17's daily
-    // reconciliation would only DETECT the missing revenue row a day later.
+    // CORRECTED (R165, G3, ledger `2026-09-27-dispute-hardening`): this comment used to say the two
+    // endpoints OVERLAP on `payment_intent.succeeded` / `payment_intent.payment_failed` because
+    // Stripe sends one event to "every endpoint subscribed to that type". That is not how the LIVE
+    // configuration works. A Connect endpoint receives events that happen ON CONNECTED ACCOUNTS; an
+    // account endpoint receives the PLATFORM account's own events. Every checkout PaymentIntent is
+    // created on the platform account (no `stripeAccount` header, no `transfer_data`/`on_behalf_of` anywhere under `server/`; sellers are paid by separate transfers), so its
+    // `payment_intent.*`, `charge.*` and dispute events can reach THIS endpoint only — whichever of
+    // those types it is subscribed to in the dashboard (a subscription list is operator state, so it
+    // is deliberately not restated here).
+    // The Connect arm's revenue tracking and earnings mint therefore do not run for a platform PI;
+    // the platform rail's own promotion (`promotePaidCheckout`) and the completion mint are what
+    // do that work. Do not build on an overlap that does not exist.
+    //
+    // The no-claim rule below still stands, for a different reason: `processStripeWebhookEvent`
+    // reads `processed` and is the single author of that row's lifecycle, and if a future
+    // configuration ever DID subscribe both endpoints to one event type, a claim written here would
+    // make the second endpoint skip its entire switch.
     //
     // Nothing is lost by recording rather than claiming. The retry storm this lane exists to
     // stop is fixed at its root by the `!bookingIds` guards in handlePaymentFailed /
@@ -1128,6 +1136,12 @@ class StripePaymentService {
     await db.execute(sql`
       UPDATE payment_intents SET status = 'canceled' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
+
+    // THE CART RAIL (R165, G3). A cart checkout's stamped claims on this intent are released at once
+    // — slot back, item back in the plan, the traveler told once — through the SAME release the
+    // stale-authorized sweep uses. No-ops on intents no `payment_pending` row carries.
+    const { releaseClaimsForCanceledIntent } = await import('./checkout-claim.service');
+    await releaseClaimsForCanceledIntent(paymentIntent.id);
 
     if (!bookingIds) {
       this.logNonCartTerminalPayment(paymentIntent, 'canceled');

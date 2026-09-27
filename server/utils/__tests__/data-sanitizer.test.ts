@@ -16,7 +16,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EARNER_HIDDEN_BOOKING_DETAIL_KEYS, sanitizeBookingForExpert } from "../data-sanitizer";
+import { EARNER_VISIBLE_BOOKING_DETAIL_KEYS, sanitizeBookingForExpert } from "../data-sanitizer";
 
 /**
  * A raw `service_bookings` row with EVERY column populated, camelCase field names exactly as
@@ -147,6 +147,12 @@ function rowWithRefundRecords() {
       outOfBandRefundCleared: [{ refundIds: ["re_cleared_should_never_appear"], clearedBy: "admin-1" }],
       serviceBookingRefundAttempt: { state: "processing", idempotencyKey: "refund-sb-should-never-appear" },
       serviceBookingRefund: { refundId: "re_app_should_never_appear", amountCents: 5000 },
+      // FU-R167-1: three live keys the old denylist missed, and a key nobody has written yet.
+      lostChargebacks: { dp_1: { chargeId: "ch_lost_should_never_appear", paymentIntentId: "pi_lost_should_never_appear" } },
+      chargebackReconciliation: { by: "admin_should_never_appear", note: "x" },
+      balancePaidByUserId: "user_should_never_appear",
+      travelerCharge: { conciergeFee: "5.00" },
+      someFutureMoneyKey: "future_should_never_appear",
     },
   };
 }
@@ -154,8 +160,8 @@ function rowWithRefundRecords() {
 test("N6: an expert or provider never sees the traveler's refund claim, refund record or Stripe keys inside booking_details", () => {
   for (const role of ["provider", "expert"]) {
     const sanitized: any = sanitizeBookingForExpert(rowWithRefundRecords(), role, `${role}-1`);
-    for (const key of EARNER_HIDDEN_BOOKING_DETAIL_KEYS) {
-      assert.equal(key in sanitized.bookingDetails, false, `${key} must be stripped from bookingDetails for role=${role}`);
+    for (const key of Object.keys(sanitized.bookingDetails)) {
+      assert.ok((EARNER_VISIBLE_BOOKING_DETAIL_KEYS as readonly string[]).includes(key), `${key} is not on the earner allowlist for role=${role}`);
     }
     const raw = JSON.stringify(sanitized);
     assert.equal(/should-never-appear|should_never_appear/.test(raw), false, `no refund or Stripe identifier leaks for role=${role}`);
@@ -165,10 +171,21 @@ test("N6: an expert or provider never sees the traveler's refund claim, refund r
   }
 });
 
-test("N7: the two refund keys this lane added are on the hidden list, by name (a tidy-up that drops them fails here)", () => {
-  for (const key of ["serviceBookingRefundAttempt", "serviceBookingRefund", "lateSuccessRefund", "outOfBandRefund", "stripeIdempotencyKey"]) {
-    assert.ok((EARNER_HIDDEN_BOOKING_DETAIL_KEYS as readonly string[]).includes(key), `${key} must stay hidden from earners`);
+test("N7: the earner allowlist is exactly the operational keys (adding one is a decision, not a tidy-up)", () => {
+  assert.deepEqual([...EARNER_VISIBLE_BOOKING_DETAIL_KEYS].sort(), [
+    "bookingType", "checkIn", "checkOut", "nights", "notes", "pickupLocation", "propertyName",
+    "quantity", "roomName", "scheduledDate", "specialRequests", "transportMode", "travelers",
+  ]);
+  for (const key of ["serviceBookingRefundAttempt", "serviceBookingRefund", "lateSuccessRefund", "outOfBandRefund",
+    "stripeIdempotencyKey", "lostChargebacks", "chargebackReconciliation", "balancePaidByUserId", "travelerCharge",
+    "travelerServiceFee", "railsAttribution", "bundleComponents", "itineraryItemId", "expiredClaimNotice"]) {
+    assert.equal((EARNER_VISIBLE_BOOKING_DETAIL_KEYS as readonly string[]).includes(key), false, `${key} must never be earner-visible`);
   }
+});
+
+test("N8: a key nobody has written yet is hidden from earners by default", () => {
+  const sanitized: any = sanitizeBookingForExpert(rowWithRefundRecords(), "provider", "provider-1");
+  assert.equal("someFutureMoneyKey" in sanitized.bookingDetails, false);
 });
 
 test("P3: an admin (canSeeFull) still receives booking_details whole", () => {

@@ -957,7 +957,7 @@ endpoint's payment-failed arm is only reachable for events Stripe routes to a Co
 
 ## From the earner-projection fix (2026-09-27, R167)
 
-### FU-R167-1 — Turn the earner `booking_details` strip into an ALLOWLIST (G3's lane)
+### FU-R167-1 — Turn the earner `booking_details` strip into an ALLOWLIST (G3's lane) — CLOSED 2026-09-27 by ledger `2026-09-27-dispute-hardening` (R165)
 `sanitizeBookingForExpert` hides eight NAMED keys inside `booking_details` from experts and providers
 (`EARNER_HIDDEN_BOOKING_DETAIL_KEYS`). A named list means the next money key added to `booking_details`
 leaks by default. Replace it with an allowlist of the keys an earner may see (the operational answers:

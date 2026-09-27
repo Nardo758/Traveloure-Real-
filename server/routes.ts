@@ -7418,7 +7418,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
               // owns the ledger reversal + notification — report factually, fire no side-effects.
               const refreshed = await storage.getServiceBooking(req.params.id);
-              return res.json({ ...refreshed, refund: { issued: false, alreadyRefunded: true } });
+              // FU-R167-1: the owner rail answers with the SAME earner projection the list routes use.
+              return res.json({ ...(refreshed ? sanitizeBookingForExpert(refreshed, (await getDbRole(req)) ?? 'provider', userId) : refreshed), refund: { issued: false, alreadyRefunded: true } });
             }
             // This caller WON the refund claim — apply the matching full-fraction ledger
             // compensation (idempotent flips; a crash here is repaired by the admin refund
@@ -7491,7 +7492,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
             return res.json({
-              ...refreshed,
+              ...(refreshed ? sanitizeBookingForExpert(refreshed, (await getDbRole(req)) ?? 'provider', userId) : refreshed),
               refund: {
                 issued: true,
                 amount: refundResult?.amount ?? amountPaid,
@@ -7617,7 +7618,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      res.json(updated);
+      res.json(updated ? sanitizeBookingForExpert(updated, (await getDbRole(req)) ?? 'provider', userId) : updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
     }
@@ -8076,7 +8077,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         console.error("Failed to create visa status notification:", notifErr);
       }
 
-      res.json(updated);
+      res.json(updated ? sanitizeBookingForExpert(updated, (await getDbRole(req)) ?? 'provider', userId) : updated);
     } catch (err) {
       console.error("Visa status update error:", err);
       res.status(500).json({ message: "Failed to update visa status" });

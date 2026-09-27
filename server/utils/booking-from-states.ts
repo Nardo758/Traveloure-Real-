@@ -394,3 +394,32 @@ export const ALL_UNDELIVERED_CANCEL_FROM_STATUSES: readonly string[] = ["confirm
  *   - `refunded` — already done.
  */
 export const APP_REFUND_REFUSED_FROM_STATUSES: readonly string[] = ["payment_pending", "failed", "disputed", "refunded"];
+
+/**
+ * ── R165 (G3; ledger `2026-09-27-dispute-hardening`) — WHICH BOOKINGS A STRIPE DISPUTE MAY NEVER FLIP ──
+ * `handleStripeDispute` wrote `disputed` / `dispute_lost` / the restored status with a bare
+ * `UPDATE … WHERE id = ?`, so a chargeback on a booking we had ALREADY refunded moved it from
+ * `refunded` to `disputed` — and a won dispute then "restored" it to whatever the lifecycle snapshot
+ * held, un-refunding it on screen. A bank dispute does not change what we did: these states record
+ * money that already went back (or never moved), and the dispute handler leaves them as they are
+ * and raises an ops notice instead (a chargeback on refunded money is a possible double refund).
+ *
+ * WHY A REFUSE-LIST HERE, when every other list in this module is an allow-list: the dispute flip
+ * is what HOLDS the seller's earnings. An allow-list that missed a paid status (a new one, or
+ * `partially_completed`) would silently leave earnings releasable while the traveler's bank is
+ * pulling the money back — the unsafe direction. A refuse-list fails toward holding.
+ *
+ * NEGATIVE SPACE: this bounds only the STATUS write. The lost-chargeback record
+ * (`booking_details.lostChargebacks`, read by the refund guard) is written for every matched
+ * booking regardless, because it is what stops a second refund of disputed money.
+ */
+export const STRIPE_DISPUTE_NEVER_FLIPPED_STATUSES: readonly string[] = [
+  "refunded",
+  "cancelled",
+  "expired",
+  "failed",
+  "payment_pending",
+];
+
+/** A won dispute restores ONLY a row the dispute itself flipped (`disputed`). */
+export const STRIPE_DISPUTE_WON_RESTORE_FROM_STATUSES: readonly string[] = ["disputed"];

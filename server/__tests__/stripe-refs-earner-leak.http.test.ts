@@ -182,14 +182,14 @@ function refundDetails() {
 }
 
 /** Seed a booking with ALL THREE Stripe intent refs + idempotencyKey stamped with run markers. */
-async function makeBooking(serviceId: string, providerId: string, suffix: string): Promise<string> {
+async function makeBooking(serviceId: string, providerId: string, suffix: string, status = "confirmed"): Promise<string> {
   const id = `srl-${RUN}-bkg-${suffix}`;
   await db.execute(sql`
     INSERT INTO service_bookings
       (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee, provider_earnings,
        stripe_payment_intent_id, stripe_deposit_intent_id, stripe_balance_intent_id, idempotency_key, booking_details)
     VALUES
-      (${id}, ${serviceId}, ${userIds.traveler}, ${providerId}, 'confirmed', '100.00', '25.00', '75.00',
+      (${id}, ${serviceId}, ${userIds.traveler}, ${providerId}, ${status}, '100.00', '25.00', '75.00',
        ${MARKERS.paymentIntent}, ${MARKERS.depositIntent}, ${MARKERS.balanceIntent}, ${MARKERS.idempotencyKey + "-" + suffix},
        ${JSON.stringify(refundDetails())}::jsonb)
   `);
@@ -200,6 +200,7 @@ async function makeBooking(serviceId: string, providerId: string, suffix: string
 let expertBookingId = "";
 let providerBookingId = "";
 let adminBookingId = "";
+let pendingProviderBookingId = "";
 
 before(async () => {
   await assertDisposableDb();
@@ -228,6 +229,7 @@ before(async () => {
   const providerSvc = await makeService(userIds.provider);
   const adminSvc = await makeService(userIds.admin);
   expertBookingId = await makeBooking(expertSvc, userIds.expert, "exp");
+  pendingProviderBookingId = await makeBooking(providerSvc, userIds.provider, "prov-pending", "pending");
   providerBookingId = await makeBooking(providerSvc, userIds.provider, "prov");
   adminBookingId = await makeBooking(adminSvc, userIds.admin, "adm");
 });
@@ -314,4 +316,29 @@ test("L4: admin (canSeeFull) still receives the full row — sanitizer must not 
     MARKERS.appRefundId,
     "admin must still see the refund records inside booking_details (R163 amendment strips them for earners only)",
   );
+});
+
+test("L5: the owner's write rails answer with the earner projection too (FU-R167-1)", async () => {
+  // Accept a pending request: PATCH /api/provider/bookings/:id/status returned the full updated row.
+  const accept = await fetch(`${BASE_URL}/api/provider/bookings/${pendingProviderBookingId}/status`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", cookie: cookies.provider },
+    body: JSON.stringify({ status: "confirmed" }),
+  });
+  const acceptRaw = await accept.text();
+  assert.equal(accept.status, 200, `accept must 200, got ${accept.status}: ${acceptRaw}`);
+  const acceptBody = JSON.parse(acceptRaw);
+  assert.equal(acceptBody.id, pendingProviderBookingId);
+  assert.equal(acceptBody.bookingDetails?.notes, "operational note", "the operational answers survive");
+  assertNoStripeRefs(acceptRaw, acceptBody, "PATCH /api/provider/bookings/:id/status");
+
+  // Visa status: PATCH /api/service-bookings/:id/visa-status returned the full updated row.
+  const visa = await fetch(`${BASE_URL}/api/service-bookings/${providerBookingId}/visa-status`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", cookie: cookies.provider },
+    body: JSON.stringify({ visaApplicationStatus: "submitted" }),
+  });
+  const visaRaw = await visa.text();
+  assert.equal(visa.status, 200, `visa status must 200, got ${visa.status}: ${visaRaw}`);
+  assertNoStripeRefs(visaRaw, JSON.parse(visaRaw), "PATCH /api/service-bookings/:id/visa-status");
 });
