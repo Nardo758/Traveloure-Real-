@@ -464,6 +464,11 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/bundle-component-state-copy.test.ts
       - name: API refusal parse pin
         run: npx tsx --test client/src/lib/__tests__/api-refusal.test.ts
+      # R144 (ledger `2026-09-27-service-fee-before-checkout`): the ONE wording/omission rule the
+      # cart and the slip read for the pre-checkout traveler service fee — no answer is never "$0",
+      # a covered fee is never shown as the fee charged.
+      - name: Traveler fee preview copy pin
+        run: npx tsx --test client/src/lib/__tests__/traveler-fee-preview.test.ts
       # Ledger `2026-09-21-trip-pass-revision-claim`: Trip Pass sold "one expert revision" on the
       # pricing page and on the in-product upsell card while nothing could deliver or record one
       # (LD 41 (f) — `expert_revision` has no consumption or charge site; consumeRevision has zero
@@ -1443,7 +1448,11 @@ jobs:
         run: npx tsx --test --test-force-exit client/src/lib/__tests__/plan-dates.test.ts
 
   acceptance-rails:
-    name: acceptance-rails (D-24..D-27 + D-40 + D-36..D-39 + D-32..D-35; ledgers 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt, 2026-09-15-d36-d39-completion-declared, 2026-09-16-d32-d35-bundle-components)
+    # Ledgers: 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt,
+    # 2026-09-15-d36-d39-completion-declared, 2026-09-16-d32-d35-bundle-components. The job NAME is
+    # kept under 100 characters because it is a REQUIRED status context (.github/branch-protection.json;
+    # ledger 2026-09-27-required-checks-promotion) and GitHub truncates a longer check-run name.
+    name: acceptance-rails (D-24..D-27, D-32..D-40; four ledgers, see comment)
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
@@ -1560,6 +1569,10 @@ jobs:
       # traveler-cancelled one at its pinned percent as ONE refund, and a cancelled parent MINTS NOTHING;
       # U8 the whole-row cancel rail is refused by its own from-state list, so capacity is never handed
       # back twice. Stripe.refunds.create is stubbed.
+      # U9 (R152, ledger 2026-09-27-bundle-all-undelivered-reverts-item) rides this same file: the
+      # parent cancel now reverts its linked plan item purchased -> in_planning through the ONE
+      # revertPurchasedItemsForBooking, once, and a retry reverts nothing twice. The step name keeps
+      # its U1-U8 spelling because earlier ledger rows cite it verbatim.
       - name: The all-undelivered parent (U1-U8)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/bundle-all-undelivered.db.test.ts
       # OC-B1's LAST GAP + LD 46/D-27's MONEY OUTCOME (ledger 2026-09-17-ld50-remainder-and-artifact-refund).
@@ -2282,6 +2295,16 @@ jobs:
       # No DOM, no DB, no network.
       - name: Plan row model pins
         run: npx tsx --test client/src/lib/__tests__/plan-row-model.test.ts
+      # R145 (ledger `2026-09-27-refunded-item-status`): the ONE client reading of the plancard's
+      # `booking` / `endedBooking` split — a refunded or cancelled item never reads booked, and the
+      # routing counts above agree with it. No DOM, no DB, no network.
+      - name: Item booking state pins (R145)
+        run: npx tsx --test client/src/lib/__tests__/item-booking-state.test.ts
+      # R154 (ledger `2026-09-27-booking-status-vocabulary`): the ONE shared booking-status vocabulary —
+      # payment_pending / failed / expired are not booked, disputed counts as booked but reads "Under
+      # review" — plus a source pin that the Booked pill and line are drawn for `booked` alone.
+      - name: Booking status vocabulary pins (R154)
+        run: npx tsx --test client/src/lib/__tests__/booking-status-vocabulary.test.ts
 
   event-mint-dedupe:
     name: event-mint-dedupe (CLAUDE.md LD 30 (b) — 2026-09-06-event-mint-dedupe)
@@ -2888,7 +2911,8 @@ jobs:
   # `scripts/test-orphan-baseline.txt` and is owed an app-backed lane.
   # ---------------------------------------------------------------------------
   unit-suite-server-units:
-    name: unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine __tests__ — whole directories)
+    # Kept under 100 characters: a REQUIRED status context (ledger 2026-09-27-required-checks-promotion).
+    name: unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine — whole dirs)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
