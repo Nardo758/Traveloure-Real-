@@ -1026,6 +1026,61 @@ export async function sendLateSuccessRefundEmail(params: LateSuccessRefundEmailP
   }
 }
 
+export interface ExpiredClaimEmailParams {
+  toEmail: string;
+  travelerName?: string | null;
+  serviceName?: string | null;
+  /** The plan the item went back to, when the booking had one. NULL ⇒ the sentence is not said (§13). */
+  tripId?: string | null;
+}
+
+/** R164 (G2): the words of the expired-claim notice, one home for the email and its test. */
+export function expiredClaimNoticeSentence(serviceName: string | null | undefined, hasPlan: boolean): string {
+  const what = serviceName ? `Your booking for ${serviceName}` : "Your booking";
+  return hasPlan
+    ? `${what} wasn't completed, so we released it. It's back in your plan; you can book it again.`
+    : `${what} wasn't completed, so we released it. You can book it again.`;
+}
+
+/**
+ * R164 (G2, decision-maker Sep 27, 2026): a checkout that reached Stripe (a PaymentIntent was stamped)
+ * and was never paid is released by the stale-authorized sweep. The traveler is told ONCE, by the
+ * caller holding the notice claim (`notifyExpiredStampedClaim`). Never sent for an unstamped claim —
+ * that traveler never reached payment. Uses `sendEmail`, so the platform email kill switch applies.
+ * Never throws.
+ */
+export async function sendExpiredClaimEmail(params: ExpiredClaimEmailParams): Promise<void> {
+  const hasPlan = !!params.tripId;
+  const sentence = expiredClaimNoticeSentence(params.serviceName, hasPlan);
+  const url = hasPlan ? `${getAppBaseUrl()}/plans/${encodeURIComponent(params.tripId!)}` : `${getAppBaseUrl()}/my-bookings`;
+  const greeting = params.travelerName ? `Hi ${escHtml(params.travelerName)},` : "Hi,";
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #374151; margin-bottom: 8px;">Your booking wasn't completed</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">${escHtml(sentence)}</p>
+      <a href="${url}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        ${hasPlan ? "Open your plan" : "View My Bookings"}
+      </a>
+    </div>
+  `;
+  const text = [
+    params.travelerName ? `Hi ${params.travelerName},` : "Hi,",
+    ``,
+    sentence,
+    ``,
+    url,
+  ].join("\n");
+  const result = await sendEmail({ to: params.toEmail, subject: "Your booking wasn't completed", html, text });
+  if (!result.ok) {
+    console.warn(`[email] sendExpiredClaimEmail failed for ${params.toEmail}:`, result.error);
+  } else {
+    console.log(`[email] expired-claim email sent to ${params.toEmail}`);
+  }
+}
+
 // ─── Admin Daily Digest ────────────────────────────────────────────────────
 
 interface DigestNotification {

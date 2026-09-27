@@ -712,6 +712,8 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
       "lateSuccessRefund",
       "serviceBookingRefundAttempt",
       "serviceBookingRefund",
+      // R164 (G2): the expired-claim notice claim (ledger 2026-09-27-stale-authorized-sweep).
+      "expiredClaimNotice",
     ],
     "the server-authored key family — see shared/booking-details-admission.ts for each one's reader",
   );

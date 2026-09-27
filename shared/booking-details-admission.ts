@@ -129,6 +129,9 @@ export const SERVER_AUTHORED_BOOKING_DETAIL_KEYS = [
   // "Refunded (50%)" label and the amount line read.
   "serviceBookingRefundAttempt",
   "serviceBookingRefund",
+  // R164 (G2): the expired-claim notice claim. A body that could plant it would suppress the one
+  // email telling the traveler their unpaid booking was released.
+  "expiredClaimNotice",
 ] as const;
 
 export type ServerAuthoredBookingDetailKey = (typeof SERVER_AUTHORED_BOOKING_DETAIL_KEYS)[number];
