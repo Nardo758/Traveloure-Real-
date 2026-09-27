@@ -228,13 +228,44 @@ export async function adminMarkProviderVerified(page: Page, businessName: string
   return true;
 }
 
+/**
+ * Open /admin/service-approvals and resolve the pending card for `titleMatch` from the
+ * queue's OWN response — never from a fixed sleep (ledger 2026-09-27-s1-approval-queue-load-race).
+ *
+ * The page renders a Skeleton while `GET /api/admin/provider-services/pending` is in flight,
+ * and that request only starts after the SPA has booted and resolved the session. The old
+ * helpers slept 500 ms after `goto` and counted cards ONCE, so on a slow runner they counted
+ * the skeleton and reported "no pending card" for a listing that was in the queue (PR #1114,
+ * run 36289311438: providerC's screenshot shows the skeleton; its listing read "In review").
+ *
+ * Now: wait for that GET, find the row by title in the body the page itself renders from,
+ * then wait for THAT row's card (by id, not `.first()` over a text match). null means the
+ * queue answered and the listing is genuinely not in it — the only case that should fail.
+ */
+async function openPendingServiceCard(page: Page, titleMatch: string) {
+  const pendingResponse = page
+    .waitForResponse(
+      (r) => r.request().method() === 'GET' && new URL(r.url()).pathname === '/api/admin/provider-services/pending',
+      { timeout: 30_000 },
+    )
+    .catch(() => null);
+  await page.goto('/admin/service-approvals');
+  const resp = await pendingResponse;
+  if (!resp || !resp.ok()) return null;
+  const rows: unknown = await resp.json().catch(() => null);
+  if (!Array.isArray(rows)) return null;
+  const row = rows.find((r: any) => typeof r?.title === 'string' && r.title.includes(titleMatch));
+  if (!row?.id) return null;
+  const card = page.locator(`[data-testid="pending-service-${row.id}"]`);
+  const shown = await card.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true, () => false);
+  return shown ? card : null;
+}
+
 /** /admin/service-approvals → approve by matching listing title text. */
 export async function adminApproveService(page: Page, titleMatch: string): Promise<boolean> {
-  await page.goto('/admin/service-approvals');
-  await page.waitForTimeout(500);
-  const card = page.locator('[data-testid^="pending-service-"]', { hasText: titleMatch });
-  if ((await card.count()) === 0) return false;
-  const approveBtn = card.first().locator('[data-testid^="button-approve-"]');
+  const card = await openPendingServiceCard(page, titleMatch);
+  if (!card) return false;
+  const approveBtn = card.locator('[data-testid^="button-approve-"]');
   await approveBtn.click();
   await page.waitForTimeout(300);
   const confirmBtn = page.locator('[data-testid^="button-approve-confirm-"]');
@@ -247,13 +278,11 @@ export async function adminApproveService(page: Page, titleMatch: string): Promi
 
 /** /admin/service-approvals → reject by matching listing title text, with a reason. */
 export async function adminRejectService(page: Page, titleMatch: string, reason: string): Promise<boolean> {
-  await page.goto('/admin/service-approvals');
-  await page.waitForTimeout(500);
-  const card = page.locator('[data-testid^="pending-service-"]', { hasText: titleMatch });
-  if ((await card.count()) === 0) return false;
-  const reasonBox = card.first().locator('[data-testid^="reject-reason-"]');
+  const card = await openPendingServiceCard(page, titleMatch);
+  if (!card) return false;
+  const reasonBox = card.locator('[data-testid^="reject-reason-"]');
   if ((await reasonBox.count()) > 0) await reasonBox.fill(reason).catch(() => {});
-  const rejectBtn = card.first().locator('[data-testid^="button-reject-"]');
+  const rejectBtn = card.locator('[data-testid^="button-reject-"]');
   await rejectBtn.click();
   await page.waitForTimeout(1000);
   return true;
