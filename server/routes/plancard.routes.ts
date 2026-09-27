@@ -305,10 +305,15 @@ router.post("/api/itinerary-comparisons/:id/adopt-stop", isAuthenticated, async 
     }
     // Same destructive-IDOR guard as apply-to-trip: owning the comparison ≠ being allowed to
     // mutate the trip it points at. Both checks hold before any write.
+    // WRITE access (ledger `2026-09-26-adopt-stop-write-access`, R130): adopt APPENDS an item, so
+    // it takes the ONE D17/V-29 "may this person rewrite the plan?" form — owner, a §12
+    // WRITE-status advisor (accepted/assigned, NEVER pending), the author, an audit-logged admin.
+    // The read-shaped call it carried before let a PENDING advisor who owned a comparison write.
     const denied = await authorizeTripLogistics(
       comparison.tripId,
       userId,
       "POST /api/itinerary-comparisons/:id/adopt-stop",
+      { requireWriteAccess: true },
     );
     if (denied) return res.status(denied.status).json({ error: denied.message });
 
