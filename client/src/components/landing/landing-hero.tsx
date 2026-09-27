@@ -199,11 +199,11 @@ export function LandingHeroContent({
             className="mt-3 text-[40px] font-semibold leading-[1.03] tracking-[-0.015em] sm:text-[54px]"
             style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}
           >
-            Plan the trip a local would take.
+            Any experience. Anywhere. Planned like a local
           </h1>
           <p className="mb-[18px] mt-3 max-w-[500px] text-[17px]" style={{ color: "#3C4652" }}>
-            Build a plan with AI, then hand the parts that matter to someone who actually lives
-            there.
+            Tell us the occasion and where in the world you want it. We build the plan around it,
+            and someone who lives there does the rest.
           </p>
 
           <div
