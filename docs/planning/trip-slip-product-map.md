@@ -1,8 +1,8 @@
 # Trip Slip product map — one Slip, capability modules, experience groups
 
 **Status: RATIFIED except the §J overrides** (decision-maker, Sep 27, 2026; ledger `2026-09-27-slip-map-ratified`,
-R146). §I was ruled Sep 26 (R124–R129) and §J–§L's questions Sep 27 (R136–R142). The §J override record stays empty
-until the decision-maker confirms the override list. Build proceeds step by step from §G. Brief section H is now steps
+R146). §I was ruled Sep 26 (R124–R129) and §J–§L's questions Sep 27 (R136–R142). The §J override record holds the one
+confirmed override (R147). Build proceeds step by step from §G. Brief section H is now steps
 1–2 in build detail. Schema named here is ratified as designed, but each migration still lands in its own lane under
 the Coordination Prevention rules.
 **Code base:** `origin/main` @ `da3174289` (the same commit as the UI audit). Every `path:line` is on that commit.
@@ -592,8 +592,11 @@ when this table goes stale.
 - **R137:** the 11 multi-day occasions with no venue role have `accommodation` REQ.
 - **R141:** `proposal` keeps `dining_venue`.
 
-**The override record below is PROPOSED, pending confirmation** (R140's test: an override may only correct a switch or
-matrix result for how people plan that occasion).
+**The override record is CONFIRMED (R147):** one override, `corporate-events` A5 on. R140's test: an override may
+only correct a switch or matrix result for how people plan that occasion. The five other proposals were dropped:
+- The three couple Trips: "optional" is already off, so there was nothing to correct.
+- `family-occasion`: R137 fixed its data.
+- `housewarming-party`: the general rule in §K5 replaces it.
 
 **Columns.**
 - **Modules** B1–A8 are §C's.
@@ -611,49 +614,40 @@ Key: ● on · ○ optional (off by default, one tap to add) · — off · ◐ o
 | Occasion | Group | B1 | B2 | B3 | B4 | B5 | B6 | B7 | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 | Lead zone | Anchor | REQ (phase-0 slug key) | Compare default | A1 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `bachelor-bachelorette` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | `accommodation` | `accommodation` | on |
-| `anniversary-trip` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | — | —ᵒ | — | — | ○ | —ᵒ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | `accommodation` | `accommodation` | on |
+| `anniversary-trip` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | — | ○ | — | — | ○ | ○ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | `accommodation` | `accommodation` | on |
 | `travel` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | — | ○ | — | — | ○ | ○ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | `accommodation` | `accommodation` | on |
 | `wedding` | Hosted events | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | —ˢ | ● | ● | ● | ● | ● | ● | ○ | ● | Completeness by vendor role (B4 + A5) | venue (ceremony_time) | `venue`, `event_coordinator`, `photography`, `caterer` | `venue` | on |
 | `date-night` | Moments | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | — | ● | — | — | ○ | ● | — | ● | The one reservation (A6) and its compare set (S1) | dinner_reservation (temporal anchor) | `dining_venue` | `dining_venue` | not available |
 | `birthday` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
-| `corporate-events` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ●ᵒ | ● | ●ᵒ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
+| `corporate-events` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ●ᵒ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
 | `retreats` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | `accommodation` | `accommodation` | on |
-| `wedding-anniversaries` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | `venue` | `venue` | available (optional) |
+| `wedding-anniversaries` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
 | `proposal` | Moments | ● | ● | ● | ● | ● | ○ˢ | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | — | ● | — | — | ○ | ● | — | ● | The one reservation (A6) and its compare set (S1) | proposal_moment (temporal anchor) | `photography`, `dining_venue` | `dining_venue` | not available |
 | `boys-trip` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | `accommodation` | `accommodation` | on |
 | `girls-trip` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | `accommodation` | `accommodation` | on |
 | `reunions` | Hosted events | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ● | ● | ○ | ● | Completeness by vendor role (B4 + A5) | venue | `venue` | `venue` | on |
-| `baby-shower` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | `venue` | `venue` | available (optional) |
-| `graduation-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | `venue` | `venue` | available (optional) |
+| `baby-shower` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
+| `graduation-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
 | `engagement-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
-| `housewarming-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ○ᵒ | ● | — | ● | ◐ | ○ | ● | — | ○ | —ˢ | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | `venue` | `venue` | available (optional) |
-| `retirement-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | `venue` | `venue` | available (optional) |
-| `career-achievement-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | `venue` | `venue` | available (optional) |
-| `farewell-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | `venue` | `venue` | available (optional) |
-| `holiday-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | `venue` | `venue` | available (optional) |
+| `housewarming-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | —ˢ | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
+| `retirement-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
+| `career-achievement-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
+| `farewell-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
+| `holiday-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
 | `sports-event` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ●ˢ | ○ | — | — | ○ | ○ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | `accommodation` | `accommodation` | on |
-| `romance` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | —ˢ | ● | — | —ᵒ | — | — | ○ | —ᵒ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | `accommodation` | `accommodation` | on |
+| `romance` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | —ˢ | ● | — | ○ | — | — | ○ | ○ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | `accommodation` | `accommodation` | on |
 | `corporate` | Hosted events | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ● | ● | ○ | ● | Completeness by vendor role (B4 + A5) | venue | `venue`, `event_coordinator`, `av_tech`, `caterer` | `venue` | on |
 | `milestone-birthday` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
-| `family-occasion` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | —ˢ | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | `accommodation` | `accommodation`ᵒ | on |
-| `honeymoon` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | — | —ᵒ | — | — | ○ | —ᵒ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | `accommodation` | `accommodation` | on |
+| `family-occasion` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | —ˢ | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | `accommodation` | `accommodation` | on |
+| `honeymoon` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | — | ○ | — | — | ○ | ○ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | `accommodation` | `accommodation` | on |
 | `golf-trip` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ●ˢ | ○ | — | — | ○ | ○ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | `accommodation` | `accommodation` | on |
 | `(plain plan)` | Plain plan | ● | ● | ● | ● | ● | ● | ● | ● | ○ | ● | ● | ● | ◐ | ● | ● | — | ○ | — | ○ | — | — | ○ | — | ● | Days & items, with a “Choose an occasion” prompt | none until set | — none | `none (no occasion)` | available (optional) |
 
-**Proposed overrides (data: one record keyed by slug, applied after the switches; never a separate surface).**
+**Overrides (data: one record keyed by slug, applied after the switches; never a separate surface). Confirmed Sep 27, 2026 (R147).**
 
 | Occasion | Module | Value | Reason |
 |---|---|---|---|
-| `anniversary-trip` | A3 | — | Two travelers: no party to manage (the Moments reasoning) |
-| `anniversary-trip` | A7 | — | Two travelers: nothing to split |
-| `honeymoon` | A3 | — | Two travelers: no party to manage |
-| `honeymoon` | A7 | — | Two travelers: nothing to split |
-| `romance` | A3 | — | Two travelers: no party to manage |
-| `romance` | A7 | — | Two travelers: nothing to split |
-| `corporate-events` | A5 | ● | A run of show with event coordinator, AV and caterer as essentials: coordination is the product |
-| `corporate-events` | A3 | ● | Attendees travel in for a corporate event; arrivals matter even inside one day |
-| `housewarming-party` | S2 | ○ | The venue is the host's own home, which is already known; no anchor to choose |
-| `family-occasion` | Compare default | `accommodation` | Group travel's anchor is shared lodging, but roles_needed omits accommodation; the lasting fix is phase-0c matrix data |
+| `corporate-events` | A5 | ● | A run of show with AV, catering and a coordinator; coordination is the product that the one-day switch hides. |
 
 <!-- END GENERATED §J TABLE -->
 
@@ -768,6 +762,26 @@ source states it. Card-only fields today (`AS`): type chip, status chip, vendor 
 | Compare view (S1) | §E4 attributes per category, "not stated" omitted | §E4 |
 | Vendor detail | Name, handle, verification badge, rating, cancellation terms, deposit, request vs instant | `GET /api/services/:id`, `GET /api/services/:id/provider-verification` (LD 40). No plan row links there today — **new** link. |
 | Expert detail | Handle, standing on this plan (§12), measured reply time (LD 54, omitted under 5 threads), available now | `ExpertCard` (`SlipRail.tsx:695-772`), `server/services/live-status.service.ts` |
+
+### K5. A single custom venue is the anchor automatically (R147)
+
+When a plan holds **exactly one venue and it is a `custom` venue** (the host's home, a friend's garden), that venue
+**is** the plan's anchor, set automatically:
+- **S2 stays on and never asks the traveler to choose an anchor.** They already know it.
+- **Travel-time labels from it work once its address is set,** and a guest navigates to that address.
+
+This is a rule for any plan that fits, not an override for one occasion. It resolves `housewarming-party`, and any
+at-home party, with no override.
+
+- **The home enters the plan as a venue, never as a dismissal.** It is a `custom` venue item carrying an address,
+  from the existing custom-venue rail (`custom_venues`, owner-scoped per §14 reads). "Not needed" on a REQ `venue`
+  slot means "this plan doesn't need a venue", which is false here. So the custom venue **covers** the venue REQ
+  (B4), and "Not needed" is not the mechanism.
+- **Located or not:** the anchor is the venue's located pin once its address geocodes (LD 22: never guessed). Until
+  then S2 shows the venue as the anchor, "address not set yet", with no travel times (§K1). It never falls back to a
+  city centre.
+- **Otherwise the normal choice applies:** with two or more venues, or one non-custom venue, S2 asks as it does today
+  (§E4, brief phase 2).
 
 **Sections that §L adds to this one** are marked in §L's cross-check (rows tagged "→ K").
 
@@ -1029,7 +1043,7 @@ liveness are prerequisites of S1/S3 in every group, so they are recorded here ra
 | 2 | `accommodation` REQ for the 11 multi-day no-venue occasions | Yes; "Not needed" closes the gap (R137). |
 | 3 | REQ for the no-REQ Celebrations | Exactly one, `venue`; nothing else is REQ in the group (R138). |
 | 4 | Pending advisor comments | Not allowed; LD 12 holds (R139). |
-| 5 | §J overrides | Adopt only overrides that correct a switch or matrix result for how people plan that occasion. A wrong group default is fixed in §D. Each override carries a one-line rationale. **The list awaits confirmation** (R140). |
+| 5 | §J overrides | Adopt only overrides that correct a switch or matrix result for how people plan that occasion. A wrong group default is fixed in §D. Each override carries a one-line rationale (R140). **Confirmed:** one override, `corporate-events` A5. The at-home case becomes the §K5 rule: a single custom venue is the anchor automatically (R147). |
 | 6 | `proposal`'s `dining_venue` | Stays REQ (R141). |
 | 7 | Cart | Plan-scoped or standalone, decided at creation; checkout groups by plan plus "Standalone"; nothing blocked; whole-cart checkout stands (R142; brief H4). |
 | 8 | New lanes | Payer reads the plancard (R143, step 4), the service fee shown before checkout (R144), refunded-item status (R145). |

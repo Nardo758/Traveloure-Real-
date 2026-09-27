@@ -110,56 +110,10 @@
   ]
  ],
  "overrides": {
-  "anniversary-trip": {
-   "A3": [
-    "off",
-    "Two travelers: no party to manage (the Moments reasoning)"
-   ],
-   "A7": [
-    "off",
-    "Two travelers: nothing to split"
-   ]
-  },
-  "honeymoon": {
-   "A3": [
-    "off",
-    "Two travelers: no party to manage"
-   ],
-   "A7": [
-    "off",
-    "Two travelers: nothing to split"
-   ]
-  },
-  "romance": {
-   "A3": [
-    "off",
-    "Two travelers: no party to manage"
-   ],
-   "A7": [
-    "off",
-    "Two travelers: nothing to split"
-   ]
-  },
   "corporate-events": {
    "A5": [
     "on",
-    "A run of show with event coordinator, AV and caterer as essentials: coordination is the product"
-   ],
-   "A3": [
-    "on",
-    "Attendees travel in for a corporate event; arrivals matter even inside one day"
-   ]
-  },
-  "housewarming-party": {
-   "S2": [
-    "opt",
-    "The venue is the host's own home, which is already known; no anchor to choose"
-   ]
-  },
-  "family-occasion": {
-   "compare": [
-    "accommodation",
-    "Group travel's anchor is shared lodging, but roles_needed omits accommodation; the lasting fix is phase-0c matrix data"
+    "A run of show with AV, catering and a coordinator; coordination is the product that the one-day switch hides."
    ]
   }
  },
@@ -390,8 +344,8 @@
      "by": null
     },
     "A3": {
-     "value": "off",
-     "by": "override"
+     "value": "opt",
+     "by": null
     },
     "A4": {
      "value": "off",
@@ -406,8 +360,8 @@
      "by": null
     },
     "A7": {
-     "value": "off",
-     "by": "override"
+     "value": "opt",
+     "by": null
     },
     "A8": {
      "value": "on",
@@ -1030,8 +984,8 @@
      "by": null
     },
     "A3": {
-     "value": "on",
-     "by": "override"
+     "value": "opt",
+     "by": null
     },
     "A4": {
      "value": "on",
@@ -1200,7 +1154,7 @@
     "private_chef"
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
-   "anchor": "event location (user_experiences.location)",
+   "anchor": "venue (event location)",
    "req": [
     "venue"
    ],
@@ -1829,7 +1783,7 @@
     "rentals"
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
-   "anchor": "event location (user_experiences.location)",
+   "anchor": "venue (event location)",
    "req": [
     "venue"
    ],
@@ -1955,7 +1909,7 @@
     "rentals"
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
-   "anchor": "event location (user_experiences.location)",
+   "anchor": "venue (event location)",
    "req": [
     "venue"
    ],
@@ -2206,7 +2160,7 @@
     "entertainment"
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
-   "anchor": "event location (user_experiences.location)",
+   "anchor": "venue (event location)",
    "req": [
     "venue"
    ],
@@ -2247,8 +2201,8 @@
      "by": null
     },
     "S2": {
-     "value": "opt",
-     "by": "override"
+     "value": "on",
+     "by": null
     },
     "S3": {
      "value": "on",
@@ -2332,7 +2286,7 @@
     "rentals"
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
-   "anchor": "event location (user_experiences.location)",
+   "anchor": "venue (event location)",
    "req": [
     "venue"
    ],
@@ -2457,7 +2411,7 @@
     "av_tech"
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
-   "anchor": "event location (user_experiences.location)",
+   "anchor": "venue (event location)",
    "req": [
     "venue"
    ],
@@ -2582,7 +2536,7 @@
     "entertainment"
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
-   "anchor": "event location (user_experiences.location)",
+   "anchor": "venue (event location)",
    "req": [
     "venue"
    ],
@@ -2708,7 +2662,7 @@
     "florist"
    ],
    "lead": "Completeness (B4) and the venue compare (S1)",
-   "anchor": "event location (user_experiences.location)",
+   "anchor": "venue (event location)",
    "req": [
     "venue"
    ],
@@ -3038,8 +2992,8 @@
      "by": null
     },
     "A3": {
-     "value": "off",
-     "by": "override"
+     "value": "opt",
+     "by": null
     },
     "A4": {
      "value": "off",
@@ -3054,8 +3008,8 @@
      "by": null
     },
     "A7": {
-     "value": "off",
-     "by": "override"
+     "value": "opt",
+     "by": null
     },
     "A8": {
      "value": "on",
@@ -3348,7 +3302,7 @@
     "accommodation"
    ],
    "compare": "accommodation",
-   "compareOverridden": true,
+   "compareOverridden": false,
    "a1": "on",
    "modules": {
     "B1": {
@@ -3549,8 +3503,8 @@
      "by": null
     },
     "A3": {
-     "value": "off",
-     "by": "override"
+     "value": "opt",
+     "by": null
     },
     "A4": {
      "value": "off",
@@ -3565,8 +3519,8 @@
      "by": null
     },
     "A7": {
-     "value": "off",
-     "by": "override"
+     "value": "opt",
+     "by": null
     },
     "A8": {
      "value": "on",

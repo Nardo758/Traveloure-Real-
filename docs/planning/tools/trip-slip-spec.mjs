@@ -112,12 +112,8 @@ function switchValue(id, o) {
 // ── §J proposed overrides: DATA keyed by slug, never a separate surface ────────────────────────
 // Each entry: module → value, with the one-line reason. Proposed, not ratified.
 export const OVERRIDES = {
-  "anniversary-trip": { A3: ["off", "Two travelers: no party to manage (the Moments reasoning)"], A7: ["off", "Two travelers: nothing to split"] },
-  honeymoon: { A3: ["off", "Two travelers: no party to manage"], A7: ["off", "Two travelers: nothing to split"] },
-  romance: { A3: ["off", "Two travelers: no party to manage"], A7: ["off", "Two travelers: nothing to split"] },
-  "corporate-events": { A5: ["on", "A run of show with event coordinator, AV and caterer as essentials: coordination is the product"], A3: ["on", "Attendees travel in for a corporate event; arrivals matter even inside one day"] },
-  "housewarming-party": { S2: ["opt", "The venue is the host's own home, which is already known; no anchor to choose"] },
-  "family-occasion": { compare: ["accommodation", "Group travel's anchor is shared lodging, but roles_needed omits accommodation; the lasting fix is phase-0c matrix data"] },
+  // RULED Sep 27, 2026 (R147): the only adopted override. It corrects the `duration: day` switch's result, not a group default.
+  "corporate-events": { A5: ["on", "A run of show with AV, catering and a coordinator; coordination is the product that the one-day switch hides."] },
 };
 
 // ── Derived columns ────────────────────────────────────────────────────────────────────────────
@@ -133,7 +129,7 @@ function anchorFor(o, group) {
   if (!o) return "none until set";
   if (o.slug === "proposal") return "proposal_moment (temporal anchor)";
   if (group === "Moments") return "dinner_reservation (temporal anchor)";
-  if (group === "Celebrations") return o.roles.includes("venue") ? "venue (event location)" : "event location (user_experiences.location)";
+  if (group === "Celebrations") return "venue (event location)"; // R138: venue is every Celebration's REQ; a single custom venue anchors automatically (map §K5)
   if (group === "Trips") return "hotel (hotel_checkin)";
   if (group === "Hosted events") return o.slug === "wedding" ? "venue (ceremony_time)" : "venue";
   return "shared lodging (hotel_checkin)";
@@ -202,7 +198,7 @@ function render(rows) {
     "",
     head, sep, ...body,
     "",
-    "**Proposed overrides (data: one record keyed by slug, applied after the switches; never a separate surface).**",
+    "**Overrides (data: one record keyed by slug, applied after the switches; never a separate surface). Confirmed Sep 27, 2026 (R147).**",
     "",
     "| Occasion | Module | Value | Reason |", "|---|---|---|---|", ...ov,
     "",

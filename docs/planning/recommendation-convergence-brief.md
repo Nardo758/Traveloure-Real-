@@ -591,7 +591,7 @@ content, reordered by occasion, with the list first on a phone.
 | Piece | Design | Reuses | Test that must fail on `main` first |
 |---|---|---|---|
 | **`experienceGroupFor(row)`** | Pure, in `shared/experience-group.ts`. Implements map §B2 exactly, reading the existing switch readers (`client/src/lib/occasion-switches.ts`), never restating them. **Input order (R136):** `trips.experience_type_id` → the plan's events when they all name one occasion → the NULL fallback. The NULL fallback resolves a group without claiming an occasion: `vacation` → Trips, `birthday` → Celebrations, anything else → Plain plan (0a). | switch readers; `findOccasionByEventType` | A pure test over all 28 seeded rows + the plain plan, pinned to §J's JSON (29 rows). |
-| **`shared/experience-spec.ts`** | The one resolver of **group default → switch → override → module state**, and of lead zone, anchor, REQ and compare default. `docs/planning/tools/trip-slip-spec.mjs` then imports it instead of restating it. **The override record ships empty** until the decision-maker confirms the §J override list. | §D matrix as data | The same 29-row pin. |
+| **`shared/experience-spec.ts`** | The one resolver of **group default → switch → override → module state**, and of lead zone, anchor, REQ and compare default. `docs/planning/tools/trip-slip-spec.mjs` then imports it instead of restating it. The override record ships with the **one confirmed override** (`corporate-events` A5 on, R147). The single-custom-venue anchor rule (map §K5) is resolver logic, not an override. | §D matrix as data | The same 29-row pin. |
 | **`trip-slip-spec.mjs --check` in CI (R146)** | A named step in `build.yml`'s guard batch: `node docs/planning/tools/trip-slip-spec.mjs --check`. A seed change that moves a switch, a role or an occasion fails CI until §J is regenerated in the same PR. | — | The self-check: with a seed fixture whose switch was flipped, `--check` exits 1. |
 | **Module registry** | `client/src/components/plancard/slip-modules.ts` maps each module id (B1–A8) to its existing component and its depth renderers (§K). `SlipView` renders the registry in the order `experienceSpecFor(plan)` returns. No component is copied; each existing section is registered once. | every existing slip section (map §L1) | A source pin: every section `SlipView` rendered before step 1 is registered exactly once. |
 | **Occasion switches get the events (0b, audit F15)** | `SlipView` and `SlipRail` pass the plan's `events` to `useOccasionSwitches` (today SV:1464 and SR:961 do not). | `useOccasionSwitches` | A test with a `vacation`-typed plan whose events all name `romance`, which resolves to `romance`. It fails on `main`. |
@@ -645,6 +645,8 @@ content, reordered by occasion, with the list first on a phone.
   `shared/schema.ts`. It is written by the owner or delegate and is visible to the expert. It is born empty, so the
   UNIQUE index qualifies for the §20 new-object carve-out. A dismissed category counts as covered in "N of M" and
   shows as "not needed".
+- **A custom venue covers `venue` (R147, map §K5).** The host's home is added as a `custom` venue with an address, and
+  it covers the venue REQ. "Not needed" is not used for it: a dismissal means the plan needs no venue.
 - **States:**
   - Plan with no occasion: "Choose an occasion to see what this plan needs", which opens the one planning modal at
     step 1.
