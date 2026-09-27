@@ -601,6 +601,25 @@ function resolveListenArg(name: string): string | undefined {
 const _listenPort = parseInt(resolveListenArg("port") || process.env.PORT || "5000", 10);
 const _listenHost = resolveListenArg("host") || "0.0.0.0";
 
+// The WHATWG "bad ports" list: Node's `fetch` refuses to connect to these (`TypeError: fetch failed`,
+// cause "bad port") and so do browsers. A dev or test server bound to one is unreachable by every
+// fetch-based test and by Chrome, and the failure reads like a dead server (ledger
+// `2026-09-27-retry-failed-payment`: a local run on 5061 — SIP-TLS — lost time to exactly this).
+// Refused outside production so the next session is told why instead of chasing "fetch failed".
+const FETCH_BLOCKED_PORTS = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102, 103,
+  104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513,
+  514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720,
+  1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080,
+]);
+if (process.env.NODE_ENV !== "production" && FETCH_BLOCKED_PORTS.has(_listenPort)) {
+  console.error(
+    `[server] PORT ${_listenPort} is on the fetch "bad ports" list — Node's fetch and browsers refuse it, ` +
+      `so every test would fail with "fetch failed". Pick another port (e.g. 5000, 5057, 5601).`,
+  );
+  process.exit(1);
+}
+
 if (process.env.NODE_ENV === "production") {
   serveStatic(app);
   // SO_REUSEPORT is unsupported on Windows — leaving it on makes the bind fail on any port.
