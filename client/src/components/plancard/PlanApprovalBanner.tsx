@@ -16,10 +16,10 @@ import { parseApiErrorMessage } from "@/lib/api-error";
 import type { TripPlanPlanApproval } from "@shared/trip-plan";
 import { useLocation } from "wouter";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
+import { useRouteRefusalToast } from "./use-route-refusal-toast";
 import {
   runBulkRouteToCheckout,
   selectPlatformBookableItems,
-  summarizeBulkRoute,
   type RoutableItemLike,
 } from "@/lib/slip-plan-actions";
 
@@ -53,6 +53,7 @@ export function PlanApprovalBanner({
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
   const { toast } = useToast();
+  const { showBulkResult } = useRouteRefusalToast(tripId);
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const bookable = selectPlatformBookableItems(activities);
@@ -75,7 +76,7 @@ export function PlanApprovalBanner({
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      toast(summarizeBulkRoute(result));
+      showBulkResult(result);
       if (result.succeeded > 0) setLocation(BUY_NOW_CART_PATH);
     },
     onError: (err: any) => {

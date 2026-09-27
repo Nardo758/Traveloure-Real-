@@ -56,6 +56,7 @@ import { logger } from "../infrastructure/logger";
 import { hasPublishedPrice, requestOnlyListingRefusals } from "./buy-action-payload";
 // Locked Decision 56: the ONE reading of how many units a stored cart line holds (§18 rule 1).
 import { cartLineUnitCount } from "@shared/cart-quantity";
+import { normalizeCartContentCoordinates } from "@shared/cart-content-line";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 1 — the funnel. Thin passthroughs, behavior-identical by construction.
@@ -807,6 +808,12 @@ function buildPlanItemValues(args: {
   // allowlists content meta to strings and REFUSES a price (s14), so only legacy rows carry one.
   const rawPrice = meta.price != null ? String(meta.price).replace(/[^0-9.]/g, "") : "";
   const estimatedCost = rawPrice && parseFloat(rawPrice) > 0 ? rawPrice : null;
+  // The partner pick's OWN coordinate pair, when the envelope carries a valid one (ledger
+  // `2026-09-26-partner-picks-map-coords`), read through the ONE rule the cart's admission used
+  // (§18 rule 1). A half or invalid pair yields nothing and the item stays unlocated — never a
+  // city centre, never a geocode (§13 / LD 22). Carried ONLY when present, so an envelope without
+  // one composes byte-for-byte the item it always did.
+  const coords = normalizeCartContentCoordinates(meta.lat, meta.lng);
   return {
     ...common,
     title: name,
@@ -816,6 +823,7 @@ function buildPlanItemValues(args: {
     contentId: subject.contentId,
     locationName: city,
     ...(estimatedCost ? { estimatedCost } : {}),
+    ...(coords ? { latitude: coords.lat, longitude: coords.lng } : {}),
   };
 }
 

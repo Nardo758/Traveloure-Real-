@@ -740,7 +740,7 @@ function PlanCardSummary({
 
 // ── Main PlanCard component ────────────────────────────────────────────────
 
-export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay, proposal, suggestionsHome = "card", onShare }: PlanCardProps) {
+export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay, proposal, suggestionsHome = "card", onShare, routingReadOnly = false }: PlanCardProps) {
   // Mobile-lens audit #1: seed from the page's already-computed "today" index (when given)
   // so a mid-flight trip opens on today's day, not always Day 1 — the temporal engine
   // (Up Next / now-line / Live today) is already correct once the right day is showing.
@@ -771,7 +771,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   };
 
   const { data: plancardData } = useQuery<PlanCardData>({
-    queryKey: [`/api/trips/${trip.id}/plancard`],
+    // The Trip Card's read-out mode reads the frozen final (`surface: "card"`); every other mount
+    // reads the live plan, the default (ledger `2026-09-26-slip-renders-live`).
+    queryKey: routingReadOnly
+      ? [`/api/trips/${trip.id}/plancard`, { surface: "card" }]
+      : [`/api/trips/${trip.id}/plancard`],
     staleTime: 30000,
     // stage="proposal" renders entirely from the `proposal` prop (the page owns the canonical
     // reads) — a variant column must never fire a plancard fetch keyed on a non-trip id.
@@ -1216,6 +1220,8 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                     timezone={planTimezone}
                     isOwner={isOwner}
                     isExpertViewer={isExpertViewer}
+                    routingReadOnly={routingReadOnly}
+                    expertAssigned={plancardData?.expertAssigned}
                   />
                 )}
 
