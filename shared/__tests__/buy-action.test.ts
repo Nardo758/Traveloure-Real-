@@ -339,3 +339,81 @@ test("S4: a property outranks its delivery method — placed and scheduled eithe
 test("S5: a platform listing's bookability comes from resolveBookability, not a literal", () => {
   assert.equal(platformListingBookability("svc-1"), "native");
 });
+
+// ─── Provider shapes (ledger `2026-09-25-provider-action-buttons`) ───────────────────────────
+//   PQ1-PQ3  a custom_quote listing is a REQUEST for a quote, even when it shows a price
+//   PS1-PS4  a stay (property / property_room / per_night) asks `dates`, never `slot`
+//   PK1-PK3  `subject` classifies the listing; `deposit` is stated only on a checkout
+
+test("PQ1: a custom_quote listing WITH a price is request_quote on booking_request, never checkout", () => {
+  const a = resolveBuyAction(listing({ priceType: "custom_quote", hasPrice: true }), MEMBER_CHIP);
+  assert.equal(a.primary.kind, "request_quote");
+  assert.equal(a.primary.label, "Request a quote");
+  assert.equal(a.landing.store, "booking_request");
+  assert.equal(a.refusal, undefined, "the seller's own choice is not a missing fact");
+  assert.ok(!a.ask.includes("slot"));
+});
+
+test("PQ2: a hidden custom_quote listing is still hidden (row 1 wins)", () => {
+  const a = resolveBuyAction(listing({ priceType: "custom_quote", bookingMode: "hidden" }), MEMBER_CHIP);
+  assert.equal(a.refusal?.reason, "not_available");
+});
+
+test("PQ3: a fixed-price listing is unchanged by the quote row", () => {
+  const a = resolveBuyAction(listing({ priceType: "fixed" }), MEMBER_CHIP);
+  assert.equal(a.primary.kind, "book");
+});
+
+test("PS1: an instant room with a calendar asks `dates`, never `slot`", () => {
+  const a = resolveBuyAction(
+    listing({ productShape: "property_room", deliveryMethod: null, pricingUnit: "per_night" }),
+    MEMBER_CHIP,
+  );
+  assert.equal(a.primary.kind, "book");
+  assert.ok(a.ask.includes("dates"));
+  assert.ok(!a.ask.includes("slot"));
+  assert.equal(a.subject, "stay");
+});
+
+test("PS2: property_room is place-anchored and scheduled (fundamentals no longer ignore it)", () => {
+  const a = resolveBuyAction(listing({ productShape: "property_room", deliveryMethod: null }), MEMBER_CHIP);
+  assert.equal(a.landing.timed, true);
+  assert.equal(a.landing.placeAnchored, true);
+  assert.notEqual(a.refusal?.reason, "delivery_method_unstated");
+});
+
+test("PS3: a per_night listing is a stay even without a property shape", () => {
+  const a = resolveBuyAction(listing({ pricingUnit: "per_night" }), MEMBER_CHIP);
+  assert.equal(a.subject, "stay");
+  assert.ok(a.ask.includes("dates"));
+});
+
+test("PS4: a non-stay scheduled listing still asks `slot`", () => {
+  const a = resolveBuyAction(listing(), MEMBER_CHIP);
+  assert.ok(a.ask.includes("slot"));
+  assert.ok(!a.ask.includes("dates"));
+});
+
+test("PK1: subject classification, most specific first", () => {
+  const subjectOf = (over: Partial<BuyActionRow>) => resolveBuyAction(listing(over), MEMBER_CHIP).subject;
+  assert.equal(subjectOf({ productShape: "bundle" }), "bundle");
+  assert.equal(subjectOf({ categoryKey: "private_transportation" }), "ride");
+  assert.equal(subjectOf({ deliveryMethod: "video" }), "session");
+  assert.equal(subjectOf({ deliveryMethod: "hybrid" }), "in_person");
+  assert.equal(subjectOf({ deliveryMethod: "pdf" }), "artifact");
+  assert.equal(subjectOf({ deliveryMethod: "voice_notes" }), "async");
+  assert.equal(subjectOf({ deliveryMethod: "async_messaging", offeringTypeKey: "ask_me_anything" }), "qa_session");
+  assert.equal(subjectOf({ deliveryMethod: null, productShape: null }), undefined, "§13 — never guessed");
+});
+
+test("PK2: deposit is stated only when the landing is a checkout", () => {
+  assert.equal(resolveBuyAction(listing({ takesDeposit: true }), MEMBER_CHIP).deposit, true);
+  assert.equal(resolveBuyAction(listing({ takesDeposit: true, bookingMode: "request" }), MEMBER_CHIP).deposit, undefined);
+  assert.equal(resolveBuyAction(listing({ takesDeposit: false }), MEMBER_CHIP).deposit, undefined);
+});
+
+test("PK3: a not_available row carries neither subject nor deposit", () => {
+  const a = resolveBuyAction(listing({ bookingMode: "hidden", takesDeposit: true, productShape: "bundle" }), MEMBER_CHIP);
+  assert.equal(a.subject, undefined);
+  assert.equal(a.deposit, undefined);
+});

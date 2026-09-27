@@ -566,7 +566,7 @@ The dispatch asserted `recorded == MIGRATION_FILES.length` (291 == 274), stricte
 `run-migrations.ts`'s real gate (zero *missing* canonical migrations). Tombstones are expected on any
 long-lived dev DB and equal zero on a fresh/prod DB, so make the assertion missing-only to stop the
 false blocker. Because a collision means the dev DB applied a *different* SQL body than canonical at
-that prefix, money-path guards (`check-decision-guards.cjs`, R114 / #1758) should take their
+that prefix, money-path guards (`check-decision-guards.cjs`, R156 (formerly R114) / #1758) should take their
 definitive green on a freshly migrated DB, not this accumulated one.
 
 ## From the 2026-09-02 local test session (Windows + Neon dev)
@@ -833,3 +833,135 @@ afterwards) is NOT PROVEN until a run against a real key or an overridable base 
 `client/src/components/EnhancedPlanningModal.tsx:416` does `window.location.href = "/api/login"`, which returned 404
 off-Replit (J1 R2). Every other guest gate opens the in-app `SignInModal`. Whether the route works on Replit was not
 verified.
+
+---
+
+## From the Supply → Demand e2e pass 2 (2026-09-25, `docs/audits/pass2/GAP_REGISTER_PASS2.md`, run `nu4fb2`)
+
+### FU-SD-1 — The server does not validate its Stripe key at boot
+
+A 401-stub `STRIPE_SECRET_KEY` (`sk_test_ci_stub…`) boots the server without complaint; the failure surfaces only at
+the first real Stripe call (`GET /v1/account` → 401), by which point every Connect/checkout/payout/Trip-Pass journey
+that reached that point has already run its non-Stripe setup for nothing. A boot-time `GET /v1/account` probe (warn
+or refuse to start, operator's choice) would turn a class of five-runs-in `HELD:stripe` skips into one clear startup
+log line. Not fixed here — this pass is observe-only (`$P2/BRIEF.md`).
+
+### FU-SD-2 — COORDS: a plan item must reference the listing's location at read time, never snapshot it onto the item
+
+Confirmed again this pass (`P2-D1-COORDS`, `GAP_REGISTER_PASS2.md`): a plan item added from a located
+`provider_services` row carries no `lat`/`lng`, so the slip map renders "No stops are located yet" even though every
+fixture listing has coordinates. **The fix must NOT copy the listing's coordinates onto the item at add-to-plan
+time** — the listing's location can change after the item is added (see Locked Decision 22's pattern for
+`service_route_points`, and the paused-listing propagation gap `P2-D7-4` in the same register, which shows the slip
+already going stale when a listing's *availability* changes after the fact). The correct shape is a read-time JOIN
+back to the listing's own `latitude`/`longitude` when rendering the slip map, falling back to "unlocated" only when
+the listing itself has none — never a booking-time snapshot, which belongs to a different decision (LD 22(c)'s
+"coordinates for a stop come only from an explicit user placement" pattern is the wrong model here; this is a
+provider-authored location, not a traveler placement).
+
+### FU-SD-3 — Resolver conflict `P2-RES-1`: two commission resolvers disagree for expert/provider quote-born bookings
+
+Static finding, money path, P1 candidate (`$P2/D5_RESOLVER.md`, `GAP_REGISTER_PASS2.md` §B). The authoritative
+`resolveProviderRate` (`server/services/fee-resolution.service.ts:178`) is never reached for an expert-owned
+listing; the legacy stamp (`resolveServiceOwnerShareRate`, `server/services/commission.ts:668-696`) is handed the
+**raw** category slug instead of the normalized fee category the cart checkout computes, throws internally, and is
+caught into a silent `null`. A quote-born booking on such a listing is therefore charged `platform_fee=0` end to
+end (quote accept → quote charge → completion mint), with no re-resolution at any stage. Behavioural leg not run
+this pass (no `custom_quote`-priced fixture existed, `P2-D6-1`) — needs no Stripe, only a fixture with
+`price_type='custom_quote'`, to prove or refute it against a live `service_bookings` row.
+
+### FU-SD-4 — A paused listing stays on the slip with no notice (D7)
+
+`P2-D7-4` (`GAP_REGISTER_PASS2.md`): after Provider A's listing is paused, the slip continues to show the item with
+no "no longer available" flag, so a traveler learns nothing until checkout. The slip renders from a copy of the
+item's facts made at add-to-plan time and never re-checks the live listing's `status`/`approval_status` at render.
+
+### FU-SD-5 — Born-submitted drafts are approvable mid-wizard
+
+`P2-S1-3` (`GAP_REGISTER_PASS2.md`, root cause RC2-B): migration 111's `provider_services.approval_status` DEFAULT
+`'submitted'` makes a Save-Draft snapshot a legitimate row in the admin queue the instant it exists, before Publish,
+before required category fields are filled. Reproduced live: an admin approved a provider's row while its own
+Publish button had never become enabled, and it went `active` carrying the pre-wizard snapshot (`location='Unknown'`,
+missing category fields). Nothing distinguishes "still actively editing" from "walked away, this is final" on the
+row the admin queue reads.
+
+### FU-SD-6 — A listing with no neighbourhood picked is invisible, and the wizard never says so
+
+`P2-S3-1` (`GAP_REGISTER_PASS2.md`, root cause RC2-D): `provider_services.location` defaults to the literal string
+`"Unknown"` when a provider's wizard never opens the neighbourhood picker, and `city` stays NULL — which fails every
+location-scoped surface (city page, location browse, paid optimizer) silently. Save/Submit gives no warning that the
+listing will be effectively invisible.
+
+### FU-SD-7 — No non-Stripe admin/ops path exists to mark identity or business verification
+
+Both the provider identity-verification gate (`service_provider_forms.identity_verification_status`/
+`business_verification_status`) and the expert identity-verification gate
+(`local_expert_forms.identity_verification_status`) flip ONLY via Stripe Identity/Connect webhooks
+(`server/utils/earner-verification.ts:37`; `ServiceForm.tsx:2082-2085`). There is no admin override for either — the
+only comparable control that exists is the separate category background-check flag on `/admin/providers`, which this
+pass used for a different gate. An operator with a live Stripe account still cannot unblock a stuck verification by
+hand; every environment without working Stripe webhooks (including this one) has to seed the columns directly to get
+past the wizard at all (`GAP_REGISTER_PASS2.md` §C). Ops note, not a code fix proposal — whether an admin override
+should exist at all is itself a decision for the decision-maker (it would create a second, human path to a state
+today reserved for Stripe's own verdict).
+
+### FU-SD-8 — Storefront booking buttons (being built)
+
+`P2-STORE-1` (`GAP_REGISTER_PASS2.md`): the expert storefront has no booking action — every card is a plain link to
+the service page. Proposed design documented in `$P2/LEAD_VERDICTS.md` ("Added by decision-maker request"). This is
+currently being built on branch `claude/storefront-booking-actions`; recorded here so it is not independently
+re-filed by a later pass before that branch lands.
+
+## P1 lead-routing / money-guard lane — carried items
+
+- **Parent bundle cancel notification:** when `settleBundleAllUndelivered` (Locked Decision 50) flips a bundle's parent booking to `cancelled`, no notification is sent to the traveler or seller. Deferred by the decision-maker (Sep 27, 2026) to this lane; not built. (Ledger `2026-09-27-bundle-cancel-notice-deferred`, R158.)
+
+## From the platform-payment-failed lane (R161, ledger `2026-09-27-platform-payment-failed`)
+
+### FU-PF-1 — D-12 legacy `bookings` retirement: the live writers, and the two webhook endpoints write different tables
+
+Recorded against the D-12 legacy-rail cutoff (`docs/PUNCHLIST.md` D-12; `LEGACY_BOOKINGS_NO_NEW_WRITES_FROM`,
+set to `2026-10-01` by ledger `2026-09-15-d12-legacy-cutoff-date`, operator step still owed). The cutoff closes the
+rail's only INSERT door; it does not make the table read-only. **When the legacy `bookings` table is retired, these
+are the writers still live on `main` (grepped `INSERT INTO bookings` / `UPDATE bookings` / `.update(bookings)` under
+`server/`, 2026-09-27):**
+
+- `server/services/booking.service.ts` — the INSERT behind `POST /api/bookings/process-cart` (closed from the cutoff
+  by the 410), and the legacy confirm-payment `UPDATE bookings SET status='confirmed'`.
+- `server/services/booking-expiry-scheduler.service.ts` — the expiry sweep's `UPDATE bookings`.
+- `server/services/stripe-dispute.service.ts` — `conn.update(bookings)` on a dispute.
+- `server/services/stripe-payment.service.ts` — the platform webhook's legacy arms: `handlePaymentSucceeded`
+  (`confirmed`), `handlePaymentFailed` (`status='payment_failed', payment_status='failed'`) and
+  `handlePaymentCanceled` (`canceled`). `handleRefund` writes NO `bookings` row (a standing `TODO`).
+- Readers that must survive retirement, per D-12: the rail's GET, `confirm-payment`, `bulk-status`,
+  `POST /api/bookings/refund`, `statements.routes.ts`, and §17's `scanLegacyRail` (`server/jobs/stripeReconciliation.ts`).
+
+**The dual-table finding (fixed in R161, recorded here so retirement does not undo it):** there are TWO Stripe
+webhook endpoints and, before R161, they wrote DIFFERENT tables for the same `payment_intent.payment_failed`:
+`POST /api/bookings/webhooks/stripe` (platform secret) wrote only the LEGACY `bookings` table, while
+`POST /api/webhooks/stripe` (Connect secret) was the only code that wrote `service_bookings.status='failed'`. A cart
+checkout's PaymentIntent is a PLATFORM PaymentIntent, so its failure reached the endpoint that could not mark it.
+Both now call the ONE `markCheckoutPaymentFailed` (`server/services/checkout-claim.service.ts`). **When the legacy
+arms of `handlePaymentFailed`/`handlePaymentCanceled`/`handlePaymentSucceeded` are deleted at retirement, the shared
+cart-rail calls in those handlers (`markCheckoutPaymentFailed`, `promotePaidCheckout`) must stay** — they are the
+cart rail's only platform-endpoint reachers — and so must R162's (`2026-09-27-failed-is-final`) late-success
+refund, which lives on the `payment_intent.succeeded` webhook arm (`handlePaymentSucceeded`) only.
+
+**Operator step (done by the decision-maker, Sep 27, 2026):** the live PLATFORM endpoint is now subscribed to
+`payment_intent.succeeded`, which makes §15c's webhook path real for cart checkout and is what R162's late-success
+refund rides. The `charge.dispute.*` events stay unsubscribed until the G3 lane lands. **G2 (later lane):** a sweep that cancels the open intent of every
+`failed` booking through the ONE `cancelStalePaymentIntent` — R162 cancels only on "Try again" and only for
+item-linked bookings. Still open and NOT fixed by R161: `payment_intent.canceled` on the
+platform endpoint touches only the legacy table (a canceled cart PI is left to the TTL sweep), and the Connect
+endpoint's payment-failed arm is only reachable for events Stripe routes to a Connect-secret endpoint.
+
+## From the earner-projection fix (2026-09-27, R167)
+
+### FU-R167-1 — Turn the earner `booking_details` strip into an ALLOWLIST (G3's lane) — CLOSED 2026-09-27 by ledger `2026-09-27-dispute-hardening` (R165)
+`sanitizeBookingForExpert` hides eight NAMED keys inside `booking_details` from experts and providers
+(`EARNER_HIDDEN_BOOKING_DETAIL_KEYS`). A named list means the next money key added to `booking_details`
+leaks by default. Replace it with an allowlist of the keys an earner may see (the operational answers:
+scheduled date, notes, party details and the like), pinned by `server/utils/__tests__/data-sanitizer.test.ts`,
+so an unlisted key is dropped rather than leaked. Before choosing the list, inventory what the expert
+and provider consoles actually read from `bookingDetails`, and drop nothing they render. Decision-maker
+asked for this Sep 27, 2026; not a blocker for #1122 or lane 2.

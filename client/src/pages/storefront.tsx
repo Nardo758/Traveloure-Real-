@@ -49,7 +49,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
-import { useRoute, useSearch, Link, Redirect } from "wouter";
+import { useRoute, useSearch, useLocation, Link, Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -61,6 +61,15 @@ import { LanguageMenu } from "@/components/language-menu";
 import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { isPlaceAnchored } from "@shared/service-fundamentals";
+import type { BuyAction } from "@shared/buy-action";
+import {
+  storefrontOfferingActionLabel,
+  offeringActionIsMessageOnly,
+  formatNextAvailable,
+  offeringShowsNextAvailable,
+  buildStorefrontActionHref,
+  storefrontActionCharges,
+} from "@/lib/storefront-offering-action";
 // THE ONE price-unit derivation (§18 rule 1, ledger `2026-09-14-price-unit-one-derivation`).
 // This page used to carry its own `priceUnitLabel`; the phrases it returned are unchanged.
 import { priceUnitPhrase } from "@/lib/price-unit";
@@ -179,6 +188,17 @@ interface StorefrontService {
   /** The listing's public terms, for the booking panel's "every listing agrees" lines. */
   leadTimeHours?: number | null;
   cancellationPolicyType?: string | null;
+  /** `provider_services.expert_offering_type_key` — `"ask_me_anything"` names a Q&A Session. */
+  expertOfferingTypeKey?: string | null;
+  /**
+   * The ONE resolved buy action (ruling 9 / LD 42; `resolveBuyAction`, shared/buy-action.ts) —
+   * the card renders it and never re-derives whether/how the listing can be bought
+   * (ledger `2026-09-25-storefront-booking-actions`; the `ld23-buy-action-gap` note below is the
+   * separate, still-open question of the card's OWN default CTA, not this one).
+   */
+  buyAction?: BuyAction;
+  /** Earliest future, capacity-remaining slot, server-derived; `null` = none published (§13). */
+  nextAvailable?: { date: string; startTime: string | null } | null;
 }
 
 interface StorefrontReadyMade {
@@ -307,6 +327,12 @@ function StorefrontOfferingCard({
   bookingMode,
   meta,
   showCategory = true,
+  actionId,
+  actionLabel,
+  actionHref,
+  actionCharges,
+  nextAvailableText,
+  onMessage,
 }: {
   href: string;
   testId: string;
@@ -325,6 +351,32 @@ function StorefrontOfferingCard({
   /** Optional one-line description shown under the title — e.g. distinguishing what a
    *  merged-lane card's badge means in practice ("Guide · day-by-day, yours to follow"). */
   meta?: string;
+  /**
+   * The decision-maker's "book a consulting session" button (ledger
+   * `2026-09-25-storefront-booking-actions`). A separate control from the card's own `cta` text —
+   * present only for a services-lane row that carries a server-resolved `buyAction`. It navigates
+   * to the listing's own service page (where the real booking/quote/checkout rail lives — this
+   * lane adds no second rail) rather than replacing the whole-card link.
+   */
+  actionId?: string;
+  actionLabel?: string;
+  actionHref?: string;
+  nextAvailableText?: string | null;
+  /**
+   * Whether pressing `actionLabel` charges the card now (the resolver's `landing.store ===
+   * "checkout"`) — a real Stripe charge happens on "Book a session" / "Start a Q&A Session", but
+   * "Request a session" / "Request a quote" charge NOTHING (§13: "Secure checkout" beside a
+   * request is a claim the rail does not keep). Undefined when there is no `actionLabel` at all,
+   * in which case the footer badge keeps its pre-existing unconditional behaviour.
+   */
+  actionCharges?: boolean;
+  /**
+   * Present only when the resolver offers NO booking verb for this listing (`not_available` —
+   * the provider hid the CTA). The card then offers Message about the listing (LD 40's
+   * `{ serviceId }` address) and no buy button, no "Secure checkout" and no inline CTA (ledger
+   * `2026-09-25-provider-action-buttons`).
+   */
+  onMessage?: () => void;
 }) {
   const priceHidden = showPrice === false;
   // ld23-buy-action-gap: THIS CARD STILL AUTHORS ITS OWN CTA — recorded, not decided. Ruling 9
@@ -358,6 +410,12 @@ function StorefrontOfferingCard({
     bookingMode === "request" ? "Request to book →"
     : bookingMode === "hidden" ? "Enquire →"
     : cta;
+  // The new action button (below) is the ONE buy affordance for a row that carries one — the
+  // old inline `ctaLabel` beside it duplicated the same decision in the card's own words and
+  // could disagree with it outright (a custom-quote row read "Request to book →" here while the
+  // resolver's own button read "Request a quote"). §18 rule 1: one button, one label.
+  const hasNewAction = Boolean(actionLabel && actionHref) || Boolean(onMessage);
+  const [, navigate] = useLocation();
   return (
     <Link
       href={href}
@@ -428,6 +486,11 @@ function StorefrontOfferingCard({
             >
               Enquire for pricing
             </span>
+          ) : hasNewAction && (actionCharges === false || onMessage) ? (
+            // A request/quote row: the new button already says "Request …", and nothing is
+            // charged by pressing it — "Secure checkout" here would be a claim about a payment
+            // this row never takes (§13).
+            <span />
           ) : (
             <span
               className="inline-flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-[color:var(--earn-green-ink)]"
@@ -437,8 +500,56 @@ function StorefrontOfferingCard({
               Secure checkout
             </span>
           )}
-          <span className="whitespace-nowrap text-sm font-semibold text-[color:var(--earn-coral-ink)]">{ctaLabel}</span>
+          {/* The old inline CTA only renders when there is no new action button to say the same
+              thing — never both (see `hasNewAction` above). */}
+          {!hasNewAction && (
+            <span className="whitespace-nowrap text-sm font-semibold text-[color:var(--earn-coral-ink)]">{ctaLabel}</span>
+          )}
         </div>
+        {/* The decision-maker's booking button — a server-resolved action (buyAction), never a
+            second buy decision. It stops the click reaching the card's own Link so it can carry
+            its own booking-intent hash rather than the plain detail-page href. */}
+        {actionLabel && actionHref && (
+          <div className="mt-2">
+            <button
+              type="button"
+              data-testid={`button-offering-action-${actionId ?? ""}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigate(actionHref);
+              }}
+              className="w-full rounded-lg bg-[color:var(--earn-coral-ink)] px-3 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              {actionLabel}
+            </button>
+            {nextAvailableText && (
+              <p
+                className="mt-1.5 text-center text-[11px] text-[color:var(--earn-muted)]"
+                style={{ fontFamily: EARN_MONO }}
+                data-testid={`text-next-available-${actionId ?? ""}`}
+              >
+                {nextAvailableText}
+              </p>
+            )}
+          </div>
+        )}
+        {onMessage && (
+          <div className="mt-2">
+            <button
+              type="button"
+              data-testid={`button-offering-message-${actionId ?? ""}`}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onMessage();
+              }}
+              className="w-full rounded-lg border border-[color:var(--earn-border)] bg-[var(--earn-card)] px-3 py-2 text-[13px] font-semibold text-[color:var(--earn-navy)] transition-colors hover:border-[color:var(--earn-coral-border)]"
+            >
+              Message
+            </button>
+          </div>
+        )}
       </div>
     </Link>
   );
@@ -1073,12 +1184,24 @@ export default function StorefrontPage() {
                   // the listing itself stays visible and clickable (its detail page carries
                   // the same honest away state and disables the actual booking action).
                   const cta = away ? "View listing →" : s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+                  const tripQuery = planContext.ownedTrip ? `?tripId=${encodeURIComponent(planContext.ownedTrip.id)}` : "";
+                  const serviceHref = `/services/${s.id}${tripQuery}`;
+                  // Vacation mode (the `ld23-buy-action-gap` note above): the server's `buyAction`
+                  // does not yet know the owner is away, so this button — like `cta` above —
+                  // withholds itself rather than promising "Book" on an away storefront (§13).
+                  // The label is mapped FROM the resolved action only (ledger
+                  // `2026-09-25-provider-action-buttons`): no listing column is read here.
+                  const actionLabel = away ? null : storefrontOfferingActionLabel(s.buyAction);
+                  // The resolver offers NO booking verb (not live / provider hid the CTA): the
+                  // card offers Message about this listing, and no buy button at all.
+                  const messageOnly = !away && offeringActionIsMessageOnly(s.buyAction);
+                  const nextAvailableText = offeringShowsNextAvailable(s.buyAction) ? formatNextAvailable(s.nextAvailable) : null;
                   return (
                     <StorefrontOfferingCard
                       key={s.id}
                       // A plan the viewer OWNS (resolved by the panel's hook, never the raw query
                       // param) rides along, so the listing's "Add to plan" targets that plan.
-                      href={`/services/${s.id}${planContext.ownedTrip ? `?tripId=${encodeURIComponent(planContext.ownedTrip.id)}` : ""}`}
+                      href={serviceHref}
                       testId={`storefront-service-${s.id}`}
                       image={s.serviceImage}
                       categoryLabel="Service"
@@ -1091,6 +1214,22 @@ export default function StorefrontPage() {
                       cta={cta}
                       showPrice={s.showPrice}
                       bookingMode={s.bookingMode}
+                      actionId={s.id}
+                      actionLabel={actionLabel ?? undefined}
+                      actionHref={actionLabel ? buildStorefrontActionHref(serviceHref, actionLabel, s.nextAvailable) : undefined}
+                      actionCharges={actionLabel ? storefrontActionCharges(s.buyAction) : undefined}
+                      nextAvailableText={actionLabel ? nextAvailableText : null}
+                      onMessage={
+                        messageOnly
+                          ? () =>
+                              askExpert({
+                                serviceId: s.id,
+                                subject: s.serviceName,
+                                returnTo: serviceHref,
+                                fallbackName: displayName,
+                              })
+                          : undefined
+                      }
                     />
                   );
                 })}

@@ -956,6 +956,131 @@ export async function sendBookingCancellationWithRefundEmail(
   }
 }
 
+// ─── Late payment refunded (R162, ledger `2026-09-27-failed-is-final`) ─────
+
+export interface LateSuccessRefundEmailParams {
+  toEmail: string;
+  travelerName?: string | null;
+  serviceName?: string | null;
+  /** Dollars refunded — what Stripe says the payment took, all of it. */
+  refundAmount: number;
+}
+
+/**
+ * R162: the traveler was told "Payment didn't go through", then the SAME payment went through
+ * anyway. `failed` is final, so nothing was booked and the money was refunded automatically. This
+ * says exactly that, so money reappearing on the card is never unexplained — and it says it is NOT a
+ * new charge. Sent ONCE, by the caller that holds the notice claim (`refundLateSuccessOnFailedIntent`).
+ * Uses `sendEmail`, so the platform email kill switch applies. Never throws.
+ */
+export async function sendLateSuccessRefundEmail(params: LateSuccessRefundEmailParams): Promise<void> {
+  const greeting = params.travelerName ? `Hi ${escHtml(params.travelerName)},` : "Hi,";
+  const what = params.serviceName ? `your payment for <strong>${escHtml(params.serviceName)}</strong>` : "your payment";
+  const whatPlain = params.serviceName ? `your payment for "${params.serviceName}"` : "your payment";
+  const refundStr = params.refundAmount.toFixed(2);
+  const bookingsUrl = `${getAppBaseUrl()}/my-bookings`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #374151; margin-bottom: 8px;">Your payment was refunded</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Earlier we told you ${what} didn't go through. The payment then went through after that,
+        but by then the booking had already been closed, so <strong>nothing was booked</strong>.
+      </p>
+      <p style="color: #374151;">
+        We have refunded <strong>$${escHtml(refundStr)}</strong> to your original payment method
+        automatically. <strong>This is not a new charge</strong> — it is that payment coming back to you.
+        Refunds typically appear within 5–10 business days depending on your bank.
+      </p>
+      <p style="color: #374151;">If you still want this booking, you can book it again from your plan.</p>
+      <a href="${bookingsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View My Bookings
+      </a>
+    </div>
+  `;
+  const text = [
+    `Your payment was refunded`,
+    ``,
+    params.travelerName ? `Hi ${params.travelerName},` : "Hi,",
+    ``,
+    `Earlier we told you ${whatPlain} didn't go through. The payment then went through after that,`,
+    `but by then the booking had already been closed, so nothing was booked.`,
+    ``,
+    `We have refunded $${refundStr} to your original payment method automatically.`,
+    `This is not a new charge — it is that payment coming back to you.`,
+    ``,
+    `If you still want this booking, you can book it again from your plan: ${bookingsUrl}`,
+  ].join("\n");
+  const result = await sendEmail({
+    to: params.toEmail,
+    subject: "Your payment was refunded — nothing was booked",
+    html,
+    text,
+  });
+  if (!result.ok) {
+    console.warn(`[email] sendLateSuccessRefundEmail failed for ${params.toEmail}:`, result.error);
+  } else {
+    console.log(`[email] late-success refund email sent to ${params.toEmail}`);
+  }
+}
+
+export interface ExpiredClaimEmailParams {
+  toEmail: string;
+  travelerName?: string | null;
+  serviceName?: string | null;
+  /** The plan the item went back to, when the booking had one. NULL ⇒ the sentence is not said (§13). */
+  tripId?: string | null;
+}
+
+/** R164 (G2): the words of the expired-claim notice, one home for the email and its test. */
+export function expiredClaimNoticeSentence(serviceName: string | null | undefined, hasPlan: boolean): string {
+  const what = serviceName ? `Your booking for ${serviceName}` : "Your booking";
+  return hasPlan
+    ? `${what} wasn't completed, so we released it. It's back in your plan; you can book it again.`
+    : `${what} wasn't completed, so we released it. You can book it again.`;
+}
+
+/**
+ * R164 (G2, decision-maker Sep 27, 2026): a checkout that reached Stripe (a PaymentIntent was stamped)
+ * and was never paid is released by the stale-authorized sweep. The traveler is told ONCE, by the
+ * caller holding the notice claim (`notifyExpiredStampedClaim`). Never sent for an unstamped claim —
+ * that traveler never reached payment. Uses `sendEmail`, so the platform email kill switch applies.
+ * Never throws.
+ */
+export async function sendExpiredClaimEmail(params: ExpiredClaimEmailParams): Promise<void> {
+  const hasPlan = !!params.tripId;
+  const sentence = expiredClaimNoticeSentence(params.serviceName, hasPlan);
+  const url = hasPlan ? `${getAppBaseUrl()}/plans/${encodeURIComponent(params.tripId!)}` : `${getAppBaseUrl()}/my-bookings`;
+  const greeting = params.travelerName ? `Hi ${escHtml(params.travelerName)},` : "Hi,";
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #374151; margin-bottom: 8px;">Your booking wasn't completed</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">${escHtml(sentence)}</p>
+      <a href="${url}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        ${hasPlan ? "Open your plan" : "View My Bookings"}
+      </a>
+    </div>
+  `;
+  const text = [
+    params.travelerName ? `Hi ${params.travelerName},` : "Hi,",
+    ``,
+    sentence,
+    ``,
+    url,
+  ].join("\n");
+  const result = await sendEmail({ to: params.toEmail, subject: "Your booking wasn't completed", html, text });
+  if (!result.ok) {
+    console.warn(`[email] sendExpiredClaimEmail failed for ${params.toEmail}:`, result.error);
+  } else {
+    console.log(`[email] expired-claim email sent to ${params.toEmail}`);
+  }
+}
+
 // ─── Admin Daily Digest ────────────────────────────────────────────────────
 
 interface DigestNotification {

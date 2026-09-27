@@ -7,6 +7,7 @@ import { and, eq, gt, isNull, sql as drizzleSql } from "drizzle-orm";
 import { sendPasswordResetEmail, sendEmailVerificationEmail, sendWelcomeEmail, getAppBaseUrl } from "../../services/email.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
+import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
@@ -116,8 +117,8 @@ export function setupEmailAuth(app: Express): void {
           authProvider: "email",
           termsAcceptedAt: new Date(),
           privacyAcceptedAt: new Date(),
-          termsVersion: "1.0",
-          privacyVersion: "1.0",
+          termsVersion: CURRENT_TERMS_VERSION,
+          privacyVersion: CURRENT_PRIVACY_VERSION,
         })
         .returning();
 

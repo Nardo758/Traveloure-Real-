@@ -20,8 +20,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { CheckCircle, Lightbulb, Loader2, ShoppingCart, XCircle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
+import { useRouteRefusalToast } from "./use-route-refusal-toast";
 // The accept/decline mutation lives in ONE hook (ledger `2026-09-07-home-time-axis`) — Home's
 // "Since you were here" offers the same Accept / Decline through it (§18 rule 1).
 import { suggestionsQueryKey, useReviewSuggestion, type TripSuggestion } from "@/hooks/use-review-suggestion";
@@ -48,7 +48,7 @@ export function ExpertSuggestionsPanel({ tripId, className }: { tripId: string; 
 
   const reviewSuggestionMutation = useReviewSuggestion(tripId);
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
+  const { showRefusal } = useRouteRefusalToast(tripId);
   const [bookingId, setBookingId] = useState<string | null>(null);
 
   // LD 52 (option B): a listing-backed suggestion can be approved straight into checkout — the
@@ -63,11 +63,16 @@ export function ExpertSuggestionsPanel({ tripId, className }: { tripId: string; 
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       setLocation(BUY_NOW_CART_PATH);
-    } catch {
-      toast({
-        title: "Added to your plan",
-        description: "It couldn't be moved to checkout automatically — send it to checkout from your plan.",
-      });
+    } catch (err) {
+      // Ledger `2026-09-26-finalized-checkout-messages`: a named refusal (a finalized plan's
+      // `not_in_final`, …) reads as itself, with Reopen where it applies; anything else keeps the
+      // "added, but not moved to checkout" wording.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      showRefusal(
+        err,
+        "Added to your plan",
+        "It couldn't be moved to checkout automatically — send it to checkout from your plan.",
+      );
     } finally {
       setBookingId(null);
     }

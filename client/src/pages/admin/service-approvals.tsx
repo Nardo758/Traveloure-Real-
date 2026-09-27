@@ -90,6 +90,33 @@ interface PendingService {
 // F2/D1a). A listing is hidden from every public/bookable surface until an admin approves it here
 // (approval_status submitted -> approved; the storage layer also flips operational status active).
 // This is the ONLY path from "submitted" to "live" — the endpoints existed but had no admin UI.
+// Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`): the decision-maker
+// holds PR #1101 (checkout refuses request-mode lines) until enough live listings are instant.
+// This line is where that is watched. The counts are the server's; "undecided" means nobody chose
+// and the platform default answered. Shown twice — whole catalog and minus its largest single
+// owner (ledger `2026-09-11-oc-a1-ratified`: every coverage number discounts that cluster).
+type BookingModeCounts = {
+  total: number; instantChosen: number; requestChosen: number; hiddenChosen: number;
+  undecided: number; undecidedResolvingRequest: number; quote: number;
+};
+function countsLine(c: BookingModeCounts): string {
+  return `${c.instantChosen} instant · ${c.requestChosen} request · ${c.undecided} undecided` +
+    (c.hiddenChosen ? ` · ${c.hiddenChosen} hidden` : "") +
+    (c.quote ? ` · ${c.quote} custom quote` : "") + ` (of ${c.total} live)`;
+}
+function BookingModeSummaryLine() {
+  const { data } = useQuery<{ all: BookingModeCounts; excludingLargestOwner: BookingModeCounts; largestOwnerListingCount: number }>({
+    queryKey: ["/api/admin/listings/booking-mode-summary"],
+  });
+  if (!data) return null;
+  return (
+    <p className="text-xs text-muted-foreground mt-1" data-testid="text-booking-mode-summary">
+      <span className="font-medium text-foreground">Booking modes:</span> {countsLine(data.all)}.{" "}
+      Without the largest single owner ({data.largestOwnerListingCount} listings): {countsLine(data.excludingLargestOwner)}.
+    </p>
+  );
+}
+
 export default function ServiceApprovals() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -128,6 +155,7 @@ export default function ServiceApprovals() {
             Provider &amp; expert service listings awaiting review. A listing stays hidden from search and
             booking until it's approved here.
           </p>
+          <BookingModeSummaryLine />
         </div>
 
         {isLoading ? (

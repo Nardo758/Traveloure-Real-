@@ -29,20 +29,45 @@ export interface FundamentalsShape {
   productShape: string | null | undefined;
 }
 
+/**
+ * The STAY product shapes (migration 153): a `property` and its bookable `property_room`
+ * children. Ledger `2026-09-25-provider-action-buttons`: the predicates below tested
+ * `property` only, so a ROOM — the row a traveler actually books a night range on — was
+ * classified by its (meaningless for lodging) deliveryMethod instead. Both shapes are
+ * place-anchored and scheduled regardless of method; ONE set, read by every predicate here.
+ */
+export const STAY_PRODUCT_SHAPES: ReadonlySet<string> = new Set(["property", "property_room"]);
+
+/** `pricing_unit = 'per_night'` — the stay rung's own unit (a room is priced per night). */
+export const PER_NIGHT_PRICING_UNIT = "per_night";
+
+function isStayProductShape(productShape: string | null | undefined): boolean {
+  return !!productShape && STAY_PRODUCT_SHAPES.has(productShape);
+}
+
+/**
+ * A STAY — booked as a date RANGE (check-in → check-out), never as a time slot. True for the
+ * property / property_room shapes, or a listing priced `per_night`. §13: a row that states
+ * neither is not a stay, and nothing here guesses one from a name or a category.
+ */
+export function isStay(s: { productShape?: string | null; pricingUnit?: string | null }): boolean {
+  return isStayProductShape(s.productShape) || s.pricingUnit === PER_NIGHT_PRICING_UNIT;
+}
+
 /** True when the row carries enough signal to classify at all. */
 export function isClassifiable(s: FundamentalsShape): boolean {
-  return s.productShape === "property" || !!s.deliveryMethod;
+  return isStayProductShape(s.productShape) || !!s.deliveryMethod;
 }
 
 /** Happens at a real-world place — the exact-pin / meeting-point fundamentals apply. */
 export function isPlaceAnchored(s: FundamentalsShape): boolean {
-  if (s.productShape === "property") return true;
+  if (isStayProductShape(s.productShape)) return true;
   return !!s.deliveryMethod && PLACE_ANCHORED_METHODS.has(s.deliveryMethod);
 }
 
 /** Needs bookable calendar slots — the availability fundamental applies. */
 export function needsScheduling(s: FundamentalsShape): boolean {
-  if (s.productShape === "property") return true;
+  if (isStayProductShape(s.productShape)) return true;
   return !!s.deliveryMethod && SCHEDULED_METHODS.has(s.deliveryMethod);
 }
 

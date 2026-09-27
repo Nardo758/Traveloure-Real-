@@ -34,6 +34,8 @@ test("signed platform charge.refunded reaches #1288 and blocks booking earnings"
         id: chargeId,
         object: "charge",
         payment_intent: paymentIntentId,
+        // R163 amendment: a real charge carries its own amount; the webhook refuses one without it.
+        amount: 1725,
         amount_refunded: 1725,
         currency: "usd",
         refunds: { data: [{ id: refundId, amount: 1725, metadata: {} }], has_more: false },
@@ -67,13 +69,16 @@ test("signed platform charge.refunded reaches #1288 and blocks booking earnings"
     });
     assert.equal(response.status, 200, await response.text());
     const refund = await pool.query(
-      "SELECT stripe_payment_intent_id, amount, status FROM refunds WHERE stripe_charge_id = $1",
+      "SELECT stripe_refund_id, stripe_payment_intent_id, amount, status FROM refunds WHERE stripe_charge_id = $1",
       [chargeId],
     );
     assert.equal(refund.rowCount, 1, "the refund handler must make its durable audit write");
     assert.equal(refund.rows[0].stripe_payment_intent_id, paymentIntentId);
     assert.equal(Number(refund.rows[0].amount), 17.25);
-    assert.equal(refund.rows[0].status, "completed");
+    // R163 amendment: one audit row PER STRIPE REFUND ID, carrying Stripe's own refund status (the
+    // previous writer stored a literal 'completed' with no refund id on every delivery).
+    assert.equal(refund.rows[0].stripe_refund_id, refundId);
+    assert.equal(refund.rows[0].status, "succeeded");
     const booking = await pool.query(
       "SELECT status, booking_details->'outOfBandRefund' AS refund FROM service_bookings WHERE id = $1",
       [bookingId],

@@ -22,12 +22,19 @@
  *   ├────────────────────────┼────────────┼────────────┼──────────────────┼──────────────────┤
  *   │ P6 stay                │ false      │ true       │ false            │ pinned to 1      │
  *   │ P7 bundle              │ false      │ true       │ false            │ pinned to 1      │
- *   │ P1 scheduled seats     │ true       │ true       │ true             │ = party_size     │
+ *   │ P1 seats (per_person)  │ true       │ true       │ true             │ = party_size     │
+ *   │ place, per booking     │ false      │ true       │ false            │ pinned to 1      │
  *   │ artifact / async       │ false      │ false      │ false            │ pinned to 1      │
  *   │ (unruled — see below)  │ true       │ false      │ false            │ as sent, today's │
  *   └────────────────────────┴────────────┴────────────┴──────────────────┴──────────────────┘
  *
- * THE FIFTH ROW IS NAMED, NOT INVENTED (§13). The ruling spoke about four shapes. A LIVE REMOTE
+ * THE PER-BOOKING ROW IS LOCKED DECISION 56 (ledger `2026-09-25-price-basis`, migration 325). A
+ * place-anchored listing is sold by the SEAT only when `provider_services.price_basis` says
+ * `per_person`; NULL (never stated) and `per_booking` are one booking whose party is recorded and
+ * never multiplied. Before it, every in_person/hybrid listing took the seat row, so a fixed-price
+ * photographer booked for four was charged four times. The value set lives in `shared/price-basis.ts`.
+ *
+ * THE UNRULED ROW IS NAMED, NOT INVENTED (§13). The ruling spoke about four shapes. A LIVE REMOTE
  * session (`call` / `video`) and a row that carries no classifiable fact at all are neither a
  * stay, a bundle, a seat-shaped place service nor an artifact — so this module returns **today's
  * behaviour** for them (a free unit count, no party question) and says out loud that it is
@@ -62,8 +69,10 @@
  * read; this one says which number is being asked for at all. Both are imported by `/cart`.
  */
 
+import { effectivePriceBasis } from "./price-basis";
+
 /** Which of the ruled shapes a listing is. `unruled` is a real answer, not a fallback (§13). */
-export type CartQuantityRule = "stay" | "bundle" | "seats" | "days" | "artifact" | "unruled";
+export type CartQuantityRule = "stay" | "bundle" | "seats" | "booking" | "days" | "artifact" | "unruled";
 
 /**
  * The listing facts this decision reads. Every key is an existing `provider_services` column and
@@ -74,6 +83,14 @@ export interface CartQuantityListingFacts {
   productShape?: string | null;
   pricingUnit?: string | null;
   deliveryMethod?: string | null;
+  /**
+   * Locked Decision 56 (`shared/price-basis.ts`, migration 325): whether a place-anchored listing's
+   * price is `per_person` (the seat rule) or `per_booking`. NULL / absent reads as PER BOOKING.
+   * Consulted ONLY for `in_person` / `hybrid` — every other shape is decided before it is read.
+   */
+  priceBasis?: string | null;
+  /** The listing's pricing model; `per_person` states a per-head price when `priceBasis` is NULL. */
+  priceType?: string | null;
 }
 
 export interface CartQuantityAsks {
@@ -103,7 +120,8 @@ const ARTIFACT_METHODS: ReadonlySet<string> = new Set(["pdf", "voice_notes", "as
 const REASONS: Readonly<Record<CartQuantityRule, string>> = {
   stay: "A stay is ONE booking for the whole date range — it is priced by nights, not by units, and the number that varies is how many guests.",
   bundle: "A bundle is booked ONCE — its components carry their own counts, and the number that varies is the party size.",
-  seats: "A scheduled place service is sold by the SEAT, so the seat count and the party count are the same answer.",
+  seats: "This place service is priced PER PERSON, so the seat count and the party count are the same answer.",
+  booking: "This place service is priced for the WHOLE BOOKING — it is booked once, and the party size is recorded but never multiplies the price.",
   days: "This is priced per day — the count is how many days of cover, and the price multiplies by it.",
   artifact: "This is delivered once — it has no unit count and no party.",
   unruled: "This listing is neither a stay, a bundle, a seat-shaped place service nor an artifact, so D-14 states no rule for it and its unit count is unchanged.",
@@ -141,7 +159,14 @@ export function archetypeAsks(
     return { rule: "artifact", asksUnits: false, asksParty: false, unitsFollowParty: false, reason: REASONS.artifact };
   }
   if (SEAT_METHODS.has(method)) {
-    return { rule: "seats", asksUnits: true, asksParty: true, unitsFollowParty: true, reason: REASONS.seats };
+    // Locked Decision 56: a place service is sold by the SEAT only when its listing SAYS its price
+    // is per person. NULL (never stated) and `per_booking` are ONE booking whose party varies — the
+    // party answer is still asked and recorded, and it never multiplies a fixed price (§13: the
+    // photographer booked for four was charged four times under the old unconditional seat rule).
+    if (effectivePriceBasis(facts?.priceBasis, facts?.priceType) === "per_person") {
+      return { rule: "seats", asksUnits: true, asksParty: true, unitsFollowParty: true, reason: REASONS.seats };
+    }
+    return { rule: "booking", asksUnits: false, asksParty: true, unitsFollowParty: false, reason: REASONS.booking };
   }
   return { rule: "unruled", asksUnits: true, asksParty: false, unitsFollowParty: false, reason: REASONS.unruled };
 }
@@ -157,6 +182,8 @@ export function cartUnitLabel(rule: CartQuantityRule): string | null {
       return "1 room";
     case "bundle":
       return "1 bundle";
+    case "booking":
+      return "1 booking";
     case "artifact":
       return "1";
     default:
@@ -173,6 +200,28 @@ export function cartCountLabel(asks: Pick<CartQuantityAsks, "rule" | "unitsFollo
 
 /** The count a units-pinned archetype always has. Never 0 — removing a line is `Remove`. */
 export const PINNED_UNIT_QUANTITY = 1;
+
+/**
+ * THE ONE READING of how many units a STORED cart line holds — the number checkout multiplies the
+ * rate by and the slot claim takes (`resolveItemUnitCount`, `server/routes/payments.routes.ts`),
+ * and the number the cart's own order review prints. §18 rule 1: server and client read THIS.
+ *
+ * A PER-BOOKING place service is ONE unit whatever the row stores. The admission above already
+ * writes 1 for a new line, so this matters for a line admitted BEFORE Locked Decision 56 — while
+ * the seat rule still wrote `quantity = party_size` — and for a line whose listing changed its basis
+ * since: the charge follows what the listing says NOW, and a per-booking price is never multiplied
+ * by a stale seat count. Every other rule keeps the historical reading exactly — the row's count,
+ * `|| 1` (§13: an unstated count is ONE unit, never zero). Stays, bundles, per-day and artifacts are
+ * deliberately NOT re-pinned here: their admission already governs them, and changing what a legacy
+ * row of theirs is charged is not part of this ruling.
+ */
+export function cartLineUnitCount(
+  facts: CartQuantityListingFacts | null | undefined,
+  storedQuantity: number | null | undefined,
+): number {
+  if (archetypeAsks(facts).rule === "booking") return PINNED_UNIT_QUANTITY;
+  return storedQuantity || 1;
+}
 
 export type CartLineCountsInput = {
   /** What the caller asked for, if anything. `undefined` = the key was absent. */

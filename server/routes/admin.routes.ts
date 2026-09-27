@@ -97,7 +97,7 @@ import { getExtractedPlacesCounts, isConcludedEmptyMarker } from "../services/dm
 import { getLatestDmoExtractionRun } from "../services/dmo-extraction-runs.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoExtractedPlaces } from "@shared/schema";
 import { messageReports, userBlocks } from "@shared/schema";
-import { itemKind } from "@shared/item-kind";
+import { countItemKindsForTrip } from "../services/item-kind-counts.service";
 import { emailOutbox } from "@shared/schema";
 import { drainOutbox } from "../services/email-outbox.service";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
@@ -131,6 +131,7 @@ import { travelpayoutsCache } from "@shared/schema";
 import {
   resolveCommissionRates,
   type CommissionRates,
+  serviceCategorySlugToFeeCategory,
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
@@ -264,17 +265,7 @@ function mapFeverCategoryToEventType(category: string): string {
   return categoryMap[category] || 'other';
 }
 
-function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
-  if (!slug) return "default";
-  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
-  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
-  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
-  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
-  if (/flight|air|airline/.test(slug)) return "flights";
-  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
-  if (/insurance|safety|security/.test(slug)) return "insurance";
-  return "default";
-}
+// serviceCategorySlugToFeeCategory is imported from services/commission (one definition, §18 rule 1).
 
 
 const requireAdminLocal = async (req: any, res: any, next: any) => {
@@ -1193,19 +1184,11 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
     // Counted here rather than at read time because `insideCounts` is the approval-time SNAPSHOT
     // of the build — the same reason `byType` is computed here (§13: it describes the plan as
     // approved, not as it drifts afterwards).
-    const kindRows = await db
-      .select({
-        bookingId: itineraryItems.bookingId,
-        providerServiceId: itineraryItems.providerServiceId,
-        affiliateProductId: itineraryItems.affiliateProductId,
-      })
-      .from(itineraryItems)
-      .where(eq(itineraryItems.tripId, listing.sourceTripId));
-    const byKind: Record<string, number> = {};
-    for (const row of kindRows) {
-      const kind = itemKind(row);
-      byKind[kind] = (byKind[kind] ?? 0) + 1;
-    }
+    // R151 (ledger `2026-09-27-admin-kind-reflects-refunds`): each item is read WITH its booking's
+    // status, and a CLOSED booking (`CLOSED_BOOKING_STATUSES` — cancelled/refunded) is not a booking
+    // the item holds, so it is never counted `included`. The refund path keeps `booking_id` on the
+    // row as history, which is why the raw column alone over-counted.
+    const byKind = await countItemKindsForTrip(listing.sourceTripId);
     const insideCounts = {
       days: dayRows.length,
       items: typeRows.reduce((sum, r) => sum + r.count, 0),
@@ -1660,6 +1643,9 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // the full-refund default).
     const refund = await stripePaymentService.refundServiceBooking(bookingId, reason || "dispute_upheld", {
       feeRefundPercent: 100, // fee-literal-ok: 100 = full make-whole refund %, not a fee_bands rate
+      // R163 amendment: this route IS the dispute path, the one caller that may refund a
+      // `disputed` booking (it refused above while a chargeback is still open).
+      allowDisputed: true,
     });
 
     // 4: Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its
@@ -1702,6 +1688,9 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     if (err?.name === "LostChargebackRefundBlockedError") {
       const { lostChargebackRefusalBody } = await import("../services/lost-chargeback-guard.service");
       return res.status(409).json(lostChargebackRefusalBody(err.result));
+    }
+    if (err?.name === "ServiceBookingRefundRefusedError") {
+      return res.status(409).json({ error: "refund_refused_status", status: err.bookingStatus, message: err.message });
     }
     res.status(500).json({ message: `Failed to uphold dispute: ${err.message}` });
   }

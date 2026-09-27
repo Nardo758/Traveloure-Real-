@@ -14,6 +14,7 @@ import { OWNER_BOOKING_TRANSITIONS, ownerTransitionRefusal } from "./utils/booki
 import { describeCompletionDeclaration } from "@shared/declared-completion-window";
 import { declaredCompletionWindowDays } from "./config/completion-windows.config";
 import { describeAcceptance } from "./services/booking-acceptance.service";
+import { outOfBandFullyRefundedBookingIds, refundSummariesFor } from "./services/out-of-band-refund.service";
 import {
   normalizeGeneratedActivityDurationMinutes,
   normalizeGeneratedDayNumber,
@@ -37,7 +38,9 @@ import { storage, ExpertApplicationExistsError, type BookingStatusNotification }
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
-import { buildListingBuyActions, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
+import { buildTravelerFeePreview, type TravelerFeePreviewInputLine } from "./services/traveler-fee-preview.service"; // R144 (ledger 2026-09-27-service-fee-before-checkout)
+import { resolveTripPassCoveredTripIds, tripPassCoversLine, lineFeeWaiverBasis } from "./services/trip-pass-line-coverage.service"; // R148 (ledger 2026-09-27-trip-pass-waiver-per-line)
+import { buildListingBuyActions, listingBuyFacts, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL, requestOnlyListingRefusals, requestOnlyRefusalBody, requestOnlyCartLines } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
 import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
 // D-11 (ledger 2026-09-15-d11-no-item-booking-exception): the named no-item classes, the ONE
 // composer of their mark, and the refusal the item-referenceless birth rail answers with.
@@ -109,6 +112,7 @@ import {
   bundleComponents,
   deliverableDownloads,
   resolveBookingMode,
+  isBookingModeChosen,
   convertCartToItinerarySchema,
 } from "@shared/schema";
 import {
@@ -204,6 +208,7 @@ import { authoredItemPriceRefusal } from "@shared/item-kind";
 // question a cart rail admits is the ONE derivation in `@shared/cart-quantity`, called by all three
 // write rails below so they cannot disagree (§18 rule 1).
 import { archetypeAsks, resolveCartLineCounts, PINNED_UNIT_QUANTITY } from "@shared/cart-quantity";
+import { isCartContentType, isAdmissibleContentId, pickCartContentMeta } from "@shared/cart-content-line";
 import { enforceTripComparisonRetention } from "./services/comparison-retention.service";
 // LD 41 (ledger `2026-09-05-trip-pass-run-gate`): the ONE optimizer run-authorization predicate,
 // shared by the comparison create and regenerate handlers below.
@@ -232,6 +237,7 @@ import { insertAccessAuditLog } from "./services/admin-query.service";
 import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
+import bookingModePromptRoutes from "./routes/booking-mode-prompt.routes";
 import storefrontRoutes from "./routes/storefront.routes";
 import seoRoutes from "./routes/seo.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
@@ -298,6 +304,7 @@ import {
   getConciergeBookingCap,
   resolveConciergeBookingFee,
   resolveServiceOwnerShareRate,
+  serviceCategorySlugToFeeCategory,
   type CommissionRates,
 } from "./services/commission";
 // 1C direct-lane repoint (docs/DECISIONS.md ruling 69 disposition 6) — the cart quote must price a
@@ -324,6 +331,7 @@ import { listingPriceGate } from "./services/listing-price-gate";
 // two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
 import { admitExpertOfferingTypeKey } from "./services/expert-offering-key.service";
 import { admitDeclaredArtifactDeliverable } from "./services/declared-artifact.service";
+import { admitPriceBasis } from "./services/price-basis.service";
 // The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`) — see the
 // cart quote below; it decides only which lines are concierge lines, never a rate or an amount.
 import { resolveBookingConciergeItems } from "./services/booking-concierge.service";
@@ -347,22 +355,13 @@ import { isManagingEaForTrip } from "./services/ea-plan-delegate.service";
 import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./utils/plan-approval";
 import { sanitizeInput } from "./utils/sanitize";
 import { locationQueryMatches } from "@shared/location-match";
+import { refuseIfComparisonApplyToCartDisabled } from "./config/comparison-apply-to-cart.config";
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
 // "transportation-logistics"). booking_fee_configs.category uses broader domain
 // names ("transportation", "accommodation", …). This helper bridges the two.
-function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
-  if (!slug) return "default";
-  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
-  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
-  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
-  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
-  if (/flight|air|airline/.test(slug)) return "flights";
-  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
-  if (/insurance|safety|security/.test(slug)) return "insurance";
-  return "default";
-}
+// serviceCategorySlugToFeeCategory is imported from services/commission (one definition, §18 rule 1).
 
 // verifyTripOwnership now comes from ./utils/trip-ownership — the shared single source of
 // truth (it additionally handles raw-SQL snake_case rows and never throws). The local copy
@@ -1255,6 +1254,11 @@ export async function registerRoutes(
 
   // Provider supply tools — /api/provider/settings (Kyoto-supply activation); provider-role gated
   app.use(providerRoutes);
+
+  // Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`): the owner's
+  // live-listing mode status, the bulk decide for undecided listings, and the admin summary
+  // (its /api/admin path sits behind the blanket guard registered above).
+  app.use(bookingModePromptRoutes);
 
   // Listing Health (Catalog card meter, §13-deterministic checks). MUST mount before the inline
   // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as
@@ -3102,6 +3106,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // True by construction: `getAllProviderServices` selects `status='active'`, `approved` was
         // filtered above, and `filterOutAwayOwners` has already dropped an away owner's rows.
         isLive: true,
+        ...listingBuyFacts(s as any),
       })),
       buyer,
     );
@@ -3134,6 +3139,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       ...s,
       showPrice: (s as any).showPrice ?? true,
       bookingMode: resolveBookingMode((s as any).bookingMode, ownerInstantBooking),
+      // Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`): whether a
+      // seller CHOSE this mode or the platform default answered — the ONE predicate beside the
+      // resolver, fed the UNCOERCED account flag, so the Catalog row can say "not chosen yet".
+      bookingModeChosen: isBookingModeChosen((s as any).bookingMode, ownerForm ? ownerForm.instantBooking ?? null : undefined),
     }));
     res.json(withDisplayOptions);
   });
@@ -3940,6 +3949,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ? { declaredArtifactDeliverable: declaredArtifactAdmission.value }
         : {};
 
+      // Locked Decision 56 (migration 325, ledger `2026-09-25-price-basis`): is the price per
+      // person or for the whole booking? §19 — the generic body schema `.omit()`s the column, so
+      // this pick-based `.strict()` admission (ONE implementation, both rails) is the only way a
+      // request body reaches it. An invalid value is REFUSED, never coerced; an ABSENT key leaves
+      // the column untouched. A pricing setting ⇒ a SAFE edit under §23 (not an identity field).
+      const priceBasisAdmission = admitPriceBasis(bodyWithoutLocation);
+      if (priceBasisAdmission.refusal) {
+        return res.status(priceBasisAdmission.refusal.status).json(priceBasisAdmission.refusal.body);
+      }
+      const priceBasisPatch = priceBasisAdmission.present ? { priceBasis: priceBasisAdmission.value } : {};
+
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
       // listings (only enforced on this publish write).
@@ -4115,7 +4135,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cityPatch = await deriveCityPatch((input as any).neighborhood, {
         neighborhoodPresent: (input as any).neighborhood !== undefined,
       });
-      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, ...declaredArtifactPatch, userId });
+      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, ...declaredArtifactPatch, ...priceBasisPatch, userId });
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -4300,6 +4320,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const declaredArtifactPatch = declaredArtifactAdmission.present
         ? { declaredArtifactDeliverable: declaredArtifactAdmission.value }
         : {};
+
+      // Locked Decision 56 (migration 325, ledger `2026-09-25-price-basis`): is the price per
+      // person or for the whole booking? §19 — the generic body schema `.omit()`s the column, so
+      // this pick-based `.strict()` admission (ONE implementation, both rails) is the only way a
+      // request body reaches it. An invalid value is REFUSED, never coerced; an ABSENT key leaves
+      // the column untouched. A pricing setting ⇒ a SAFE edit under §23 (not an identity field).
+      const priceBasisAdmission = admitPriceBasis(bodyWithoutLocation);
+      if (priceBasisAdmission.refusal) {
+        return res.status(priceBasisAdmission.refusal.status).json(priceBasisAdmission.refusal.body);
+      }
+      const priceBasisPatch = priceBasisAdmission.present ? { priceBasis: priceBasisAdmission.value } : {};
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -4502,7 +4533,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Migration 292: the offering key joins the patch here, BEFORE the §23 edit split below —
       // it is an IDENTITY field (`IDENTITY_EDIT_FIELDS`, "Category and offering"), so on an
       // APPROVED listing it is staged for review rather than applied to the live row.
-      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch };
+      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch, ...priceBasisPatch };
 
       // ── Ruling 112 Q8 (CLAUDE.md §23) — the EDIT SPLIT, decided ONLY here ─────────────────
       // An APPROVED listing is never taken down for an edit. Identity-changing fields are
@@ -6414,6 +6445,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       return cache.get(id) ?? null;
     };
 
+    // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): which rows a Stripe-dashboard
+    // refund covered IN FULL, by the ONE refund reconciliation rule. Read once for the page; a row
+    // carries `refundedOutOfBand: true` only then (§13), and its `status` is left as the row holds it.
+    const refundedOutOfBand = await outOfBandFullyRefundedBookingIds(bookings.map((b) => b.id));
+    // R163 amendment: what went back, stated by the server from the booking's own refund record or
+    // the cumulative #1288 stamp (never computed by the client). OMITTED when there is no refund.
+    const refundSummaries = await refundSummariesFor(bookings as any);
+
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
       const [reviews, serviceRow, providerRow, tripRow] = await Promise.all([
         storage.getReviewsByBookingId(booking.id),
@@ -6445,6 +6484,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // Bookings read a `confirmationCode` field this row never had, so every confirmed booking
         // said "Confirmation code not yet available". NULL only on a row that has none (§13).
         confirmationCode: (booking as any).confirmationCode ?? booking.trackingNumber ?? null,
+        ...(refundedOutOfBand.has(booking.id) ? { refundedOutOfBand: true as const } : {}),
+        ...(refundSummaries.has(booking.id) ? { refundSummary: refundSummaries.get(booking.id) } : {}),
         hasReview: reviews.length > 0,
         service: toBookingService(serviceRow),
         provider: toBookingProvider(providerRow),
@@ -7004,6 +7045,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             reason: PRICELESS_LISTING_REFUSAL.reason,
           });
         }
+        // Ledger `2026-09-25-checkout-request-mode`: a listing the SELLER must accept (resolved
+        // `request`, `hidden`, or a `custom_quote`) is never a list-price cart line — the SAME
+        // predicate `POST /api/cart` and checkout call (s18 rule 1). It can still go on the PLAN.
+        const requestOnly = (await requestOnlyListingRefusals([service])).get(service.id);
+        if (requestOnly) {
+          return res.status(400).json(requestOnlyRefusalBody(requestOnly, service));
+        }
       }
       if (customVenueId) {
         const venue = await storage.getCustomVenue(customVenueId);
@@ -7185,9 +7233,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ownerIsProvider: isProviderRole(
           (await storage.getUser(service.userId ?? ""))?.role,
         ),
-        feeCategory: service.categoryId
-          ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
-          : null,
+        // Mapped to its fee category the way /api/checkout maps a cart line — a raw slug names no
+        // band, throws inside the resolver and leaves platform_fee at 0 (ledger
+        // `2026-09-25-quote-platform-fee`).
+        feeCategory: serviceCategorySlugToFeeCategory(
+          service.categoryId
+            ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
+            : null,
+        ),
       });
 
       // createServiceBookingAtomic wraps the insert + bookings_count increment in a single
@@ -7365,7 +7418,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
               // owns the ledger reversal + notification — report factually, fire no side-effects.
               const refreshed = await storage.getServiceBooking(req.params.id);
-              return res.json({ ...refreshed, refund: { issued: false, alreadyRefunded: true } });
+              // FU-R167-1: the owner rail answers with the SAME earner projection the list routes use.
+              return res.json({ ...(refreshed ? sanitizeBookingForExpert(refreshed, (await getDbRole(req)) ?? 'provider', userId) : refreshed), refund: { issued: false, alreadyRefunded: true } });
             }
             // This caller WON the refund claim — apply the matching full-fraction ledger
             // compensation (idempotent flips; a crash here is repaired by the admin refund
@@ -7438,7 +7492,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
             return res.json({
-              ...refreshed,
+              ...(refreshed ? sanitizeBookingForExpert(refreshed, (await getDbRole(req)) ?? 'provider', userId) : refreshed),
               refund: {
                 issued: true,
                 amount: refundResult?.amount ?? amountPaid,
@@ -7454,6 +7508,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             if (refundErr?.name === "LostChargebackRefundBlockedError") {
               const { lostChargebackRefusalBody } = await import("./services/lost-chargeback-guard.service");
               return res.status(409).json(lostChargebackRefusalBody(refundErr.result));
+            }
+            if (refundErr?.name === "ServiceBookingRefundRefusedError") {
+              // R163 amendment: a state the app refund never touches (payment_pending, failed,
+              // disputed). Refused before the claim — no Stripe call, nothing changed.
+              return res.status(409).json({ error: "refund_refused_status", status: refundErr.bookingStatus, message: refundErr.message });
             }
             return res.status(502).json({
               message: "The refund could not be issued, so the booking was NOT cancelled. Please try again.",
@@ -7559,7 +7618,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      res.json(updated);
+      res.json(updated ? sanitizeBookingForExpert(updated, (await getDbRole(req)) ?? 'provider', userId) : updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
     }
@@ -7878,6 +7937,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
         });
       }
+      // R163: a bundle whose whole share a Stripe-dashboard refund already covered has nothing left to
+      // cancel — the component settlement would attempt a second refund. Checked only for the
+      // booking's own traveler, so a stranger still gets the recorder's one 404 below (LD 40).
+      {
+        const own = await storage.getServiceBooking(req.params.id);
+        if (own && own.travelerId === userId) {
+          const { isFullyRefundedOutOfBand, REFUNDED_OUT_OF_BAND_REFUSAL } = await import(
+            "./services/out-of-band-refund.service"
+          );
+          if (await isFullyRefundedOutOfBand(own.id)) {
+            return res.status(409).json({ ...REFUNDED_OUT_OF_BAND_REFUSAL });
+          }
+        }
+      }
       const { recordBundleComponentCancellation } = await import("./services/booking-completion.service");
       const outcome = await recordBundleComponentCancellation({
         bookingId: req.params.id,
@@ -8004,7 +8077,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         console.error("Failed to create visa status notification:", notifErr);
       }
 
-      res.json(updated);
+      res.json(updated ? sanitizeBookingForExpert(updated, (await getDbRole(req)) ?? 'provider', userId) : updated);
     } catch (err) {
       console.error("Visa status update error:", err);
       res.status(500).json({ message: "Failed to update visa status" });
@@ -8069,6 +8142,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
+      // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): a booking whose share a Stripe-
+      // dashboard refund already covered reads "Refunded", whatever its row status. Refuse FIRST —
+      // before the cancellable check (so the traveler is told the true reason) and before the ledger
+      // reversal and the Stripe call below, which would be refused by Stripe after the ledger moved.
+      {
+        const { isFullyRefundedOutOfBand, REFUNDED_OUT_OF_BAND_REFUSAL } = await import(
+          "./services/out-of-band-refund.service"
+        );
+        if (await isFullyRefundedOutOfBand(booking.id)) {
+          return res.status(409).json({ ...REFUNDED_OUT_OF_BAND_REFUSAL });
+        }
+      }
       if (!isBookingCancellable(booking.status)) {
         return res.status(400).json({ message: "Cannot cancel this booking" });
       }
@@ -8101,10 +8186,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const { checkServiceBookingRefundPreflight, lostChargebackRefusalBody } = await import(
             "./services/lost-chargeback-guard.service"
           );
-          const guard = await checkServiceBookingRefundPreflight(req.params.id, {
-            amountOverride: quote.refundAmount,
-            feeRefundPercent: quote.refundPercent,
-          });
+          // Ledger `2026-09-27-cancel-preview-equals-refund`: the SAME options the refund below takes.
+          const { refundOptionsForQuote } = await import("./services/cancellation-policy.service");
+          const guard = await checkServiceBookingRefundPreflight(req.params.id, refundOptionsForQuote(quote));
           if (!guard.allowed) return res.status(409).json(lostChargebackRefusalBody(guard));
         }
         const refundFraction = quote.refundPercent / 100;
@@ -8118,12 +8202,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           req.params.id,
           reason || "requested_by_customer",
           // Ruling 2026-09-02-traveler-fee-refundability: a TRAVELER cancellation refunds the
-          // traveler service fee at the SAME cancellation-tier % as the booking.
-          { amountOverride: quote.refundAmount, feeRefundPercent: quote.refundPercent },
+          // traveler service fee at the SAME cancellation-tier % as the booking. The booking share
+          // and the fee percent come from the quote the traveler was SHOWN (ledger
+          // `2026-09-27-cancel-preview-equals-refund`), so Stripe is asked for `quote.refundAmount`.
+          (await import("./services/cancellation-policy.service")).refundOptionsForQuote(quote),
         );
 
-        // Refund succeeded (status now 'refunded') — stamp the cancellation audit fields
-        // without touching the terminal status.
+        // Refund issued (status now 'refunded' — set by refundServiceBooking only after Stripe
+        // returned the refund, R163 amendment) — stamp the cancellation audit fields without
+        // touching the terminal status.
         const { db } = await import("./db");
         const { sql } = await import("drizzle-orm");
         await db.execute(sql`
@@ -8963,6 +9050,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       .filter((i) => i.service && !hasPublishedPrice(i.service.price))
       .map((i) => i.id as string);
 
+    // Ledger `2026-09-25-checkout-request-mode`: a line whose listing the SELLER must accept
+    // (resolved `request`/`hidden`, or a `custom_quote`) is refused at checkout, so this quote must
+    // not state a charge for it (s13). It is NAMED — never deleted on the traveler's behalf — and
+    // skipped in the totals below. Same predicate as the add rails and checkout (s18 rule 1).
+    // PRESENT-ONLY-WHEN-SET: an all-instant cart's response is byte-identical to before.
+    const cartRequestOnly = await requestOnlyCartLines(items as any[]);
+
     let subtotal = 0;
     let platformFeeTotal = 0;
     let conciergeFeeTotal = 0;
@@ -8974,7 +9068,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // S11 (§14, ledger row 107): the SAME per-night rate resolver /api/checkout and
     // /api/cart/fee-preview call — a room's live cart total cannot diverge from the charge.
     const cartStayRates = await resolveStayNightlyRates(items);
+    // R144 (ledger `2026-09-27-service-fee-before-checkout`): the lines the traveler service fee
+    // will be charged on, collected in the SAME loop and at the SAME `price` the charge loop hands
+    // `resolveTravelerServiceFeeSnapshot` — a listing line, priced, not request-only.
+    const travelerFeePreviewLines: TravelerFeePreviewInputLine[] = [];
+    // R148 (ledger `2026-09-27-trip-pass-waiver-per-line`): the SAME per-line Trip Pass basis the
+    // charge uses — each line's OWN `cart_items.trip_id`, owner-verified against the session user,
+    // through the ONE `resolveTripPassCoveredTripIds` (§18 rule 1). Fails closed per trip; a
+    // standalone line is never covered.
+    let travelerFeeCoveredTripIds = new Set<string>();
+    try {
+      travelerFeeCoveredTripIds = await resolveTripPassCoveredTripIds(
+        userId,
+        items.filter((i: any) => i.service),
+      );
+    } catch (tpErr: any) {
+      console.error("[Cart] trip-pass coverage for the fee preview failed — no waiver shown:", tpErr?.message ?? tpErr);
+    }
     for (const item of items) {
+      // A request-only line is named above and quoted at nothing — checkout will refuse it.
+      if (cartRequestOnly.isRequestOnly(item)) continue;
       // §17/§S11 property rooms: nights × each night's own materialized rate (never quantity ×
       // price — a room's cart "quantity" is meaningless, the client pins it to 1). Reuses the
       // exact same helper /api/checkout and /api/cart/fee-preview already use (payments.routes.ts)
@@ -9021,8 +9134,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       const sc = cartSurcharges.get(item.id);
       if (sc?.eligible) surchargeTotal += sc.amount;
+      if (item.service && hasPublishedPrice(item.service.price)) {
+        travelerFeePreviewLines.push({
+          cartItemId: item.id as string,
+          tripId: ((item as any).tripId as string | null) ?? null,
+          subtotal: price,
+          // THE WAIVER BASIS IS THE ONE THE CHARGE WILL USE (§13). Since R148 (ledger
+          // `2026-09-27-trip-pass-waiver-per-line`) `POST /api/checkout` waives per line from the
+          // line's OWN plan, owner-verified — the basis read here through the SAME
+          // `tripPassCoversLine` + `lineFeeWaiverBasis`, so preview and charge agree. A
+          // referral-link ("rails") waiver depends on a `ref` this read does not carry; it can only
+          // LOWER the charge, which the surfaces' "estimate" wording states.
+          waiverBasis: lineFeeWaiverBasis({
+            railsWaived: false,
+            tripPassCovered: tripPassCoversLine(item, travelerFeeCoveredTripIds),
+          }),
+        });
+      }
     }
     surchargeTotal = Math.round(surchargeTotal * 100) / 100;
+    // R144: null ⇒ the key is OMITTED (§13 — an unresolvable band, or no line to fee, is no answer,
+    // never a $0 fee). The ONE resolver computes it; this read writes nothing.
+    const travelerFeePreview = await buildTravelerFeePreview(travelerFeePreviewLines);
 
     res.json({
       items,
@@ -9050,6 +9183,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       ...(unpriceableItemIds.length > 0
         ? { unpriceableItemIds, unpriceableReason: PRICELESS_LISTING_REFUSAL.reason }
         : {}),
+      // Ledger `2026-09-25-checkout-request-mode`: OMITTED when empty. When present, these lines
+      // are NOT in `subtotal`/`total` and `POST /api/checkout` answers 409 for them.
+      ...cartRequestOnly.named,
+      // R144 (ledger `2026-09-27-service-fee-before-checkout`): the traveler service fee, shown
+      // BEFORE checkout as an estimate. Deliberately NOT folded into `total` above: `total` keeps
+      // its existing meaning, and the checkout's own snapshot is what is billed. OMITTED when null.
+      ...(travelerFeePreview ? { travelerFeePreview } : {}),
     });
     } catch (err) {
       console.error("[Cart] GET /api/cart failed:", err);
@@ -9274,10 +9414,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Storage + cart UI already supported content rows; this is the missing
       // write path. contentMeta is DISPLAY-ONLY and whitelisted to string fields —
       // no price is accepted (§14: a client-supplied price must never reach a charge).
-      const CART_CONTENT_TYPES = new Set(["gem", "hotel", "activity", "event", "neighborhood"]);
-      const isContentAdd =
-        typeof contentType === "string" && CART_CONTENT_TYPES.has(contentType) &&
-        typeof contentId === "string" && contentId.length > 0 && contentId.length <= 200;
+      // The admission is stated ONCE in `@shared/cart-content-line` (ledger
+      // `2026-09-26-rc9-external-cart-lines`), so the experience template's partner picks and this
+      // rail read the same content types, id bound and meta allowlist (§18 rule 1).
+      const isContentAdd = isCartContentType(contentType) && isAdmissibleContentId(contentId);
 
       if (!serviceId && !customVenueId && !isContentAdd) {
         return res.status(400).json({ message: "Service ID, Custom Venue ID, or content item is required" });
@@ -9313,6 +9453,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             message: PRICELESS_LISTING_REFUSAL.message,
             reason: PRICELESS_LISTING_REFUSAL.reason,
           });
+        }
+        // -- A LISTING THE SELLER MUST ACCEPT IS NOT A CART LINE (ledger
+        // `2026-09-25-checkout-request-mode`) ----------------------------------------------------
+        // Carting is the first step of a checkout (LD 39: the cart is the `ready_for_checkout`
+        // projection), and a `request`-mode, `hidden` or `custom_quote` listing is never charged
+        // at list price: `resolveBuyAction` row 11 lands it on `booking_request`, and its
+        // provider-accepted commitment is the quote rail (LD 49). ONE predicate, the same one
+        // checkout calls (s18 rule 1). The traveler can still add it to their PLAN.
+        const requestOnly = (await requestOnlyListingRefusals([service])).get(service.id);
+        if (requestOnly) {
+          return res.status(400).json(requestOnlyRefusalBody(requestOnly, service));
         }
       }
 
@@ -9389,14 +9540,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
 
       // Whitelist display metadata for content items (strings only, capped).
-      let safeContentMeta: Record<string, string> | undefined;
-      if (isContentAdd && contentMeta && typeof contentMeta === "object") {
-        safeContentMeta = {};
-        for (const key of ["name", "description", "city", "imageUrl"]) {
-          const v = (contentMeta as Record<string, unknown>)[key];
-          if (typeof v === "string" && v.length > 0) safeContentMeta[key] = v.slice(0, 500);
-        }
-      }
+      const safeContentMeta: Record<string, string> | undefined =
+        isContentAdd ? pickCartContentMeta(contentMeta) : undefined;
 
       // ── D-14 (ruling 2026-09-15): WHICH COUNT THIS ARCHETYPE ACCEPTS ──────────────────────
       // `quantity` is UNITS of the listing and prices the line `rate × quantity`; `party_size` is
@@ -10339,6 +10484,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, async (req, res) => {
     try {
+      // R131 (ledger `2026-09-26-apply-to-cart-flag-off`): OFF by default — refused 410
+      // `apply_to_cart_disabled` BEFORE any read or write. Full retirement = Trip Slip map step 7.
+      if (refuseIfComparisonApplyToCartDisabled(res)) return;
       const userId = getUserId(req)!;
       const comparisonId = req.params.id;
 

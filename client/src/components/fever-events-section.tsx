@@ -68,6 +68,11 @@ interface AddToCartPayload {
   provider?: string;
   details?: string;
   isExternal: boolean;
+  /**
+   * The event's OWN catalog `location`, when the feed states one (ledger
+   * `2026-09-26-partner-picks-map-coords`). Absent = unlocated; never a city centre (§13).
+   */
+  coordinates?: { lat: number; lng: number } | null;
   metadata?: Record<string, unknown>;
 }
 interface FeverEventsSectionProps {
@@ -360,6 +365,7 @@ export function FeverEventsSection({ destination, startDate, endDate, onAddToCar
                             details:
                               detailParts.join(" · ") || undefined,
                             isExternal: true,
+                            coordinates: event.location ?? null,
                             metadata: {
                               affiliateUrl:
                                 (event as any).affiliateUrl ?? undefined,

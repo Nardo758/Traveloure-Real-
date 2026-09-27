@@ -90,6 +90,8 @@ function chargeRefundedEvent(paymentIntentId: string, refunds: Array<{ id: strin
       object: {
         id: `ch_${paymentIntentId}`,
         payment_intent: paymentIntentId,
+        // R163 amendment: a real charge carries its own amount; the webhook refuses one that does not.
+        amount: Math.max(refunds.reduce((s, r) => s + r.amount, 0), 1),
         amount_refunded: refunds.reduce((s, r) => s + r.amount, 0),
         currency: "usd",
         refunds: { data: refunds.map((r) => ({ ...r, metadata: r.metadata ?? {} })), has_more: false },

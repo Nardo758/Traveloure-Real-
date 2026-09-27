@@ -117,11 +117,41 @@ jobs:
           NODE_ENV: test
           JOURNEY_DB_WRITES_OK: '1'
 
+      # R144 (ledger `2026-09-27-service-fee-before-checkout`): `GET /api/cart` carries the traveler
+      # service fee BEFORE checkout, per line through the charge's own resolver, capped per booking,
+      # grouped by plan for the slip, and OMITTED (never $0) when the band has no answer. Same booted
+      # bundle, same throwaway Postgres — the boot is the expensive half.
+      - name: Traveler service fee shown before checkout (V1-V7)
+        run: npx tsx --test --test-force-exit server/__tests__/cart-traveler-fee-preview.http.test.ts
+        timeout-minutes: 15
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          JOURNEY_DB_WRITES_OK: '1'
+
       # D-14 (ruling 2026-09-15, ledger `2026-09-15-d14-quantity-is-units`). A SECOND STEP on this
       # gate rather than a second workflow: it needs the same booted production bundle against the
       # same throwaway Postgres, and the boot is the expensive half. Its failures name this step.
       - name: Cart quantity means units, per archetype (V1-V10)
         run: npx tsx --test --test-force-exit server/__tests__/cart-quantity-admission.http.test.ts
+        timeout-minutes: 15
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          JOURNEY_DB_WRITES_OK: '1'
+
+      # Ledger `2026-09-25-checkout-request-mode`. A THIRD STEP on the same boot for the same reason
+      # as the second: a listing the seller must accept first (resolved `request`/`hidden`, or a
+      # custom quote) is refused at both cart add rails, the LD 39 projection and checkout — before
+      # any claim, slot or Stripe call — and the two cart reads name it and quote nothing for it.
+      - name: A listing the seller must accept is never charged off the cart (R1-R10)
+        run: npx tsx --test --test-force-exit server/__tests__/checkout-request-mode.http.test.ts
         timeout-minutes: 15
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure

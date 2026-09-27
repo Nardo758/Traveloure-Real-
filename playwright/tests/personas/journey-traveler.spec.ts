@@ -60,6 +60,19 @@ import {
 test.setTimeout(240_000);
 
 const PROVIDER_SERVICE_NAME = "Kyoto Portrait Route Planning Call";
+
+/**
+ * The seller's own per-listing booking choice, set to `instant` BEFORE the traveler checks it out.
+ * Ledger `2026-09-25-checkout-request-mode`: a listing that resolves to `request` (an unset mode on
+ * an owner whose account flag is unset — which is what the wizard leaves on a persona provider) is
+ * never a cart line, so the checkout legs below need the seller to have chosen instant. In the
+ * product that choice is the Catalog "Card shows" toggle (`PATCH /api/provider/services/:id`
+ * `{ bookingMode }`); this journey is the TRAVELER's, so it states the seller's choice as a
+ * fixture write rather than driving the other console. Idempotent.
+ */
+async function sellerDeclaresInstant(serviceId: string): Promise<void> {
+  await rows(`UPDATE provider_services SET booking_mode = 'instant' WHERE id = $1 RETURNING id`, [serviceId]);
+}
 const READY_MADE_TITLE = "Quiet Gion: A Dawn-to-Dusk Kyoto Day";
 
 test.afterAll(async () => {
@@ -143,6 +156,7 @@ test.describe("journey-traveler — free traveler (browse -> cart -> checkout + 
       `SELECT id, price, service_name FROM provider_services WHERE id = $1`,
       [svcRow!],
     );
+    await sellerDeclaresInstant(svc.id);
     const itemId = await createCatalogItem(request, tripId, { id: svc.id, price: svc.price, name: svc.service_name });
     const [itemRow] = await rows<{ routing_status: string; provider_service_id: string }>(
       `SELECT routing_status, provider_service_id FROM itinerary_items WHERE id = $1`,
@@ -565,6 +579,7 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
         `SELECT id, price, service_name FROM provider_services WHERE id = $1`,
         [svcRow],
       );
+      await sellerDeclaresInstant(svc.id);
       const itemId = await createCatalogItem(request, coveredTripId, { id: svc.id, price: svc.price, name: svc.service_name });
       await routeItem(request, coveredTripId, itemId, "ready_for_checkout");
 

@@ -77,7 +77,7 @@ import {
   stampTransportPaymentIntent,
   TRANSPORT_PI_STAMPABLE_FROM,
 } from "../services/checkout-claim.service";
-import { quoteCancellationForBooking } from "../services/cancellation-policy.service";
+import { quoteCancellationForBooking, refundOptionsForQuote } from "../services/cancellation-policy.service";
 import { storage } from "../storage";
 import { BOOKING_CANCELLABLE_FROM_STATUSES } from "@shared/booking-cancellation";
 import { travelerChargeForRow } from "../services/traveler-charge";
@@ -326,17 +326,18 @@ test("T4: the refund branch — refused without the id, reachable with it, amoun
     insuranceFee: row.insurance_fee,
     conciergeFeeSnapshot: (row.booking_details as any)?.travelerCharge?.conciergeFee ?? null,
   });
-  assert.equal(quote!.refundAmount, charged, "the refund basis is the row's own charged amount");
+  // R166: the quote's BOOKING share is the row's own charged amount; its whole refund adds the
+  // traveler service fee actually charged, at the same percent (here the full tier).
+  assert.equal(quote!.bookingRefundAmount, charged, "the booking share's basis is the row's own charged amount");
+  const feeCharged = Number((row.booking_details as any)?.travelerServiceFee?.charged ?? 0);
+  assert.equal(quote!.refundAmount, Math.round((charged + feeCharged) * 100) / 100, "the quote is the whole refund — booking + fee");
 
   // BEFORE the stamp: the refunder refuses outright. This is the defect, reproduced at the
   // service — the route never even reaches here, because its third conjunct is false first.
   assert.equal(row.stripe_payment_intent_id, null);
   const { stripePaymentService } = await import("../services/stripe-payment.service");
   await assert.rejects(
-    () => stripePaymentService.refundServiceBooking(bookingId, "requested_by_customer", {
-      amountOverride: quote!.refundAmount,
-      feeRefundPercent: quote!.refundPercent,
-    }),
+    () => stripePaymentService.refundServiceBooking(bookingId, "requested_by_customer", refundOptionsForQuote(quote!)),
     /no payment intent to refund/i,
     "without the id there is nothing to refund against — the traveler's money stays put",
   );
@@ -364,8 +365,9 @@ test("T5: the cancel route derives its amount, and the refunder carries a key an
     "the refund gate must still read the policy quote AND the row's own PaymentIntent",
   );
   // §14: what is refunded comes from the server-derived quote, never from the request.
-  assert.match(routes, /amountOverride: quote\.refundAmount/, "the refund amount is the quote's, not the body's");
-  assert.match(routes, /feeRefundPercent: quote\.refundPercent/);
+  // R166: the refund options are built from the QUOTE by the ONE builder, never from the body.
+  assert.match(routes, /refundOptionsForQuote\(quote\)/, "the refund amount is the quote's, not the body's");
+  assert.ok(!/amountOverride: quote\.refundAmount/.test(routes), "the previewed TOTAL is never passed as the booking share (R166)");
   const cancelHandler = routes.slice(routes.indexOf('app.post("/api/bookings/:id/cancel"'));
   const handlerBody = cancelHandler.slice(0, cancelHandler.indexOf('app.post("/api/expert/reviews/:id/respond"'));
   assert.ok(handlerBody.length > 0, "the cancel handler must still be locatable");
@@ -413,11 +415,20 @@ test("T5: the cancel route derives its amount, and the refunder carries a key an
   assert.ok(handoff >= 0, "the whole-row refunder must reach the ONE call site");
   assert.match(refunder.slice(handoff, refunder.indexOf("});", handoff)), /\bidempotencyKey\b/, "the whole-row refunder must pass a key to the helper");
   assert.match(refunder, /`refund-sb-\$\{bookingId\}-\$\{amountCents\}`/, "the key stays amount-scoped: a policy-scaled partial and a full refund are retry-distinct at Stripe");
+  // R163 amendment (merged design, decision-maker Sep 27, 2026): the claim is a NON-FINAL atomic
+  // conditional taken BEFORE the Stripe call, and `refunded` is written only AFTER it, by a second
+  // conditional keyed on that same claim — never a check-then-update, and never before Stripe.
+  const claimAt = refunder.search(/\(COALESCE\(booking_details, '\{\}'::jsonb\) -> \$\{REFUND_ATTEMPT_KEY\}::text\) IS NULL/);
+  assert.ok(claimAt >= 0 && claimAt < handoff, "the non-final claim is an atomic conditional taken before the Stripe call");
+  assert.match(refunder.slice(0, handoff), /AND status NOT IN \(/, "the claim refuses the refused states in the same statement (§18b)");
+  const finalizeAt = refunder.search(/SET status = 'refunded',/);
+  assert.ok(finalizeAt > handoff, "status 'refunded' is written only after Stripe returned the refund");
   assert.match(
-    refunder,
-    /UPDATE service_bookings SET status = 'refunded', updated_at = NOW\(\)\s*\n?\s*WHERE id = \$\{bookingId\} AND status <> 'refunded'/,
-    "the status claim must be the atomic conditional, never a check-then-update",
+    refunder.slice(finalizeAt, finalizeAt + 600),
+    /AND status <> 'refunded'\s*\n\s*AND booking_details #>> \$\{`\{\$\{REFUND_ATTEMPT_KEY\},idempotencyKey\}`\}::text\[\] = \$\{idempotencyKey\}/,
+    "the finalize is an atomic conditional keyed on this attempt's claim",
   );
+  assert.equal(refunder.slice(0, handoff).includes("SET status = 'refunded'"), false, "nothing writes 'refunded' before the Stripe call");
 });
 
 // ══ T6 — provenance: the id can only ever be Stripe's own word, and ONE file writes the column ══

@@ -1250,8 +1250,10 @@ function HistorySection() {
                             )}
                           </div>
                         )}
-                        {booking.notes && (
-                          <p className="text-sm text-console-mid mt-2 italic">Note: {booking.notes}</p>
+                        {/* FU-R167-1: the traveler's note lives in `bookingDetails.notes` (there is no `notes`
+                            column), so the old top-level read never drew anything. */}
+                        {booking.bookingDetails?.notes && (
+                          <p className="text-sm text-console-mid mt-2 italic">Note: {String(booking.bookingDetails.notes)}</p>
                         )}
                         {/* LD 47: declare complete where the from-state allows, then the window's
                             own read-out. §13 — draws NOTHING in any other state, never "not

@@ -20,6 +20,7 @@ import { bornBundleComponentRows, readBundleComponentRows } from "./services/bun
 import { PARTIALLY_COMPLETED_STATUS, reducedBundleFigures } from "@shared/bundle-component-states";
 import { OUT_OF_BAND_REFUND_KEY, outOfBandRefundOf } from "@shared/out-of-band-refund";
 import { isProviderRole } from "@shared/roles";
+import { isPriceBasis } from "@shared/price-basis";
 import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
 import { toPublicExperts } from "./utils/expert-read-scope";
@@ -153,7 +154,7 @@ import {
   PURCHASE_CLAIMABLE_FROM_STATUSES,
   type HumanPurchaseBookingAgentStatus,
 } from "@shared/booking-agent-vocabulary";
-import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp, getTableColumns } from "drizzle-orm";
+import { eq, ilike, and, not, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp, getTableColumns } from "drizzle-orm";
 type PayoutClaimResult<T> = {
   payout?: T;
   reason?: 'insufficient_releasable_earnings' | 'already_processing' | 'terminal';
@@ -569,6 +570,7 @@ export interface IStorage {
   removeFromCart(id: string): Promise<void>;
 
   clearCart(userId: string, experienceSlug?: string): Promise<void>;
+  clearCheckedOutCartLines(userId: string): Promise<void>;
 
   migrateGuestCart(guestSessionId: string, userId: string): Promise<{ migrated: number; deduplicated: number }>;
 
@@ -1490,6 +1492,19 @@ export class ExpertApplicationExistsError extends Error {
   constructor(public readonly existingFormId: string) {
     super("You already have an application submitted");
     this.name = "ExpertApplicationExistsError";
+  }
+}
+
+/**
+ * Locked Decision 56 layer 2 (ledger `2026-09-25-price-basis`): `provider_services.price_basis` has
+ * no DB CHECK (publish-trap posture), so the writer refuses a value outside `PRICE_BASIS_VALUES`
+ * whatever the caller. `undefined` (key absent) and `null` (never stated) are both legal. Refused,
+ * never coerced — a stored `per_head` would silently read as per booking (§13).
+ */
+function assertPriceBasisValue(value: unknown, writer: string): void {
+  if (value === undefined || value === null) return;
+  if (!isPriceBasis(value)) {
+    throw new Error(`${writer}: priceBasis must be "per_person", "per_booking" or null, got ${JSON.stringify(value)}`);
   }
 }
 
@@ -2581,6 +2596,9 @@ export class DatabaseStorage implements IStorage {
     if (service.price != null && !(Number.isFinite(Number(service.price)) && Number(service.price) >= 0)) {
       throw new Error(`createProviderService: price must be a non-negative number, got "${service.price}"`);
     }
+    // Locked Decision 56 layer 2: a price basis outside the app-enforced set never reaches a row
+    // from any caller (the column has no DB CHECK — publish-trap posture). NULL/absent is legal.
+    assertPriceBasisValue((service as any).priceBasis, "createProviderService");
     const trackingNumber = await this.generateTrackingNumber('TRV');
     // F2 born-state clamp (approval lifecycle D1a): a create can NEVER produce an approved listing.
     // The client-supplied approvalStatus (insertProviderServiceSchema still exposes it — the mass-assign
@@ -2777,6 +2795,7 @@ export class DatabaseStorage implements IStorage {
     if (updates.price != null && !(Number.isFinite(Number(updates.price)) && Number(updates.price) >= 0)) {
       throw new Error(`updateProviderService: price must be a non-negative number, got "${updates.price}"`);
     }
+    assertPriceBasisValue((updates as any).priceBasis, "updateProviderService");
     // ── D1a/F2: the approval lifecycle is NOT self-settable on the update path ──────────────
     // Found by the adversarial suite (scripts/journeys/adversarial-money-access.mjs, case C16b):
     // `PATCH /api/provider/services/:id` parses the body with `insertProviderServiceSchema
@@ -4391,6 +4410,29 @@ export class DatabaseStorage implements IStorage {
     } else {
       await db.delete(cartItems).where(eq(cartItems.userId, userId));
     }
+  }
+
+  /**
+   * The clear AFTER A PAYMENT (ledger `2026-09-26-checkout-keeps-partner-lines`): every line of the
+   * user's cart EXCEPT an unlinked partner content line — the SQL twin of `survivesCheckoutClear`
+   * (`@shared/cart-content-line`). Refuses an empty owner, so it can never become a table-wide delete.
+   */
+  async clearCheckedOutCartLines(userId: string): Promise<void> {
+    if (!userId) throw new Error("clearCheckedOutCartLines: owner required");
+    await db.delete(cartItems).where(
+      and(
+        eq(cartItems.userId, userId),
+        not(
+          and(
+            isNull(cartItems.serviceId),
+            isNull(cartItems.customVenueId),
+            isNull(cartItems.itineraryItemId),
+            isNotNull(cartItems.contentType),
+            isNotNull(cartItems.contentId),
+          )!,
+        ),
+      ),
+    );
   }
 
   // Contract Methods
@@ -7953,8 +7995,21 @@ export class DatabaseStorage implements IStorage {
   // session user performing the transition; pass it so disputes have an actor on record.
   async updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string, actorId?: string): Promise<any> {
     return db.transaction(async (tx) => {
+      // Ledger `2026-09-25-p1-approve-and-quotes`: a RE-delivery (after the traveler asked for
+      // changes) re-opens the review handshake — `plan_approval_status` goes from
+      // 'changes_requested' back to NULL in the SAME statement, so the traveler's Approve banner
+      // (it renders only while the status is NULL) comes back. An 'approved' plan is never
+      // cleared here, and the traveler's note stays on the row as the record of what was asked.
+      const reopensReview = workspaceStatus === "delivered";
       const [updated] = await tx.update(tripExpertAdvisors)
-        .set({ workspaceStatus })
+        .set({
+          workspaceStatus,
+          ...(reopensReview
+            ? {
+                planApprovalStatus: sql`CASE WHEN ${tripExpertAdvisors.planApprovalStatus} = 'changes_requested' THEN NULL ELSE ${tripExpertAdvisors.planApprovalStatus} END`,
+              }
+            : {}),
+        })
         .where(
           expectedCurrentStatus !== undefined
             ? and(eq(tripExpertAdvisors.id, assignmentId), eq(tripExpertAdvisors.workspaceStatus, expectedCurrentStatus))

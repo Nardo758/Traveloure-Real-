@@ -43,6 +43,9 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { LayoutList, Share2, Pencil, Copy, Pause, Play, Link2, Image as ImageIcon, Hammer } from "lucide-react";
 import { OfferingShareDetail, OfferingShareOption } from "@/components/backoffice/share-tools";
+import { BookingModeToggle } from "@/components/backoffice/booking-mode-toggle";
+import { BOOKING_MODE_STATUS_KEY } from "@/components/backoffice/booking-mode-banner";
+import type { BookingModeStatus } from "@/lib/booking-mode-prompt";
 
 // The "template" (`expert_templates`) lane retired — ledger
 // 2026-09-03-expert-templates-consumer-sunset. Two lanes remain.
@@ -95,6 +98,11 @@ export function MyOfferingsTable() {
   // Backoffice C1: soonest future, not-fully-booked vendor_availability_slots row per
   // service id (service lane only — Ready Made Trips have no slots).
   const nextAvailability = useQuery<Record<string, string>>({ queryKey: ["/api/me/next-availability"] });
+  // Seller booking-mode prompt (ledger `2026-09-25-seller-booking-mode-prompt`): the server's own
+  // per-listing mode + "was it chosen" for the owner's LIVE listings — the banner's "Choose per
+  // listing" lands here. A listing absent from it (draft, in review, paused) shows no control.
+  const bookingModes = useQuery<BookingModeStatus>({ queryKey: [BOOKING_MODE_STATUS_KEY] });
+  const bookingModeById = new Map((bookingModes.data?.listings ?? []).map((l) => [l.id, l]));
 
   // C2: pause/activate + duplicate — the SAME endpoints/invalidations services.tsx used
   // (PATCH /api/expert/services/:id/status; POST /api/expert/services/:id/duplicate).
@@ -241,7 +249,14 @@ export function MyOfferingsTable() {
               <tbody>
                 {rows.map((row) => (
                   <tr key={`${row.lane}-${row.id}`} className="border-b last:border-0" data-testid={`offering-row-${row.lane}-${row.id}`}>
-                    <td className="py-2.5 pr-3 font-medium">{row.name}</td>
+                    <td className="py-2.5 pr-3 font-medium">
+                      {row.name}
+                      {row.lane === "service" && bookingModeById.get(row.id) && (
+                        <div className="mt-1 font-normal">
+                          <BookingModeToggle listing={bookingModeById.get(row.id)!} />
+                        </div>
+                      )}
+                    </td>
                     <td className="py-2.5 pr-3 text-muted-foreground">{row.laneLabel}</td>
                     <td className="py-2.5 pr-3">
                       <div className="flex items-center gap-1.5 flex-wrap">

@@ -127,9 +127,11 @@ async function registerActor(label: string, role?: string): Promise<Actor> {
 async function seedRoom(ownerId: string, label: string, price = "100.00"): Promise<string> {
   const id = `s11-${RUN}-${label}-${crypto.randomUUID().slice(0, 6)}`;
   await db.execute(sql`
-    INSERT INTO provider_services (id, user_id, service_name, price, status, approval_status, delivery_method, product_shape, pricing_unit)
-    VALUES (${id}, ${ownerId}, ${`S11 room ${label}`}, ${price}, 'active', 'approved', 'in_person', 'property_room', 'per_night')
+    INSERT INTO provider_services (id, user_id, service_name, price, status, approval_status, delivery_method, product_shape, pricing_unit, booking_mode)
+    VALUES (${id}, ${ownerId}, ${`S11 room ${label}`}, ${price}, 'active', 'approved', 'in_person', 'property_room', 'per_night', 'instant')
   `);
+  // ^ `instant` declared (ledger `2026-09-25-checkout-request-mode`): a request-mode room is never a
+  //   cart line, and an unset mode on an owner with no instant flag resolves `request`.
   createdServiceIds.push(id);
   return id;
 }

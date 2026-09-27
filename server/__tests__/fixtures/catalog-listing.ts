@@ -78,12 +78,15 @@ export async function seedCatalogListing(options: {
 
   const serviceId = `catalog-${tag}-${label}`;
   const serviceName = `Catalog fixture ${label} ${tag}`;
+  // `booking_mode = 'instant'` is declared because every caller BUYS this listing through the cart:
+  // an unset mode on a form-less owner resolves `request`, and a request-mode listing is never a
+  // cart line (ledger `2026-09-25-checkout-request-mode`).
   await db.execute(sql`
     INSERT INTO provider_services
-      (id, user_id, service_name, description, price, status, approval_status, delivery_method)
+      (id, user_id, service_name, description, price, status, approval_status, delivery_method, booking_mode)
     VALUES
       (${serviceId}, ${owner.id}, ${serviceName}, 'Seeded by seedCatalogListing (test fixture).',
-       ${price}, 'active', 'approved', 'in_person')
+       ${price}, 'active', 'approved', 'in_person', 'instant')
   `);
 
   const readBack = await db.execute(sql`

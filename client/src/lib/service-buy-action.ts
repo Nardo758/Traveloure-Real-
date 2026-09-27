@@ -112,6 +112,9 @@ export const SERVICE_DETAIL_ASK_LABEL: Record<BuyAsk, string | null> = {
   sign_in: "Sign in",
   which_plan: null,
   slot: "Pick a time",
+  // REAL for a room: the page's "Pick your dates" card (`card-room-stay`) is the range picker
+  // (ledger `2026-09-25-provider-action-buttons` — a stay asks `dates`, never `slot`).
+  dates: "Pick your dates",
   party: null,
 };
 
@@ -201,6 +204,10 @@ export function serviceDetailBuyRender(action: BuyAction | undefined | null): Se
         add = button;
         break;
       case "request_to_book":
+      // A custom-quote listing's own verb (ledger `2026-09-25-provider-action-buttons`). It lands
+      // on the SAME `booking_request` store, and this page's request control already creates a
+      // `service_quotes` row — so it takes that control, with the resolver's label.
+      case "request_quote":
         request = button;
         break;
       case "message":

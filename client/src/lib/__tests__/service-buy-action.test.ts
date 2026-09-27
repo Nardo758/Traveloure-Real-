@@ -356,3 +356,24 @@ describe("service detail — the shipped page authors no buy verb", () => {
     assert.ok(readClient(PAGE).includes('data-testid="section-direct-booking"'));
   });
 });
+
+// Ledger `2026-09-25-provider-action-buttons`: the two new resolver outputs have a control here.
+describe("service detail — provider shapes", () => {
+  it("a custom_quote listing WITH a price renders the request control, never Book", () => {
+    const r = serviceDetailBuyRender(resolveBuyAction(p1({ priceType: "custom_quote" }), MEMBER));
+    assert.equal(r.book, null);
+    assert.equal(r.request?.label, "Request a quote");
+    assert.equal(r.platformCharge, false);
+    assert.deepEqual(r.unrenderedKinds, []);
+  });
+
+  it("an instant room asks 'Pick your dates', never 'Pick a time'", () => {
+    const r = serviceDetailBuyRender(
+      resolveBuyAction(p1({ productShape: "property_room", deliveryMethod: null, pricingUnit: "per_night" }), MEMBER),
+    );
+    const labels = r.asks.map((a) => a.label);
+    assert.ok(labels.includes("Pick your dates"));
+    assert.ok(!labels.includes("Pick a time"));
+    assert.equal(SERVICE_DETAIL_ASK_LABEL.dates, "Pick your dates");
+  });
+});

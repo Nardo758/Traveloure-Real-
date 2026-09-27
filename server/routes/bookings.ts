@@ -322,6 +322,21 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
         return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
       }
       const exception = promotion.exceptions[0];
+      // R162 (ledger `2026-09-27-failed-is-final`): a success on a `failed` booking is never confirmed,
+      // and this client route does NOT refund it. The refund follows from Stripe's own
+      // `payment_intent.succeeded` webhook (`handlePaymentSucceeded`), which Stripe delivers whichever
+      // way the traveler paid — decision-maker ruling Sep 27, 2026. Say that plainly, never "our team
+      // has been alerted" and never a claim that money has already moved.
+      if (exception && exception.status === 'failed' && exception.reason === 'not_promotable') {
+        return res.status(409).json({
+          success: false,
+          error: 'payment_after_failure',
+          message:
+            "This booking's payment had already failed, so it could not be confirmed. If a payment went " +
+            "through afterwards, it will be refunded to your card automatically and you'll get a notice when it is.",
+          detail: 'failed_is_final',
+        });
+      }
       return res.status(409).json({
         success: false,
         error: 'reconciliation_exception',
@@ -650,9 +665,12 @@ router.post('/refund', isAuthenticated, async (req, res) => {
           });
         }
         // The fee tracks the booking's cancellation-tier % (100 when the tier gives a full refund).
+        // The booking share is the quote's BOOKING share, never its total (ledger
+        // `2026-09-27-cancel-preview-equals-refund`) — one options builder for every quoted refund.
+        const { refundOptionsForQuote } = await import('../services/cancellation-policy.service');
         feeRefundPercent = quote.refundPercent;
         if (quote.refundPercent < 100) {
-          amountOverride = quote.refundAmount;
+          amountOverride = refundOptionsForQuote(quote).amountOverride;
           refundFraction = quote.refundPercent / 100;
         }
       }
@@ -730,6 +748,11 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     if (error?.name === 'LostChargebackRefundBlockedError') {
       const { lostChargebackRefusalBody } = await import('../services/lost-chargeback-guard.service');
       return res.status(409).json({ success: false, ...lostChargebackRefusalBody(error.result) });
+    }
+    if (error?.name === 'ServiceBookingRefundRefusedError') {
+      // R163 amendment: payment_pending, failed and disputed are never refunded here — a dispute
+      // is refunded only by resolving it. Refused before the claim; nothing changed.
+      return res.status(409).json({ success: false, error: 'refund_refused_status', status: error.bookingStatus, message: error.message });
     }
     res.status(500).json({
       success: false,
@@ -831,6 +854,16 @@ router.post('/:id/dispute', isAuthenticated, async (req, res) => {
     const ownerId = await getServiceBookingOwnerId(bookingId);
     if (ownerId === null) return res.status(404).json({ error: 'Booking not found' });
     if (ownerId !== sessionUserId) return res.status(403).json({ error: 'Only the traveler can dispute this booking' });
+
+    // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): a booking whose share a Stripe-
+    // dashboard refund already covered reads "Refunded"; there is nothing left to dispute. Refused
+    // before any write, by the SAME rule the label reads.
+    {
+      const { isFullyRefundedOutOfBand, REFUNDED_OUT_OF_BAND_REFUSAL } = await import('../services/out-of-band-refund.service');
+      if (await isFullyRefundedOutOfBand(bookingId)) {
+        return res.status(409).json({ ...REFUNDED_OUT_OF_BAND_REFUSAL });
+      }
+    }
 
     // Escrow decisions 3 + 4 (docs/design/escrow-spine.md): a traveler may dispute ONLY during the
     // clearance window. Once it elapses the held earning matures → releasable → paid_out, and per

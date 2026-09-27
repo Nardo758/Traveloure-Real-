@@ -32,6 +32,13 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import {
+  ITEM_BOOKING_NOTES,
+  effectiveRoutingStatus,
+  isBookedActivity,
+  itemBookingAction,
+  itemBookingState,
+} from "@/lib/item-booking-state";
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { TripPlanTransition } from "@shared/trip-plan";
@@ -43,7 +50,7 @@ import {
   type PlanCardTransport,
   type RoutingStatus,
 } from "./plancard-types";
-import { ItemKindBadge, OriginBadge, RoutingActions, RoutingBadge } from "./ActivitiesSection";
+import { ItemBookingActionLink, ItemKindBadge, OriginBadge, RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { SlipSavedPlaces } from "./SlipSavedPlaces";
@@ -183,6 +190,13 @@ export interface SlipData extends PlanCardData {
    */
   aiSketch?: boolean;
   /**
+   * Ledger `2026-09-26-send-to-expert-needs-expert` (audit G2): an advisor in a §12 WRITE status
+   * (accepted/assigned) is on this plan — the SAME predicate the routing rail refuses "Send to
+   * expert" on. `false` ⇒ no "Send to expert" and no "with your expert" label. Absent on an older
+   * response ⇒ treated as not assigned (the server refuses the edge either way).
+   */
+  expertAssigned?: boolean;
+  /**
    * S6 (ledger `2026-09-06-slip-small-additions`) — the plan's ORDERED STOPS, migration 281 /
    * Locked Decision 34, exactly as the plancard route already ships them. Nothing new is requested
    * for this lane: the key was already on the wire with no reader on this surface.
@@ -227,8 +241,10 @@ const STATUS_SHORT: Record<string, string> = {
   purchased: "purchased",
 };
 
+/** R145: the ONE client reading of the booked state (`@/lib/item-booking-state`) — an ended
+ *  (refunded / cancelled) booking is never a purchased row, even when routing still says so. */
 function isPurchasedRow(a: PlanCardActivity): boolean {
-  return !!a.booking || a.routingStatus === "purchased";
+  return isBookedActivity(a);
 }
 
 function expertFirstName(data: SlipData): string | null {
@@ -529,8 +545,10 @@ function SlipStatusStrip({ activities }: { activities: PlanCardActivity[] }) {
     purchased: 0,
   };
   for (const a of activities) {
-    if (isPurchasedRow(a)) counts.purchased++;
-    else if (a.routingStatus) counts[a.routingStatus]++;
+    // R154: the ONE routing-bucket reading — a disputed booking is purchased (it is a real booking),
+    // a failed payment is back in checkout, and a not-booked link on a `purchased` item is nowhere.
+    const rs = effectiveRoutingStatus(a) as RoutingStatus | null;
+    if (rs && rs in counts) counts[rs]++;
   }
 
   const allSegments: Array<{ status: RoutingStatus; n: number; label: string }> = [
@@ -584,7 +602,12 @@ function ExpertNoteBlock({ note, expertName }: { note: string; expertName: strin
 
 // ── Item + logistics rows ──────────────────────────────────────────────────────────────
 
-function secondaryLine(a: PlanCardActivity, expertName: string | null): string | null {
+function secondaryLine(a: PlanCardActivity, expertName: string | null, expertAssigned: boolean): string | null {
+  // R145/R154: the ONE reading of the linked booking. "booked" is written for `booked` ALONE — a
+  // disputed booking is purchased for counts but reads "Under review", and every not-booked state
+  // says what happened (§13) — never "booked", never silence.
+  const bookingState = itemBookingState(a);
+  if (bookingState && bookingState !== "booked") return ITEM_BOOKING_NOTES[bookingState];
   if (isPurchasedRow(a)) {
     // "booked" + confirmation ref ONLY when a real ref exists (item's own confirmationNumber,
     // else the real booking row's short id) — no ref → just "booked", never a placeholder.
@@ -592,6 +615,8 @@ function secondaryLine(a: PlanCardActivity, expertName: string | null): string |
     return ref ? `booked · #${ref}` : "booked";
   }
   if (a.routingStatus === "with_expert") {
+    // Nobody is assigned: never "with your expert" (ledger `2026-09-26-send-to-expert-needs-expert`).
+    if (!expertAssigned) return "Not with an expert — none is assigned to this plan";
     // Render a name ONLY when the DTO actually carries one — never invented.
     return expertName ? `With ${expertName}` : "With your expert";
   }
@@ -609,6 +634,7 @@ function SlipItemRow({
   canEditItems,
   isExpertViewer,
   hasAdvisor,
+  expertAssigned,
   expertName,
   hasOptimized,
   highlighted,
@@ -629,6 +655,8 @@ function SlipItemRow({
    * query would be N requests for one fact about the plan.
    */
   hasAdvisor: boolean;
+  /** An advisor in a §12 WRITE status is on the plan (`SlipData.expertAssigned`). */
+  expertAssigned: boolean;
   expertName: string | null;
   hasOptimized: boolean;
   highlighted: boolean;
@@ -642,7 +670,7 @@ function SlipItemRow({
 }) {
   const a = activity;
   const purchased = isPurchasedRow(a);
-  const secondary = secondaryLine(a, expertName);
+  const secondary = secondaryLine(a, expertName, expertAssigned);
   // D16 — OWNER ONLY, and the money rules of the ratified `ItemRow` artboard: a paid row carries no
   // tools at all, a booked row keeps reorder and edit and loses ✕. Decided by the ONE shared
   // predicate the DELETE rail refuses on (`@shared/itinerary-item-money`), never a second copy.
@@ -678,6 +706,12 @@ function SlipItemRow({
             {a.location || null}
           </p>
           {secondary && <p className="text-xs text-muted-foreground mt-0.5">{secondary}</p>}
+          {/* R154: the owner's one action on a disputed (View booking) or failed (Try again) row. */}
+          {isOwner && itemBookingAction(a) && (
+            <div className="mt-1.5">
+              <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} />
+            </div>
+          )}
           {purchased && hasOptimized && (
             <p className="text-xs text-muted-foreground italic">fixed point — plan built around it</p>
           )}
@@ -725,6 +759,7 @@ function SlipItemRow({
                 routingStatus={a.routingStatus}
                 hasBooking={!!a.booking}
                 actor={isOwner ? "owner" : "expert"}
+                expertAssigned={expertAssigned}
               />
             </div>
           )}
@@ -758,7 +793,7 @@ function SlipItemRow({
             link columns on every render and stored nowhere, so it cannot drift from what checkout
             charges; unlike the other two it is total, so every item wears exactly one. */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <RoutingBadge activity={a} showPlanning />
+          <RoutingBadge activity={a} showPlanning expertAssigned={expertAssigned} />
           <ItemKindBadge activity={a} />
           <OriginBadge activity={a} />
         </div>
@@ -1879,6 +1914,7 @@ export function SlipView({
                       canEditItems={canEditItems}
                       isExpertViewer={isExpertViewer}
                       hasAdvisor={hasAdvisor}
+                      expertAssigned={data.expertAssigned === true}
                       expertName={expertName}
                       hasOptimized={hasOptimized}
                       highlighted={highlighted === a.id}

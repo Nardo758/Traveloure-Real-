@@ -116,10 +116,13 @@ describe("D-41 — the plan item's unit count (migration 298)", () => {
     // against a second author is §19's two layers (U1 above) and not this scan — green here means
     // green within these bounds.
     const payments = readStripped("server/routes/payments.routes.ts");
+    // Locked Decision 56 (ledger `2026-09-25-price-basis`): the booking row records the CART
+    // line's units through the ONE `resolveItemUnitCount` the charge multiplies by — still the
+    // CART row's `item`, never a plan item, which is the invariant this pin exists for.
     assert.match(
       payments,
-      /quantity:\s*item\.quantity\s*\|\|\s*1/,
-      "and the money path's own `item` — a CART line, not a plan item — is untouched by this lane",
+      /quantity:\s*resolveItemUnitCount\(item\)/,
+      "and the money path's own `item` — a CART line, not a plan item — is what the booking records",
     );
   });
 
@@ -173,8 +176,9 @@ describe("D-41 — the plan item's unit count (migration 298)", () => {
     const refused = resolveCartLineCounts({ productShape: "property" }, { quantity: 3 });
     assert.equal(refused.ok, false, "refused, never silently clamped to 1 (§13)");
 
-    // A seat-shaped listing derives units from the party, server-side (§14 on the multiplier).
-    const seats = resolveCartLineCounts({ deliveryMethod: "in_person" }, { partySize: 4, quantity: 99 });
+    // A per-person (Locked Decision 56) seat-shaped listing derives units from the party,
+    // server-side (§14 on the multiplier).
+    const seats = resolveCartLineCounts({ deliveryMethod: "in_person", priceBasis: "per_person" }, { partySize: 4, quantity: 99 });
     assert.equal(seats.ok, true);
     assert.equal(seats.ok && seats.quantity, 4, "derived from the party answer, not the body");
 
@@ -209,10 +213,13 @@ describe("D-41 — the plan item's unit count (migration 298)", () => {
         "removed none, and moved no multiplier onto the plan",
     );
     const unitCount = payments.slice(payments.indexOf("export function resolveItemUnitCount"));
+    // Locked Decision 56: the derivation reads the CART row's count through the ONE shared
+    // `cartLineUnitCount` (the row's own `quantity || 1` for every rule but a per-booking place
+    // service, which is one unit) — still the CART row's `item`, never the plan's column.
     assert.match(
       unitCount.slice(0, unitCount.indexOf("\n}")),
-      /return item\?\.quantity \|\| 1;/,
-      "and that derivation is the CART row's count, read exactly as it always was",
+      /return cartLineUnitCount\(item\?\.service \?\? null, item\?\.quantity\);/,
+      "and that derivation is the CART row's count, read through the one shared rule",
     );
     assert.doesNotMatch(
       payments,

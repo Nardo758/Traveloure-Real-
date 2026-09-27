@@ -1,4 +1,9 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { useSignInModal } from "@/contexts/SignInModalContext";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +20,8 @@ interface TransportOption {
   priceDisplay: string;
   priceCentsLow: number | null;
   currency: string;
-  externalUrl?: string;
+  /** §16: the list never carries the partner URL — only whether one exists (tracked click below). */
+  hasPartnerLink?: boolean;
   isExternal: boolean;
 }
 
@@ -53,6 +59,42 @@ export function DestinationTransfersSection({
   className = "",
   onAddToCart,
 }: DestinationTransfersSectionProps) {
+  const { user } = useAuth();
+  const { openSignInModal } = useSignInModal();
+  const { toast } = useToast();
+  const [openingId, setOpeningId] = useState<string | null>(null);
+
+  // §16 (ledger `2026-09-26-transfer-link-tracked`): a partner link is followed through the TRACKED
+  // server hop, which resolves the URL itself and records the click — never a raw `href` to a URL the
+  // client holds. The tab is opened synchronously on the click (so a popup blocker allows it) and
+  // pointed at the partner once the server answers; it is closed again if the hop is refused.
+  const openPartnerLink = async (option: TransportOption) => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    const tab = window.open("", "_blank");
+    if (tab) tab.opener = null;
+    setOpeningId(option.id);
+    try {
+      const res = await apiRequest("POST", "/api/transport-options/click", {
+        optionId: option.id,
+        destination,
+        ...(startDate ? { startDate } : {}),
+        ...(travelers ? { travelers } : {}),
+      });
+      const body = await res.json();
+      if (!body?.redirectUrl) throw new Error("no link");
+      if (tab) tab.location.href = body.redirectUrl;
+      else window.location.href = body.redirectUrl;
+    } catch {
+      tab?.close();
+      toast({ variant: "destructive", title: "Couldn't open this partner", description: "Please try again." });
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
   const { data, isLoading, error } = useQuery<TransportOption[]>({
     queryKey: ["/api/transport-options", destination, travelers, startDate],
     queryFn: async () => {
@@ -180,21 +222,17 @@ export function DestinationTransfersSection({
                     Add
                   </Button>
                 )}
-                {option.externalUrl && (
+                {option.hasPartnerLink && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    asChild
                     className="text-xs px-2"
+                    onClick={() => openPartnerLink(option)}
+                    disabled={openingId === option.id}
+                    aria-label={`Open ${SOURCE_LABELS[option.source] ?? option.source} in a new tab`}
+                    data-testid={`link-transfer-external-${option.id}`}
                   >
-                    <a
-                      href={option.externalUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      data-testid={`link-transfer-external-${option.id}`}
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
+                    <ExternalLink className="h-3 w-3" />
                   </Button>
                 )}
               </div>

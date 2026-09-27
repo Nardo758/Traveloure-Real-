@@ -106,11 +106,14 @@ function api(path: string, cookie: string | undefined, method = "GET", body?: un
   });
 }
 
-/** A listing owned by the fixture provider. `price` NULL is the custom-quote shape. */
+/** A listing owned by the fixture provider. `price` NULL is the custom-quote shape.
+ *  Declared `instant`: this suite proves the PRICE refusal, so the listing must otherwise be one a
+ *  cart can hold — an unset mode on a form-less owner resolves `request`, which is refused on its
+ *  own by ledger `2026-09-25-checkout-request-mode` (checkout-request-mode.http.test.ts). */
 async function makeService(id: string, price: string | null): Promise<void> {
   await db.execute(sql`
-    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, delivery_method)
-    VALUES (${id}, ${ids.provider}, ${`Cart priceless ${RUN}`}, 'fixture', ${price}, 'active', 'approved', 'in_person')
+    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, delivery_method, booking_mode)
+    VALUES (${id}, ${ids.provider}, ${`Cart priceless ${RUN}`}, 'fixture', ${price}, 'active', 'approved', 'in_person', 'instant')
   `);
 }
 

@@ -148,6 +148,28 @@ export async function resolveExpertSharePct(
 }
 
 /**
+ * Map a `service_categories.slug` to the fee category `booking_fee_configs` / `fee_bands` key on.
+ * Moved here verbatim from `payments.routes.ts` so every caller that PRICES A BOOKING asks the SAME
+ * question (§18 rule 1). `resolveServiceOwnerShareRate` itself is left unmapped on purpose: its
+ * listing-save caller stamps `revenueShareRate`, and a stamped snapshot outranks a later band edit
+ * on the legacy lane, so mapping there would freeze every expert listing at today's rate. Idempotent on its own output ("activities" → "activities",
+ * "default" → "default"), so a caller that already normalized can pass its value through safely.
+ * A raw slug such as `events-celebrations` names no band: handed to `resolveCommissionRates`
+ * unmapped it throws, and every caller that swallowed that throw minted a zero platform fee.
+ */
+export function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
+  if (!slug) return "default";
+  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
+  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
+  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
+  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
+  if (/flight|air|airline/.test(slug)) return "flights";
+  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
+  if (/insurance|safety|security/.test(slug)) return "insurance";
+  return "default";
+}
+
+/**
  * MI-1 (provider money-hardening lane, ruling 42) — server derivation of a provider service's
  * `revenueShareRate`, so that column can never again carry a client-supplied number.
  *

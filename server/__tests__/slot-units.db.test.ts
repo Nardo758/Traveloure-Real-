@@ -381,7 +381,10 @@ test("S7: the checkout claim passes the SAME expression resolveItemBaseAmount mu
   // ONE derivation exists, and it is what the MONEY reads.
   assert.match(
     routes,
-    /export function resolveItemUnitCount\(item: any\): number \{\s*return item\?\.quantity \|\| 1;\s*\}/,
+    // Locked Decision 56: the one derivation reads the CART line's count through the shared
+    // `cartLineUnitCount` (a per-booking place service is one unit, every other rule the row's own
+    // `quantity || 1`), so the charge, the claim and the cart's own review read ONE rule.
+    /export function resolveItemUnitCount\(item: any\): number \{\s*return cartLineUnitCount\(item\?\.service \?\? null, item\?\.quantity\);\s*\}/,
     "resolveItemUnitCount is the one derivation of a line's unit count",
   );
   assert.match(

@@ -121,13 +121,17 @@ async function seedSurchargeService(
     INSERT INTO provider_services
       (id, user_id, service_name, price, status, approval_status, delivery_method,
        latitude, longitude, location_precision, pickup_available, transport_provision,
-       service_radius, surcharge_mode, surcharge_flat_amount, surcharge_per_km, surcharge_max_km)
+       service_radius, surcharge_mode, surcharge_flat_amount, surcharge_per_km, surcharge_max_km,
+       booking_mode)
     VALUES
       (${id}, ${ownerId}, ${`TS ${label}`}, '100.00', 'active', 'approved', 'in_person',
        ${String(PIN.lat)}, ${String(PIN.lng)}, 'exact', true, 'pickup_available',
        ${cfg.serviceRadius ?? null}, ${cfg.surchargeMode},
-       ${cfg.surchargeFlatAmount ?? null}, ${cfg.surchargePerKm ?? null}, ${cfg.surchargeMaxKm ?? null})
+       ${cfg.surchargeFlatAmount ?? null}, ${cfg.surchargePerKm ?? null}, ${cfg.surchargeMaxKm ?? null},
+       'instant')
   `);
+  // ^ `instant` declared (ledger `2026-09-25-checkout-request-mode`): a request-mode line is refused
+  //   before the surcharge gate, and an unset mode on an owner with no instant flag is `request`.
   createdServiceIds.push(id);
   return id;
 }

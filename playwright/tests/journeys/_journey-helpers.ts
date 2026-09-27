@@ -246,9 +246,15 @@ export async function createItem(
 /** A real approved+active priced catalog service (so cart projection + fee band resolve). */
 export async function pickCatalogService(): Promise<{ id: string; price: string; name: string }> {
   const r = await rows<{ id: string; price: string; service_name: string }>(
+    // Instant-bookable only (ledger `2026-09-25-checkout-request-mode`): a listing the seller must
+    // accept first (resolved `request`/`hidden`, or a custom quote) is never projected into the cart.
     `SELECT id, price, service_name FROM provider_services
        WHERE approval_status='approved' AND status='active'
          AND price IS NOT NULL AND CAST(price AS FLOAT) > 0
+         AND COALESCE(price_type, 'fixed') <> 'custom_quote'
+         AND (booking_mode = 'instant' OR (booking_mode IS NULL AND EXISTS (
+           SELECT 1 FROM service_provider_forms f
+            WHERE f.user_id = provider_services.user_id AND f.instant_booking = true)))
        ORDER BY random() LIMIT 1`,
   );
   expect(r[0], "expected at least one approved+active priced provider_service in the DB").toBeTruthy();

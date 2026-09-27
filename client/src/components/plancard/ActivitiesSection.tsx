@@ -1,6 +1,19 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import {
+  BOOKING_DETAIL_PATH,
+  ITEM_BOOKING_ACTION_LABELS,
+  ITEM_BOOKING_NOTES,
+  ITEM_BOOKING_RETRY_TO_PLAN_LABEL,
+  PAYMENT_FAILED_PILL_LABEL,
+  effectiveRoutingStatus,
+  itemBookingAction,
+  itemBookingLabel,
+  itemBookingState,
+  retryGoesToPlan,
+} from "@/lib/item-booking-state";
+import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -23,6 +36,8 @@ import {
 } from "./plancard-temporal";
 import { BOOKED_TINT, ROUTING_TINTS, tintPillStyle } from "./slip-tokens";
 import { itemOriginChip } from "@/lib/item-origin";
+import { humanizeRouteError } from "@/lib/slip-plan-actions";
+import { useRouteRefusalToast } from "./use-route-refusal-toast";
 import { itemKindChipFor } from "@shared/item-kind";
 
 // ── W7 — per-item routing (Trip-Canon Lane 1, Phase 1d) ─────────────────────
@@ -57,11 +72,22 @@ const PILL_BASE =
 export function RoutingBadge({
   activity,
   showPlanning = false,
+  expertAssigned,
 }: {
   activity: PlanCardActivity;
   showPlanning?: boolean;
+  /**
+   * `false` ⇒ nobody is assigned to this plan, so a `with_expert` item wears NO "With your expert"
+   * pill (ledger `2026-09-26-send-to-expert-needs-expert`; audit G2). Undefined ⇒ the caller does
+   * not know, and the pill renders as before.
+   */
+  expertAssigned?: boolean;
 }) {
-  if (activity.booking) {
+  // R145/R154: the ONE reading of the linked booking (`@/lib/item-booking-state`, over the shared
+  // vocabulary in shared/booking-visibility.ts). "Booked" is drawn for `booked` ALONE — a disputed
+  // booking reads "Under review" (it counts as booked for money and counts, never for the word).
+  const bookingState = itemBookingState(activity);
+  if (bookingState === "booked") {
     return (
       <span
         className={PILL_BASE}
@@ -72,7 +98,45 @@ export function RoutingBadge({
       </span>
     );
   }
-  const status = activity.routingStatus;
+  if (bookingState === "under_review") {
+    // Gold (the attention tint the checkout pill already wears) — a dispute is NOT the green of done.
+    return (
+      <span
+        className={PILL_BASE}
+        style={tintPillStyle(ROUTING_TINTS.ready_for_checkout)}
+        data-testid={`badge-routing-under-review-${activity.id}`}
+      >
+        {itemBookingLabel("under_review")}
+      </span>
+    );
+  }
+  if (bookingState === "payment_failed") {
+    // The ruling: a failed payment puts the item back to "Ready to book" (the checkout tint).
+    return (
+      <span
+        className={PILL_BASE}
+        style={tintPillStyle(ROUTING_TINTS.ready_for_checkout)}
+        data-testid={`badge-routing-payment-failed-${activity.id}`}
+      >
+        <ShoppingCart className="w-3 h-3" /> {PAYMENT_FAILED_PILL_LABEL}
+      </span>
+    );
+  }
+  if (bookingState) {
+    // payment_processing / refunded / cancelled — disclosed, never read as booked, never hidden
+    // (§13). Neutral outline pill — theme classes, no tint.
+    return (
+      <span
+        className={`${PILL_BASE} border border-border text-muted-foreground bg-transparent`}
+        data-testid={`badge-routing-${bookingState.replace(/_/g, "-")}-${activity.id}`}
+      >
+        {itemBookingLabel(bookingState)}
+      </span>
+    );
+  }
+  // A not-booked linked booking whose item still says `purchased` (e.g. an expired claim) has NO
+  // routing bucket (§13) — `effectiveRoutingStatus` answers null and no pill is drawn.
+  const status = effectiveRoutingStatus(activity) as RoutingStatus | null;
   if (status == null) return null;
   if (status === "in_planning") {
     if (!showPlanning) return null;
@@ -86,6 +150,7 @@ export function RoutingBadge({
       </span>
     );
   }
+  if (status === "with_expert" && expertAssigned === false) return null;
   const tint = ROUTING_TINTS[status];
   const icon =
     status === "with_expert" ? (
@@ -104,6 +169,86 @@ export function RoutingBadge({
       data-testid={`badge-routing-${testKey}-${activity.id}`}
     >
       {icon} {tint.label}
+    </span>
+  );
+}
+
+/**
+ * THE BOOKING LINE'S ONE ACTION (R154, ledger `2026-09-27-booking-status-vocabulary`). Rendered for
+ * the plan's OWNER only — the traveler is the one who acts — and only for the two states the ruling
+ * gives an action: a DISPUTED booking gets a PROMINENT link to My Bookings, where the dispute lives
+ * (it reads "Under review", so the traveler must be able to reach it); a FAILED payment gets "Try
+ * again".
+ *
+ * "TRY AGAIN" RE-PROJECTS THE ITEM FIRST (R157, ledger `2026-09-27-retry-failed-payment`). After a
+ * failed payment the item still reads `purchased` and its cart line was cleared at authorization, so a
+ * bare link to checkout opened a checkout WITHOUT the item — a button promising what it could not do.
+ * It now asks the EXISTING routing rail for `ready_for_checkout` (`POST …/items/:itemId/route`, the one
+ * writer of that state and of its cart projection — no new add path, LD 39), and only on success opens
+ * the SAME checkout door the Finalize modal and the approval banner use (`BUY_NOW_CART_PATH`). The
+ * server decides from the booking row whether the payment really failed (§14); a refusal reads through
+ * the ONE routing-refusal toast. Nothing here charges.
+ */
+export function ItemBookingActionLink({
+  tripId,
+  activity,
+  showNote = true,
+}: {
+  /** The plan the item is on — the routing rail is addressed by it. */
+  tripId: string;
+  activity: PlanCardActivity;
+  /** The slip already prints the note as the row's secondary line; the PlanCard row does not. */
+  showNote?: boolean;
+}) {
+  const [, setLocation] = useLocation();
+  const { showRefusal } = useRouteRefusalToast(tripId);
+  // R157: a listing the checkout cannot hold (no published price, or the seller accepts first) is
+  // returned to the plan and the slip opens — never an empty checkout. The server decides (§14).
+  const toPlan = retryGoesToPlan(activity);
+  const retry = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", `/api/trips/${tripId}/items/${activity.id}/route`, { to: "ready_for_checkout" }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] }),
+      ]);
+      setLocation(toPlan ? `/plans/${tripId}` : BUY_NOW_CART_PATH);
+    },
+    onError: (err: unknown) => showRefusal(err, toPlan ? "Couldn't return this to your plan" : "Couldn't put this back in checkout"),
+  });
+
+  const action = itemBookingAction(activity);
+  if (!action) return null;
+  const state = itemBookingState(activity);
+  const actionClass =
+    "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border border-foreground/30 text-foreground hover:bg-muted disabled:opacity-60";
+  return (
+    <span className="inline-flex items-center gap-1.5 flex-wrap">
+      {showNote && state && ITEM_BOOKING_NOTES[state] && (
+        <span className="text-[11px] text-muted-foreground" data-testid={`text-item-booking-note-${activity.id}`}>
+          {ITEM_BOOKING_NOTES[state]}
+        </span>
+      )}
+      {action === "open_booking" ? (
+        <Link
+          href={BOOKING_DETAIL_PATH}
+          className={actionClass}
+          data-testid={`link-item-booking-view-booking-${activity.id}`}
+        >
+          {ITEM_BOOKING_ACTION_LABELS[action]}
+        </Link>
+      ) : (
+        <button
+          type="button"
+          className={actionClass}
+          disabled={retry.isPending}
+          onClick={() => retry.mutate()}
+          data-testid={`button-item-booking-try-again-${activity.id}`}
+        >
+          {toPlan ? ITEM_BOOKING_RETRY_TO_PLAN_LABEL : ITEM_BOOKING_ACTION_LABELS[action]}
+        </button>
+      )}
     </span>
   );
 }
@@ -238,14 +383,23 @@ export function RoutingActions({
   routingStatus,
   hasBooking,
   actor,
+  expertAssigned = false,
 }: {
   tripId: string;
   itemId: string;
   routingStatus: RoutingStatus | undefined;
   hasBooking: boolean;
   actor: "owner" | "expert";
+  /**
+   * An advisor in a §12 WRITE status is on the plan. `false` (the default) ⇒ "Send to expert" is
+   * not offered — the server refuses it (`no_expert_assigned`), and the traveler gets an expert
+   * through the rail's "Hand off to a local expert" first (ledger
+   * `2026-09-26-send-to-expert-needs-expert`).
+   */
+  expertAssigned?: boolean;
 }) {
   const { toast } = useToast();
+  const { showRefusal } = useRouteRefusalToast(tripId);
 
   const mutation = useMutation({
     mutationFn: async (to: RoutingStatus) =>
@@ -256,12 +410,17 @@ export function RoutingActions({
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
     },
-    onError: (err: any) => {
-      toast({
-        title: "Couldn't update item",
-        description: err?.message || "Please try again",
-        variant: "destructive",
-      });
+    onError: (err: unknown) => {
+      // Ledger `2026-09-26-finalized-checkout-messages`: the server's named refusal reads as itself
+      // (it showed the raw `409: {json}` before), with "Reopen plan" on a finalized plan — offered
+      // on the OWNER's rows only; the expert's one edge is never refused for finalization.
+      if (actor === "owner") showRefusal(err, "Couldn't update item");
+      else
+        toast({
+          title: "Couldn't update item",
+          description: humanizeRouteError(err),
+          variant: "destructive",
+        });
     },
   });
 
@@ -291,7 +450,7 @@ export function RoutingActions({
     return (
       <RoutingActionButton
         icon={Undo2}
-        label="Recall from expert"
+        label={expertAssigned ? "Recall from expert" : "Back to planning"}
         busy={busy}
         onClick={() => mutation.mutate("in_planning")}
         testId={`button-route-recall-${itemId}`}
@@ -325,13 +484,15 @@ export function RoutingActions({
   // in_planning — the born/default/returned state.
   return (
     <>
-      <RoutingActionButton
-        icon={Users}
-        label="Send to expert"
-        busy={busy}
-        onClick={() => mutation.mutate("with_expert")}
-        testId={`button-route-send-expert-${itemId}`}
-      />
+      {expertAssigned && (
+        <RoutingActionButton
+          icon={Users}
+          label="Send to expert"
+          busy={busy}
+          onClick={() => mutation.mutate("with_expert")}
+          testId={`button-route-send-expert-${itemId}`}
+        />
+      )}
       <RoutingActionButton
         icon={ShoppingCart}
         label="Add to checkout"
@@ -366,6 +527,10 @@ interface ActivitiesSectionProps {
    * header). Never combined with owner actions on the same render — `isOwner` takes precedence.
    */
   isExpertViewer?: boolean;
+  /** The Trip Card's read-out mode (Locked Decision 42 D8): no routing action renders at all. */
+  routingReadOnly?: boolean;
+  /** The plancard's `expertAssigned` (ledger `2026-09-26-send-to-expert-needs-expert`). */
+  expertAssigned?: boolean;
 }
 
 interface ConnectorProps {
@@ -531,6 +696,8 @@ export function ActivitiesSection({
   timezone = null,
   isOwner = false,
   isExpertViewer = false,
+  routingReadOnly = false,
+  expertAssigned,
 }: ActivitiesSectionProps) {
   const [visited, toggleVisited] = useVisitedActivities(tripId, day);
   const now = useLiveNow();
@@ -815,15 +982,21 @@ export function ActivitiesSection({
                       independently decide whether they have anything to show; the row itself
                       renders only when at least one of them does (no empty row, §13). */}
                   {(() => {
+                    const bookingAction = isOwner ? itemBookingAction(a) : null;
                     const hasBadge =
-                      !!a.booking || a.routingStatus === "with_expert" || a.routingStatus === "ready_for_checkout";
+                      !!a.booking ||
+                      itemBookingState(a) != null ||
+                      a.routingStatus === "with_expert" ||
+                      a.routingStatus === "ready_for_checkout";
                     const hasActions =
+                      !routingReadOnly &&
                       (isOwner || isExpertViewer) && a.routingStatus != null && !a.booking && a.routingStatus !== "purchased";
-                    if (!hasBadge && !hasActions) return null;
+                    if (!hasBadge && !hasActions && !bookingAction) return null;
                     return (
                       <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`routing-row-${a.id}`}>
-                        <RoutingBadge activity={a} />
+                        <RoutingBadge activity={a} expertAssigned={expertAssigned} />
                         <ItemKindBadge activity={a} />
+                        {bookingAction && <ItemBookingActionLink tripId={tripId} activity={a} />}
                         {hasActions && (
                           <RoutingActions
                             tripId={tripId}
@@ -831,6 +1004,7 @@ export function ActivitiesSection({
                             routingStatus={a.routingStatus}
                             hasBooking={!!a.booking}
                             actor={isOwner ? "owner" : "expert"}
+                            expertAssigned={expertAssigned === true}
                           />
                         )}
                       </div>

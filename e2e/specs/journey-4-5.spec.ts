@@ -80,6 +80,11 @@ const EXPERT_CASE: SellerCase = {
     deliveryMethod: "call",
     location: "Kyoto",
     status: "active",
+    // The seller's own per-listing choice (the Catalog "Card shows" toggle): this journey checks
+    // the listing out, and a listing that resolves to `request` is never a cart line (ledger
+    // `2026-09-25-checkout-request-mode`). An expert has no provider form, so an unset mode is
+    // always `request`.
+    bookingMode: "instant",
   },
 };
 
@@ -101,6 +106,9 @@ const PROVIDER_CASE: SellerCase = {
     // The seller's own statement for an in-person listing (the SS-5a publish gate). The platform
     // does not verify it; the seller makes it when they publish, exactly as the wizard asks.
     affirmAttestations: ["in_person_safety_basics"],
+    // Declared instant for the same reason as the expert case (ledger
+    // `2026-09-25-checkout-request-mode`): the persona provider's account flag is unset.
+    bookingMode: "instant",
   },
 };
 

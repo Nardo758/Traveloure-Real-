@@ -65,8 +65,9 @@ import {
 import { db } from "../db";
 import { storage } from "../storage";
 import { quoteExpiresAt, resolveQuoteValidityDays } from "../config/quote-validity.config";
-import { buildListingBuyAction } from "./buy-action-payload";
-import { resolveServiceOwnerShareRate } from "./commission";
+import { buildListingBuyAction, listingBuyFacts } from "./buy-action-payload";
+import { resolveServiceOwnerShareRate, serviceCategorySlugToFeeCategory } from "./commission";
+import { pickOwnerShareRate, resolveDirectProviderRate } from "./direct-charge-rate.service";
 import { resolveDepositPlan } from "./deposit.service";
 import { resolveQuotePlanLink } from "./quote-plan-link.service";
 import { syncItemProjection } from "./cart-projection.service";
@@ -95,7 +96,10 @@ export type QuoteRefusalCode =
   | "lost_race"
   // Ledger `2026-09-19-quote-plan-link`: `resolveQuotePlanLink`'s two refusals.
   | "trip_not_found"
-  | "item_not_on_plan";
+  | "item_not_on_plan"
+  // The owner's share could not be resolved from fee_bands: the accept is rolled back rather than
+  // minting a booking with an invented zero platform fee.
+  | "rate_unavailable";
 
 export interface QuoteRefusal {
   ok: false;
@@ -121,6 +125,45 @@ const refuse = (
  * neither rail can be used to probe which quotes exist.
  */
 const NOT_FOUND = () => refuse(404, "not_found", "Quote not found.");
+
+/**
+ * Thrown INSIDE the accept transaction to roll back the claim (the quote stays `quoted`), then
+ * turned back into an ordinary refusal outside it. Returning a refusal from inside the callback
+ * would COMMIT the claim and leave an accepted quote with no booking behind it.
+ */
+class QuoteAcceptRefusal extends Error {
+  constructor(readonly status: number, readonly code: QuoteRefusalCode, message: string) {
+    super(message);
+  }
+}
+
+/**
+ * The owner's share of a quoted amount, by the SAME precedence `/api/checkout` applies to a cart
+ * line (`pickOwnerShareRate`): the provider category band first, else the legacy resolver with the
+ * slug mapped to its fee category. `null` = no rate could be resolved (the caller refuses).
+ */
+export async function resolveQuoteOwnerShareRate(opts: {
+  serviceId: string;
+  ownerUserId: string | null;
+  ownerRole: string | null;
+  categoryId: string | null;
+  categorySlug: string | null;
+}): Promise<number | null> {
+  const direct = await resolveDirectProviderRate({
+    serviceOwnerUserId: opts.ownerUserId,
+    ownerRole: opts.ownerRole,
+    categoryId: opts.categoryId,
+    serviceId: opts.serviceId,
+  });
+  const legacy = await resolveServiceOwnerShareRate({
+    ownerUserId: opts.ownerUserId,
+    ownerIsProvider: isProviderRole(opts.ownerRole),
+    feeCategory: serviceCategorySlugToFeeCategory(opts.categorySlug),
+  });
+  if (!(direct.resolved && direct.rate) && legacy === null) return null;
+  const { shareRate } = pickOwnerShareRate({ direct, legacyShareRate: legacy ?? Number.NaN });
+  return Number.isFinite(shareRate) && shareRate >= 0 && shareRate <= 1 ? shareRate : null;
+}
 
 // ─── Projection ───────────────────────────────────────────────────────────────────────────────
 
@@ -379,6 +422,11 @@ export async function requestQuote(input: {
       productShape: (service as { productShape?: string | null }).productShape ?? null,
       price: service.price ?? null,
       isLive: true,
+      // Ledger `2026-09-25-provider-action-buttons`: a `custom_quote` listing now resolves to
+      // `request_quote` on `booking_request` even when it also shows a price, so this rail must
+      // pass the same facts every other caller does or it would refuse the very listings the
+      // button now sends here.
+      ...listingBuyFacts(service as any),
     },
     { principal: "member", plans: "none" },
   );
@@ -741,16 +789,33 @@ export async function acceptQuote(input: {
     const totalAmount = centsToAmount(quote.amountCents);
     const amountNum = quote.amountCents / 100;
     const owner = service.userId ? await storage.getUser(service.userId) : undefined;
-    // §8/ruling 42: the split comes from fee_bands through the one existing resolver — the SAME call
-    // `POST /api/bookings` makes. A null resolution leaves the derived columns at their DB defaults
-    // rather than inventing a rate.
-    const ownerShareRate = await resolveServiceOwnerShareRate({
+    // §8/ruling 42: the split comes from fee_bands through the SAME precedence `/api/checkout`
+    // applies to a cart line (`pickOwnerShareRate`, direct-charge-rate.service.ts): a provider
+    // owner's category band first (`resolveDirectProviderRate`, the one D1 resolver), else the
+    // legacy `resolveServiceOwnerShareRate`, which maps the category slug to its fee category the
+    // way checkout does (`serviceCategorySlugToFeeCategory`). Rails do not apply — a quote is never
+    // partner-attributed. Before this, the RAW slug was passed, named no band, threw inside the
+    // resolver, was swallowed to `null`, and the row was minted with `platform_fee` at its DB
+    // default of 0 — the quote charge and the completion mint then read that 0 (the platform took
+    // nothing). A split that still cannot be resolved REFUSES the accept (the claim rolls back, the
+    // quote stays `quoted`) rather than minting a booking whose platform fee is an invented zero.
+    const categorySlug = service.categoryId
+      ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
+      : null;
+    const ownerShareRate = await resolveQuoteOwnerShareRate({
+      serviceId: service.id,
       ownerUserId: service.userId ?? null,
-      ownerIsProvider: isProviderRole(owner?.role),
-      feeCategory: service.categoryId
-        ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
-        : null,
+      ownerRole: owner?.role ?? null,
+      categoryId: service.categoryId ?? null,
+      categorySlug,
     });
+    if (ownerShareRate === null) {
+      logger.error(
+        { quoteId: quote.id, serviceId: service.id, categorySlug },
+        "[service-quotes] owner share rate unresolvable — accept refused, nothing minted",
+      );
+      throw new QuoteAcceptRefusal(503, "rate_unavailable", "This quote cannot be accepted right now. Please try again shortly.");
+    }
     // The listing's deposit config, UNCHANGED, fed the quoted amount as the line total (brief §3).
     // `null` (deposits off, or a deposit that would be the whole quote) ⇒ full charge, columns NULL.
     const depositPlan = resolveDepositPlan(
@@ -773,12 +838,8 @@ export async function acceptQuote(input: {
       // (payments.routes.ts:1976). A plain column, never a SERVER_AUTHORED_BOOKING_DETAIL_KEY, so
       // it rides this writer untouched — unlike `bookingDetails.itineraryItemId` below.
       ...(quote.tripId ? { tripId: quote.tripId } : {}),
-      ...(ownerShareRate !== null
-        ? {
-            platformFee: (amountNum * (1 - ownerShareRate)).toFixed(2),
-            providerEarnings: (amountNum * ownerShareRate).toFixed(2),
-          }
-        : {}),
+      platformFee: (amountNum * (1 - ownerShareRate)).toFixed(2),
+      providerEarnings: (amountNum * ownerShareRate).toFixed(2),
       ...(depositPlan
         ? {
             depositAmount: depositPlan.depositAmount.toFixed(2),
@@ -838,6 +899,9 @@ export async function acceptQuote(input: {
       .where(eq(serviceQuotes.id, quote.id))
       .returning();
     return { ok: true, minted: true, bookingId: booking.id, quote: presentQuote(stamped, serviceName, now) };
+  }).catch((err: unknown): QuoteRefusal => {
+    if (err instanceof QuoteAcceptRefusal) return refuse(err.status, err.code, err.message);
+    throw err;
   });
 
   // Ledger `2026-09-19-quote-plan-link`: the cart's derived view, reconciled AFTER commit — best

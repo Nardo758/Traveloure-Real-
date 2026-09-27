@@ -53,7 +53,10 @@ import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 // V-11's predicate, the ONE translation of `provider_services.price` into the `hasPrice` fact
 // `resolveBuyAction` decides on (ledger `2026-09-13-cart-priceless-gap`, s18 rule 1).
-import { hasPublishedPrice } from "./buy-action-payload";
+import { checkoutProjectionRefusals, hasPublishedPrice } from "./buy-action-payload";
+// Locked Decision 56: the ONE reading of how many units a stored cart line holds (§18 rule 1).
+import { cartLineUnitCount } from "@shared/cart-quantity";
+import { normalizeCartContentCoordinates } from "@shared/cart-content-line";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 1 — the funnel. Thin passthroughs, behavior-identical by construction.
@@ -82,9 +85,17 @@ export async function removeFromCart(id: string): Promise<void> {
   return storage.removeFromCart(id);
 }
 
-/** DELETE /api/cart and the post-booking clear in /api/checkout. Passthrough. */
+/** DELETE /api/cart — the traveler's own "Clear cart". Empties everything. Passthrough. */
 export async function clearCart(userId: string, experienceSlug?: string): Promise<void> {
   return storage.clearCart(userId, experienceSlug);
+}
+
+/**
+ * The post-payment clear in /api/checkout (ledger `2026-09-26-checkout-keeps-partner-lines`): every
+ * checked-out line goes, an unlinked partner content line stays (`survivesCheckoutClear`). Passthrough.
+ */
+export async function clearCheckedOutCartLines(userId: string): Promise<void> {
+  return storage.clearCheckedOutCartLines(userId);
 }
 
 /**
@@ -171,7 +182,16 @@ export type ProjectionSyncResult =
       // listing the platform cannot price, so the CHECKOUT projection declines to hold it. It is
       // a reason, not a failure — the caller reports it and the item's own routing state is
       // untouched (s13: the traveler is told why, never silently given an empty cart).
-      reason: "item_missing" | "no_owner" | "not_projected" | "no_published_price";
+      // `listing_requires_request` / `listing_not_bookable` added by ledger
+      // `2026-09-25-checkout-request-mode`: the listing's seller must accept first, so the
+      // checkout view does not hold it.
+      reason:
+        | "item_missing"
+        | "no_owner"
+        | "not_projected"
+        | "no_published_price"
+        | "listing_requires_request"
+        | "listing_not_bookable";
     };
 
 /** contentType marker for a projected item that has no `providerServiceId`. */
@@ -270,6 +290,10 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
         // Ledger `2026-09-13-cart-priceless-gap`: read on the SAME single-row query that was
         // already being run for the pricing unit — no extra round trip.
         price: providerServices.price,
+        // Ledger `2026-09-25-checkout-request-mode`: the commitment facts, on the same read.
+        userId: providerServices.userId,
+        priceType: providerServices.priceType,
+        bookingMode: providerServices.bookingMode,
       })
       .from(providerServices)
       .where(eq(providerServices.id, item.providerServiceId))
@@ -286,9 +310,22 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
     // second author of a plan-state rule nobody has ratified. So the item keeps its status, the
     // projection holds nothing it cannot price, any stale projection row is removed, and the
     // reason travels back on the result the route already returns (s13: said out loud).
-    if (svc && !hasPublishedPrice(svc.price)) {
-      await deleteProjectionFor(itemId);
-      return { action: "noop", reason: "no_published_price" };
+    // -- NOR IS A LISTING THE SELLER MUST ACCEPT (ledger `2026-09-25-checkout-request-mode`) -----
+    // Same posture, same placement, for the same reason: a `request`-mode, `hidden` or
+    // `custom_quote` listing is refused at checkout, so the checkout VIEW does not hold it. The
+    // item stays on the plan with its routing untouched, and the reason travels back (s13). ONE
+    // predicate with the add rails and checkout (s18 rule 1) — both checks now live in
+    // `checkoutProjectionRefusals` below, which the plancard's R157 "Try again" label reads too.
+    if (svc) {
+      const refusal = (
+        await checkoutProjectionRefusals([
+          { id: item.providerServiceId, userId: svc.userId, price: svc.price, priceType: svc.priceType, bookingMode: svc.bookingMode },
+        ])
+      ).get(item.providerServiceId);
+      if (refusal) {
+        await deleteProjectionFor(itemId);
+        return { action: "noop", reason: refusal };
+      }
     }
     if (svc?.pricingUnit === "per_night") {
       stayMeta = stayContentMeta(item.checkIn, item.checkOut);
@@ -536,6 +573,12 @@ type CartLineSubject =
         latitude: string | null;
         longitude: string | null;
         pricingUnit: string | null;
+        // D-14 / Locked Decision 56 archetype facts, read ONLY to count the line's units through
+        // `cartLineUnitCount` — never copied onto the item.
+        productShape: string | null;
+        deliveryMethod: string | null;
+        priceBasis: string | null;
+        priceType: string | null;
       };
     }
   | {
@@ -613,6 +656,10 @@ async function resolveCartLineSubject(
         latitude: providerServices.latitude,
         longitude: providerServices.longitude,
         pricingUnit: providerServices.pricingUnit,
+        productShape: providerServices.productShape,
+        deliveryMethod: providerServices.deliveryMethod,
+        priceBasis: providerServices.priceBasis,
+        priceType: providerServices.priceType,
         price: providerServices.price,
       })
       .from(providerServices)
@@ -671,7 +718,15 @@ function buildPlanItemValues(args: {
   // indistinguishable from an old one for no gain, since NULL ALREADY MEANS ONE UNIT and every
   // reader — `syncItemProjection` above included — resolves it that way. So the count is carried
   // only where it is a real, above-one answer, and the round trip is faithful either way.
-  const lineUnits = Number.isFinite(line.quantity as number) ? Math.floor(line.quantity as number) : null;
+  //
+  // Locked Decision 56: a SERVICE line's count is read through the ONE `cartLineUnitCount` the
+  // checkout charges by, so a per-booking place service admitted under the old seat rule (quantity
+  // = party size) is carried as the ONE unit it is charged for, never as a stale seat count.
+  const storedUnits = Number.isFinite(line.quantity as number) ? Math.floor(line.quantity as number) : null;
+  const lineUnits =
+    subject.kind === "service" && storedUnits !== null
+      ? cartLineUnitCount(subject.service, storedUnits)
+      : storedUnits;
   const carriedQuantity = lineUnits !== null && lineUnits > 1 ? { quantity: lineUnits } : {};
 
   const common = {
@@ -750,6 +805,12 @@ function buildPlanItemValues(args: {
   // allowlists content meta to strings and REFUSES a price (s14), so only legacy rows carry one.
   const rawPrice = meta.price != null ? String(meta.price).replace(/[^0-9.]/g, "") : "";
   const estimatedCost = rawPrice && parseFloat(rawPrice) > 0 ? rawPrice : null;
+  // The partner pick's OWN coordinate pair, when the envelope carries a valid one (ledger
+  // `2026-09-26-partner-picks-map-coords`), read through the ONE rule the cart's admission used
+  // (§18 rule 1). A half or invalid pair yields nothing and the item stays unlocated — never a
+  // city centre, never a geocode (§13 / LD 22). Carried ONLY when present, so an envelope without
+  // one composes byte-for-byte the item it always did.
+  const coords = normalizeCartContentCoordinates(meta.lat, meta.lng);
   return {
     ...common,
     title: name,
@@ -759,6 +820,7 @@ function buildPlanItemValues(args: {
     contentId: subject.contentId,
     locationName: city,
     ...(estimatedCost ? { estimatedCost } : {}),
+    ...(coords ? { latitude: coords.lat, longitude: coords.lng } : {}),
   };
 }
 

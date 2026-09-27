@@ -7,6 +7,7 @@ import { UserMenu } from "@/components/user-menu";
 import { LanguageMenu } from "@/components/language-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { HandleClaimBanner } from "@/components/backoffice/handle-claim-banner";
+import { BookingModeBanner } from "@/components/backoffice/booking-mode-banner";
 
 /**
  * BackofficeShell — the single console shell shared by the provider and expert
@@ -147,6 +148,10 @@ export function BackofficeShell({
               at all for a non-earner, for an earner who has already claimed one, and for an auth
               query that has not answered (see `shouldPromptHandleClaim`). */}
           <HandleClaimBanner />
+          {/* Ledger `2026-09-25-seller-booking-mode-prompt`: "Choose how travelers book your
+              listings" — mounted once here, beside the handle prompt, for both earner consoles.
+              Renders nothing unless the seller has a live listing whose mode nobody chose. */}
+          <BookingModeBanner />
           <main className="flex-1 overflow-auto">{children}</main>
         </div>
       </div>

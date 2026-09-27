@@ -134,9 +134,15 @@ test.describe("J2 — AI Entry → catalog checkout (matrix-id: J2)", () => {
 
     // Two distinct approved+active priced services (checkout ONE of them, per brief).
     const services = await q<{ id: string; price: string; service_name: string }>(
+      // Instant-bookable only (ledger `2026-09-25-checkout-request-mode`) — one of these is
+      // checked out, and a request-mode or custom-quote listing is never a cart line.
       `SELECT id, price, service_name FROM provider_services
        WHERE approval_status='approved' AND status='active'
          AND price IS NOT NULL AND CAST(price AS FLOAT) > 0
+         AND COALESCE(price_type, 'fixed') <> 'custom_quote'
+         AND (booking_mode = 'instant' OR (booking_mode IS NULL AND EXISTS (
+           SELECT 1 FROM service_provider_forms f
+            WHERE f.user_id = provider_services.user_id AND f.instant_booking = true)))
        ORDER BY random() LIMIT 2`,
     );
     expect(services.length, "expected at least 2 approved+active priced provider_services").toBeGreaterThanOrEqual(2);

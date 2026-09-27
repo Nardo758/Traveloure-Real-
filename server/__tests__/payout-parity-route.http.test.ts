@@ -130,9 +130,11 @@ async function makeService(
 ): Promise<string> {
   const id = `ppr-${RUN}-svc-${crypto.randomUUID().slice(0, 6)}`;
   await db.execute(sql`
-    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, revenue_share_rate, expert_offering_type_key)
-    VALUES (${id}, ${ownerId}, ${`Payout parity route service ${RUN}`}, 'fixture', ${price}, 'active', 'approved', ${revenueShareRate ?? null}, ${expertOfferingTypeKey ?? null})
+    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, revenue_share_rate, expert_offering_type_key, booking_mode)
+    VALUES (${id}, ${ownerId}, ${`Payout parity route service ${RUN}`}, 'fixture', ${price}, 'active', 'approved', ${revenueShareRate ?? null}, ${expertOfferingTypeKey ?? null}, 'instant')
   `);
+  // ^ `instant` declared: ledger `2026-09-25-checkout-request-mode` refuses a request-mode line at
+  //   checkout, and an unset mode on a form-less owner resolves `request`.
   createdServiceIds.push(id);
   return id;
 }

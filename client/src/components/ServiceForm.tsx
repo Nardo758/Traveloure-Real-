@@ -45,6 +45,7 @@ import { isPlaceAnchored, needsScheduling, SESSION_END_METHODS } from "@shared/s
 // lane list — this module is the one the PATCH handler itself imports (§18 rule 1: delegates,
 // never re-implements). Do not restate these lists inline.
 import { IDENTITY_EDIT_LANE, SAFE_EDIT_LANE_LABELS } from "@shared/edit-split";
+import { asksPriceBasis, effectivePriceBasis, type PriceBasis } from "@shared/price-basis";
 // Migration 292 (ledger `2026-09-12-listing-names-its-expert-offering`): the ONE impact-class
 // lookup, read so the offering picker can SHOW the precedence it already rules rather than the
 // form restating it (§18 rule 1).
@@ -279,6 +280,10 @@ interface ServiceFormData {
   // Locked Decision 54: the listing's price unit as stored ("" = flat). The form offers only
   // "per_day" (Text a Local) on a messaging listing; any other stored value round-trips untouched.
   pricingUnit: string;
+  // Locked Decision 56 (migration 325): is an in-person/hybrid price for the WHOLE BOOKING or PER
+  // PERSON? Hydrated through the ONE `effectivePriceBasis` reading, so a never-stated listing shows
+  // what the cart already charges it as (per booking) and a "per person" price type shows per person.
+  priceBasis: PriceBasis;
   // Booking terms
   cancellationPolicy: string;
   // X1 (§13): structured policy TYPE — see CANCELLATION_POLICY_TYPE_OPTIONS. "" = not declared.
@@ -424,6 +429,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     responseWindowHours: "",
     scopeStatement: "",
     pricingUnit: "",
+    priceBasis: "per_booking",
     depositEnabled: false,
     depositType: "",
     depositPercentage: "",
@@ -516,6 +522,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     responseWindowHours: s.responseWindowHours == null ? "" : String(s.responseWindowHours),
     scopeStatement: s.scopeStatement || "",
     pricingUnit: (s as any).pricingUnit || "",
+    priceBasis: effectivePriceBasis((s as any).priceBasis, s.priceType),
     depositEnabled: !!s.depositEnabled,
     depositType: ((s.depositType as any) === "percentage" || (s.depositType as any) === "flat") ? (s.depositType as any) : "",
     depositPercentage: s.depositPercentage == null ? "" : String(s.depositPercentage),
@@ -577,6 +584,20 @@ const templateArrayToStrings = (v: unknown): string[] =>
 // value/option, so fromCanonicalDelivery ∘ toCanonicalDelivery is the identity on
 // all 7 and a no-change save always sends back exactly what was loaded.
 type UiDelivery = ServiceFormData["deliveryMethod"];
+/**
+ * Locked Decision 56: which basis a SAVE writes. The price-type select already answers it for two
+ * models — "per person" IS per person, and "per event (flat fee)" is by definition one booking — so
+ * the provider's explicit choice is asked (and read) only for a flat or starting-at price. Every
+ * other model (hourly, package tiers, custom quote) bills ONE unit per booking under this ruling.
+ */
+function priceBasisAsked(priceType: string): boolean {
+  return priceType === "Fixed" || priceType === "Range";
+}
+function priceBasisForSave(priceType: string, chosen: PriceBasis): PriceBasis {
+  if (priceType === "Per-person") return "per_person";
+  return priceBasisAsked(priceType) ? chosen : "per_booking";
+}
+
 const toCanonicalDelivery = (v: string): string =>
   v === "in-person" ? "in_person" : v === "video-call" ? "video" : v; // hybrid, pdf, call, voice_notes, async_messaging + already-canonical pass through
 const fromCanonicalDelivery = (v: string | null | undefined): UiDelivery =>
@@ -1544,6 +1565,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           : formData.pricingUnit === "per_day"
             ? { pricingUnit: null }
             : {}),
+        // Locked Decision 56: an in-person/hybrid listing says whether its price is per person or
+        // for the whole booking — ONE value from ONE rule (`priceBasisForSave`). Any other method
+        // omits the key, so a save never touches a basis it does not ask about.
+        ...(asksPriceBasis(toCanonicalDelivery(formData.deliveryMethod))
+          ? { priceBasis: priceBasisForSave(formData.priceType, formData.priceBasis) }
+          : {}),
         cancellationPolicy: formData.cancellationPolicy || null,
         cancellationPolicyType: formData.cancellationPolicyType || null,
         // Deposits (Lane 7, ruling 72): provider opt-in. When off, everything is cleared to null so
@@ -3497,6 +3524,32 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   </SelectContent>
                 </Select>
               </div>
+              {/* Locked Decision 56: a place service's flat price is for the WHOLE BOOKING unless the
+                  provider says it is per person — the cart multiplies a per-person price by the
+                  party size and never multiplies a per-booking one. Default: per booking. */}
+              {asksPriceBasis(toCanonicalDelivery(formData.deliveryMethod)) && priceBasisAsked(formData.priceType) && (
+                <div className="mt-3" data-testid="field-price-basis">
+                  <Label className="text-sm">This price is for</Label>
+                  <ToggleGroup
+                    type="single"
+                    value={formData.priceBasis}
+                    onValueChange={(v) => { if (v === "per_booking" || v === "per_person") set("priceBasis", v); }}
+                    className="mt-2 justify-start"
+                  >
+                    <ToggleGroupItem value="per_booking" data-testid="toggle-price-basis-per-booking">
+                      the whole booking
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="per_person" data-testid="toggle-price-basis-per-person">
+                      each person
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                  <p className="mt-1 text-xs text-muted-foreground" data-testid="text-price-basis-note">
+                    {formData.priceBasis === "per_person"
+                      ? "Travelers pay this price for each person in their party."
+                      : "Travelers pay this price once, however many people are in their party."}
+                  </p>
+                </div>
+              )}
               {/* LD 49: a custom-quote listing's price authority is the quote it issues per
                   request, never a number on the listing — so no price input renders here at all
                   (§13: showing one would claim a price nobody set). */}
