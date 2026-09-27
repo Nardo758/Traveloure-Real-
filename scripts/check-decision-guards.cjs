@@ -21,9 +21,11 @@
  *   (c) no cited R-number reuses a FROZEN numeric row id (the 1–122 series, ruling 25 —
  *       "never reused"). The frozen set is read from the ledger's own numeric rows.
  *   NEGATIVE SPACE: a lane-LOCAL R series that predates the global numbering (the partner-demand
- *   lane's R1–R38) is not a global R-id; its rows are exempted BY NAME in
- *   LANE_LOCAL_R_SERIES_ROWS and printed on every run (§18d — an exemption is never silent). An
- *   R-number mentioned in prose (not as the row's opening heading) is not checked.
+ *   lane's R1–R38) is not a global R-id; its rows are exempted BY NAME in the ledger's own
+ *   `## Lane-local R numbering` section. The lint is silent while that list matches the ledger and
+ *   FAILS when it goes stale (a listed row gone or no longer R-headed), so any change to the
+ *   exemptions shows up as a reviewed diff, never as per-run noise. An R-number mentioned in prose
+ *   (not as the row's opening heading) is not checked.
  *
  * Node built-ins only — no npm ci needed. Self-test: --self-test
  */
@@ -118,29 +120,26 @@ function parseLedger(text) {
 }
 
 /**
- * Rows whose opening `**R<n> —` heading belongs to a LANE-LOCAL series that predates the global
- * R numbering. They are exempt from rule (a) by name and printed on every run.
+ * The lane-local R rows, read from the ledger's own `## Lane-local R numbering` section — the list
+ * lives in the ledger, beside the rows it names, not in this script.
  */
-const LANE_LOCAL_R_SERIES_ROWS = {
-  "2026-08-18-supersession-stamp": "partner-demand lane R28",
-  "2026-08-20-partner-demand-floor-class": "partner-demand lane R29",
-  "2026-08-20-partner-demand-onepager-floor": "partner-demand lane R30",
-  "2026-08-20-partner-demand-onepager-variant": "partner-demand lane R31",
-  "2026-08-20-partner-demand-onepager-lifecycle": "partner-demand lane R32",
-  "2026-08-20-partner-demand-onepager-spotlight": "partner-demand lane R33",
-  "2026-08-20-partner-demand-onepager-trend-lock": "partner-demand lane R34",
-  "2026-08-20-partner-demand-onepager-gap-pairing": "partner-demand lane R35",
-  "2026-08-20-partner-demand-onepager-context-map": "partner-demand lane R36",
-  "2026-08-20-partner-demand-onepager-map-position": "partner-demand lane R37",
-  "2026-08-20-partner-demand-r38-provenance": "partner-demand lane R38",
-};
+function readLaneLocalRows(ledgerText) {
+  const out = {};
+  const m = ledgerText.match(/^## Lane-local R numbering[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
+  if (!m) return out;
+  for (const line of m[1].split("\n")) {
+    const row = line.match(/^- `([^`]+)` — (.+)$/);
+    if (row) out[row[1]] = row[2].trim();
+  }
+  return out;
+}
 
 /** The cells of one ledger table row (outer pipes stripped). */
 function rowCells(line) {
   return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(" | ").map((c) => c.trim());
 }
 
-function lintRNumbers(ledgerText, exempt = LANE_LOCAL_R_SERIES_ROWS) {
+function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
   const failures = [];
   const exempted = [];
   const frozen = new Set();
@@ -159,7 +158,7 @@ function lintRNumbers(ledgerText, exempt = LANE_LOCAL_R_SERIES_ROWS) {
       if (id in exempt) {
         exempted.push(`${id} (${exempt[id]})`);
       } else if (!cite) {
-        failures.push(`Ruling ${id}: opens with R${head[1]} but its last column is not "numeric citation R${head[1]}" (R-rows require the citation column).`);
+        failures.push(`Ruling ${id}: opens with R${head[1]} but its last column is not "numeric citation R${head[1]}" (R-rows require the citation column; a genuinely lane-local series is listed under "## Lane-local R numbering").`);
       } else if (cite[1] !== head[1]) {
         failures.push(`Ruling ${id}: heading says R${head[1]} but the citation column says R${cite[1]}.`);
       }
@@ -168,6 +167,16 @@ function lintRNumbers(ledgerText, exempt = LANE_LOCAL_R_SERIES_ROWS) {
       const n = Number(cite[1]);
       cited.set(n, [...(cited.get(n) ?? []), id]);
     }
+  }
+  // The list is only honest while it matches the ledger: a listed row that is gone, or no longer
+  // opens with an R heading, is a stale exemption and fails.
+  const headed = new Set();
+  for (const line of ledgerText.split("\n")) {
+    const prefix = line.match(ROW_ID_PREFIX_RE);
+    if (prefix && /^\*\*R\d+ —/.test(rowCells(line)[3] ?? "")) headed.add(prefix[1]);
+  }
+  for (const id of Object.keys(exempt)) {
+    if (!headed.has(id)) failures.push(`Lane-local R list names ${id}, but no ledger row with that id opens with an R heading — remove it from "## Lane-local R numbering".`);
   }
   for (const [n, ids] of cited) {
     if (ids.length > 1) failures.push(`Duplicate R-number R${n} cited by ${ids.length} rows: ${ids.join(", ")}.`);
@@ -192,7 +201,6 @@ function lint({ ledgerText, workflowText }) {
 
   const r = lintRNumbers(ledgerText);
   failures.push(...r.failures);
-  for (const e of r.exempted) warnings.push(`Lane-local R series (exempt by name, not a global R-id): ${e}`);
 
   for (const e of entries) {
     for (const g of e.guards) {
@@ -205,7 +213,7 @@ function lint({ ledgerText, workflowText }) {
       }
     }
   }
-  return { failures, warnings };
+  return { failures, warnings, laneLocal: r.exempted.length };
 }
 
 function selfTest() {
@@ -287,10 +295,16 @@ function selfTest() {
   const ok12 = rFrozen.failures.some((f) => f.includes("frozen numeric row id 7"));
   // (h) a well-formed R-row passes; an exempt lane-local row is reported, not failed.
   const rGood = lintRNumbers([
+    "## Lane-local R numbering",
+    "- `2026-01-02-local` — some lane R3",
+    "## Next",
     "| 2026-01-01-a | 2026-01-01 | [advisory] | **R200 — A.** | numeric citation R200; refs |",
     "| 2026-01-02-local | 2026-01-02 | [advisory] | **R3 — LOCAL.** | lane refs |",
-  ].join("\n"), { "2026-01-02-local": "some lane R3" });
-  const ok13 = rGood.failures.length === 0 && rGood.exempted.length === 1;
+  ].join("\n"));
+  // (i) a stale exemption (listed row is gone) fails.
+  const rStale = lintRNumbers(["## Lane-local R numbering", "- `2026-01-09-gone` — some lane R9", ""].join("\n"));
+  const ok13 = rGood.failures.length === 0 && rGood.exempted.length === 1
+    && rStale.failures.some((f) => f.includes("2026-01-09-gone"));
   if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13) {
     console.error("SELF-TEST FAILED", {
       ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13,
@@ -299,7 +313,7 @@ function selfTest() {
     });
     process.exit(1);
   }
-  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse)");
+  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale)");
   process.exit(0);
 }
 
@@ -307,12 +321,11 @@ if (process.argv.includes("--self-test")) selfTest();
 
 const ledgerText = fs.readFileSync(LEDGER, "utf8");
 const workflowText = collectWorkflowText(WORKFLOW_DIR);
-const { failures, warnings } = lint({ ledgerText, workflowText });
+const { failures, warnings, laneLocal } = lint({ ledgerText, workflowText });
 
 for (const w of warnings) console.warn(`WARN  ${w}`);
 if (failures.length) {
   for (const f of failures) console.error(`FAIL  ${f}`);
   process.exit(1);
 }
-const laneLocal = warnings.filter((w) => w.startsWith("Lane-local R series")).length;
-console.log(`decision-guards lint OK (${warnings.length - laneLocal} deferred warning(s), ${laneLocal} lane-local R row(s) exempt by name)`);
+console.log(`decision-guards lint OK (${warnings.length} deferred warning(s); ${laneLocal} lane-local R row(s) per "## Lane-local R numbering")`);
