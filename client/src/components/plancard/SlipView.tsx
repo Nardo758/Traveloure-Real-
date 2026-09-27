@@ -32,6 +32,13 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import {
+  ITEM_BOOKING_NOTES,
+  effectiveRoutingStatus,
+  isBookedActivity,
+  itemBookingAction,
+  itemBookingState,
+} from "@/lib/item-booking-state";
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { TripPlanTransition } from "@shared/trip-plan";
@@ -43,7 +50,7 @@ import {
   type PlanCardTransport,
   type RoutingStatus,
 } from "./plancard-types";
-import { ItemKindBadge, OriginBadge, RoutingActions, RoutingBadge } from "./ActivitiesSection";
+import { ItemBookingActionLink, ItemKindBadge, OriginBadge, RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { SlipSavedPlaces } from "./SlipSavedPlaces";
@@ -234,8 +241,10 @@ const STATUS_SHORT: Record<string, string> = {
   purchased: "purchased",
 };
 
+/** R145: the ONE client reading of the booked state (`@/lib/item-booking-state`) — an ended
+ *  (refunded / cancelled) booking is never a purchased row, even when routing still says so. */
 function isPurchasedRow(a: PlanCardActivity): boolean {
-  return !!a.booking || a.routingStatus === "purchased";
+  return isBookedActivity(a);
 }
 
 function expertFirstName(data: SlipData): string | null {
@@ -536,8 +545,10 @@ function SlipStatusStrip({ activities }: { activities: PlanCardActivity[] }) {
     purchased: 0,
   };
   for (const a of activities) {
-    if (isPurchasedRow(a)) counts.purchased++;
-    else if (a.routingStatus) counts[a.routingStatus]++;
+    // R154: the ONE routing-bucket reading — a disputed booking is purchased (it is a real booking),
+    // a failed payment is back in checkout, and a not-booked link on a `purchased` item is nowhere.
+    const rs = effectiveRoutingStatus(a) as RoutingStatus | null;
+    if (rs && rs in counts) counts[rs]++;
   }
 
   const allSegments: Array<{ status: RoutingStatus; n: number; label: string }> = [
@@ -592,6 +603,11 @@ function ExpertNoteBlock({ note, expertName }: { note: string; expertName: strin
 // ── Item + logistics rows ──────────────────────────────────────────────────────────────
 
 function secondaryLine(a: PlanCardActivity, expertName: string | null, expertAssigned: boolean): string | null {
+  // R145/R154: the ONE reading of the linked booking. "booked" is written for `booked` ALONE — a
+  // disputed booking is purchased for counts but reads "Under review", and every not-booked state
+  // says what happened (§13) — never "booked", never silence.
+  const bookingState = itemBookingState(a);
+  if (bookingState && bookingState !== "booked") return ITEM_BOOKING_NOTES[bookingState];
   if (isPurchasedRow(a)) {
     // "booked" + confirmation ref ONLY when a real ref exists (item's own confirmationNumber,
     // else the real booking row's short id) — no ref → just "booked", never a placeholder.
@@ -690,6 +706,12 @@ function SlipItemRow({
             {a.location || null}
           </p>
           {secondary && <p className="text-xs text-muted-foreground mt-0.5">{secondary}</p>}
+          {/* R154: the owner's one action on a disputed (View booking) or failed (Try again) row. */}
+          {isOwner && itemBookingAction(a) && (
+            <div className="mt-1.5">
+              <ItemBookingActionLink activity={a} showNote={false} />
+            </div>
+          )}
           {purchased && hasOptimized && (
             <p className="text-xs text-muted-foreground italic">fixed point — plan built around it</p>
           )}
