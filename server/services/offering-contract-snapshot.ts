@@ -176,16 +176,44 @@ export async function buildOfferingContractSnapshot(opts: {
     .select({
       cancellationPolicyType: providerServices.cancellationPolicyType,
       durationMinutes: providerServices.durationMinutes,
+      productShape: providerServices.productShape,
+      parentServiceId: providerServices.parentServiceId,
     })
     .from(providerServices)
     .where(eq(providerServices.id, opts.serviceId));
 
   return composeOfferingContractSnapshot({
     listing,
-    cancellationPolicyType: row?.cancellationPolicyType ?? null,
+    cancellationPolicyType: await resolveSnapshotCancellationPolicyType(row),
     sessionLengthMinutes: row?.durationMinutes ?? null,
     at: opts.at,
   });
+}
+
+/**
+ * The tier a purchase is snapshotted under. A stay books a ROOM row (product_shape
+ * `property_room`), and the seller sets the tier on the PROPERTY (the create form and the
+ * Workstation property editor both write the property row; no surface writes a room's). So a room
+ * with no tier of its own reads its parent property's — the S8 read-time inheritance rooms already
+ * use for their pin, never a copy that goes stale when the property's tier is edited. A tier a room
+ * does carry wins. Every other shape reads its own row, exactly as before.
+ *
+ * PURCHASE-TIME ONLY: this feeds the snapshot a NEW booking is pinned to. The whole-row cancel's
+ * pre-291 live-listing fallback (`resolveBookingCancellationPolicy`) deliberately does NOT inherit,
+ * because applying a property's tier to a booking bought before this change would tighten its terms
+ * retroactively (Locked Decision 50's snapshot rule).
+ */
+export async function resolveSnapshotCancellationPolicyType(
+  row: { cancellationPolicyType: string | null; productShape: string | null; parentServiceId: string | null } | undefined,
+): Promise<string | null> {
+  if (!row) return null;
+  if (row.cancellationPolicyType) return row.cancellationPolicyType;
+  if (row.productShape !== "property_room" || !row.parentServiceId) return null;
+  const [parent] = await db
+    .select({ cancellationPolicyType: providerServices.cancellationPolicyType })
+    .from(providerServices)
+    .where(eq(providerServices.id, row.parentServiceId));
+  return parent?.cancellationPolicyType ?? null;
 }
 
 /**
