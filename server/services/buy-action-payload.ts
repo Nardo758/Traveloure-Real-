@@ -536,3 +536,33 @@ export function requestOnlyRefusalBody(
     listingPath: requestOnlyListingPath(listing.id),
   };
 }
+
+/**
+ * WHY A LISTING WOULD HOLD NO CART LINE — the projection's two refusals in ONE place (§18 rule 1):
+ * no published price (ledger `2026-09-13-cart-priceless-gap`) and a listing the seller must accept
+ * first (ledger `2026-09-25-checkout-request-mode`). `syncItemProjection` (cart-projection.service.ts) refuses on it, and the
+ * plancard reads it (R157, ledger `2026-09-27-retry-failed-payment`) so a failed payment's "Try again"
+ * says "Back to plan" rather than opening a checkout that cannot hold the item. Keyed by listing id;
+ * a listing absent from the map projects normally. Reads only; decides nothing about money.
+ */
+export async function checkoutProjectionRefusals(
+  listings: ReadonlyArray<{
+    id: string;
+    userId: string | null;
+    price: string | number | null;
+    priceType: string | null;
+    bookingMode: string | null;
+  }>,
+): Promise<Map<string, "no_published_price" | "listing_requires_request" | "listing_not_bookable">> {
+  const out = new Map<string, "no_published_price" | "listing_requires_request" | "listing_not_bookable">();
+  const priced: typeof listings[number][] = [];
+  for (const l of listings) {
+    if (!hasPublishedPrice(l.price)) out.set(l.id, "no_published_price");
+    else priced.push(l);
+  }
+  const requestOnly = await requestOnlyListingRefusals(
+    priced.map((l) => ({ id: l.id, userId: l.userId, priceType: l.priceType, bookingMode: l.bookingMode })),
+  );
+  requestOnly.forEach((r, id) => out.set(id, r.reason));
+  return out;
+}

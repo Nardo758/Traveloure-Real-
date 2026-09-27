@@ -709,7 +709,7 @@ function SlipItemRow({
           {/* R154: the owner's one action on a disputed (View booking) or failed (Try again) row. */}
           {isOwner && itemBookingAction(a) && (
             <div className="mt-1.5">
-              <ItemBookingActionLink activity={a} showNote={false} />
+              <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} />
             </div>
           )}
           {purchased && hasOptimized && (

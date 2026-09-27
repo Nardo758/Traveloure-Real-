@@ -30,11 +30,11 @@
  *  • NO AMOUNTS, NO IDENTITIES. This module reads and writes routing state only — it never touches
  *    a price, a payment intent, an idempotency key or a slot claim (§14).
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, exists, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { itineraryItems } from "@shared/schema";
+import { itineraryItems, serviceBookings } from "@shared/schema";
 import { logger } from "../infrastructure/logger";
-import { logItemTransition } from "./item-transition-log.service";
+import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
 
 /**
  * FORWARD EDGE — `ready_for_checkout → purchased`, stamping the booking that bought the item.
@@ -105,6 +105,15 @@ export async function markItemPurchased(
  * Called by BOTH refund callers AFTER the refund succeeds, leaving the ledger-first/Stripe-second
  * ordering untouched.
  *
+ * R157 (ledger `2026-09-27-retry-failed-payment`; decision-maker ruled Sep 27, 2026) adds ONE more
+ * caller, and it is the same reversal for the same reason: a booking whose card payment FAILED
+ * (`service_bookings.status = 'failed'`, written by the `payment_intent.payment_failed` webhook) was
+ * never paid for, yet authorization had already flipped its item to `purchased` and cleared its cart
+ * line. The owner's "Try again" reverts that ONE item here — only after the routing rail has read the
+ * booking's status off the DB row (§14) — and then re-projects it through the rail's own
+ * `in_planning → ready_for_checkout` edge. `failed` is terminal (`promotePaidCheckout` refuses it and
+ * records a late success as a reconciliation exception), so this reversal cannot race a promotion.
+ *
  * `booking_id` is deliberately KEPT on the row. Migration 159 made it `ON DELETE SET NULL` for
  * booking DELETION only; a refunded booking still exists and is still the honest record of what
  * happened to this item (§13). Only the routing state moves — the item returns to the plan, where
@@ -116,6 +125,25 @@ export async function markItemPurchased(
  */
 export async function revertPurchasedItemsForBooking(
   bookingId: string,
+  /**
+   * R157 (ledger `2026-09-27-retry-failed-payment`): the SECOND caller of this one reverser is the
+   * owner's "Try again" after a FAILED payment (`server/routes/routing.routes.ts`), which reverts ONE
+   * item and records the traveler — not a refund — as the actor (§13: the diary says who moved it).
+   * Omitted ⇒ every item bought through the booking, attributed to `refund`: the refund callers'
+   * behaviour, byte-for-byte unchanged.
+   */
+  opts: {
+    itemId?: string;
+    actorType?: TransitionActorType;
+    actorId?: string | null;
+    /**
+     * R157: revert ONLY while the linked booking is still in one of these statuses — checked INSIDE
+     * the same UPDATE (an `EXISTS` on `service_bookings`), so a booking that moves between the caller's
+     * read and this write reverts nothing (§15: the statement is the guard, never a read-then-write).
+     * Omitted ⇒ no booking-status condition: the refund callers' behaviour, unchanged.
+     */
+    requireBookingStatusIn?: readonly string[];
+  } = {},
 ): Promise<{ reverted: number }> {
   try {
     // Ruling 18: reversal flips + their diary rows are one atomic pair (one per item), same
@@ -129,6 +157,22 @@ export async function revertPurchasedItemsForBooking(
           and(
             eq(itineraryItems.bookingId, bookingId),
             eq(itineraryItems.routingStatus, "purchased"),
+            ...(opts.itemId ? [eq(itineraryItems.id, opts.itemId)] : []),
+            ...(opts.requireBookingStatusIn
+              ? [
+                  exists(
+                    tx
+                      .select({ id: serviceBookings.id })
+                      .from(serviceBookings)
+                      .where(
+                        and(
+                          eq(serviceBookings.id, bookingId),
+                          inArray(serviceBookings.status, [...opts.requireBookingStatusIn]),
+                        ),
+                      ),
+                  ),
+                ]
+              : []),
           ),
         )
         .returning({ id: itineraryItems.id, tripId: itineraryItems.tripId });
@@ -140,7 +184,8 @@ export async function revertPurchasedItemsForBooking(
           eventType: "status_transition",
           fromStatus: "purchased",
           toStatus: "in_planning",
-          actorType: "refund",
+          actorType: opts.actorType ?? "refund",
+          actorId: opts.actorId ?? null,
         });
       }
       return rows;

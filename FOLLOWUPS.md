@@ -911,3 +911,7 @@ today reserved for Stripe's own verdict).
 the service page. Proposed design documented in `$P2/LEAD_VERDICTS.md` ("Added by decision-maker request"). This is
 currently being built on branch `claude/storefront-booking-actions`; recorded here so it is not independently
 re-filed by a later pass before that branch lands.
+
+## P1 lead-routing / money-guard lane — carried items
+
+- **Parent bundle cancel notification:** when `settleBundleAllUndelivered` (Locked Decision 50) flips a bundle's parent booking to `cancelled`, no notification is sent to the traveler or seller. Deferred by the decision-maker (Sep 27, 2026) to this lane; not built. (Ledger `2026-09-27-bundle-cancel-notice-deferred`, R158.)

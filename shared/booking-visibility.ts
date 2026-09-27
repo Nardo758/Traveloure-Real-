@@ -247,8 +247,13 @@ export const PROVISIONAL_BOOKING_HINT =
  * `completion_declared`, `partially_completed`, `completed`, the legacy `pending`, …) keeps the
  * behaviour it had before this table: booked, with the existing "Booked" treatment.
  *
- * READ-SIDE ONLY: nothing here writes, charges, refunds or authorizes a transition. The SCOPE note at
- * the top of this file binds — this is not a from-state allow-list.
+ * READ-SIDE ONLY: nothing here writes, charges or refunds. The SCOPE note at the top of this file binds
+ * — this is not a BOOKING from-state allow-list. ONE named exception, on the PLAN ITEM and never on the
+ * booking (R157, ledger `2026-09-27-retry-failed-payment`): the routing rail
+ * (`server/routes/routing.routes.ts`) admits the owner's "Try again" — putting a `purchased` item back
+ * into checkout — exactly when its linked booking's entry offers `retry_checkout`, so the button a row
+ * draws and the request the server accepts are ONE answer (§18 rule 1). The booking row itself is never
+ * moved by it.
  */
 export type ItemBookingLabelKey =
   | "booked"

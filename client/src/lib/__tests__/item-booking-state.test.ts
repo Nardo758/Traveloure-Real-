@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isBookedActivity, itemBookingLabel, itemBookingState } from "../item-booking-state";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  ITEM_BOOKING_ACTION_LABELS,
+  ITEM_BOOKING_RETRY_TO_PLAN_LABEL,
+  isBookedActivity,
+  itemBookingLabel,
+  itemBookingState,
+  retryGoesToPlan,
+} from "../item-booking-state";
 import { routingCountsFromPlancard } from "../plan-row-model";
 
 /**
@@ -61,4 +70,60 @@ test("I7 the routing counts agree: refunded counts as planning, cancelled-purcha
     ],
   });
   assert.deepEqual(counts, { in_planning: 1, with_expert: 0, ready_for_checkout: 0, purchased: 1 });
+});
+
+/**
+ * R157 (ledger `2026-09-27-retry-failed-payment`): "Try again" after a failed payment must put the
+ * item back in checkout BEFORE opening it. After a failed payment the item still reads `purchased`
+ * and its cart line was cleared at authorization, so a bare link to the checkout opened it without
+ * the item. Source pins on the ONE component that draws the action (both the slip and the PlanCard
+ * mount it): it asks the EXISTING routing rail for `ready_for_checkout`, reads a refusal through the
+ * one hook, and opens the checkout only after that succeeds — never a plain link to it. The server
+ * half (the rail accepting the request only for a failed booking) is
+ * server/__tests__/retry-failed-payment.db.test.ts.
+ */
+test("I8 Try again re-projects the item through the routing rail, then opens checkout", () => {
+  const ROOT = resolve(import.meta.dirname, "../../../..");
+  const src = readFileSync(resolve(ROOT, "client/src/components/plancard/ActivitiesSection.tsx"), "utf8");
+  const start = src.indexOf("export function ItemBookingActionLink(");
+  assert.ok(start >= 0, "the one action component exists");
+  const end = src.indexOf("\nexport function ", start + 1);
+  const block = src.slice(start, end);
+  assert.match(
+    block,
+    /\/items\/\$\{activity\.id\}\/route`, \{ to: "ready_for_checkout" \}/,
+    "asks the routing rail for ready_for_checkout",
+  );
+  assert.ok(block.includes("useRouteRefusalToast("), "a refusal reads through the one hook");
+  const post = block.indexOf('apiRequest("POST"');
+  const go = block.indexOf("setLocation(toPlan ? `/plans/${tripId}` : BUY_NOW_CART_PATH)");
+  assert.ok(post >= 0 && go > post, "checkout opens only after the re-projection request");
+  assert.equal(/href=\{?[^}\n]*BUY_NOW_CART_PATH/.test(block), false, "no plain link to a checkout that lacks the item");
+  for (const mount of ["client/src/components/plancard/SlipView.tsx", "client/src/components/plancard/ActivitiesSection.tsx"]) {
+    const m = readFileSync(resolve(ROOT, mount), "utf8");
+    const uses = m.match(/<ItemBookingActionLink[^>]*>/g) ?? [];
+    assert.ok(uses.length > 0, `${mount} mounts the action`);
+    for (const use of uses) assert.ok(use.includes("tripId={tripId}"), `${mount}: every mount names the plan (${use})`);
+  }
+});
+
+/**
+ * R157 follow-up (decision-maker, Sep 27, 2026): on a listing the checkout cannot hold — no published
+ * price, or the seller must accept first — "Try again" would open an EMPTY checkout, close to the
+ * original defect. The server says so (`retryOpensCheckout: false`, the cart projection's own
+ * predicate); the action then reads "Back to plan" and opens the slip. Absent (an older payload) keeps
+ * today's "Try again" → checkout. The server half is R7/R8 of retry-failed-payment.db.test.ts.
+ */
+test("I9 a listing the checkout cannot hold reads 'Back to plan' and opens the slip", () => {
+  assert.equal(retryGoesToPlan({ retryOpensCheckout: false }), true);
+  assert.equal(retryGoesToPlan({ retryOpensCheckout: true }), false);
+  assert.equal(retryGoesToPlan({}), false, "absent ⇒ today's behaviour, never a guess");
+  assert.equal(ITEM_BOOKING_RETRY_TO_PLAN_LABEL, "Back to plan");
+  assert.equal(ITEM_BOOKING_ACTION_LABELS.retry_checkout, "Try again");
+  const ROOT = resolve(import.meta.dirname, "../../../..");
+  const src = readFileSync(resolve(ROOT, "client/src/components/plancard/ActivitiesSection.tsx"), "utf8");
+  const start = src.indexOf("export function ItemBookingActionLink(");
+  const block = src.slice(start, src.indexOf("\nexport function ", start + 1));
+  assert.ok(block.includes("const toPlan = retryGoesToPlan(activity);"), "the label is decided from the server's field");
+  assert.ok(block.includes("toPlan ? ITEM_BOOKING_RETRY_TO_PLAN_LABEL : ITEM_BOOKING_ACTION_LABELS[action]"), "the label follows it");
 });
