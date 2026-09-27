@@ -31,6 +31,8 @@ export interface ItemBookingLike {
   booking?: { status?: string | null } | null | unknown;
   endedBooking?: { status?: string | null } | null;
   routingStatus?: string | null;
+  /** R157: server-derived — can a failed payment's "Try again" open a checkout that holds this item? */
+  retryOpensCheckout?: boolean;
 }
 
 function statusOf(b: unknown): string | null {
@@ -135,3 +137,14 @@ export const ITEM_BOOKING_ACTION_LABELS: Readonly<Record<ItemBookingAction, stri
   open_booking: "View booking",
   retry_checkout: "Try again",
 };
+
+/**
+ * R157 (ledger `2026-09-27-retry-failed-payment`): where a failed payment's retry lands. The server
+ * says `retryOpensCheckout: false` when the listing publishes no price or the seller must accept first
+ * — the cart can hold no line for it, so the action reads "Back to plan" and opens the slip instead of
+ * an empty checkout. Absent (an older payload) keeps "Try again" → checkout, today's behaviour.
+ */
+export const ITEM_BOOKING_RETRY_TO_PLAN_LABEL = "Back to plan";
+export function retryGoesToPlan(a: ItemBookingLike): boolean {
+  return a.retryOpensCheckout === false;
+}

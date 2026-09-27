@@ -30,9 +30,9 @@
  *  • NO AMOUNTS, NO IDENTITIES. This module reads and writes routing state only — it never touches
  *    a price, a payment intent, an idempotency key or a slot claim (§14).
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, exists, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { itineraryItems } from "@shared/schema";
+import { itineraryItems, serviceBookings } from "@shared/schema";
 import { logger } from "../infrastructure/logger";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
 
@@ -132,7 +132,18 @@ export async function revertPurchasedItemsForBooking(
    * Omitted ⇒ every item bought through the booking, attributed to `refund`: the refund callers'
    * behaviour, byte-for-byte unchanged.
    */
-  opts: { itemId?: string; actorType?: TransitionActorType; actorId?: string | null } = {},
+  opts: {
+    itemId?: string;
+    actorType?: TransitionActorType;
+    actorId?: string | null;
+    /**
+     * R157: revert ONLY while the linked booking is still in one of these statuses — checked INSIDE
+     * the same UPDATE (an `EXISTS` on `service_bookings`), so a booking that moves between the caller's
+     * read and this write reverts nothing (§15: the statement is the guard, never a read-then-write).
+     * Omitted ⇒ no booking-status condition: the refund callers' behaviour, unchanged.
+     */
+    requireBookingStatusIn?: readonly string[];
+  } = {},
 ): Promise<{ reverted: number }> {
   try {
     // Ruling 18: reversal flips + their diary rows are one atomic pair (one per item), same
@@ -147,6 +158,21 @@ export async function revertPurchasedItemsForBooking(
             eq(itineraryItems.bookingId, bookingId),
             eq(itineraryItems.routingStatus, "purchased"),
             ...(opts.itemId ? [eq(itineraryItems.id, opts.itemId)] : []),
+            ...(opts.requireBookingStatusIn
+              ? [
+                  exists(
+                    tx
+                      .select({ id: serviceBookings.id })
+                      .from(serviceBookings)
+                      .where(
+                        and(
+                          eq(serviceBookings.id, bookingId),
+                          inArray(serviceBookings.status, [...opts.requireBookingStatusIn]),
+                        ),
+                      ),
+                  ),
+                ]
+              : []),
           ),
         )
         .returning({ id: itineraryItems.id, tripId: itineraryItems.tripId });

@@ -5,11 +5,13 @@ import {
   BOOKING_DETAIL_PATH,
   ITEM_BOOKING_ACTION_LABELS,
   ITEM_BOOKING_NOTES,
+  ITEM_BOOKING_RETRY_TO_PLAN_LABEL,
   PAYMENT_FAILED_PILL_LABEL,
   effectiveRoutingStatus,
   itemBookingAction,
   itemBookingLabel,
   itemBookingState,
+  retryGoesToPlan,
 } from "@/lib/item-booking-state";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -200,6 +202,9 @@ export function ItemBookingActionLink({
 }) {
   const [, setLocation] = useLocation();
   const { showRefusal } = useRouteRefusalToast(tripId);
+  // R157: a listing the checkout cannot hold (no published price, or the seller accepts first) is
+  // returned to the plan and the slip opens — never an empty checkout. The server decides (§14).
+  const toPlan = retryGoesToPlan(activity);
   const retry = useMutation({
     mutationFn: async () =>
       apiRequest("POST", `/api/trips/${tripId}/items/${activity.id}/route`, { to: "ready_for_checkout" }),
@@ -208,9 +213,9 @@ export function ItemBookingActionLink({
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] }),
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] }),
       ]);
-      setLocation(BUY_NOW_CART_PATH);
+      setLocation(toPlan ? `/plans/${tripId}` : BUY_NOW_CART_PATH);
     },
-    onError: (err: unknown) => showRefusal(err, "Couldn't put this back in checkout"),
+    onError: (err: unknown) => showRefusal(err, toPlan ? "Couldn't return this to your plan" : "Couldn't put this back in checkout"),
   });
 
   const action = itemBookingAction(activity);
@@ -241,7 +246,7 @@ export function ItemBookingActionLink({
           onClick={() => retry.mutate()}
           data-testid={`button-item-booking-try-again-${activity.id}`}
         >
-          {ITEM_BOOKING_ACTION_LABELS[action]}
+          {toPlan ? ITEM_BOOKING_RETRY_TO_PLAN_LABEL : ITEM_BOOKING_ACTION_LABELS[action]}
         </button>
       )}
     </span>

@@ -77,7 +77,7 @@ import { z } from "zod";
 import { and, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, notifications, serviceBookings, tripCollaborators, trips, ROUTING_STATUSES, type RoutingStatus } from "@shared/schema";
-import { itemBookingStatusEntry } from "@shared/booking-visibility";
+import { ITEM_BOOKING_STATUS_VOCABULARY, itemBookingStatusEntry } from "@shared/booking-visibility";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
 import { verifyTripOwnership } from "../utils/trip-ownership";
@@ -132,6 +132,7 @@ async function isTripOwner(tripId: string, userId: string): Promise<boolean> {
 }
 
 router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (req, res) => {
+  let retryInFlightBookingId: string | null = null;
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -309,6 +310,9 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
         itemId,
         actorType: "traveler",
         actorId: userId,
+        // The read above decided; THIS makes it safe. The revert re-checks the booking's status in
+        // its own UPDATE, so a booking that stopped being "failed" in between reverts nothing.
+        requireBookingStatusIn: RETRY_CHECKOUT_BOOKING_STATUSES,
       });
       if (reverted === 0) {
         return res.status(409).json({
@@ -318,10 +322,24 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
       }
       from = "in_planning";
     }
+    // R157 — the SECOND step (in_planning → ready_for_checkout + the cart line) is a separate
+    // writer, deliberately not one transaction with the revert (decision-maker, Sep 27, 2026). A
+    // failure here leaves the item in planning with no cart line — recoverable by pressing "Add to
+    // checkout" again, but otherwise silent — so every failure point below says so, with the booking.
+    const retryBookingId = failedPaymentRetry ? item.bookingId : null;
+    retryInFlightBookingId = retryBookingId;
+    const logRetryStepFailure = (reason: string, extra: Record<string, unknown> = {}) => {
+      if (!retryBookingId) return;
+      logger.error(
+        { bookingId: retryBookingId, itemId, tripId, reason, ...extra },
+        "retry-after-failed-payment: item reverted to planning but not re-projected into the cart (recoverable by re-adding)",
+      );
+    };
 
     // ── Legal-edge validation (contract §1 state machine, as drawn) ────────────────────
     const legalFrom = LEGAL_FROM[to];
     if (!legalFrom.includes(from)) {
+      logRetryStepFailure("illegal_edge", { from, to });
       return res.status(409).json({
         message: illegalEdgeMessage(from, to),
         from,
@@ -363,6 +381,7 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
     });
 
     if (updated.length === 0) {
+      logRetryStepFailure("routing_flip_lost_race", { expectedFrom: from });
       return res.status(409).json({
         message: "Item routing state changed concurrently; re-read and retry.",
         expectedFrom: from,
@@ -371,13 +390,29 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
 
     // ── W2: reconcile the cart projection with the new state. Never fails the transition.
     const projection = await safeSync(itemId);
+    if ((projection as { action?: string }).action === "error") logRetryStepFailure("projection_error");
 
     return res.json({ itemId, tripId, from, to, changed: true, actor, projection });
   } catch (err) {
+    if (retryInFlightBookingId) {
+      logger.error(
+        { err, bookingId: retryInFlightBookingId, reason: "exception" },
+        "retry-after-failed-payment: item reverted to planning but not re-projected into the cart (recoverable by re-adding)",
+      );
+    }
     logger.error({ err }, "routing transition failed");
     return res.status(500).json({ message: "Failed to route item" });
   }
 });
+
+/**
+ * The booking statuses whose ONE vocabulary entry offers "Try again" (R154 `retry_checkout`) — derived
+ * from the table, never restated (§18 rule 1). The revert re-checks the booking against this list
+ * inside its own UPDATE.
+ */
+const RETRY_CHECKOUT_BOOKING_STATUSES: readonly string[] = Object.entries(ITEM_BOOKING_STATUS_VOCABULARY)
+  .filter(([, entry]) => entry.action === "retry_checkout")
+  .map(([status]) => status);
 
 function illegalEdgeMessage(from: RoutingStatus, to: RoutingStatus): string {
   if (from === "purchased") {

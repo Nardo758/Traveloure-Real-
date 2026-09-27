@@ -53,7 +53,7 @@ import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 // V-11's predicate, the ONE translation of `provider_services.price` into the `hasPrice` fact
 // `resolveBuyAction` decides on (ledger `2026-09-13-cart-priceless-gap`, s18 rule 1).
-import { hasPublishedPrice, requestOnlyListingRefusals } from "./buy-action-payload";
+import { checkoutProjectionRefusals, hasPublishedPrice } from "./buy-action-payload";
 // Locked Decision 56: the ONE reading of how many units a stored cart line holds (§18 rule 1).
 import { cartLineUnitCount } from "@shared/cart-quantity";
 import { normalizeCartContentCoordinates } from "@shared/cart-content-line";
@@ -310,24 +310,21 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
     // second author of a plan-state rule nobody has ratified. So the item keeps its status, the
     // projection holds nothing it cannot price, any stale projection row is removed, and the
     // reason travels back on the result the route already returns (s13: said out loud).
-    if (svc && !hasPublishedPrice(svc.price)) {
-      await deleteProjectionFor(itemId);
-      return { action: "noop", reason: "no_published_price" };
-    }
     // -- NOR IS A LISTING THE SELLER MUST ACCEPT (ledger `2026-09-25-checkout-request-mode`) -----
     // Same posture, same placement, for the same reason: a `request`-mode, `hidden` or
     // `custom_quote` listing is refused at checkout, so the checkout VIEW does not hold it. The
     // item stays on the plan with its routing untouched, and the reason travels back (s13). ONE
-    // predicate with the add rails and checkout (s18 rule 1).
+    // predicate with the add rails and checkout (s18 rule 1) — both checks now live in
+    // `checkoutProjectionRefusals` below, which the plancard's R157 "Try again" label reads too.
     if (svc) {
-      const requestOnly = (
-        await requestOnlyListingRefusals([
-          { id: item.providerServiceId, userId: svc.userId, priceType: svc.priceType, bookingMode: svc.bookingMode },
+      const refusal = (
+        await checkoutProjectionRefusals([
+          { id: item.providerServiceId, userId: svc.userId, price: svc.price, priceType: svc.priceType, bookingMode: svc.bookingMode },
         ])
       ).get(item.providerServiceId);
-      if (requestOnly) {
+      if (refusal) {
         await deleteProjectionFor(itemId);
-        return { action: "noop", reason: requestOnly.reason };
+        return { action: "noop", reason: refusal };
       }
     }
     if (svc?.pricingUnit === "per_night") {

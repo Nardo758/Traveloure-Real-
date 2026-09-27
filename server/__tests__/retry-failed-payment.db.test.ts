@@ -19,6 +19,15 @@
  *   R4  a CONFIRMED booking still refuses: open plan ⇒ 409 illegal edge, finalized ⇒ 409
  *       `already_purchased`; nothing moves, no cart line appears.
  *   R5  a stranger ⇒ 403; a disputed booking (a real booking) ⇒ 409; nothing moves.
+ *   R6  THE LATE-PAYMENT RACE: the revert re-checks the booking's status INSIDE its own UPDATE. A booking
+ *       that stops being `failed` between the rail's read and the revert (simulated by flipping it to
+ *       `confirmed` before calling the reverter with the rail's condition) reverts NOTHING; the same
+ *       call on a still-failed booking reverts the item.
+ *   R7  the plancard says where "Try again" lands: `retryOpensCheckout: true` for a priced, instant
+ *       listing; `false` for a listing with no published price or one the seller must accept first
+ *       (the cart projection's own refusals) — so the client reads "Back to plan", not an empty checkout.
+ *       Absent on an item whose booking does not offer the retry.
+ *   R8  "Back to plan" on such a listing still returns the item (200) and projects NO cart line.
  *
  * Runs against the ALREADY-RUNNING server (JOURNEY_BASE_URL, default http://127.0.0.1:5000). DISPOSABLE
  * DB ONLY.
@@ -31,6 +40,8 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
+import { assembleTripPlan } from "../services/trip-plan.service";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -134,7 +145,30 @@ after(async () => {
   for (const b of bookingIds) {
     await db.execute(sql`DELETE FROM service_bookings WHERE id = ${b}`).catch(() => {});
   }
+  for (const t of tripIds) {
+    await db.execute(sql`UPDATE itinerary_items SET provider_service_id = NULL WHERE trip_id = ${t}`).catch(() => {});
+  }
+  for (const l of listingIds) {
+    await db.execute(sql`DELETE FROM provider_services WHERE id = ${l}`).catch(() => {});
+  }
 });
+
+const listingIds: string[] = [];
+/** A listing owned by `ownerId`, linked to the item. `price` NULL = no published price. */
+async function linkListing(itemId: string, ownerId: string, facts: { price: string | null; priceType: string; bookingMode: string | null }): Promise<string> {
+  const id = crypto.randomUUID();
+  listingIds.push(id);
+  await db.execute(sql`INSERT INTO provider_services (id, user_id, service_name, price, price_type, booking_mode, status, approval_status)
+                       VALUES (${id}, ${ownerId}, ${`Listing ${RUN} ${id.slice(0, 6)}`}, ${facts.price}, ${facts.priceType}, ${facts.bookingMode}, 'active', 'approved')`);
+  await db.execute(sql`UPDATE itinerary_items SET provider_service_id = ${id} WHERE id = ${itemId}`);
+  return id;
+}
+
+async function activityOf(tripId: string, itemId: string): Promise<any> {
+  const plan: any = await assembleTripPlan(tripId, "full");
+  for (const day of plan.days ?? []) for (const a of day.activities ?? []) if (a.id === itemId) return a;
+  throw new Error(`activity ${itemId} not in plan`);
+}
 
 test("R1/R2: a FAILED payment's item goes back to checkout with ONE cart line; a second press is idempotent", async () => {
   const { tripId, itemId, bookingId } = await seedBought(owner, "failed", `Kaiseki ${RUN}`);
@@ -195,4 +229,54 @@ test("R5: a stranger is refused, and a DISPUTED booking is not a failed payment"
   assert.equal(d.status, 409, d.text);
   assert.equal((await itemRow(disputed.itemId)).routing_status, "purchased");
   assert.equal(await cartLines(disputed.itemId), 0);
+});
+
+test("R6: the revert is conditional on the booking STILL being failed — a late flip between read and write reverts nothing", async () => {
+  const { itemId, bookingId } = await seedBought(owner, "failed", `Onsen ${RUN}`);
+  // The rail read `failed`; before its revert commits, a late signal moves the booking on.
+  await db.execute(sql`UPDATE service_bookings SET status = 'confirmed' WHERE id = ${bookingId}`);
+  const late = await revertPurchasedItemsForBooking(bookingId, {
+    itemId, actorType: "traveler", actorId: owner.id, requireBookingStatusIn: ["failed"],
+  });
+  assert.equal(late.reverted, 0, "the booking is no longer failed, so the statement itself refuses");
+  assert.equal((await itemRow(itemId)).routing_status, "purchased", "a paid item is never returned to planning");
+
+  await db.execute(sql`UPDATE service_bookings SET status = 'failed' WHERE id = ${bookingId}`);
+  const ok = await revertPurchasedItemsForBooking(bookingId, {
+    itemId, actorType: "traveler", actorId: owner.id, requireBookingStatusIn: ["failed"],
+  });
+  assert.equal(ok.reverted, 1);
+  assert.equal((await itemRow(itemId)).routing_status, "in_planning");
+});
+
+test("R7: the plancard says where 'Try again' lands — checkout for a checkout-able listing, the plan otherwise", async () => {
+  const priced = await seedBought(owner, "failed", `Priced ${RUN}`);
+  await linkListing(priced.itemId, owner.id, { price: "80.00", priceType: "fixed", bookingMode: "instant" });
+  assert.equal((await activityOf(priced.tripId, priced.itemId)).retryOpensCheckout, true);
+
+  const quote = await seedBought(owner, "failed", `Quote ${RUN}`);
+  await linkListing(quote.itemId, owner.id, { price: "80.00", priceType: "custom_quote", bookingMode: null });
+  assert.equal((await activityOf(quote.tripId, quote.itemId)).retryOpensCheckout, false, "custom_quote: the seller prices it first");
+
+  const request = await seedBought(owner, "failed", `Request ${RUN}`);
+  await linkListing(request.itemId, owner.id, { price: "80.00", priceType: "fixed", bookingMode: "request" });
+  assert.equal((await activityOf(request.tripId, request.itemId)).retryOpensCheckout, false, "request mode: the seller accepts first");
+
+  const priceless = await seedBought(owner, "failed", `Priceless ${RUN}`);
+  await linkListing(priceless.itemId, owner.id, { price: null, priceType: "fixed", bookingMode: "instant" });
+  assert.equal((await activityOf(priceless.tripId, priceless.itemId)).retryOpensCheckout, false, "no published price");
+
+  const confirmed = await seedBought(owner, "confirmed", `Paid ${RUN}`);
+  await linkListing(confirmed.itemId, owner.id, { price: "80.00", priceType: "fixed", bookingMode: "instant" });
+  assert.equal("retryOpensCheckout" in (await activityOf(confirmed.tripId, confirmed.itemId)), false,
+    "absent on an item whose booking offers no retry (§13)");
+});
+
+test("R8: 'Back to plan' on a listing the checkout cannot hold returns the item and projects NO cart line", async () => {
+  const quote = await seedBought(owner, "failed", `Quote2 ${RUN}`);
+  await linkListing(quote.itemId, owner.id, { price: "80.00", priceType: "custom_quote", bookingMode: null });
+  const r = await tryAgain(owner, quote.tripId, quote.itemId);
+  assert.equal(r.status, 200, r.text);
+  assert.equal((await itemRow(quote.itemId)).routing_status, "ready_for_checkout");
+  assert.equal(await cartLines(quote.itemId), 0, "the projection holds nothing it cannot check out");
 });

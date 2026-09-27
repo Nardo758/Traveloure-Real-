@@ -311,6 +311,8 @@ export interface PlanCardActivity {
    * `booking` (real, paid) and reads "Under review", never "Booked".
    */
   endedBooking?: TripPlanBooking;
+  /** R157: see `TripPlanActivity.retryOpensCheckout` (shared/trip-plan.ts). */
+  retryOpensCheckout?: boolean;
   /**
    * Item 2 Phase 2 (ledger 2026-08-23-item2-affiliate): present ONLY when the build-time slip
    * resolver grounded this item to an affiliate product bookable via the agent rail (§16). Carries
