@@ -253,7 +253,7 @@ export function LandingHeroContent({
               data-testid="button-plan-trip"
             >
               <Sparkles className="h-4 w-4" />
-              Plan my trip
+              Start planning
             </button>
             <Link
               href="/experts"
