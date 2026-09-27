@@ -72,6 +72,7 @@ import {
 } from "@shared/trip-plan";
 import { geocodeAddress } from "../utils/geocode";
 import { getTripTransportLegs } from "./trip-transport-legs.service";
+import { checkoutProjectionRefusals } from "./buy-action-payload";
 import { getRecentTripTransitions, getTripTransitionCount } from "./item-transition-log.service";
 import { getLatestTripFinal } from "./trip-finalize.service";
 
@@ -800,6 +801,34 @@ export async function assembleTripPlan(
   const tripBookings = await resolveTripBookings(tripId);
   const bookingById = new Map<string, TripPlanBooking>(tripBookings.map((b) => [b.id, b]));
 
+  // R157 (ledger `2026-09-27-retry-failed-payment`): for an item whose linked booking FAILED payment,
+  // can "Try again" actually open a checkout that holds it? Not when the listing publishes no price or
+  // the seller must accept first — the cart projection holds no line for those. Answered by the SAME
+  // predicate the projection refuses on (`checkoutProjectionRefusals`, §18 rule 1), read only for the
+  // few rows that offer the retry. Absent for every other item (§13: present-only-when-real).
+  const retryItems = items.filter(
+    (i: any) =>
+      i.bookingId && itemBookingStatusEntry(bookingById.get(i.bookingId)?.status ?? null).action === "retry_checkout",
+  );
+  const retryListingIds = Array.from(
+    new Set(retryItems.map((i: any) => i.providerServiceId).filter((id: unknown): id is string => typeof id === "string")),
+  );
+  let retryRefusedListingIds = new Set<string>();
+  if (retryListingIds.length > 0) {
+    const listingRows = await db
+      .select({
+        id: providerServices.id,
+        userId: providerServices.userId,
+        price: providerServices.price,
+        priceType: providerServices.priceType,
+        bookingMode: providerServices.bookingMode,
+      })
+      .from(providerServices)
+      .where(inArray(providerServices.id, retryListingIds));
+    retryRefusedListingIds = new Set((await checkoutProjectionRefusals(listingRows)).keys());
+  }
+  const retryItemIds = new Set(retryItems.map((i: any) => i.id as string));
+
   const dayNumbers = Array.from(new Set(items.map((i) => i.dayNumber))).sort((a, b) => a - b);
 
   const buildLeg = (leg: any): TripPlanLeg => buildTripPlanLegCore(leg, legBookingMap[leg.id]);
@@ -854,6 +883,9 @@ export async function assembleTripPlan(
       // reads `booking`'s presence as "Booked". Present-only-when-real: an unbooked item carries
       // neither key, so every pre-existing consumer of this activity shape is untouched (§13).
       ...linkedBookingFields(item.bookingId ? bookingById.get(item.bookingId) : undefined),
+      ...(retryItemIds.has(item.id)
+        ? { retryOpensCheckout: !(item.providerServiceId && retryRefusedListingIds.has(item.providerServiceId)) }
+        : {}),
 
       // Phase 1d (W7): the item's own routing state, straight off the row — this producer is the
       // ONLY one with the column (the variant snapshot adapter below never sets this key). READ-only

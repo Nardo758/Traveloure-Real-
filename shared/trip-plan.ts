@@ -301,6 +301,15 @@ export interface TripPlanActivity {
   endedBooking?: TripPlanBooking;
 
   /**
+   * R157 (ledger `2026-09-27-retry-failed-payment`). PRESENT ONLY on an item whose linked booking
+   * FAILED payment (the row offering "Try again"). `true` ⇒ the listing can be checked out, so the
+   * retry re-projects the item and opens checkout; `false` ⇒ the listing publishes no price or the
+   * seller must accept first, so no cart line can exist and the action reads "Back to plan" instead.
+   * Server-derived by the cart projection's own predicate; absent everywhere else (§13).
+   */
+  retryOpensCheckout?: boolean;
+
+  /**
    * ADDITIVE (Trip-Canon Lane 1, Phase 1d / W7) — `itinerary_items.routing_status` (migration 159:
    * `in_planning | with_expert | ready_for_checkout | purchased`, ROUTING_STATE_CONTRACT §1). PRESENT
    * ONLY on the TRIP producer (the variant snapshot has no such column — a proposal is not routable,
