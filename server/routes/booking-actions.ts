@@ -1603,10 +1603,23 @@ router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
  * under-grant admin-confirmed 'assigned' experts), OR trip AUTHOR (`isTripAuthor` —
  * authored/speculative builds). Never `getTripRole` (CLAUDE.md L10: it never reads `trips`
  * and under-grants the owner).
+ *
+ * R150 (ledger `2026-09-27-pending-advisor-no-comments-fix`; implements R139, LD 12): POSTING a
+ * comment is a WRITE onto the plan, so the advisor arm of the POST passes `{ write: true }` and asks
+ * the CANONICAL §12 WRITE predicate `isTripAdvisorWithWriteAccess` (accepted/assigned — the status
+ * list is never re-typed here). READING comments stays on `isTripAdvisor`, so a `pending` advisor
+ * reads the thread while deciding — LD 12 keeps `pending` on every read surface.
  */
-async function resolveItemCommentRole(tripId: string, userId: string): Promise<'owner' | 'expert' | 'author' | null> {
+async function resolveItemCommentRole(
+  tripId: string,
+  userId: string,
+  opts: { write?: boolean } = {},
+): Promise<'owner' | 'expert' | 'author' | null> {
   if (await isTripOwner(tripId, userId)) return 'owner';
-  if (await isTripAdvisor(tripId, userId)) return 'expert';
+  const advisor = opts.write
+    ? await isTripAdvisorWithWriteAccess(tripId, userId)
+    : await isTripAdvisor(tripId, userId);
+  if (advisor) return 'expert';
   if (await isTripAuthor(tripId, userId)) return 'author';
   return null;
 }
@@ -1672,7 +1685,8 @@ router.post('/trips/:tripId/items/:itemId/comments', isAuthenticated, async (req
       return res.status(400).json({ error: 'body must be a string of 1-2000 characters' });
     }
 
-    const role = await resolveItemCommentRole(tripId, userId);
+    // R150: a comment is a WRITE — a `pending` advisor is refused here (LD 12), while GET above keeps it.
+    const role = await resolveItemCommentRole(tripId, userId, { write: true });
     if (!role) return res.status(403).json({ error: 'Access denied' });
 
     const item = await storage.getItineraryItemByIdAndTrip(itemId, tripId);

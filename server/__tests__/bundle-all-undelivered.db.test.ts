@@ -513,3 +513,54 @@ test("U8 — the whole-row cancel rail on an already all-undelivered parent is r
   assert.equal([...ALL_UNDELIVERED_CANCEL_FROM_STATUSES].includes("cancelled"), false);
   assert.equal(calls.length, 1, "still exactly one refund for this bundle");
 });
+
+// ── R152 (ledger `2026-09-27-bundle-all-undelivered-reverts-item`) ────────────────────────────────
+// LD 50 recorded "`revertPurchasedItemsForBooking` is not called on this path" as left-not-built:
+// a cancelled all-undelivered bundle left its plan item at `purchased`, so the slip and the Trip
+// Card went on showing a purchase the traveler was refunded for. The parent cancel now calls the
+// ONE existing revert (never a second copy). FAILS on the pre-R152 service: the item stays
+// `purchased`.
+test("U9 — an all-undelivered cancel REVERTS the linked plan item to `in_planning`, ONCE: a retry reverts nothing twice", async () => {
+  stubSucceed();
+  const tripId = `und-${RUN}-trip-u9`;
+  const itemId = `und-${RUN}-item-u9`;
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, title, start_date, end_date, destination)
+    VALUES (${tripId}, ${ids.traveler}, 'U9 plan', CURRENT_DATE + 30, CURRENT_DATE + 33, 'Kyoto')
+  `);
+  try {
+    const id = await bornBundleBooking();
+    await db.execute(sql`UPDATE service_bookings SET trip_id = ${tripId} WHERE id = ${id}`);
+    await db.execute(sql`
+      INSERT INTO itinerary_items (id, trip_id, title, day_number, routing_status, booking_id, provider_service_id)
+      VALUES (${itemId}, ${tripId}, 'U9 bundle item', 1, 'purchased', ${id}, ${ids.bundle})
+    `);
+
+    for (const c of COMPONENTS) await recordBundleComponentFailure({ bookingId: id, componentServiceId: c.id, actor });
+    assert.equal((await readBooking(id)).status, "cancelled");
+
+    const item = async () =>
+      (await db.execute(sql`SELECT routing_status, booking_id FROM itinerary_items WHERE id = ${itemId}`)).rows[0] as any;
+    const reversals = async () =>
+      Number(((await db.execute(sql`
+        SELECT COUNT(*)::int AS n FROM item_transition_log
+         WHERE item_id = ${itemId} AND from_status = 'purchased' AND to_status = 'in_planning'
+      `)).rows[0] as any).n);
+
+    const after = await item();
+    assert.equal(after.routing_status, "in_planning", "the item is back on the plan — never shown as purchased");
+    assert.equal(after.booking_id, id, "booking_id is KEPT as history, exactly as the refund path keeps it (§13)");
+    assert.equal(await reversals(), 1, "one reversal diary row");
+
+    // A retry through the ONE writer (the recovery arm) reverts nothing twice.
+    const retry = await settleBundleAllUndelivered({ bookingId: id, actor });
+    assert.equal(retry.alreadyCancelled, true);
+    assert.equal((await item()).routing_status, "in_planning");
+    assert.equal(await reversals(), 1, "no second reversal — the revert only moves `purchased` rows");
+  } finally {
+    await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${tripId}`).catch(() => {});
+    await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${itemId}`).catch(() => {});
+    await db.execute(sql`UPDATE service_bookings SET trip_id = NULL WHERE trip_id = ${tripId}`).catch(() => {});
+    await db.execute(sql`DELETE FROM trips WHERE id = ${tripId}`).catch(() => {});
+  }
+});
