@@ -31,9 +31,10 @@ test.setTimeout(900_000);
 
 const J = 'L1';
 
+/** Padding after a navigation. NOT a confirmation: every caller follows it with `must()`, which is. */
 async function settle(page: Page, ms = 800) {
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-  await page.waitForTimeout(ms);
+  await page.waitForTimeout(ms); // settle-ok: padding only — the caller's next must() confirms the page
 }
 
 /** Wait for a control; on failure take a screenshot and throw — a harness stop, not a finding. */
@@ -52,7 +53,10 @@ async function openDistribute(page: Page, tripId: string) {
   const tab = testid(page, 'tab-right-distribute');
   if (await appears(tab, 10_000)) {
     await tab.click();
-    await page.waitForTimeout(700);
+    // Confirm the tab opened (Radix tabs mark the active trigger) rather than sleeping 700 ms.
+    await page
+      .waitForFunction((el) => el?.getAttribute('data-state') === 'active' || el?.getAttribute('aria-selected') === 'true', await tab.elementHandle(), { timeout: 5000 })
+      .catch(() => {});
   }
 }
 

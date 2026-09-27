@@ -4,19 +4,22 @@
  * page source (data-testid greps against client/src on 2026-09-25); a step
  * whose selector has drifted is the spec's own job to catch and file as a
  * finding, not to silently skip.
+ *
+ * Every helper here returns only after CONFIRMING the effect it was called for — the action's own
+ * server response (`actAndAwait`), or the element it needs (`appears`) — never on a timer (ledger
+ * `2026-09-27-e2e-helpers-confirm-effect`). `true` means the server said yes; `false` means it did
+ * not, or the request was never sent.
  */
 import type { Page } from '@playwright/test';
-import { testid, fillIfVisible, clickIfVisible, checkIfVisible, appears } from './ui';
+import { testid, fillIfVisible, clickIfVisible, checkIfVisible, appears, actAndAwait, ok2xx, LIST_LOAD_MS } from './ui';
 
 export async function selectByTrigger(page: Page, triggerTestId: string, optionText?: string): Promise<void> {
   await testid(page, triggerTestId).click();
-  await page.waitForTimeout(200);
   const options = page.getByRole('option');
-  const count = await options.count();
-  if (count === 0) return;
+  if (!(await appears(options.first()))) return;
   if (optionText) {
     const match = page.getByRole('option', { name: optionText, exact: false });
-    if ((await match.count()) > 0) {
+    if ((await match.count()) > 0) { // count-ok: the option list has rendered (awaited above)
       await match.first().click();
       return;
     }
@@ -28,7 +31,7 @@ export async function selectByTrigger(page: Page, triggerTestId: string, optionT
 export async function applyAsProvider(
   page: Page,
   opts: { businessName: string; categoryKey: string; email: string; city?: string; country?: string; handle?: string },
-): Promise<void> {
+): Promise<boolean> {
   await page.goto('/become-provider');
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
@@ -38,13 +41,11 @@ export async function applyAsProvider(
   await fillIfVisible(page, 'input-email', opts.email);
   await fillIfVisible(page, 'input-phone', '+81-3-0000-0000');
   await testid(page, 'button-next-step').click();
-  await page.waitForTimeout(300);
 
   // Step 2: Service Categories
   await clickIfVisible(page, `button-category-${opts.categoryKey}`);
   await fillIfVisible(page, 'textarea-description', `${opts.businessName} — e2e supply-demand fixture.`);
   await testid(page, 'button-next-step').click();
-  await page.waitForTimeout(300);
 
   // Step 3: Location & Details
   await fillIfVisible(page, 'input-address', '1 Kyoto Fixture Street');
@@ -53,19 +54,21 @@ export async function applyAsProvider(
   await checkIfVisible(page, 'checkbox-insurance');
   await checkIfVisible(page, 'checkbox-license');
   await testid(page, 'button-next-step').click();
-  await page.waitForTimeout(300);
 
   // Step 4: Review + terms
   await checkIfVisible(page, 'checkbox-terms');
   await testid(page, 'button-next-step').click();
-  await page.waitForTimeout(300);
 
   // Step 5: handle claim (optional)
   if (opts.handle) {
     await fillIfVisible(page, 'input-public-handle', opts.handle);
   }
-  await testid(page, 'button-submit').click();
-  await page.waitForTimeout(1000);
+  // The application exists only if the server accepted it.
+  const status = await actAndAwait(page, () => testid(page, 'button-submit').click(), {
+    method: 'POST',
+    path: /^\/api\/provider-application$/,
+  });
+  return ok2xx(status);
 }
 
 /** travel-experts.tsx application: multi-step, ends at `button-submit` (step-handle-claim before it). */
@@ -105,8 +108,7 @@ export async function applyAsExpert(
     if (!(await appears(nextBtn))) return false;
     if (await nextBtn.isDisabled().catch(() => false)) return false;
     await nextBtn.click().catch(() => {});
-    await page.waitForTimeout(300);
-    return true;
+    return true; // the next step's own fields are probed with appears() before they are filled
   };
 
   // Step 1 — First/last name, email, phone.
@@ -118,11 +120,12 @@ export async function applyAsExpert(
 
   // Step 2 — City, locality proof, languages, neighborhood claim (only if the catalog has rows).
   await fillIfVisible(page, 'input-local-city', city);
-  await page.waitForTimeout(800); // debounced neighborhood-options fetch keyed on the city text
   await clickIfVisible(page, 'button-locality-born_raised');
   await clickIfVisible(page, 'badge-language-english');
+  // The neighborhood options arrive from a debounced fetch keyed on the city text — wait for them
+  // to render rather than counting once after a fixed delay (none rendering = the city has none).
   const anyNeighborhood = page.locator('[data-testid^="badge-neighborhood-"]');
-  if ((await anyNeighborhood.count()) > 0) {
+  if (await appears(anyNeighborhood.first())) {
     await anyNeighborhood.first().click({ timeout: 3000 }).catch(() => {});
     await checkIfVisible(page, 'checkbox-neighborhood-consent');
   }
@@ -136,14 +139,14 @@ export async function applyAsExpert(
 
   // Step 4 — At least one local specialty (knowledge area).
   const anySpecialty = page.locator('[data-testid^="button-local-specialty-"]');
-  if ((await anySpecialty.count()) > 0) {
+  if (await appears(anySpecialty.first())) {
     await anySpecialty.first().click({ timeout: 3000 }).catch(() => {});
   }
   if (!(await advance())) return { reachedFinalStep: false, stoppedAtStep: 4 };
 
   // Step 5 — At least one selected service/offering.
   const anyService = page.locator('[data-testid^="badge-service-"]');
-  if ((await anyService.count()) > 0) {
+  if (await appears(anyService.first())) {
     await anyService.first().click({ timeout: 3000 }).catch(() => {});
   }
   if (!(await advance())) return { reachedFinalStep: false, stoppedAtStep: 5 };
@@ -166,24 +169,29 @@ export async function applyAsExpert(
   if (!(await appears(submitBtn))) {
     return { reachedFinalStep: false, stoppedAtStep: 7 };
   }
-  await submitBtn.click({ timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(1000);
-  return { reachedFinalStep: true };
+  // The application exists only if the server accepted it.
+  const status = await actAndAwait(page, () => submitBtn.click({ timeout: 3000 }), {
+    method: 'POST',
+    path: /^\/api\/expert-application$/,
+  });
+  return ok2xx(status) ? { reachedFinalStep: true } : { reachedFinalStep: false, stoppedAtStep: 7 };
 }
 
 /** /admin/providers → Applications tab → approve by matching business name text within a card. */
 export async function adminApproveProviderApplication(page: Page, businessName: string): Promise<boolean> {
   await page.goto('/admin/providers');
   await testid(page, 'button-tab-applications').click().catch(() => {});
-  await page.waitForTimeout(500);
+  // The list is an async query: wait for THIS application's card, never a fixed sleep + one count.
   const card = page.locator('[data-testid^="card-application-"]', { hasText: businessName });
-  if ((await card.count()) === 0) return false;
+  if (!(await appears(card.first(), LIST_LOAD_MS))) return false;
 
   page.once('dialog', (d) => d.accept('e2e supply-demand fixture: admin override, verifications not completed (Stripe stubbed).'));
   const approveBtn = card.first().locator('[data-testid^="button-approve-"]');
-  await approveBtn.click();
-  await page.waitForTimeout(1000);
-  return true;
+  const status = await actAndAwait(page, () => approveBtn.click(), {
+    method: 'PATCH',
+    path: /^\/api\/admin\/provider-applications\/[^/]+\/status$/,
+  });
+  return ok2xx(status);
 }
 
 /** /admin/experts → Applications tab → approve by matching applicant name/email text. */
@@ -196,12 +204,7 @@ export async function adminApproveExpertApplication(page: Page, matchText: strin
   // pure RACE: the list is an async useQuery that resolves after navigation, and a flat 500ms
   // sleep after page.goto does not reliably outlast that fetch under load. Poll instead of
   // guessing a fixed delay, matching every other admin-list lookup in this harness.
-  let found = false;
-  for (let i = 0; i < 10 && !found; i++) {
-    found = (await card.count()) > 0;
-    if (!found) await page.waitForTimeout(1000);
-  }
-  if (!found) return false;
+  if (!(await appears(card.first(), LIST_LOAD_MS))) return false;
   // admin/experts.tsx's Approve handler opens a window.prompt() override-reason dialog
   // whenever identity verification is incomplete (always true here, HELD:stripe) — same
   // pattern as adminApproveProviderApplication. Missing this handler is exactly why an
@@ -209,23 +212,26 @@ export async function adminApproveExpertApplication(page: Page, matchText: strin
   // cancelling the mutation) while reporting success.
   page.once('dialog', (d) => d.accept('e2e supply-demand fixture: admin override, verifications not completed (Stripe stubbed).'));
   const approveBtn = card.first().locator('[data-testid^="button-approve-"]');
-  await approveBtn.click();
-  await page.waitForTimeout(1000);
-  return true;
+  const status = await actAndAwait(page, () => approveBtn.click(), {
+    method: 'PATCH',
+    path: /^\/api\/admin\/expert-applications\/[^/]+\/status$/,
+  });
+  return ok2xx(status);
 }
 
 /** /admin/providers → Platform tab → "Mark Verified" (background check) for a provider row matching businessName. */
 export async function adminMarkProviderVerified(page: Page, businessName: string): Promise<boolean> {
   await page.goto('/admin/providers');
   await testid(page, 'button-tab-platform').click().catch(() => {});
-  await page.waitForTimeout(500);
   const card = page.locator('[data-testid^="card-provider-"]', { hasText: businessName });
-  if ((await card.count()) === 0) return false;
+  if (!(await appears(card.first(), LIST_LOAD_MS))) return false;
   const verifyBtn = card.first().locator('[data-testid^="button-verify-"]');
-  if ((await verifyBtn.count()) === 0) return false;
-  await verifyBtn.click();
-  await page.waitForTimeout(1000);
-  return true;
+  if (!(await appears(verifyBtn.first()))) return false;
+  const status = await actAndAwait(page, () => verifyBtn.first().click(), {
+    method: 'PATCH',
+    path: /^\/api\/admin\/users\/[^/]+\/verification$/,
+  });
+  return ok2xx(status);
 }
 
 /**
@@ -266,14 +272,17 @@ export async function adminApproveService(page: Page, titleMatch: string): Promi
   const card = await openPendingServiceCard(page, titleMatch);
   if (!card) return false;
   const approveBtn = card.locator('[data-testid^="button-approve-"]');
-  await approveBtn.click();
-  await page.waitForTimeout(300);
-  const confirmBtn = page.locator('[data-testid^="button-approve-confirm-"]');
-  if (await appears(confirmBtn)) {
-    await confirmBtn.click();
-  }
-  await page.waitForTimeout(1000);
-  return true;
+  // The approve request fires on the first click or, when the page asks, on its confirm button.
+  const status = await actAndAwait(
+    page,
+    async () => {
+      await approveBtn.click();
+      const confirmBtn = page.locator('[data-testid^="button-approve-confirm-"]');
+      if (await appears(confirmBtn)) await confirmBtn.click();
+    },
+    { method: 'POST', path: /^\/api\/admin\/provider-services\/[^/]+\/approve$/ },
+  );
+  return ok2xx(status);
 }
 
 /** /admin/service-approvals → reject by matching listing title text, with a reason. */
@@ -281,11 +290,13 @@ export async function adminRejectService(page: Page, titleMatch: string, reason:
   const card = await openPendingServiceCard(page, titleMatch);
   if (!card) return false;
   const reasonBox = card.locator('[data-testid^="reject-reason-"]');
-  if ((await reasonBox.count()) > 0) await reasonBox.fill(reason).catch(() => {});
+  if (await appears(reasonBox.first())) await reasonBox.first().fill(reason).catch(() => {});
   const rejectBtn = card.locator('[data-testid^="button-reject-"]');
-  await rejectBtn.click();
-  await page.waitForTimeout(1000);
-  return true;
+  const status = await actAndAwait(page, () => rejectBtn.click(), {
+    method: 'POST',
+    path: /^\/api\/admin\/provider-services\/[^/]+\/reject$/,
+  });
+  return ok2xx(status);
 }
 
 /**
@@ -339,9 +350,10 @@ export async function createListingBasics(
         // the first offering rather than blocking Basics entirely; the spec records this.
         await fillIfVisible(page, 'input-offering-search', '');
         const anyOption = page.locator('[data-testid^="option-offering-"]');
-        if ((await anyOption.count()) > 0) await anyOption.first().click();
+        if (await appears(anyOption.first())) await anyOption.first().click();
       }
-      await page.waitForTimeout(300);
+      // The picker closes on selection; wait for that rather than a fixed beat.
+      await picker.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
     }
   }
 
@@ -354,10 +366,12 @@ export async function createListingBasics(
   if (opts.priceCents !== undefined) {
     const dollars = (opts.priceCents / 100).toFixed(2);
     // ServiceForm.tsx: the price input's testid depends on priceType ("Fixed" default ⇒
-    // input-base-price; "Hourly" ⇒ input-hourly-rate; "Per-event" ⇒ input-event-rate).
-    await fillIfVisible(page, 'input-base-price', dollars);
-    await fillIfVisible(page, 'input-hourly-rate', dollars);
-    await fillIfVisible(page, 'input-event-rate', dollars);
+    // input-base-price; "Hourly" ⇒ input-hourly-rate; "Per-event" ⇒ input-event-rate). Exactly one
+    // renders, so wait for whichever it is rather than probing all three (two always absent).
+    const priceInput = page
+      .locator('[data-testid="input-base-price"], [data-testid="input-hourly-rate"], [data-testid="input-event-rate"]')
+      .first();
+    if (await appears(priceInput)) await priceInput.fill(dollars, { timeout: 3000 }).catch(() => {});
   }
 
   await fillIfVisible(page, 'service-description', opts.description);
@@ -375,7 +389,7 @@ export async function createListingBasics(
       await tile.click({ timeout: 3000 }).catch(() => {});
     } else {
       const anyTile = page.locator('[data-testid^="option-tier-"]');
-      if ((await anyTile.count()) > 0) await anyTile.first().click({ timeout: 3000 }).catch(() => {});
+      if (await appears(anyTile.first())) await anyTile.first().click({ timeout: 3000 }).catch(() => {});
     }
   }
 
@@ -390,7 +404,7 @@ export async function createListingBasics(
         // Named category not in the list (drift) — pick the first real option rather than
         // leaving the required field permanently empty.
         const anyOption = page.getByRole('option');
-        if ((await anyOption.count()) > 0) await anyOption.first().click({ timeout: 3000 }).catch(() => {});
+        if (await appears(anyOption.first())) await anyOption.first().click({ timeout: 3000 }).catch(() => {});
       }
     }
   }
@@ -411,9 +425,9 @@ export async function pickNeighborhood(page: Page, slug: string): Promise<boolea
   const opt = testid(page, `option-neighborhood-${slug}`);
   if (process.env.PN_DEBUG) {
     const anyOpt = page.locator('[data-testid^="option-neighborhood-"]');
-    const cnt = await anyOpt.count().catch(() => -1);
+    const cnt = await anyOpt.count().catch(() => -1); // count-ok: PN_DEBUG diagnostics only, decides nothing
     const specificVisible = cnt > 0 ? await appears(opt, 500) : false;
-    const specificCount = cnt > 0 ? await opt.count().catch(() => -1) : -1;
+    const specificCount = cnt > 0 ? await opt.count().catch(() => -1) : -1; // count-ok: PN_DEBUG diagnostics only
     let sampleIds = '';
     if (cnt > 0) {
       const ids = await anyOpt.evaluateAll((els) => els.slice(0, 15).map((e) => e.getAttribute('data-testid'))).catch(() => []);
@@ -451,7 +465,7 @@ export async function pickNeighborhood(page: Page, slug: string): Promise<boolea
         console.log(`[PN_DEBUG] click#${click} err=${clickErr}`);
       }
       for (let poll = 0; poll < 10; poll++) {
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(300); // settle-ok: polling the option's own aria-pressed — the loop IS the confirmation
         const pressed = await opt.getAttribute('aria-pressed').catch((e) => `ERR:${e?.message ?? e}`);
         if (process.env.PN_DEBUG && poll === 0) {
           // eslint-disable-next-line no-console
@@ -479,8 +493,7 @@ export async function pickNeighborhood(page: Page, slug: string): Promise<boolea
   const search = testid(page, 'input-neighborhood-search');
   if (await appears(search, 600)) {
     await search.fill(slug.replace(/[-_]/g, ' '), { timeout: 3000 }).catch(() => {});
-    await page.waitForTimeout(300);
-    if (await appears(opt, 1500)) {
+    if (await appears(opt, 1800)) {
       return await clickAndVerify();
     }
   }
@@ -511,9 +524,11 @@ export async function claimHandle(page: Page, consoleHome: '/provider/dashboard'
     await fillIfVisible(page, 'handle-claim-input', `e2eh${Date.now().toString(36)}`.slice(0, 20));
   }
   if (await submit.isDisabled().catch(() => false)) return false;
-  await submit.click({ timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(1000);
-  return true;
+  const status = await actAndAwait(page, () => submit.click({ timeout: 3000 }), {
+    method: 'PATCH',
+    path: /^\/api\/me\/handle$/,
+  });
+  return ok2xx(status);
 }
 
 export async function walkServiceFormToReview(
@@ -558,7 +573,7 @@ export async function walkServiceFormToReview(
     if (await next.isDisabled().catch(() => false)) break;
     await next.click().catch(() => {});
     clicks += 1;
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(400); // settle-ok: a step transition; the loop's next pass CONFIRMS by probing for the review card / next control
   }
   // Last-chance retry: if the picker was never confirmed selected (aria-pressed="true") anywhere
   // in the walk above, the wizard may still be on the Logistics step (e.g. Next stayed enabled and
@@ -569,12 +584,22 @@ export async function walkServiceFormToReview(
   // D9 attestations (service-attestations-card.tsx): a publish-blocking gate on the
   // Review & submit step, separate from identity/business verification. Renders one
   // `checkbox-attestation-<key>` per applicable attestation; tick every one present.
+  // The review step's gates render with its summary card: count them only once that card is on
+  // screen (it is when the walk reached review; if it did not, there is nothing to tick).
+  const onReview = await appears(testid(page, 'card-review-summary'));
   const attestationBoxes = page.locator('[data-testid^="checkbox-attestation-"]');
-  const count = await attestationBoxes.count();
+  const count = onReview ? await attestationBoxes.count() : 0; // count-ok: after the review summary rendered
   for (let i = 0; i < count; i++) {
     const box = attestationBoxes.nth(i);
     const already = await box.getAttribute('data-state').then((s) => s === 'checked').catch(() => false);
-    if (!already) await box.click({ timeout: 3000 }).catch(() => {});
+    if (!already) {
+      await box.click({ timeout: 3000 }).catch(() => {});
+      // Confirm the tick took: the publish gate reads this state, so an unregistered click is a
+      // blocked submit two steps later.
+      await page
+        .waitForFunction((el) => el?.getAttribute('data-state') === 'checked', await box.elementHandle(), { timeout: 3000 })
+        .catch(() => {});
+    }
   }
 
   // Part 1a follow-on (Pass 2, found live via a PN_DEBUG network trace): category-specific
@@ -589,7 +614,7 @@ export async function walkServiceFormToReview(
   // fired, because Publish stayed disabled). Fill every category field generically here so
   // Publish can become enabled and the picked neighborhood actually reaches the server.
   const selectCatFields = page.locator('[data-testid^="select-cat-"]');
-  const selectCatCount = await selectCatFields.count().catch(() => 0);
+  const selectCatCount = onReview ? await selectCatFields.count().catch(() => 0) : 0; // count-ok: after the review summary rendered
   for (let i = 0; i < selectCatCount; i++) {
     const trigger = selectCatFields.nth(i);
     if (await appears(trigger, 1000)) {
@@ -603,7 +628,7 @@ export async function walkServiceFormToReview(
     }
   }
   const inputCatFields = page.locator('[data-testid^="input-cat-"]');
-  const inputCatCount = await inputCatFields.count().catch(() => 0);
+  const inputCatCount = onReview ? await inputCatFields.count().catch(() => 0) : 0; // count-ok: after the review summary rendered
   for (let i = 0; i < inputCatCount; i++) {
     const field = inputCatFields.nth(i);
     if (await appears(field, 1000)) {
@@ -661,12 +686,12 @@ export async function addAvailabilityViaUi(page: Page, role: 'provider' | 'exper
   await fillIfVisible(page, 'input-patterns-start', '09:00');
   await fillIfVisible(page, 'input-patterns-capacity', '2');
   const saveBtn = page.getByRole('button', { name: /Save schedule/i });
-  if (await appears(saveBtn, 3000)) {
-    await saveBtn.click({ timeout: 3000 }).catch(() => {});
-    await page.waitForTimeout(1000);
-    return true;
-  }
-  return false;
+  if (!(await appears(saveBtn, 3000))) return false;
+  const status = await actAndAwait(page, () => saveBtn.click({ timeout: 3000 }), {
+    method: 'PUT',
+    path: /^\/api\/provider\/services\/[^/]+\/availability-patterns$/,
+  });
+  return ok2xx(status);
 }
 
 export type SubmitOutcome = { submitted: boolean; blockedByVerification: boolean; reason?: string };
@@ -694,9 +719,12 @@ export type SubmitOutcome = { submitted: boolean; blockedByVerification: boolean
 export async function saveDraft(page: Page): Promise<boolean> {
   const btn = testid(page, 'button-save-draft');
   if (!(await appears(btn))) return false;
-  await btn.click({ timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(1200);
-  return true;
+  // Both roles save through /api/provider/services (POST on create, PATCH in edit mode).
+  const status = await actAndAwait(page, () => btn.click({ timeout: 3000 }), {
+    method: ['POST', 'PATCH'],
+    path: /^\/api\/provider\/services(\/[^/]+)?$/,
+  });
+  return ok2xx(status);
 }
 
 /**
@@ -713,30 +741,31 @@ export async function fillCoverPhotoFromListingHome(page: Page, url: string): Pr
   const linkInput = testid(page, 'input-photos-paste-link');
   if (!(await appears(linkInput, 3000))) return false;
   await linkInput.fill(url, { timeout: 3000 }).catch(() => {});
-  await testid(page, 'button-photos-save-link').click({ timeout: 3000 }).catch(() => {});
-  await page.waitForTimeout(600);
+  // service-photos-drawer.tsx savePastedLink: PATCH /api/provider/services/:id { serviceImage }.
+  const status = await actAndAwait(page, () => testid(page, 'button-photos-save-link').click({ timeout: 3000 }), {
+    method: 'PATCH',
+    path: /^\/api\/provider\/services\/[^/]+$/,
+  });
   // Close the drawer (Sheet) however it closes — Escape is the reliable cross-component way.
   await page.keyboard.press('Escape').catch(() => {});
-  await page.waitForTimeout(300);
-  return true;
+  await linkInput.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+  return ok2xx(status);
 }
 
-/** Enters the wizard from listing-home via any step-targeted checklist row (description140 is always present pre-fill). */
+/**
+ * Enters the wizard from listing-home via any step-targeted checklist row (description140 is
+ * always present pre-fill). The checklist renders only after the listing's GET answers, so wait
+ * for IT (not a fixed 3 s + one count), then confirm the wizard actually opened.
+ */
 export async function enterWizardFromListingHome(page: Page): Promise<boolean> {
-  const row = testid(page, 'checklist-row-description140');
-  if (await appears(row, 3000)) {
-    await row.click({ timeout: 3000 }).catch(() => {});
-    await page.waitForTimeout(500);
-    return true;
-  }
-  // Fallback: any row that is not the photos/availability special targets.
+  if (!(await appears(testid(page, 'list-checklist'), LIST_LOAD_MS))) return false;
+  const preferred = testid(page, 'checklist-row-description140');
   const anyRow = page.locator('[data-testid^="checklist-row-"]:not([data-testid="checklist-row-coverPhoto"]):not([data-testid="checklist-row-availability"])');
-  if ((await anyRow.count()) > 0) {
-    await anyRow.first().click({ timeout: 3000 }).catch(() => {});
-    await page.waitForTimeout(500);
-    return true;
-  }
-  return false;
+  const row = (await preferred.count()) > 0 ? preferred : anyRow.first(); // count-ok: the checklist has rendered (awaited above)
+  if (!(await appears(row))) return false;
+  await row.click({ timeout: 3000 }).catch(() => {});
+  // Confirm: the wizard's step controls are on screen and the listing home is gone.
+  return appears(page.locator('[data-testid="button-step-next"], [data-testid="button-submit-service"], [data-testid="button-publish-service"]').first());
 }
 
 export async function submitListingForReview(page: Page): Promise<SubmitOutcome> {
@@ -763,9 +792,10 @@ export async function submitListingForReview(page: Page): Promise<SubmitOutcome>
     if (await btn.isDisabled().catch(() => false)) {
       return { submitted: false, blockedByVerification: false, reason: 'button-submit-service present but disabled' };
     }
-    await btn.click();
-    await page.waitForTimeout(1000);
-    return { submitted: true, blockedByVerification: false };
+    const status = await actAndAwait(page, () => btn.click(), { method: ['POST', 'PATCH'], path: /^\/api\/provider\/services(\/[^/]+)?$/ });
+    return ok2xx(status)
+      ? { submitted: true, blockedByVerification: false }
+      : { submitted: false, blockedByVerification: false, reason: `submit answered ${status ?? 'nothing (no request sent)'}` };
   }
   const publishBtn = testid(page, 'button-publish-service');
   if (await appears(publishBtn)) {
@@ -777,9 +807,10 @@ export async function submitListingForReview(page: Page): Promise<SubmitOutcome>
         reason: title ?? 'button-publish-service disabled (verification/background-check gate)',
       };
     }
-    await publishBtn.click();
-    await page.waitForTimeout(1000);
-    return { submitted: true, blockedByVerification: false };
+    const status = await actAndAwait(page, () => publishBtn.click(), { method: ['POST', 'PATCH'], path: /^\/api\/provider\/services(\/[^/]+)?$/ });
+    return ok2xx(status)
+      ? { submitted: true, blockedByVerification: false }
+      : { submitted: false, blockedByVerification: false, reason: `publish answered ${status ?? 'nothing (no request sent)'}` };
   }
   return { submitted: false, blockedByVerification: false, reason: 'neither submit control found' };
 }
@@ -842,11 +873,11 @@ export async function fillPlanModalToFinish(
       if (await next.isDisabled().catch(() => false)) {
         // Occasion step's Next is disabled until an occasion is picked (plan-modal.tsx:2656) —
         // give the click above one more beat to register before giving up on this step.
-        await page.waitForTimeout(400);
+        await page.waitForTimeout(400); // settle-ok: one beat for the occasion click to register; re-checked on the next line
         if (await next.isDisabled().catch(() => false)) break;
       }
       await next.click().catch(() => {});
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(500); // settle-ok: a step transition; the loop's next pass CONFIRMS by probing for the finish row / next step
     } else {
       break;
     }
@@ -869,12 +900,10 @@ export async function clickPlanFinish(page: Page, branch: 'myself' | 'local' | '
   // its saving overlay 15s later is one thing; the real fix is to poll for the URL to actually
   // change rather than trust one snapshot of "idle"). Poll up to ~25s.
   const startUrl = page.url();
-  let url = startUrl;
-  for (let i = 0; i < 25; i++) {
-    await page.waitForTimeout(1000);
-    url = page.url();
-    if (url !== startUrl && (/\/plans\//.test(url) || /[?&]tripId=/.test(url))) break;
-  }
+  await page
+    .waitForURL((u) => u.toString() !== startUrl && (/\/plans\//.test(u.pathname) || /[?&]tripId=/.test(u.search)), { timeout: 25_000 })
+    .catch(() => {});
+  const url = page.url();
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
   const m = url.match(/\/plans\/([a-zA-Z0-9-]+)/) || url.match(/[?&]tripId=([a-zA-Z0-9-]+)/);
   return m ? m[1] : null;

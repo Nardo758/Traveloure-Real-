@@ -23,9 +23,24 @@ export async function signupViaUi(page: Page, acc: NewAccount): Promise<void> {
   await page.locator('[data-testid="input-name"]').fill(fullName);
   await page.locator('[data-testid="input-email"]').fill(acc.email);
   await page.locator('[data-testid="input-password"]').fill(password);
+  // The account exists only if the register request says so (ledger
+  // `2026-09-27-e2e-helpers-confirm-effect`): wait for it, then confirm the session is this account.
+  const registered = page
+    .waitForResponse((r) => new URL(r.url()).pathname === '/api/auth/register' && r.request().method() === 'POST', { timeout: 20_000 })
+    .then((r) => r.status())
+    .catch(() => null);
   await page.locator('[data-testid="button-create-account"]').click();
+  const status = await registered;
+  if (status === null || status < 200 || status >= 300) {
+    throw new Error(`signupViaUi(${acc.email}): ${status === null ? 'the signup form never sent POST /api/auth/register' : `POST /api/auth/register answered ${status}`}`);
+  }
   // Give the app time to redirect/settle post-signup (varies by role/onboarding gate).
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+  const me = await page.request.get('/api/auth/user');
+  const who = me.ok() ? ((await me.json().catch(() => null)) as { email?: string } | null) : null;
+  if (!who || String(who.email ?? '').toLowerCase() !== acc.email.toLowerCase()) {
+    throw new Error(`signupViaUi(${acc.email}): registered, but GET /api/auth/user answered ${me.status()}${who?.email ? ` as ${who.email}` : ''}`);
+  }
   // HARNESS WORKAROUND, not a product fix: Signup.tsx's onSuccess routes to a
   // protected page (/dashboard) before the auth query has re-resolved, so
   // ProtectedRoute's guard fires once, stores sessionStorage

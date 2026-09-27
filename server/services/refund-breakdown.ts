@@ -103,3 +103,37 @@ export function tierRefundBreakdown(input: {
 export function refundOptionsFor(b: RefundBreakdown): { amountOverride: number; feeRefundPercent: number } {
   return { amountOverride: b.bookingRefundDollars, feeRefundPercent: b.feeRefundPercent };
 }
+
+/**
+ * THE ADMIN EXCEPTION REFUND'S BREAKDOWN (ledger `2026-09-27-admin-exception-refund`). An admin names
+ * the WHOLE amount to give back, in cents, up to everything the traveler was charged (booking + fee
+ * actually charged). It is split between the two shares at ONE percentage — Terms §8.3 "the service
+ * fee at the same percentage as the booking" — and the booking share absorbs the rounding, so the
+ * total Stripe is asked for is EXACTLY the cents the admin entered. `null` for an amount that is not a
+ * positive whole number of cents or exceeds the charge (the caller refuses it; never clamped).
+ */
+export function exceptionRefundBreakdown(input: {
+  bookingChargedDollars: number;
+  feeChargedDollars: number;
+  amountCents: number;
+}): RefundBreakdown | null {
+  const bookingCents = Math.round(Math.max(input.bookingChargedDollars, 0) * 100);
+  const feeCents = Math.round(Math.max(input.feeChargedDollars, 0) * 100);
+  const chargedCents = bookingCents + feeCents;
+  const want = input.amountCents;
+  if (!Number.isInteger(want) || want <= 0 || want > chargedCents) return null;
+  if (want === chargedCents) {
+    return computeRefundBreakdown({ bookingChargedDollars: bookingCents / 100, feeChargedDollars: feeCents / 100 });
+  }
+  const feeRefundPercent = feeCents > 0 ? (want / chargedCents) * 100 : 0;
+  const feeShareCents = feeCents > 0 ? Math.round(feeCents * (feeRefundPercent / 100)) : 0;
+  const bookingShareCents = want - feeShareCents;
+  if (bookingShareCents < 0 || bookingShareCents > bookingCents) return null;
+  const b = computeRefundBreakdown({
+    bookingChargedDollars: bookingCents / 100,
+    feeChargedDollars: feeCents / 100,
+    amountOverride: bookingShareCents / 100,
+    feeRefundPercent,
+  });
+  return Math.round(b.totalRefundDollars * 100) === want ? b : null;
+}
