@@ -1,3 +1,4 @@
+import { isBookedActivity } from "./item-booking-state";
 import { parseTripDate } from "@/lib/calendar-date";
 
 /**
@@ -26,7 +27,7 @@ export interface PlanRowCounts {
 /** Structural minimum of the plancard DTO the counts derive from (SlipData.days[].activities[]). */
 export interface PlancardLike {
   days?: Array<{
-    activities?: Array<{ booking?: unknown; routingStatus?: string | null }> | null;
+    activities?: Array<{ booking?: unknown; endedBooking?: { status?: string | null } | null; routingStatus?: string | null }> | null;
   }> | null;
 }
 
@@ -67,8 +68,12 @@ export function routingCountsFromPlancard(data: PlancardLike | null | undefined)
   const counts: PlanRowCounts = { in_planning: 0, with_expert: 0, ready_for_checkout: 0, purchased: 0 };
   for (const day of data?.days ?? []) {
     for (const a of day.activities ?? []) {
-      if (a.booking || a.routingStatus === "purchased") counts.purchased++;
+      // R145: the ONE booked reading — an ended (refunded/cancelled) booking is not purchased.
+      if (isBookedActivity(a)) counts.purchased++;
       else if (
+        // A `purchased` routing status whose booking has ENDED (a non-refundable cancel) is not
+        // purchased any more and is not any other state either — it counts as nothing (§13).
+        a.routingStatus !== "purchased" &&
         a.routingStatus != null &&
         (ROUTING_STATUSES as string[]).includes(a.routingStatus)
       ) {

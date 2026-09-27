@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { isBookedActivity } from "@/lib/item-booking-state";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import VariantActionButtons, { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
@@ -905,7 +906,7 @@ export default function ItineraryComparisonPage() {
     d.activities.map((a) => ({ a, dayNum: d.dayNum })),
   );
   const anchoredItems: ProposalAnchorItem[] = canonicalRows
-    .filter(({ a }) => !!a.booking || a.routingStatus === "purchased")
+    .filter(({ a }) => isBookedActivity(a))
     .map(({ a, dayNum }) => ({ id: a.id, dayNum, time: a.time || "", name: a.name }));
   const withExpertRows = canonicalRows.filter(({ a }) => a.routingStatus === "with_expert");
   const remainingCount = canonicalRows.filter(

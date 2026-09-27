@@ -274,8 +274,24 @@ export interface TripPlanActivity {
    *
    * PRESENCE IS THE BOOKED STATE. There is no separate boolean to disagree with it, and it is never
    * inferred from `routing_status` alone: an item reads as bought only when a booking row backs it.
+   *
+   * R145 (ledger `2026-09-27-refunded-item-status`): a booking in a CLOSED status
+   * (`CLOSED_BOOKING_STATUSES` — `cancelled` / `refunded`, shared/booking-visibility.ts) is NOT
+   * attached here, because every surface reads this key's presence as "Booked". The refund path keeps
+   * `itinerary_items.booking_id` on the row as honest history, so the ended booking is disclosed in
+   * `endedBooking` below instead — never dropped (§13).
    */
   booking?: TripPlanBooking;
+
+  /**
+   * ADDITIVE (R145, ledger `2026-09-27-refunded-item-status`) — the booking this item WAS bought
+   * through when that booking has since CLOSED (`cancelled` or `refunded`, the ONE list
+   * `CLOSED_BOOKING_STATUSES`). PRESENT ONLY WHEN SUCH A ROW BACKS THE ITEM, and mutually exclusive
+   * with `booking`: an item carries at most one of the two. It exists so a surface can say what
+   * happened ("Refunded" / "Cancelled") rather than either "Booked" (false) or nothing (hides it).
+   * It is never the booked state and never a basis for the item-kind `included` rule.
+   */
+  endedBooking?: TripPlanBooking;
 
   /**
    * ADDITIVE (Trip-Canon Lane 1, Phase 1d / W7) — `itinerary_items.routing_status` (migration 159:

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { ENDED_BOOKING_LABELS, endedBookingState } from "@/lib/item-booking-state";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -78,6 +79,19 @@ export function RoutingBadge({
         data-testid={`badge-routing-booked-${activity.id}`}
       >
         <BadgeCheck className="w-3 h-3" /> {BOOKED_TINT.label}
+      </span>
+    );
+  }
+  // R145: a closed booking is disclosed, never read as booked and never hidden (§13). Neutral
+  // outline pill — theme classes, no tint; the word lives in `@/lib/item-booking-state`.
+  const ended = endedBookingState(activity);
+  if (ended) {
+    return (
+      <span
+        className={`${PILL_BASE} border border-border text-muted-foreground bg-transparent`}
+        data-testid={`badge-routing-${ended}-${activity.id}`}
+      >
+        {ENDED_BOOKING_LABELS[ended]}
       </span>
     );
   }
@@ -848,7 +862,10 @@ export function ActivitiesSection({
                       renders only when at least one of them does (no empty row, §13). */}
                   {(() => {
                     const hasBadge =
-                      !!a.booking || a.routingStatus === "with_expert" || a.routingStatus === "ready_for_checkout";
+                      !!a.booking ||
+                      endedBookingState(a) != null ||
+                      a.routingStatus === "with_expert" ||
+                      a.routingStatus === "ready_for_checkout";
                     const hasActions =
                       !routingReadOnly &&
                       (isOwner || isExpertViewer) && a.routingStatus != null && !a.booking && a.routingStatus !== "purchased";

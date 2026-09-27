@@ -32,6 +32,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { endedBookingState, isBookedActivity } from "@/lib/item-booking-state";
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { TripPlanTransition } from "@shared/trip-plan";
@@ -234,8 +235,10 @@ const STATUS_SHORT: Record<string, string> = {
   purchased: "purchased",
 };
 
+/** R145: the ONE client reading of the booked state (`@/lib/item-booking-state`) — an ended
+ *  (refunded / cancelled) booking is never a purchased row, even when routing still says so. */
 function isPurchasedRow(a: PlanCardActivity): boolean {
-  return !!a.booking || a.routingStatus === "purchased";
+  return isBookedActivity(a);
 }
 
 function expertFirstName(data: SlipData): string | null {
@@ -598,6 +601,10 @@ function secondaryLine(a: PlanCardActivity, expertName: string | null, expertAss
     const ref = a.confirmationNumber || (a.booking ? a.booking.id.slice(0, 8) : null);
     return ref ? `booked · #${ref}` : "booked";
   }
+  // R145: a closed booking says what happened (§13) — never "booked", never silence.
+  const ended = endedBookingState(a);
+  if (ended === "refunded") return "Refunded — the booking was refunded";
+  if (ended === "cancelled") return "Cancelled — the booking was cancelled";
   if (a.routingStatus === "with_expert") {
     // Nobody is assigned: never "with your expert" (ledger `2026-09-26-send-to-expert-needs-expert`).
     if (!expertAssigned) return "Not with an expert — none is assigned to this plan";

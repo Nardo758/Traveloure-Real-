@@ -44,6 +44,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { contentOriginFor } from "@shared/content-origin";
 import { plancardPartyCount } from "@shared/plan-vocabulary";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
+import { isClosedBooking } from "@shared/booking-visibility";
 import {
   TRIP_PLAN_VERSION,
   isChauffeuredMode,
@@ -534,6 +535,20 @@ async function resolveTripBookings(tripId: string): Promise<TripPlanBooking[]> {
   }));
 }
 
+/**
+ * R145 (ledger `2026-09-27-refunded-item-status`) — the ONE place an item's linked booking is
+ * turned into its booked-or-not presentation (§18 rule 1). A live booking is `booking` (the booked
+ * state every surface reads); a CLOSED one (`CLOSED_BOOKING_STATUSES`, the existing shared list —
+ * `cancelled` / `refunded`) is `endedBooking`, so the item says what happened instead of reading
+ * "Booked". No booking ⇒ neither key. Read-side only: no row is written and no money path moves.
+ */
+export function linkedBookingFields(
+  b: TripPlanBooking | undefined,
+): { booking?: TripPlanBooking; endedBooking?: TripPlanBooking } {
+  if (!b) return {};
+  return isClosedBooking(b.status) ? { endedBooking: b } : { booking: b };
+}
+
 /** Meeting points for items linked to a platform service. Bulk-read once per assembly. */
 async function resolveMeetingPoints(serviceIds: string[]): Promise<Record<string, string | null>> {
   const out: Record<string, string | null> = {};
@@ -824,13 +839,14 @@ export async function assembleTripPlan(
         .slice(0, 1)
         .map((c) => ({ who: c.who, what: c.action, when: formatTimeAgo(c.createdAt) })),
 
-      // W4 (H2): the booked state, and ONLY when a real booking row backs it. `booking_id`
-      // (migration 159) is stamped by checkout atomically with the `→ purchased` flip and cleared
-      // of that flip by the refund path. Present-only-when-real: an unbooked item carries no key
-      // at all, so every pre-existing consumer of this activity shape is untouched (§13).
-      ...(item.bookingId && bookingById.has(item.bookingId)
-        ? { booking: bookingById.get(item.bookingId)! }
-        : {}),
+      // W4 (H2): the booked state, and ONLY when a real, still-live booking row backs it.
+      // `booking_id` (migration 159) is stamped by checkout atomically with the `→ purchased`
+      // flip; the refund path reverts the flip but deliberately KEEPS `booking_id` as history.
+      // R145 (ledger `2026-09-27-refunded-item-status`): a CLOSED booking (`cancelled` /
+      // `refunded`) is therefore disclosed as `endedBooking`, never as `booking` — every surface
+      // reads `booking`'s presence as "Booked". Present-only-when-real: an unbooked item carries
+      // neither key, so every pre-existing consumer of this activity shape is untouched (§13).
+      ...linkedBookingFields(item.bookingId ? bookingById.get(item.bookingId) : undefined),
 
       // Phase 1d (W7): the item's own routing state, straight off the row — this producer is the
       // ONLY one with the column (the variant snapshot adapter below never sets this key). READ-only
