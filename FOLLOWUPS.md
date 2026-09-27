@@ -566,7 +566,7 @@ The dispatch asserted `recorded == MIGRATION_FILES.length` (291 == 274), stricte
 `run-migrations.ts`'s real gate (zero *missing* canonical migrations). Tombstones are expected on any
 long-lived dev DB and equal zero on a fresh/prod DB, so make the assertion missing-only to stop the
 false blocker. Because a collision means the dev DB applied a *different* SQL body than canonical at
-that prefix, money-path guards (`check-decision-guards.cjs`, R114 / #1758) should take their
+that prefix, money-path guards (`check-decision-guards.cjs`, R156 (formerly R114) / #1758) should take their
 definitive green on a freshly migrated DB, not this accumulated one.
 
 ## From the 2026-09-02 local test session (Windows + Neon dev)

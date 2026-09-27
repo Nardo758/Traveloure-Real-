@@ -13,6 +13,20 @@
  *
  * Also enforces append-only shape minimally: numeric ruling IDs must be unique.
  *
+ * R-NUMBER RULES (ledger `2026-09-27-r-number-lint`, R155) — run over the WHOLE ledger, not only
+ * new rows:
+ *   (a) a row whose ruling column opens with the R heading `**R<n> —` must carry the citation
+ *       column `numeric citation R<n>` as its LAST cell, naming the SAME <n>;
+ *   (b) every `numeric citation R<n>` number appears on exactly ONE row;
+ *   (c) no cited R-number reuses a FROZEN numeric row id (the 1–122 series, ruling 25 —
+ *       "never reused"). The frozen set is read from the ledger's own numeric rows.
+ *   NEGATIVE SPACE: a lane-LOCAL R series that predates the global numbering (the partner-demand
+ *   lane's R1–R38) is not a global R-id; its rows are exempted BY NAME in the ledger's own
+ *   `## Lane-local R numbering` section. The lint is silent while that list matches the ledger and
+ *   FAILS when it goes stale (a listed row gone or no longer R-headed), so any change to the
+ *   exemptions shows up as a reviewed diff, never as per-run noise. An R-number mentioned in prose
+ *   (not as the row's opening heading) is not checked.
+ *
  * Node built-ins only — no npm ci needed. Self-test: --self-test
  */
 const fs = require("fs");
@@ -105,6 +119,72 @@ function parseLedger(text) {
   return { entries, ids, malformed };
 }
 
+/**
+ * The lane-local R rows, read from the ledger's own `## Lane-local R numbering` section — the list
+ * lives in the ledger, beside the rows it names, not in this script.
+ */
+function readLaneLocalRows(ledgerText) {
+  const out = {};
+  const m = ledgerText.match(/^## Lane-local R numbering[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
+  if (!m) return out;
+  for (const line of m[1].split("\n")) {
+    const row = line.match(/^- `([^`]+)` — (.+)$/);
+    if (row) out[row[1]] = row[2].trim();
+  }
+  return out;
+}
+
+/** The cells of one ledger table row (outer pipes stripped). */
+function rowCells(line) {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(" | ").map((c) => c.trim());
+}
+
+function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
+  const failures = [];
+  const exempted = [];
+  const frozen = new Set();
+  const cited = new Map(); // n -> [row ids]
+  for (const line of ledgerText.split("\n")) {
+    const prefix = line.match(ROW_ID_PREFIX_RE);
+    if (!prefix) continue;
+    const id = prefix[1];
+    if (/^\d+$/.test(id)) frozen.add(Number(id));
+    const cells = rowCells(line);
+    const body = cells[3] ?? "";
+    const last = cells[cells.length - 1] ?? "";
+    const head = body.match(/^\*\*R(\d+) —/);
+    const cite = last.match(/^numeric citation R(\d+)\b/);
+    if (head) {
+      if (id in exempt) {
+        exempted.push(`${id} (${exempt[id]})`);
+      } else if (!cite) {
+        failures.push(`Ruling ${id}: opens with R${head[1]} but its last column is not "numeric citation R${head[1]}" (R-rows require the citation column; a genuinely lane-local series is listed under "## Lane-local R numbering").`);
+      } else if (cite[1] !== head[1]) {
+        failures.push(`Ruling ${id}: heading says R${head[1]} but the citation column says R${cite[1]}.`);
+      }
+    }
+    if (cite) {
+      const n = Number(cite[1]);
+      cited.set(n, [...(cited.get(n) ?? []), id]);
+    }
+  }
+  // The list is only honest while it matches the ledger: a listed row that is gone, or no longer
+  // opens with an R heading, is a stale exemption and fails.
+  const headed = new Set();
+  for (const line of ledgerText.split("\n")) {
+    const prefix = line.match(ROW_ID_PREFIX_RE);
+    if (prefix && /^\*\*R\d+ —/.test(rowCells(line)[3] ?? "")) headed.add(prefix[1]);
+  }
+  for (const id of Object.keys(exempt)) {
+    if (!headed.has(id)) failures.push(`Lane-local R list names ${id}, but no ledger row with that id opens with an R heading — remove it from "## Lane-local R numbering".`);
+  }
+  for (const [n, ids] of cited) {
+    if (ids.length > 1) failures.push(`Duplicate R-number R${n} cited by ${ids.length} rows: ${ids.join(", ")}.`);
+    if (frozen.has(n)) failures.push(`R${n} (row ${ids.join(", ")}) reuses frozen numeric row id ${n} (ruling 25: never reused).`);
+  }
+  return { failures, exempted };
+}
+
 function lint({ ledgerText, workflowText }) {
   const failures = [];
   const warnings = [];
@@ -119,6 +199,9 @@ function lint({ ledgerText, workflowText }) {
 
   if (entries.length === 0) failures.push("No [guarded: ...] entries parsed from the ledger — tag format drifted?");
 
+  const r = lintRNumbers(ledgerText);
+  failures.push(...r.failures);
+
   for (const e of entries) {
     for (const g of e.guards) {
       const inCI = workflowText.includes(g);
@@ -130,7 +213,7 @@ function lint({ ledgerText, workflowText }) {
       }
     }
   }
-  return { failures, warnings };
+  return { failures, warnings, laneLocal: r.exempted.length };
 }
 
 function selfTest() {
@@ -192,15 +275,45 @@ function selfTest() {
     workflowText,
   });
   const ok5 = bad.failures.some((f) => f.includes("Malformed"));
-  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8) {
+  // R-number rules (R155). (d) an R-row missing its citation column fails.
+  const rNoCite = lintRNumbers("| 2026-01-01-r-lane | 2026-01-01 | [advisory] | **R200 — X.** body | some refs |", {});
+  const ok9 = rNoCite.failures.some((f) => f.includes("R200") && f.includes("citation"));
+  // (e) a mismatched heading/citation fails.
+  const rMismatch = lintRNumbers("| 2026-01-01-r-lane | 2026-01-01 | [advisory] | **R200 — X.** body | numeric citation R201; refs |", {});
+  const ok10 = rMismatch.failures.some((f) => f.includes("R200") && f.includes("R201"));
+  // (f) the same R-number on two rows fails.
+  const rDupe = lintRNumbers([
+    "| 2026-01-01-a | 2026-01-01 | [advisory] | **R200 — A.** | numeric citation R200 |",
+    "| 2026-01-02-b | 2026-01-02 | [advisory] | **R200 — B.** | numeric citation R200 |",
+  ].join("\n"), {});
+  const ok11 = rDupe.failures.some((f) => f.includes("Duplicate R-number R200"));
+  // (g) an R-number reusing a frozen numeric row id fails.
+  const rFrozen = lintRNumbers([
+    "| 7 | 2026-01-01 | [advisory] | frozen row | refs |",
+    "| 2026-01-02-b | 2026-01-02 | [advisory] | **R7 — B.** | numeric citation R7 |",
+  ].join("\n"), {});
+  const ok12 = rFrozen.failures.some((f) => f.includes("frozen numeric row id 7"));
+  // (h) a well-formed R-row passes; an exempt lane-local row is reported, not failed.
+  const rGood = lintRNumbers([
+    "## Lane-local R numbering",
+    "- `2026-01-02-local` — some lane R3",
+    "## Next",
+    "| 2026-01-01-a | 2026-01-01 | [advisory] | **R200 — A.** | numeric citation R200; refs |",
+    "| 2026-01-02-local | 2026-01-02 | [advisory] | **R3 — LOCAL.** | lane refs |",
+  ].join("\n"));
+  // (i) a stale exemption (listed row is gone) fails.
+  const rStale = lintRNumbers(["## Lane-local R numbering", "- `2026-01-09-gone` — some lane R9", ""].join("\n"));
+  const ok13 = rGood.failures.length === 0 && rGood.exempted.length === 1
+    && rStale.failures.some((f) => f.includes("2026-01-09-gone"));
+  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13) {
     console.error("SELF-TEST FAILED", {
-      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8,
+      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13,
       failures, warnings, dupe: dupe.failures, bad: bad.failures,
       slugGhost: slugGhost.failures, slugDupe: slugDupe.failures, slugBad: slugBad.failures,
     });
     process.exit(1);
   }
-  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed)");
+  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale)");
   process.exit(0);
 }
 
@@ -208,11 +321,11 @@ if (process.argv.includes("--self-test")) selfTest();
 
 const ledgerText = fs.readFileSync(LEDGER, "utf8");
 const workflowText = collectWorkflowText(WORKFLOW_DIR);
-const { failures, warnings } = lint({ ledgerText, workflowText });
+const { failures, warnings, laneLocal } = lint({ ledgerText, workflowText });
 
 for (const w of warnings) console.warn(`WARN  ${w}`);
 if (failures.length) {
   for (const f of failures) console.error(`FAIL  ${f}`);
   process.exit(1);
 }
-console.log(`decision-guards lint OK (${warnings.length} deferred warning(s))`);
+console.log(`decision-guards lint OK (${warnings.length} deferred warning(s); ${laneLocal} lane-local R row(s) per "## Lane-local R numbering")`);
