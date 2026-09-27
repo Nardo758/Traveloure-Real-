@@ -27,6 +27,11 @@
  *     write. Accepting it here would let a client mark an unpaid item purchased. 403.
  *   • `purchased → in_planning` — the refund/cancellation path is its SOLE writer, atomic
  *     with the refund. A traveler must not be able to un-purchase a paid item by hand. 409.
+ *     ONE exception, and it is not "by hand" over a PAID item (R157, ledger
+ *     `2026-09-27-retry-failed-payment`): the owner's `purchased → ready_for_checkout` "Try again"
+ *     on an item whose linked booking FAILED payment (read off the booking row, §14). It reverts
+ *     through that same sole reverser, then takes the ordinary `in_planning → ready_for_checkout`
+ *     edge — two diary rows, no new writer of either edge.
  *   • `with_expert → ready_for_checkout` — NOT AN EDGE ON THE MACHINE. The item must return
  *     to `in_planning` first. Skipping the return would let purchase intent be set on an item
  *     the expert still holds, which is precisely the "expert receives a purchase list"
@@ -71,12 +76,14 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { and, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { itineraryItems, notifications, tripCollaborators, trips, ROUTING_STATUSES, type RoutingStatus } from "@shared/schema";
+import { itineraryItems, notifications, serviceBookings, tripCollaborators, trips, ROUTING_STATUSES, type RoutingStatus } from "@shared/schema";
+import { itemBookingStatusEntry } from "@shared/booking-visibility";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAdvisorWithWriteAccess, tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
 import { syncItemProjection } from "../services/cart-projection.service";
+import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
 import { logItemTransition } from "../services/item-transition-log.service";
 import { finalizeTrip, getLatestTripFinal, TripNotFoundError } from "../services/trip-finalize.service";
 import { logger } from "../infrastructure/logger";
@@ -164,7 +171,7 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
 
     if (!item) return res.status(404).json({ message: "Itinerary item not found on this trip" });
 
-    const from = item.routingStatus as RoutingStatus;
+    let from = item.routingStatus as RoutingStatus;
 
     // ── Role gate (contract §4, enforced in code) ──────────────────────────────────────
     const owner = await isTripOwner(tripId, userId);
@@ -196,6 +203,31 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
       return res.json({ itemId, tripId, from, to, changed: false, actor, projection });
     }
 
+    // ── "TRY AGAIN" AFTER A FAILED PAYMENT (R157, ledger `2026-09-27-retry-failed-payment`;
+    // decision-maker ruled Sep 27, 2026: "re-project the item into the cart through the existing
+    // ready_for_checkout writer (no new add path), then open checkout"). Authorization flips an item
+    // `purchased` and clears its cart line BEFORE the card is charged (§15b); when the charge then
+    // FAILS, Stripe's `payment_intent.payment_failed` event moves the booking to `failed` and leaves the
+    // item `purchased` with no cart line — so "Try again" opened a checkout without the item in it.
+    //
+    // ONLY the owner, ONLY → ready_for_checkout, ONLY from `purchased`, and ONLY when the item's OWN
+    // linked booking is — read off the DB row here, never taken from the client (§14) — in a status
+    // whose ONE vocabulary entry offers the retry (`ITEM_BOOKING_STATUS_VOCABULARY`, R154; §18 rule 1:
+    // the rail does not restate which statuses those are). A purchased item whose booking is live,
+    // disputed, cancelled or anything else keeps every refusal it had. `failed` is terminal —
+    // `promotePaidCheckout` refuses it and records a late success as a reconciliation exception — so
+    // reverting cannot race a promotion. The revert itself happens BELOW, after every refusal has
+    // had its say, so a refused request writes nothing.
+    let failedPaymentRetry = false;
+    if (actor === "owner" && to === "ready_for_checkout" && from === "purchased" && item.bookingId) {
+      const [linked] = await db
+        .select({ status: serviceBookings.status })
+        .from(serviceBookings)
+        .where(eq(serviceBookings.id, item.bookingId))
+        .limit(1);
+      failedPaymentRetry = !!linked && itemBookingStatusEntry(linked.status).action === "retry_checkout";
+    }
+
     // ── A FINALIZED PLAN IS NOT RE-PLANNED THROUGH THIS RAIL (ledger
     // `2026-09-26-card-routing-read-only`; Locked Decision 42 D8; audit G1, VERIFIED: the Trip
     // Card's "Send to expert" returned 200 on a finalized plan). Refused whatever the client draws:
@@ -225,8 +257,10 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
         });
       }
       if (ownerBooking) {
-        // Already bought: a purchased row, or one carrying a booking, is never staged again.
-        if (from === "purchased" || item.bookingId) {
+        // Already bought: a purchased row, or one carrying a booking, is never staged again — except
+        // the one whose payment FAILED (R157 above): nothing was bought, and the finalized plan's
+        // "Try again" is exactly the booking Finalize exists for. It still has to be in the final.
+        if (!failedPaymentRetry && (from === "purchased" || item.bookingId)) {
           return res.status(409).json({
             code: "already_purchased",
             message: "This item is already purchased.",
@@ -262,6 +296,27 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
         from,
         to,
       });
+    }
+
+    // ── R157: the failed payment's item goes back to planning through the ONE reverser
+    // (`revertPurchasedItemsForBooking` — the refund path's own `purchased → in_planning` author,
+    // never a second writer of that edge), scoped to THIS item and attributed to the traveler who
+    // pressed "Try again". It is an atomic conditional (`WHERE booking_id = … AND routing_status =
+    // 'purchased'`); 0 rows means the item moved underneath us, answered like any other lost race.
+    // The ordinary `in_planning → ready_for_checkout` edge below then re-projects the cart line.
+    if (failedPaymentRetry && item.bookingId) {
+      const { reverted } = await revertPurchasedItemsForBooking(item.bookingId, {
+        itemId,
+        actorType: "traveler",
+        actorId: userId,
+      });
+      if (reverted === 0) {
+        return res.status(409).json({
+          message: "Item routing state changed concurrently; re-read and retry.",
+          expectedFrom: from,
+        });
+      }
+      from = "in_planning";
     }
 
     // ── Legal-edge validation (contract §1 state machine, as drawn) ────────────────────

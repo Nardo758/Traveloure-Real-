@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   BOOKING_DETAIL_PATH,
   ITEM_BOOKING_ACTION_LABELS,
@@ -176,21 +176,48 @@ export function RoutingBadge({
  * the plan's OWNER only — the traveler is the one who acts — and only for the two states the ruling
  * gives an action: a DISPUTED booking gets a PROMINENT link to My Bookings, where the dispute lives
  * (it reads "Under review", so the traveler must be able to reach it); a FAILED payment gets "Try
- * again", which goes to the EXISTING checkout path (`BUY_NOW_CART_PATH`, the same door the Finalize
- * modal and the approval banner use) — no new money path, and nothing here charges or writes.
+ * again".
+ *
+ * "TRY AGAIN" RE-PROJECTS THE ITEM FIRST (R157, ledger `2026-09-27-retry-failed-payment`). After a
+ * failed payment the item still reads `purchased` and its cart line was cleared at authorization, so a
+ * bare link to checkout opened a checkout WITHOUT the item — a button promising what it could not do.
+ * It now asks the EXISTING routing rail for `ready_for_checkout` (`POST …/items/:itemId/route`, the one
+ * writer of that state and of its cart projection — no new add path, LD 39), and only on success opens
+ * the SAME checkout door the Finalize modal and the approval banner use (`BUY_NOW_CART_PATH`). The
+ * server decides from the booking row whether the payment really failed (§14); a refusal reads through
+ * the ONE routing-refusal toast. Nothing here charges.
  */
 export function ItemBookingActionLink({
+  tripId,
   activity,
   showNote = true,
 }: {
+  /** The plan the item is on — the routing rail is addressed by it. */
+  tripId: string;
   activity: PlanCardActivity;
   /** The slip already prints the note as the row's secondary line; the PlanCard row does not. */
   showNote?: boolean;
 }) {
+  const [, setLocation] = useLocation();
+  const { showRefusal } = useRouteRefusalToast(tripId);
+  const retry = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", `/api/trips/${tripId}/items/${activity.id}/route`, { to: "ready_for_checkout" }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] }),
+      ]);
+      setLocation(BUY_NOW_CART_PATH);
+    },
+    onError: (err: unknown) => showRefusal(err, "Couldn't put this back in checkout"),
+  });
+
   const action = itemBookingAction(activity);
   if (!action) return null;
-  const href = action === "open_booking" ? BOOKING_DETAIL_PATH : BUY_NOW_CART_PATH;
   const state = itemBookingState(activity);
+  const actionClass =
+    "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border border-foreground/30 text-foreground hover:bg-muted disabled:opacity-60";
   return (
     <span className="inline-flex items-center gap-1.5 flex-wrap">
       {showNote && state && ITEM_BOOKING_NOTES[state] && (
@@ -198,13 +225,25 @@ export function ItemBookingActionLink({
           {ITEM_BOOKING_NOTES[state]}
         </span>
       )}
-      <Link
-        href={href}
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border border-foreground/30 text-foreground hover:bg-muted"
-        data-testid={`link-item-booking-${action === "open_booking" ? "view-booking" : "try-again"}-${activity.id}`}
-      >
-        {ITEM_BOOKING_ACTION_LABELS[action]}
-      </Link>
+      {action === "open_booking" ? (
+        <Link
+          href={BOOKING_DETAIL_PATH}
+          className={actionClass}
+          data-testid={`link-item-booking-view-booking-${activity.id}`}
+        >
+          {ITEM_BOOKING_ACTION_LABELS[action]}
+        </Link>
+      ) : (
+        <button
+          type="button"
+          className={actionClass}
+          disabled={retry.isPending}
+          onClick={() => retry.mutate()}
+          data-testid={`button-item-booking-try-again-${activity.id}`}
+        >
+          {ITEM_BOOKING_ACTION_LABELS[action]}
+        </button>
+      )}
     </span>
   );
 }
@@ -952,7 +991,7 @@ export function ActivitiesSection({
                       <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`routing-row-${a.id}`}>
                         <RoutingBadge activity={a} expertAssigned={expertAssigned} />
                         <ItemKindBadge activity={a} />
-                        {bookingAction && <ItemBookingActionLink activity={a} />}
+                        {bookingAction && <ItemBookingActionLink tripId={tripId} activity={a} />}
                         {hasActions && (
                           <RoutingActions
                             tripId={tripId}
