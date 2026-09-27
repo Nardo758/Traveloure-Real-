@@ -303,6 +303,15 @@ export interface PlanCardActivity {
    */
   booking?: TripPlanBooking;
   /**
+   * R145 (ledger `2026-09-27-refunded-item-status`): the booking this item WAS bought through, when
+   * it has since CLOSED (`cancelled` / `refunded`). Mutually exclusive with `booking`; never the
+   * booked state. Read through `client/src/lib/item-booking-state.ts`, never directly.
+   * R154 (ledger `2026-09-27-booking-status-vocabulary`): also `payment_pending` / `failed` /
+   * `expired` — any linked booking the shared vocabulary says is not booked. A `disputed` booking is
+   * `booking` (real, paid) and reads "Under review", never "Booked".
+   */
+  endedBooking?: TripPlanBooking;
+  /**
    * Item 2 Phase 2 (ledger 2026-08-23-item2-affiliate): present ONLY when the build-time slip
    * resolver grounded this item to an affiliate product bookable via the agent rail (§16). Carries
    * an opaque server-minted `bookingToken` — never the affiliate URL. Presence-guarded like the
@@ -565,7 +574,9 @@ export interface PlanCardTrip {
   eventType?: string;
 }
 
-export type PlanCardRole = "owner" | "expert" | "friend" | "viewer";
+// `payer` (LD 42 D9, ledger `2026-09-27-payer-reads-plancard`): a `payer`-role trip participant.
+// It reads the plan and is rendered as a VIEWER — no owner or expert controls (render rule only).
+export type PlanCardRole = "owner" | "expert" | "friend" | "viewer" | "payer";
 /** `proposal` — Spec C variant-comparison column (SLIP_EXPERIENCE_DISPATCH §4): a compact,
  *  day-ordered, read-only rendering of ONE optimizer variant, with the trip's purchased items
  *  rendered from CANONICAL trip rows (identical across columns by construction). */

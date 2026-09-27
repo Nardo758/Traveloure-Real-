@@ -215,3 +215,93 @@ export const PROVISIONAL_BOOKING_LABEL = "Awaiting payment";
 /** The one-line explanation that must accompany the label wherever a count is shown. */
 export const PROVISIONAL_BOOKING_HINT =
   "Awaiting the traveler's payment — nothing for you to do.";
+
+/**
+ * THE PLAN-ITEM BOOKING VOCABULARY — what a plan item's LINKED booking says to the traveler, and
+ * whether it counts as booked (R154, ledger `2026-09-27-booking-status-vocabulary`; decision-maker
+ * ruled Sep 27, 2026; extends R145 `2026-09-27-refunded-item-status`; CLAUDE.md LD 44 (e) —
+ * "booked is said only with a confirmation in hand").
+ *
+ * ONE table, read by the plancard assembler (`linkedBookingFields`,
+ * server/services/trip-plan.service.ts), the slip and PlanCard rows and My Plans' counts
+ * (client/src/lib/item-booking-state.ts, client/src/lib/plan-row-model.ts). No surface restates a
+ * status list (§18 rule 1).
+ *
+ * Three answers per status, and the first two are DIFFERENT questions on purpose:
+ *   `countsAsBooked` — the ACCOUNTING answer: is a real booking behind this item? It decides whether
+ *                      the plancard attaches `activity.booking` — the booked state every routing count
+ *                      and the item-kind `included` rule read.
+ *   `labelKey`       — the WORD the traveler reads. `null` ⇒ no booking line at all.
+ *   `action`         — the one traveler action the row offers, or null.
+ *
+ * `disputed` is where the first two diverge, and it is why this table exists: a paid booking with an
+ * open dispute is a REAL booking (funds held, the row exists), so it counts as booked — but it reads
+ * "Under review", never "Booked". "Booked" tells a traveler they need not act; a dispute means they
+ * may not have what they paid for, so the row carries a prominent link to the booking.
+ *
+ * `payment_pending` (a claim in flight), `failed` (the card payment failed) and `expired` (the TTL
+ * sweep voided an abandoned claim) are NOT booked: no confirmation is in hand. `cancelled` /
+ * `refunded` are R145's, built FROM `CLOSED_BOOKING_STATUSES` rather than restated.
+ *
+ * Every status NOT listed (`confirmed`, `deposit_paid`, `in_progress`, `awaiting_acceptance`,
+ * `completion_declared`, `partially_completed`, `completed`, the legacy `pending`, …) keeps the
+ * behaviour it had before this table: booked, with the existing "Booked" treatment.
+ *
+ * READ-SIDE ONLY: nothing here writes, charges, refunds or authorizes a transition. The SCOPE note at
+ * the top of this file binds — this is not a from-state allow-list.
+ */
+export type ItemBookingLabelKey =
+  | "booked"
+  | "under_review"
+  | "payment_processing"
+  | "payment_failed"
+  | "cancelled"
+  | "refunded";
+
+export type ItemBookingAction = "open_booking" | "retry_checkout";
+
+export interface ItemBookingStatusEntry {
+  countsAsBooked: boolean;
+  labelKey: ItemBookingLabelKey | null;
+  action: ItemBookingAction | null;
+}
+
+const CLOSED_ITEM_BOOKING_ENTRIES = Object.fromEntries(
+  CLOSED_BOOKING_STATUSES.map((s): [string, ItemBookingStatusEntry] => [
+    s,
+    { countsAsBooked: false, labelKey: s, action: null },
+  ]),
+) as Record<(typeof CLOSED_BOOKING_STATUSES)[number], ItemBookingStatusEntry>;
+
+export const ITEM_BOOKING_STATUS_VOCABULARY: Readonly<Record<string, ItemBookingStatusEntry>> = {
+  payment_pending: { countsAsBooked: false, labelKey: "payment_processing", action: null },
+  failed: { countsAsBooked: false, labelKey: "payment_failed", action: "retry_checkout" },
+  expired: { countsAsBooked: false, labelKey: null, action: null },
+  disputed: { countsAsBooked: true, labelKey: "under_review", action: "open_booking" },
+  ...CLOSED_ITEM_BOOKING_ENTRIES,
+};
+
+/** Every status not in the table: booked, read as booked (the behaviour before R154). */
+export const ITEM_BOOKING_DEFAULT_ENTRY: ItemBookingStatusEntry = {
+  countsAsBooked: true,
+  labelKey: "booked",
+  action: null,
+};
+
+/** The ONE lookup. An unlisted or NULL status keeps the default (the pre-R154 reading). */
+export function itemBookingStatusEntry(status: BookingStatusLike): ItemBookingStatusEntry {
+  if (typeof status === "string" && Object.prototype.hasOwnProperty.call(ITEM_BOOKING_STATUS_VOCABULARY, status)) {
+    return ITEM_BOOKING_STATUS_VOCABULARY[status];
+  }
+  return ITEM_BOOKING_DEFAULT_ENTRY;
+}
+
+/** The traveler-facing words. Written HERE and nowhere else; "Booked" belongs to `booked` alone. */
+export const ITEM_BOOKING_LABELS: Readonly<Record<ItemBookingLabelKey, string>> = {
+  booked: "Booked",
+  under_review: "Under review",
+  payment_processing: "Payment processing",
+  payment_failed: "Payment didn't go through",
+  cancelled: "Cancelled",
+  refunded: "Refunded",
+};
