@@ -211,6 +211,7 @@ import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "..
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 import { buildItineraryViewOgTags, injectIntoHead } from "../utils/html-head";
 import { sanitizeInput } from "../utils/sanitize";
+import { refuseIfComparisonApplyToCartDisabled } from "../config/comparison-apply-to-cart.config";
 
 const router = Router();
 
@@ -829,6 +830,9 @@ router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req
 
 router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, async (req, res) => {
     try {
+      // R131 (ledger `2026-09-26-apply-to-cart-flag-off`): OFF by default — refused 410
+      // `apply_to_cart_disabled` BEFORE any read or write. Full retirement = Trip Slip map step 7.
+      if (refuseIfComparisonApplyToCartDisabled(res)) return;
       const userId = getUserId(req)!;
       const comparisonId = req.params.id;
 
