@@ -569,4 +569,465 @@ Rule carried from LD 42 D16: the render mode never grants anything — each rail
 
 Open questions that remain are raised by §J–§L and listed at the end of §L.
 
+---
+
+## J. Per-experience specification (generated)
+
+**Generated, not hand-written.** `docs/planning/tools/trip-slip-spec.mjs` reads the occasion seed
+(`server/seeds/experience-template-tabs.seed.ts`) and the matrix migration (`035_…sql`) as text. For each occasion it
+applies: its **group** (§B rule) → the **group default** (§D) → its **own switches** (`default_duration`, `default_guests`,
+`default_stops`, `default_schedule`, `default_visibility`, `roles_needed` — LD 28: the switch wins) → the **override
+record** below. It writes this table and a JSON copy (`docs/planning/tools/trip-slip-spec.json`), which the review page
+reads. **Review page:** a standalone, filterable-by-group view of the same rows, published privately at https://claude.ai/artifact/DDPBJ7seuv9GuwscncpVs7 (built from the JSON).
+
+**How it stays in sync with the seed.** `node docs/planning/tools/trip-slip-spec.mjs --check` exits 1 when the table or
+the JSON no longer matches what the seed and matrix produce. **Proposed:** wire it as a CI step at map step 1. At the
+same step, move the resolution into `shared/experience-spec.ts` — the one resolver the slip itself uses (§18 rule 1). The
+script then imports that resolver instead of restating it, so the doc and the product cannot disagree. Until
+ratification it is run by hand. The seed has no test that fails today when this table goes stale — stated, not
+hidden.
+
+**Columns.**
+- **Modules** B1–A8 are §C's.
+- **Lead zone** is what sits first in the main column (§D layout).
+- **Anchor** is the anchor type, with the `temporal_anchors` type where one applies (`shared/schema.ts:53-58`).
+- **REQ** is the occasion's REQ categories under the **proposed** phase-0 slug keys (brief §F phase 0 0c). It is not
+  what the engine reads today; today most occasions reach no matrix rows (§A1).
+- **Compare default** is the category the slip offers "Compare options" on first.
+- **A1** says whether three optimized versions are offered.
+
+<!-- BEGIN GENERATED §J TABLE (docs/planning/tools/trip-slip-spec.mjs) -->
+
+Key: ● on · ○ optional (off by default, one tap to add) · — off · ◐ only when an expert is assigned. A superscript **ˢ** marks a cell a switch changed from the group default (LD 28); **ᵒ** marks a proposed override (below).
+
+| Occasion | Group | B1 | B2 | B3 | B4 | B5 | B6 | B7 | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | A1 | A2 | A3 | A4 | A5 | A6 | A7 | A8 | Lead zone | Anchor | REQ (phase-0 slug key) | Compare default | A1 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `bachelor-bachelorette` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | — none | `accommodation` | on |
+| `anniversary-trip` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | — | —ᵒ | — | — | ○ | —ᵒ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | — none | `accommodation` | on |
+| `travel` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | — | ○ | — | — | ○ | ○ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | — none | `accommodation` | on |
+| `wedding` | Hosted events | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | —ˢ | ● | ● | ● | ● | ● | ● | ○ | ● | Completeness by vendor role (B4 + A5) | venue (ceremony_time) | `venue`, `event_coordinator`, `photography`, `caterer` | `venue` | on |
+| `date-night` | Moments | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | — | ● | — | — | ○ | ● | — | ● | The one reservation (A6) and its compare set (S1) | dinner_reservation (temporal anchor) | `dining_venue` | `dining_venue` | not available |
+| `birthday` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
+| `corporate-events` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ●ᵒ | ● | ●ᵒ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue`, `event_coordinator`, `av_tech`, `caterer` | `venue` | available (optional) |
+| `retreats` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | — none | `accommodation` | on |
+| `wedding-anniversaries` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | — none | `dining_venue` | available (optional) |
+| `proposal` | Moments | ● | ● | ● | ● | ● | ○ˢ | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | — | ● | — | — | ○ | ● | — | ● | The one reservation (A6) and its compare set (S1) | proposal_moment (temporal anchor) | `photography`, `dining_venue` | `dining_venue` | not available |
+| `boys-trip` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | — none | `accommodation` | on |
+| `girls-trip` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | — none | `accommodation` | on |
+| `reunions` | Hosted events | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ● | ● | ○ | ● | Completeness by vendor role (B4 + A5) | venue | `venue` | `venue` | on |
+| `baby-shower` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | — none | `event_coordinator` | available (optional) |
+| `graduation-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | — none | `event_coordinator` | available (optional) |
+| `engagement-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
+| `housewarming-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ○ᵒ | ● | — | ● | ◐ | ○ | ● | — | ○ | —ˢ | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | — none | `caterer` | available (optional) |
+| `retirement-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | — none | `event_coordinator` | available (optional) |
+| `career-achievement-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | — none | `event_coordinator` | available (optional) |
+| `farewell-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | — none | `event_coordinator` | available (optional) |
+| `holiday-party` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | event location (user_experiences.location) | — none | `event_coordinator` | available (optional) |
+| `sports-event` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ●ˢ | ○ | — | — | ○ | ○ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | — none | `accommodation` | on |
+| `romance` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | —ˢ | ● | — | —ᵒ | — | — | ○ | —ᵒ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | — none | `accommodation` | on |
+| `corporate` | Hosted events | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ● | ● | ● | ● | ● | ○ | ● | Completeness by vendor role (B4 + A5) | venue | `venue`, `event_coordinator`, `av_tech`, `caterer` | `venue` | on |
+| `milestone-birthday` | Celebrations | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | — | ● | ◐ | ○ | ● | — | ○ | ● | ○ | ● | ○ | ● | — | ● | Completeness (B4) and the venue compare (S1) | venue (event location) | `venue` | `venue` | available (optional) |
+| `family-occasion` | Group travel | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | —ˢ | ● | ● | ● | ● | ○ | ○ | ● | ● | Arrivals (A3) and the lodging compare (S1) | shared lodging (hotel_checkin) | — none | `accommodation`ᵒ | on |
+| `honeymoon` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | — | —ᵒ | — | — | ○ | —ᵒ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | — none | `accommodation` | on |
+| `golf-trip` | Trips | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ◐ | ● | ● | ● | ● | ●ˢ | ○ | — | — | ○ | ○ | ● | Day list with the hotel anchor (S2) | hotel (hotel_checkin) | — none | `accommodation` | on |
+| `(plain plan)` | Plain plan | ● | ● | ● | ● | ● | ● | ● | ● | ○ | ● | ● | ● | ◐ | ● | ● | — | ○ | — | ○ | — | — | ○ | — | ● | Days & items, with a “Choose an occasion” prompt | none until set | — none | `none (no occasion)` | available (optional) |
+
+**Proposed overrides (data: one record keyed by slug, applied after the switches; never a separate surface).**
+
+| Occasion | Module | Value | Reason |
+|---|---|---|---|
+| `anniversary-trip` | A3 | — | Two travelers: no party to manage (the Moments reasoning) |
+| `anniversary-trip` | A7 | — | Two travelers: nothing to split |
+| `honeymoon` | A3 | — | Two travelers: no party to manage |
+| `honeymoon` | A7 | — | Two travelers: nothing to split |
+| `romance` | A3 | — | Two travelers: no party to manage |
+| `romance` | A7 | — | Two travelers: nothing to split |
+| `corporate-events` | A5 | ● | A run of show with event coordinator, AV and caterer as essentials: coordination is the product |
+| `corporate-events` | A3 | ● | Attendees travel in for a corporate event; arrivals matter even inside one day |
+| `housewarming-party` | S2 | ○ | The venue is the host's own home, which is already known; no anchor to choose |
+| `family-occasion` | Compare default | `accommodation` | Group travel's anchor is shared lodging, but roles_needed omits accommodation; the lasting fix is phase-0c matrix data |
+
+<!-- END GENERATED §J TABLE -->
+
+**What the table shows that the group view hid.**
+- **Trips and Group travel have no REQ categories.** The `travel` family row has no REQ, so B4 completeness has
+  nothing to count for 11 of 28 occasions. **Proposed (phase 0c, matrix data, not an override):** `accommodation` REQ
+  for every `range` occasion without a `venue` role, because the hotel is their anchor. For the decision-maker.
+- **Eight Celebrations get no REQ** under the proposed slug keys (`wedding-anniversaries` and the seven day parties),
+  because their roles enter at REC (brief 0c).
+  Completeness then shows suggestions and never "3 of 5 essentials". Marking any of them REQ is a per-occasion call.
+- **`proposal` has `visibility: hidden`**, so B6 share drops to optional by switch; A4 guests is already off for
+  Moments.
+- **`housewarming-party` has `schedule: false`**, so A2 is off by switch although Celebrations default it on.
+
+## K. Information levels
+
+Three depths. Each module in §C renders at one or more of them, and **the same component renders every depth on every
+surface** (the §H `surface` prop plus a `depth`). Field sources below are on `main` @ `da3174289`. Short paths: `svc` =
+`server/services/trip-plan.service.ts`, `SV` = `client/src/components/plancard/SlipView.tsx`, `AS` =
+`client/src/components/plancard/ActivitiesSection.tsx`, `schema` = `shared/schema.ts`.
+
+**Status marks:** **shown** = source exists and a surface renders it. **not emitted** = the column exists but the plancard
+DTO does not carry it. **not rendered** = in the DTO, drawn nowhere. **new** = derivation to build (a §C module).
+**NO DATA** = no column holds it; the field is omitted until one does.
+
+### K1. Rules (binding on every depth and surface)
+
+1. **Never show a field the source doesn't state.** Omit it. Never a zero, a placeholder or a stand-in label. NULL
+   dates, party, price, duration or rating ⇒ the row or chip is absent, not "0", "TBD" or "needed". Where the traveler
+   can supply the fact, an *action* ("Set your dates", "Who's coming?") may appear in its place, worded as a question,
+   never as a value. **Violations on `main` today (fixing them is step 1 scope):**
+   - The Trip Card prints **"Duration needed"** on every trip item, because the trip producer never emits
+     `durationMinutes` (svc:775-881; `AS` 740-751). The column exists (`itinerary_items.duration_minutes`,
+     schema:5617).
+   - `stats.confirmedActivities` counts the column default `planned` as confirmed (svc:1200-1202), and the card shows
+     it as "confirmed/total" (`SectionTabs.tsx:49`).
+   - `affiliateBooking.partnerName` carries the **product** name (`server/services/affiliate-grounding.service.ts:192`),
+     so any "via <partner>" label built on it would name the wrong thing.
+   - (from §L) A refunded item probably still reads **"Booked"** (L3 defect 1).
+   - (from §L) `expertNote` falls back to `notes`, so a non-expert note can read "Note from <expert>" (L3 defect 3).
+2. **Mobile shows GLANCE + PLAN by default; DETAIL opens on tap.**
+   - Today the slip rail stacks **above** the day list below `lg` (SV:1684-1685, audit F11), so it moves after the
+     list.
+   - `SlipItemRow` has no expanded state (SV:605-642): a DETAIL toggle per row is **new**. The expert note, which
+     renders in full today (SV:569-583), becomes one line at PLAN and full at DETAIL.
+3. **The Trip Card uses the same levels, read-only.** Today it runs a second row component (`ActivitiesSection`) whose
+   fields differ from the slip's (see K3). After step 1 both mount the one B2 row with `readOnly`. No routing actions
+   (#1109 G1). No option sets (R125).
+4. **The expert workspace opens at DETAIL.** Today its editor panel starts collapsed ("Edit items (N)", `open=false`,
+   `client/src/pages/expert/workspace.tsx:818`), and its embedded card shows PLAN rows. The expert's default becomes the
+   expanded row. Edit rights are unchanged (LD 42 D16; the render never grants).
+5. **The group name is never a field** (R127). The occasion's own `experience_types.name` is.
+6. **Audience per depth follows the route, never the render** (LD 42 D16). The owner and delegate see all three depths.
+   An advisor sees what the plancard gate admits. The share viewer sees GLANCE + PLAN of the stripped share read. A
+   `payer` (LD 42 D9) should see S5 at GLANCE and DETAIL, but **today the plancard refuses a payer** (§L L3 defect 7), so
+   that audience needs a read path first.
+
+### K2. Plan-level fields by depth
+
+| Field | GLANCE | PLAN | DETAIL | Source → component | Status |
+|---|---|---|---|---|---|
+| Title | ● | | | `trips.title` (svc:1118) → `SlipHeader` SV:408-410 | shown |
+| Occasion name | ● | | | `experience_types.name` via `useOccasionSwitches` (SV:1453-1464). Never the group. | shown when resolved; omitted when NULL (Plain plan) |
+| Stops / destination | ● | | ● full list, located flag per stop | `destinations[]` (`trip_destinations`, schema:321-330) → SV:480-484; `SlipRail.tsx:899-906` | shown |
+| Dates | ● (or "Set your dates" action) | day headers | | `start_date`/`end_date`; `dates_confirmed_at` (LD 30) → SV:412, 422-428 | shown |
+| Time zone | ● when set | | | `trips.timezone` (svc:1166) → SV:486-490 | shown; omitted when NULL |
+| Party / invited | ● "N traveling · M invited" (LD 42 D21) | | ● participants (A3) | `trips.travelers`, `GET /api/trips/:id/guests` `totals.invited` → SV:430-452 | shown. `adults`/`kids` are **not emitted** (svc:1136). |
+| Countdown | ● only with zone + confirmed dates (LD 45 (8)) | | | `shared/plan-timing.ts` | shown on Home/Card; **new** on the slip |
+| Completeness "N of M essentials" | ● | per-day gap cards (brief H2) | ● list per REQ category | **new** B4 over the phase-0 slug keys (§J REQ) | new; **omitted** when the occasion has no REQ (never "0 of 0") |
+| Next action | ● one line | | | `nextActionFromCounts` (`client/src/lib/plan-row-model.ts:87-98`) | exists, shown on My plans only; **new** on the slip |
+| Routing counts | ● | | | `SlipStatusStrip` SV:524-565 | shown |
+| Plan total | ● when any item is priced | per-day subtotal | ● breakdown by category | sum of `itinerary_items.estimated_cost` (the workspace sums it, `workspace.tsx:4023-4043`) | **new** on the slip; omitted when nothing is priced. See §L budget row. |
+| Budget (per event, derived) | ● when any event states one | | ● per event | `user_experiences.budget` → `planBudgetLine` SV:1519, `SlipRail.tsx:936-940` | shown in the rail |
+| Final version / revising | ● | | | `finalizedAt`, `finalVersion` (svc:1145-1152) → SV:1267-1287 | shown |
+| Advisor(s) | ● avatar + standing | | ● card: handle, reply time (LD 54), message | `GET /api/trips/:id/expert-advisor` → `SlipRail.tsx:695-772` | shown |
+| Expert's trip note | | ● banner | | `trips.expert_traveler_note` → SV:1776-1781 | shown. `trips.expert_notes` is PRIVATE (LD 21) and never on any depth. |
+| Optimized badge / what changed | ● | | ● the board | SV:383-406 | shown |
+| Open option sets (S1) | ● count "2 choices to make" | ● the slot shows its set | ● compare view (§E4) | **new** (§E) | new |
+
+**Per group, what GLANCE adds** (after the rows above; derived from §J's lead zone):
+
+| Group | GLANCE adds | Source |
+|---|---|---|
+| Plain plan | "Choose an occasion" action | occasion PATCH (the one rail) |
+| Moments | The anchor: reservation or moment time, venue name | `temporal_anchors` (`dinner_reservation` / `proposal_moment`) |
+| Celebrations | Event date and time; invited count | `user_experiences.event_date`/`start_time` (LD 35); roster totals |
+| Trips | Nights; the hotel anchor's name | booked stay item / `hotel_checkin` anchor |
+| Hosted events | Vendor roles covered "4 of 6" | `roles_needed` vs items' `service_categories` (**new**, with B4) |
+| Group travel | Arrivals stated "5 of 8" | `trip_participants.arrival_datetime` count (**new**) |
+
+### K3. Item fields by depth and category
+
+PLAN row fields common to every category: **time** (`start_time`, SV:676), **title** (SV:673), **location name**
+(SV:678), **routing badge** (SV:761), **kind chip** (SV:762, `shared/item-kind.ts`), **origin chip** (SV:763, LD 42
+D23), **booked ref** (SV:588-593), **expert note, first line** (full at DETAIL), **comment toggle** (`ItemComments`). At DETAIL on every category: **the
+traveler's own note** (`itinerary_items.description` — written by the slip today, **not emitted**; §L), end time
+(`end_time`, emitted, not shown), and **availability** (`available: false` + reason when the listing or partner product
+is no longer offered — **new**, §L).
+**Price at PLAN** only for a `ready_for_checkout` or booked item (SV:599). Estimated price moves to PLAN only where the
+source states it. Card-only fields today (`AS`): type chip, status chip, vendor phone, confirmation number,
+`changes[0]` — these become DETAIL on both surfaces.
+
+| Category | PLAN adds | DETAIL adds | Sources | Missing / NO DATA |
+|---|---|---|---|---|
+| **Accommodation** | Check-in / check-out day; nights | Price per night × nights; rating + reviews; neighborhood; check-in/out times; house rules; amenities; min stay; cancellation terms | `itinerary_items.check_in`/`check_out` (schema:5714-5715, **not emitted**); `provider_services.price` 1173, `pricing_unit` 1353, `average_rating` 1484, `review_count` 1485, `neighborhood` 1231, `check_in_time`/`check_out_time` 1375-1376, `house_rules` 1377, `amenities` 1378, `min_stay_nights` 1382, `cancellation_policy_type` 1471 | Star class: NO DATA. Room capacity: only `category_attributes.units`. API hotels (`hotel_cache` 4095-4123) have no FK from items. |
+| **Dining** | Time; party size when stated | Price per person; rating; cuisine; hours; cancellation | `provider_services.price_type='per_person'` 1174, `party_size_min/max` 1264-1265, `seating` 1270; `restaurant_cache` 4327-4342 (cuisine, price_level, rating — **no FK from items**) | Cuisine on listings/items: NO DATA. Opening hours: DMO jsonb only (`dmo_extracted_places.enrichment.openingHours`, via `itinerary_items.dmo_extracted_place_id` 5643, **not emitted**). Dietary options: NO DATA. |
+| **Activity / tour** | Duration | Start windows; meeting point; what to bring; access notes; what's included; request vs instant; lead time; change cutoff | `duration_minutes` (item 5617, **not emitted**; listing 1258), `earliest/latest_start_time` 1260-1261, `meeting_point` 1199, `what_to_bring` 1223, `access_notes` 1224 (LD 24: NULL = omitted), `what_included` 1416, `booking_mode` 1319, `lead_time_hours` 1194, `change_cutoff_hours` 1271; slots `vendor_availability_slots` 3904-3935 (`slot_id` on the item **not emitted**) | — |
+| **Venue** | The event it hosts | Price or "priced by quote" (LD 49); capacity vs invited; availability on the event date; cancellation | `userExperienceId` (SV:1895); `service_quotes` 11306-11335; roster `totals.invited` | **Capacity: NO DATA** (no guest-capacity column; `party_size_max` is the nearest and means something else). Layout and hours: NO DATA. |
+| **Vendor roles** (photography, caterer, florist, …) | Quote state when a quote exists | Price or quote; deposit terms; deliverables; delivery time; rating; request vs instant | `deposit_*` 1304-1307; `price_type='custom_quote'` 1174; `service_quotes.itinerary_item_id` 11333 (**not emitted**); `deliverables` 1473; `delivery_timeframe` 1181; photography attrs (migration 055:35-38) | Caterer/florist attributes (per-head minimum, cuisine, stems): NO DATA. |
+| **Transport** | Leg line between items: mode + minutes | Alternatives; pickup point and time; price range; booking status; confirmation ref | `transport_legs` 7913-7961 → `LogisticsRow` SV:1142-1167; `transport_booking_options` 8006-8060 | Driver phone and ride details: typed on the client (`plancard-types.tsx:387-398`), **no server source** — omitted. |
+| **Affiliate** | "Partner offer" chip; partner-stated price | Partner rating; description; highlights; includes; availability window | `affiliate_products` 6650-6692; plancard carries only a booking token (§16) | Partner **name**: the DTO's `partnerName` is the product name (K1 violation). Per-night unit, cancellation, neighborhood: NO DATA. The URL never reaches any depth (§16). |
+
+### K4. DETAIL beyond the item
+
+| View | Fields | Source |
+|---|---|---|
+| Compare view (S1) | §E4 attributes per category, "not stated" omitted | §E4 |
+| Vendor detail | Name, handle, verification badge, rating, cancellation terms, deposit, request vs instant | `GET /api/services/:id`, `GET /api/services/:id/provider-verification` (LD 40). No plan row links there today — **new** link. |
+| Expert detail | Handle, standing on this plan (§12), measured reply time (LD 54, omitted under 5 threads), available now | `ExpertCard` (`SlipRail.tsx:695-772`), `server/services/live-status.service.ts` |
+
+**Sections that §L adds to this one** are marked in §L's cross-check (rows tagged "→ K").
+
+## L. Slip ingredient inventory
+
+Derived from code on `main` @ `da3174289`, not from memory; it extends audit §D. **L1** is every ingredient the slip reads
+or writes today, plus the ones the map's modules add. **L2** cross-checks the decision-maker's candidate list. **L3**
+names orphans and unmet dependencies. Writers: T traveler (owner) · D delegate (EA, LD 52) · E expert (§12 advisor) · P
+provider · S system · AI. Readers use the same letters, plus **G** for a share-link viewer and **$** for a `payer`
+participant. Levels: **GL** GLANCE · **PL** PLAN · **DT** DETAIL. Status: **shown** / **not shown** (exists, the slip
+renders nothing) / **missing**.
+
+### L1. What the slip reads and writes today, and what the modules add
+
+**One read feeds almost everything:** `GET /api/trips/:tripId/plancard` (PR = `server/routes/plancard.routes.ts:390-551`) →
+`assembleTripPlan` (TPS = `server/services/trip-plan.service.ts:562-1209`), which also carries `events`, `destinations`
+and `aiSketch` from the route. **Gate:** a collaborator row, an advisor in any §12 access status, the author, or the EA as
+`delegate` (PR:395-419). **A `payer` participant is refused (403)** unless they also hold a collaborator row, so LD 42 D9's
+payer audience cannot read the slip today. The share viewer (G) never reaches the plancard; `GET /api/trips/shared/:token`
+(`server/services/booking-actions.service.ts:385-413`) is a separate, stripped read. **As of `main` @ `da3174289` the slip
+renders the latest `trip_finals` snapshot once one exists (TPS:87-101, 646-650). #1109 makes the slip read live and
+leaves the snapshot to the Trip Card**, which removes the paper-vs-screen and prefill-vs-row mismatches noted in L3.
+
+Readers: O owner · D delegate · Ep pending advisor · Ew write-status advisor · G share viewer · $ payer.
+
+**B1 Plan header**
+
+| Ingredient | Source | Writer | Readers | Level | Status |
+|---|---|---|---|---|---|
+| Title, destination, dates | `trips.title`/`destination`/`start_date`/`end_date` (TPS:1118-1123) | T (dates via `PATCH /api/trips/:id`) | O D Ep Ew G | GL | shown (SV:409-412) |
+| Dates confirmed | `trips.dates_confirmed_at` → `datesConfirmed` (TPS:1181) | S on a T date write | all | GL | shown (`SetPlanDates` SV:422-428) |
+| Phase chip | derived from dates (SV:212-218) | S | all | GL | shown |
+| Party | `trips.adults`/`kids`/`number_of_travelers` → `plancardPartyCount` (TPS:1136) | T (plan modal step 4) | O D Ep Ew (G: count) | GL | shown |
+| Party noun, hidden badge | `experience_types.vocabulary`, `default_visibility` via `useOccasionSwitches` — **called without events** (SV:1464, SR:961) | seed | O D Ep Ew | GL | shown (resolution lossy — step 0b) |
+| Invited count | `GET /api/trips/:tripId/guests` `totals.invited` | T | **O only** | GL | shown |
+| Events count | `user_experiences` by `trip_id` (PR:453-475) | T | O D Ep Ew | GL | shown |
+| Stops | `trip_destinations` name/position (PR:488) | T | O D Ep Ew | GL | shown; stop lat/lng **not shown** (no stop pins) |
+| Time zone | `trips.timezone` (TPS:1166) | S at mint | O D Ep Ew | GL | shown |
+| Optimized badge | `item_transition_log` `variant_applied` + `lastComparisonId` | AI (optimizer) | O D Ep Ew | GL | shown |
+| AI-sketch line | `isUntouchedAiDraft` over live rows (PR:501) | AI | O D Ep Ew | GL | shown |
+| Final banner / version | `trips.finalized_at`, `trip_finals.version` | T | O D Ep Ew | GL | shown |
+| Routing counts | `routing_status` + booking per item | S | O D Ep Ew | GL | shown |
+| Delegate note | `tripRole='delegate'` | S | D | GL | shown |
+| `trips.budget`, `status`, `tracking_number` | TPS:1120, 1137, 1140 | T / S | O D Ep Ew | — | not shown (deliberate for tracking) |
+| Pen write on load | `activateOpenedPlan` → `PUT /api/trip-context` (SV:1309-1328) | S | — | — | written every load; #1109 stops it carrying occasion keys |
+
+**B2 Days & items**
+
+| Ingredient | Source | Writer | Readers | Level | Status |
+|---|---|---|---|---|---|
+| Day number, date, heading | `itinerary_items.day_number` + `trips.start_date` (TPS:883-907) | T D E AI | O D Ep Ew G | PL | shown |
+| Title, start time, location | `title`, `start_time`, `location_name‖location_address` | T D E AI | O D Ep Ew G | PL | shown |
+| End time | `end_time` (TPS:783) | T D E AI | O D Ep Ew | PL | **not shown** |
+| Order | `sort_order`; `POST /api/trips/:tripId/itinerary/reorder` (write gate) | T D | O D Ep Ew | PL | shown |
+| Add / edit / delete | `POST …/itinerary-items` (RT:12781, `origin` stamped), `PATCH` (TR:3037), `DELETE` (TR:3208) | T D | — | PL/DT | shown |
+| **Traveler's own note** | `itinerary_items.description`, written by slip add/edit (`slip-item-tools.ts:199, 226`) | T D | O D Ep Ew **G** | DT | **not shown on the slip** (the share view shows it) |
+| Routing badge / actions | `routing_status`; `POST …/items/:itemId/route` → `syncItemProjection` | T; Ew one edge | O D Ep Ew G | PL | shown |
+| Origin chip, kind chip | `origin`; `booking_id`/`provider_service_id`/`affiliate_product_id` | S | O D Ep Ew | PL | shown |
+| Booked ref | `confirmation_number‖booking_reference`, `booking.id` | P / S | O D Ep Ew | PL | shown |
+| Cost | `estimated_cost` (TPS:809) | T E AI | O D Ep Ew G | PL | shown only when `ready_for_checkout` |
+| Expert note | `expert_note ‖ notes` (TPS:802) | E | O D Ep Ew | PL/DT | shown — **the `notes` fallback can label a non-expert note "Note from <expert>"** |
+| Meeting point, vendor phone, maps URL, visited, change entry, `source`/`suggestedBy` | TPS:529-538, 701-708, 790-815 | P / T / S | O D Ep Ew | DT | on the payload, **not shown** |
+| `duration_minutes`, `check_in/out`, `quantity`, `slot_id`, `participant_ids`, `attendance_requirement`, `private_notes`, `travel_from_previous`, `energy_cost`, `currency`, `gem_id`, `dmo_extracted_place_id` | `itinerary_items` (schema:5609-5850) | various | — | DT | **not emitted** |
+
+**B3 Map · B5 First draft · B6 Share · B7 Finish**
+
+| Ingredient | Source | Writer | Readers | Level | Status |
+|---|---|---|---|---|---|
+| Item pins; geocode write-back | `latitude/longitude`; missing ones geocoded and **written back**, up to 12 per request (TPS:335-371) | S (external geocoder) | O D Ep Ew | PL | shown |
+| "X of Y located" | derived | S | O D Ep Ew | GL | shown |
+| Legs polylines, notes layer, day `.ics`/Maps | `transport_legs`; expert notes; client-built | E / S | O D Ep Ew | PL/DT | shown |
+| Draft vs Optimize switch | `slipBuildAiAction` (`slip-rail.ts:60-63`); server 409 `slip_has_items` | S | O | GL | shown |
+| Draft run | `POST /api/ai/generate-itinerary` (CR:4782) → items `origin='ai'` | AI | O | GL | shown |
+| Share link | `POST /api/trips/:id/share` → `shared_trips` (90 days) | T | O | GL | shown |
+| PDF / `.ics` | `GET /api/trips/:tripId/pdf` (TR:1322), `/calendar` (TR:1402), live items + zone | S | O, advisors, author | DT | shown |
+| Finalize / Reopen | `POST …/finalize` (`trip_finals`, `finalized_at`, notifications), `POST …/reopen` | T | O | GL | shown |
+| Finalize chooser | route to checkout (bulk); `POST /api/affiliate-booking-requests`; `POST /api/expert-requests` | T | O | DT | shown |
+| Save-card prompt | `GET /api/me/payment-methods` | S | O | GL | shown (no module) |
+
+**S-modules**
+
+| Module | Ingredient | Source | Status |
+|---|---|---|---|
+| S1 | Option tables, six rails, attribute derivation, routing and finalize guards, impression provenance | §E (R124/R125) | **missing (approved design)** |
+| S1 | Listing inputs for the compare view | `provider_services.price`, `pricing_unit`, `average_rating`, `review_count`, `neighborhood`, `cancellation_policy_type`, `location_precision`, `booking_mode` | exist, not shown |
+| S2 | Day legs (mode, minutes, cost) | `transport_legs` (selected variant + expert-confirmed) | shown (`LogisticsRow` SV:1142-1167) |
+| S2 | Leg pickup, distance, alternatives; confirm/dismiss; change mode | TPS:276-316; `PATCH /api/transport-legs/:legId/status` (PR:609), `/mode` (TR:2239) | exist, no slip control |
+| S2 | Anchor candidates | `GET /api/trips/:id/anchor-candidates` → `BuildAroundDialog` | shown (feeds Optimize only) |
+| S2 | Anchor pin, travel-time labels, matrix | brief phase 2 | missing |
+| S3 | Engine slate on the slip (`slip_gaps`/`slip_suggestions`), `added` outcome | `upsell-engine.service.ts` (not mounted on the slip) | missing |
+| S3 | Saved places in the plan's cities | `GET /api/saved-items` → add rail (LD 55) | shown |
+| S4 | Move to day (edit form has no day field, `slip-item-tools.ts:62`); sticky day chips | — | missing |
+| S5 | Bookings list, per-item booking status/amount, deposit/balance/due | `plan.bookings[]`; `service_bookings.deposit_amount`/`balance_amount`/`balance_due_at` (not emitted) | **not shown** |
+| S5 | Payer read path | plancard gate refuses a payer | missing |
+| S5 | Real spend | `budget.spentBreakdown` (paid `trip_transactions`) | not shown |
+| S6 | Suggestions, approve/decline | `GET/POST/PATCH /api/trips/:id/suggestions` → `trip_suggestions`; approve inserts `origin='expert'` item | shown |
+| S7 | Preview, fee, Trip Pass | `GET /api/optimization-preview`, `/api/optimization-fee`, `/api/trips/:tripId/trip-pass` | shown; `improvementRoom`/`dimensions` not shown; open-set count missing |
+| S8 | Proposals, ask/discard/pay/apply | `GET/POST /api/trips/:tripId/proposals…` → `plan_proposals` | shown (O, Ew); hidden from D by the client |
+| S9 | Stops edit | plan modal → `plan-stops-writer` (LD 34) | shown |
+
+**A-modules**
+
+| Module | Ingredient | Source | Status |
+|---|---|---|---|
+| A1 | Comparison create + pay gate; link back | `POST /api/itinerary-comparisons`, `/api/optimization-payments` | shown (navigation) |
+| A1 | Metrics, optimization delta, `lastOptimizedAt`, stats | TPS:909-927, 1028-1051, 1192-1206 | on the payload, **not shown** |
+| A1 | Fixed objectives + earned badges (R128), `metadata.optionId`, `adopt-stops` | §F2 | missing |
+| A2 | Events, roles, time/budget edit | `events[]`; `PATCH /api/user-experiences/:id` | shown |
+| A2 | Organize into events | presets + `POST /api/user-experiences` | shown — **does not refresh the plancard** (`SlipOrganizeEvents.tsx:136-138`) |
+| A3 | Party members | `/api/trips/:tripId/participants`, `/api/participants/:id` → `trip_participants` | shown (O, DT) |
+| A3 | Email, phone, dietary, payment status, emergency contact, event attendance; `trips.accessibility_note` | `trip_participants`; `trips` | exist, not shown |
+| A4 | Roster totals; invite management | `GET /api/trips/:tripId/guests`; `GuestInviteManager` → `event_invites` | shown (O) |
+| A5 | Role chips; contracts board; coordination card | `roles_needed` → browse; `/api/trips/:tripId/contracts`; `/api/coordination-states` | shown (O) |
+| A5 | "Is anyone listed for this role here?" | — | missing (supply read, L2) |
+| A6 | Anchors, schedule check, presets | `/api/trips/:tripId/anchors`, `validate-schedule`, `anchor-suggestions` | shown (DT) |
+| A6 | Energy read | client calls `GET /api/trips/:tripId/energy`, **no server handler** | missing (a broken read) |
+| A7 | `participant_ids`, `attendance_requirement`, `min/max_participants` | `itinerary_items` (not emitted) | exist, no UI |
+| A8 | Advisors, hire, message, plan approval, item thread | `GET /api/trips/:id/expert-advisor`; `POST /api/trips/:tripId/advisors`; `POST /api/conversations/start`; `meta.planApproval` + `POST …/plan-review`; `…/comments` | shown |
+| A8 | Advisor bio, specialties, rating, review count | same read | not shown |
+
+**What the modules add (all missing today):** `plan_option_sets`/`plan_options` + six rails (S1, R124); the Finalize
+open-set refusal (B7, R125); `experienceGroupFor` and a module registry (step 1, R127); the completeness derivation over
+phase-0 slug keys, and an item → `category_key` derivation — `itinerary_items` has **no category column**, so it can
+only be read through `provider_services.category_id` (B4); `trips.experience_type_id` (0a); a supply read per market ×
+category (S1/S3/A5); fixed-objective metadata and `adopt-stops` (A1, R128); a day field on the edit form (S4); the S5
+section with deposit/balance fields and a payer read path; per-item `available` from the catalog liveness predicate
+(L2).
+
+### L2. Candidate list cross-check
+
+Each row: **found** (exists and the slip or its module can use it), **partial** (exists but incomplete, off-slip, or
+never written), **absent**. "→ K" marks an ingredient §K now carries because of this check.
+
+| Candidate | Mark | Evidence | Notes for the map |
+|---|---|---|---|
+| **Budget target** | partial | `trips.budget` (schema:131) is still body-settable through `insertTripSchema` but has **no live client writer**. Per-event `user_experiences.budget` (LD 29) is the ruled home, and its derived total renders in the rail (`client/src/lib/plan-budget.ts:79-128`, `SlipRail.tsx:936`). | Per-event budget is the target (LD 29). `trips.budget` is not surfaced: a second stored number (§18 rule 1). |
+| **Running plan total** | partial | The payload's `budget.spentBreakdown` sums paid `trip_transactions` (`trip-plan.service.ts:461-488`), and each item's `estimated_cost` is on the DTO. **The slip reads neither**, and no total of item costs exists on the slip. | → K (K2 "Plan total", new). Omitted when nothing is priced. |
+| **Per-person split** | partial (off-slip) | `budget.service.ts:187 calculateSplit`; `POST /api/trips/:tripId/budget/calculate-split`, `…/settle-up` (`routes.ts:12580-12666`); UI in `components/logistics/budget-intelligence.tsx` (Trip Card / logistics dashboard). `trip_participants.amount_owed/paid` deliberately not rendered (`SlipTravelingParty.tsx:31-36`). | §15d phase two (the real split) is unstarted. No module owns it on the slip; recorded in L3. |
+| **Service fee + per-booking cap (`fee_bands`)** | found (off-slip) | `resolveTravelerServiceFee(Snapshot)` (`server/services/fee-resolution.service.ts:271, 339`); public `GET /api/pricing` `serviceFeePct`/`serviceFeeCapCents` (`pricing.routes.ts:94-95`). Shown on `/pricing`, and the charged amount only **after** checkout (cart.tsx:3084-3097). | **Gap:** no pre-checkout disclosure on the slip or in the cart. The #1109-era quote rule (disclose before accept, ledger `2026-09-20-quote-fee-preaccept`) has no slip twin. Owner: B7 Finish / S5 Bookings (DT). |
+| **AI task fee + waiver** | found | `GET /api/trips/:tripId/proposals` `aiTask {coveredByTripPass, priceCents}` (`trips.routes.ts:3491-3534`) → `askAiPriceLine` → AskAiDrawer on the rail. | S8, DT. Shown. |
+| **Optimizer fee** | found | `GET /api/optimization-fee` (`optimization.routes.ts:254`) → `SlipRail.tsx:338-343, 629-661`. | S7/A1, DT. Shown (owner). |
+| **Trip Pass entitlement** | found | `trip_entitlements` (schema:9368), `coversAction` (`trip-entitlement.service.ts:56-89`), `GET /api/trips/:tripId/trip-pass` owner-only → `TripPassCard` (`SlipRail.tsx:614-616`). | Build card, GL for the owner. An advisor gets 403, correctly. |
+| **Supply per market × category** | absent (as a read) | No endpoint counts supply by market × category. Nearest: admin `GET /api/admin/markets` (per-market readiness, no category), `GET /api/service-categories/provider-counts` (no market), `GET /api/experts/counts?location=`, admin `optimizer/gap-fills` (demand side). | **New ingredient** for S1/S3/A5/B4: `supplyFor(market, category_key)` over native listings, expert offerings, Gems, affiliate, DMO places. Owner: brief phase 1 (gatherers). |
+| **Empty-supply state per module** | partial | Existing honest empties: BuildAroundDialog "No hotels … scored near your stops yet" (`BuildAroundDialog.tsx:59-61`); HireExpertDialog "No experts are listed for {destination} yet" (`:204-207`); role chips render nothing on NULL `roles_needed`; SlipSavedPlaces renders nothing. | Rule for every module: **one sentence naming the market and category, never a zero**. S1 "compare" and S3 "suggestions" need it; the new supply read (above) feeds it. |
+| **Preferences: pace, mobility, dietary, style** | partial | `users.preferences.travelerProfile.explicit` via `GET/PATCH /api/me/traveler-profile` (`traveler-profile.routes.ts:55,68`) — **no client caller**. Style + budget band on profile.tsx (`/api/me/travel-preferences`). Per-generation answers go to the AI prompt only. `trip_participants.mobility_level`/`accessibility_needs` editable on the slip (A3); `dietary_restrictions` column exists, **not in the form**. `trips.accessibility_note` edited in the modal, **not on the plancard DTO**. | No module owns the traveler profile on the slip. Recorded in L3; → K (A3 participant fields at DT). |
+| **Transport legs + mode** | found | `transport_legs` (schema:7913); confirmed legs reach the payload; `LogisticsRow` (SV:1142-1167). Expert confirms (Workstation). | PL. Shown. |
+| **Flight / arrival inputs** | partial | `trip_participants.arrival_datetime` (written, **no server reader**); `temporal_anchors` `flight_arrival`/`flight_departure` (owner, `TemporalAnchorManager` in SlipLogisticsSection); `trip_selected_flights` (schema:700) has **zero references** (dead). | A3/A6. Group travel GLANCE "arrivals stated" (K2) reads `arrival_datetime`. `trip_selected_flights` → §18c candidate. |
+| **Opening hours** | partial | Only `dmo_extracted_places.enrichment.openingHours` (schema:10308), linked by `itinerary_items.dmo_extracted_place_id` (not emitted). | → K (dining/activity DT, NO DATA except DMO places). |
+| **Availability** | found (off-slip) | `vendor_availability_slots`, patterns, blackouts; checked at cart add and checkout. A re-date does **not** re-validate (`routes.ts:1571-1580`, stated). | S1 compare "available times on the day" (E4) needs a slip-side read. |
+| **Weather fallback** | partial | `itinerary_items.weather_dependent`, `backup_plan_id`, `is_backup_plan`, `weather_conditions` (schema:5670-5675); `POST /api/itinerary-items/:id/backup` has **no client caller**; no trip weather service. | Orphan (L3). Not a module in the map; deliberately not reused for options (§E1). |
+| **Item status: routing / handshake / finalize** | found | `routing_status` + `RoutingBadge`/`ItemKindBadge`/`OriginBadge` (SV:760-764); `meta.planApproval` → `PlanApprovalBanner`; `trip_suggestions` → `ExpertSuggestionsPanel`; `finalized_at` / `trip_finals.version` → Finish card and the primary banner. | Shown. One status grammar per row (PL): routing badge + booked ref; finalize state at GL only. |
+| **Comments** | found | `trip_item_comments`; `GET/POST /trips/:tripId/items/:itemId/comments` (owner ↔ advisor, author). | PL toggle. **A delegate cannot comment** (route 403), a gap LD 52 did not decide. |
+| **Expert notes** | found | Per-item `expert_note` (all slip viewers), trip `expert_traveler_note` (all viewers), private `expert_notes` (Workstation only, LD 21). | PL first line / DT full (K1 rule 2). |
+| **Messages** | found | D22 advisor thread `POST /api/conversations/start {tripId}`; entry row in the Build card (owner). | Entry only; the thread is `/chat`. |
+| **Notifications** | found (off-slip) | `notifications` (schema:1966); the slip is the bell's landing page. | No slip module. |
+| **Owner vs delegate vs expert visibility** | found | `client/src/lib/slip-viewer-role.ts` (owner/expert/delegate/other). | Every L1 row's reader column. |
+| **Currency** | absent (trip) / partial | No currency on `trips`; `plan-budget.ts:95-116` hardcodes USD; `itinerary_items.currency` (not emitted); `provider_services` has no currency; `users.preferred_currency` used by the cart only. | Every price at every depth is USD today. A currency ingredient is **missing**, so no depth may convert (§13). |
+| **Time zones across stops** | absent | `trip_destinations` has no timezone; one `trips.timezone` per plan (LD 30). | A multi-zone plan reads in one zone. Missing ingredient for S9 + countdown. |
+| **en/ja** | partial | `client/src/locales/{en,ja}/…`, `language-menu.tsx`; **no plancard/slip file uses `useTranslation`**. | All slip copy is English. Missing for every module. |
+| **Signed-out / guest slip** | absent | `/plans/:tripId` is `ProtectedRoute` (`App.tsx:680-686`) and the plancard is `isAuthenticated`. The guest pen and guest cart are client-side only (sessionStorage `experienceContext`, localStorage `traveloure_guest_cart_pending`). `trips.share_token` has **no live writer**. | There is no guest slip; G2 is HELD. The read-only public view is the share link (below). |
+| **Recommendation inputs: fit** | partial | `profileMatchScore: 0.5` constant (`upsell-query.service.ts:232`). | R128 forbids a personalization claim until this is real. |
+| **… proximity** | partial | Coarse `PROXIMITY_FIT` by coverage match (`upsell-query.service.ts:135`); affiliates fixed 0.4. | Brief phase 2 replaces it. |
+| **… trend** | absent in the engine | TravelPulse `trendScore` lives in `recommendation.service.ts:602-636` only. | Brief phase 4. |
+| **… quality** | absent in the engine | Rating used by `location-view.service.ts` and `recommendation.service.ts`, not the upsell engine. | Needed by R128's interim Best fit (rating) — the optimizer's own `average_rating` metric is the source there. |
+| **… boost** | partial | `featured-sort.ts` (`FEATURED_BOOST`) on city pages; the engine's "boosts" are expert endorsement (0.15) and revenue (≤0.15). | Brief §C; revenue weight 0 on the slip (brief G-4 default). |
+| **Cancellation + refund by tier (R114)** | found (off-slip) | Tiers in `cancellation-policy.service.ts:11-14, 160-185`; snapshotted at purchase; `GET /api/bookings/:id/cancel-preview`, `POST …/cancel` (`routes.ts:8081-8200`); R114 fee refundability. Read by `my-bookings.tsx` only. | S5 Bookings (DT). The slip has no cancel control; paid rows get no tools (`slip-item-tools.ts:87-96`). |
+| **Refund → item state** | partial — **suspected defect** | `revertPurchasedItemsForBooking` flips `purchased → in_planning` but **keeps `booking_id`** (`item-routing.service.ts:117-156`), and the assembler attaches a booking of any status (`trip-plan.service.ts:505-526, 821-823`). A refunded item would still read **"Booked"**. Inferred from code, not reproduced. | Filed for a fix lane; S5 depends on it. |
+| **Booking changes / reschedule** | absent | No route; `offering-contract-snapshot.ts:71` says `reschedulePolicyId` is not recorded. | Missing ingredient for S5. |
+| **Reopen on a partly-purchased plan** | found | `POST /api/trips/:tripId/reopen` clears `finalized_at` only; purchased items untouched. Since #1109, add-to-checkout on a finalized plan is limited to the current final version, and the client offers Reopen on `not_in_final` (R123). | B7. |
+| **Mid-trip edits** | partial | No server time lock on item writes; live mode (`UpNextHero`, `isLiveDay`) only on the Trip Card. | Time-state rule needed (next row). |
+| **Time state** | partial | Draft/dated (`dates_confirmed_at` → `datesConfirmed`), handover (`tripCardIsPrimary`, 48h), phase chip (`derivePhase` SV:212-220); `balance_due_at`, quote `expires_at`, slot windows, 24h free re-run (`optimizer-run-authorization.ts:47-60`) — **none of the deadlines render on the slip**; the slip calls `tripCardIsPrimary` **without a zone** (SV:1384). | **What each state disables (proposed):** draft — countdown withheld (LD 30); dated — nothing; T−48h / live — Finalize and Reopen hidden, edits stay (today); past — slip read-only (**new**, no server lock exists). Deadlines → GL "next action" when due within 7 days. |
+| **Undo / edit history** | partial | No undo (LD 42 D18); `item_transition_log` records status and actor only, no content diff; `itinerary_changes` → `ChangeLogPanel` on the Trip Card only. | A "working-plan edit history" with content is **missing**; D18 forbids offering a restore without a ruled snapshot. |
+| **Delisted listing / vanished affiliate product** | partial | The assembler never checks listing `status`/`approval_status`; FKs are SET NULL; checkout refuses only `archived`. A deleted affiliate product drops the agent CTA silently. **In an option set** (§E): no rule yet. | **Proposed:** a per-item and per-option `available: false` + reason, read from the same liveness predicate the optimizer uses (`optimizerCatalogLivenessWhere`); the row says "no longer offered", never silently. An unavailable option cannot be chosen. |
+| **Verification badge** | found (off-slip) | `loadPublicVerification`, `GET /api/services/:id/provider-verification`; rendered on service-detail only. | → K (K4 vendor detail). Not on any slip row. |
+| **Background-check gate** | found (publish-time) | `service_categories.requires_background_check` gates publishing and the upsell filter; not exposed at add time. | Publish gate is the guarantee; nothing to show per item. |
+| **Cancellation terms before add** | partial | service-detail shows them before Book (`service-detail.tsx:2389-2408`); the slip's own add is free text; §E option add has none. | S1 option add and S3 suggestion add must carry the terms at DT **before** the item enters the plan. |
+| **Public share view** | found | `POST /api/trips/:id/share` → `GET /api/trips/shared/:token` (90-day token); strips everything but title, destination, dates, party count, status and items (price only on purchased items). | B6, owner-only, hidden under `visibility: hidden`. The public view is read-only GLANCE + PLAN. |
+| **Co-planner invites** | absent | `trip_collaborators` role `friend` has no writer; no invite route. | Missing ingredient; no module in the map. |
+| **Gem bylines** | absent | `itinerary_items.gem_id` has **no writer** and is not emitted; bylines exist on gem surfaces only. | Missing for S3/S1 (a Gem as a source). |
+| **Expert credit** | found | `origin` chip "from your expert"; note byline "Note from {first name}" via `meta.deliveredBy` (whose `expertId` is a raw `users.id` on an authenticated payload — LD 40's rule is about public payloads; recorded). | PL. |
+| **Landing-moment attribution** | partial | `trips.moment_key` written at mint, read by the AI prompt; no funnel reader; not on the plancard. | No slip module; attribution is analytics, not a slip field. |
+
+### L3. Orphans, unmet dependencies, and defects found
+
+**Ingredients no module owns (orphans).**
+- **Rendered, no module:** the transition-log footer (`item_transition_log`, SV:1198-1243), the save-card prompt, the
+  ConciergeCard (ready-made purchases), the per-event budget total. **Proposed homes:** footer → B2 (history, DT);
+  save-card prompt → B7; ConciergeCard → A8; budget total → the K2 plan-total row (GL).
+- **On the payload, never rendered:** `changeLog`, `metrics`, `optimizationDelta`, `lastOptimizedAt`, `stats`, `budget`,
+  `bookings`, `legs`, `tripNote` (a duplicate of `trip.expertTravelerNote`), `meta.dayCount/status/origin`,
+  `trackingNumber`, and item `mapsUrl`/`meetingPoint`/`vendorPhone`/`visited`/`changes`/`endTime`. Each either becomes a
+  K-level field on a named module (`bookings` → S5; `metrics`/`optimizationDelta` → A1; `meetingPoint`/`vendorPhone`/
+  `endTime` → B2 DT) or is dropped from the DTO (§18c: no consumer ⇒ delete). The duplicate `tripNote` is dropped.
+- **Server capability with no client:** `GET/PATCH /api/me/traveler-profile` (pace, dietary, mobility — no caller),
+  `POST /api/itinerary-items/:id/backup` (weather fallback — no caller), the leg status/mode PATCHes, `GET/POST/DELETE
+  /api/trips/:tripId/changes`, `trip_selected_flights` (zero references), `trip_participants.arrival_datetime` (written,
+  no server reader), `computeEmptySlots` (test callers only), `itinerary_items.gem_id` (no writer).
+  **Traveler preferences have no module in this map**; they need one (profile or A3) before the "fit" term can be real
+  (R128).
+- **Off-slip money readers:** per-person split (`budget-intelligence.tsx`), cancel preview (`my-bookings.tsx`), service-fee
+  disclosure (after checkout only). S5 owns the first two; B7/S5 owns pre-checkout fee disclosure.
+
+**Modules that depend on an ingredient that doesn't exist yet.**
+
+| Module | Missing ingredient(s) |
+|---|---|
+| B4 Completeness | Phase-0 slug keys + mapping (0c); item → `category_key`; `experience_type_id` or events-first (0a/0b); one completeness module |
+| B7 Finish | S1's open-set list (R125) |
+| S1 Compare | Both tables and six rails; routing + finalize guards; impression provenance; supply read; per-option liveness |
+| S2 Anchor | Anchor pin; travel-time matrix (brief phase 2) |
+| S3 Suggestions | A slip mount of the engine; `slip_gaps`; impression `added`; supply read |
+| S4 Move / jump | A day field on the edit form; sticky day chips |
+| S5 Bookings | The section; deposit/balance fields in the DTO; a payer read path (payer gets 403); reschedule (no route); refunded-item state fix (below) |
+| S7 Preview | Open-set count |
+| A1 Three versions | Fixed objectives + earned badges; `optionId` in variant metadata; `adopt-stops`; a real fit term (R128) |
+| A5 Vendor coordination | Supply read per role and market |
+| A6 Temporal anchors | The energy GET route (the client calls a route that does not exist) |
+| A7 Split activities | A UI, and the columns on the DTO |
+| Every module | Currency (USD hardcoded), per-stop time zones, and en/ja strings on slip surfaces |
+
+**Defects found along the way (not fixed; each is its own fix lane).**
+1. **Refunded items probably still read "Booked."** A refund reverts `purchased → in_planning` but keeps `booking_id`,
+   and the assembler attaches a booking of any status (`item-routing.service.ts:117-156`, TPS:505-526, 821-823).
+   Inferred from code; not reproduced.
+2. **Traveler notes are write-only on the slip.** Add/edit writes `itinerary_items.description`; the DTO omits it; the
+   public share view shows it.
+3. **Possible false attribution:** `expertNote` falls back to `notes` (TPS:802), rendered as "Note from <expert>" (LD 42
+   D4's false-attribution class).
+4. **"Organize into events" and guest-list set-up don't refresh the slip** (they invalidate `/api/user-experiences`
+   only).
+5. **`GET /api/trips/:tripId/energy` has no server handler** (`energy-budget-display.tsx:50`).
+6. **A pending advisor can post item comments** (`resolveItemCommentRole` counts `pending`, BA:1607-1611). Comments are
+   not a plan write, so this may be intended. It sits in tension with LD 12 and needs a one-line ruling.
+7. **A `payer` participant cannot open the plancard** (403), although LD 42 D9 makes the payer part of the bookings
+   audience.
+8. **The Trip Card prints "Duration needed"**, and `confirmedActivities` counts `planned` (K1).
+9. **`deliveredBy.expertId` is a raw `users.id`** on the (authenticated) plancard payload. LD 40's guard covers public
+   payloads only, so this is recorded, not flagged as a violation.
+10. **PDF/`.ics` vs slip**, and **edit prefill vs row**, disagreed while the slip rendered the snapshot. #1109's live read
+    closes both for the slip. The comment at `SlipRail.tsx:1023-1025` claiming they cannot disagree was wrong before
+    #1109.
+
+**Where §L changed §J and §K.** §K gained:
+- the traveler's own note (B2, DT);
+- the plan total (GL);
+- per-item availability (DT);
+- the K1 violation list (items 1, 3 and 8 above);
+- the payer audience gap.
+
+§J needed no change: no ingredient found here alters a group, switch or module default. The supply read and per-option
+liveness are prerequisites of S1/S3 in every group, so they are recorded here rather than per occasion.
+
+**Open questions raised by §J–§L (for the decision-maker; each changes the design).**
+1. **`accommodation` as REQ for every `range` occasion without a venue role** (11 occasions), so completeness has
+   something to count on Trips and Group travel? *Default:* yes.
+2. **LD 42 D1 backfill:** amend "NO BACKFILL" to allow the exact-evidence Tier A/B backfill (0a)? *Default:* yes, Tier A
+   and Tier B only.
+3. **Which of the eight no-REQ Celebrations should block completeness,** and on which categories? *Default:* none until
+   the per-occasion call is made.
+4. **Pending advisor and item comments:** allowed (it is not a plan write) or refused (LD 12)? *Default:* allowed, with a
+   ledger line saying why.
+5. **The six proposed §J overrides** (couple Trips drop party and split; `corporate-events` gets vendor coordination and
+   arrivals; `housewarming-party` has no anchor choice; `family-occasion` compares lodging first). *Default:* adopt all
+   six.
+
 *HARD STOP — design only; no code until ratified.*
