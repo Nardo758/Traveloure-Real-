@@ -232,12 +232,15 @@ test("A8: the Payment Element sheets suppress no wallet — no paymentMethodOrde
   }
 });
 
-test("A9: the FAQ payment answer names the wallets that ship and still refuses PayPal", () => {
-  const faq = read("pages", "faq.tsx");
-  const answer = faq.slice(faq.indexOf("What payment methods do you accept?"));
+test("A9: the Help center's payment answer names the wallets that ship and still refuses PayPal", () => {
+  // The retired /faq page's answer moved, word for word, into help article 8 (Lane B).
+  const help = readFileSync(join(CLIENT_SRC, "..", "..", "shared", "help-articles.ts"), "utf-8");
+  const answer = help.slice(help.indexOf("Which payment methods can I use?"));
+  assert.ok(answer.length > 0, "the payment-methods answer must exist in shared/help-articles.ts");
   const block = answer.slice(0, 600);
   for (const wallet of ["Apple Pay", "Google Pay", "Link"]) {
-    assert.ok(block.includes(wallet), `FAQ payment answer no longer names ${wallet}`);
+    assert.ok(block.includes(wallet), `Help payment answer no longer names ${wallet}`);
   }
   assert.match(block, /don't accept PayPal/); // §13 — PayPal is still not integrated
+  assert.match(block, /where your device and browser support them/); // LD 43(e)
 });

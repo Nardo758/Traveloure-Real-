@@ -254,11 +254,14 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     slug: "payment-didnt-go-through",
     title: "Payment didn't go through",
     summary: "What happens when a card is declined or checkout is left unfinished, and how to try again.",
-    keywords: ["payment", "declined", "failed", "card", "try again", "hold", "checkout"],
+    keywords: ["payment", "declined", "failed", "card", "try again", "hold", "checkout", "apple pay", "google pay", "link", "paypal", "wallet"],
     blocks: [
       { kind: "p", text: "If your card is declined, the booking isn't made and the item shows \"Payment didn't go through.\" Tap Try again to put it back in your cart and check out with a new payment; the declined attempt is cancelled so it can't charge you later." },
       { kind: "p", text: "If you leave checkout without paying, we release the hold after {holdMinutes} and the item goes back to your plan unbooked. If a payment was started but never completed, we check with your bank and clear it within {staleWindow}, and we'll email you if the item was released." },
       { kind: "p", text: "If a declined payment somehow goes through afterwards, we refund it automatically and tell you. Items that can't be booked through checkout show \"Back to plan\" instead." },
+      // LD 43(e): the payment-methods answer moved here from the retired /faq page, word for word —
+      // wallets are offered "where your device and browser support them", and PayPal is not claimed.
+      { kind: "p", lead: "Which payment methods can I use?", text: "We accept card payments (Visa, Mastercard, American Express and other major cards), processed by Stripe. Apple Pay, Google Pay and Link are also offered in the Stripe payment sheet where your device and browser support them. We don't accept PayPal." },
     ],
   },
   {

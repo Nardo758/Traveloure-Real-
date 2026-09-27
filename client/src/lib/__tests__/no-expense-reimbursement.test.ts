@@ -90,6 +90,9 @@ function clientSurfaces(): Array<{ rel: string; code: string }> {
     }
   };
   walk(CLIENT_SRC);
+  // The Help center's article copy lives in shared/ but renders on /help, so it is a surface too.
+  const helpArticles = join(CLIENT_SRC, "..", "..", "shared", "help-articles.ts");
+  out.push({ rel: relative(CLIENT_SRC, helpArticles), code: stripComments(readFileSync(helpArticles, "utf8")) });
   return out.sort((a, b) => a.rel.localeCompare(b.rel));
 }
 
@@ -144,7 +147,8 @@ describe("D-7 — no surface promises that a seller's expenses are reimbursed, b
     // these, the sweep below has quietly stopped checking the pages the ruling is about.
     for (const expected of [
       "pages/earn.tsx",
-      "pages/faq.tsx",
+      "pages/help.tsx",
+      "../../shared/help-articles.ts",
       "pages/terms.tsx",
       "pages/pricing.tsx",
       "pages/ea/reports.tsx",
