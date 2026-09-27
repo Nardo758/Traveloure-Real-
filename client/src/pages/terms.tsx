@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
+import { CURRENT_TERMS_VERSION } from "@shared/legal-versions";
 
 export default function TermsOfServicePage() {
   return (
@@ -548,7 +549,7 @@ export default function TermsOfServicePage() {
           <div className="p-4 bg-muted/50 rounded-lg mt-8">
             <p className="text-sm text-muted-foreground text-center">
               By using Traveloure, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.
-              <br />Last Updated: September 27, 2026 | Version 1.1
+              <br />Last Updated: September 27, 2026 | Version {CURRENT_TERMS_VERSION}
             </p>
           </div>
         </div>
