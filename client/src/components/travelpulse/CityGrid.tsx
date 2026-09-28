@@ -130,7 +130,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
 
   const handlePlanNow = () => {
     setDialogOpen(false);
-    openPlanning({ city: city.cityName, country: city.country });
+    openPlanning({ door: "city_grid", city: city.cityName, country: city.country });
   };
 
   // #805: this navigated to `/trip/:id?addCity=…`, which nothing read — the city was silently

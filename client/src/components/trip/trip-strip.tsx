@@ -341,7 +341,7 @@ export function TripStrip() {
             <span className="inline-flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => openPlanModal()}
+                onClick={() => openPlanModal({ door: "trip_strip_edit" })}
                 className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-border)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-chip)]"
                 data-testid="trip-strip-edit-plan"
               >
@@ -362,7 +362,7 @@ export function TripStrip() {
           ) : (
             <button
               type="button"
-              onClick={() => openPlanModal()}
+              onClick={() => openPlanModal({ door: "trip_strip_edit" })}
               className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-navy)] hover:text-white"
               data-testid="trip-strip-edit"
             >

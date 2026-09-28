@@ -25,8 +25,10 @@ export default function LandingPage() {
       />
 
       {/* Hero — behaviour contract docs/design/LANDING_SPEC.md; Plan-my-trip opens the one
-          planning modal, and a billboard tile's "Start this plan" opens it pre-set. */}
-      <LandingHero onPlanTrip={() => open()} onStartPlan={(source) => open(source)} />
+          planning modal (door "hero", shared/slip-funnel-events.ts), and a billboard tile's
+          "Start this plan" opens it pre-set. The billboard names no door: its door is not on the
+          closed PLAN_DOORS list, and a door not on the list sends nothing (§13). */}
+      <LandingHero onPlanTrip={() => open({ door: "hero" })} onStartPlan={(source) => open(source)} />
 
       {/* Ruled order (landing reorder, ledger `2026-09-28-landing-reorder`): hero with the
           "Where do you want to begin?" pills -> the one-line How-it-works strip -> Some trips are

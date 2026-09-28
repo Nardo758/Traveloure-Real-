@@ -197,7 +197,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
             i18nKey: "links.wedding",
             href: "/experiences/wedding",
             description: "Dream wedding planning",
-            featured: { source: { experienceType: "wedding", experienceSlug: "wedding" } },
+            featured: { source: { door: "nav_occasion", experienceType: "wedding", experienceSlug: "wedding" } },
           },
           { name: "Engagement Party", i18nKey: "links.engagementParty", href: "/experiences/engagement-party", description: "Celebrate your love" },
           { name: "Wedding Anniversary", i18nKey: "links.anniversary", href: "/experiences/wedding-anniversaries", description: "Celebrate your journey" },

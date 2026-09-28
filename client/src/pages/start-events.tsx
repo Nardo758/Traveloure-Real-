@@ -92,9 +92,10 @@ export default function StartEventsPage() {
                 A wedding, a proposal, a reunion — you&apos;re the host.
               </p>
               <div className="mt-auto pt-3">
-                {/* No `source`: this page holds no destination and no occasion, and an absent
-                    field is how the chooser is told "not known" (§13). */}
-                <PlanEntryCta testId="button-start-events-plan" />
+                {/* No destination and no occasion: this page holds neither, and an absent field is
+                    how the chooser is told "not known" (§13). The DOOR is the one thing it does
+                    know (E1, ledger `2026-09-28-a0-slice-spec`). */}
+                <PlanEntryCta source={{ door: "start_events" }} testId="button-start-events-plan" />
               </div>
             </CardContent>
           </Card>
