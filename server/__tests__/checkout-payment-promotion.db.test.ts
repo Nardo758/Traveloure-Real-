@@ -782,3 +782,107 @@ test("N25: a plan-work booking whose provider is the platform concierge account 
     "DB FACT: the platform concierge account never becomes an advisor — a pool marker, never a person who agreed to write",
   );
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// matrix-id: N24 — T6 REVENUE IS RECORDED BY THE PAID TRANSITION, EXACTLY ONCE (ledger
+// `2026-09-27-funnel-revenue-on-paid`, R174). FAILS ON main: there the only revenue emitter fired
+// at booking-REQUEST time and the promotion wrote no funnel row at all.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+async function revenueRows(bookingId: string): Promise<any[]> {
+  const r = await db.execute(sql`
+    SELECT user_id, trip_id, stage, properties FROM funnel_events
+    WHERE event_type = 'revenue' AND properties->>'bookingId' = ${bookingId}
+  `);
+  return r.rows as any[];
+}
+
+after(async () => {
+  for (const id of createdBookingIds) {
+    await db.execute(sql`DELETE FROM funnel_events WHERE properties->>'bookingId' = ${id}`).catch(() => {});
+  }
+});
+
+test("N24a: a full payment writes ONE revenue row — amount is the booking's own charge share, paidStatus confirmed", async () => {
+  const { bookingChargeShare } = await import("../services/booking-charge-share");
+  const pi = `pi_${RUN}_n24a`;
+  const bookingId = await makeBooking({ paymentIntentId: pi, itemId: await makeReadyItem() });
+  await promotePaidCheckout({ paymentIntentId: pi, actor: "webhook", metadataBookingIds: [bookingId] });
+
+  const rows = await revenueRows(bookingId);
+  assert.equal(rows.length, 1, "DB FACT: exactly one revenue event for one paid transition");
+  const expected = bookingChargeShare({
+    totalAmount: "100.00", platformFee: "25.00", conciergeFeeSnapshot: null, travelerFeeCharged: null,
+  });
+  assert.equal(rows[0].properties.amount, expected, "amount = bookingChargeShare, never a client number");
+  assert.equal(rows[0].properties.paidStatus, "confirmed");
+  assert.equal(rows[0].user_id, ids.user, "the traveler, from the row");
+  assert.equal(rows[0].trip_id, ids.trip);
+  assert.equal(rows[0].stage, "T6");
+  assert.equal(rows[0].properties.void, undefined, "a paid row is never void");
+});
+
+test("N24b: two signals (client then webhook) — still exactly ONE revenue row", async () => {
+  const pi = `pi_${RUN}_n24b`;
+  const bookingId = await makeBooking({ paymentIntentId: pi, itemId: await makeReadyItem() });
+  await promotePaidCheckout({ paymentIntentId: pi, actor: "client", actorId: ids.user, bookingIds: [bookingId] });
+  await promotePaidCheckout({ paymentIntentId: pi, actor: "webhook", metadataBookingIds: [bookingId] });
+  assert.equal((await revenueRows(bookingId)).length, 1, "the losing signal writes nothing");
+});
+
+test("N24c: a deposit payment records the DEPOSIT, paidStatus deposit_paid", async () => {
+  const pi = `pi_${RUN}_n24c`;
+  const bookingId = await makeBooking({ paymentIntentId: pi, itemId: await makeReadyItem() });
+  await db.execute(sql`UPDATE service_bookings SET balance_amount = '50.00' WHERE id = ${bookingId}`);
+  await promotePaidCheckout({ paymentIntentId: pi, actor: "webhook", metadataBookingIds: [bookingId] });
+
+  const row = await bookingRow(bookingId);
+  assert.equal(row.status, "deposit_paid");
+  const rows = await revenueRows(bookingId);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].properties.paidStatus, "deposit_paid");
+  assert.equal(rows[0].properties.amount, 75, "the deposit the row records (125 charged - 50 balance)");
+});
+
+test("N24d: an unpaid claim that is never promoted writes NO revenue row", async () => {
+  const bookingId = await makeBooking({ paymentIntentId: `pi_${RUN}_n24d`, itemId: await makeReadyItem() });
+  assert.equal((await revenueRows(bookingId)).length, 0);
+});
+
+test("N24e: no server code outside the funnel-revenue service emits a revenue event", async () => {
+  const { readFileSync, readdirSync, statSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const offenders: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (name === "__tests__" || name === "node_modules" || name === "migrations") continue;
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.ts$/.test(name) && !p.endsWith("funnel-revenue.service.ts")) {
+        if (/eventType:\s*["']revenue["']/.test(readFileSync(p, "utf8"))) offenders.push(p);
+      }
+    }
+  };
+  walk(root);
+  assert.deepEqual(offenders, [], "a request-time revenue emitter must not return");
+});
+
+test("N24f: the BALANCE payment is its own revenue row — amount = balance, paidStatus balance_paid", async () => {
+  const { promoteBalancePayment } = await import("../services/checkout-claim.service");
+  const bookingId = await makeBooking({ paymentIntentId: `pi_${RUN}_n24f_dep`, status: "deposit_paid" });
+  const balPi = `pi_${RUN}_n24f_bal`;
+  await db.execute(sql`
+    UPDATE service_bookings SET balance_amount = '40.00', stripe_balance_intent_id = ${balPi}
+    WHERE id = ${bookingId}
+  `);
+  const first = await promoteBalancePayment({ bookingId, paymentIntentId: balPi, actor: "webhook" });
+  const again = await promoteBalancePayment({ bookingId, paymentIntentId: balPi, actor: "client" });
+  assert.equal(first.promoted, true);
+  assert.equal(again.alreadyConfirmed, true);
+  const rows = await revenueRows(bookingId);
+  assert.equal(rows.length, 1, "one balance payment, one revenue row, whatever the signal count");
+  assert.equal(rows[0].properties.paidStatus, "balance_paid");
+  assert.equal(rows[0].properties.amount, 40);
+});

@@ -253,7 +253,9 @@ export async function runQAVerify(): Promise<QARunSummary> {
   // ── A1: Funnel events ────────────────────────────────────────────────────
   try {
     const r = await db.execute(sql`
-      SELECT stage, COUNT(*)::int as cnt FROM funnel_events GROUP BY stage ORDER BY stage
+      SELECT stage, COUNT(*)::int as cnt FROM funnel_events
+      WHERE NOT COALESCE((properties->>'void')::boolean, false)
+      GROUP BY stage ORDER BY stage
     `);
     const rows = (r as any).rows;
     const total = rows.reduce((s: number, row: any) => s + row.cnt, 0);
