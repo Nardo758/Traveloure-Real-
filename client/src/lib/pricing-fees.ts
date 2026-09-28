@@ -29,6 +29,8 @@
  * `revenueShareRate` is never read or produced by this module.
  */
 
+import { CANCELLATION_POLICY_TYPES, CANCELLATION_TIER_LABELS } from "@shared/cancellation-schedule";
+
 export type SurchargeMode = "" | "none" | "flat" | "zones" | "per_km";
 export type DepositType = "" | "percentage" | "flat";
 
@@ -52,18 +54,12 @@ export interface PricingFeesState {
 }
 
 /**
- * X1 (§13 hardcoded-copy arm): structured cancellation-policy TYPE vocabulary — mirrors
- * `shared/schema.ts`'s `cancellationPolicyTypeEnum` and the server's `refundPercentFor` windows.
- * This is now the SOLE copy of this list in the client (the wizard's own copy in `ServiceForm.tsx`
- * moved here with the control it fed — moved, not duplicated). Keep in step with
- * `refundPercentFor` / `shared/schema.ts` if any of them changes.
+ * X1 (§13 hardcoded-copy arm): the cancellation-policy TYPE options for the seller's picker. The
+ * values and labels are GENERATED from `shared/cancellation-schedule.ts` — the same table the
+ * server's `refundPercentFor` reads — so the window a seller picks is the window the refund applies.
  */
-export const CANCELLATION_POLICY_TYPE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "flexible", label: "Flexible — full refund if cancelled at least 24 hours before the start" },
-  { value: "moderate", label: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before" },
-  { value: "strict", label: "Strict — 50% refund if cancelled at least 7 days before the start" },
-  { value: "non_refundable", label: "Non-refundable — no refund once booked" },
-];
+export const CANCELLATION_POLICY_TYPE_OPTIONS: ReadonlyArray<{ value: string; label: string }> =
+  CANCELLATION_POLICY_TYPES.map((value) => ({ value, label: CANCELLATION_TIER_LABELS[value] }));
 
 export function emptyPricingFeesState(): PricingFeesState {
   return {

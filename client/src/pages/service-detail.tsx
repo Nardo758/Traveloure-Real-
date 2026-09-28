@@ -1,3 +1,4 @@
+import { CANCELLATION_TIER_LABELS } from "@shared/cancellation-schedule";
 import { useEffect, useRef, useState } from "react";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -318,17 +319,9 @@ interface RoomSummary {
   categoryAttributes?: { units?: number } | null;
 }
 
-// X1: display labels for cancellationPolicyType — mirrors shared/schema.ts
-// CANCELLATION_POLICY_TYPE_LABELS (kept local to avoid a client bundle importing the
-// server schema module; the vocabulary itself is app-enforced, not a DB CHECK).
-// The concrete windows mirror the server's enforcement schedule in
-// server/services/cancellation-policy.service.ts (refundPercentFor).
-const CANCELLATION_POLICY_TYPE_LABELS: Record<string, string> = {
-  flexible: "Flexible — full refund if cancelled at least 24 hours before the start",
-  moderate: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before",
-  strict: "Strict — 50% refund if cancelled at least 7 days before the start",
-  non_refundable: "Non-refundable — no refund once booked",
-};
+// X1: display labels for cancellationPolicyType — GENERATED from shared/cancellation-schedule.ts,
+// the one table the server's refund math reads (a small pure module, so no schema import here).
+const CANCELLATION_POLICY_TYPE_LABELS: Record<string, string> = CANCELLATION_TIER_LABELS;
 
 // In-person delivery methods that have a physical meeting point.
 const IN_PERSON_METHODS = new Set(["in_person", "hybrid"]);
