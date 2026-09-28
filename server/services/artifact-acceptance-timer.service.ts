@@ -72,6 +72,7 @@ import {
 import { resolveArtifactDeliveryInstant } from "./booking-completion.service";
 import { logItemTransition } from "./item-transition-log.service";
 import { storage } from "../storage";
+import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
 
 /**
  * The system reason an escalation records. It is written to
@@ -270,6 +271,12 @@ export async function advanceArtifactAcceptance(input: {
   // The payment gate — see the header. The prompt opens the rail that mints, so it carries the
   // same verification the completion pass did, and the same stamp so an unpaid backlog cannot
   // head-of-line-block the rows behind it.
+  // The ONE predicate (ledger `2026-09-28-no-payment-no-earnings`); the PaymentIntent below stays the
+  // live verification of a row that carries one.
+  if (!hasPaymentOnRecord(booking)) {
+    logger.warn({ bookingId, reason: NO_PAYMENT_ON_RECORD }, "[artifact-acceptance] no payment on record — not asked");
+    return { moved: false, bookingId, reason: NO_PAYMENT_ON_RECORD };
+  }
   if (!booking.stripePaymentIntentId) return { moved: false, bookingId, reason: "no_payment_on_record" };
   let paid = false;
   try {

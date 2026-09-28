@@ -35,9 +35,15 @@ const PAID_PI = `pi_bac_${RUN}_paid`;
 
 async function insertBooking(opts: { status: string; pi: string | null; confirmedDaysAgo: number; completedAt?: Date }): Promise<string> {
   const id = crypto.randomUUID();
+  // A row on the succeeded PaymentIntent models a PAID booking, so it carries the paid transition's
+  // stamp (ledger `2026-09-28-no-payment-no-earnings`); HB-1's never-succeeded PIs stay UNPAID and unstamped.
+  const paidDetails = opts.pi === PAID_PI
+    ? { paidCharge: { status: "confirmed", amount: 120, at: "2026-01-01T00:00:00.000Z" } }
+    : {};
   await db.execute(sql`
-    INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee, provider_earnings, stripe_payment_intent_id, confirmed_at, completed_at, created_at)
+    INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee, provider_earnings, stripe_payment_intent_id, booking_details, confirmed_at, completed_at, created_at)
     VALUES (${id}, ${serviceId}, ${travelerId}, ${providerId}, ${opts.status}, '120.00', '30.00', '90.00', ${opts.pi},
+            ${JSON.stringify(paidDetails)}::jsonb,
             NOW() - (${opts.confirmedDaysAgo} || ' days')::interval,
             ${opts.completedAt ? opts.completedAt.toISOString() : null},
             NOW() - (${opts.confirmedDaysAgo + 1} || ' days')::interval)

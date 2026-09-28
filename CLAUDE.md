@@ -2783,6 +2783,30 @@ reasoned from an older publish report; production had already recorded 319–323
 missing, and the ledger table is `schema_migrations`, not `migrations`. A session that cannot reach
 production says so and asks for the read — a §13 honesty question, not a rounding error.
 
+**THE STOP LIST GOVERNS THE DIFF, NOT THE PUBLISH — DECLINE THE DIFF, PUBLISH, READ THE BOOT LOG
+(amended Sep 28, 2026 — decision-maker; ledger `2026-09-28-s20-decline-diff-and-persona-step`).**
+The stop list above (`DROP`, `ALTER COLUMN … TYPE`, NOT NULL or DEFAULT changes, CHECK, UNIQUE
+indexes, statements for objects no registered migration names, and "copy development database to
+production" under any wording) says what the platform's **schema-diff SQL in the publish prompt**
+may never do. It does not say to abandon the publish. **The resolution is always the same:**
+1. **Decline that diff in full.** No statement from it is run.
+2. **Publish.** The application's registered migration runner (`runMigrations` at boot, reading
+   `server/migrations/migration-files.ts`) applies every unstamped registered migration.
+3. **Verify in the boot log** that each unstamped registered migration applied, **in registry
+   order, before "Server started"**. A missing, out-of-order or failed apply is the thing to stop
+   and escalate on.
+
+**A registered migration that creates a UNIQUE index, a FOREIGN KEY or a column DEFAULT is applied
+by the runner and is NEVER approved through the diff.** The Sep 17 and Sep 25 carve-outs (a born
+column, table or index approvable on the three tests) still describe when approving is harmless,
+but declining is always correct, and for these three object kinds it is the only path. "Decline
+and STOP" above now means: stop on the diff, not on the release.
+
+**Why (recorded):** on 2026-09-28 production was at migration 323 with 324–328 registered and
+unstamped. The publish diff proposed 324's unique indexes. The old wording read as "stop", when the
+right action was to decline the diff, publish, and verify in the boot log that 324–328 applied in
+order before "Server started".
+
 ### Branch and publish rule
 
 **Never commit on `main`.** Before any write in any task:

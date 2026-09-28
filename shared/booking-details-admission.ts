@@ -132,6 +132,10 @@ export const SERVER_AUTHORED_BOOKING_DETAIL_KEYS = [
   // R164 (G2): the expired-claim notice claim. A body that could plant it would suppress the one
   // email telling the traveler their unpaid booking was released.
   "expiredClaimNotice",
+  // Ledger `2026-09-28-no-payment-no-earnings`: the payment-on-record stamp, written only by the paid
+  // transitions (`shared/payment-on-record.ts`). A body that could plant it would make an unpaid
+  // booking completable and mint its seller an earning nobody paid for.
+  "paidCharge",
 ] as const;
 
 export type ServerAuthoredBookingDetailKey = (typeof SERVER_AUTHORED_BOOKING_DETAIL_KEYS)[number];

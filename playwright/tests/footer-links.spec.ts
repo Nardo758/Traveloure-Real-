@@ -75,3 +75,28 @@ test.describe('Footer link smoke — no broken routes', () => {
     });
   }
 });
+
+// ── Shared chrome on every footer destination, signed out ─────────────────────
+// Footer-pages ruling (Sep 28, 2026; ledger `2026-09-28-footer-pages-one-layout`): every page the
+// footer opens renders the ONE public header and footer, never a page-owned bar (/privacy and
+// /terms had one) and never the console sidebar (a guest on /experiences got DashboardLayout).
+// The markers are the public Layout's own: the logo inside the labelled main nav, and the
+// footer's locale line. `.console-scope` is the console shell's root class.
+// It also reads the rendered text for contact addresses: Admin@traveloure.com is the only one.
+// Static twin: client/src/lib/__tests__/footer-pages-one-layout.test.ts.
+const PUBLIC_HEADER = 'nav[aria-label] [data-testid="link-logo"]';
+const PUBLIC_FOOTER = 'footer [data-testid="text-footer-locale"]';
+
+test.describe('Footer destinations render the shared header and footer (signed out)', () => {
+  for (const href of GUEST_FOOTER_HREFS) {
+    test(`${href} shows the shared chrome`, async ({ page }) => {
+      await page.goto(`${BASE_URL}${href}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      await expect(page.locator(PUBLIC_HEADER).first(), `${href}: shared header`).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator(PUBLIC_FOOTER).first(), `${href}: shared footer`).toBeAttached({ timeout: 15_000 });
+      expect(await page.locator('.console-scope').count(), `${href}: the console shell rendered for a guest`).toBe(0);
+      const text = await page.locator('body').innerText();
+      const addresses = [...text.matchAll(/[A-Za-z0-9._%+-]+@traveloure\.com/gi)].map((m) => m[0]);
+      expect(addresses.filter((a) => a !== 'Admin@traveloure.com'), `${href}: another @traveloure.com address`).toEqual([]);
+    });
+  }
+});

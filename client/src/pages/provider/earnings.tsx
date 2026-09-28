@@ -29,7 +29,11 @@ import { StatCard, StatusBadge, EmptyState } from "@/components/backoffice/primi
 // Ledger 90 (FP-5, M1): the ONE money-bearing status predicate, shared with the server
 // aggregations (short-links.routes.ts) and the other console tabs. Every number on this page that
 // carries an earnings/revenue label derives from it — see the `useMemo`s below.
-import { isEarningBooking, isProvisionalBooking } from "@shared/booking-visibility";
+import { isProvisionalBooking } from "@shared/booking-visibility";
+// Ledger `2026-09-28-no-payment-no-earnings`: a row counts as money only with a payment on record —
+// the ONE predicate, read off the server's `paymentOnRecord` projection.
+import { isEarningBookingRow } from "@shared/payment-on-record";
+import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 
 type BookingWithService = ServiceBooking & { service?: ProviderService };
 
@@ -444,7 +448,7 @@ export default function ProviderEarnings() {
       // Ledger 90 (FP-5, M1): a row that is not money-bearing contributes to NOTHING here.
       // The `pending` bucket previously counted `status === "pending"` — the legacy rail's
       // birth state, where nothing has been charged — alongside the genuinely-paid `confirmed`.
-      if (!isEarningBooking(b.status)) return;
+      if (!isEarningBookingRow(b)) return;
       const earnings = parseFloat(b.providerEarnings || "0");
       const bookingDate = b.createdAt ? new Date(b.createdAt) : new Date();
 
@@ -474,7 +478,7 @@ export default function ProviderEarnings() {
   const transactions = useMemo(() => {
     if (!bookings) return [];
     return bookings
-      .filter((b) => isEarningBooking(b.status))
+      .filter((b) => isEarningBookingRow(b))
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
       .slice(0, 10)
       .map((b) => ({
@@ -503,7 +507,7 @@ export default function ProviderEarnings() {
     bookings.forEach((b) => {
       // completed-only by design (this is the realised-earnings series); the shared predicate
       // is still the gate, so a status added later can never slip in unfiltered.
-      if (isEarningBooking(b.status) && b.status === "completed" && b.createdAt) {
+      if (isEarningBookingRow(b) && b.status === "completed" && b.createdAt) {
         const date = new Date(b.createdAt);
         const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         const monthEntry = monthData.find(m => m.key === key);
@@ -542,7 +546,7 @@ export default function ProviderEarnings() {
     if (!bookings) return { gross: 0, platformFee: 0, basePlatformFee: 0, insuranceFee: 0, providerShare: 0, effectiveRate: null as number | null };
     let gross = 0, fee = 0, share = 0, insurance = 0;
     for (const b of bookings) {
-      if (!isEarningBooking(b.status)) continue;
+      if (!isEarningBookingRow(b)) continue;
       gross += Number(b.totalAmount ?? 0);
       fee += Number(b.platformFee ?? 0);
       share += Number(b.providerEarnings ?? 0);
@@ -924,7 +928,7 @@ export default function ProviderEarnings() {
                           >
                             This request has been {payout.status} for more than {PAYOUT_CONTACT_DAYS} days.{" "}
                             <a
-                              href="mailto:support@traveloure.com"
+                              href={`mailto:${COMPANY_CONTACT_EMAIL}`}
                               className="underline font-medium"
                               data-testid={`link-payout-support-${payout.id}`}
                             >

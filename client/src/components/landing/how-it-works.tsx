@@ -110,7 +110,7 @@ export function HowItWorks() {
             >
               {step.n}
             </span>
-            <h4 className="mb-1 mt-2.5 text-[18px] font-semibold" style={{ fontFamily: FRAUNCES }}>
+            <h4 className="mb-1 mt-2.5 text-[18px] font-semibold" style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}>
               {step.title}
             </h4>
             <p className="mb-3 text-[13px]" style={{ color: "var(--earn-muted)" }}>
