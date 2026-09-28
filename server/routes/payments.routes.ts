@@ -41,6 +41,7 @@ import {
 // R148 (ledger `2026-09-27-trip-pass-waiver-per-line`): the ONE per-line Trip Pass coverage
 // decision — the line's own plan, owner-verified; the checkout body `tripId` grants nothing.
 import {
+  resolveOwnedLineTripIds,
   resolveTripPassCoveredTripIds,
   tripPassCoversLine,
   lineFeeWaiverBasis,
@@ -1093,7 +1094,11 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         return await chargeQuoteBornBooking(req, res, userId);
       }
 
-      const { tripId, notes, idempotencyKey } = req.body;
+      // R149 (ledger `2026-09-27-checkout-stamp-from-line-trip`): the body `tripId` is NOT read.
+      // Each booking is stamped from its OWN line's `cart_items.trip_id`, owner-verified below; R148
+      // already stopped the body `tripId` from granting a fee waiver, and this stops it choosing
+      // which plan a booking belongs to (it re-stamped every booking of a mixed-trip cart).
+      const { notes, idempotencyKey } = req.body;
 
       // ── Idempotency guard (DB level) ────────────────────────────────────────
       // §15: the key is REQUIRED. Previously the dedup only ran `if (idempotencyKey)`,
@@ -1252,6 +1257,32 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Cart is empty" });
       }
 
+      // ── R149: EVERY LINE'S PLAN IS THE SESSION USER'S, OR NOTHING IS WRITTEN ─────────────────
+      // (ledger `2026-09-27-checkout-stamp-from-line-trip`; §14 — the plan a booking attaches to is
+      // an identity, and it comes from the server-side row, never the body.) The ONE ownership read
+      // R148's waiver already uses (`resolveOwnedLineTripIds`, §18 rule 1): each distinct plan once.
+      // Refused HERE, in the pre-flight block, BEFORE any slot claim, booking row or Stripe call
+      // (§15b). A lookup that threw proves nothing, so it is refused too (503) rather than stamped on
+      // a guess. A line with NO plan is not refused: it produces a booking with no plan (§13).
+      const lineTrips = await resolveOwnedLineTripIds(userId, cartData as any[]);
+      if (lineTrips.notOwned.size > 0) {
+        return res.status(409).json({
+          message: "line_trip_not_owned",
+          reason: "line_trip_not_owned",
+          detail: "A cart item belongs to a plan that is not yours. Remove it from your cart, then check out.",
+          cartItemIds: (cartData as any[])
+            .filter((i) => typeof i.tripId === "string" && lineTrips.notOwned.has(i.tripId))
+            .map((i) => i.id),
+        });
+      }
+      if (lineTrips.failed.size > 0) {
+        return res.status(503).json({
+          message: "line_trip_unverified",
+          reason: "line_trip_unverified",
+          detail: "We couldn't confirm the plan for an item in your cart. Please try again.",
+        });
+      }
+
       // ── Gap #18 (Gate G5): an archived listing is unbookable — "nobody can book it again" ──
       // Public surfaces already hide archived rows (they filter status='active'), but a line
       // added to a cart BEFORE the archive would still reach here. Refuse it before any slot
@@ -1338,7 +1369,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // line that resolves to no trip, so a normal cart pays for no extra queries. s13: a listing
       // whose class cannot be derived is NOT plan work and is not refused.
       for (const item of cartData) {
-        if (tripId || (item as any).tripId) continue;
+        // R149: the line's OWN plan (owner-verified above), never the body `tripId`.
+        if ((item as any).tripId) continue;
         if (!(await isPlanWorkListing(item.serviceId))) continue;
         return res.status(409).json({
           message: PLAN_WORK_NEEDS_PLAN_REFUSAL.message,
@@ -1766,13 +1798,15 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // the ONE `resolveTripPassCoveredTripIds` (§18 rule 1 — `GET /api/cart`'s fee preview reads the
       // same basis). The body `tripId` NO LONGER grants any waiver: it was unverified, so a crafted
       // request naming someone else's Trip-Pass trip had its fee waived. A standalone line (no
-      // trip_id) is never waived, by construction. The body `tripId` survives ONLY as the booking
-      // stamping fallback below (`tripId || item.tripId`), unchanged in this lane (R149 files it).
+      // trip_id) is never waived, by construction. R149: the body `tripId` is no longer read at all;
+      // ownership comes from the SAME `lineTrips` read the stamp pre-flight above made.
       const tripPassWaiverByItemId = new Map<string, Record<string, unknown>>();
       try {
         const tripPassCoveredTripIds = await resolveTripPassCoveredTripIds(
           userId,
           cartData.filter((i: any) => i.service),
+          undefined,
+          lineTrips,
         );
         for (const item of cartData) {
           if (!item.service) continue;
@@ -2061,7 +2095,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             travelerId: userId,
             providerId: item.service.userId,
             contractId: contract.id,
-            tripId: tripId || item.tripId,
+            // R149: the line's OWN plan, owner-verified in the pre-flight; NULL for a line with none.
+            tripId: item.tripId ?? null,
             bookingDetails: {
               scheduledDate: item.scheduledDate,
               notes: item.notes || notes,

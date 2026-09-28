@@ -57,23 +57,64 @@ function lineTripId(line: TripPassCoverageLine | null | undefined): string | nul
 }
 
 /**
+ * R149 (ledger `2026-09-27-checkout-stamp-from-line-trip`): THE ONE OWNERSHIP READ over a cart's
+ * lines. Each DISTINCT plan id the lines name is checked ONCE against the SESSION user
+ * (`verifyTripOwnership`). Both callers read it: the checkout's booking STAMP (a line is stamped to its
+ * own plan, and a line on a plan the user does not own is REFUSED before any booking is written) and
+ * the Trip Pass waiver below (ownership is checked BEFORE the entitlement is read). A second
+ * ownership loop beside this one is the drift §18 rule 1 names.
+ *
+ * `failed` is kept apart from `notOwned` on purpose: a lookup that threw proves nothing either way,
+ * so the waiver treats it as uncovered (fail closed) and the stamp treats it as unverifiable.
+ */
+export interface OwnedLineTrips {
+  owned: Set<string>;
+  notOwned: Set<string>;
+  failed: Set<string>;
+}
+
+export async function resolveOwnedLineTripIds(
+  userId: string,
+  lines: readonly (TripPassCoverageLine | null | undefined)[],
+  deps?: Pick<TripPassCoverageDeps, "ownsTrip">,
+): Promise<OwnedLineTrips> {
+  const out: OwnedLineTrips = { owned: new Set(), notOwned: new Set(), failed: new Set() };
+  const distinct = Array.from(new Set(lines.map(lineTripId).filter((t): t is string => t !== null)));
+  if (distinct.length === 0) return out;
+  if (!userId) {
+    for (const t of distinct) out.notOwned.add(t);
+    return out;
+  }
+  const ownsTrip = deps?.ownsTrip ?? (await defaultDeps()).ownsTrip;
+  for (const tripId of distinct) {
+    try {
+      if (await ownsTrip(tripId, userId)) out.owned.add(tripId);
+      else out.notOwned.add(tripId);
+    } catch (err: any) {
+      out.failed.add(tripId);
+      console.error(`[trip-pass-line-coverage] ownership lookup failed for trip ${tripId}:`, err?.message ?? err);
+    }
+  }
+  return out;
+}
+
+/**
  * The set of the caller's OWN plan ids, among those the lines name, whose active Trip Pass covers the
- * traveler service fee. Distinct trips are resolved once; ownership is checked BEFORE the entitlement
- * is read, so a foreign trip's pass is never even consulted.
+ * traveler service fee. Ownership comes from `resolveOwnedLineTripIds` (ONE read), and only an OWNED
+ * trip's entitlement is ever consulted, so a foreign trip's pass is never even read.
  */
 export async function resolveTripPassCoveredTripIds(
   userId: string,
   lines: readonly (TripPassCoverageLine | null | undefined)[],
   deps?: TripPassCoverageDeps,
+  ownedLineTrips?: OwnedLineTrips,
 ): Promise<Set<string>> {
   const covered = new Set<string>();
   if (!userId) return covered;
-  const distinct = Array.from(new Set(lines.map(lineTripId).filter((t): t is string => t !== null)));
-  if (distinct.length === 0) return covered;
   const d = deps ?? (await defaultDeps());
-  for (const tripId of distinct) {
+  const { owned } = ownedLineTrips ?? (await resolveOwnedLineTripIds(userId, lines, d));
+  for (const tripId of Array.from(owned)) {
     try {
-      if (!(await d.ownsTrip(tripId, userId))) continue;
       if (await d.coversTravelerFee(tripId)) covered.add(tripId);
     } catch (err: any) {
       // Fail closed for THIS trip only: its lines are charged in full, never guessed covered.

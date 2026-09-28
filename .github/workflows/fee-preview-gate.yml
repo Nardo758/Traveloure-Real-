@@ -134,6 +134,20 @@ jobs:
           NODE_ENV: test
           JOURNEY_DB_WRITES_OK: '1'
 
+      # R149 (ledger `2026-09-27-checkout-stamp-from-line-trip`): each booking is stamped from its OWN
+      # line's plan, owner-verified; the body tripId is ignored; a foreign-plan line is refused before
+      # any booking is written; the plan-work guard reads the line's plan, not the body's.
+      - name: Checkout stamps each booking from its own line's plan (S1–S5)
+        run: npx tsx --test --test-force-exit server/__tests__/checkout-stamp-from-line-trip.http.test.ts
+        timeout-minutes: 15
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          JOURNEY_DB_WRITES_OK: '1'
+
       - name: Traveler-fee ledger netting (+X / −X, $0-no-row, idempotency)
         run: npx tsx --test --test-force-exit server/__tests__/traveler-fee-ledger.db.test.ts
         timeout-minutes: 15
