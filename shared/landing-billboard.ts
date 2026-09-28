@@ -111,12 +111,7 @@ export function billboardLabel(marketName: string): string {
   return `Representative photo · ${marketName}`;
 }
 
-/**
- * The expert who has taken a market's tiles, if any — decided SERVER-side by the byline gate
- * (handle, live storefront, verified neighbourhood in that market). Handle and an initial only.
+/*
+ * The per-tile OVERRIDE (a byline-gated expert's live listing) lives in
+ * shared/landing-billboard-override.ts, so this curated file never describes listing data.
  */
-export interface BillboardExpert {
-  marketKey: string;
-  handle: string;
-  initial: string;
-}

@@ -203,17 +203,18 @@ router.post("/api/landing/moments/event", async (req, res) => {
   res.status(204).end();
 });
 
-// Billboard override (ledger `2026-09-28-landing-reorder`, item 5): the byline-gated expert, if
-// any, who has taken a billboard market. Empty = every tile stays curated. Public, read-only;
-// a failure answers the empty list (curated), never an error on the landing page.
+// Billboard override (ledger `2026-09-28-landing-reorder`, item 5; follow-up 4, ledger
+// `2026-09-28-billboard-override-listing`): per tile, the byline-gated expert's LIVE LISTING that
+// has taken it. Empty = every tile stays curated. Public, read-only; a failure answers the empty
+// list (curated), never an error on the landing page.
 router.get("/api/landing/billboard-experts", async (_req, res) => {
   try {
-    const { resolveBillboardExperts } = await import("../services/landing-billboard.service");
+    const { resolveBillboardOverrides } = await import("../services/landing-billboard.service");
     res.set("Cache-Control", "public, max-age=300");
-    return res.json({ experts: await resolveBillboardExperts() });
+    return res.json({ overrides: await resolveBillboardOverrides() });
   } catch (e: any) {
     console.error("[landing-billboard] override read failed (tiles stay curated):", e?.message);
-    return res.json({ experts: [] });
+    return res.json({ overrides: [] });
   }
 });
 
