@@ -104,9 +104,10 @@ import { getStripeSecretKey } from "../utils/stripe-key";
 // `trip_expert_advisors` (`upsertTripAdvisorRow`) — never a second insert site (LD 32).
 import { grantPlanWorkAdvisorAccess } from "./plan-work-access.service";
 
-/** Ratified TTL (decision-maker, ruling 38): long enough for a traveler to finish the Stripe
- *  PaymentElement, short enough that held inventory comes back the same session. */
-export const CHECKOUT_CLAIM_TTL_MINUTES = 30;
+/** Ratified TTL (decision-maker, ruling 38) — stated ONCE in shared/checkout-hold.ts, which help
+ *  article 8 also reads; re-exported here for this module's existing importers. */
+import { CHECKOUT_CLAIM_TTL_MINUTES, STALE_AUTHORIZED_CLAIM_HOURS } from "@shared/checkout-hold";
+export { CHECKOUT_CLAIM_TTL_MINUTES, STALE_AUTHORIZED_CLAIM_HOURS };
 
 /** The `bookingDetails` key carrying the LAYER-1 pre-flight marker (see the docblock). */
 export const STRIPE_ATTEMPT_AT_KEY = "stripeAttemptAt";
@@ -1529,11 +1530,8 @@ export async function cancelStalePaymentIntent(opts: {
   }
 }
 
-/**
- * R164 (G2, decision-maker ruled Sep 27, 2026): how long an AUTHORIZED claim may sit unpaid before the
- * sweep gives up on it and cancels its PaymentIntent. Not a fee or a rate (§8) — a staleness window.
- */
-export const STALE_AUTHORIZED_CLAIM_HOURS = 24;
+// R164's staleness window (STALE_AUTHORIZED_CLAIM_HOURS) is stated in shared/checkout-hold.ts and
+// imported at the top of this module beside the claim TTL.
 
 export interface StaleAuthorizedSweepResult {
   /** PaymentIntents read. */

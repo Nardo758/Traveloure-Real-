@@ -95,6 +95,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { CANCELLATION_POLICY_TYPES, cancellationTierLabel } from "@shared/cancellation-schedule";
 
 // Owner-console shapes (GET /api/provider/services + GET /api/provider/bundles —
 // session-scoped, intentionally ungated on approval so the owner sees their pipeline).
@@ -1767,13 +1768,11 @@ export default function ProviderWorkstation() {
                       data-testid="select-edit-property-cancellation-type"
                     >
                       <option value="">Not declared — no policy shown to travelers</option>
-                      {/* Ruling 112 Q6: the windows below are the ENFORCED schedule
-                          (cancellation-policy.service.ts), phrased for a stay — never the
-                          mock's illustrative numbers (§13). */}
-                      <option value="flexible">Flexible — full refund until 24 h before check-in</option>
-                      <option value="moderate">Moderate — full refund up to 5 days before check-in; 50% up to 48 h</option>
-                      <option value="strict">Strict — 50% refund up to 7 days before check-in; none after</option>
-                      <option value="non_refundable">Non-refundable — no automatic refund</option>
+                      {/* Ruling 112 Q6: the windows are the ENFORCED schedule, phrased for a stay —
+                          generated from shared/cancellation-schedule.ts, the table the refund reads. */}
+                      {CANCELLATION_POLICY_TYPES.map((p) => (
+                        <option key={p} value={p}>{cancellationTierLabel(p, "check-in")}</option>
+                      ))}
                     </select>
                   </div>
                   <div>

@@ -1,3 +1,4 @@
+import { helpArticlePath } from "@shared/help-article-slugs";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -1224,7 +1225,14 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               )}
               {isDisputed && (
                 <span className="text-xs text-red-700 font-medium self-center" data-testid={`text-dispute-under-review-${booking.id}`}>
-                  Dispute under review
+                  Dispute under review{" "}
+                  <a
+                    href={helpArticlePath("disputes-and-under-review")}
+                    className="font-normal underline underline-offset-2"
+                    data-testid={`link-dispute-help-${booking.id}`}
+                  >
+                    What this means
+                  </a>
                 </span>
               )}
               {canReview && (
