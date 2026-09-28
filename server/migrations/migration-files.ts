@@ -1833,4 +1833,8 @@ export const MIGRATION_FILES = [
   // (`per_person` | `per_booking`, NULL read as per booking) — additive NULLABLE, NO DEFAULT, NO
   // CHECK, NO BACKFILL; declared in shared/schema.ts in the same commit.
   "325_provider_services_price_basis.sql",
+  // Ledger `2026-09-27-blog-lifecycle` (Lane C, Locked Decision 57): `blog_posts`,
+  // `blog_post_sources`, `blog_post_reactions` — three NEW tables born empty with their indexes;
+  // NO CHECK, NO DEFAULT on status; all declared in shared/schema.ts. §20 new-object carve-out.
+  "329_blog_posts.sql",
 ] as const;

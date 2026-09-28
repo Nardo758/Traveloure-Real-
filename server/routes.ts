@@ -238,6 +238,7 @@ import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
 import bookingModePromptRoutes from "./routes/booking-mode-prompt.routes";
+import blogRoutes from "./routes/blog.routes";
 import storefrontRoutes from "./routes/storefront.routes";
 import seoRoutes from "./routes/seo.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
@@ -923,6 +924,8 @@ export async function registerRoutes(
     "/api/expert/knowledge-nuggets",
     "/api/expert/assigned-trips",
     "/api/expert/neighborhood-claims",
+    // Blog signing (ledger `2026-09-27-blog-lifecycle`): only an expert ever signs a byline.
+    "/api/expert/blog",
   ];
   const PROVIDER_SELF_SERVICE_PREFIXES = [
     "/api/provider/verification-status",
@@ -1259,6 +1262,9 @@ export async function registerRoutes(
   // live-listing mode status, the bulk decide for undecided listings, and the admin summary
   // (its /api/admin path sits behind the blanket guard registered above).
   app.use(bookingModePromptRoutes);
+  // Expert-signed blog (ledger `2026-09-27-blog-lifecycle`, Locked Decision 57): admin rails sit under
+  // the §2 blanket guard registered above; the expert sign rail derives the signer from the session.
+  app.use(blogRoutes);
 
   // Listing Health (Catalog card meter, §13-deterministic checks). MUST mount before the inline
   // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as

@@ -2215,6 +2215,30 @@ This document captures architectural decisions to maintain consistency across co
     hours input, so an hourly place listing bills one unit per booking (per person if it says so) — never
     hours × rate; a real hourly model is its own decision.
 
+57. **THE BLOG IS EXPERT-SIGNED: A BYLINE IS EARNED, A SIGNATURE COVERS EXACTLY ONE VERSION, AND A POST IS
+    WITHDRAWN, NEVER DELETED (decision-maker ratified Sep 27, 2026 — Lane C rulings in
+    `docs/planning/briefs/lane-c.md`; ledger `2026-09-27-blog-lifecycle`; migration 329).** Three additive tables —
+    `blog_posts`, `blog_post_sources`, `blog_post_reactions` — born empty with their indexes, **NO DB CHECK and NO
+    DEFAULT on status**, all **declared in `shared/schema.ts`**; the value sets live ONCE in `shared/blog.ts`. ONE
+    lifecycle, `server/services/blog-posts.service.ts`: expert posts go draft → in_review → signed → published →
+    withdrawn; TravelPulse weekly is the ONLY platform-authored type, carries "AI signal from public data" instead
+    of a byline and needs no signature (ruling 5). **THE CONTENT HASH** (`content_sha256`, server-computed over
+    title + summary + body + every source) is what an expert signs: signing is ONE atomic conditional on status,
+    byline and that hash (§15), and **the signature IS the per-post publishing consent** — `consent_at` is stamped in
+    the same statement, because the evidence-capture `consent_at` does not cover publishing under the expert's name
+    (ruling 2). **ANY edit after signing — an admin typo included — clears the signature and returns the post to
+    review; an edit to a published post takes it off the public read until re-signed and re-published** (ruling 3).
+    **PUBLISH requires `signed_content_sha256 = content_sha256` in the same statement and re-checks the BYLINE GATE**
+    (ruling 9, `blog-byline-gate.service.ts`): an approved expert application, a claimed handle, a LIVE storefront —
+    asked of `loadStorefront` itself, never a restated copy of its rules — and a VERIFIED neighbourhood
+    (`expert_neighborhoods.verified_at`, LD 27) whose city resolves to the post's market. Source quotes over
+    `BLOG_QUOTE_MAX_CHARS` (config, 300) and sources on a partner's domain (every `affiliate_partners.website_url`
+    host — the only partner registry that carries domains) are **REFUSED, never trimmed** (ruling 4). The public read
+    is an allowlist projection whose byline is the expert's HANDLE, never a user id (LD 40). No payment for posts
+    (ruling 10). **Not in this lane, named:** the research + AI draft pipeline, reactions and ranking, the
+    "Ask the local" `blog_post` context kind (LD 40 amendment, ruling 7), the blog page, the sitemap and the
+    conditional `noindex` — `/blog` stays `noindex` until the page renders published posts.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

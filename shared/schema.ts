@@ -11796,3 +11796,67 @@ export const trendScores = pgTable("trend_scores", {
   index("trend_scores_computed_at_idx").on(table.computedAt),
   index("trend_scores_run_idx").on(table.scoringRunId),
 ]);
+
+// ── Expert-signed blog (Lane C; ledger `2026-09-27-blog-lifecycle`; migration 329; Locked Decision 57) ──
+// Value sets live ONCE in shared/blog.ts and are app-enforced (no DB CHECK, no DEFAULT on status —
+// publish-trap posture). `content_sha256` is the server-computed hash of title + summary + body +
+// sources; a signature is valid only while `signed_content_sha256` equals it, so ANY later edit voids
+// it. NULL byline = platform-authored (TravelPulse weekly only). Rows are withdrawn, never deleted.
+export const blogPosts = pgTable("blog_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: varchar("slug", { length: 160 }).notNull(),
+  contentType: varchar("content_type", { length: 40 }).notNull(),
+  authorship: varchar("authorship", { length: 20 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  marketSlug: varchar("market_slug", { length: 40 }),
+  occasionSlug: varchar("occasion_slug", { length: 80 }),
+  title: varchar("title", { length: 200 }).notNull(),
+  summary: text("summary"),
+  body: text("body").notNull(),
+  contentSha256: varchar("content_sha256", { length: 64 }).notNull(),
+  bylineExpertId: varchar("byline_expert_id").references(() => users.id, { onDelete: "set null" }),
+  signedBy: varchar("signed_by").references(() => users.id, { onDelete: "set null" }),
+  signedAt: timestamp("signed_at"),
+  signedContentSha256: varchar("signed_content_sha256", { length: 64 }),
+  consentAt: timestamp("consent_at"),
+  publishedBy: varchar("published_by").references(() => users.id, { onDelete: "set null" }),
+  publishedAt: timestamp("published_at"),
+  withdrawnBy: varchar("withdrawn_by").references(() => users.id, { onDelete: "set null" }),
+  withdrawnAt: timestamp("withdrawn_at"),
+  withdrawReason: varchar("withdraw_reason", { length: 200 }),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("blog_posts_slug_uq").on(table.slug),
+  index("blog_posts_status_published_idx").on(table.status, table.publishedAt),
+  index("blog_posts_byline_idx").on(table.bylineExpertId),
+]);
+
+export const blogPostSources = pgTable("blog_post_sources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull().references(() => blogPosts.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  url: text("url").notNull(),
+  title: varchar("title", { length: 300 }),
+  publisher: varchar("publisher", { length: 200 }),
+  quote: text("quote"),
+  retrievedAt: timestamp("retrieved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("blog_post_sources_post_position_uq").on(table.postId, table.position),
+]);
+
+export const blogPostReactions = pgTable("blog_post_reactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull().references(() => blogPosts.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 20 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("blog_post_reactions_post_user_kind_uq").on(table.postId, table.userId, table.kind),
+  index("blog_post_reactions_post_idx").on(table.postId),
+]);
+
+export type BlogPost = typeof blogPosts.$inferSelect;
+export type BlogPostSource = typeof blogPostSources.$inferSelect;
