@@ -14,6 +14,10 @@
  *      counted. A pair already covered by case 1 is left to case 1 — one request, one notice.
  * A reply in chat since the request counts as a response.
  *
+ * NOT GATED ON PAYMENT (ledger `2026-09-28-no-payment-no-earnings`, decision-maker Sep 28, 2026): the
+ * paid predicate governs money, not whether a traveler is told the earner hasn't replied. A real
+ * request is `pending` and unpaid by design, so the notice keys on status as it always did.
+ *
  * EXACTLY ONCE: the notification's dedupe key (the notifications table's partial UNIQUE index) is
  * the marker; the email is sent only by the pass that inserted it (the ready-made announcer's
  * pattern). The email honours the traveler's own "Booking Request" email preference (#1230).
@@ -24,7 +28,6 @@ import { storage } from "../storage";
 import { enqueueEmail } from "./email-outbox.service";
 import { isNotificationChannelEnabled } from "./notification-preferences.service";
 import { escHtml } from "../utils/email-escape";
-import { paymentOnRecordSql } from "./payment-on-record";
 import {
   alternativeExpertsPath,
   earnerNoResponseCopy,
@@ -63,9 +66,6 @@ async function findCandidates(hours: number): Promise<Candidate[]> {
        AND sb.traveler_id IS NOT NULL
        AND sb.provider_id IS NOT NULL
        AND NOT EXISTS (SELECT 1 FROM service_quotes q WHERE q.booking_id = sb.id)
-       -- NO PAYMENT, NO EARNINGS (ledger \`2026-09-28-no-payment-no-earnings\`): a booking with no
-       -- payment on record is inert by predicate — it gets no notice either. The ONE SQL predicate.
-       AND ${paymentOnRecordSql(sql`sb.booking_details`)}
        AND NOT EXISTS (SELECT 1 FROM user_and_expert_chats c
                         WHERE c.sender_id = sb.provider_id AND c.receiver_id = sb.traveler_id
                           AND c.created_at >= sb.created_at)

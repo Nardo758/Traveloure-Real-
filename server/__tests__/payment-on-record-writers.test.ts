@@ -74,7 +74,6 @@ test("W4: every refusal site reads the ONE predicate", () => {
     "server/routes/bookings.ts": /hasPaymentOnRecord\(bk\)/,
     "server/routes/admin.routes.ts": /hasPaymentOnRecord\(existing\)/,
     "server/services/artifact-acceptance-timer.service.ts": /hasPaymentOnRecord\(booking\)/,
-    "server/services/earner-no-response.service.ts": /paymentOnRecordSql\(sql`sb\.booking_details`\)/,
     "server/routes/short-links.routes.ts": /paymentOnRecordSql\(serviceBookings\.bookingDetails\)/,
   };
   for (const [file, re] of Object.entries(sites)) assert.match(read(file), re, file);
@@ -103,5 +102,9 @@ test("D2: the displays and My Bookings read the ONE helper", () => {
   const mine = read("client/src/pages/my-bookings.tsx");
   assert.match(mine, /const paymentOnRecord = hasPaymentOnRecord\(booking\)/);
   assert.match(mine, /canConfirmOrDispute = paymentOnRecord &&/);
-  assert.match(mine, /canCancel = paymentOnRecord &&/);
+  // Part 4 as narrowed: Cancel keys on status alone, never on the paid predicate.
+  assert.match(mine, /const canCancel = isBookingCancellable\(actionStatus\);/);
+  assert.doesNotMatch(mine, /canCancel = paymentOnRecord/);
+  // …and the no-response notice does not read the predicate either.
+  assert.doesNotMatch(read("server/services/earner-no-response.service.ts"), /paymentOnRecordSql|hasPaymentOnRecord/);
 });

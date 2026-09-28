@@ -7,7 +7,9 @@
  *       reconciliation caller). A stamped twin completes.
  *   NP2 (part 2) the earnings-by-source SQL predicate counts only the stamped row.
  *   NP3 (part 3) dispute open and admin dispute-reject refuse an unpaid row with `no_payment_on_record`.
- *   NP4 (part 4) the "provider hasn't responded" notice skips an unpaid `pending` request.
+ *   NP4 (part 4, narrowed by the decision-maker Sep 28, 2026) the "provider hasn't responded" notice
+ *       is NOT gated on payment: an unpaid `pending` request (a real request awaiting acceptance) is
+ *       told once, and a second pass sends nothing — the notification dedupe key is the cap.
  *   NP5 (part 5) the drift job's no-PaymentIntent rule scans every row, not a 24h window: of seven
  *       seeded legacy rows (five `pending`, two `confirmed`, none with a PaymentIntent, all created
  *       months before the window), it flags exactly the two `confirmed` ones.
@@ -202,14 +204,15 @@ describe("no payment, no earnings", () => {
     assert.equal(await statusOf(disputed), "disputed", "not re-completed, nothing minted");
   });
 
-  it("NP4: the no-response notice skips an unpaid pending request", async () => {
+  it("NP4: an unpaid pending request still gets the no-response notice, exactly once", async () => {
     const old = new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString();
     const pending = await seedBooking({ status: "pending", pi: null, createdAt: old });
+    await runEarnerNoResponseNotices();
     await runEarnerNoResponseNotices();
     const n = await db.execute(
       sql`SELECT count(*)::int AS n FROM notifications WHERE dedupe_key = ${`booking:${pending}:earner_no_response`}`,
     );
-    assert.equal((n.rows[0] as any).n, 0, "an unpaid request is inert: no notice, no email");
+    assert.equal((n.rows[0] as any).n, 1, "the notice keys on status, not payment, and is sent once");
   });
 
   it("NP5: the no-PaymentIntent rule scans every row — exactly the two confirmed legacy rows are flagged", async () => {
