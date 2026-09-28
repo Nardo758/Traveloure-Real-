@@ -40,7 +40,7 @@ import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guar
 import { splitTripMintBody, tripCreatedEventData } from "./services/trip-mint-entry";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
 import { buildTravelerFeePreview, type TravelerFeePreviewInputLine } from "./services/traveler-fee-preview.service"; // R144 (ledger 2026-09-27-service-fee-before-checkout)
-import { resolveTripPassCoveredTripIds, tripPassCoversLine, lineFeeWaiverBasis } from "./services/trip-pass-line-coverage.service"; // R148 (ledger 2026-09-27-trip-pass-waiver-per-line)
+import { resolveTripPassCoveredTripIds, tripPassCoversLine, lineFeeWaiverBasis, cartAddTripRefusal } from "./services/trip-pass-line-coverage.service"; // R148 (ledger 2026-09-27-trip-pass-waiver-per-line)
 import { buildListingBuyActions, listingBuyFacts, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL, requestOnlyListingRefusals, requestOnlyRefusalBody, requestOnlyCartLines } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
 import type { BuyRefusalReason } from "@shared/buy-action"; // V-11 refusal vocabulary (ruling 9)
 // D-11 (ledger 2026-09-15-d11-no-item-booking-exception): the named no-item classes, the ONE
@@ -7036,6 +7036,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = getUserId(req)!;
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
+      // Ledger `2026-09-28-cart-add-trip-ownership`: a line is never BORN on someone else's plan.
+      // The ONE ownership read the checkout pre-flight uses (R209), before any lookup or write.
+      const tripRefusal = await cartAddTripRefusal(userId, tripId);
+      if (tripRefusal) return res.status(tripRefusal.status).json(tripRefusal.body);
       if (!serviceId && !customVenueId) {
         return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
       }
@@ -9418,6 +9422,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = getUserId(req)!;
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug, contentType, contentId, contentMeta, slotId } = req.body;
+      // Ledger `2026-09-28-cart-add-trip-ownership`: a line is never BORN on someone else's plan.
+      // The ONE ownership read the checkout pre-flight uses (R209), before any lookup or write.
+      const tripRefusal = await cartAddTripRefusal(userId, tripId);
+      if (tripRefusal) return res.status(tripRefusal.status).json(tripRefusal.body);
 
       console.log("[Cart] Add to cart request:", { serviceId, customVenueId, contentType, contentId, experienceSlug: rawSlug });
 
