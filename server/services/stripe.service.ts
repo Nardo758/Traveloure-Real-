@@ -34,6 +34,7 @@ import { recordTravelerServiceFeeLedger } from "./fee-ledger.service";
 // stamp lives there beside the cart's (`stampAuthorization`) rather than as a second UPDATE site
 // here; see `stampTransportPaymentIntent`'s docblock for why the two carry different from-states.
 import { stampTransportPaymentIntent } from "./checkout-claim.service";
+import { paidChargeMergeSql } from "./payment-on-record";
 
 const key = getStripeSecretKey();
 
@@ -338,6 +339,14 @@ export async function handleStripePaymentSuccess(sessionId: string): Promise<voi
       .update(serviceBookings as any)
       .set({
         status: "confirmed",
+        // PAYMENT ON RECORD (ledger `2026-09-28-no-payment-no-earnings`): this is a paid transition,
+        // so it stamps `booking_details.paidCharge` in the SAME statement as its flip — merged, never
+        // assigned. The amount is the session's own `amount_total` (Stripe's word, §14), in dollars;
+        // absent ⇒ recorded as null, never 0 (§13).
+        bookingDetails: paidChargeMergeSql(
+          "confirmed",
+          typeof session.amount_total === "number" ? Math.round(session.amount_total) / 100 : null,
+        ),
         // INERT, AND RECORDED RATHER THAN QUIETLY REPAIRED (R-1, ledger
         // `2026-09-14-transport-confirm-stamps-pi`). `service_bookings` has no `confirmation_code`
         // column — `shared/schema.ts` declares none — and because this UPDATE is written

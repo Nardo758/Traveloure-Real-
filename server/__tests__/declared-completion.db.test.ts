@@ -123,6 +123,13 @@ async function seedBooking(opts: {
     opts.declaredDaysAgo === undefined || opts.declaredDaysAgo === null
       ? null
       : new Date(Date.now() - opts.declaredDaysAgo * DAY_MS).toISOString();
+  const paymentIntentId = opts.paymentIntentId === undefined ? `pi_${RUN}_${id}` : opts.paymentIntentId;
+  // A row with a PaymentIntent models a PAID booking and carries the paid transition's stamp; W4c's
+  // PI-less row stays UNPAID and unstamped (ledger `2026-09-28-no-payment-no-earnings`).
+  const details = {
+    ...(paymentIntentId ? { paidCharge: { status: "confirmed", amount: 100, at: "2026-01-01T00:00:00.000Z" } } : {}),
+    ...(opts.details ?? {}),
+  };
   await db.execute(sql`
     INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status,
                                   total_amount, platform_fee, provider_earnings,
@@ -130,8 +137,8 @@ async function seedBooking(opts: {
                                   stripe_payment_intent_id)
     VALUES (${id}, ${opts.serviceId}, ${ids.traveler}, ${ids.provider}, ${opts.status},
             '100.00', '25.00', '75.00',
-            NOW() - interval '30 days', ${declared}::timestamp, ${JSON.stringify(opts.details ?? {})}::jsonb,
-            ${opts.paymentIntentId === undefined ? `pi_${RUN}_${id}` : opts.paymentIntentId})
+            NOW() - interval '30 days', ${declared}::timestamp, ${JSON.stringify(details)}::jsonb,
+            ${paymentIntentId})
   `);
   createdBookingIds.push(id);
   return id;

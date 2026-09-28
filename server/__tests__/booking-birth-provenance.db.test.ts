@@ -624,6 +624,9 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
       // the `trip_booking_without_item` detector this lane adds — the same shape of move as
       // planting `stripeAttemptAt` two keys up.
       [NO_ITEM_REASON_KEY]: "transport_commerce",
+      // The payment-on-record stamp (ledger `2026-09-28-no-payment-no-earnings`): planting it would
+      // make an unpaid row completable and mint its seller an earning nobody paid for.
+      paidCharge: { status: "confirmed", amount: 100, at: new Date().toISOString() },
     },
     bookingMetadata: {
       visaType: "legitimate field",
@@ -662,10 +665,19 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
     providerId: ids.provider,
     tripId: ids.trip,
     totalAmount: "100.00",
-    bookingDetails: { notes: "n", [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: "999.00" } },
+    bookingDetails: {
+      notes: "n",
+      [TRAVELER_CHARGE_SNAPSHOT_KEY]: { conciergeFee: "999.00" },
+      paidCharge: { status: "confirmed", amount: 100, at: new Date().toISOString() },
+    },
   } as any);
   createdBookingIds.push(direct.id);
   const directRow = await readBooking(direct.id);
+  assert.equal(
+    "paidCharge" in ((directRow.booking_details ?? {}) as Record<string, unknown>),
+    false,
+    "a planted payment-on-record stamp is stripped by storage too (ledger `2026-09-28-no-payment-no-earnings`)",
+  );
   assert.equal(
     TRAVELER_CHARGE_SNAPSHOT_KEY in ((directRow.booking_details ?? {}) as Record<string, unknown>),
     false,
@@ -714,6 +726,8 @@ test("B7: a body planting server-authored booking-detail keys — travelerCharge
       "serviceBookingRefund",
       // R164 (G2): the expired-claim notice claim (ledger 2026-09-27-stale-authorized-sweep).
       "expiredClaimNotice",
+      // The payment-on-record stamp (ledger `2026-09-28-no-payment-no-earnings`).
+      "paidCharge",
     ],
     "the server-authored key family — see shared/booking-details-admission.ts for each one's reader",
   );

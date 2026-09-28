@@ -16,7 +16,9 @@
  *   S6  webhook redelivery: a claimed-unpromoted row is promoted by `charge.refunded` ONCE; the second
  *       delivery matches zero rows
  *   S7  historical snapshot: repricing every listing after purchase moves nothing
- *   S8  custody: a bundle with no PaymentIntent is refused (`custody_unknown`), no Stripe, no row
+ *   S8  custody: a bundle with no PaymentIntent has no payment on record, so its partial flip is
+ *       refused; forced to `partially_completed`, the settlement and the sweep refuse
+ *       (`custody_unknown`), no Stripe, no row
  *   S9  failed vs cancelled: a `cancelled` row with NO pinned policy outcome refuses the settlement (`cancel_terms_missing`)
  *  S10  a pre-307 row (NULL allocations) still mints by snapshot pro-rata but cannot settle (`allocation_missing`)
  *
@@ -189,9 +191,18 @@ async function bornBundleBooking(opts: {
   } as any);
   createdBookingIds.push(booking.id);
   const pi = opts.paymentIntent === undefined ? `pi_${RUN}_${booking.id.slice(0, 8)}` : opts.paymentIntent;
+  // A bundle is ONE booking row paid through its own PaymentIntent; its components are child rows
+  // with no PaymentIntent and are never read by the paid predicate. So the paid stamp (ledger
+  // `2026-09-28-no-payment-no-earnings`) goes on the parent, and ONLY when the parent carries a PI —
+  // the promotion flip is the one writer and it never stamps a PI-less row, so neither does this
+  // fixture. S8's PI-less row therefore carries no stamp.
+  const stamp = pi
+    ? { paidCharge: { status: "confirmed", amount: Number(opts.totalAmount ?? "100.00"), at: "2026-01-01T00:00:00.000Z" } }
+    : {};
   await db.execute(sql`
     UPDATE service_bookings
-       SET stripe_payment_intent_id = ${pi}, confirmed_at = NOW() - interval '10 days'
+       SET stripe_payment_intent_id = ${pi}, confirmed_at = NOW() - interval '10 days',
+           booking_details = COALESCE(booking_details, '{}'::jsonb) || ${JSON.stringify(stamp)}::jsonb
      WHERE id = ${booking.id}
   `);
   return booking.id;
@@ -610,18 +621,28 @@ test("S7 — HISTORICAL SNAPSHOT: repricing every listing after purchase moves n
   }
 });
 
-test("S8 — CUSTODY: a bundle with no PaymentIntent is refused (`custody_unknown`) — no Stripe call, no settlement row", async () => {
+test("S8 — CUSTODY: a bundle with no PaymentIntent never reaches settlement; forced there, it is refused (`custody_unknown`) — no Stripe call, no settlement row", async () => {
   stubSucceed();
+  // A PI-less bundle has no payment on record (the promotion flip never stamps one), so the first
+  // layer stops it: the partial flip is refused and nothing is minted.
   const id = await bornBundleBooking({ paymentIntent: null });
   const last = await failCDeliverAB(id);
-  assert.equal(last.partiallyCompleted, true, "the flip and the reduced mint still record what happened");
-  assert.equal(last.settlement!.settled, false);
-  assert.equal((last.settlement as any).reason, "custody_unknown");
+  assert.equal(last.partiallyCompleted, false, "no payment on record: the partial flip is refused");
+  assert.equal((await readBooking(id)).status, "confirmed");
+  const l = await ledger(id);
+  assert.equal(l.providerEarnings.length + l.expertEarnings.length, 0, "and nothing is minted");
+  assert.equal(calls.length, 0);
+  assert.equal((await settlementRows(id)).length, 0);
+  // The second layer, driven directly on a row someone forced to `partially_completed` (the S9
+  // pattern — a status nobody's writer produced, never a paid stamp with no PaymentIntent): the
+  // settlement refuses by name, and the sweep refuses it every night, never assuming custody.
+  await db.execute(sql`UPDATE service_bookings SET status = ${PARTIALLY_COMPLETED_STATUS} WHERE id = ${id}`);
+  const direct = await issueBundlePartialSettlement({ bookingId: id });
+  assert.equal(direct.settled, false);
+  assert.equal((direct as any).reason, "custody_unknown");
   assert.equal(calls.length, 0);
   assert.equal((await settlementRows(id)).length, 0);
   assert.equal((await refundRows(id)).length, 0);
-  assert.equal((await readBooking(id)).status, PARTIALLY_COMPLETED_STATUS);
-  // The sweep sees it and refuses it for the same NAMED reason, every night, never assuming custody.
   const swept = await sweepUnsettledBundlePartials({ onlyBookingIds: [id] });
   assert.equal(swept.scanned, 1);
   assert.equal(swept.refused.custody_unknown, 1);

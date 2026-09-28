@@ -3257,6 +3257,14 @@ jobs:
       - name: trip-slip-spec-check · §J spec matches the experience_types seed
         if: ${{ !cancelled() }}
         run: node docs/planning/tools/trip-slip-spec.mjs --check
+      # Footer-pages ruling (Sep 28, 2026): no hardcoded hex in client/src/pages — footer pages hold
+      # none, every other page file may not grow past scripts/page-hex-baseline.json.
+      - name: page-hex-guard · Hardcoded-hex lint predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-page-hex.cjs --self-test
+      - name: page-hex-guard · No hardcoded hex in client/src/pages (footer pages zero, others baselined)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-page-hex.cjs
       # 
       - name: earn-planner-keys-guard · Earn-planner-keys guard predicate self-test
         if: ${{ !cancelled() }}

@@ -19,6 +19,8 @@ import { isPlatformConciergeUserId } from "./services/platform-concierge.service
 import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
 import { PARTIALLY_COMPLETED_STATUS, reducedBundleFigures } from "@shared/bundle-component-states";
 import { OUT_OF_BAND_REFUND_KEY, outOfBandRefundOf } from "@shared/out-of-band-refund";
+import { paymentOnRecordSql } from "./services/payment-on-record";
+import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
 import { isProviderRole } from "@shared/roles";
 import { isPriceBasis } from "@shared/price-basis";
 import type { TripListItem } from "@shared/routes";
@@ -3547,8 +3549,17 @@ export class DatabaseStorage implements IStorage {
     // did not issue may not become `completed`/`partially_completed` — the two transitions that mint.
     // In the WHERE, not a pre-check, so a stamp committed while this flip waits on the row lock is
     // still seen (§15: the UPDATE is the guard). A refused flip returns undefined, like a lost race.
+    // NO PAYMENT, NO EARNINGS (ledger `2026-09-28-no-payment-no-earnings`): the same two minting
+    // transitions also require a payment ON RECORD — the `booking_details.paidCharge` stamp only a
+    // paid flip writes (`paymentOnRecordSql`, the SQL form of the ONE `hasPaymentOnRecord`). This is
+    // the guard that closes every earning path at once (auto-complete, the window close, the admin
+    // dispute-reject, the traveler's accept, the bundle flip): a status is not a payment.
     const guard = status === "completed" || status === PARTIALLY_COMPLETED_STATUS
-      ? and(baseGuard, sql`(COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) -> ${OUT_OF_BAND_REFUND_KEY}::text) IS NULL`)
+      ? and(
+          baseGuard,
+          sql`(COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) -> ${OUT_OF_BAND_REFUND_KEY}::text) IS NULL`,
+          paymentOnRecordSql(serviceBookings.bookingDetails),
+        )
       : baseGuard;
 
     // ONE transaction for the status flip and every same-commit side-effect (ruling 80's
@@ -3684,6 +3695,13 @@ export class DatabaseStorage implements IStorage {
     // covers the reconciliation caller, which mints for a row that is ALREADY completed.
     if (outOfBandRefundOf(booking.bookingDetails)) {
       console.error(`[mintCompletionEarnings] booking ${booking.id} carries a refund we did not issue — refusing to mint`);
+      return false;
+    }
+    // NO PAYMENT, NO EARNINGS (ledger `2026-09-28-no-payment-no-earnings`), second layer: the status
+    // writer refuses to complete an unpaid row; this covers the reconciliation caller, which mints
+    // for a row ALREADY completed. The ONE predicate, never a second copy (§18 rule 1).
+    if (!hasPaymentOnRecord(booking)) {
+      logger.warn({ bookingId: booking.id, reason: NO_PAYMENT_ON_RECORD }, "[mintCompletionEarnings] no payment on record — refusing to mint");
       return false;
     }
     let grossAmount = parseFloat(booking.totalAmount || '0');

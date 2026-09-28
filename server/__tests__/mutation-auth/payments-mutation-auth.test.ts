@@ -47,6 +47,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { after, before, test } from "node:test";
+import { sql } from "drizzle-orm";
 import { endpointKey } from "../../../scripts/mutation-auth/endpoint-key";
 import {
   type BookingResourceFixture,
@@ -89,6 +90,8 @@ type Probe = {
   ownerStatus: number;
   /** True when the TRAVELER arm legitimately mutates the row — probed last. */
   mutates?: boolean;
+  /** True when the rail refuses an unpaid booking, so the row is given a payment on record first. */
+  paidRow?: boolean;
 };
 
 /**
@@ -116,7 +119,11 @@ const PROBES: readonly Probe[] = [
   },
   // LAST: the traveler arm here legitimately moves the row to `disputed`, so every
   // other probe's "row unchanged" assertion must already have run.
-  { endpoint: "POST /api/bookings/:id/dispute", addressing: "path", strangerStatus: 403, ownerStatus: 403, mutates: true },
+  // A dispute is refused on a booking with no payment on record (ledger
+  // `2026-09-28-no-payment-no-earnings`), so this probe's row is made a PAID row first: a
+  // PaymentIntent id plus the paid stamp the promotion flip writes. The id is never sent to
+  // Stripe — the dispute rail makes no Stripe call — and no row carries the stamp without one.
+  { endpoint: "POST /api/bookings/:id/dispute", addressing: "path", strangerStatus: 403, ownerStatus: 403, mutates: true, paidRow: true },
 ];
 
 /**
@@ -252,6 +259,16 @@ test("payment rails: anonymous 401, the stranger and the listing owner are refus
   // Sequential and ordered: the mutating rail is last, so every "unchanged" assertion
   // above it reads the row in its born state.
   for (const probe of PROBES) {
+    if (probe.paidRow) {
+      await active.db.execute(sql`
+        UPDATE service_bookings
+           SET stripe_payment_intent_id = ${`pi_mutation_auth_${active.bookingId}`},
+               booking_details = COALESCE(booking_details, '{}'::jsonb)
+                 || jsonb_build_object('paidCharge', jsonb_build_object(
+                      'status', 'confirmed', 'amount', 125, 'at', NOW()::text))
+         WHERE id = ${active.bookingId}
+      `);
+    }
     const before = await bookingStatus();
 
     const anonymous = await send(probe, "anonymous", undefined);
