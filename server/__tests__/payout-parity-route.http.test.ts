@@ -228,7 +228,9 @@ async function checkoutThroughRoute(serviceId: string, tripId?: string): Promise
   // test's item would ride along and the bare idempotency key would land on the WRONG service.
   await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
 
-  const addRes = await api("/api/cart", "POST", { serviceId });
+  // R149 (ledger `2026-09-27-checkout-stamp-from-line-trip`): the plan rides on the CART LINE — the
+  // checkout stamps each booking from its own line's plan and no longer reads a body `tripId`.
+  const addRes = await api("/api/cart", "POST", tripId ? { serviceId, tripId } : { serviceId });
   assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
 
   const checkoutKey = `ppr-${RUN}-${crypto.randomUUID()}`;
@@ -425,7 +427,8 @@ test("R4: missing concierge band ⇒ requireConciergeBookingRate 500s honestly, 
   await db.execute(sql`UPDATE fee_bands SET is_active = false WHERE band_key = 'expert_concierge_booking'`);
   try {
     await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
-    const addRes = await api("/api/cart", "POST", { serviceId });
+    // R149: the plan rides on the cart line (see `checkoutThroughRoute`).
+    const addRes = await api("/api/cart", "POST", { serviceId, tripId });
     assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
 
     const checkoutKey = `ppr-${RUN}-${crypto.randomUUID()}`;

@@ -237,13 +237,21 @@ test("T3: mixed cart — only the line on the covered own plan is waived", async
 });
 
 // ── T4 — a line on someone else's covered trip ────────────────────────────────────────────────
-test("T4: a line whose trip_id is SOMEONE ELSE's covered trip is not waived", async (t) => {
+test("T4: a line whose trip_id is SOMEONE ELSE's covered trip is not waived — it is refused outright", async (t) => {
   if (!serverUp) return t.skip("server not running");
   await clearBuyer();
   await seedCartRow(ids.svcA, ids.tripForeign);
-  // Even naming it in the body grants nothing.
-  const snaps = await checkoutSnapshots({ tripId: ids.tripForeign });
-  assertCharged(snaps.get(ids.svcA), "T4 foreign trip on the line");
+  // R149 (ledger `2026-09-27-checkout-stamp-from-line-trip`): a line on a plan the buyer does not own
+  // no longer reaches the charge at all — it is refused 409 before any booking is written, so no
+  // waiver can be granted on it. Even naming it in the body changes nothing. (The stamp side of the
+  // same rule is `checkout-stamp-from-line-trip.http.test.ts` S3.)
+  const key = `tppl-${RUN}-${crypto.randomUUID()}`;
+  const res = await api("/api/checkout", buyerCookie, "POST", { idempotencyKey: key, tripId: ids.tripForeign });
+  const text = await res.text();
+  assert.equal(res.status, 409, `a foreign-plan line is refused (got ${res.status}: ${text})`);
+  assert.equal(JSON.parse(text).reason, "line_trip_not_owned");
+  const r = await db.execute(sql`SELECT count(*)::int AS n FROM service_bookings WHERE traveler_id = ${buyerId}`);
+  assert.equal((r.rows[0] as any).n, 0, "T4: no booking row is written, so nothing is charged or waived");
   await clearBuyer();
 });
 
