@@ -17,6 +17,7 @@ import {
   CANCELLATION_SCHEDULE,
   CANCELLATION_TIER_LABELS,
   cancellationTierSchedule,
+  cancellationTierFilterLabel,
   scheduleRefundPercent,
 } from "../cancellation-schedule";
 import { CANCELLATION_POLICY_TYPE_LABELS, cancellationPolicyTypeEnum } from "../schema";
@@ -70,5 +71,23 @@ test("C3 the server delegates and every former copy reads the module", () => {
     const src = read(rel);
     assert.match(src, /cancellation-schedule/, `${rel} reads shared/cancellation-schedule`);
     assert.doesNotMatch(src, /full refund if cancelled at least 24 hours|refund 5\+ days/, `${rel} types no window`);
+  }
+});
+
+// C4 — ledger `2026-09-27-cancel-filter-labels`: the seed's filter chips are generated from this
+// table. "Strict (No Refund)" named a refund the schedule does not withhold (strict pays 50% at
+// least 7 days out) and "Moderate (50% Refund)" hid moderate's full-refund window.
+test("C4 filter chip labels come from the schedule and claim only what it pays", () => {
+  assert.equal(cancellationTierFilterLabel("flexible"), "Flexible (full refund at least 24 hours before)");
+  assert.equal(cancellationTierFilterLabel("moderate"), "Moderate (full refund at least 5 days before)");
+  assert.equal(cancellationTierFilterLabel("strict"), "Strict (50% refund at least 7 days before)");
+  assert.equal(cancellationTierFilterLabel("non_refundable"), "Non-refundable (no refund once booked)");
+  const seed = read("server/seeds/experience-template-tabs.seed.ts");
+  assert.match(seed, /cancellationTierFilterLabel/, "the seed generates its chips from the schedule");
+  const blocks = seed.split('slug: "cancellation"').slice(1).map((b) => b.slice(0, b.indexOf("]")));
+  assert.equal(blocks.length, 2, "both cancellation filters are checked");
+  for (const b of blocks) {
+    assert.match(b, /CANCELLATION_FILTER_OPTIONS/, "the chips are the generated options");
+    assert.doesNotMatch(b, /label:/, "no cancellation chip label is typed in the seed");
   }
 });
