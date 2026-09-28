@@ -209,4 +209,15 @@ describe("D-5 — no surface promises milestone, staged, instalment or hourly bi
     assert.match(src, /href="\/pricing"/, "the strip links to /pricing");
     assert.match(src, /href="\/how-it-works"/, "the strip links to /how-it-works");
   });
+
+  it("M5b /how-it-works prices nothing either — it links to /pricing, which renders from fee_bands", () => {
+    // Ledger `2026-09-28-landing-doors`: the page's hand-typed "Choose Your Planning Style" price
+    // cards ("$5.99 – $19.99 / run", "8% or $499 flat") were deleted. /how-it-works is the landing
+    // strip's "See how it works" destination beside "See pricing"; a literal price here is the same
+    // defect the landing reorder removed. A number belongs on /pricing, never back on this page.
+    const src = readFileSync(join(CLIENT_SRC, "pages/how-it-works.tsx"), "utf8");
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    assert.doesNotMatch(code, /\$\s?\d|\d+\s?%|\/api\/pricing|priceCents|fee-literal-ok|planningOptions/, "/how-it-works must not price anything");
+    assert.match(src, /href="\/pricing"/, "/how-it-works links to /pricing");
+  });
 });

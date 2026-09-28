@@ -140,7 +140,7 @@ export function resolveBillboardTiles(
 export function billboardPlanSource(tile: BillboardTile): PlanningSource | null {
   const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
   if (!market) return null;
-  return { experienceSlug: tile.occasionSlug, city: market.cityName, country: market.country };
+  return { door: "billboard", experienceSlug: tile.occasionSlug, city: market.cityName, country: market.country };
 }
 
 function BillboardTileCard({

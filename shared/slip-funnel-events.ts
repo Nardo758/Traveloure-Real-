@@ -19,8 +19,9 @@
  *      are OMITTED, never `none` and never a guessed door. `none` is a real answer ("the traveler
  *      reached the finish without naming an occasion"), distinct from "not recorded".
  *
- * Doc §7 Q2's default is followed: a door not in this list sends nothing. No decision-maker ruling
- * narrows or extends the list (DECISIONS.md carries none as of 2026-09-28).
+ * Doc §7 Q2's default is followed: a door not in this list sends nothing. The list was extended ONCE by
+ * the decision-maker, doc first (§3.1 amendment, ledger `2026-09-28-landing-doors`): billboard,
+ * event_strip, events_page.
  */
 import { z } from "zod";
 
@@ -36,6 +37,11 @@ export const PLAN_DOORS = [
   "trip_strip_edit",
   "concierge",
   "pricing_ladder",
+  // Amended 2026-09-28 (slip-funnel-events.md §3.1; ledger `2026-09-28-landing-doors`): the
+  // landing billboard tile, the landing events strip and the /events "Coming up" block.
+  "billboard",
+  "event_strip",
+  "events_page",
 ] as const;
 export type PlanDoor = (typeof PLAN_DOORS)[number];
 

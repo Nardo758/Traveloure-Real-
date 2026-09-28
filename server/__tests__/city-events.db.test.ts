@@ -2,8 +2,10 @@
  * city_events writer and reader against a disposable database (ledger `2026-09-28-city-events`,
  * migration 330).
  *
- * C1 refusals are named and nothing is inserted: affiliate ticket host, no venue, unknown city,
- *    bad start, empty source id.
+ * C1 refusals are named and nothing is inserted: a ticket link on a partner's domain, no venue,
+ *    unknown city, bad start, empty source id. The seeder's partner hosts are the REGISTRY's — a
+ *    fixture `affiliate_partners` row, read by the same `loadPartnerHosts` the blog uses (ledger
+ *    `2026-09-28-landing-doors`).
  * C2 the seeder INSERTS ONLY: a second run with a changed entry inserts nothing and overwrites
  *    nothing (the row keeps its original title).
  * C3 nights and neighbourhood are DERIVED: nights from local dates; the neighbourhood is the
@@ -24,6 +26,8 @@ const sid = (s: string) => `test-${RUN}-${s}`;
 const HOOD_NEAR = `hood-${RUN}-near`;
 const HOOD_FAR = `hood-${RUN}-far`;
 const CITY = "Kyoto";
+const PARTNER_ID = `partner-${RUN}`;
+const PARTNER_HOST = `tickets-${RUN}.example`;
 
 function inDays(days: number, hourUtc = 10): string {
   const d = new Date();
@@ -38,6 +42,10 @@ before(async () => {
     throw new Error("refusing to write fixtures to a non-disposable database");
   }
   await db.execute(sql`
+    INSERT INTO affiliate_partners (id, name, website_url, category)
+    VALUES (${PARTNER_ID}, ${`Partner ${RUN}`}, ${`https://www.${PARTNER_HOST}/`}, 'tickets')
+  `);
+  await db.execute(sql`
     INSERT INTO city_neighborhoods (id, city, country, name, slug, centroid_lat, centroid_lng)
     VALUES (${HOOD_NEAR}, ${CITY}, 'Japan', ${`Near ${RUN}`}, ${`near-${RUN}`}, 34.5000, 136.5000),
            (${HOOD_FAR},  ${CITY}, 'Japan', ${`Far ${RUN}`},  ${`far-${RUN}`},  34.6000, 136.6000)
@@ -47,16 +55,20 @@ before(async () => {
 after(async () => {
   await db.execute(sql`DELETE FROM city_events WHERE source_id LIKE ${`test-${RUN}-%`}`);
   await db.execute(sql`DELETE FROM city_neighborhoods WHERE id IN (${HOOD_NEAR}, ${HOOD_FAR})`);
+  await db.execute(sql`DELETE FROM affiliate_partners WHERE id = ${PARTNER_ID}`);
 });
 
 test("C1 refusals are named and nothing is inserted", async () => {
   const base = { source: "manual" as const, title: "T", city: CITY, venue: "Hall", startsAt: inDays(10) };
-  assert.deepEqual(buildCityEventRow({ ...base, sourceId: sid("aff"), ticketUrl: "https://www.viator.com/x" }, []), { refused: "affiliate_ticket_url" });
-  assert.deepEqual(buildCityEventRow({ ...base, sourceId: sid("novenue"), venue: " " }, []), { refused: "missing_venue" });
-  assert.deepEqual(buildCityEventRow({ ...base, sourceId: sid("city"), city: "Atlantis" }, []), { refused: "unknown_city" });
-  assert.deepEqual(buildCityEventRow({ ...base, sourceId: sid("start"), startsAt: "soon" }, []), { refused: "bad_start" });
-  assert.deepEqual(buildCityEventRow({ ...base, sourceId: "  " }, []), { refused: "empty_source_id" });
-  const r = await seedCityEvents([{ ...base, sourceId: sid("aff2"), ticketUrl: "https://tp.media/r" }]);
+  const hosts = ["viator.com"];
+  assert.deepEqual(buildCityEventRow({ ...base, sourceId: sid("aff"), ticketUrl: "https://www.viator.com/x" }, [], hosts), { refused: "affiliate_ticket_url" });
+  assert.deepEqual(buildCityEventRow({ ...base, sourceId: sid("novenue"), venue: " " }, [], hosts), { refused: "missing_venue" });
+  assert.deepEqual(buildCityEventRow({ ...base, sourceId: sid("city"), city: "Atlantis" }, [], hosts), { refused: "unknown_city" });
+  assert.deepEqual(buildCityEventRow({ ...base, sourceId: sid("start"), startsAt: "soon" }, [], hosts), { refused: "bad_start" });
+  assert.deepEqual(buildCityEventRow({ ...base, sourceId: "  " }, [], hosts), { refused: "empty_source_id" });
+  // The seeder reads the partner registry itself: a link on the fixture partner's domain (a
+  // subdomain of it) is refused with no host passed in.
+  const r = await seedCityEvents([{ ...base, sourceId: sid("aff2"), ticketUrl: `https://buy.${PARTNER_HOST}/r` }]);
   assert.equal(r.inserted, 0);
   assert.deepEqual(r.refused, [{ sourceId: sid("aff2"), reason: "affiliate_ticket_url" }]);
   const n = await db.execute(sql`SELECT count(*)::int AS n FROM city_events WHERE source_id = ${sid("aff2")}`);
