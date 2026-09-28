@@ -266,7 +266,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
       },
     ],
   },
-  { name: "Ways to Earn", i18nKey: "groups.waysToEarn", shortName: "Earn", shortI18nKey: "groups.waysToEarnShort", href: "/earn" },
+  { name: "Ways to Earn", i18nKey: "groups.waysToEarn", href: "/earn" },
   // 2026-08-26: plain main-nav leaf beside Ways to Earn per the ratified pricing map
   // (ledger 2026-08-27-pricing-nav, corrected same day) — not the utility cluster.
   { name: "Pricing", i18nKey: "groups.pricing", href: "/pricing" },
