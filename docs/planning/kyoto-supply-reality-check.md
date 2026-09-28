@@ -86,35 +86,25 @@ Decision 57).
   exist to claim.
 - **Ten Kyoto plans exist** (`trips.market_slug = 'kyoto'`), with no Kyoto booking behind them.
 
-## `service_bookings_total = 7` — reconciled against the brief's "zero rows"
+## `service_bookings_total = 7` — reconciled: zero paid bookings in production
 
 The brief (and this doc's earlier status) said production `service_bookings` had zero rows. The census reports **7**,
-**none of them Kyoto**. That statement is withdrawn; seven rows exist.
+none of them Kyoto. The follow-up read (Replit, read-only, `BEGIN … ROLLBACK`) grouped them:
 
-**What the census can and cannot say about them.** Its query is only
-`select count(*) from service_bookings` beside a Kyoto join (`scripts/report-kyoto-supply.cjs`, the `bookings`
-query). It surfaces **no status, no date and no mode**, so this report says nothing about whether they are live-mode
-or test rows and does not assume either.
-
-**Live vs test is not a database fact.** `service_bookings` has no livemode column; a row carries only a
-`stripe_payment_intent_id`, whose mode is the key it was created with and is read in the Stripe dashboard, not in
-SQL. The proposed Replit read, read-only, gives everything the database does hold:
-
-```sql
-BEGIN READ ONLY;
-SELECT status,
-       count(*)                                          AS rows,
-       count(stripe_payment_intent_id)                   AS with_payment_intent,
-       count(*) FILTER (WHERE service_id IS NULL)        AS no_service,
-       min(created_at)                                   AS first_created,
-       max(created_at)                                   AS last_created
-  FROM service_bookings
- GROUP BY status
- ORDER BY rows DESC;
-ROLLBACK;
+```text
+  status   | rows | with_payment_intent | no_service |       first_created        |        last_created
+-----------+------+---------------------+------------+----------------------------+----------------------------
+ pending   |    5 |                   0 |          0 | 2026-01-08 17:53:31.105171 | 2026-04-04 16:33:23.722981
+ confirmed |    2 |                   0 |          0 | 2026-04-03 16:33:23.722981 | 2026-04-03 16:33:23.722981
 ```
 
-If any row carries a PaymentIntent, the operator reads its mode in the Stripe dashboard (the id alone does not show it).
+**Facts:** 7 rows — 5 `pending`, 2 `confirmed`; **0 with a payment intent**; each names a service; created
+2026-01-08 to 2026-04-04; none Kyoto. The timestamps are consistent with scripted inserts (the two `confirmed` rows
+share one timestamp to the microsecond, and one `pending` row sits exactly 24 hours after them).
+
+**Finding: zero paid bookings in production.** Ruled (decision-maker, Sep 28, 2026; ledger
+`2026-09-28-legacy-unpaid-bookings`): these are pre-vocabulary legacy rows with no payment. **No data change** — the
+rows stay as they are (append-only holds).
 
 ## What A0 must provide
 
@@ -189,6 +179,6 @@ A listing is "live" when it passes the public read gate: `status = 'active' AND 
 | Affiliate Kyoto rows | 0 | No partner inventory in the database |
 | Kyoto expert applications | 4 approved, 2 with a handle | |
 | Verified Kyoto neighborhood | 1 expert (10 Kyoto neighborhoods seeded) | Lane C's byline gate would admit at most one expert |
-| Bookings | 0 total | Production has 7 (none Kyoto) — see the reconciliation above |
+| Bookings | 0 total | Production has 7 legacy unpaid rows (none Kyoto) and zero paid bookings — see above |
 
 HARD STOP: Part 5 is closed. Track A starts at A0 as ruled.
