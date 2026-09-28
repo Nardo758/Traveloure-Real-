@@ -32,6 +32,8 @@ export interface CityCardProps {
    * byte-for-byte.
    */
   density?: "full" | "compact";
+  /** Opt-in taller compact photo for the landing-page TravelPulse rail. */
+  compactPhotoSize?: "regular" | "large";
   cityName: string;
   country: string;
   imageUrl?: string | null;
@@ -114,12 +116,12 @@ export function CityCard(props: CityCardProps) {
         data-testid={testId}
       >
         <div
-          className="relative h-24 overflow-hidden rounded-[12px]"
+          className={`relative overflow-hidden rounded-[12px] ${props.compactPhotoSize === "large" ? "h-40 sm:h-44" : "h-24"}`}
           style={imageUrl ? undefined : { background: "var(--earn-chip)" }}
         >
           {imageUrl && (
             <img
-              src={optimizeUnsplashUrl(imageUrl, { w: 480 })}
+              src={optimizeUnsplashUrl(imageUrl, { w: props.compactPhotoSize === "large" ? 720 : 480 })}
               alt=""
               className="h-full w-full object-cover"
               loading="lazy"

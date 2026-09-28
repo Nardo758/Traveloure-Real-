@@ -37,7 +37,7 @@ export function FinalCta({ onPlanTrip }: { onPlanTrip: () => void }) {
           className="mb-1.5 mt-1 text-[28px] font-semibold sm:text-[34px]"
           style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}
         >
-          Plan the trip a local would take.
+          {t("closing.headline", "You know the why and the where. They know the how.")}
         </h3>
         <p className="mb-[18px] text-[14px]" style={{ color: "var(--earn-muted)" }}>
           Start with AI, find a local expert, or browse what's already live.
