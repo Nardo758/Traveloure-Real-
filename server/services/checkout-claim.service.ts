@@ -104,9 +104,10 @@ import { getStripeSecretKey } from "../utils/stripe-key";
 // `trip_expert_advisors` (`upsertTripAdvisorRow`) — never a second insert site (LD 32).
 import { grantPlanWorkAdvisorAccess } from "./plan-work-access.service";
 
-/** Ratified TTL (decision-maker, ruling 38): long enough for a traveler to finish the Stripe
- *  PaymentElement, short enough that held inventory comes back the same session. */
-export const CHECKOUT_CLAIM_TTL_MINUTES = 30;
+/** Ratified TTL (decision-maker, ruling 38) — stated ONCE in shared/checkout-hold.ts, which help
+ *  article 8 also reads; re-exported here for this module's existing importers. */
+import { CHECKOUT_CLAIM_TTL_MINUTES, STALE_AUTHORIZED_CLAIM_HOURS } from "@shared/checkout-hold";
+export { CHECKOUT_CLAIM_TTL_MINUTES, STALE_AUTHORIZED_CLAIM_HOURS };
 
 /** The `bookingDetails` key carrying the LAYER-1 pre-flight marker (see the docblock). */
 export const STRIPE_ATTEMPT_AT_KEY = "stripeAttemptAt";
@@ -733,7 +734,14 @@ export function assertPositiveSlotUnits(units: number, caller: string): void {
  */
 async function voidClaim(
   row: ProvisionalClaimRow,
-  reason: "never_attempted" | "stripe_has_no_intent",
+  reason: "never_attempted" | "stripe_has_no_intent" | "stripe_canceled" | "stale_unpaid",
+  /**
+   * R164 (G2): a STAMPED claim is voided only while it still carries THIS PaymentIntent, in the same
+   * statement — the promotion's own predicate (`status='payment_pending' AND
+   * stripe_payment_intent_id=<pi>`), so a promote and a void on the same row can never both win
+   * (§15b rule 1). Omitted ⇒ the unstamped-claim predicate, unchanged.
+   */
+  stampedPaymentIntentId?: string,
 ): Promise<{ voided: boolean; slotsReleased: number; diaryRows: number }> {
   try {
     return await db.transaction(async (tx) => {
@@ -745,7 +753,7 @@ async function voidClaim(
             updated_at = NOW()
         WHERE id = ${row.id}
           AND status = 'payment_pending'
-          AND stripe_payment_intent_id IS NULL
+          AND ${stampedPaymentIntentId ? sql`stripe_payment_intent_id = ${stampedPaymentIntentId}` : sql`stripe_payment_intent_id IS NULL`}
         RETURNING id
       `);
       if (claimed.rows.length === 0) {
@@ -879,7 +887,7 @@ async function voidClaim(
  * SERVER-VERIFIED Stripe source exactly as `webhook` is — see `SERVER_VERIFIED_ACTORS` below for
  * why that distinction, and not the transport, is what ordering 1 actually turns on.
  */
-export type PromotionActor = "webhook" | "client" | "reconciliation" | "checkout";
+export type PromotionActor = "webhook" | "client" | "reconciliation" | "checkout" | "sweep";
 
 /**
  * Ordering-1 capability (resolve bookings from `pi.metadata.bookingIds` and stamp a PI onto an
@@ -906,9 +914,13 @@ const SERVER_VERIFIED_ACTORS: ReadonlySet<PromotionActor> = new Set<PromotionAct
 
 /** The diary `actorType` for a promotion actor (item-transition-log vocabulary). A client-driven
  *  promotion is the traveler's own confirm poll, hence `traveler`. */
-function diaryActorType(actor: PromotionActor): "webhook" | "reconciliation" | "traveler" {
+function diaryActorType(actor: PromotionActor): "webhook" | "reconciliation" | "traveler" | "system" {
   if (actor === "webhook") return "webhook";
   if (actor === "reconciliation") return "reconciliation";
+  // R164 (G2): the stale-intent sweep promotes a claim it found PAID when it read Stripe. Recorded as
+  // the system, never as the traveler (§13: the diary says who moved it). NOT server-verified for
+  // ordering 1 — the rows it promotes are already stamped, so it never needs to stamp anything.
+  if (actor === "sweep") return "system";
   return "traveler";
 }
 
@@ -924,6 +936,7 @@ export interface PaymentPromotionResult {
   lateAuthorized: string[];
   /** Diary rows written (rulings 12/16/18). */
   diaryRows: number;
+  /** R162: present when this success landed on `failed` booking(s) — the automatic refund's outcome. */
 }
 
 const TERMINAL_UNPROMOTABLE = new Set([
@@ -1116,6 +1129,15 @@ export async function promotePaidCheckout(opts: {
       result.alreadyConfirmed.push(row.id);
     }
   }
+
+  // ── R162: A SUCCESS ON A `failed` BOOKING IS NEVER PROMOTED — AND IS NOT REFUNDED HERE ───────
+  // `failed` is final (TERMINAL_UNPROMOTABLE above: the exception is already recorded). The late-
+  // success REFUND lives on the WEBHOOK path only (`handlePaymentSucceeded` →
+  // `refundLateSuccessOnFailedIntent`), by decision-maker ruling Sep 27, 2026: this function is the
+  // ONE confirm for every caller (client confirm-payment, one-click, the webhook, the drift job), and
+  // a refund reachable from here would reach the drift job, which CLAUDE.md §17 keeps DETECT-ONLY.
+  // Stripe delivers `payment_intent.succeeded` whichever way the traveler paid, so the webhook
+  // always hears it; this function only confirms.
 
   // Plan-side catch-up, AFTER the money leg and outside its transaction. Only for rows this call
   // promoted, and only through `markItemPurchased`, which is an atomic conditional flip paired
@@ -1321,6 +1343,852 @@ async function recordReconciliationException(
       "[checkout-promote] failed to RECORD the reconciliation exception (the log line above is the surviving trace)",
     );
   }
+}
+
+// ══ THE FAILURE LEG — ONE payment-failed flip, TWO callers (ledger `2026-09-27-platform-payment-failed`, R161) ══
+//
+// §15c made the SUCCESS side one implementation with two callers (`promotePaidCheckout`). The
+// FAILURE side was left behind: the ONLY code that moved a cart checkout's `service_bookings` row
+// to `failed` sat inline in the CONNECT endpoint (`POST /api/webhooks/stripe`,
+// STRIPE_CONNECT_WEBHOOK_SECRET). A cart checkout's PaymentIntent is a PLATFORM PaymentIntent, and
+// Stripe delivers platform PI events to the PLATFORM endpoint (`POST /api/bookings/webhooks/stripe`
+// → `stripePaymentService.handlePaymentFailed`), which updated the LEGACY `bookings` table by the
+// `metadata.bookingIds` it was handed — `service_bookings` ids, so it matched nothing, exactly the
+// disjoint-id-space failure §15c fixed one event over. A declined card therefore left the booking
+// at `payment_pending` until the TTL sweep expired it, and "Payment didn't go through" never showed.
+//
+// Both endpoints now call THIS function. Rules that must not be weakened:
+//   1. The flip is an ATOMIC CONDITIONAL keyed on the row's OWN server-stamped PaymentIntent id
+//      (`WHERE stripe_payment_intent_id = <pi> AND status = 'payment_pending'`). A redelivery, or
+//      the same event reaching BOTH endpoints, flips each row exactly once; the loser matches zero.
+//   2. It never demotes: a row already `confirmed` (or `expired`, `cancelled`, …) is not
+//      `payment_pending` and is untouched. A late failure after a promotion moves nothing.
+//   3. The traveler email is sent ONLY for rows THIS call flipped (the RETURNING set), so it is
+//      exactly-once for the same reason the flip is. Best-effort; it never fails the flip.
+//   4. It keys on the PI id only — it does NOT resolve rows from `metadata.bookingIds`. An
+//      unstamped claim (server died mid-authorization) stays the TTL sweep's to reconcile against
+//      Stripe (§15b); a failure signal is not licence to touch a row that never carried this PI.
+//   5. It does NOT touch the legacy `bookings` table. That rail is still live and its own caller
+//      keeps its own update (§15c: both rails run, each no-ops on ids it does not own).
+
+export type PaymentFailedActor = "platform_webhook" | "connect_webhook";
+
+export interface PaymentFailedResult {
+  /** `service_bookings` ids THIS call moved `payment_pending → failed`. */
+  failedBookingIds: string[];
+}
+
+type PaymentFailedEmailSender = (params: {
+  toEmail: string;
+  userName: string | null;
+  bookingTitle: string | null;
+}) => Promise<void>;
+
+/**
+ * @param sendEmail test seam only — defaults to `email.service`'s `sendPaymentFailedEmail`.
+ */
+export async function markCheckoutPaymentFailed(opts: {
+  paymentIntentId: string;
+  actor: PaymentFailedActor;
+  sendEmail?: PaymentFailedEmailSender;
+}): Promise<PaymentFailedResult> {
+  const { paymentIntentId, actor } = opts;
+  const result: PaymentFailedResult = { failedBookingIds: [] };
+  if (!paymentIntentId) return result;
+
+  // The payment_intents ledger row, where one exists (not every PI flow writes one). Non-fatal.
+  try {
+    await db.execute(sql`
+      UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntentId}
+    `);
+  } catch (err: any) {
+    logger.warn({ paymentIntentId, actor, err: err?.message }, "[payment-failed] payment_intents update failed (non-fatal)");
+  }
+
+  // The flip. Throws on a DB error so the caller decides (the platform rail lets Stripe retry).
+  const flipped = await db.execute(sql`
+    UPDATE service_bookings
+    SET status     = 'failed',
+        updated_at = NOW()
+    WHERE stripe_payment_intent_id = ${paymentIntentId}
+      AND status = 'payment_pending'
+    RETURNING id, traveler_id, service_id
+  `);
+  const rows = (flipped.rows ?? []) as Array<{ id: string; traveler_id: string | null; service_id: string | null }>;
+  result.failedBookingIds = rows.map((r) => r.id);
+  if (rows.length === 0) return result;
+
+  logger.info(
+    { paymentIntentId, actor, bookingIds: result.failedBookingIds },
+    `[payment-failed] marked ${rows.length} service_booking(s) failed`,
+  );
+
+  // Best-effort traveler email, ONLY for rows this call flipped (rule 3).
+  let sendEmail = opts.sendEmail;
+  for (const r of rows) {
+    if (!r.traveler_id) continue;
+    try {
+      const detail = await db.execute(sql`
+        SELECT u.email, u.first_name, u.last_name, ps.service_name AS title
+        FROM users u
+        LEFT JOIN provider_services ps ON ps.id = ${r.service_id}
+        WHERE u.id = ${r.traveler_id}
+        LIMIT 1
+      `);
+      const row = detail.rows?.[0] as any;
+      if (!row?.email) continue;
+      if (!sendEmail) {
+        sendEmail = (await import("./email.service")).sendPaymentFailedEmail;
+      }
+      sendEmail({
+        toEmail: row.email,
+        userName: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
+        bookingTitle: row.title ?? null,
+      }).catch((e: any) => logger.error({ bookingId: r.id, err: e?.message }, "[payment-failed] email send error"));
+    } catch (mailErr: any) {
+      logger.error({ bookingId: r.id, err: mailErr?.message }, "[payment-failed] email resolve error");
+    }
+  }
+  return result;
+}
+
+// ══ R162 — `failed` IS FINAL (ledger `2026-09-27-failed-is-final`; decision-maker, Sep 27, 2026) ══
+//
+// A Stripe `payment_intent.payment_failed` is NOT terminal: the same PaymentIntent returns to
+// `requires_payment_method` and can still succeed. The platform's `failed` IS terminal — it is in
+// TERMINAL_UNPROMOTABLE and never goes back to `confirmed` (option 1, "failed then confirmed", was
+// refused: every reader would have to handle the transition, and "your payment failed" silently
+// followed by "actually it went through" is how double bookings and confused refunds start). Three
+// pieces make the two agree:
+//   1. `cancelStalePaymentIntent` — "Try again" mints the NEW PaymentIntent first, then cancels the
+//      OLD one, then opens checkout (`retireStalePaymentIntentsForCheckout`, called by the checkout
+//      authorization). The first place the platform cancels a PaymentIntent.
+//   2. Every confirm path already refuses a PI that is not the booking's CURRENT stamped one
+//      (`promoteOneBooking`'s WHERE, `confirm-payment`'s pre-check), and a `failed` row is never
+//      promotable; the same-key re-POST no longer hands back a PI whose booking is terminal
+//      (`isTerminalUnpromotable`, read by `POST /api/checkout`).
+//   3. `refundLateSuccessOnFailedIntent` — if the OLD intent succeeds anyway, the booking stays
+//      `failed`, the success is a reconciliation exception, and the traveler is refunded
+//      automatically, exactly once, whichever path hears about it.
+
+/** True for a booking status the promotion refuses — a PI stamped on such a row is dead to us. */
+export function isTerminalUnpromotable(status: string | null | undefined): boolean {
+  return status != null && TERMINAL_UNPROMOTABLE.has(status);
+}
+
+export const LATE_SUCCESS_REFUND_KEY = "lateSuccessRefund";
+export const lateSuccessRefundIdempotencyKey = (paymentIntentId: string) => `late-success-refund-${paymentIntentId}`;
+export const cancelStalePaymentIntentIdempotencyKey = (paymentIntentId: string) => `cancel-stale-pi-${paymentIntentId}`;
+
+/** Stripe statuses a PaymentIntent must NEVER be cancelled from: money is moving or has moved. */
+const NEVER_CANCEL_PI_STATUSES = new Set(["processing", "succeeded"]);
+
+export type CancelStaleOutcome =
+  | { outcome: "canceled"; status: string }
+  | { outcome: "already_canceled"; status: string }
+  /** Stripe reports `processing` or `succeeded` — cancelling is refused; the caller must not open a retry. */
+  | { outcome: "not_cancellable"; status: string }
+  /** Stripe could not be consulted or refused the cancel. Nothing is known to have changed. */
+  | { outcome: "error"; message: string };
+
+/**
+ * R162 — cancel a PaymentIntent the platform has given up on. Reads Stripe's own status FIRST and
+ * never cancels an intent that is `processing` or `succeeded`; an already-`canceled` intent is a
+ * no-op; everything else is cancelled with `cancellation_reason: 'abandoned'` under a PI-derived
+ * idempotency key, so a retry is the same single cancel. Never throws. Reused by the G2 sweep.
+ */
+export async function cancelStalePaymentIntent(opts: {
+  paymentIntentId: string;
+  /** Carried into every log line (the booking(s) and the new PI, when there is one). */
+  context?: Record<string, unknown>;
+}): Promise<CancelStaleOutcome> {
+  const { paymentIntentId } = opts;
+  const ctx = { paymentIntentId, ...(opts.context ?? {}) };
+  const { stripePaymentService } = await import("./stripe-payment.service");
+  let status: string;
+  try {
+    status = (await stripePaymentService.retrievePaymentIntentFacts(paymentIntentId)).status;
+  } catch (err: any) {
+    logger.error({ ...ctx, err: err?.message }, "[stale-pi] could not read the PaymentIntent — nothing cancelled");
+    return { outcome: "error", message: err?.message ?? String(err) };
+  }
+  if (status === "canceled") return { outcome: "already_canceled", status };
+  if (NEVER_CANCEL_PI_STATUSES.has(status)) {
+    logger.warn({ ...ctx, status }, "[stale-pi] PaymentIntent is processing/succeeded — NOT cancelled");
+    return { outcome: "not_cancellable", status };
+  }
+  try {
+    const res = await stripePaymentService.cancelPaymentIntent(
+      paymentIntentId,
+      cancelStalePaymentIntentIdempotencyKey(paymentIntentId),
+    );
+    logger.info({ ...ctx, status: res.status }, "[stale-pi] cancelled a stale PaymentIntent");
+    return { outcome: "canceled", status: res.status };
+  } catch (err: any) {
+    logger.error({ ...ctx, err: err?.message }, "[stale-pi] Stripe refused or failed the cancel");
+    return { outcome: "error", message: err?.message ?? String(err) };
+  }
+}
+
+// R164's staleness window (STALE_AUTHORIZED_CLAIM_HOURS) is stated in shared/checkout-hold.ts and
+// imported at the top of this module beside the claim TTL.
+
+export interface StaleAuthorizedSweepResult {
+  /** PaymentIntents read. */
+  examined: number;
+  /** Stripe says succeeded ⇒ handed to the ONE shared promotion. */
+  promoted: number;
+  /** Stripe already says canceled ⇒ the claim is voided and its capacity released. */
+  voidedCanceled: number;
+  /** Unpaid past STALE_AUTHORIZED_CLAIM_HOURS ⇒ cancelled at Stripe, then voided and released. */
+  voidedStale: number;
+  /** `processing` — money may be in flight; never touched. */
+  leftProcessing: number;
+  /** Unpaid but not yet stale — left for the traveler to finish. */
+  leftYoung: number;
+  /** Stripe could not be read, or refused the cancel — nothing changed; the next pass retries. */
+  quarantined: number;
+  slotsReleased: number;
+  itemsReverted: number;
+  /** Expired-claim emails sent (one per released booking, at most — see `notifyExpiredStampedClaim`). */
+  noticesSent: number;
+}
+
+/** The Stripe reads/writes the sweep needs, injectable so its tests run with no network. */
+export interface StaleSweepStripe {
+  retrieveStatus: (paymentIntentId: string) => Promise<string>;
+  cancel: (paymentIntentId: string) => Promise<CancelStaleOutcome>;
+}
+
+const defaultStaleSweepStripe: StaleSweepStripe = {
+  retrieveStatus: async (pi) => {
+    const { stripePaymentService } = await import("./stripe-payment.service");
+    return (await stripePaymentService.retrievePaymentIntentFacts(pi)).status;
+  },
+  cancel: (pi) => cancelStalePaymentIntent({ paymentIntentId: pi, context: { source: "stale-authorized-sweep" } }),
+};
+
+/**
+ * R164 (G2): the server-authored `booking_details` key recording that the traveler was told their
+ * stamped claim was released. Its presence IS the one-per-booking guard (§19d — never body-settable).
+ */
+export const EXPIRED_CLAIM_NOTICE_KEY = "expiredClaimNotice";
+
+export type ExpiredClaimEmailSender = (p: {
+  toEmail: string;
+  travelerName: string | null;
+  serviceName: string | null;
+  tripId: string | null;
+}) => Promise<void>;
+
+/**
+ * R164 (G2, decision-maker Sep 27, 2026): ONE email when the sweep releases a STAMPED claim — "Your
+ * booking for X wasn't completed, so we released it. It's back in your plan; you can book it again."
+ * The claim is an atomic conditional (`status='expired' AND stripe_payment_intent_id IS NOT NULL AND
+ * the notice key absent`), taken BEFORE the send, so a second pass, a concurrent pass or a re-run
+ * finds it taken and sends nothing: at most one email per booking. An UNSTAMPED claim can never pass
+ * the predicate, so its traveler — who never reached payment — is never emailed. A failed send is
+ * logged and not retried (one per booking wins over a second attempt). Never throws.
+ */
+export async function notifyExpiredStampedClaim(
+  bookingId: string,
+  send?: ExpiredClaimEmailSender,
+): Promise<{ sent: boolean; reason?: "not_claimed" | "no_email" | "send_failed" }> {
+  try {
+    const claimed = (
+      await db.execute(sql`
+        UPDATE service_bookings
+        SET booking_details = COALESCE(booking_details, '{}'::jsonb)
+              || jsonb_build_object(${EXPIRED_CLAIM_NOTICE_KEY}::text, jsonb_build_object('claimedAt', NOW()::text))
+        WHERE id = ${bookingId}
+          AND status = ${CLAIM_EXPIRED_STATUS}
+          AND stripe_payment_intent_id IS NOT NULL
+          AND NOT (COALESCE(booking_details, '{}'::jsonb) ? ${EXPIRED_CLAIM_NOTICE_KEY}::text)
+        RETURNING traveler_id, service_id, trip_id
+      `)
+    ).rows?.[0] as { traveler_id: string | null; service_id: string | null; trip_id: string | null } | undefined;
+    if (!claimed) return { sent: false, reason: "not_claimed" };
+    if (!claimed.traveler_id) return { sent: false, reason: "no_email" };
+    const detail = (
+      await db.execute(sql`
+        SELECT u.email, u.first_name, ps.service_name
+        FROM users u LEFT JOIN provider_services ps ON ps.id = ${claimed.service_id}
+        WHERE u.id = ${claimed.traveler_id} LIMIT 1
+      `)
+    ).rows?.[0] as { email: string | null; first_name: string | null; service_name: string | null } | undefined;
+    if (!detail?.email) return { sent: false, reason: "no_email" };
+    const sender: ExpiredClaimEmailSender =
+      send ?? (async (p) => (await import("./email.service")).sendExpiredClaimEmail(p));
+    try {
+      await sender({
+        toEmail: detail.email,
+        travelerName: detail.first_name ?? null,
+        serviceName: detail.service_name ?? null,
+        tripId: claimed.trip_id ?? null,
+      });
+    } catch (err: any) {
+      logger.error({ bookingId, err: err?.message }, "[stale-authorized-sweep] expired-claim email failed (claim kept; not retried)");
+      return { sent: false, reason: "send_failed" };
+    }
+    return { sent: true };
+  } catch (err: any) {
+    logger.error({ bookingId, err: err?.message }, "[stale-authorized-sweep] expired-claim notice failed (booking stays released)");
+    return { sent: false, reason: "send_failed" };
+  }
+}
+
+/**
+ * R164/R165 — RELEASE ONE STAMPED CLAIM whose PaymentIntent Stripe says will never be paid. ONE
+ * implementation, two callers (§18 rule 1): the stale-authorized sweep and the platform
+ * `payment_intent.canceled` webhook (`releaseClaimsForCanceledIntent`). In order, each step behind its
+ * own guard: the void (`voidClaim`, keyed on the row's own stamped PaymentIntent — a promote racing
+ * this leaves exactly one winner), the plan item back to planning (guarded on the booking still being
+ * `expired`), then the traveler's one email (`notifyExpiredStampedClaim`, its own atomic claim).
+ * Nothing after the void runs unless this call won it. Never throws.
+ */
+export async function releaseStampedClaim(
+  row: ProvisionalClaimRow,
+  paymentIntentId: string,
+  reason: "stripe_canceled" | "stale_unpaid",
+  sendExpiredClaimEmail?: ExpiredClaimEmailSender,
+): Promise<{ voided: boolean; slotsReleased: number; itemsReverted: number; noticeSent: boolean }> {
+  const v = await voidClaim(row, reason, paymentIntentId);
+  if (!v.voided) return { voided: false, slotsReleased: 0, itemsReverted: 0, noticeSent: false };
+  let itemsReverted = 0;
+  try {
+    const { revertPurchasedItemsForBooking } = await import("./item-routing.service");
+    const rv = await revertPurchasedItemsForBooking(row.id, {
+      actorType: "system",
+      requireBookingStatusIn: [CLAIM_EXPIRED_STATUS],
+    });
+    itemsReverted = rv.reverted;
+  } catch (err) {
+    logger.error({ err, bookingId: row.id }, "[stamped-claim-release] item revert failed (booking voided; item re-runnable)");
+  }
+  // After the release and the item's return to the plan: tell the traveler, once (§15b — the
+  // notice follows the operation that authorizes it, and can never undo it).
+  const n = await notifyExpiredStampedClaim(row.id, sendExpiredClaimEmail);
+  return { voided: true, slotsReleased: v.slotsReleased, itemsReverted, noticeSent: n.sent };
+}
+
+/**
+ * R165 (G3, decision-maker Sep 27, 2026) — the PLATFORM `payment_intent.canceled` webhook releases
+ * the stamped claims on that intent. Until this, the handler updated `payment_intents` and the LEGACY
+ * `bookings` table only, so a cart checkout whose intent was cancelled (in the dashboard, by the
+ * sweep, by Stripe's own expiry) stayed `payment_pending`, holding its slot, until the 24-hour sweep
+ * noticed. A signature-verified `canceled` event is Stripe's word and `canceled` is final, so the
+ * claim is released at once through the SAME `releaseStampedClaim` the sweep uses — same void
+ * predicate, same item revert, same one email. Only `payment_pending` rows carrying THIS intent match:
+ * a confirmed/failed/refunded row, a deposit row (whose balance leg rides `stripe_balance_intent_id`)
+ * and a legacy-rail row are never touched. A redelivery finds the rows already `expired` and does
+ * nothing. Never throws.
+ */
+export async function releaseClaimsForCanceledIntent(
+  paymentIntentId: string,
+  opts?: { sendExpiredClaimEmail?: ExpiredClaimEmailSender },
+): Promise<{ matched: number; released: number; slotsReleased: number; itemsReverted: number; noticesSent: number }> {
+  const out = { matched: 0, released: 0, slotsReleased: 0, itemsReverted: 0, noticesSent: 0 };
+  let rows: ProvisionalClaimRow[];
+  try {
+    const r = await db.execute(sql`
+      SELECT id, trip_id, slot_id, traveler_id, booking_details, idempotency_key, created_at
+      FROM service_bookings
+      WHERE status = 'payment_pending' AND stripe_payment_intent_id = ${paymentIntentId}
+    `);
+    rows = (r.rows as any[]).map((x) => ({
+      id: String(x.id),
+      tripId: x.trip_id ?? null,
+      slotId: x.slot_id ?? null,
+      travelerId: x.traveler_id ?? null,
+      bookingDetails: (x.booking_details ?? null) as Record<string, unknown> | null,
+      idempotencyKey: x.idempotency_key ?? null,
+      createdAt: x.created_at instanceof Date ? x.created_at : new Date(String(x.created_at)),
+    }));
+  } catch (err: any) {
+    logger.error({ paymentIntentId, err: err?.message }, "[canceled-intent] lookup failed — the sweep will release these claims");
+    return out;
+  }
+  out.matched = rows.length;
+  for (const row of rows) {
+    const r = await releaseStampedClaim(row, paymentIntentId, "stripe_canceled", opts?.sendExpiredClaimEmail);
+    if (!r.voided) continue;
+    out.released += 1;
+    out.slotsReleased += r.slotsReleased;
+    out.itemsReverted += r.itemsReverted;
+    if (r.noticeSent) out.noticesSent += 1;
+  }
+  if (out.released > 0) logger.info({ paymentIntentId, ...out }, "[canceled-intent] released stamped claims on a canceled PaymentIntent");
+  return out;
+}
+
+/**
+ * R164 (G2) — THE STALE AUTHORIZED-CLAIM SWEEP. `sweepExpiredCheckoutClaims` reclaims UNSTAMPED claims
+ * only; a claim that WAS authorized (a PaymentIntent stamped on it, cart cleared, item flipped to
+ * `purchased`) and then never paid — the traveler closed the tab on 3-D Secure, the card form was
+ * abandoned — sat `payment_pending` forever, holding its slot and showing the item as bought. The
+ * ruling, per PaymentIntent, read from STRIPE (never guessed):
+ *   - `succeeded` ⇒ promote, through the ONE `promotePaidCheckout` (actor `sweep`);
+ *   - `canceled` ⇒ void the claim and release its capacity;
+ *   - `processing` ⇒ NEVER touched (money may be moving);
+ *   - otherwise unpaid and older than STALE_AUTHORIZED_CLAIM_HOURS ⇒ cancel through the ONE
+ *     `cancelStalePaymentIntent` (which re-reads Stripe and never cancels processing/succeeded), then
+ *     void and release; younger ⇒ left for the traveler to finish.
+ * A voided claim's plan item goes back to planning through the ONE reverser, guarded on the booking
+ * still being `expired` in the same statement. Stripe unreadable ⇒ nothing changes (quarantine).
+ * Every write is an atomic conditional on the row's own stamped PaymentIntent (§15b), so a webhook
+ * promote racing this sweep leaves exactly one winner. Never throws.
+ */
+export async function sweepStaleAuthorizedClaims(opts?: {
+  /** Claims younger than the checkout TTL are never considered (the traveler is still paying). */
+  minAgeMinutes?: number;
+  staleHours?: number;
+  limit?: number;
+  onlyBookingIds?: string[];
+  stripe?: StaleSweepStripe;
+  /** Test seam for the expired-claim email; production sends through `sendExpiredClaimEmail`. */
+  sendExpiredClaimEmail?: ExpiredClaimEmailSender;
+}): Promise<StaleAuthorizedSweepResult> {
+  const minAge = opts?.minAgeMinutes ?? CHECKOUT_CLAIM_TTL_MINUTES;
+  const staleHours = opts?.staleHours ?? STALE_AUTHORIZED_CLAIM_HOURS;
+  const limit = opts?.limit ?? 200;
+  const scope = opts?.onlyBookingIds;
+  const stripeOps = opts?.stripe ?? defaultStaleSweepStripe;
+  const result: StaleAuthorizedSweepResult = {
+    examined: 0, promoted: 0, voidedCanceled: 0, voidedStale: 0, leftProcessing: 0, leftYoung: 0,
+    quarantined: 0, slotsReleased: 0, itemsReverted: 0, noticesSent: 0,
+  };
+  if (scope && scope.length === 0) return result;
+
+  let rows: Array<ProvisionalClaimRow & { paymentIntentId: string }>;
+  try {
+    const r = await db.execute(sql`
+      SELECT id, trip_id, slot_id, traveler_id, booking_details, idempotency_key, created_at, stripe_payment_intent_id
+      FROM service_bookings
+      WHERE status = 'payment_pending'
+        AND stripe_payment_intent_id IS NOT NULL
+        AND created_at < NOW() - (${String(minAge)} || ' minutes')::interval
+        ${scope ? sql`AND id IN (${sql.join(scope.map((id) => sql`${id}`), sql`, `)})` : sql``}
+      ORDER BY created_at ASC
+      LIMIT ${limit}
+    `);
+    rows = (r.rows as any[]).map((x) => ({
+      id: String(x.id),
+      tripId: x.trip_id ?? null,
+      slotId: x.slot_id ?? null,
+      travelerId: x.traveler_id ?? null,
+      bookingDetails: (x.booking_details ?? null) as Record<string, unknown> | null,
+      idempotencyKey: x.idempotency_key ?? null,
+      createdAt: x.created_at instanceof Date ? x.created_at : new Date(String(x.created_at)),
+      paymentIntentId: String(x.stripe_payment_intent_id),
+    }));
+  } catch (err) {
+    logger.error({ err }, "[stale-authorized-sweep] candidate query failed — no rows touched");
+    return result;
+  }
+
+  const byPi = new Map<string, typeof rows>();
+  for (const row of rows) byPi.set(row.paymentIntentId, [...(byPi.get(row.paymentIntentId) ?? []), row]);
+
+  const voidAll = async (pi: string, group: typeof rows, reason: "stripe_canceled" | "stale_unpaid") => {
+    let voided = 0;
+    for (const row of group) {
+      const r = await releaseStampedClaim(row, pi, reason, opts?.sendExpiredClaimEmail);
+      if (!r.voided) continue;
+      voided += 1;
+      result.slotsReleased += r.slotsReleased;
+      result.itemsReverted += r.itemsReverted;
+      if (r.noticeSent) result.noticesSent += 1;
+    }
+    return voided;
+  };
+
+  for (const [pi, group] of Array.from(byPi.entries())) {
+    result.examined += 1;
+    let status: string;
+    try {
+      status = await stripeOps.retrieveStatus(pi);
+    } catch (err: any) {
+      result.quarantined += 1;
+      logger.warn({ paymentIntentId: pi, err: err?.message }, "[stale-authorized-sweep] Stripe could not be read — nothing changed");
+      continue;
+    }
+
+    if (status === "succeeded") {
+      const promo = await promotePaidCheckout({ paymentIntentId: pi, actor: "sweep", bookingIds: group.map((g) => g.id) });
+      result.promoted += promo.promoted.length;
+      continue;
+    }
+    if (status === "processing") {
+      result.leftProcessing += 1;
+      continue;
+    }
+    if (status === "canceled") {
+      result.voidedCanceled += await voidAll(pi, group, "stripe_canceled");
+      continue;
+    }
+    const oldest = Math.min(...group.map((g) => g.createdAt.getTime()));
+    if (Date.now() - oldest < staleHours * 3600 * 1000) {
+      result.leftYoung += 1;
+      continue;
+    }
+    const cancel = await stripeOps.cancel(pi);
+    if (cancel.outcome === "canceled" || cancel.outcome === "already_canceled") {
+      result.voidedStale += await voidAll(pi, group, "stale_unpaid");
+    } else if (cancel.outcome === "not_cancellable" && cancel.status === "succeeded") {
+      // Paid between our read and the cancel: the same promotion, never a void.
+      const promo = await promotePaidCheckout({ paymentIntentId: pi, actor: "sweep", bookingIds: group.map((g) => g.id) });
+      result.promoted += promo.promoted.length;
+    } else if (cancel.outcome === "not_cancellable") {
+      result.leftProcessing += 1;
+    } else {
+      result.quarantined += 1;
+    }
+  }
+
+  if (result.examined > 0) logger.info({ ...result, staleHours }, "[stale-authorized-sweep] pass complete");
+  return result;
+}
+
+export type LateSuccessRefundResult =
+  | { outcome: "refunded"; refundId: string; amountCents: number; bookingIds: string[] }
+  | { outcome: "already_refunded"; refundId: string | null; bookingIds: string[] }
+  /** No row carries this PI, or not every row on it is `failed` — not this rule's case. */
+  | { outcome: "not_applicable"; reason: string }
+  /** Stripe says the intent did not succeed, or nothing is left to refund. No money to return. */
+  | { outcome: "nothing_to_refund"; status: string; bookingIds: string[] }
+  /** Stripe could not be consulted or the refund call failed; the next signal re-drives. */
+  | { outcome: "error"; message: string };
+
+/**
+ * R162 — THE LATE-SUCCESS REFUND. A PaymentIntent whose booking row(s) are `failed` has succeeded:
+ * the booking STAYS `failed` (the caller has already recorded the reconciliation exception) and the
+ * traveler is refunded automatically through the ONE shared refund call site.
+ *
+ * Exactly once, by three layers: (1) the §15b CLAIM — an atomic conditional stamping
+ * `booking_details.lateSuccessRefund` on the PI's `failed` rows, taken BEFORE the Stripe call;
+ * (2) the Stripe idempotency key `late-success-refund-<pi>`; (3) a row that already records a
+ * `refundId` answers `already_refunded` with no Stripe call. A signal that loses the claim to a
+ * caller that crashed before the refund re-drives the SAME key (Stripe returns the same refund).
+ *
+ * The amount is Stripe's own (§14): what the intent received less what its charge already
+ * refunded. Money is refunded ONLY when Stripe says `succeeded`. Applies only when EVERY row on the
+ * PI is `failed` — a PI that also backs a live booking is not this rule's case and is left to the
+ * exception a human reads. Never throws.
+ */
+export async function refundLateSuccessOnFailedIntent(opts: {
+  paymentIntentId: string;
+  actor: string;
+}): Promise<LateSuccessRefundResult> {
+  const { paymentIntentId, actor } = opts;
+  if (!paymentIntentId) return { outcome: "not_applicable", reason: "no_payment_intent" };
+  try {
+    const rows = (
+      await db.execute(sql`
+        SELECT id, status, booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text AS lsr
+        FROM service_bookings
+        WHERE stripe_payment_intent_id = ${paymentIntentId}
+        ORDER BY id
+      `)
+    ).rows as Array<{ id: string; status: string | null; lsr: any }>;
+    if (rows.length === 0) return { outcome: "not_applicable", reason: "no_booking_on_intent" };
+    if (!rows.every((r) => r.status === "failed")) {
+      return { outcome: "not_applicable", reason: "not_every_booking_failed" };
+    }
+    const bookingIds = rows.map((r) => r.id);
+    const recorded = rows.find((r) => r.lsr && typeof r.lsr.refundId === "string");
+    if (recorded) {
+      // A redelivery: the refund exists. Finish the aftermath if a crash left it half-done — both
+      // halves are idempotent (fee reversal by key, the notice by its own claim), so this never
+      // reverses twice or notifies twice.
+      await settleLateSuccessAftermath(paymentIntentId, recorded.lsr.refundId);
+      return { outcome: "already_refunded", refundId: recorded.lsr.refundId, bookingIds };
+    }
+
+    const { stripePaymentService } = await import("./stripe-payment.service");
+    let facts: Awaited<ReturnType<typeof stripePaymentService.retrievePaymentIntentFacts>>;
+    try {
+      facts = await stripePaymentService.retrievePaymentIntentFacts(paymentIntentId);
+    } catch (err: any) {
+      logger.error({ paymentIntentId, actor, bookingIds, err: err?.message }, "[late-success] Stripe unreachable — no refund, re-driven by the next signal");
+      return { outcome: "error", message: err?.message ?? String(err) };
+    }
+    const amountCents = facts.amountReceivedCents - facts.amountRefundedCents;
+    if (facts.status !== "succeeded" || amountCents <= 0) {
+      return { outcome: "nothing_to_refund", status: facts.status, bookingIds };
+    }
+
+    // §15b CLAIM, before the Stripe call. The WHERE is the guard; a loser matches zero rows.
+    const claimed = await db.execute(sql`
+      UPDATE service_bookings
+      SET booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(
+            ${LATE_SUCCESS_REFUND_KEY}::text, jsonb_build_object(
+              'claimedAt', NOW()::text, 'paymentIntentId', ${paymentIntentId}::text,
+              'actor', ${actor}::text, 'amountCents', ${amountCents}::int)),
+          updated_at = NOW()
+      WHERE stripe_payment_intent_id = ${paymentIntentId}
+        AND status = 'failed'
+        AND NOT (COALESCE(booking_details, '{}'::jsonb) ? ${LATE_SUCCESS_REFUND_KEY}::text)
+      RETURNING id
+    `);
+    if (claimed.rows.length === 0) {
+      // Someone claimed first. If they finished, say so; if not (in flight, or crashed after the
+      // claim), re-drive the SAME key — Stripe returns the same refund, never a second one.
+      const again = (
+        await db.execute(sql`
+          SELECT booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text AS lsr
+          FROM service_bookings WHERE stripe_payment_intent_id = ${paymentIntentId}
+        `)
+      ).rows as Array<{ lsr: any }>;
+      const done = again.find((r) => r.lsr && typeof r.lsr.refundId === "string");
+      if (done) {
+        await settleLateSuccessAftermath(paymentIntentId, done.lsr.refundId);
+        return { outcome: "already_refunded", refundId: done.lsr.refundId, bookingIds };
+      }
+    }
+
+    let refund: { id: string; status: string | null };
+    try {
+      refund = await stripePaymentService.refundLateSuccessOnFailedBooking({
+        paymentIntentId,
+        amountCents,
+        idempotencyKey: lateSuccessRefundIdempotencyKey(paymentIntentId),
+        bookingId: bookingIds[0],
+        bookingIds,
+      });
+    } catch (err: any) {
+      logger.error(
+        { paymentIntentId, actor, bookingIds, err: err?.message },
+        "[late-success] refund call failed — claim kept; the next signal re-drives the same key",
+      );
+      return { outcome: "error", message: err?.message ?? String(err) };
+    }
+    await db.execute(sql`
+      UPDATE service_bookings
+      SET booking_details = jsonb_set(booking_details, ${`{${LATE_SUCCESS_REFUND_KEY},refundId}`}::text[], to_jsonb(${refund.id}::text), true),
+          updated_at = NOW()
+      WHERE stripe_payment_intent_id = ${paymentIntentId} AND status = 'failed'
+        AND booking_details ? ${LATE_SUCCESS_REFUND_KEY}::text
+    `);
+    logger.error(
+      { paymentIntentId, actor, bookingIds, refundId: refund.id, amountCents },
+      "[late-success] a PaymentIntent SUCCEEDED after its booking was marked failed — booking stays failed, " +
+        "traveler refunded automatically (R162)",
+    );
+    await settleLateSuccessAftermath(paymentIntentId, refund.id);
+    return { outcome: "refunded", refundId: refund.id, amountCents, bookingIds };
+  } catch (err: any) {
+    logger.error({ paymentIntentId, actor, err: err?.message }, "[late-success] unexpected error — nothing assumed");
+    return { outcome: "error", message: err?.message ?? String(err) };
+  }
+}
+
+/** The notification `type` of the one late-success refund notice. Stated once. */
+export const LATE_SUCCESS_REFUND_NOTICE_TYPE = "payment_refunded";
+
+/**
+ * R162 — WHAT FOLLOWS A LATE-SUCCESS REFUND, both halves idempotent and neither able to fail the
+ * refund (§15b: an ancillary effect never undoes the money event that authorized it).
+ *
+ *  (a) THE FEE RECORD. The traveler service fee written to `fee_ledger` at authorization is reversed
+ *      through the ONE shared writer every refund uses (`recordTravelerServiceFeeReversal`, the same
+ *      call `refundServiceBooking` makes via `recordIssuedRefund`), at the fee the booking's own
+ *      snapshot says was CHARGED (a waived fee was never billed and is not reversed). Its key is
+ *      per (booking, amount), so a redelivery or a second confirm never reverses twice, and the
+ *      plan's fee record nets to zero once all the money has gone back.
+ *  (b) THE TRAVELER IS TOLD, ONCE. One in-app notification and one email per traveler, behind their
+ *      own claim — `lateSuccessRefund.noticeClaimedAt`, set by an atomic conditional only once the
+ *      refund id is recorded. A redelivery finds the claim taken and sends nothing. The wording says
+ *      what happened: the payment went through after it had failed, it was refunded automatically,
+ *      nothing was booked, and this is not a new charge.
+ */
+async function settleLateSuccessAftermath(paymentIntentId: string, refundId: string): Promise<void> {
+  try {
+    const rows = (
+      await db.execute(sql`
+        SELECT id, booking_details -> 'travelerServiceFee' AS tfee
+        FROM service_bookings
+        WHERE stripe_payment_intent_id = ${paymentIntentId} AND status = 'failed'
+      `)
+    ).rows as Array<{ id: string; tfee: any }>;
+    const { recordTravelerServiceFeeReversal } = await import("./fee-ledger.service");
+    for (const r of rows) {
+      const charged = r.tfee && r.tfee.waived !== true ? Number(r.tfee.charged) || 0 : 0;
+      if (charged <= 0) continue;
+      const res = await recordTravelerServiceFeeReversal({
+        bookingId: r.id,
+        refundAmount: charged,
+        actor: LATE_SUCCESS_REFUND_ACTOR,
+        stripeRefundRef: refundId,
+        reason: "late_success_on_failed_booking",
+      });
+      if (!res.reversed && res.reason === "original_row_missing") {
+        logger.error({ bookingId: r.id, paymentIntentId, refundId }, "[late-success] fee reversal skipped: original fee row not found (ledger gap)");
+      }
+    }
+  } catch (err: any) {
+    logger.error({ paymentIntentId, refundId, err: err?.message }, "[late-success] fee reversal failed (refund stands; the next signal retries)");
+  }
+
+  try {
+    const claimed = (
+      await db.execute(sql`
+        UPDATE service_bookings
+        SET booking_details = jsonb_set(booking_details, ${`{${LATE_SUCCESS_REFUND_KEY},noticeClaimedAt}`}::text[], to_jsonb(NOW()::text), true)
+        WHERE stripe_payment_intent_id = ${paymentIntentId}
+          AND status = 'failed'
+          AND (booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text) ? 'refundId'
+          AND NOT ((booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text) ? 'noticeClaimedAt')
+        RETURNING id, traveler_id, service_id, (booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text ->> 'amountCents') AS amount_cents
+      `)
+    ).rows as Array<{ id: string; traveler_id: string | null; service_id: string | null; amount_cents: string | null }>;
+    if (claimed.length === 0) return; // someone else holds the notice claim, or it was already sent
+    const byTraveler = new Map<string, (typeof claimed)[number]>();
+    for (const r of claimed) if (r.traveler_id && !byTraveler.has(r.traveler_id)) byTraveler.set(r.traveler_id, r);
+    const { storage } = await import("../storage");
+    const { sendLateSuccessRefundEmail } = await import("./email.service");
+    for (const [travelerId, r] of Array.from(byTraveler.entries())) {
+      const amount = Number(r.amount_cents ?? 0) / 100;
+      const detail = (
+        await db.execute(sql`
+          SELECT u.email, u.first_name, ps.service_name
+          FROM users u LEFT JOIN provider_services ps ON ps.id = ${r.service_id}
+          WHERE u.id = ${travelerId} LIMIT 1
+        `)
+      ).rows?.[0] as any;
+      const what = detail?.service_name ? `your payment for ${detail.service_name}` : "your payment";
+      try {
+        await storage.createNotification({
+          userId: travelerId,
+          type: LATE_SUCCESS_REFUND_NOTICE_TYPE,
+          title: "Your payment was refunded — nothing was booked",
+          message:
+            `Earlier we told you ${what} didn't go through. It went through afterwards, but the booking had ` +
+            `already been closed, so nothing was booked. We refunded $${amount.toFixed(2)} to your ` +
+            `original payment method automatically. This is not a new charge.`,
+          relatedId: r.id,
+          relatedType: "booking",
+          data: { bookingId: r.id, paymentIntentId, refundId, refundAmount: amount, reason: "late_success_on_failed_booking" },
+        } as any);
+      } catch (err: any) {
+        logger.error({ bookingId: r.id, err: err?.message }, "[late-success] refund notification failed");
+      }
+      if (detail?.email) {
+        await sendLateSuccessRefundEmail({
+          toEmail: detail.email,
+          travelerName: detail.first_name ?? null,
+          serviceName: detail.service_name ?? null,
+          refundAmount: amount,
+        }).catch((err: any) => logger.error({ bookingId: r.id, err: err?.message }, "[late-success] refund email failed"));
+      }
+    }
+  } catch (err: any) {
+    logger.error({ paymentIntentId, refundId, err: err?.message }, "[late-success] refund notice failed (refund stands)");
+  }
+}
+
+const LATE_SUCCESS_REFUND_ACTOR = "late_success_refund";
+
+/** Has the webhook's late-success refund been recorded on this PaymentIntent's rows? Read-only. */
+async function lateSuccessRefundRecorded(paymentIntentId: string): Promise<boolean> {
+  try {
+    const r = await db.execute(sql`
+      SELECT 1 FROM service_bookings
+      WHERE stripe_payment_intent_id = ${paymentIntentId}
+        AND (booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text) ? 'refundId'
+      LIMIT 1
+    `);
+    return r.rows.length > 0;
+  } catch (err: any) {
+    logger.error({ paymentIntentId, err: err?.message }, "[stale-pi] could not read the late-success refund record — treated as pending");
+    return false;
+  }
+}
+
+export type RetireStaleResult = {
+  /** false ⇒ at least one stale intent could not be retired; the caller must NOT open checkout. */
+  ok: boolean;
+  stale: Array<{
+    bookingIds: string[];
+    paymentIntentId: string;
+    result: CancelStaleOutcome;
+    /** The old intent SUCCEEDED and its webhook refund is not recorded yet — checkout waits for it. */
+    refundPending?: boolean;
+  }>;
+};
+
+/**
+ * R162 step 1 — "TRY AGAIN" RETIRES THE OLD INTENT AFTER THE NEW ONE EXISTS. Called by the checkout
+ * authorization after the NEW PaymentIntent is created and BEFORE it is stamped or handed to the
+ * client. For each plan item this checkout buys, the traveler's EARLIER booking of that item that is
+ * `failed` with a different stamped PaymentIntent is the stale one; it is cancelled through
+ * `cancelStalePaymentIntent`. A stale intent Stripe reports `succeeded` is a LATE SUCCESS and is
+ * refunded (it cannot be cancelled); one that is `processing` or could not be cancelled makes
+ * `ok: false`, and the caller opens no checkout. Only a PI whose EVERY row is `failed` is touched.
+ *
+ * NEGATIVE SPACE: the link is the plan item (`booking_details.itineraryItemId`), the identity R157's
+ * "Try again" re-projects. A failed booking with no plan item is not found here; the G2 sweep is the
+ * backstop for those, and the late-success refund covers any of them that succeeds.
+ */
+export async function retireStalePaymentIntentsForCheckout(opts: {
+  travelerId: string;
+  bookingIds: string[];
+  newPaymentIntentId: string;
+}): Promise<RetireStaleResult> {
+  const { travelerId, bookingIds, newPaymentIntentId } = opts;
+  const out: RetireStaleResult = { ok: true, stale: [] };
+  if (!travelerId || bookingIds.length === 0) return out;
+  let rows: Array<{ id: string; pi: string }>;
+  try {
+    rows = (
+      await db.execute(sql`
+        SELECT old.id, old.stripe_payment_intent_id AS pi
+        FROM service_bookings old
+        WHERE old.traveler_id = ${travelerId}
+          AND old.status = 'failed'
+          AND old.stripe_payment_intent_id IS NOT NULL
+          AND old.stripe_payment_intent_id <> ${newPaymentIntentId}
+          AND old.id NOT IN (${sql.join(bookingIds.map((id) => sql`${id}`), sql`, `)})
+          AND old.booking_details ->> 'itineraryItemId' IN (
+            SELECT nb.booking_details ->> 'itineraryItemId'
+            FROM service_bookings nb
+            WHERE nb.id IN (${sql.join(bookingIds.map((id) => sql`${id}`), sql`, `)})
+              AND nb.booking_details ? 'itineraryItemId'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM service_bookings live
+            WHERE live.stripe_payment_intent_id = old.stripe_payment_intent_id
+              AND live.status IS DISTINCT FROM 'failed'
+          )
+      `)
+    ).rows as Array<{ id: string; pi: string }>;
+  } catch (err: any) {
+    logger.error({ travelerId, bookingIds, newPaymentIntentId, err: err?.message }, "[stale-pi] stale lookup failed — checkout not opened");
+    return { ok: false, stale: [] };
+  }
+  const byPi = new Map<string, string[]>();
+  for (const r of rows) byPi.set(r.pi, [...(byPi.get(r.pi) ?? []), r.id]);
+  for (const [paymentIntentId, oldIds] of Array.from(byPi.entries())) {
+    const context = { oldBookingIds: oldIds, newBookingIds: bookingIds, oldPaymentIntentId: paymentIntentId, newPaymentIntentId };
+    const result = await cancelStalePaymentIntent({ paymentIntentId, context });
+    const entry: RetireStaleResult["stale"][number] = { bookingIds: oldIds, paymentIntentId, result };
+    if (result.outcome === "not_cancellable" && result.status === "succeeded") {
+      // The old intent already SUCCEEDED: a late success. It is refunded by the WEBHOOK only
+      // (`handlePaymentSucceeded`; decision-maker ruling Sep 27, 2026) — this path never refunds.
+      // Retiring it is complete once that refund is recorded on the old rows; until then checkout
+      // does not open, so the traveler is never asked to pay again while their earlier payment is
+      // still out. The caller says why (`refundPending`).
+      const recorded = await lateSuccessRefundRecorded(paymentIntentId);
+      entry.refundPending = !recorded;
+      if (!recorded) out.ok = false;
+    } else if (result.outcome !== "canceled" && result.outcome !== "already_canceled") {
+      out.ok = false;
+    }
+    if (!out.ok) {
+      logger.error({ ...context, outcome: result }, "[stale-pi] the previous PaymentIntent was NOT retired — checkout will not open");
+    }
+    out.stale.push(entry);
+  }
+  return out;
 }
 
 // ══ LANE 7 — THE BALANCE LEG (deposits / partial payments, DECISIONS.md ruling 72) ═══════════════
@@ -1603,6 +2471,8 @@ class CheckoutClaimSweepScheduler {
 
   private async run(): Promise<void> {
     await runBackgroundJob("checkout-sweep", () => sweepExpiredCheckoutClaims());
+    // R164 (G2): the stamped-claim half of the same reclaim, on the same cadence.
+    await runBackgroundJob("stale-authorized-sweep", () => sweepStaleAuthorizedClaims());
   }
 }
 

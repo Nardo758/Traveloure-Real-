@@ -14,6 +14,7 @@ import { OWNER_BOOKING_TRANSITIONS, ownerTransitionRefusal } from "./utils/booki
 import { describeCompletionDeclaration } from "@shared/declared-completion-window";
 import { declaredCompletionWindowDays } from "./config/completion-windows.config";
 import { describeAcceptance } from "./services/booking-acceptance.service";
+import { outOfBandFullyRefundedBookingIds, refundSummariesFor } from "./services/out-of-band-refund.service";
 import {
   normalizeGeneratedActivityDurationMinutes,
   normalizeGeneratedDayNumber,
@@ -6444,6 +6445,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       return cache.get(id) ?? null;
     };
 
+    // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): which rows a Stripe-dashboard
+    // refund covered IN FULL, by the ONE refund reconciliation rule. Read once for the page; a row
+    // carries `refundedOutOfBand: true` only then (§13), and its `status` is left as the row holds it.
+    const refundedOutOfBand = await outOfBandFullyRefundedBookingIds(bookings.map((b) => b.id));
+    // R163 amendment: what went back, stated by the server from the booking's own refund record or
+    // the cumulative #1288 stamp (never computed by the client). OMITTED when there is no refund.
+    const refundSummaries = await refundSummariesFor(bookings as any);
+
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
       const [reviews, serviceRow, providerRow, tripRow] = await Promise.all([
         storage.getReviewsByBookingId(booking.id),
@@ -6475,6 +6484,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // Bookings read a `confirmationCode` field this row never had, so every confirmed booking
         // said "Confirmation code not yet available". NULL only on a row that has none (§13).
         confirmationCode: (booking as any).confirmationCode ?? booking.trackingNumber ?? null,
+        ...(refundedOutOfBand.has(booking.id) ? { refundedOutOfBand: true as const } : {}),
+        ...(refundSummaries.has(booking.id) ? { refundSummary: refundSummaries.get(booking.id) } : {}),
         hasReview: reviews.length > 0,
         service: toBookingService(serviceRow),
         provider: toBookingProvider(providerRow),
@@ -7407,7 +7418,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
               // owns the ledger reversal + notification — report factually, fire no side-effects.
               const refreshed = await storage.getServiceBooking(req.params.id);
-              return res.json({ ...refreshed, refund: { issued: false, alreadyRefunded: true } });
+              // FU-R167-1: the owner rail answers with the SAME earner projection the list routes use.
+              return res.json({ ...(refreshed ? sanitizeBookingForExpert(refreshed, (await getDbRole(req)) ?? 'provider', userId) : refreshed), refund: { issued: false, alreadyRefunded: true } });
             }
             // This caller WON the refund claim — apply the matching full-fraction ledger
             // compensation (idempotent flips; a crash here is repaired by the admin refund
@@ -7480,7 +7492,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             }
             const refreshed = await storage.getServiceBooking(req.params.id);
             return res.json({
-              ...refreshed,
+              ...(refreshed ? sanitizeBookingForExpert(refreshed, (await getDbRole(req)) ?? 'provider', userId) : refreshed),
               refund: {
                 issued: true,
                 amount: refundResult?.amount ?? amountPaid,
@@ -7496,6 +7508,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             if (refundErr?.name === "LostChargebackRefundBlockedError") {
               const { lostChargebackRefusalBody } = await import("./services/lost-chargeback-guard.service");
               return res.status(409).json(lostChargebackRefusalBody(refundErr.result));
+            }
+            if (refundErr?.name === "ServiceBookingRefundRefusedError") {
+              // R163 amendment: a state the app refund never touches (payment_pending, failed,
+              // disputed). Refused before the claim — no Stripe call, nothing changed.
+              return res.status(409).json({ error: "refund_refused_status", status: refundErr.bookingStatus, message: refundErr.message });
             }
             return res.status(502).json({
               message: "The refund could not be issued, so the booking was NOT cancelled. Please try again.",
@@ -7601,7 +7618,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      res.json(updated);
+      res.json(updated ? sanitizeBookingForExpert(updated, (await getDbRole(req)) ?? 'provider', userId) : updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
     }
@@ -7920,6 +7937,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
         });
       }
+      // R163: a bundle whose whole share a Stripe-dashboard refund already covered has nothing left to
+      // cancel — the component settlement would attempt a second refund. Checked only for the
+      // booking's own traveler, so a stranger still gets the recorder's one 404 below (LD 40).
+      {
+        const own = await storage.getServiceBooking(req.params.id);
+        if (own && own.travelerId === userId) {
+          const { isFullyRefundedOutOfBand, REFUNDED_OUT_OF_BAND_REFUSAL } = await import(
+            "./services/out-of-band-refund.service"
+          );
+          if (await isFullyRefundedOutOfBand(own.id)) {
+            return res.status(409).json({ ...REFUNDED_OUT_OF_BAND_REFUSAL });
+          }
+        }
+      }
       const { recordBundleComponentCancellation } = await import("./services/booking-completion.service");
       const outcome = await recordBundleComponentCancellation({
         bookingId: req.params.id,
@@ -8046,7 +8077,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         console.error("Failed to create visa status notification:", notifErr);
       }
 
-      res.json(updated);
+      res.json(updated ? sanitizeBookingForExpert(updated, (await getDbRole(req)) ?? 'provider', userId) : updated);
     } catch (err) {
       console.error("Visa status update error:", err);
       res.status(500).json({ message: "Failed to update visa status" });
@@ -8111,6 +8142,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
+      // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): a booking whose share a Stripe-
+      // dashboard refund already covered reads "Refunded", whatever its row status. Refuse FIRST —
+      // before the cancellable check (so the traveler is told the true reason) and before the ledger
+      // reversal and the Stripe call below, which would be refused by Stripe after the ledger moved.
+      {
+        const { isFullyRefundedOutOfBand, REFUNDED_OUT_OF_BAND_REFUSAL } = await import(
+          "./services/out-of-band-refund.service"
+        );
+        if (await isFullyRefundedOutOfBand(booking.id)) {
+          return res.status(409).json({ ...REFUNDED_OUT_OF_BAND_REFUSAL });
+        }
+      }
       if (!isBookingCancellable(booking.status)) {
         return res.status(400).json({ message: "Cannot cancel this booking" });
       }
@@ -8143,10 +8186,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           const { checkServiceBookingRefundPreflight, lostChargebackRefusalBody } = await import(
             "./services/lost-chargeback-guard.service"
           );
-          const guard = await checkServiceBookingRefundPreflight(req.params.id, {
-            amountOverride: quote.refundAmount,
-            feeRefundPercent: quote.refundPercent,
-          });
+          // Ledger `2026-09-27-cancel-preview-equals-refund`: the SAME options the refund below takes.
+          const { refundOptionsForQuote } = await import("./services/cancellation-policy.service");
+          const guard = await checkServiceBookingRefundPreflight(req.params.id, refundOptionsForQuote(quote));
           if (!guard.allowed) return res.status(409).json(lostChargebackRefusalBody(guard));
         }
         const refundFraction = quote.refundPercent / 100;
@@ -8160,12 +8202,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           req.params.id,
           reason || "requested_by_customer",
           // Ruling 2026-09-02-traveler-fee-refundability: a TRAVELER cancellation refunds the
-          // traveler service fee at the SAME cancellation-tier % as the booking.
-          { amountOverride: quote.refundAmount, feeRefundPercent: quote.refundPercent },
+          // traveler service fee at the SAME cancellation-tier % as the booking. The booking share
+          // and the fee percent come from the quote the traveler was SHOWN (ledger
+          // `2026-09-27-cancel-preview-equals-refund`), so Stripe is asked for `quote.refundAmount`.
+          (await import("./services/cancellation-policy.service")).refundOptionsForQuote(quote),
         );
 
-        // Refund succeeded (status now 'refunded') — stamp the cancellation audit fields
-        // without touching the terminal status.
+        // Refund issued (status now 'refunded' — set by refundServiceBooking only after Stripe
+        // returned the refund, R163 amendment) — stamp the cancellation audit fields without
+        // touching the terminal status.
         const { db } = await import("./db");
         const { sql } = await import("drizzle-orm");
         await db.execute(sql`

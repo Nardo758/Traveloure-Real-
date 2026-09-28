@@ -22,6 +22,7 @@ import { db } from "../db";
 import { users, providerServices, readyMadeTrips } from "@shared/schema";
 import { transformDevHtml } from "../vite-dev-html";
 import { injectIntoHead } from "../utils/html-head";
+import { PUBLISHED_HELP_ARTICLE_SLUGS, helpArticlePath } from "@shared/help-article-slugs";
 
 const router = Router();
 
@@ -42,6 +43,12 @@ const STATIC_ROUTES = [
   "/about",
   "/contact",
   "/visa-help",
+  "/press",
+  "/careers",
+  // Lane B: the Help center and each PUBLISHED article — a held article (an unshipped feature)
+  // is never in the sitemap (shared/help-article-slugs.ts).
+  "/help",
+  ...PUBLISHED_HELP_ARTICLE_SLUGS.map(helpArticlePath),
 ];
 
 const escXml = (s: string) =>
@@ -218,6 +225,18 @@ async function serveWithHead(
     return next(); // fall through to the plain SPA shell on any error
   }
 }
+
+// ─── /blog: noindex while it is an empty state ──────────────────────────────
+// The blog has no post store yet, so /blog is ALWAYS its empty state, and an empty
+// page must not be indexed (footer lane, Sep 2026 — the route stays so inbound links
+// resolve; the footer hides the link until five posts are published). The header
+// works for crawlers that never run the SPA; `BlogPage` also sets a robots meta tag.
+// When a post store exists this must become conditional on it — never a blanket
+// noindex over published, reviewed posts.
+router.get("/blog", (_req, res, next) => {
+  res.setHeader("X-Robots-Tag", "noindex, follow");
+  next();
+});
 
 for (const [routePath, meta] of Object.entries(ROUTE_META)) {
   router.get(routePath, (req, res, next) => serveWithHead(req, res, next, meta, routePath));

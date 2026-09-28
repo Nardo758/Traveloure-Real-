@@ -1,3 +1,4 @@
+import { helpArticlePath } from "@shared/help-article-slugs";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { canRemoveBeforePayment, readCartIntentParam, resolveCartIntent } from "@/lib/cart-intent";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -630,7 +631,12 @@ function TravelerFeePreviewRow({
     <div className="flex justify-between gap-2" data-testid={testId}>
       <span className="text-muted-foreground">
         {display.label}
-        <span className="block text-[11px] text-muted-foreground/80">{display.note}</span>
+        <span className="block text-[11px] text-muted-foreground/80">
+          {display.note}{" "}
+          <Link href={helpArticlePath("trip-pass-and-fees")} className="underline underline-offset-2" data-testid={`${testId}-help`}>
+            About this fee
+          </Link>
+        </span>
       </span>
       {display.kind === "charged" ? (
         <span data-testid={`${testId}-amount`}>{formatPrice(display.amount)}</span>
@@ -2954,6 +2960,10 @@ export default function CartPage() {
                         <StripeCheckout
                           paymentIntent={checkoutPaymentIntent}
                           bookingIds={checkoutBookingIds}
+                          // R162 (ledger `2026-09-27-failed-is-final`): a declined card marks these
+                          // bookings `failed`, which is final — the form closes rather than
+                          // re-confirming the same PaymentIntent; "Try again" starts a new one.
+                          singleAttempt
                           onSuccess={async (paymentIntentId) => {
                             // #213 (legacy-reconciliation lane): the CLIENT POLLING FALLBACK, which
                             // this flow never had. The webhook is the authoritative confirmation, but
@@ -2986,7 +2996,9 @@ export default function CartPage() {
                             setLocation(bookingConfirmationPath(checkoutBookingIds));
                           }}
                           onError={(error) => {
-                            toast({ variant: "destructive", title: "Payment failed", description: error });
+                            // The form itself says whether this attempt is closed (a real decline)
+                            // or still open (an incomplete card field) — the toast only names the error.
+                            toast({ variant: "destructive", title: "Payment didn't go through", description: error });
                           }}
                           onCancel={() => {
                             // FP-4: this used to jump to the "itinerary" step, which is only ever

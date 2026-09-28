@@ -17,6 +17,7 @@ import type { PlanCardChange, PlanCardDay } from "./plancard-types";
 import type { TripPlanBooking } from "@shared/trip-plan";
 import { Link } from "wouter";
 import { readPurchaseStatus } from "@/lib/purchase-status";
+import { itemBookingLabelStatus } from "@shared/booking-visibility";
 
 interface CollapsedSectionsProps {
   tripId: string;
@@ -225,7 +226,8 @@ export function CollapsedSections({
               </p>
             )}
             {purchaseRows.map((b) => {
-              const reading = readPurchaseStatus(b.status);
+              // R163: a dashboard refund that covered the whole share reads "refunded" (the server's answer).
+              const reading = readPurchaseStatus(itemBookingLabelStatus(b));
               return (
                 <div
                   key={b.id}

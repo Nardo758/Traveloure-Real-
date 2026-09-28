@@ -140,7 +140,8 @@ describe("T5 the countdown needs the plan's zone (LD 30)", () => {
 describe("T6 prepared is not booked (LD 44 (e))", () => {
   it("the Purchases drawer reads the one purchase-status reading", () => {
     const sections = code("components/plancard/CollapsedSections.tsx");
-    assert.match(sections, /readPurchaseStatus\(b\.status\)/);
+    // R163: the drawer reads the ONE label-status reading (a dashboard refund covering the share reads refunded).
+    assert.match(sections, /readPurchaseStatus\(itemBookingLabelStatus\(b\)\)/);
     assert.match(sections, /from\s+"@\/lib\/purchase-status"/);
   });
   it("an answered-but-empty booking list says so — never a fabricated row (§13)", () => {

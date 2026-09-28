@@ -301,6 +301,29 @@ export function itemBookingStatusEntry(status: BookingStatusLike): ItemBookingSt
   return ITEM_BOOKING_DEFAULT_ENTRY;
 }
 
+/**
+ * R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`; decision-maker ruled Sep 27, 2026).
+ * A refund issued from the STRIPE DASHBOARD changes no `service_bookings.status` (#1288 only stamps
+ * `booking_details.outOfBandRefund`), so a booking whose money went back to the traveler still said
+ * `confirmed`. The SERVER decides whether that stamp covers the booking's WHOLE share — the refund
+ * reconciliation rule `outOfBandRefundCoversShare` (server/services/booking-charge-share.ts) — and
+ * says so on the DTO as `refundedOutOfBand: true`. This is the ONE reading of that answer: such a
+ * booking is read through the vocabulary as `refunded`. The client re-derives no money fact; a
+ * partial dashboard refund never sets the flag, so it keeps reading as before.
+ *
+ * `status` itself stays the row's own (§13 — nothing rewrote it); this is the status a LABEL reads.
+ */
+export interface ItemBookingStatusFacts {
+  status?: string | null;
+  refundedOutOfBand?: boolean | null;
+}
+
+export function itemBookingLabelStatus(b: ItemBookingStatusFacts | null | undefined): string | null {
+  if (!b) return null;
+  if (b.refundedOutOfBand === true) return "refunded";
+  return typeof b.status === "string" ? b.status : null;
+}
+
 /** The traveler-facing words. Written HERE and nowhere else; "Booked" belongs to `booked` alone. */
 export const ITEM_BOOKING_LABELS: Readonly<Record<ItemBookingLabelKey, string>> = {
   booked: "Booked",

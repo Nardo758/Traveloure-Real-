@@ -141,6 +141,47 @@ export function sanitizeUsersForRole<T extends Record<string, any>>(
 }
 
 /**
+ * FU-R167-1 (R165, G3; ledger `2026-09-27-dispute-hardening`) — the keys inside
+ * `service_bookings.booking_details` an EXPERT or PROVIDER may see. An ALLOWLIST: every other key is
+ * dropped, so a money, refund, Stripe or admin key added to `booking_details` later is hidden by
+ * default instead of leaking by default. The named denylist it replaces (eight keys) had already
+ * missed three live ones — `lostChargebacks` (charge, PaymentIntent and event ids),
+ * `chargebackReconciliation` (an admin id) and `balancePaidByUserId` (a user id) — plus the fee,
+ * surcharge and rail snapshots (`travelerCharge`, `travelerServiceFee`, `railsAttribution`, …).
+ *
+ * WHAT IS ON IT, AND WHY: the OPERATIONAL answers about what was booked and when — the date, the
+ * traveler's note, the unit count, the pickup point, a stay's property/room/nights, a transport's
+ * mode, party and requests. An inventory of the expert and provider consoles (Sep 27, 2026) found
+ * no earner screen reading any other `booking_details` key; every other earner use of the column
+ * is SERVER-side against the raw row (completion, calendar, components, Q&A sessions), which this
+ * projection does not touch. Adding a key here is a decision that an earner should see it.
+ */
+export const EARNER_VISIBLE_BOOKING_DETAIL_KEYS = [
+  'scheduledDate',
+  'notes',
+  'quantity',
+  'pickupLocation',
+  'checkIn',
+  'checkOut',
+  'nights',
+  'propertyName',
+  'roomName',
+  'travelers',
+  'specialRequests',
+  'bookingType',
+  'transportMode',
+] as const;
+
+/** Project a `booking_details` object down to the earner allowlist. */
+export function earnerBookingDetails(details: Record<string, unknown>): Record<string, unknown> {
+  const kept: Record<string, unknown> = {};
+  for (const key of EARNER_VISIBLE_BOOKING_DETAIL_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(details, key)) kept[key] = details[key];
+  }
+  return kept;
+}
+
+/**
  * Sanitize booking data for experts - they only need relevant trip info
  */
 export function sanitizeBookingForExpert<T extends Record<string, any>>(
@@ -181,6 +222,16 @@ export function sanitizeBookingForExpert<T extends Record<string, any>>(
   for (const field of sensitiveFields) {
     if (field in sanitized) {
       delete (sanitized as any)[field];
+    }
+  }
+
+  // R163 amendment + FU-R167-1: the strip above covers the COLUMNS; the traveler's refund, payment
+  // and fee records live INSIDE `booking_details`. An expert or provider sees only the operational
+  // keys on `EARNER_VISIBLE_BOOKING_DETAIL_KEYS` — everything else is dropped.
+  for (const detailsField of ['bookingDetails', 'booking_details']) {
+    const details = (sanitized as any)[detailsField];
+    if (details && typeof details === 'object' && !Array.isArray(details)) {
+      (sanitized as any)[detailsField] = earnerBookingDetails(details);
     }
   }
 

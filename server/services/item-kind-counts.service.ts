@@ -21,12 +21,15 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, serviceBookings } from "@shared/schema";
-import { itemBookingStatusEntry } from "@shared/booking-visibility";
+import { itemBookingLabelStatus, itemBookingStatusEntry } from "@shared/booking-visibility";
+import { outOfBandFullyRefundedBookingIds } from "./out-of-band-refund.service";
 import { itemKind, type ItemKind, type ItemKindInput } from "@shared/item-kind";
 
 export interface LinkedBookingKindRow extends ItemKindInput {
   /** `service_bookings.status` of the row `booking_id` names; NULL/absent when none is joined. */
   bookingStatus?: string | null;
+  /** R163: the server's refund reconciliation answer — a dashboard refund covered the whole share. */
+  refundedOutOfBand?: boolean | null;
 }
 
 /**
@@ -38,7 +41,12 @@ export function itemKindForLinkedBooking(row: LinkedBookingKindRow): ItemKind {
   // R154 (ledger `2026-09-27-booking-status-vocabulary`): "is this a booking the item holds?" is
   // the ONE vocabulary `linkedBookingFields` reads — closed, in-flight, failed and expired payments
   // are not booked; `disputed` still is. An absent status (no row joined) keeps the id.
-  const status = row.bookingStatus ?? null;
+  // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): the status a label reads, so a
+  // dashboard refund that covered the booking's whole share counts as refunded here too.
+  const status =
+    row.bookingStatus == null && row.refundedOutOfBand !== true
+      ? null
+      : itemBookingLabelStatus({ status: row.bookingStatus ?? null, refundedOutOfBand: row.refundedOutOfBand });
   const heldBooking = status === null || itemBookingStatusEntry(status).countsAsBooked;
   const bookingId = row.bookingId && !heldBooking ? null : row.bookingId;
   return itemKind({
@@ -60,9 +68,13 @@ export async function countItemKindsForTrip(tripId: string): Promise<Record<stri
     .from(itineraryItems)
     .leftJoin(serviceBookings, eq(serviceBookings.id, itineraryItems.bookingId))
     .where(eq(itineraryItems.tripId, tripId));
+  const refundedOutOfBand = await outOfBandFullyRefundedBookingIds(rows.map((r) => r.bookingId));
   const byKind: Record<string, number> = {};
   for (const row of rows) {
-    const kind = itemKindForLinkedBooking(row);
+    const kind = itemKindForLinkedBooking({
+      ...row,
+      refundedOutOfBand: row.bookingId ? refundedOutOfBand.has(row.bookingId) : false,
+    });
     byKind[kind] = (byKind[kind] ?? 0) + 1;
   }
   return byKind;

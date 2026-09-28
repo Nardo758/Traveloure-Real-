@@ -287,13 +287,13 @@ export default function ContactPage() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <a
-                    href="/faq"
+                    href="/help"
                     className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors"
                     data-testid="link-faq"
                   >
                     <HelpCircle className="w-5 h-5 text-primary" />
                     <div>
-                      <div className="font-medium text-foreground">FAQ</div>
+                      <div className="font-medium text-foreground">Help center</div>
                       <div className="text-sm text-muted-foreground">
                         Find quick answers
                       </div>

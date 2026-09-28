@@ -534,6 +534,11 @@ jobs:
       # exist in every locale on disk.
       - name: Nav i18n key pin
         run: npx tsx --test client/src/lib/__tests__/nav-i18n-keys.test.ts
+      # Footer lane (Sep 2026): the footer is shown to every visitor, and it carried `/chat` — a
+      # ProtectedRoute — so a guest was bounced to "/". The footer-links smoke only refuses the
+      # 404 page. This pin refuses a footer href whose App.tsx route is ProtectedRoute/requiredRole.
+      - name: Footer guest-route pin
+        run: npx tsx --test client/src/lib/__tests__/footer-guest-routes.test.ts
       # F-2: ONE trip-target resolver for the /services grid and the service-detail page — the
       # "?tripId= first, then TripContext, else none" order, plus the detail href that carries the
       # handoff forward. A second copy of that order is how the two surfaces drifted apart.
@@ -609,6 +614,10 @@ jobs:
       # membership test to read `bookingModeEnum`; P1-P6 pin the distinction.
       - name: Booking-mode provenance pin
         run: npx tsx --test shared/__tests__/booking-mode-provenance.test.ts
+      # 2026-09-27-cancel-preview-equals-refund: the Terms version a user is RECORDED as accepting is
+      # the version the Terms page DISPLAYS — both read shared/legal-versions.ts, never a literal.
+      - name: Terms version record == displayed pin
+        run: npx tsx --test shared/__tests__/legal-versions.test.ts
       # 2026-09-11-offering-commerce-resolver (lane OC-A2): the offering commerce contract is the
       # FIFTH classifier over `provider_services`, and it has no production caller in its own lane —
       # so nothing but this suite can say it is wrong, while OC-A4 refuses activations on it, OC-B1
@@ -3063,6 +3072,16 @@ jobs:
         with:
           node-version: '20'
       # 
+      # ledger 2026-09-27-e2e-helpers-confirm-effect: an e2e helper returns only after CONFIRMING
+      # its effect; a fixed wait or one-shot count in a helper module must say why (settle-ok /
+      # count-ok). The job name above is a required context and is deliberately not renamed.
+      - name: e2e-helper-waits-guard · e2e helper wait/count predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-e2e-helper-waits.cjs --self-test
+      - name: e2e-helper-waits-guard · e2e helpers confirm their effect (no silent waits or counts)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-e2e-helper-waits.cjs
+      # 
       - name: item-removed-logging-guard · Item-removed guard predicate self-test
         if: ${{ !cancelled() }}
         run: node scripts/check-item-removed-logging.cjs --self-test
@@ -3183,6 +3202,17 @@ jobs:
       - name: roles-needed-reachability-guard · Roles-needed reachability guard
         if: ${{ !cancelled() }}
         run: node scripts/check-roles-needed-reachability.cjs
+      # R146 / Trip Slip product map step 1 (docs/planning/recommendation-convergence-brief.md): the
+      # generated §J table and its JSON must match the experience_types seed + the 035 matrix. A seed
+      # change that moves an occasion, a switch or a role fails here until the spec is regenerated in
+      # the SAME PR (`node docs/planning/tools/trip-slip-spec.mjs`). Also protects help article 1's
+      # occasion count (shared/help-articles.ts reads the JSON; ledger
+      # 2026-09-27-help-center-and-company-pages). Node built-ins only. NEGATIVE SPACE (§18d): it
+      # compares the spec to the two sources it parses — it does not check that the seed has run
+      # against any database. The job's check name is a required context, so it is not renamed.
+      - name: trip-slip-spec-check · §J spec matches the experience_types seed
+        if: ${{ !cancelled() }}
+        run: node docs/planning/tools/trip-slip-spec.mjs --check
       # 
       - name: earn-planner-keys-guard · Earn-planner-keys guard predicate self-test
         if: ${{ !cancelled() }}

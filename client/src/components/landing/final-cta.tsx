@@ -2,16 +2,21 @@
  * final-cta.tsx — "Ready when you are" (landing-build Phase 2.9).
  * Visual of record: docs/design/landing-earn-mock.html "FINAL".
  *
- * Coral button 3 of the ruled 3. "Plan my trip" calls the SAME preserved handler chain
- * as the hero (setPlanningOpen(true) → EnhancedPlanningModal) via the onPlanTrip prop.
+ * Coral button 3 of the ruled 3. "Start my plan" calls the SAME opener as the hero
+ * (`usePlanning().open()` — the one planning modal, occasion step first) via the onPlanTrip
+ * prop. The three CTA labels are the footer lane's (Sep 2026): Start my plan (the modal) /
+ * Meet the locals (/experts) / See pricing (/pricing, a text link). They are translated from
+ * the `nav` namespace's `closing.*` keys, beside the footer's own.
  */
 import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
 import { Sparkles } from "lucide-react";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 export function FinalCta({ onPlanTrip }: { onPlanTrip: () => void }) {
+  const { t } = useTranslation("nav");
   return (
     <section
       className="w-full px-4"
@@ -47,7 +52,7 @@ export function FinalCta({ onPlanTrip }: { onPlanTrip: () => void }) {
             data-testid="button-final-plan-trip"
           >
             <Sparkles className="h-4 w-4" />
-            Plan my trip
+            {t("closing.startMyPlan", "Start my plan")}
           </button>
           <Link
             href="/experts"
@@ -55,15 +60,15 @@ export function FinalCta({ onPlanTrip }: { onPlanTrip: () => void }) {
             style={{ borderColor: "var(--earn-border, #E4E4DE)", color: "var(--earn-ink)", background: "#fff" }}
             data-testid="button-final-browse-experts"
           >
-            Browse local experts
+            {t("closing.meetTheLocals", "Meet the locals")}
           </Link>
           <Link
             href="/pricing"
-            className="inline-flex items-center rounded-[8px] px-3.5 py-2 text-[13px] font-semibold"
+            className="inline-flex items-center rounded-[8px] px-3.5 py-2 text-[13px] font-semibold underline-offset-2 hover:underline"
             style={{ color: "var(--earn-ink)" }}
             data-testid="button-final-see-pricing"
           >
-            See pricing
+            {t("closing.seePricing", "See pricing")}
           </Link>
         </div>
       </div>
