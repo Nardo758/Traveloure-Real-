@@ -14,3 +14,10 @@ export const BLOG_DRAFT_MODEL = process.env.BLOG_DRAFT_MODEL || "claude-sonnet-5
 export const BLOG_DRAFT_MAX_TOKENS = positiveInt(process.env.BLOG_DRAFT_MAX_TOKENS, 4096);
 /** How many web results research keeps for one draft. */
 export const BLOG_RESEARCH_MAX_SOURCES = positiveInt(process.env.BLOG_RESEARCH_MAX_SOURCES, 8);
+
+/**
+ * Ranking (ruling 6, the featured-sort null-until-N pattern). A post has NO quality score until it
+ * has been seen this many times; below it the index orders it by recency alone, never by a
+ * reaction count taken over too few readers to mean anything (§13).
+ */
+export const BLOG_RANK_MIN_IMPRESSIONS = positiveInt(process.env.BLOG_RANK_MIN_IMPRESSIONS, 50);

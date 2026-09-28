@@ -171,5 +171,8 @@ export function contextLabel(
   // of thing the thread is about; never a fabricated plan name, and never the trip id, which is
   // an internal key and not something to show a person.
   if (kind === "advisor") return name ? `Plan: ${name}` : "A plan";
+  // Lane C ruling 7 — "Ask the local" on a blog post: the post's own title, or the KIND of thing
+  // (a withdrawn post keeps its row, but a title that did not resolve is never invented — §13).
+  if (kind === "blog_post") return name ? `Post: ${name}` : "A blog post";
   return name ? `Booking ${name}` : "A booking";
 }

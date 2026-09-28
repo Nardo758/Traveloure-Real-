@@ -12,10 +12,10 @@
  * It is a plain module rather than part of the hook so it keeps its proof with no React.
  */
 
-/** One context row as the server resolved it. `id` is a handle / service / booking / trip id —
+/** One context row as the server resolved it. `id` is a handle / service / booking / trip / blog-post id —
  *  never a `users.id` (Locked Decision 40; `check-public-user-id`). It is a key, never printed. */
 export interface ConversationThreadContext {
-  kind: "storefront" | "service" | "booking" | "advisor";
+  kind: "storefront" | "service" | "booking" | "advisor" | "blog_post";
   id: string;
   label: string;
 }

@@ -2194,7 +2194,10 @@ export const userAndExpertChats = pgTable("user_and_expert_chats", {
 //
 // Table + UNIQUE + index are declared HERE per the deploy-push durability rule: an object this file
 // does not declare is dropped by the publish-time push and never recreated.
-export const conversationContextKindEnum = ["storefront", "service", "booking", "advisor"] as const;
+// Lane C ruling 7 (ledger `2026-09-27-blog-reactions-ask`) adds `blog_post` — "Ask the local" on a
+// published expert post, `contextId` = the post's `blog_posts.id`. Same posture: a code change, no
+// migration, no CHECK.
+export const conversationContextKindEnum = ["storefront", "service", "booking", "advisor", "blog_post"] as const;
 export type ConversationContextKind = (typeof conversationContextKindEnum)[number];
 
 export const conversationContexts = pgTable("conversation_contexts", {

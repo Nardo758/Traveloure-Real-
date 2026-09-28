@@ -4,13 +4,13 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 0/616**; remaining: **616**.
-- Admin: **0/158**; payments: **0/31**; user-data: **0/211**; other: **0/216**.
+- **Tested: 0/618**; remaining: **618**.
+- Admin: **0/158**; payments: **0/31**; user-data: **0/211**; other: **0/218**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `e8944addab46b2bdb4be72d164dd285720ea7533bb97fdf3783218839ec30478`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `4e138ae82d71dd79ccaa13304237bcd27a73d2d052472325ca61a85bc5acd1c0`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -46,6 +46,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | DELETE /api/admin/users/:id | admin | admin-role | server/routes/admin.routes.ts:5899 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/anchors/:id | other | resource-owner | server/routes/trips.routes.ts:1707 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/auth/account | user-data | session-self | server/replit_integrations/auth/routes.ts:203 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/blog/posts/:slug/reactions/:kind | other | session-self | server/routes/blog.routes.ts:174 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/cart | user-data | session-self | server/routes.ts:9685 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/cart/:id | user-data | session-self | server/routes.ts:9667 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/contracts/:id | user-data | session-self | server/routes.ts:12638 | Not run: evidence manifest SHA-256 is stale. |
@@ -99,7 +100,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | DELETE /api/user-experiences/:id | other | session-self | server/routes/content.routes.ts:1931 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/admin/affiliate/partners/:id | admin | admin-role | server/routes/content.routes.ts:8811 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/affiliate/reconciliation/:earningId | admin | admin-role | server/routes/admin.routes.ts:4187 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/blog/posts/:id | admin | admin-role | server/routes/blog.routes.ts:104 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/blog/posts/:id | admin | admin-role | server/routes/blog.routes.ts:115 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/bookings/auto-cancel/config | admin | admin-role | server/routes/admin.routes.ts:2106 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/categories/:id | admin | admin-role | server/routes/admin.routes.ts:3599 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/contact-submissions/:id | admin | admin-role | server/routes/admin.routes.ts:2793 | Not run: evidence manifest SHA-256 is stale. |
@@ -215,11 +216,11 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/admin/affiliate/partners/:id/approve | admin | admin-role | server/routes/admin.routes.ts:9209 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/affiliate/partners/:id/reject | admin | admin-role | server/routes/admin.routes.ts:9220 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/affiliate/partners/:id/scrape | admin | admin-role | server/routes/content.routes.ts:8842 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/blog/drafts | admin | admin-role | server/routes/blog.routes.ts:98 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/blog/posts | admin | admin-role | server/routes/blog.routes.ts:83 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/blog/posts/:id/publish | admin | admin-role | server/routes/blog.routes.ts:114 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/blog/posts/:id/submit | admin | admin-role | server/routes/blog.routes.ts:110 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/blog/posts/:id/withdraw | admin | admin-role | server/routes/blog.routes.ts:118 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/blog/drafts | admin | admin-role | server/routes/blog.routes.ts:109 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/blog/posts | admin | admin-role | server/routes/blog.routes.ts:94 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/blog/posts/:id/publish | admin | admin-role | server/routes/blog.routes.ts:125 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/blog/posts/:id/submit | admin | admin-role | server/routes/blog.routes.ts:121 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/blog/posts/:id/withdraw | admin | admin-role | server/routes/blog.routes.ts:129 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/bookings/:bookingId/exception-refund | admin | admin-role | server/routes/admin.routes.ts:712 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/bookings/:bookingId/lost-chargeback/reconcile | admin | admin-role | server/routes/admin.routes.ts:778 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/bookings/:bookingId/out-of-band-refund/clear | admin | admin-role | server/routes/admin.routes.ts:633 | Not run: evidence manifest SHA-256 is stale. |
@@ -314,6 +315,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/auth/reset-password | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:376 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/auth/send-verification | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:452 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/auth/verify-email | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:490 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/blog/posts/:slug/reactions | other | session-self | server/routes/blog.routes.ts:168 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/bookings | user-data | session-self | server/routes.ts:7159 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/bookings/:id/accept-deliverable | user-data | session-self | server/routes/bookings.ts:951 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/bookings/:id/cancel | user-data | session-self | server/routes.ts:8138 | Not run: evidence manifest SHA-256 is stale. |
@@ -403,7 +405,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/expert/ai-tasks/:taskId/reject | user-data | session-self | server/routes.ts:12104 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/ai-tasks/delegate | user-data | session-self | server/routes.ts:11972 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/assignments/:assignmentId/accept | user-data | session-self | server/routes/booking-actions.ts:1331 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/blog/posts/:id/sign | user-data | session-self | server/routes/blog.routes.ts:130 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/blog/posts/:id/sign | user-data | session-self | server/routes/blog.routes.ts:141 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/expert/bookings/:id/complete | user-data | session-self | server/routes.ts:7797 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/bookings/:id/component-failed | user-data | session-self | server/routes.ts:7892 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/expert/knowledge-nuggets | user-data | session-self | server/routes/expert-console.routes.ts:640 | Not run: evidence manifest SHA-256 is stale. |
