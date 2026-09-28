@@ -35,7 +35,10 @@ export type ContactAddress =
   | { handle: string }
   | { serviceId: string }
   | { bookingId: string }
-  | { tripId: string };
+  | { tripId: string }
+  // Lane C ruling 7 — "Ask the local" on a published blog post; the server resolves the byline
+  // expert. Built directly by the post page, never by `resolveContactAddress` (it holds no slug).
+  | { blogPostSlug: string };
 
 /** What a calling surface holds. Every field optional; exactly one must be non-empty. */
 export interface ContactAddressInput {
