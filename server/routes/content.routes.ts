@@ -46,6 +46,7 @@ import {
 } from "../services/booking-agent-claim.service";
 import { z } from "zod";
 import { trackFunnelEvent } from "../utils/funnelTracker";
+import { FREE_DRAFT_RUN_EVENT, SLIP_FUNNEL_STAGE, freeDraftRunEventData } from "../services/free-draft-event";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
@@ -4908,6 +4909,14 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         // itself carries the second, in-transaction copy of the same check.
         const draftEligibility = await resolveAiDraftEligibility(tripIdParam);
         if (!draftEligibility.eligible) {
+          // E6 (slip-funnel-events.md §3.6): one row per refused request; no model call was made.
+          void trackFunnelEvent({
+            userId,
+            tripId: tripIdParam,
+            eventType: FREE_DRAFT_RUN_EVENT,
+            funnelStage: SLIP_FUNNEL_STAGE,
+            eventData: freeDraftRunEventData({ outcome: "refused_not_empty" }),
+          });
           return res.status(AI_DRAFT_REFUSAL_STATUS).json(aiDraftRefusalBody(draftEligibility));
         }
 
@@ -4978,6 +4987,15 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       } catch (aiError: any) {
         // Real cause (provider name, request id, key text) stays server-side only.
         console.error("AI itinerary generation failed:", aiError);
+        if (resolvedTripId) {
+          void trackFunnelEvent({
+            userId,
+            tripId: resolvedTripId,
+            eventType: FREE_DRAFT_RUN_EVENT,
+            funnelStage: SLIP_FUNNEL_STAGE,
+            eventData: freeDraftRunEventData({ outcome: "provider_failed" }),
+          });
+        }
         return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
       }
 
@@ -5037,6 +5055,17 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       resolvedTripId = snapshot.trip.id;
       const savedItinerary = snapshot.savedItinerary;
       const insertedItems = snapshot.insertedItems;
+      // E6 (slip-funnel-events.md §3.6): written AFTER the snapshot commits, for a plan-bound draft
+      // only (a draft with no plan has no slip to count against). Never blocks the response (§15b).
+      if (resolvedTripId) {
+        void trackFunnelEvent({
+          userId,
+          tripId: resolvedTripId,
+          eventType: FREE_DRAFT_RUN_EVENT,
+          funnelStage: SLIP_FUNNEL_STAGE,
+          eventData: freeDraftRunEventData({ outcome: "drafted", itemsWritten: insertedItems.length }),
+        });
+      }
       const comparison = snapshot.comparison;
 
       // LD 41 (c) / ledger `2026-09-05-draft-cost-tracking-and-tier`: THE PRIMARY GENERATE PATH
