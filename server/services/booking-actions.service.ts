@@ -374,10 +374,25 @@ export async function upsertTripShareToken(
 }
 
 export async function getCanonicalTripShareToken(tripId: string): Promise<string | null> {
+  return (await getCanonicalTripShare(tripId))?.shareToken ?? null;
+}
+
+/**
+ * The canonical share row for a trip — its NON-SECRET row id beside the token, read in ONE
+ * statement so the two can never name different rows. The id is what funnel events record; the
+ * token is a live read grant and never leaves the share rail (ledger
+ * `2026-09-27-funnel-share-token-purged`).
+ */
+export async function getCanonicalTripShare(
+  tripId: string,
+): Promise<{ id: string; shareToken: string } | null> {
   const result = await db.execute(sql`
-    SELECT share_token FROM shared_trips WHERE trip_id = ${tripId} LIMIT 1
+    SELECT id, share_token FROM shared_trips WHERE trip_id = ${tripId} LIMIT 1
   `);
-  return String(result.rows?.[0]?.share_token ?? "") || null;
+  const row = result.rows?.[0] as { id?: unknown; share_token?: unknown } | undefined;
+  const id = String(row?.id ?? "");
+  const shareToken = String(row?.share_token ?? "");
+  return id && shareToken ? { id, shareToken } : null;
 }
 
 export async function getTripByShareToken(token: string): Promise<{ row: any; sharedTripId: string } | null> {

@@ -101,6 +101,14 @@ import { addButtonLabel, decideAddTarget, GUEST_CART_SAVED_NOTE, listingPlanItem
 import { PlanPickerDialog, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
 import type { LucideIcon } from "lucide-react";
+import {
+  pageContainerClass,
+  PageTitle,
+  SectionTitle,
+  HEADING_STYLE,
+  PAGE_ACTION,
+  PAGE_LINK,
+} from "@/components/company/company-page";
 
 // Geist Mono — labels & numbers per the earn grammar (2026-08-25-marketplace-earn-grammar).
 // Applied inline the same way Fraunces is (runtime theme fonts, loaded in index.html).
@@ -219,15 +227,15 @@ function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) 
       className="h-full flex flex-col bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-shadow"
       data-testid={`rm-shelf-card-${l.id}`}
     >
-      {/* Photo — real cover or honest gradient placeholder (§13); opens the detail page. */}
+      {/* Photo — real cover or an honest flat token placeholder (§13); opens the detail page. */}
       <Link href={`/ready-made/${l.id}`} className="block cursor-pointer">
-        <div className="relative h-[140px] bg-gradient-to-br from-[var(--earn-chip)] to-[color:var(--earn-border)]">
+        <div className="relative h-[140px] bg-[color:var(--earn-chip)]">
           {l.heroImageUrl && (
             <img src={l.heroImageUrl} alt={l.title} className="w-full h-full object-cover" />
           )}
-          {/* E2 (cosmetic-public-surfaces dispatch): `bg-[var(--earn-ink)]/70` compiled to no
+          {/* E2 (cosmetic-public-surfaces dispatch): `bg-[var(--earn-ink)]` with a /70 opacity modifier compiled to no
               CSS rule at all — verified in the built bundle. The dispatch's suggested
-              `bg-[color:var(--earn-ink)]/70` was tried next and ALSO produced no rule (verified
+              `bg-[color:var(--earn-ink)]` form with the same /70 modifier was tried next and ALSO produced no rule (verified
               the same way, on this codebase's existing `bg-[color:var(--x)]/NN` usages
               elsewhere — none of them emit an opacity-bearing rule either: `--earn-ink` is a
               bare hex literal, not the space-separated RGB channel triple Tailwind's opacity
@@ -240,13 +248,18 @@ function ReadyMadeThemeCard({ listing: l }: { listing: ReadyMadeShelfListing }) 
           >
             {l.market}
           </span>
-          <span
-            className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md text-[12px] font-semibold bg-[var(--earn-card)] text-[color:var(--earn-ink)] border border-[color:var(--earn-border)]"
-            style={{ fontFamily: EARN_MONO }}
-          >
-            {price === null ? "—" : `$${price.toFixed(0)}`}
-            {price !== null && l.pricingMode === "per_traveler" ? "/traveler" : ""}
-          </span>
+          {/* No zero, no placeholder where the source has no value (footer-pages ruling, Sep 28,
+              2026): the price badge renders only for a finite price above 0, else it is omitted.
+              The "Pricing pending" button below still says why the listing cannot be bought. */}
+          {price !== null && Number.isFinite(price) && price > 0 && (
+            <span
+              className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md text-[12px] font-semibold bg-[var(--earn-card)] text-[color:var(--earn-ink)] border border-[color:var(--earn-border)]"
+              style={{ fontFamily: EARN_MONO }}
+            >
+              {`$${price.toFixed(0)}`}
+              {l.pricingMode === "per_traveler" ? "/traveler" : ""}
+            </span>
+          )}
         </div>
       </Link>
 
@@ -445,7 +458,10 @@ function ServiceCard({
   const messageOnly = offeringActionIsMessageOnly(service.buyAction);
   const actionHref = actionLabel ? buildStorefrontActionHref(detailHref, actionLabel, null) : detailHref;
   const rating = parseFloat(service.averageRating || "0") || 0;
-  const price = parseFloat(service.price || "0") || 0;
+  // No zero where the source has no value (footer-pages ruling, Sep 28, 2026): a missing or
+  // non-positive price is NOT rendered as "$0" — the price cell is omitted instead.
+  const priceValue = service.price != null && service.price !== "" ? parseFloat(service.price) : NaN;
+  const price = Number.isFinite(priceValue) && priceValue > 0 ? priceValue : null;
   const reviewCount = service.reviewCount || 0;
   const location = service.location || "Remote";
   // §13: a "Verified local" line is a claim, shown only once the service has real reviews.
@@ -489,9 +505,9 @@ function ServiceCard({
         className="h-full flex flex-col bg-[var(--earn-card)] border border-[color:var(--earn-border)] rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-shadow"
         data-testid={`card-service-${service.id}`}
       >
-        {/* Photo — honest gradient placeholder (never a stock photo, §13); opens the detail page. */}
+        {/* Photo — honest flat token placeholder (never a stock photo, §13); opens the detail page. */}
         <Link href={detailHref} data-testid={`link-service-${service.id}`}>
-          <div className="relative h-[140px] cursor-pointer bg-gradient-to-br from-[var(--earn-chip)] to-[color:var(--earn-border)]">
+          <div className="relative h-[140px] cursor-pointer bg-[color:var(--earn-chip)]">
             <span
               className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9.5px] uppercase tracking-wide bg-[color-mix(in_srgb,var(--earn-ink)_70%,transparent)] text-white"
               style={{ fontFamily: EARN_MONO }}
@@ -518,7 +534,8 @@ function ServiceCard({
             </div>
           )}
           <h4
-            className="text-[15px] font-semibold text-[color:var(--earn-ink)] leading-snug line-clamp-1"
+            className="text-[15px] font-semibold leading-snug line-clamp-1"
+            style={HEADING_STYLE}
             data-testid={`text-service-name-${service.id}`}
           >
             {service.serviceName}
@@ -540,10 +557,12 @@ function ServiceCard({
             className="grid grid-cols-3 gap-2 border-t border-[color:var(--earn-border)] mt-3 pt-2.5"
             style={{ fontFamily: EARN_MONO }}
           >
-            <div>
-              <div className="text-[13px] font-semibold text-[color:var(--earn-ink)]">${price.toFixed(0)}</div>
-              <div className="text-[10px] text-[color:var(--earn-muted)]">per service</div>
-            </div>
+            {price !== null && (
+              <div>
+                <div className="text-[13px] font-semibold text-[color:var(--earn-ink)]">${price.toFixed(0)}</div>
+                <div className="text-[10px] text-[color:var(--earn-muted)]">per service</div>
+              </div>
+            )}
             <div>
               <div className="text-[13px] font-semibold text-[color:var(--earn-ink)]">
                 {reviewCount > 0 ? rating.toFixed(1) : "New"}
@@ -735,7 +754,8 @@ function TwoFieldSearch({
       transition={{ delay: 0.05 }}
       className={cn(
         "mt-4 grid grid-cols-1 gap-2",
-        trailing ? "sm:grid-cols-[1.4fr_1fr_auto] max-w-4xl" : "sm:grid-cols-[1.4fr_1fr] max-w-3xl",
+        // Inner control caps (not a page width — the page uses the shared content width).
+        trailing ? "sm:grid-cols-[1.4fr_1fr_auto] max-w-[56rem]" : "sm:grid-cols-[1.4fr_1fr] max-w-reading",
       )}
     >
       <div className="relative">
@@ -956,7 +976,7 @@ function PlanBrowseContext({ tripId }: { tripId: string }) {
             <Link
               key={chip.key}
               href={chip.href}
-              className="inline-flex items-center rounded-md border border-[color:var(--earn-border)] bg-white px-1.5 py-0.5 text-[11px] font-medium text-[color:var(--earn-ink)] hover:bg-[var(--earn-card)]"
+              className="inline-flex items-center rounded-md border border-[color:var(--earn-border)] bg-[var(--earn-card)] px-1.5 py-0.5 text-[11px] font-medium text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]"
               data-testid={`discover-plan-role-${chip.key}`}
             >
               {roleLabel(chip.key, categories)}
@@ -1532,7 +1552,9 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
             matching TabsContent (context, not layout). */}
         <Tabs value={activeTab} className="w-full">
         <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-5">
-          <div className="container mx-auto px-4 max-w-6xl">
+          {/* The page uses the shared content width (company-page.tsx) — masthead, banners,
+              results and CTA bands all sit on the same token, so nothing sets its own width. */}
+          <div className={pageContainerClass("content")}>
             {/* Surface masthead = the ratified Ready-Made-by-Theme band: a Fraunces
                 serif title with a leading emoji + a muted one-line sub, left-aligned,
                 content immediately below. The search bar renders ONLY on Services (the
@@ -1556,12 +1578,9 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                   })()}
                 </span>
                 <div>
-                  <h1
-                    className="text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)] leading-tight"
-                    style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-                  >
+                  <PageTitle>
                     <span data-testid="text-page-title">{SURFACE_META[surface].title}</span>
-                  </h1>
+                  </PageTitle>
                   <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
                     {SURFACE_META[surface].subtitle}
                   </p>
@@ -1643,8 +1662,8 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
 
         {/* Expert Handoff Banner - shown when coming from quick-start */}
         {showExpertHandoffBanner && (
-          <section className="bg-gradient-to-r from-amber-500/10 to-primary/10 border-b py-4">
-            <div className="container mx-auto px-4 max-w-6xl">
+          <section className="bg-[color:var(--earn-gold-wash)] border-b py-4">
+            <div className={pageContainerClass("content")}>
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1682,15 +1701,15 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
         {/* Matched Experts Section - shown when coming from quick-start with showExperts */}
         {showExperts && (
           <section ref={expertsSectionRef} className="py-8 bg-muted/30">
-            <div className="container mx-auto px-4 max-w-6xl">
+            <div className={pageContainerClass("content")}>
               <div className="flex items-center gap-3 mb-6">
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
                   <Users className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold" data-testid="text-matched-experts-title">
+                  <SectionTitle testId="text-matched-experts-title">
                     Experts for {expertHandoffDestination}
-                  </h2>
+                  </SectionTitle>
                   <p className="text-sm text-muted-foreground">
                     Local experts who can help refine your itinerary and add bookable services
                   </p>
@@ -1742,7 +1761,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-medium truncate">
+                            <h3 className="font-medium truncate" style={HEADING_STYLE}>
                               {expert.firstName} {expert.lastName || ""}
                             </h3>
                             <p className="text-sm text-muted-foreground truncate">
@@ -1792,11 +1811,11 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                 <Card>
                   <CardContent className="p-6 text-center">
                     <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-                    <h3 className="font-medium mb-1">No experts found for this location</h3>
+                    <h3 className="font-medium mb-1" style={HEADING_STYLE}>No experts found for this location</h3>
                     <p className="text-sm text-muted-foreground mb-4">
                       Try browsing all experts or adjusting your destination
                     </p>
-                    <Button onClick={() => setLocation("/experts")} data-testid="button-browse-all-experts">
+                    <Button className={PAGE_ACTION.primary} onClick={() => setLocation("/experts")} data-testid="button-browse-all-experts">
                       Browse All Experts
                     </Button>
                   </CardContent>
@@ -1806,7 +1825,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
               {matchedExperts.length > 6 && (
                 <div className="text-center mt-6">
                   <Link href={`/experts?destination=${encodeURIComponent(expertHandoffDestination)}`}>
-                    <Button variant="outline" data-testid="button-view-all-experts">
+                    <Button variant="outline" className={PAGE_ACTION.secondary} data-testid="button-view-all-experts">
                       View All {matchedExperts.length} Experts
                       <ArrowRight className="h-4 w-4 ml-2" />
                     </Button>
@@ -1819,7 +1838,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
 
         {/* Main Content */}
         <section className="py-12">
-          <div className="container mx-auto px-4 max-w-[1400px]">
+          <div className={pageContainerClass("content")}>
             {/* Tab bar moved INTO the hero band (funnel PR1) — TabsContents below stay
                 inside the same Tabs root, which now opens above the hero. */}
 
@@ -1915,12 +1934,17 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                                 : (categories?.find((c: any) => c.id === selectedCategory)?.name ?? "Services")}
                               {typeof result?.total === "number" ? ` · ${result.total}` : ""}
                             </p>
-                            <h3 className="text-[22px] font-semibold text-[color:var(--earn-ink)] leading-tight" style={{ fontFamily: "'Fraunces', Georgia, serif" }}>
+                            <h3 className="text-[22px] font-semibold leading-tight" style={HEADING_STYLE}>
                               Good hands, exactly where you need them
                             </h3>
                           </div>
                           <span className="text-[11.5px] text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>
-                            {result?.total ?? 0} {(result?.total ?? 0) === 1 ? "match" : "matches"} · {sortLabel}
+                            {/* No zero where the source has no value: the match count renders only
+                                for a finite total above 0; the sort label always renders. */}
+                            {typeof result?.total === "number" && Number.isFinite(result.total) && result.total > 0
+                              ? `${result.total} ${result.total === 1 ? "match" : "matches"} · `
+                              : ""}
+                            {sortLabel}
                           </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1968,13 +1992,13 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                     ) : (
                       <div className="text-center py-16" data-testid="services-no-results">
                         <Building2 className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-semibold mb-2">No services found</h3>
+                        <h3 className="text-lg font-semibold mb-2" style={HEADING_STYLE}>No services found</h3>
                         {result?.suggestion ? (
                           <p className="text-muted-foreground mb-4" data-testid="text-search-suggestion">
                             Did you mean{" "}
                             <button
                               type="button"
-                              className="text-primary font-medium underline underline-offset-2 hover:no-underline"
+                              className={PAGE_LINK}
                               onClick={() => {
                                 setSearchQuery(result.suggestion!);
                                 setPage(0);
@@ -2000,10 +2024,10 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                     <div className="mt-10" data-testid="section-partner-activities">
                       <div className="flex items-center gap-2 mb-4">
                         <Ticket className="h-4 w-4 text-primary" />
-                        <h2 className="text-lg font-semibold">
+                        <SectionTitle>
                           Activities in {locationFilter}
-                        </h2>
-                        <Badge className="text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                        </SectionTitle>
+                        <Badge className="text-xs bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] hover:bg-[color:var(--earn-teal-wash)]">
                           via Partners
                         </Badge>
                       </div>
@@ -2021,10 +2045,9 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
               {/* Trip Packages Tab */}
               <TabsContent value="packages">
                 {/* D3 (lane nav-storefront): the tab's content is width-aligned to the hero
-                    band (max-w-6xl) — the surrounding shared container is max-w-[1400px]
-                    for the other tabs, which left this tab visibly wider than its own
-                    header. Scoped here so the services tab keeps its wide grid. */}
-                <div className="max-w-6xl mx-auto">
+                    band — both now sit on the page's shared content width (company-page.tsx),
+                    so this wrapper sets no width of its own. */}
+                <div>
                 {/* Cloneable trips shelf (Phase 4): approved store listings from GET /api/ready-made,
                     sectioned by author type per the ratified store model. Surfaced now that the buy
                     loop (purchase→clone→refund) is closed end-to-end (§10 B4). Hidden entirely when
@@ -2059,7 +2082,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                           const testKey = isMinted
                             ? `custom-${key.slice(7).replace(/[^a-z0-9]+/g, "-")}`
                             : key;
-                          const count = readyMadeThemes.byTheme.get(key)?.length ?? 0;
+                          const count = readyMadeThemes.byTheme.get(key)?.length;
                           const active = selectedTheme === key;
                           return (
                             <button
@@ -2075,7 +2098,11 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                               )}
                             >
                               {themeHeadingFor(key)}
-                              <span className="text-[11px] font-semibold" style={{ fontFamily: EARN_MONO }}>{count}</span>
+                              {/* No zero where the source has no value: the count renders only
+                                  when it is a finite number above 0. */}
+                              {typeof count === "number" && Number.isFinite(count) && count > 0 && (
+                                <span className="text-[11px] font-semibold" style={{ fontFamily: EARN_MONO }}>{count}</span>
+                              )}
                             </button>
                           );
                         })}
@@ -2097,11 +2124,11 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                         return (
                           <div key={key} className="mb-8" data-testid={`section-theme-${sectionKey}`}>
                             <div className="flex items-baseline gap-3 mb-3">
-                              <h3 className="text-lg font-semibold">{themeHeadingFor(key)}</h3>
+                              <h3 className="text-lg font-semibold" style={HEADING_STYLE}>{themeHeadingFor(key)}</h3>
                               {rows.length > 3 && (
                                 <button
                                   type="button"
-                                  className="ml-auto text-sm font-medium text-primary hover:underline"
+                                  className={`ml-auto text-sm ${PAGE_LINK}`}
                                   onClick={() => setSelectedTheme(key)}
                                   data-testid={`button-theme-see-all-${sectionKey}`}
                                 >
@@ -2136,7 +2163,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                         return (
                           <>
                             <div
-                              className="flex items-center gap-3 flex-wrap rounded-lg border border-primary/40 bg-primary/5 px-4 py-2.5 mb-4 text-sm"
+                              className="flex items-center gap-3 flex-wrap rounded-lg border border-[color:var(--earn-coral-border)] bg-[color:var(--earn-coral-bg)] px-4 py-2.5 mb-4 text-sm"
                               data-testid="bar-theme-filter"
                             >
                               <span>
@@ -2145,7 +2172,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                               </span>
                               <button
                                 type="button"
-                                className="ml-auto font-medium text-primary underline"
+                                className={`ml-auto ${PAGE_LINK}`}
                                 onClick={() => setSelectedTheme("all")}
                                 data-testid="button-theme-clear"
                               >
@@ -2198,22 +2225,22 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
 
         {/* Still Undecided CTA */}
         <section className="py-16 bg-card border-t">
-          <div className="container mx-auto px-4 max-w-4xl text-center">
-            <h2 className="text-3xl font-bold mb-4">
+          <div className={`${pageContainerClass("reading")} text-center`}>
+            <SectionTitle className="mb-4">
               Need Help Deciding?
-            </h2>
-            <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+            </SectionTitle>
+            <p className="text-lg text-muted-foreground mb-8">
               Talk to one of our local experts or trip planners. They'll help you find the perfect
               trip based on your preferences, budget, and travel style.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Link href="/experts">
-                <Button size="lg" className="px-8" data-testid="button-talk-to-expert">
+                <Button className={PAGE_ACTION.primary} data-testid="button-talk-to-expert">
                   Talk to an Expert
                 </Button>
               </Link>
               <Link href="/experiences">
-                <Button size="lg" variant="outline" className="px-8" data-testid="button-plan-experience-cta">
+                <Button variant="outline" className={PAGE_ACTION.secondary} data-testid="button-plan-experience-cta">
                   Plan Your Experience
                 </Button>
               </Link>
@@ -2225,25 +2252,25 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
             surface content. Role-gated: experts see "create a template", everyone
             else sees "become an expert". */}
         <section className="py-16 border-t">
-          <div className="container mx-auto px-4 max-w-4xl text-center">
-            <h2 className="text-3xl font-bold mb-4">
+          <div className={`${pageContainerClass("reading")} text-center`}>
+            <SectionTitle className="mb-4">
               Share your local expertise — get paid
-            </h2>
-            <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+            </SectionTitle>
+            <p className="text-lg text-muted-foreground mb-8">
               Local experts publish ready-made itinerary packages and offer services to
               travelers on Traveloure. Turn what you know into income.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
                 <Link href="/expert/workspace">
-                  <Button size="lg" className="px-8" data-testid="button-create-first-template">
+                  <Button className={PAGE_ACTION.primary} data-testid="button-create-first-template">
                     Build a store trip in the Workstation
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
               ) : (
                 <Link href="/expert-status">
-                  <Button size="lg" variant="outline" className="px-8" data-testid="button-become-expert-hero">
+                  <Button variant="outline" className={PAGE_ACTION.secondary} data-testid="button-become-expert-hero">
                     Become an expert
                   </Button>
                 </Link>

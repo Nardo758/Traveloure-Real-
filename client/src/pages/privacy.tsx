@@ -1,8 +1,7 @@
 import { useEffect } from "react";
 import { Link } from "wouter";
-import { ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { TraveloureLogo } from "@/components/ui/traveloure-logo";
+import { PageLayout, PAGE_ACTION, PAGE_H2_CLASS, HEADING_STYLE } from "@/components/company/company-page";
+import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 
 export default function PrivacyPolicyPage() {
   useEffect(() => {
@@ -15,29 +14,18 @@ export default function PrivacyPolicyPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="bg-white dark:bg-gray-900 border-b sticky top-0 z-50">
-        <div className="container mx-auto px-4 max-w-4xl">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/">
-              <Button variant="ghost" className="gap-2" data-testid="link-back-home">
-                <ArrowLeft className="w-4 h-4" />
-                Back to Home
-              </Button>
-            </Link>
-            <TraveloureLogo className="h-6" />
-            <div className="w-24" />
-          </div>
-        </div>
-      </header>
+    <PageLayout
+      width="reading"
+      title="Privacy Policy"
+      titleTestId="text-privacy-title"
+      lead={<p className="text-muted-foreground">Effective Date: August 10, 2026</p>}
+      testId="page-privacy"
+    >
 
-      <main className="container mx-auto px-4 py-12 max-w-4xl">
-        <h1 className="text-4xl font-bold mb-2" data-testid="text-privacy-title">Privacy Policy</h1>
-        <p className="text-muted-foreground mb-8">Effective Date: August 10, 2026</p>
 
-        <div className="prose prose-gray dark:prose-invert max-w-none space-y-8">
+        <div className="space-y-10">
           <section>
-            <h2 className="text-2xl font-semibold mb-4">1. Introduction</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>1. Introduction</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               Traveloure LLC ("Traveloure," "we," "us," or "our") operates a three-party marketplace platform connecting travelers with authenticated Local Experts and Service Providers to facilitate personalized travel experiences and life events. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our platform, whether as a Traveler, Local Expert, or Service Provider.
             </p>
@@ -50,9 +38,9 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">2. Information We Collect</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>2. Information We Collect</h2>
             
-            <h3 className="text-xl font-medium mb-3">2.1 Information You Provide Directly</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>2.1 Information You Provide Directly</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
               We collect information that you voluntarily provide when you:
             </p>
@@ -67,7 +55,7 @@ export default function PrivacyPolicyPage() {
               <li>Participate in surveys, promotions, or contests</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">2.2 Payment Information</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>2.2 Payment Information</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
               Payment processing is handled through Stripe Connect. We do not directly store complete credit card numbers. We collect:
             </p>
@@ -78,7 +66,7 @@ export default function PrivacyPolicyPage() {
               <li>For Experts and Providers: bank account information, tax identification numbers, payout preferences (processed securely through Stripe Connect)</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">2.3 Automatically Collected Information</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>2.3 Automatically Collected Information</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
               When you access our platform, we automatically collect:
             </p>
@@ -90,7 +78,7 @@ export default function PrivacyPolicyPage() {
               <li>Log files (access times, error logs, performance data)</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">2.4 Information from Third Parties</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>2.4 Information from Third Parties</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
               We may receive information about you from third-party sources:
             </p>
@@ -103,7 +91,7 @@ export default function PrivacyPolicyPage() {
               <li>Publicly available sources for identity verification</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">2.5 Social Media Information (Facebook/Instagram)</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>2.5 Social Media Information (Facebook/Instagram)</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
               When you connect your Facebook or Instagram account, we may collect:
             </p>
@@ -125,9 +113,9 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">3. How We Use Your Information</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>3. How We Use Your Information</h2>
             
-            <h3 className="text-xl font-medium mb-3">3.1 Platform Operations</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>3.1 Platform Operations</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li>Create and manage your account</li>
               <li>Facilitate connections between Travelers, Experts, and Service Providers</li>
@@ -136,7 +124,7 @@ export default function PrivacyPolicyPage() {
               <li>Display relevant content, recommendations, and search results</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">3.2 Safety and Trust</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>3.2 Safety and Trust</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li>Verify identity and credentials of Experts and Service Providers</li>
               <li>Conduct background checks and screening processes</li>
@@ -146,7 +134,7 @@ export default function PrivacyPolicyPage() {
               <li>Comply with legal obligations and regulatory requirements</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">3.3 Customer Service and Support</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>3.3 Customer Service and Support</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li>Respond to your inquiries and support requests</li>
               <li>Provide customer service and technical assistance</li>
@@ -154,7 +142,7 @@ export default function PrivacyPolicyPage() {
               <li>Gather feedback to improve our services</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">3.4 Platform Improvement and Personalization</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>3.4 Platform Improvement and Personalization</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li>Analyze usage patterns and trends</li>
               <li>Conduct research, testing, and development</li>
@@ -163,7 +151,7 @@ export default function PrivacyPolicyPage() {
               <li>Optimize platform performance and user experience</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">3.5 Marketing and Communications</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>3.5 Marketing and Communications</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
               <li>Send promotional materials, newsletters, and special offers (with your consent)</li>
               <li>Conduct marketing campaigns</li>
@@ -172,19 +160,19 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">4. Information Sharing and Disclosure</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>4. Information Sharing and Disclosure</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               We share your information in the following circumstances:
             </p>
 
-            <h3 className="text-xl font-medium mb-3">4.1 Within the Platform Ecosystem</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>4.1 Within the Platform Ecosystem</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li><strong>Travelers, Experts, and Service Providers:</strong> Information necessary to facilitate bookings and services (names, contact information, trip details, special requirements)</li>
               <li><strong>Public profiles:</strong> Information you choose to make public (profile photos, bios, reviews, ratings, areas of expertise)</li>
               <li><strong>Reviews and ratings:</strong> Public feedback about experiences, experts, and service providers</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">4.2 Service Providers and Business Partners</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>4.2 Service Providers and Business Partners</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
               We share information with third-party service providers who perform services on our behalf:
             </p>
@@ -198,7 +186,7 @@ export default function PrivacyPolicyPage() {
               <li>Travel inventory partners (Viator, GetYourGuide, Klook, Fever, Musement, 12Go)</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">4.3 Legal Obligations and Protection</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>4.3 Legal Obligations and Protection</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
               We may disclose your information when required by law or to protect our rights:
             </p>
@@ -211,19 +199,19 @@ export default function PrivacyPolicyPage() {
               <li>Comply with Anti-Money Laundering (AML) and Know Your Customer (KYC) regulations</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">4.4 Business Transfers</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>4.4 Business Transfers</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
               In the event of a merger, acquisition, reorganization, bankruptcy, or sale of assets, your information may be transferred as part of that transaction. We will notify you of any such change and any choices you may have regarding your information.
             </p>
 
-            <h3 className="text-xl font-medium mb-3">4.5 With Your Consent</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>4.5 With Your Consent</h3>
             <p className="text-muted-foreground leading-relaxed">
               We may share your information for other purposes with your explicit consent or at your direction. We never sell your personal information to third parties.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">5. International Data Transfers</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>5. International Data Transfers</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               Traveloure operates across eight strategic global markets: Mumbai, Bogotá, Goa, Kyoto, Edinburgh, Cartagena, Jaipur, and Porto. Your information may be transferred to, stored, and processed in the United States and other countries where our service providers operate.
             </p>
@@ -239,7 +227,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">6. Data Retention</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>6. Data Retention</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               We retain your personal information for as long as necessary to fulfill the purposes outlined in this Privacy Policy, unless a longer retention period is required or permitted by law. Specific retention periods include:
             </p>
@@ -257,7 +245,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">7. Data Security</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>7. Data Security</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               We implement comprehensive security measures to protect your information:
             </p>
@@ -272,17 +260,17 @@ export default function PrivacyPolicyPage() {
               <li><strong>Employee training:</strong> Regular security awareness training for staff</li>
             </ul>
             <p className="text-muted-foreground leading-relaxed">
-              While we strive to protect your information, no security system is impenetrable. We cannot guarantee absolute security. If you become aware of any security vulnerability or breach, please contact us immediately at admin@traveloure.com.
+              While we strive to protect your information, no security system is impenetrable. We cannot guarantee absolute security. If you become aware of any security vulnerability or breach, please contact us immediately at {COMPANY_CONTACT_EMAIL}.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">8. Your Rights and Choices</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>8. Your Rights and Choices</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               Some of the rights below depend on your location and applicable law. The right to request deletion of your personal information, described in Section 8.5, is different: we grant it to every Traveloure user, in every country where our platform is accessible, regardless of where you live or which laws apply to you.
             </p>
 
-            <h3 className="text-xl font-medium mb-3">8.1 GDPR Rights (EEA, UK, Switzerland)</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>8.1 GDPR Rights (EEA, UK, Switzerland)</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li><strong>Right of access:</strong> Request a copy of your personal data</li>
               <li><strong>Right to rectification:</strong> Correct inaccurate or incomplete data</li>
@@ -294,7 +282,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Right to lodge a complaint:</strong> File a complaint with your local data protection authority</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">8.2 CCPA Rights (California Residents)</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>8.2 CCPA Rights (California Residents)</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li><strong>Right to know:</strong> Request disclosure of categories and specific pieces of personal information collected</li>
               <li><strong>Right to delete:</strong> Request deletion of personal information</li>
@@ -302,7 +290,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Right to non-discrimination:</strong> Equal service and pricing regardless of privacy choices</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">8.3 General Rights (All Users)</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>8.3 General Rights (All Users)</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li><strong>Account management:</strong> Update your profile and preferences through account settings</li>
               <li><strong>Communication preferences:</strong> Unsubscribe from marketing emails via links in messages or account settings</li>
@@ -311,20 +299,20 @@ export default function PrivacyPolicyPage() {
               <li><strong>Account closure:</strong> Request deletion of your account and personal information at any time, from anywhere in the world (see Section 8.5)</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">8.4 Exercising Your Rights</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>8.4 Exercising Your Rights</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
               To exercise any of these rights, please:
             </p>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-              <li>Email us at admin@traveloure.com</li>
+              <li>Email us at {COMPANY_CONTACT_EMAIL}</li>
             </ul>
             <p className="text-muted-foreground leading-relaxed mt-4">
               We will respond to verified requests within 30 days (or as required by applicable law). We may need to verify your identity before processing your request.
             </p>
 
-        <h3 id="data-deletion" className="text-xl font-medium mb-3 mt-8">8.5 Data Deletion - Available to All Users Worldwide</h3>
+        <h3 id="data-deletion" className="text-[20px] font-semibold mb-3 mt-8" style={HEADING_STYLE}>8.5 Data Deletion - Available to All Users Worldwide</h3>
         <p className="text-muted-foreground leading-relaxed mb-4">
-          Any Traveloure user, anywhere in the world, may request deletion of their account and personal information at any time, free of charge, without giving a reason. To make a request, email admin@traveloure.com from the email address on your account with the subject line "Data Deletion Request." We acknowledge every request within 7 days and complete deletion within 30 days. We may ask you to verify that you own the account before we proceed.
+          Any Traveloure user, anywhere in the world, may request deletion of their account and personal information at any time, free of charge, without giving a reason. To make a request, email {COMPANY_CONTACT_EMAIL} from the email address on your account with the subject line "Data Deletion Request." We acknowledge every request within 7 days and complete deletion within 30 days. We may ask you to verify that you own the account before we proceed.
         </p>
         <p className="text-muted-foreground leading-relaxed mb-4">
           If you connected a Facebook or Instagram account to Traveloure, all data we obtained through that connection is deleted as part of this process. This includes your Instagram user ID and username, follower and media counts, account type, profile picture, any linked Facebook Pages, any Instagram posts or media we retrieved, and the access tokens we stored to maintain the connection.
@@ -338,7 +326,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">9. Third-Party Services and Links</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>9. Third-Party Services and Links</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               Our platform integrates with and may contain links to third-party services, including:
             </p>
@@ -358,46 +346,46 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">10. Children's Privacy</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>10. Children's Privacy</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               Traveloure is not directed to individuals under the age of 18. We do not knowingly collect personal information from children under 18. If you are under 18, please do not use our services or provide any personal information.
             </p>
             <p className="text-muted-foreground leading-relaxed">
-              If we become aware that we have collected personal information from a child under 18 without parental consent, we will take steps to delete that information. If you believe we have collected information from a child under 18, please contact us immediately at admin@traveloure.com.
+              If we become aware that we have collected personal information from a child under 18 without parental consent, we will take steps to delete that information. If you believe we have collected information from a child under 18, please contact us immediately at {COMPANY_CONTACT_EMAIL}.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">11. Cookies and Tracking Technologies</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>11. Cookies and Tracking Technologies</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               We use only the cookies strictly necessary to operate the platform. We do not use third-party analytics, advertising, or cross-site tracking technologies.
             </p>
 
-            <h3 className="text-xl font-medium mb-3">11.1 Cookies We Use</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>11.1 Cookies We Use</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li><strong>Essential cookies only:</strong> A session cookie that keeps you signed in and protects your account (authentication and security). These cookies are required for the platform to function and do not track you across other websites.</li>
             </ul>
 
-            <h3 className="text-xl font-medium mb-3">11.2 No Third-Party Tracking</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>11.2 No Third-Party Tracking</h3>
             <p className="text-muted-foreground leading-relaxed mb-6">
               We do not use third-party analytics or advertising services such as Google Analytics or Facebook Pixel, and we do not set performance, functional, or marketing cookies. If we introduce any such technologies in the future, we will update this policy first and, where required by law, ask for your consent before they are activated.
             </p>
 
-            <h3 className="text-xl font-medium mb-3">11.3 Managing Cookies</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>11.3 Managing Cookies</h3>
             <p className="text-muted-foreground leading-relaxed">
               You can delete or block cookies through your browser settings. Note that blocking the essential session cookie will prevent you from staying signed in and may make parts of the platform unusable.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">12. Do Not Track Signals</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>12. Do Not Track Signals</h2>
             <p className="text-muted-foreground leading-relaxed">
               Some browsers offer a "Do Not Track" (DNT) signal. Because there is no common understanding of how to interpret DNT signals, our platform does not currently respond to DNT browser signals. We continue to monitor developments and may implement DNT signal recognition in the future.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">13. Changes to This Privacy Policy</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>13. Changes to This Privacy Policy</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               We may update this Privacy Policy from time to time to reflect changes in our practices, technology, legal requirements, or other factors. When we make material changes, we will:
             </p>
@@ -413,14 +401,14 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4">14. Contact Information</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>14. Contact Information</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               If you have questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us:
             </p>
             <div className="p-4 bg-muted rounded-lg">
               <p className="font-medium">Traveloure LLC</p>
               <p className="text-muted-foreground">Data Protection Officer</p>
-              <p className="text-muted-foreground">Email: admin@traveloure.com</p>
+              <p className="text-muted-foreground">Email: {COMPANY_CONTACT_EMAIL}</p>
               <p className="text-muted-foreground">Website: www.traveloure.com</p>
             </div>
             <p className="text-muted-foreground leading-relaxed mt-4">
@@ -435,17 +423,9 @@ export default function PrivacyPolicyPage() {
           </div>
         </div>
 
-        <div className="mt-12 pt-8 border-t">
-          <div className="flex flex-wrap gap-4">
-            <Link href="/terms">
-              <Button variant="outline" data-testid="link-terms">Terms of Service</Button>
-            </Link>
-            <Link href="/">
-              <Button variant="outline" data-testid="link-home">Back to Home</Button>
-            </Link>
-          </div>
+        <div className="mt-12 flex flex-wrap gap-3 border-t pt-8">
+          <Link href="/terms" className={PAGE_ACTION.secondary} data-testid="link-terms">Terms of Service</Link>
         </div>
-      </main>
-    </div>
+    </PageLayout>
   );
 }
