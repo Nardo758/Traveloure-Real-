@@ -79,8 +79,8 @@ function computeLiveDayNumber(startDate: string | undefined, endDate: string | u
 // services surface is /services now, which owns its own Service type.
 
 // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the Expert / ExpertAdvisor types moved
-// with the expert-assign + suggestion-review UI to the slip family (AssignExpertDialog /
-// ExpertSuggestionsPanel own their own local types).
+// with the expert-assign + suggestion-review UI to the slip family (HireExpertDialog /
+// ExpertSuggestionsPanel own their own local types; the orphaned AssignExpertDialog was deleted).
 
 export default function TripDetails() {
   const { id } = useParams();
@@ -127,7 +127,7 @@ export default function TripDetails() {
   const [copied, setCopied] = useState(false);
   const [logisticsOpen, setLogisticsOpen] = useState(false);
   // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the expert-picker + reject-suggestion
-  // state moved to the slip family (AssignExpertDialog / ExpertSuggestionsPanel). Rows 8/9/10/11.
+  // state moved to the slip family (HireExpertDialog / ExpertSuggestionsPanel). Rows 8/9/10/11.
   // G7: "Plan ready" banner
   const [showOptimizedBanner, setShowOptimizedBanner] = useState(justOptimized);
 
@@ -174,7 +174,7 @@ export default function TripDetails() {
   // Phase 3b (ledger 2026-08-31-manifest-is-the-boundary): the expert-assign picker and the
   // expert-suggestion review data layer (trip-experts / offering-types / suggestions queries,
   // reviewSuggestionMutation, assignExpertMutation) relocated to the slip family —
-  // AssignExpertDialog + ExpertSuggestionsPanel own them now (rows 10/11). The advisor query,
+  // HireExpertDialog + ExpertSuggestionsPanel own them now (rows 10/11). The advisor query,
   // the advisor card and the duplicate EscalationCTA (rows 8/9) are dropped here; the assigned
   // expert is surfaced by the family's advisor strip on the summary card (A10/A12) and the
   // full-stage EscalationCTA (B10) — both must-not-regress, both already rendering.

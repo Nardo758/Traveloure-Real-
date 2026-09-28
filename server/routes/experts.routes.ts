@@ -74,7 +74,7 @@ import { experienceCatalogService } from "../services/experience-catalog.service
 import { opportunityEngineService } from "../services/opportunity-engine.service";
 import { aiUsageService } from "../services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "../utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry, insertExpertVendorCoordinationSchema } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builder";
 import { generateKml } from "../services/kml-generator";
@@ -345,16 +345,27 @@ router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, re
         req.params.tripId, userId, "POST /api/expert/trips/:tripId/vendors",
       );
       if (authError) return res.status(authError.status).json({ message: authError.message });
-      const vendorInput = z.object({
-        vendorName: z.string().min(1).max(255),
-        serviceType: z.string().min(1).max(100),
-        vendorCategory: z.string().min(1).max(100),
-        status: z.string().max(50).optional(),
-        contactEmail: z.string().email().optional(),
-        contactPhone: z.string().max(50).optional(),
-        notes: z.string().max(1000).optional(),
-        quotedAmount: z.string().optional(),
-      }).parse(req.body);
+      // The admitted fields ARE the table's own columns, as a PICK of its insert schema (§19
+      // allowlist; ledger `2026-09-27-form-fields-admitted`). This was a hand-written z.object
+      // naming columns the table does not have (serviceType, contactEmail, contactPhone,
+      // quotedAmount) and REQUIRING one of them, so the coordination hub's form — which sends the
+      // table's real columns — was refused on every submit, and a crafted body carrying those
+      // names would have been stripped at the insert. Nullable columns stay nullable: the form
+      // sends null for an empty field, which is "not captured" (§13), never a default.
+      const vendorInput = insertExpertVendorCoordinationSchema.pick({
+        vendorName: true,
+        vendorCategory: true,
+        vendorEmail: true,
+        vendorPhone: true,
+        setupTime: true,
+        arrivalTime: true,
+        startTime: true,
+        endTime: true,
+        serviceDate: true,
+        totalAmount: true,
+        anchorConstraintNote: true,
+        notes: true,
+      }).strict().parse(req.body);
       const vendor = await storage.createVendorCoordination({
         ...vendorInput,
         tripId: req.params.tripId,
