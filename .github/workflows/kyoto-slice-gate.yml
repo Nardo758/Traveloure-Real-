@@ -19,9 +19,12 @@ name: Kyoto Slice Gate (Trips golden path — Track A acceptance)
 # §4's free draft, §6's paid run and §7's checkout/cancel are fixmes that say so. §4-today is
 # today-passable in the PRODUCT and not in this job, for exactly that reason.
 #
-# REQUIRED-CHECK NOTE. Branch protection is set outside the repo: to make this a required check,
-# add the status context `kyoto-slice (Trips golden path — Appendix A)` to branch protection
-# (.github/branch-protection.json + CI_GATES.md).
+# REQUIRED (decision-maker, Sep 28, 2026 — ledger `2026-09-28-kyoto-slice-required`). Status context:
+#   * kyoto-slice (Trips golden path — Appendix A) — listed in .github/branch-protection.json and applied
+#     by enforce-branch-protection.yml. A `test.fixme` step is a SKIP, not a failure: the job is green
+#     while a step waits, and once a step comes alive it must pass to merge.
+# It runs on EVERY pull request to main with no `paths:` filter and no `continue-on-error`: a required
+# check a PR never triggers leaves that PR waiting forever, and a required check has to be able to fail.
 #
 # ANTI-VACUITY: `npx playwright test <path>` with a missing path reports "0 passed"; the spec is
 # asserted to exist first, and `passWithNoTests: false` in playwright.config.ts is the other half.

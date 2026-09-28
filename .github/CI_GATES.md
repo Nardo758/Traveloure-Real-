@@ -61,6 +61,7 @@ Add all of them to branch protection now.
 | `quote-born-charge (LD 49's charge lane; ledger 2026-09-18-quote-born-charge)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
 | `leads-door-and-trip-read-gate (V-32, V-33; ledger 2026-09-15-v32-v33-leads-door-item-read-gate)` | `build.yml` | Promoted 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153): ≥95% pass over Sep 20–27 |
 | `supply-demand-e2e` | `supply-demand-e2e.yml` | Promoted 2026-09-27 (ledger `2026-09-27-supply-demand-e2e-required`, R169): 59/61 job runs green Sep 20–27 excluding the three while the harness was being written (59/64 = 92.2% counting them); both remaining failures were harness races since fixed (R159, `2026-09-27-s1-login-must-land`). Runs on EVERY PR (no `paths:` filter) — a required check a PR never triggers leaves it waiting forever. |
+| `kyoto-slice (Trips golden path — Appendix A)` | `kyoto-slice-gate.yml` | Promoted 2026-09-28 (ledger `2026-09-28-kyoto-slice-required`, R203): 4/4 runs green since the job landed (2 on pull requests, 2 on pushes to main). Its `test.fixme` steps are SKIPS, not failures, so the job is green today; each step that comes alive must pass to merge. Runs on EVERY PR (no `paths:` filter) and has no `continue-on-error`. |
 
 ### Tier 2 — RECOMMENDED (add once a green baseline exists)
 
