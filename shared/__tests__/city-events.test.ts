@@ -29,7 +29,9 @@ import {
   localDate,
   localTime,
   nearestNeighbourhoodId,
+  RESALE_TICKET_HOSTS,
   showCityEventsStrip,
+  ticketUrlRefusal,
 } from "../city-events";
 
 describe("city events", () => {
@@ -86,7 +88,35 @@ describe("city events", () => {
     assert.equal(isAcceptableTicketUrl("https://www.viator.com/tours/x", []), true);
   });
 
-  it("E3b the rule is the blog's rule: one module, and no hand-typed host list in city-events", () => {
+  it("E3c a ticket link on a resale marketplace is refused whatever the registry holds; the primary seller's is accepted", () => {
+    // Resale is our policy, typed here, so it refuses with an EMPTY partner registry too.
+    for (const url of [
+      "https://www.stubhub.com/event/1",
+      "https://www.stubhub.co.uk/event/1",
+      "https://www.viagogo.com/x",
+      "https://www.vividseats.com/x",
+      "https://seatgeek.com/x",
+      "https://www.tickpick.com/x",
+      "https://gametime.co/x",
+      "https://resale.ticketmaster.com/x",
+      "https://www.ticketexchangebyticketmaster.com/x",
+    ]) {
+      assert.equal(ticketUrlRefusal(url, []), "resale_ticket_url", url);
+      assert.equal(isAcceptableTicketUrl(url, []), false, url);
+    }
+    // Ticketmaster's primary pages and an organiser's own page are allowed.
+    assert.equal(ticketUrlRefusal("https://www.ticketmaster.com/event/abc", []), null);
+    assert.equal(ticketUrlRefusal("https://www.edfringe.com/tickets", []), null);
+    // Exact-suffix: a host that only CONTAINS a resale name is not refused.
+    assert.equal(ticketUrlRefusal("https://notstubhub.example.org/", []), null);
+    // Resale is named before partner, and malformed stays malformed.
+    assert.equal(ticketUrlRefusal("https://www.stubhub.com/event/1", ["stubhub.com"]), "resale_ticket_url");
+    assert.equal(ticketUrlRefusal("https://www.viator.com/x", ["viator.com"]), "affiliate_ticket_url");
+    assert.equal(ticketUrlRefusal("not a url", []), "bad_ticket_url");
+    assert.ok(RESALE_TICKET_HOSTS.length > 0);
+  });
+
+  it("E3b the partner rule is the blog's rule: one module, and no hand-typed PARTNER list in city-events", () => {
     const src = readFileSync(join(process.cwd(), "shared/city-events.ts"), "utf8");
     assert.match(src, /from "\.\/partner-hosts"/, "city-events reads the shared partner-host rule");
     assert.doesNotMatch(src, /AFFILIATE_TICKET_HOSTS|"viator\.com"|"tp\.media"/, "no second affiliate list");
