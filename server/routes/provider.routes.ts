@@ -5,7 +5,7 @@ import { z } from "zod";
 import { eq, and, inArray, asc, desc } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
-import { users, providerServices, bundleComponents } from "@shared/schema";
+import { users, providerServices, bundleComponents, insertProviderServiceSchema } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
 // Ledger 90 (FP-5, S2): the payout floor is quoted from its single source, never re-typed here.
@@ -515,7 +515,23 @@ const propertyCreateSchema = z.object({
   serviceImage: z.string().max(2000).optional(),
   galleryImages: z.array(z.string().max(2000)).max(20).optional(),
   rooms: z.array(roomInputSchema).min(1, "A property needs at least one room type"),
-});
+  // The stay terms the create form collects. This schema was a plain z.object with none of them,
+  // so zod STRIPPED every one silently: a provider chose a cancellation tier, check-in/out
+  // times, house rules, amenities and a minimum stay, and the row was born without any of them
+  // (the tier then read as the flexible default). Admitted as a PICK of the listing schema's own
+  // field schemas (§19 allowlist; one set of refinements, §18 rule 1) — ordinary owner-authored
+  // listing facts, no amount/identity/rate (the same classification the generic PATCH gives them).
+}).extend(
+  insertProviderServiceSchema.pick({
+    cancellationPolicyType: true,
+    cancellationPolicy: true,
+    checkInTime: true,
+    checkOutTime: true,
+    houseRules: true,
+    amenities: true,
+    minStayNights: true,
+  }).shape,
+);
 
 const propertyPatchSchema = z.object({
   serviceName: z.string().trim().min(1).max(255).optional(),
@@ -598,6 +614,14 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
           ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
           serviceImage: body.serviceImage ?? null,
           galleryImages: body.galleryImages ?? [],
+          // Stay terms (absent ⇒ NULL = never captured, §13 — never a default written for them).
+          cancellationPolicyType: body.cancellationPolicyType ?? null,
+          cancellationPolicy: body.cancellationPolicy ?? null,
+          checkInTime: body.checkInTime ?? null,
+          checkOutTime: body.checkOutTime ?? null,
+          houseRules: body.houseRules ?? null,
+          amenities: body.amenities ?? null,
+          minStayNights: body.minStayNights ?? null,
           productShape: "property",
           // FP-1 / B2: an accommodation is place-anchored, not a PDF (see deriveBundleDeliveryMethod).
           deliveryMethod: PROPERTY_DELIVERY_METHOD,
