@@ -13,6 +13,7 @@ import {
   useElements,
 } from '@stripe/react-stripe-js';
 import { CreditCard, Lock, AlertCircle } from 'lucide-react';
+import { helpArticlePath } from '@shared/help-article-slugs';
 
 // Phase 5: memoized getter — defers loadStripe until first render of a checkout surface.
 // Key selection mirrors the server resolver: in dev, prefer the TEST publishable key so the
@@ -139,7 +140,19 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError, si
         {errorMessage && (
           <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
             <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-red-800">{errorMessage}</p>
+            <div className="space-y-1">
+              <p className="text-sm text-red-800">{errorMessage}</p>
+              {/* Lane B: opens in a new tab so the traveler never loses this checkout to read it. */}
+              <a
+                href={helpArticlePath("payment-didnt-go-through")}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-red-800 underline underline-offset-2"
+                data-testid="link-checkout-payment-help"
+              >
+                Payment didn't go through? What happens next
+              </a>
+            </div>
           </div>
         )}
 

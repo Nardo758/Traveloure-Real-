@@ -126,7 +126,6 @@ const ExpertsPage = lazy(() => import("@/pages/experts"));
 const DiscoverPage = lazy(() => import("@/pages/discover"));
 const DiscoverLocationPage = lazy(() => import("@/pages/discover-location"));
 const ContactPage = lazy(() => import("@/pages/contact"));
-const FAQPage = lazy(() => import("@/pages/faq"));
 const FeaturesPage = lazy(() => import("@/pages/features"));
 const ExperienceTemplatePage = lazy(() => import("@/pages/experience-template"));
 const ArchitectureDiagram = lazy(() => import("@/pages/architecture-diagram"));
@@ -189,6 +188,7 @@ const CareersPage = lazy(() => import("@/pages/careers"));
 const BlogPage = lazy(() => import("@/pages/blog"));
 const PressPage = lazy(() => import("@/pages/press"));
 const HelpPage = lazy(() => import("@/pages/help"));
+const HelpArticlePage = lazy(() => import("@/pages/help").then((m) => ({ default: m.HelpArticlePage })));
 const MyItineraryPage = lazy(() => import("@/pages/my-itinerary"));
 const ItineraryViewPage = lazy(() => import("@/pages/itinerary-view"));
 const SharedTripPage = lazy(() => import("@/pages/shared-trip"));
@@ -547,8 +547,11 @@ function Router() {
       <Route path="/contact">
         <Layout><ContactPage /></Layout>
       </Route>
+      {/* Lane B (Sep 27, 2026): the FAQ folded into the Help center's articles — one place for
+          answers, not two that disagreed (it and /help gave different payment methods). The path
+          redirects so inbound links and bookmarks keep landing somewhere true. */}
       <Route path="/faq">
-        <Layout><FAQPage /></Layout>
+        <Redirect to="/help" />
       </Route>
       <Route path="/features">
         <Layout><FeaturesPage /></Layout>
@@ -564,6 +567,9 @@ function Router() {
       </Route>
       <Route path="/help">
         <Layout><HelpPage /></Layout>
+      </Route>
+      <Route path="/help/:slug">
+        <Layout><HelpArticlePage /></Layout>
       </Route>
       <Route path="/support">
         <Layout><HelpPage /></Layout>
