@@ -25,6 +25,11 @@ import { X, Plus } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import {
+  CANCELLATION_POLICY_TYPES,
+  cancellationTierLabel,
+  type CancellationPolicyType,
+} from "@shared/cancellation-schedule";
 
 /* ── design tokens ─────────────────────────────────────────────────────── */
 const ACC = "#35605A";
@@ -37,11 +42,20 @@ const WARN_BG = "#FBF6EC";
 const WARN_LINE = "#D9C79A";
 const WARN_INK = "#6B551F";
 
-const CANCELLATION_OPTIONS = [
-  "Flexible — full refund up to 5 days before check-in",
-  "Moderate — full refund up to 14 days before check-in",
-  "Strict — 50% refund up to 30 days before check-in",
-];
+/*
+ * The cancellation TIER a stay is refunded under. The labels are GENERATED from
+ * shared/cancellation-schedule.ts — the table the server's refund math reads — phrased for a stay.
+ * The preset text this replaced ("5 / 14 / 30 days before check-in") matched no window the code
+ * enforces, and was sent as free text the create route then dropped, so a provider believed they had
+ * set terms they had not. No tier is preselected: "" = not declared, which the refund path reads as
+ * flexible and says so (§13) — never a tier the provider did not choose.
+ */
+// NULL is refunded as flexible by the server's ONE normalizer (normalizeCancellationPolicy); the
+// sentence is generated from that tier's own schedule, never typed.
+const UNDECLARED_TIER_LABEL = `Not declared — refunded as ${cancellationTierLabel("flexible", "check-in")}`;
+function isTier(v: unknown): v is CancellationPolicyType {
+  return typeof v === "string" && (CANCELLATION_POLICY_TYPES as readonly string[]).includes(v);
+}
 
 const AMENITY_PRESETS = [
   "Wi-Fi",
@@ -95,7 +109,7 @@ export default function PropertyCreate() {
 
   /* ── step 1 state ── */
   const [propName, setPropName] = useState("");
-  const [propCancellation, setPropCancellation] = useState(CANCELLATION_OPTIONS[1]);
+  const [propCancellation, setPropCancellation] = useState<CancellationPolicyType | "">("");
   const [propDescription, setPropDescription] = useState("");
   const [propLocation, setPropLocation] = useState("");
   const [propPoint, setPropPoint] = useState<LocationPoint | null>(null);
@@ -122,7 +136,8 @@ export default function PropertyCreate() {
       if (raw) {
         const d = JSON.parse(raw);
         setStep(d.step === "rooms" || d.step === "review" ? d.step : "property");
-        setPropName(d.propName ?? ""); setPropCancellation(d.propCancellation ?? CANCELLATION_OPTIONS[1]);
+        setPropName(d.propName ?? ""); // A draft saved before the tier picker held free text; only a real tier is restored.
+        setPropCancellation(isTier(d.propCancellation) ? d.propCancellation : "");
         setPropDescription(d.propDescription ?? ""); setPropLocation(d.propLocation ?? "");
         setPropPoint(d.propPoint ?? null); setPropCheckIn(d.propCheckIn ?? "");
         setPropCheckOut(d.propCheckOut ?? ""); setPropMinStay(d.propMinStay ?? "");
@@ -203,7 +218,7 @@ export default function PropertyCreate() {
         description: propDescription.trim() || undefined,
         location: propLocation.trim() || undefined,
         ...(propPoint ? { locationPoint: propPoint } : {}),
-        cancellationPolicy: propCancellation || undefined,
+        cancellationPolicyType: propCancellation || undefined,
         checkInTime: propCheckIn.trim() || undefined,
         checkOutTime: propCheckOut.trim() || undefined,
         houseRules: propHouseRules.trim() || undefined,
@@ -324,11 +339,12 @@ export default function PropertyCreate() {
                   <select
                     style={inp()}
                     value={propCancellation}
-                    onChange={(e) => setPropCancellation(e.target.value)}
+                    onChange={(e) => setPropCancellation(isTier(e.target.value) ? e.target.value : "")}
                     data-testid="select-property-cancellation"
                   >
-                    {CANCELLATION_OPTIONS.map((o) => (
-                      <option key={o} value={o}>{o}</option>
+                    <option value="">{UNDECLARED_TIER_LABEL}</option>
+                    {CANCELLATION_POLICY_TYPES.map((p) => (
+                      <option key={p} value={p}>{cancellationTierLabel(p, "check-in")}</option>
                     ))}
                   </select>
                   <div style={help()}>Stay-shaped windows, not the session policy — a night is not a slot.</div>
@@ -669,7 +685,7 @@ export default function PropertyCreate() {
               {/* summary rows */}
               <SumRow k="Property" v={propName.trim() || "—"} />
               <SumRow k="Rooms" v={`${roomDrafts.length} — each one bookable on its own`} />
-              <SumRow k="Cancellation" v={propCancellation} />
+              <SumRow k="Cancellation" v={propCancellation ? cancellationTierLabel(propCancellation, "check-in") : UNDECLARED_TIER_LABEL} />
               <SumRow k="Location" v={
                 propPoint
                   ? (propLocation.trim() ? `Pin placed · ${propLocation.trim()}` : "Pin placed")

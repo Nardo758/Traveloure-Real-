@@ -62,32 +62,60 @@ import {
 import { EvidenceThresholdsMissingError, loadEvidenceThresholds, type EvidenceThresholds } from "./evidence-thresholds.service";
 import { markClaimScored, markClaimScorerFailed } from "./neighborhood-claims.service";
 import { logger } from "../infrastructure/logger";
+import { trackAnthropicResponse } from "./ai-cost-tracker";
 
 // ── Injectable dependencies ─────────────────────────────────────────────────────────────────
 
 export interface WebSearchHit { url: string; title?: string; content?: string }
+/** Who a scorer call is spent for: the claim's expert, keyed by claim@version (ledger `2026-09-27-evidence-scorer-cost`). */
+export interface ScorerAttribution { actorId: string | null; requestId: string }
+export type ScorerModel = (input: { system: string; user: string; attribution?: ScorerAttribution }) => Promise<string>;
+
 export interface ScorerDeps {
   /** Returns the model's raw text for (system, user). `null` = no model available (no key). */
-  model?: ((input: { system: string; user: string }) => Promise<string>) | null;
+  model?: ScorerModel | null;
   /** Returns the top results for a query. `null` = no search client available (no key). */
   search?: ((query: string) => Promise<WebSearchHit[]>) | null;
   /** Model label recorded on scorer_json. */
   modelName?: string;
 }
 
-function defaultModel(): ScorerDeps["model"] {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-  const client = new Anthropic({ apiKey });
-  return async ({ system, user }) => {
+/** Minimal client shape the scorer needs — the Anthropic SDK satisfies it; tests pass a fake. */
+export interface ScorerClient {
+  messages: { create: (args: any) => Promise<{ content: any[]; usage?: { input_tokens: number; output_tokens: number }; model?: string }> };
+}
+
+/**
+ * The production scorer call. EVERY response with usage writes one `ai_cost_tracking` row
+ * (sourceType `ai_evidence_scorer`, actor = the claim's expert, requestId = claim@version) through the
+ * ONE existing tracker, awaited, BEFORE the output is parsed — so a malformed answer the scorer then
+ * refuses is still recorded as spend (§13: spend that happened is never unrecorded). A call that
+ * throws has no usage and records nothing; the tracker never throws (§15b).
+ */
+export function anthropicScorerModel(
+  client: ScorerClient,
+  track: typeof trackAnthropicResponse = trackAnthropicResponse,
+): ScorerModel {
+  return async ({ system, user, attribution }) => {
     const resp = await client.messages.create({
       model: EVIDENCE_SCORER_MODEL,
       max_tokens: EVIDENCE_SCORER_MAX_TOKENS,
       system,
       messages: [{ role: "user", content: user }],
     });
+    await track(resp, {
+      sourceType: "ai_evidence_scorer",
+      userId: attribution?.actorId ?? null,
+      requestId: attribution?.requestId ?? null,
+    });
     return resp.content.map((c: any) => (c.type === "text" ? c.text : "")).join("").trim();
   };
+}
+
+function defaultModel(): ScorerDeps["model"] {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+  return anthropicScorerModel(new Anthropic({ apiKey }) as unknown as ScorerClient);
 }
 
 function defaultSearch(): ScorerDeps["search"] {
@@ -315,7 +343,11 @@ export async function scoreClaim(opts: { claimId: string; version?: number }, de
 
   let raw: string;
   try {
-    raw = await model({ system: RUBRIC_SYSTEM_PROMPT, user });
+    raw = await model({
+      system: RUBRIC_SYSTEM_PROMPT,
+      user,
+      attribution: { actorId: row.expertId ?? null, requestId: `${row.id}@v${version}` },
+    });
   } catch (err: any) {
     logger.error(`[evidence-scorer] model call failed for claim ${row.id}: ${err?.message ?? err}`);
     return fail("model_error");

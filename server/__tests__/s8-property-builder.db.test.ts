@@ -351,3 +351,83 @@ test("P3: an invalid check-in time is rejected by the HH:MM app-level validator"
   }));
   assert.equal(res.status, 400, `an out-of-range HH:MM must be rejected (got ${res.status}): ${res.text}`);
 });
+
+// ═══ P4–P6 / N8 — the stay's cancellation tier is kept, and a room is refunded under it ═════════
+// (lane 2026-09-27-property-cancel-tier) The create form sent its tier and stay terms to a
+// z.object that silently STRIPPED them, and a stay books the ROOM row, which carries no tier — so
+// every stay was refunded as the flexible default whatever the provider chose.
+
+test("P4: POST /api/provider/properties keeps the cancellation tier and every stay term it was given", async () => {
+  const created = await readOnce(await api("/api/provider/properties", provider.cookie, "POST", {
+    serviceName: `S8 Tiered ${RUN}`,
+    cancellationPolicyType: "strict",
+    checkInTime: "15:00",
+    checkOutTime: "10:00",
+    houseRules: "Shoes off indoors.",
+    amenities: ["WiFi"],
+    minStayNights: 2,
+    rooms: [{ roomName: "S8 Tiered Room", price: "120.00", units: 1 }],
+  }));
+  assert.equal(created.status, 201, `property create failed (${created.status}): ${created.text}`);
+  const pid = created.body.id as string;
+  const rid = created.body.rooms[0].id as string;
+  createdServiceIds.push(pid, rid);
+  const r = await db.execute(sql`
+    SELECT cancellation_policy_type, check_in_time, check_out_time, house_rules, amenities, min_stay_nights
+    FROM provider_services WHERE id = ${pid}
+  `);
+  const row = r.rows[0] as any;
+  assert.equal(row.cancellation_policy_type, "strict");
+  assert.equal(row.check_in_time, "15:00");
+  assert.equal(row.check_out_time, "10:00");
+  assert.equal(row.house_rules, "Shoes off indoors.");
+  assert.deepEqual(row.amenities, ["WiFi"]);
+  assert.equal(Number(row.min_stay_nights), 2);
+  // The room carries no copy — it inherits at purchase time (P5), so a later property edit is never stale.
+  const room = await db.execute(sql`SELECT cancellation_policy_type FROM provider_services WHERE id = ${rid}`);
+  assert.equal((room.rows[0] as any).cancellation_policy_type, null);
+  // Room first: property_room.parent_service_id is ON DELETE RESTRICT (migration 153).
+  await db.execute(sql`DELETE FROM provider_services WHERE id = ${rid}`);
+  await db.execute(sql`DELETE FROM provider_services WHERE id = ${pid}`);
+});
+
+test("N8: a property created without a tier stays NULL (never a default the provider did not choose)", async () => {
+  const r = await db.execute(sql`SELECT cancellation_policy_type FROM provider_services WHERE id = ${propertyId}`);
+  assert.equal((r.rows[0] as any).cancellation_policy_type, null);
+});
+
+test("P5: a room is snapshotted under its property's tier; a tier on the room itself wins; other shapes read their own", async () => {
+  const { resolveSnapshotCancellationPolicyType, buildOfferingContractSnapshot } = await import(
+    "../services/offering-contract-snapshot"
+  );
+  await db.execute(sql`UPDATE provider_services SET cancellation_policy_type = 'moderate' WHERE id = ${propertyId}`);
+  try {
+    const roomRow = { cancellationPolicyType: null, productShape: "property_room", parentServiceId: propertyId };
+    assert.equal(await resolveSnapshotCancellationPolicyType(roomRow), "moderate");
+    assert.equal(
+      await resolveSnapshotCancellationPolicyType({ ...roomRow, cancellationPolicyType: "strict" }),
+      "strict",
+      "a room's own tier wins over its property's",
+    );
+    assert.equal(
+      await resolveSnapshotCancellationPolicyType({ cancellationPolicyType: null, productShape: null, parentServiceId: propertyId }),
+      null,
+      "only a property_room inherits",
+    );
+    // End to end through the snapshot a purchase is pinned to.
+    const snap = await buildOfferingContractSnapshot({ serviceId: roomId, ownerUserId: provider.id });
+    assert.ok(snap, "a room purchase composes a snapshot");
+    assert.equal(snap!.policy.cancellationPolicyType, "moderate");
+  } finally {
+    await db.execute(sql`UPDATE provider_services SET cancellation_policy_type = NULL WHERE id = ${propertyId}`);
+  }
+});
+
+test("P6: a tier outside the schedule is refused at create (400), never stored", async () => {
+  const res = await readOnce(await api("/api/provider/properties", provider.cookie, "POST", {
+    serviceName: `S8 Bad Tier ${RUN}`,
+    cancellationPolicyType: "super_flexible",
+    rooms: [{ roomName: "S8 Bad Tier Room", price: "90.00", units: 1 }],
+  }));
+  assert.equal(res.status, 400, `expected 400, got ${res.status}: ${res.text}`);
+});

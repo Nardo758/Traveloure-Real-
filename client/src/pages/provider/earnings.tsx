@@ -33,6 +33,7 @@ import { isProvisionalBooking } from "@shared/booking-visibility";
 // Ledger `2026-09-28-no-payment-no-earnings`: a row counts as money only with a payment on record —
 // the ONE predicate, read off the server's `paymentOnRecord` projection.
 import { isEarningBookingRow } from "@shared/payment-on-record";
+import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 
 type BookingWithService = ServiceBooking & { service?: ProviderService };
 
@@ -927,7 +928,7 @@ export default function ProviderEarnings() {
                           >
                             This request has been {payout.status} for more than {PAYOUT_CONTACT_DAYS} days.{" "}
                             <a
-                              href="mailto:support@traveloure.com"
+                              href={`mailto:${COMPANY_CONTACT_EMAIL}`}
                               className="underline font-medium"
                               data-testid={`link-payout-support-${payout.id}`}
                             >
