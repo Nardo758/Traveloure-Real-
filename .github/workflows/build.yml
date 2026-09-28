@@ -233,9 +233,12 @@ jobs:
       # request never answered. Deleting that unreachable branch removed the error. Note the shape
       # again: a ceiling that only forbids the number going UP is how a KNOWN runtime defect sat
       # inside it. ZERO new type errors in any file this lane touched. Locked in, same PR.
+      # 128 measured 2026-09-27 (ledger `2026-09-27-form-fields-admitted`): one of the two orphaned
+      # client files that lane deleted (AssignExpertDialog.tsx, quick-start-itinerary.tsx — no
+      # importer, §18c) carried a type error. ZERO new type errors in any file it touched.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '129'
+          TSC_BASELINE: '128'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
@@ -1065,6 +1068,35 @@ jobs:
       - name: Migration 289 category_key repair
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/category-key-repair.db.test.ts
 
+  funnel-share-token-purge:
+    name: funnel-share-token-purge (ledger 2026-09-27-funnel-share-token-purged — migration 326)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # Funnel events store ids and enums only: the tracker hashes any refToken and drops
+      # credential-shaped keys, the share route records `sharedTripId`, and migration 326 (the ONE
+      # recorded exception to 089's append-only table) purges stored tokens and flags unpaid
+      # revenue rows void — run on a throwaway schema, twice, to prove idempotency.
+      - name: Funnel share-token purge + unpaid revenue void (migration 326)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/funnel-share-token-purge.db.test.ts
+
   archetype-fixtures:
     name: archetype-fixtures (ledger 2026-09-12-archetype-fixtures)
     runs-on: ubuntu-latest
@@ -1282,6 +1314,10 @@ jobs:
       # and not the same fact as a job that runs it. A money-path suite nothing runs cannot fail.
       - name: Checkout payment promotion + plan-work grant (N17-N19, N23)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/checkout-payment-promotion.db.test.ts
+      # Ledger 2026-09-27-paid-runs-never-pruned: optimizer retention prunes only never-authorized
+      # previews; a run that ran (paid, pass-covered or free re-run) is never deleted.
+      - name: Paid optimizer runs are never pruned
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/paid-runs-never-pruned.db.test.ts
 
   booking-agent-claim:
     name: booking-agent-claim (LD 44; ledger 2026-09-08-assignment-is-claimed / 2026-09-15-booking-agent-claim / 2026-09-15-d10-confirmed-needs-partner-evidence)
@@ -3152,6 +3188,14 @@ jobs:
       - name: omit-schema-ratchet · Omit-schema-ratchet guard
         if: ${{ !cancelled() }}
         run: node scripts/check-omit-schema-ratchet.cjs
+      # 2026-09-27-migration-indexes-declared: an index a migration creates must be declared in shared/,
+      # or the publish push drops it and the stamped migration never recreates it. Baseline only shrinks.
+      - name: migration-indexes-declared · predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-migration-indexes-declared.cjs --self-test
+      - name: migration-indexes-declared · guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-migration-indexes-declared.cjs
       # 
       - name: demand-rollup-guard · Demand-rollup gate predicate self-test
         if: ${{ !cancelled() }}

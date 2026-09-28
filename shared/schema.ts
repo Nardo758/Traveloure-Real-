@@ -10655,7 +10655,18 @@ export const funnelEvents = pgTable("funnel_events", {
   stage:      varchar("stage", { length: 4 }).notNull(),   // T0 – T7
   properties: jsonb("properties"),
   createdAt:  timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => ({
+  // Ledger `2026-09-27-migration-indexes-declared` (R175): the five indexes migration 089 creates,
+  // DECLARED here so the deploy push stops dropping them (a stamped 089 never recreates them), and
+  // re-created by migration 328. Byte-equivalent to 089: `created_at DESC` is Postgres' DESC NULLS
+  // FIRST, so `.desc().nullsFirst()` is load-bearing — drizzle's bare `.desc()` emits NULLS LAST
+  // and would make the push plan DROP + CREATE on every publish (the ai_cost_tracking lesson).
+  userIdx:      index("funnel_events_user_idx").on(table.userId),
+  typeIdx:      index("funnel_events_type_idx").on(table.eventType),
+  stageIdx:     index("funnel_events_stage_idx").on(table.stage),
+  createdIdx:   index("funnel_events_created_idx").on(table.createdAt.desc().nullsFirst()),
+  stageTimeIdx: index("funnel_events_stage_time_idx").on(table.stage, table.createdAt.desc().nullsFirst()),
+}));
 
 export const insertFunnelEventSchema = createInsertSchema(funnelEvents).omit({ id: true, createdAt: true });
 export type InsertFunnelEvent = z.infer<typeof insertFunnelEventSchema>;

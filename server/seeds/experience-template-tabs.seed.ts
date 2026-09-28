@@ -10,6 +10,7 @@ import {
 } from "@shared/schema";
 import { eq, inArray, and, sql } from "drizzle-orm";
 import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
+import { cancellationTierFilterLabel, type CancellationPolicyType } from "@shared/cancellation-schedule";
 
 interface FilterOption {
   label: string;
@@ -129,6 +130,48 @@ async function seedTabWithFilters(experienceTypeId: string, tab: TabDef, sortOrd
       });
     }
   }
+}
+
+// ── Cancellation filter labels (ledger `2026-09-27-cancel-filter-labels`) ─────────────────────
+// The chip labels are GENERATED from `shared/cancellation-schedule.ts`, the table the refund math
+// reads — never typed here. The old literals claimed "Strict (No Refund)" and "Moderate (50% Refund)",
+// neither of which the schedule pays.
+const CANCELLATION_FILTER_TIERS: readonly CancellationPolicyType[] = ["flexible", "moderate", "strict"];
+export const CANCELLATION_FILTER_OPTIONS: FilterOption[] = CANCELLATION_FILTER_TIERS.map((value) => ({
+  label: cancellationTierFilterLabel(value),
+  value,
+}));
+
+/** The literal labels earlier seeds wrote. Only a row still holding one of these is relabelled. */
+export const LEGACY_CANCELLATION_FILTER_LABELS: Readonly<Record<string, readonly string[]>> = {
+  flexible: ["Flexible (Full Refund)", "Flexible"],
+  moderate: ["Moderate (50% Refund)", "Moderate"],
+  strict: ["Strict (No Refund)", "Strict"],
+};
+
+/**
+ * The seeder is insert-only, so a corrected label never reaches a database seeded earlier. This
+ * relabels STALE rows only: an option under a `cancellation` universal filter whose label is still
+ * one of the legacy literals. An admin-edited label is never overwritten, and a second run matches
+ * nothing (idempotent).
+ */
+export async function relabelCancellationFilterOptions(): Promise<number> {
+  let updated = 0;
+  for (const opt of CANCELLATION_FILTER_OPTIONS) {
+    const legacy = LEGACY_CANCELLATION_FILTER_LABELS[opt.value] ?? [];
+    if (legacy.length === 0) continue;
+    const r = await db.execute(sql`
+      UPDATE experience_universal_filter_options o
+         SET label = ${opt.label}
+        FROM experience_universal_filters f
+       WHERE o.filter_id = f.id
+         AND f.slug = 'cancellation'
+         AND o.value = ${opt.value}
+         AND o.label IN (${sql.join(legacy.map((l) => sql`${l}`), sql`, `)})
+    `);
+    updated += (r as any).rowCount ?? 0;
+  }
+  return updated;
 }
 
 // P462 reconcile (Phase 2): attach lean, per-tab selection controls to each
@@ -936,9 +979,7 @@ const bachelorUniversalFilters: UniversalFilterDef[] = [
     filterType: "single_select",
     icon: "XCircle",
     options: [
-      { label: "Flexible (Full Refund)", value: "flexible" },
-      { label: "Moderate (50% Refund)", value: "moderate" },
-      { label: "Strict (No Refund)", value: "strict" },
+    ...CANCELLATION_FILTER_OPTIONS,
     ]
   },
   {
@@ -1599,9 +1640,7 @@ const anniversaryUniversalFilters: UniversalFilterDef[] = [
     filterType: "single_select",
     icon: "XCircle",
     options: [
-      { label: "Flexible", value: "flexible" },
-      { label: "Moderate", value: "moderate" },
-      { label: "Strict", value: "strict" },
+    ...CANCELLATION_FILTER_OPTIONS,
     ]
   },
   {
@@ -4766,6 +4805,12 @@ const sportsEventTabs: TabDef[] = [
 
 export async function seedExperienceTemplateTabs() {
   console.log("Seeding experience template tabs and filters...");
+  try {
+    const relabelled = await relabelCancellationFilterOptions();
+    if (relabelled > 0) console.log(`  Cancellation filter labels corrected from the schedule: ${relabelled} row(s)`);
+  } catch (err) {
+    console.error("[seed] cancellation filter relabel failed (non-fatal):", (err as any)?.message);
+  }
 
   const templates: Array<{
     slug: string;
