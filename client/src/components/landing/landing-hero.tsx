@@ -21,6 +21,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Search, Sparkles } from "lucide-react";
 import { useRotation } from "@/hooks/use-rotation";
 import { getCityDiscoverHref } from "@/lib/city-discover-route";
@@ -129,6 +130,7 @@ export function LandingHeroContent({
   hero: LandingHeroData | null;
   onPlanTrip: () => void;
 }) {
+  const { t } = useTranslation("nav");
   const [, navigate] = useLocation();
   // Typed search — rotation stops on hover AND the moment the input focuses.
   const [searchFocused, setSearchFocused] = useState(false);
@@ -199,11 +201,13 @@ export function LandingHeroContent({
             className="mt-3 text-[40px] font-semibold leading-[1.03] tracking-[-0.015em] sm:text-[54px]"
             style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}
           >
-            Any experience. Anywhere. Planned like a local
+            {t("hero.headline", "Any experience. Anywhere. Planned like a local.")}
           </h1>
           <p className="mb-[18px] mt-3 max-w-[500px] text-[17px]" style={{ color: "#3C4652" }}>
-            Tell us the occasion and where in the world you want it. We build the plan around it,
-            and someone who lives there does the rest.
+            {t(
+              "hero.subhead",
+              "Tell us the occasion and where in the world you want it. We build the plan around it, and someone who lives there does the rest.",
+            )}
           </p>
 
           <div
@@ -253,7 +257,7 @@ export function LandingHeroContent({
               data-testid="button-plan-trip"
             >
               <Sparkles className="h-4 w-4" />
-              Start planning
+              {t("hero.startPlanning", "Start planning")}
             </button>
             <Link
               href="/experts"
