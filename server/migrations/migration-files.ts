@@ -1833,4 +1833,9 @@ export const MIGRATION_FILES = [
   // (`per_person` | `per_booking`, NULL read as per booking) — additive NULLABLE, NO DEFAULT, NO
   // CHECK, NO BACKFILL; declared in shared/schema.ts in the same commit.
   "325_provider_services_price_basis.sql",
+  // THE ONE RECORDED EXCEPTION to 089's append-only funnel_events (decision-maker, Sep 27, 2026):
+  // share tokens purged / hashed (ledger `2026-09-27-funnel-share-token-purged`) and unpaid
+  // `revenue` rows flagged void (ledger `2026-09-27-funnel-revenue-on-paid`). DATA ONLY — no DDL,
+  // nothing for the publish push to offer (§20). Append-only again after this file.
+  "326_funnel_events_purge_share_tokens.sql",
 ] as const;
