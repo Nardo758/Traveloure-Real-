@@ -3,12 +3,17 @@
  * Visual of record: docs/design/landing-earn-mock.html "HERO v2"; behavior contract:
  * docs/design/LANDING_SPEC.md.
  *
- * Live hero — honest by construction (§13): the bento tiles render the nullable legs of
- * GET /api/landing/hero (server-composed from the top city's real feed rows). A null leg
- * renders NO tile — the grid collapses to what exists; nothing is fabricated. The mock's
- * Gem/service tiles retain market-aware fallbacks. The local-expert tile uses one neutral guide
- * photo until the expert supplies a usable profile photo, so Moment imagery is never presented as
- * an expert portrait.
+ * Billboard (landing reorder, ledger `2026-09-28-landing-reorder`, item 5): the three tiles are
+ * CURATED rows from shared/landing-billboard.ts — occasion, market, a repo photo, a headline and
+ * three lines — never a live listing, expert name, price or avatar. Each photo is credited from
+ * public/images/landing/ATTRIBUTION.json and a photo with no entry is not rendered. A tile says
+ * "Representative photo · <market>" until a real expert who passes the byline gate
+ * (GET /api/landing/billboard-experts) takes it, and only then shows their initial. "Start this
+ * plan" opens a NEW plan with the tile's occasion and market pre-set. The live payload
+ * (GET /api/landing/hero) now feeds only the ticker line and the Wanted strip.
+ *
+ * "Where do you want to begin?" pills: the nav's BROWSE and FIND HELP sections (the same eight
+ * destinations the removed entry tiles carried), read from nav-config, never retyped.
  *
  * Typed search: STATIC CURATED titles (decision-maker ruled — no UGC; source of truth is
  * LANDING_SPEC.md §Typed-search titles). Rotates via the shared useRotation hook (8s,
@@ -18,7 +23,7 @@
  * "Plan my trip" calls the SAME handler the old hero used — setPlanningOpen(true) via the
  * onPlanTrip prop → EnhancedPlanningModal (preserve-exactly, LANDING_SPEC.md).
  */
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -26,16 +31,23 @@ import { Search, Sparkles } from "lucide-react";
 import { useRotation } from "@/hooks/use-rotation";
 import { getCityDiscoverHref } from "@/lib/city-discover-route";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
-import { isReferencePhoto } from "@/lib/photo-provenance";
-import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
+import { navGroupsConfig, type NavLeafConfig } from "@/lib/nav-config";
 import type { LandingHeroPayload } from "@shared/landing-hero";
+import {
+  BILLBOARD_TILES,
+  billboardLabel,
+  resolveBillboardCredit,
+  type BillboardCredit,
+  type BillboardExpert,
+  type BillboardTile,
+  type PhotoAttribution,
+} from "@shared/landing-billboard";
+import type { PlanningSource } from "@/contexts/PlanningContext";
+// The ONE credit record for the repo's landing photos — never retyped into the tiles.
+import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
-const HERO_GEM_FALLBACK = "/images/landing/hero-fushimi-inari.jpg";
-const HERO_SERVICE_FALLBACK = "/images/landing/hero-kyoto-temple.jpg";
-export const HERO_EXPERT_FALLBACK = "/images/landing/hero-generic-expert.jpg";
-
 // Source of truth: docs/design/LANDING_SPEC.md §Typed-search titles (ruled: static
 // curated, market-spread, no UGC). Edit the spec first, then mirror here.
 const TYPED_SEARCH_TITLES = [
@@ -51,84 +63,204 @@ const TYPED_SEARCH_TITLES = [
 
 type LandingHeroData = LandingHeroPayload;
 
-function centsToDollarsLabel(cents: number | null): string | null {
-  if (cents === null || !Number.isFinite(cents)) return null;
-  const dollars = cents / 100;
-  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+/**
+ * "Where do you want to begin?" — two rows of pills under the hero buttons (landing reorder,
+ * ledger `2026-09-28-landing-reorder`). They replace the former eight-tile EntryStrips section
+ * and DERIVE from the same navGroupsConfig BROWSE / FIND HELP sections the navbar reads, so the
+ * pill set is the old tile set by construction and a route rename can never strand one (§18
+ * rule 1). Labels use the nav's own i18n keys.
+ */
+export function heroBeginRows(): Array<{ key: "browse" | "findHelp"; items: NavLeafConfig[] }> {
+  const section = (title: string) => {
+    for (const group of navGroupsConfig) {
+      for (const s of group.sections ?? []) if (s.title.toUpperCase() === title) return s.items;
+    }
+    return [];
+  };
+  return [
+    { key: "browse", items: section("BROWSE") },
+    { key: "findHelp", items: section("FIND HELP") },
+  ];
 }
 
-export function resolveHeroTilePhoto(
-  remoteUrl: string | undefined,
-  remoteFailed: boolean,
-  fallbackUrl: string | undefined,
-): { src: string | null; usesFallback: boolean } {
-  const usesFallback = !remoteUrl || remoteFailed;
-  return { src: (usesFallback ? fallbackUrl : remoteUrl) ?? null, usesFallback };
-}
-
-function HeroTilePhoto({
-  remoteUrl,
-  fallbackUrl,
-  referenceTestId,
-  overlay,
-}: {
-  remoteUrl?: string;
-  fallbackUrl?: string;
-  referenceTestId: string;
-  overlay?: string;
-}) {
-  const [remoteFailed, setRemoteFailed] = useState(false);
-  const [fallbackFailed, setFallbackFailed] = useState(false);
-
-  useEffect(() => {
-    setRemoteFailed(false);
-    setFallbackFailed(false);
-  }, [remoteUrl, fallbackUrl]);
-
-  const { src, usesFallback } = resolveHeroTilePhoto(remoteUrl, remoteFailed, fallbackUrl);
-  if (fallbackFailed || !src) return null;
-
+function HeroBeginPills() {
+  const { t } = useTranslation("nav");
+  const rows = heroBeginRows().filter((row) => row.items.length > 0);
+  if (rows.length === 0) return null;
+  const marker = { browse: t("hero.beginBrowse", "Browse"), findHelp: t("hero.beginFindHelp", "Find help") };
   return (
-    <>
-      <img
-        key={src}
-        src={src}
-        alt=""
-        aria-hidden="true"
-        className="absolute inset-0 h-full w-full object-cover"
-        loading="eager"
-        onError={() => {
-          if (usesFallback) setFallbackFailed(true);
-          else setRemoteFailed(true);
-        }}
-      />
-      <div
-        className="absolute inset-0"
-        style={{ background: overlay ?? "linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6))" }}
-        aria-hidden="true"
-      />
-      {(usesFallback || (remoteUrl && isReferencePhoto({ url: remoteUrl }))) && (
-        <ReferencePhotoChip
-          className="left-2.5 top-2.5"
-          testId={referenceTestId}
-          label="Representative photo"
-        />
-      )}
-    </>
+    <div className="mt-6" data-testid="hero-begin">
+      <p className="mb-2.5 text-[17px] font-semibold" style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}>
+        {t("hero.beginPrompt", "Where do you want to begin?")}
+      </p>
+      <div className="flex flex-col gap-2">
+        {rows.map((row) => (
+          <div key={row.key} className="flex flex-col gap-1.5 sm:flex-row sm:items-start" data-testid={`hero-begin-${row.key}`}>
+            <span
+              className="w-[76px] shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] sm:pt-[9px]"
+              style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
+            >
+              {marker[row.key]}
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {row.items.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="inline-flex min-h-[32px] items-center rounded-full border bg-white px-3 text-[12px] hover:border-[color:var(--earn-teal)] hover:text-[color:var(--earn-teal-ink)]"
+                  style={{ fontFamily: EARN_MONO, borderColor: "var(--earn-border)", color: "var(--earn-ink)" }}
+                  data-testid={`hero-pill-${item.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                >
+                  {item.i18nKey ? t(item.i18nKey, item.name) : item.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
-export function LandingHero({ onPlanTrip }: { onPlanTrip: () => void }) {
+/**
+ * The billboard (landing reorder, ledger `2026-09-28-landing-reorder`, item 5): the curated tiles
+ * of shared/landing-billboard.ts whose photo credit resolves from ATTRIBUTION.json. A tile whose
+ * photo has no entry is not rendered (§13: never an uncredited photo).
+ */
+export function resolveBillboardTiles(
+  attributions: readonly PhotoAttribution[] = LANDING_PHOTO_ATTRIBUTION as PhotoAttribution[],
+): Array<BillboardTile & { credit: BillboardCredit }> {
+  return BILLBOARD_TILES.flatMap((tile) => {
+    const credit = resolveBillboardCredit(tile.imagePath, attributions);
+    return credit ? [{ ...tile, credit }] : [];
+  });
+}
+
+/** The PlanningSource a tile's "Start this plan" opens: the tile's occasion and its market. */
+export function billboardPlanSource(tile: BillboardTile): PlanningSource | null {
+  const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
+  if (!market) return null;
+  return { experienceSlug: tile.occasionSlug, city: market.cityName, country: market.country };
+}
+
+function BillboardTileCard({
+  tile,
+  large,
+  expert,
+  onStartPlan,
+}: {
+  tile: BillboardTile & { credit: BillboardCredit };
+  large: boolean;
+  expert: BillboardExpert | null;
+  onStartPlan: (source: PlanningSource) => void;
+}) {
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
+  if (!market) return null;
+  return (
+    <div
+      className={`relative flex flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`}
+      style={{ background: "linear-gradient(160deg,#7C6A63,#1E3A5F)" }}
+      data-testid={`hero-billboard-${tile.key}`}
+    >
+      {!photoFailed && (
+        <img
+          src={tile.imagePath}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full object-cover"
+          loading="eager"
+          onError={() => setPhotoFailed(true)}
+        />
+      )}
+      <div
+        className="absolute inset-0"
+        style={{ background: "linear-gradient(180deg,rgba(13,33,55,.15) 0%,rgba(13,33,55,.9) 100%)" }}
+        aria-hidden="true"
+      />
+      <span
+        className="absolute left-2.5 top-2.5 z-10 flex items-center gap-1.5 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
+        style={{ fontFamily: EARN_MONO }}
+        data-testid={`hero-billboard-label-${tile.key}`}
+      >
+        {expert ? (
+          <Link
+            href={`/s/${expert.handle}`}
+            className="grid h-4 w-4 place-items-center rounded-full bg-white text-[9px] font-semibold"
+            style={{ color: "var(--earn-navy)" }}
+            aria-label={`Local expert @${expert.handle}`}
+            data-testid={`hero-billboard-expert-${tile.key}`}
+          >
+            {expert.initial}
+          </Link>
+        ) : null}
+        {expert ? `Local expert · ${market.cityName}` : billboardLabel(market.cityName)}
+      </span>
+      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
+        {tile.occasionLabel} · {market.cityName}
+      </span>
+      <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`} style={{ fontFamily: FRAUNCES }}>
+        {tile.headline}
+      </b>
+      <ul className="relative z-10 mt-1.5 space-y-0.5 text-[12px] leading-snug opacity-90">
+        {tile.lines.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => {
+          const source = billboardPlanSource(tile);
+          if (source) onStartPlan(source);
+        }}
+        className="relative z-10 mt-2.5 inline-flex min-h-[32px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+        data-testid={`hero-billboard-start-${tile.key}`}
+      >
+        Start this plan
+      </button>
+      <a
+        href={tile.credit.source}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="relative z-10 mt-2 text-[9.5px] opacity-75 hover:underline"
+        style={{ fontFamily: EARN_MONO }}
+        data-testid={`hero-billboard-credit-${tile.key}`}
+      >
+        Photo: {tile.credit.creator} · {tile.credit.site}
+      </a>
+    </div>
+  );
+}
+
+export function LandingHero({
+  onPlanTrip,
+  onStartPlan,
+}: {
+  onPlanTrip: () => void;
+  onStartPlan: (source: PlanningSource) => void;
+}) {
   const { data: hero } = useQuery<LandingHeroData>({ queryKey: ["/api/landing/hero"] });
-  return <LandingHeroContent hero={hero ?? null} onPlanTrip={onPlanTrip} />;
+  const { data: override } = useQuery<{ experts: BillboardExpert[] }>({ queryKey: ["/api/landing/billboard-experts"] });
+  return (
+    <LandingHeroContent
+      hero={hero ?? null}
+      onPlanTrip={onPlanTrip}
+      onStartPlan={onStartPlan}
+      experts={override?.experts ?? []}
+    />
+  );
 }
 
 export function LandingHeroContent({
   hero,
   onPlanTrip,
+  onStartPlan = () => {},
+  experts = [],
 }: {
   hero: LandingHeroData | null;
   onPlanTrip: () => void;
+  onStartPlan?: (source: PlanningSource) => void;
+  experts?: readonly BillboardExpert[];
 }) {
   const { t } = useTranslation("nav");
   const [, navigate] = useLocation();
@@ -156,13 +288,8 @@ export function LandingHeroContent({
     navigate(`/services?${params.toString()}`);
   };
 
-  const anchor = hero?.anchorExpert ?? null;
-  const gem = hero?.gem ?? null;
-  const service = hero?.service ?? null;
-  const anchorFrom = centsToDollarsLabel(anchor?.fromPriceCents ?? null);
-  const servicePrice = centsToDollarsLabel(service?.priceCents ?? null);
-  const anchorFirstName = anchor?.name?.split(" ")[0] ?? null;
   const marketNames = OPERATING_MARKETS.slice(0, 4);
+  const tiles = resolveBillboardTiles();
 
   const tickerParts = hero?.city
     ? [
@@ -268,6 +395,8 @@ export function LandingHeroContent({
               Browse local experts
             </Link>
           </div>
+
+          <HeroBeginPills />
         </div>
 
         {/* Right: live ticker + stable bento. Missing live legs become honest representative cards. */}
@@ -287,127 +416,15 @@ export function LandingHeroContent({
           )}
 
           <div className="grid grid-cols-2 gap-2.5" data-testid="hero-bento">
-            {(anchor || hero?.city) && (
-              <div
-                className="relative row-span-2 flex min-h-[310px] flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white"
-                style={{
-                  background:
-                    "linear-gradient(180deg,rgba(30,58,95,.1) 0%,rgba(13,33,55,.92) 100%),linear-gradient(160deg,#7C6A63,#1E3A5F)",
-                }}
-                data-testid="hero-tile-anchor"
-              >
-                <HeroTilePhoto
-                  remoteUrl={anchor?.imageUrl}
-                  fallbackUrl={HERO_EXPERT_FALLBACK}
-                  referenceTestId="hero-anchor-reference-photo"
-                  overlay="linear-gradient(180deg,rgba(30,58,95,.12) 0%,rgba(13,33,55,.92) 100%)"
-                />
-                <span
-                  className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
-                  style={{ fontFamily: EARN_MONO }}
-                >
-                  {anchor ? `Local expert${hero?.city ? ` · ${hero.city}` : ""}` : "Representative destination"}
-                </span>
-                <b className="relative z-10 text-[20px] font-semibold leading-tight" style={{ fontFamily: FRAUNCES }}>
-                  {anchor?.name ?? hero?.city}
-                </b>
-                {anchor && anchorFrom &&
-                  (anchor.handle ? (
-                    <Link
-                      href={`/s/${anchor.handle}`}
-                      className="relative z-10 mt-2 inline-block self-start rounded-[7px] px-2.5 py-1.5 text-[12px] font-semibold text-white"
-                      style={{ background: "var(--earn-coral-ink)" }}
-                      data-testid="hero-anchor-cta"
-                    >
-                      Plan with {anchorFirstName} · from {anchorFrom}
-                    </Link>
-                  ) : (
-                    <span
-                      className="relative z-10 mt-2 inline-block self-start rounded-[7px] px-2.5 py-1.5 text-[12px] font-semibold text-white"
-                      style={{ background: "var(--earn-coral-ink)" }}
-                    >
-                      Plan with {anchorFirstName} · from {anchorFrom}
-                    </span>
-                  ))}
-                {!anchor && hero?.city && (
-                  <Link
-                    href={getCityDiscoverHref(hero.city)}
-                    className="relative z-10 mt-2 inline-block self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 py-1.5 text-[12px] font-semibold text-white"
-                    data-testid="hero-anchor-browse"
-                  >
-                    Browse {hero.city}
-                  </Link>
-                )}
-              </div>
-            )}
-
-            {(gem || hero?.city) && (
-              <div
-                className="relative flex min-h-[150px] flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white"
-                style={{
-                  background:
-                    "linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6)),linear-gradient(135deg,#B9C8D8,#7C97B4)",
-                }}
-                data-testid="hero-tile-gem"
-              >
-                <HeroTilePhoto
-                  remoteUrl={gem?.imageUrl}
-                  fallbackUrl={HERO_GEM_FALLBACK}
-                  referenceTestId="hero-gem-reference-photo"
-                />
-                {gem?.score !== null && gem?.score !== undefined && (
-                  <span
-                    className="absolute z-10 right-2.5 top-2.5 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
-                    style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}
-                  >
-                    {gem.score}
-                  </span>
-                )}
-                <span
-                  className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
-                  style={{ fontFamily: EARN_MONO }}
-                >
-                  {gem ? "Hidden gem" : "Representative destination"}
-                </span>
-                <b className="relative z-10 text-[14px] leading-tight" style={{ textShadow: "0 1px 8px rgba(0,0,0,.35)" }}>
-                  {gem?.name ?? hero?.city}
-                </b>
-              </div>
-            )}
-
-            {(service || hero?.city) && (
-              <div
-                className="relative flex min-h-[150px] flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white"
-                style={{
-                  background:
-                    "linear-gradient(180deg,rgba(0,0,0,0) 30%,rgba(0,0,0,.6)),linear-gradient(135deg,#E5C6B6,#B97C7C)",
-                }}
-                data-testid="hero-tile-service"
-              >
-                <HeroTilePhoto
-                  remoteUrl={service?.imageUrl}
-                  fallbackUrl={HERO_SERVICE_FALLBACK}
-                  referenceTestId="hero-service-reference-photo"
-                />
-                {service && servicePrice && (
-                  <span
-                    className="absolute z-10 right-2.5 top-2.5 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
-                    style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}
-                  >
-                    {servicePrice}
-                  </span>
-                )}
-                <span
-                  className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85"
-                  style={{ fontFamily: EARN_MONO }}
-                >
-                  {service ? "Book on Traveloure" : "Representative destination"}
-                </span>
-                <b className="relative z-10 text-[14px] leading-tight" style={{ textShadow: "0 1px 8px rgba(0,0,0,.35)" }}>
-                  {service?.name ?? `Ways to explore ${hero?.city ?? ""}`}
-                </b>
-              </div>
-            )}
+            {tiles.map((tile, i) => (
+              <BillboardTileCard
+                key={tile.key}
+                tile={tile}
+                large={i === 0}
+                expert={experts.find((e) => e.marketKey === tile.marketKey) ?? null}
+                onStartPlan={onStartPlan}
+              />
+            ))}
 
             {wanted && (
               <div

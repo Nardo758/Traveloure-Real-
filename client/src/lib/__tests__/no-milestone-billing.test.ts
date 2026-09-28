@@ -125,7 +125,9 @@ describe("D-5 — no surface promises milestone, staged, instalment or hourly bi
     // the sweep below has quietly stopped checking the pages the ruling was about.
     for (const expected of [
       "pages/pricing.tsx",
-      "components/landing/how-it-works.tsx",
+      // components/landing/how-it-works.tsx LEFT this set with the landing reorder (ledger
+      // `2026-09-28-landing-reorder`): it is now a one-line strip that names the four steps and
+      // links to /pricing, and prices nothing — see M5.
       // AssignExpertDialog.tsx had no importer and was deleted (ledger `2026-09-27-form-fields-admitted`);
       // HireExpertDialog is the ONE plan-level picker (LD 42 D7) and carries the same rail marker.
       "components/plancard/HireExpertDialog.tsx",
@@ -190,12 +192,21 @@ describe("D-5 — no surface promises milestone, staged, instalment or hourly bi
     // it may not do is go back to describing a schedule (M2), or say nothing at all about the
     // one charge that exists (§13: the engagement's fee is a real, server-quoted fact).
     const set = new Map(planningCommerceSurfaces().map((f) => [f.rel, f.code]));
-    for (const rel of ["pages/pricing.tsx", "components/landing/how-it-works.tsx"]) {
+    for (const rel of ["pages/pricing.tsx"]) {
       assert.match(
         set.get(rel) ?? "",
         /coordination fee/i,
         `${rel} prices the done-for-you engagement and must name its one coordination fee`,
       );
     }
+  });
+
+  it("M5 the landing how-it-works strip prices nothing — every number lives on /pricing", () => {
+    // Ledger `2026-09-28-landing-reorder`: the price rows left the landing page. They are not to
+    // be re-added there; a missing number is added to /pricing, which renders from fee_bands.
+    const src = readFileSync(join(CLIENT_SRC, "components/landing/how-it-works.tsx"), "utf8");
+    assert.doesNotMatch(src, /\/api\/pricing|priceCents|serviceFee|coordination fee|\$\d/, "the landing strip must not price anything");
+    assert.match(src, /href="\/pricing"/, "the strip links to /pricing");
+    assert.match(src, /href="\/how-it-works"/, "the strip links to /how-it-works");
   });
 });

@@ -1847,4 +1847,9 @@ export const MIGRATION_FILES = [
   // `blog_post_sources`, `blog_post_reactions` — three NEW tables born empty with their indexes;
   // NO CHECK, NO DEFAULT on status; all declared in shared/schema.ts. §20 new-object carve-out.
   "329_blog_posts.sql",
+  // Ledger `2026-09-28-city-events` (landing reorder, item 6): `city_events` — ONE NEW table born
+  // empty with its (source, source_id) UNIQUE index and a starts_at index; NO CHECK, NO DB DEFAULT
+  // on id; all declared in shared/schema.ts. §20 new-object carve-out (the UNIQUE is on a table the
+  // same statement set creates).
+  "330_city_events.sql",
 ] as const;

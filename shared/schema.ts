@@ -10123,6 +10123,40 @@ export const savedPlaceShares = pgTable("saved_place_shares", {
 ]);
 export type SavedPlaceShare = typeof savedPlaceShares.$inferSelect;
 
+// === City events (landing "Coming up in our cities" + /events "Coming up") ===
+// Ledger `2026-09-28-city-events`, migration 330. Additive; NO CHECK (value sets in
+// shared/city-events.ts), NO DB default on id. Rows are never deleted: a withdrawn event gets
+// `withdrawn_at`. `neighbourhood_id` and `nights` are DERIVED by the seeder (nearest same-city
+// neighbourhood with coordinates, else NULL; local calendar nights) and never client-settable.
+// Table and the (source, source_id) unique index are declared here in the same commit
+// (deploy-push rule).
+export const cityEvents = pgTable("city_events", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  source: varchar("source", { length: 20 }).notNull(),
+  sourceId: varchar("source_id", { length: 200 }).notNull(),
+  series: varchar("series", { length: 200 }),
+  title: varchar("title", { length: 300 }).notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  venue: varchar("venue", { length: 300 }).notNull(),
+  venueLat: doublePrecision("venue_lat"),
+  venueLng: doublePrecision("venue_lng"),
+  neighbourhoodId: varchar("neighbourhood_id").references(() => cityNeighborhoods.id, { onDelete: "set null" }),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }),
+  nights: integer("nights").notNull(),
+  ticketUrl: text("ticket_url"),
+  billedArtists: text("billed_artists"),
+  blurb: text("blurb"),
+  imagePath: text("image_path"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  withdrawnAt: timestamp("withdrawn_at"),
+}, (table) => [
+  uniqueIndex("city_events_source_uniq").on(table.source, table.sourceId),
+  index("city_events_starts_at_idx").on(table.startsAt),
+]);
+export type CityEvent = typeof cityEvents.$inferSelect;
+export type InsertCityEvent = typeof cityEvents.$inferInsert;
+
 // === Cross-Sell Conversion Tracking ===
 
 export const crossSellEvents = pgTable("cross_sell_events", {

@@ -148,6 +148,9 @@ export const OCCASION_CLASS_BY_SLUG: Record<string, OccasionClass> = {
   // keyword sniff already answered for a golf trip (no EVENT/COUPLE keyword matches "golf", so it
   // fell to the travel last resort) — the same answer, moved into the table O1 can check.
   "golf-trip": "travel",
+  // Seeded by ledger `2026-09-28-city-events` (Show / Festival). Travel-class, the class of its
+  // nearest occasion, sports-event: a show you plan an evening or a few nights around.
+  show: "travel",
 };
 
 /**
@@ -183,6 +186,7 @@ const OCCASION_NAME_ALIASES: Record<string, string> = {
   "romantic-getaway": "romance",
   "corporate-retreats": "corporate",
   "bachelor/bachelorette-party": "bachelor-bachelorette",
+  "show-/-festival": "show",
 };
 
 /**

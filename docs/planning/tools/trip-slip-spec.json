@@ -2893,6 +2893,128 @@
    }
   },
   {
+   "slug": "show",
+   "name": "Show / Festival",
+   "group": "Moments",
+   "switches": {
+    "duration": "day",
+    "guests": false,
+    "stops": "many",
+    "schedule": true,
+    "visibility": "shown",
+    "vocabulary": "travelers"
+   },
+   "roles": [
+    "private_transportation",
+    "dining_venue",
+    "accommodation"
+   ],
+   "lead": "The one reservation (A6) and its compare set (S1)",
+   "anchor": "dinner_reservation (temporal anchor)",
+   "req": [],
+   "compare": "dining_venue",
+   "compareOverridden": false,
+   "a1": "not available",
+   "modules": {
+    "B1": {
+     "value": "on",
+     "by": null
+    },
+    "B2": {
+     "value": "on",
+     "by": null
+    },
+    "B3": {
+     "value": "on",
+     "by": null
+    },
+    "B4": {
+     "value": "on",
+     "by": null
+    },
+    "B5": {
+     "value": "on",
+     "by": null
+    },
+    "B6": {
+     "value": "on",
+     "by": null
+    },
+    "B7": {
+     "value": "on",
+     "by": null
+    },
+    "S1": {
+     "value": "on",
+     "by": null
+    },
+    "S2": {
+     "value": "on",
+     "by": null
+    },
+    "S3": {
+     "value": "on",
+     "by": null
+    },
+    "S4": {
+     "value": "off",
+     "by": null
+    },
+    "S5": {
+     "value": "on",
+     "by": null
+    },
+    "S6": {
+     "value": "cond",
+     "by": null
+    },
+    "S7": {
+     "value": "opt",
+     "by": null
+    },
+    "S8": {
+     "value": "on",
+     "by": null
+    },
+    "S9": {
+     "value": "on",
+     "by": "switch"
+    },
+    "A1": {
+     "value": "off",
+     "by": null
+    },
+    "A2": {
+     "value": "on",
+     "by": null
+    },
+    "A3": {
+     "value": "off",
+     "by": null
+    },
+    "A4": {
+     "value": "off",
+     "by": null
+    },
+    "A5": {
+     "value": "opt",
+     "by": null
+    },
+    "A6": {
+     "value": "on",
+     "by": null
+    },
+    "A7": {
+     "value": "off",
+     "by": null
+    },
+    "A8": {
+     "value": "on",
+     "by": null
+    }
+   }
+  },
+  {
    "slug": "romance",
    "name": "Romantic Getaways",
    "group": "Trips",

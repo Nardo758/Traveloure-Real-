@@ -203,4 +203,33 @@ router.post("/api/landing/moments/event", async (req, res) => {
   res.status(204).end();
 });
 
+// Billboard override (ledger `2026-09-28-landing-reorder`, item 5): the byline-gated expert, if
+// any, who has taken a billboard market. Empty = every tile stays curated. Public, read-only;
+// a failure answers the empty list (curated), never an error on the landing page.
+router.get("/api/landing/billboard-experts", async (_req, res) => {
+  try {
+    const { resolveBillboardExperts } = await import("../services/landing-billboard.service");
+    res.set("Cache-Control", "public, max-age=300");
+    return res.json({ experts: await resolveBillboardExperts() });
+  } catch (e: any) {
+    console.error("[landing-billboard] override read failed (tiles stay curated):", e?.message);
+    return res.json({ experts: [] });
+  }
+});
+
+// "Coming up in our cities" (ledger `2026-09-28-city-events`): renderable city_events starting
+// in the next 180 days, soonest first, every display value derived server-side. Public, read-only.
+// On failure the page must show NOTHING rather than an error, so the error answer is an empty list.
+router.get("/api/city-events/upcoming", async (_req, res) => {
+  try {
+    const { listUpcomingCityEvents } = await import("../services/city-events.service");
+    res.set("Cache-Control", "public, max-age=300");
+    return res.json(await listUpcomingCityEvents(new Date()));
+  } catch (e: any) {
+    console.error("[city-events] upcoming read failed (strip stays absent):", e?.message);
+    const { CITY_EVENTS_WINDOW_DAYS } = await import("@shared/city-events");
+    return res.json({ windowDays: CITY_EVENTS_WINDOW_DAYS, total: 0, events: [] });
+  }
+});
+
 export default router;

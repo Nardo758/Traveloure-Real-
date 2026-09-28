@@ -398,6 +398,19 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed city neighborhoods");
   }
 
+  // City events (ledger 2026-09-28-city-events): insert-only, keyed on (source, source_id); a
+  // no-op while the hand-kept list is empty. Runs after neighbourhoods so the derived
+  // neighbourhood can resolve.
+  try {
+    const { seedManualCityEvents } = await import("./seeds/city-events.manual");
+    const eventsResult = await seedManualCityEvents();
+    if (eventsResult.inserted > 0 || eventsResult.refused.length > 0) {
+      logger.info({ inserted: eventsResult.inserted, refused: eventsResult.refused }, "Seeded city events");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed city events");
+  }
+
   // expert_neighborhoods one-writer guard (migration 272; ruling 2026-08-29-neighborhood-claims).
   // The trigger is not a drizzle-managed object, so if a deploy push ever removed it the migration
   // (already stamped) would never recreate it — say so loudly rather than silently losing the guard.

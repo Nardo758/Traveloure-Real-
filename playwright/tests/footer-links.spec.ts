@@ -100,3 +100,38 @@ test.describe('Footer destinations render the shared header and footer (signed o
     });
   }
 });
+
+// ── The hero's "Where do you want to begin?" pills, signed out ────────────────
+// Landing reorder (ledger `2026-09-28-landing-reorder`, item 1): the eight entry tiles became two
+// rows of pills in the hero, with the SAME eight destinations. The list is written out here on
+// purpose — the static twin (landing-hero-representative.test.tsx P1) proves the pills derive from
+// nav-config; this proves the rendered page carries exactly these links and each opens for a guest.
+const HERO_PILL_HREFS = [
+  '/destinations',
+  '/events',
+  '/ready-made',
+  '/services',
+  '/providers',
+  '/experts?role=local_expert',
+  '/experts?role=travel_expert',
+  '/experts?role=event_planner',
+];
+
+test.describe('Landing hero pills open for a guest', () => {
+  test('the hero renders exactly the eight pill links', async ({ page }) => {
+    await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const pills = page.locator('[data-testid="hero-begin"] a');
+    await expect(pills.first()).toBeVisible({ timeout: 15_000 });
+    const hrefs = await pills.evaluateAll((els) => els.map((el) => el.getAttribute('href')));
+    expect(hrefs).toEqual(HERO_PILL_HREFS);
+  });
+
+  for (const href of HERO_PILL_HREFS) {
+    test(`pill ${href} opens without a 404 or a bounce`, async ({ page }) => {
+      await page.goto(`${BASE_URL}${href}`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      await page.waitForTimeout(3_000);
+      await expect(page.getByRole('heading', { name: NOT_FOUND_HEADING, exact: true })).not.toBeVisible({ timeout: 1_000 });
+      expect(new URL(page.url()).pathname, `${href} bounced a guest to "/"`).not.toBe('/');
+    });
+  }
+});
