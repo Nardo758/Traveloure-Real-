@@ -4,6 +4,7 @@
  *   Admin (under §2's blanket `/api/admin` guard, registered before this router is mounted):
  *     GET  /api/admin/blog/posts[?status=]          list
  *     POST /api/admin/blog/posts                    create a draft (.strict pick — §19)
+ *     POST /api/admin/blog/drafts                   research + AI draft → a draft post (C.2)
  *     PATCH /api/admin/blog/posts/:id               edit — clears any signature (ruling 3)
  *     POST /api/admin/blog/posts/:id/submit         draft → in_review (byline gate)
  *     POST /api/admin/blog/posts/:id/publish        only when signed for THIS content
@@ -32,6 +33,7 @@ import {
   submitForReview,
   withdrawPost,
 } from "../services/blog-posts.service";
+import { draftPostFromResearch } from "../services/blog-draft.service";
 
 const router = Router();
 
@@ -82,6 +84,21 @@ router.post("/api/admin/blog/posts", async (req, res) => {
   const parsed = createBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
   try { res.status(201).json({ post: await createPost(parsed.data, getUserId(req)!) }); } catch (e) { fail(res, e); }
+});
+
+const draftBody = z.object({
+  contentType: z.string().max(40),
+  slug: z.string().max(160),
+  topic: z.string().min(3).max(300),
+  marketSlug: z.string().max(40).nullable().optional(),
+  occasionSlug: z.string().max(80).nullable().optional(),
+  bylineExpertId: z.string().max(255).nullable().optional(),
+}).strict();
+
+router.post("/api/admin/blog/drafts", async (req, res) => {
+  const parsed = draftBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
+  try { res.status(201).json({ post: await draftPostFromResearch(parsed.data, getUserId(req)!) }); } catch (e) { fail(res, e); }
 });
 
 router.patch("/api/admin/blog/posts/:id", async (req, res) => {
