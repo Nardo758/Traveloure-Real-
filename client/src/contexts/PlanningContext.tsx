@@ -59,6 +59,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { getTripContext, updateTripContext, useTripContext } from "@/lib/trip-context";
 import { mintTripSlip } from "@/lib/trip-slip";
+import type { PlanDoor, TripMintEntry } from "@shared/slip-funnel-events";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
 import { startMembershipCheckout } from "@/lib/membership-checkout";
@@ -73,6 +74,14 @@ export type PlanningBranch = "myself" | "ai" | "local" | "occasion";
 // into the leaf is erased and is not.
 
 export interface PlanningSource {
+  /**
+   * WHICH DOOR opened the modal (E1, ledger `2026-09-28-a0-slice-spec`;
+   * docs/planning/slip-funnel-events.md §3.1). One value from the CLOSED list `PLAN_DOORS`
+   * (`@shared/slip-funnel-events`); a surface not on that list passes nothing. It is an ANALYTICS
+   * fact only: it rides the mint body as the event-only `entry.door`, grants nothing, changes no
+   * step and no pre-fill, and is never stored on the trip (§19).
+   */
+  door?: PlanDoor;
   /** City/destination context from the opener (ticker city, city page, trip re-plan). */
   city?: string;
   country?: string;
@@ -283,6 +292,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       startDate?: string;
       endDate?: string;
       title?: string;
+      entry?: TripMintEntry;
     }): Promise<PlanMintOutcome> => {
       if (!user) {
         setModalOpen(false);

@@ -37,6 +37,7 @@ import path from "path";
 import { storage, ExpertApplicationExistsError, type BookingStatusNotification } from "./storage";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
+import { splitTripMintBody, tripCreatedEventData } from "./services/trip-mint-entry";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
 import { buildTravelerFeePreview, type TravelerFeePreviewInputLine } from "./services/traveler-fee-preview.service"; // R144 (ledger 2026-09-27-service-fee-before-checkout)
 import { resolveTripPassCoveredTripIds, tripPassCoversLine, lineFeeWaiverBasis } from "./services/trip-pass-line-coverage.service"; // R148 (ledger 2026-09-27-trip-pass-waiver-per-line)
@@ -1486,9 +1487,13 @@ export async function registerRoutes(
       // that is a computed real value, not a fabricated default — but when NOTHING was provided we
       // leave it NULL rather than inventing "2 adults". Booking/pricing consumers already guard
       // (`?? 1` / `|| 1`); the demand rollup reads NULL as unknown, never as a count.
+      // E1 (ledger `2026-09-28-a0-slice-spec`): `entry` is split off BEFORE the trip schema sees
+      // the body. It is admitted by its own `.strict()` pick for the funnel row ONLY and never
+      // reaches `storage.createTrip` (§19); a refused `entry` records nothing and mints anyway.
+      const { tripBody, entry: mintEntry } = splitTripMintBody(req.body);
       const numberOfTravelersProvided =
-        req.body?.numberOfTravelers !== undefined && req.body?.numberOfTravelers !== null && req.body?.numberOfTravelers !== "";
-      const input = api.trips.create.input.parse(req.body);
+        tripBody.numberOfTravelers !== undefined && tripBody.numberOfTravelers !== null && tripBody.numberOfTravelers !== "";
+      const input = api.trips.create.input.parse(tripBody);
       // Sanitize string inputs to prevent XSS
       const sanitizedInput = sanitizeObject(input);
       if (!numberOfTravelersProvided && sanitizedInput.adults != null) {
@@ -1519,17 +1524,25 @@ export async function registerRoutes(
       // them — Locked Decision 42 D12: a mint may not invent a date. So a body that reaches here
       // carries dates the traveler stated, and this mint says so. Nothing else on this rail may:
       // `datesConfirmedAt` is `.omit()`ed from the body schema (§19).
+      const datesChosenByTraveler = true;
       const trip = await storage.createTrip(
         { ...sanitizedInput, userId: actorUserId },
-        { datesChosenByTraveler: true },
+        { datesChosenByTraveler },
       );
 
-      // Fire-and-forget: T2 funnel event
+      // Fire-and-forget: T2 funnel event. E1: `door` / `occasionSource` are CLIENT-SUPPLIED (the
+      // door the traveler came through — the server cannot observe it) and omitted when not sent;
+      // `datesConfirmed` is this mint's own fact; `market` is the row's (omitted when NULL, §13).
       trackFunnelEvent({
         userId: actorUserId,
         tripId: trip.id,
         eventType: "trip_created",
         funnelStage: "T2",
+        eventData: tripCreatedEventData({
+          entry: mintEntry,
+          datesChosenByTraveler,
+          marketSlug: trip.marketSlug ?? null,
+        }),
       }).catch(() => {}); // fire-and-forget funnel event — never blocks trip creation
 
       // The guest `shareToken` mint that used to stand here is DELETED, not disabled: past the gate

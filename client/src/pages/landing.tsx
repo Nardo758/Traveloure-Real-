@@ -29,7 +29,7 @@ export default function LandingPage() {
           behavior: docs/design/LANDING_SPEC.md, amended by the single-planning-entry ruling:
           Plan-my-trip opens the global chooser. The old photo hero + CityTickerTape
           are replaced by the mock's live bento + beta pill / market caption. */}
-      <LandingHero onPlanTrip={() => open()} />
+      <LandingHero onPlanTrip={() => open({ door: "hero" })} />
 
       {/* Ruled section order (LANDING_SPEC.md v2.5): hero -> position-2 slot (MomentsSlot; L4:
           ExperiencesRail holds it until Moments has >=1 live moment, then Moments renders in its

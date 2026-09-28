@@ -66,7 +66,8 @@ function occurrences(haystack: string, needle: string): number {
 
 describe("S1/S2 — the experience template's doors are ONE door", () => {
   const src = read(TEMPLATE);
-  const DOOR = "openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })";
+  // E1 (ledger `2026-09-28-a0-slice-spec`) added the door name; the shape is still ONE door.
+  const DOOR = 'openPlanModal({ door: "experience_cta", experienceSlug: slug || undefined, destination: destination.trim() || undefined })';
 
   it("passes the page's own occasion slug and stated destination", () => {
     assert.ok(src.includes(DOOR), "the ruled door shape is not present at all");

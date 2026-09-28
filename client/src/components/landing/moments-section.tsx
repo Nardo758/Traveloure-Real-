@@ -251,6 +251,7 @@ export function MomentsSection() {
                 onClick={() => {
                   postEvent(moment.key, "cta", active);
                   open({
+                    door: "moment",
                     branch: "ai",
                     experienceType: moment.experienceType,
                     experienceSlug: moment.experienceSlug ?? undefined,

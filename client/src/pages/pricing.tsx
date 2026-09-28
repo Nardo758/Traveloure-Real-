@@ -272,7 +272,7 @@ export default function PricingPage() {
       ],
       cta: "Start planning",
       variant: "outline" as const,
-      onClick: () => openPlanning({ branch: "myself" }),
+      onClick: () => openPlanning({ door: "pricing_ladder", branch: "myself" }),
       testid: "yourself",
     },
     {
@@ -294,7 +294,7 @@ export default function PricingPage() {
       ],
       cta: "Optimize a plan",
       variant: "outline" as const,
-      onClick: () => openPlanning({ branch: "ai" }),
+      onClick: () => openPlanning({ door: "pricing_ladder", branch: "ai" }),
       testid: "ai",
     },
     {
