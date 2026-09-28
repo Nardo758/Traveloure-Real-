@@ -3,10 +3,10 @@
 > **Status header (Sep 27, 2026):** Target architecture. Build order superseded by the vertical-slice plan
 > (`golden-path-trips-kyoto.md`, pending). §G to be re-sequenced in Part 3.
 
-**Status: RATIFIED AS TARGET; M/N amendments PROPOSED in §M/§N (Part 2), pending ratification** — except the §J overrides (decision-maker, Sep 27, 2026; ledger `2026-09-27-slip-map-ratified`,
+**Status: RATIFIED AS TARGET; §M/§N (Part 2) RATIFIED Sep 28, 2026 with four amendments (ledger `2026-09-28-part2-m2-flags`, `-m4-matrix-first`, `-m6-free-rerun-hotel`, `-n4-runs-outlive-plan`)** — except the §J overrides (decision-maker, Sep 27, 2026; ledger `2026-09-27-slip-map-ratified`,
 R146). §I was ruled Sep 26 (R124–R129) and §J–§L's questions Sep 27 (R136–R142). The §J override record holds the one
 confirmed override (R147). Build order: superseded — see the status header above. Brief section H is now steps
-1–2 in build detail. Schema named here is ratified as target; M/N amendments pending, but each migration still lands in its own lane under
+1–2 in build detail. Schema named here is ratified as target (M/N included), but each migration still lands in its own lane under
 the Coordination Prevention rules.
 **Code base:** `origin/main` @ `da3174289` (the same commit as the UI audit). Every `path:line` is on that commit.
 **Inputs:** `docs/planning/trip-slip-ui-audit.md` (cited as **audit F2**, **audit G3**, …) and
@@ -1055,10 +1055,11 @@ liveness are prerequisites of S1/S3 in every group, so they are recorded here ra
 
 ---
 
-## M. Anchor-centric plan building — one mechanism for every group (Part 2, PROPOSED)
+## M. Anchor-centric plan building — one mechanism for every group (Part 2, RATIFIED Sep 28, 2026)
 
 > Target: ten real Kyoto travelers using the Trips slice in November 2026. Serves Part 1
-> (`golden-path-trips-kyoto.md`). **Design only — nothing here is built. Pending ratification.**
+> (`golden-path-trips-kyoto.md`). **Design only — nothing here is built. Ratified Sep 28, 2026 with the amendments
+> marked in M2, M4, M6 and N2/N4.**
 
 ### M1. The mechanism
 
@@ -1085,6 +1086,11 @@ keyed by the stop's position; a secondary anchor scores against its own stop's p
 | **Moments** | Reservation (`temporal_anchors`) | — | "Where's the reservation?" | Walking burden from the reservation to the before/after stops | The stops around a fixed time *and* place | **Weakly** — the anchor is a time as much as a place, and there is rarely a set to compare (one reservation). Flag: plan-fit is shown only when an option set exists; the time constraint is the optimizer's, not plan-fit's |
 | **Plain plan** | None until set | — | "Is there one place this plan revolves around?" — skippable | Nothing until an anchor exists; the compare view says "no anchor set" | Versions go by objective (M5) | Yes — by asking, never by guessing |
 
+**RATIFIED AS WRITTEN, INCLUDING THE THREE FLAGS (decision-maker, Sep 28, 2026; ledger `2026-09-28-part2-m2-flags`).**
+Celebrations show plan-fit only with ≥3 located items; Moments only when an option set exists; Group travel scores
+the shared days only. The split-lodging case (one lodging per party, plan-fit per party against the shared stops) is
+**deferred to Track B's Group travel golden path** and is not solved now.
+
 ### M3. Plan-fit — the definition
 
 For one option *o* in an anchor set:
@@ -1106,7 +1112,7 @@ For one option *o* in an anchor set:
 - **Secondary anchors** score against the **chosen** primary, or against each open primary option when none is chosen
   (a small grid, never more than 3 × 3).
 
-### M4. Recommendation — move the launch-city travel-time matrix ahead of compare-options
+### M4. The launch-city travel-time matrix comes ahead of compare-options — RATIFIED (ledger `2026-09-28-part2-m4-matrix-first`)
 
 **Recommend: yes, for Kyoto only, as a neighbourhood-centroid matrix.** Plan-fit leads the compare view, and in Kyoto a
 straight line misranks hotels systematically: the Kamo river, the eastern hills and the subway/Keihan split make
@@ -1116,12 +1122,12 @@ trustworthy figure first on the one screen the slice exists to make persuasive.
 | Item | Today | Proposed |
 |---|---|---|
 | Travel-time source | Per-pair Google Routes `computeRoutes` (`server/services/routes.service.ts:3`), called per leg; the phase-0 scorer is straight-line | A precomputed **centroid × centroid × mode** table for the launch city, refreshed on a schedule; an item snaps to its neighbourhood centroid |
-| Cost, one-time per city refresh | — | *N* centroids² × 3 modes elements. At the 10 Kyoto neighbourhoods seeded locally that is 300 elements; at a realistic 60 it is ~10,800. At Routes Matrix list pricing (order of $5–10 per 1,000 elements — **operator to confirm the current rate**) that is **~$55–110 per refresh** at 60 centroids |
+| Cost per city refresh (**corrected Sep 28, 2026** — the earlier ~$55–110 assumed no free caps) | — | Elements = origins × destinations, *N*² per mode: 3,600 per mode at 60 centroids (300 per mode at the 10 seeded locally). Google Routes Compute Route Matrix: **walking and driving bill as Essentials** ($5.00 / 1,000, 10,000 free per month); **transit bills as Pro** ($10.00 / 1,000, 5,000 free per month) and is **capped at 100 elements per request**, so it is batched. Walking fits inside the Essentials free cap and transit inside the Pro cap, so **one refresh a month is expected to cost $0**. **Planning ceiling:** $10 / 1,000 for every element with no caps — **$72 per refresh at two modes**. Refresh monthly, or on a centroid change. The operator confirms the billed rate in the Google Cloud console after the first refresh |
 | Cost, engineering | — | One lane: a table (declared in `shared/schema.ts`), a refresh job, a read helper plan-fit calls; roughly the size of the #1141 index lane plus a job |
 | Fallback | — | A pair the matrix lacks falls back to "est." straight-line, labelled |
 
-If the matrix slips, compare-options still ships — with every plan-fit figure labelled "est." and the Part 6 session
-told so. The decision is whether the first ten travelers see estimates; the recommendation is that they should not.
+**Ruled:** the matrix lands before compare-options (Track A step A2 is unconditional). Until it exists, every plan-fit
+figure anywhere — including the Part 6 validation mock — is labelled "est.".
 
 ### M5. The free first draft and the paid versions (amends §F2 / R128)
 
@@ -1135,9 +1141,9 @@ told so. The decision is whether the first ten travelers see estimates; the reco
 - **Paid run with no open set:** versions go by objective, exactly as R128 rules.
 - **Protected work** (LD 42 D3) and fixed commitments stay constraints in every version.
 
-### M6. Open question, with default
+### M6. The 24h free re-run and a newly added hotel — RULED (ledger `2026-09-28-part2-m6-free-rerun-hotel`)
 
-**Does the 24h free re-run cover a rebuild around a newly added hotel? Default: yes.** Implications to accept with the
+**The 24h free re-run covers a rebuild around a newly added hotel. The default stands.** Implications to accept with the
 default: the free re-run is decided per **user** today (`hasRecentOptimizationRun(userId, …)`,
 `server/services/optimizer-run-authorization.ts:85,140`), and apply re-arms it by stamping `optimized_at`
 (`server/routes/plancard.routes.ts:227`). A per-trip key would be the honest unit for "rebuild around the hotel I just
@@ -1146,7 +1152,7 @@ LD 41 (a)'s amendment).
 
 ---
 
-## N. Optimizer run records (Part 2, PROPOSED)
+## N. Optimizer run records (Part 2, RATIFIED Sep 28, 2026 — with the N4 amendment)
 
 ### N1. What exists today, and what it does not cover
 
@@ -1167,11 +1173,12 @@ One additive table plus one additive column, both declared in `shared/schema.ts`
 (the publish-trap posture):
 
 - **`optimizer_runs`** — one row per authorized run, **insert-only** (no UPDATE path; the service owning it exposes
-  none). `id`; `trip_id` (FK, CASCADE — the run belongs to the plan); `comparison_id` (FK, SET NULL);
+  none). `id`; `trip_id` (nullable FK, **ON DELETE SET NULL** — a paid run is a money record and outlives its plan; `trips`
+  is hard-deleted today, so SET NULL is the rule, N4); `comparison_id` (FK, SET NULL);
   `authorization_basis` (`paid` | `trip_pass` | `free_rerun`, app-enforced, from `resolveOptimizerRunAuthorization`);
   `payment_intent_id` (NULL unless paid); `toll_run_id` (the id the `fee_ledger` rows are already keyed on);
   `input_snapshot` jsonb (item ids and their row versions, open sets and option ids, preferences, constraints,
-  `weight_profile_version`, model ids); `prompt_sha256` (**the prompt text is never stored**); `created_by`; `created_at`.
+  `weight_profile_version`); `model_version` (**stored per run**, never the hard-coded constant read back); `prompt_sha256` (**the prompt text is never stored**); `created_by`; `created_at`.
 - **`itinerary_variants.run_id`** — nullable FK to `optimizer_runs`, so every version names its run. NULL = a version
   from before this record existed (no backfill, §13).
 - **`optimizer_run_outcomes`** — append-only child rows: `adopted_whole` | `adopted_part` (with the variant item ids),
@@ -1192,9 +1199,12 @@ version). apply-to-trip, Reopen and refinalize never delete a run.
 
 - **Learning uses structured outcomes only** (N2's outcome rows and the run's metrics). Prompt text is never stored;
   only its hash, so two runs with the same prompt can be recognised without keeping it.
-- **Retention proposal:** an authorized run lives as long as its plan (CASCADE with the trip, so deleting a plan deletes
-  its runs); money records (`fee_ledger`, `platform_revenue`) are separate and unaffected. Unpaid previews keep the
-  3-slot window (#1145). **No user-id nulling** is proposed here — it conflicts with Part 4's Q6 in the same way (reported
-  there), and the two should be ruled together.
+- **Retention — RULED (decision-maker, Sep 28, 2026; ledger `2026-09-28-part2-n4-runs-outlive-plan` and
+  `2026-09-28-analytics-retention`).** The proposed CASCADE is **refused for authorized runs**: a paid run is a money
+  record and outlives its plan for as long as the payment record it is tied to. On plan delete `optimizer_runs.trip_id`
+  goes to NULL and the run row stays. **Unpaid, unauthorized previews** keep the 3-slot window (#1145) and may cascade.
+  Rows are never deleted for retention; on account deletion `user_id` is nulled, traveler-typed text in the input
+  snapshot is redacted, and structured fields (plan state ids, options, weights, metrics, outcomes) are kept — one rule
+  with `funnel_events` (Part 4 Q6). Prompt hash only, as ruled.
 
 *HARD STOP — design only; no code until ratified.*
