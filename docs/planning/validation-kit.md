@@ -3,9 +3,17 @@
 > Target: ten real Kyoto travelers using the Trips slice in November 2026. The decision-maker runs this with **five
 > travelers and two Kyoto experts** before Track A builds compare-options (A3/A4 in `track-a-rollout.md`).
 
-**Mock:** the Design canvas "Kyoto Trips slip — validation mock"
-(https://claude.ai/artifact/VbnL9j6Mfq9PE5nWzW1SPD). Private until shared from its Share menu — share it with the
-session laptop's account before the first session. Phone width (390 px), three linked screens; open each in **Play**:
+**Status: RATIFIED (decision-maker, Sep 28, 2026; ledger `2026-09-28-validation-kit-ratified`).** The mock is not
+amended again until the sessions have run. Part 6 sessions must run before Track A step A4 starts (R189).
+
+**Mock — open it here:** [Kyoto Trips slip — validation mock](https://claude.ai/artifact/VbnL9j6Mfq9PE5nWzW1SPD)
+(`https://claude.ai/artifact/VbnL9j6Mfq9PE5nWzW1SPD`). The artifact lives on the session account and is private until
+shared from its Share menu — share it with the decision-maker and the session laptop's account before the first
+session.
+
+**Confirmed against the ratified wording (Sep 28, 2026):** screen 1 asks "Where are you staying?" (the §M2 anchor
+question, verbatim); every plan-fit number carries "est." — Travel / day, Walkable (added to the Walkable figure on
+Sep 28, version 4, the only change) and every leg on screen 3 — because the Kyoto matrix (A2) does not exist yet. Phone width (390 px), three linked screens; open each in **Play**:
 
 1. **Where are you staying?** — the anchor question; add/remove up to three places; "I've already booked".
 2. **Compare 3 places** — plan-fit leads (travel per day, "est."; walkable stops; price only where the source states
