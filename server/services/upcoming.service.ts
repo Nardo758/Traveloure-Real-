@@ -594,6 +594,9 @@ export async function loadUpcomingForUser(
       destination: t.destination,
       startDate: t.startDate,
       timezone: t.timezone,
+      // Passed through as read: dropping it here made every plan read as a placeholder
+      // (ledger `2026-09-28-upcoming-dates-confirmed`; `upcoming-loader.db.test.ts`).
+      datesConfirmedAt: t.datesConfirmedAt,
       finalizedAt: t.finalizedAt,
       finalVersion: finalsByTrip.get(t.id) ?? null,
     })),
