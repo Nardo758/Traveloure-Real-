@@ -4915,6 +4915,15 @@ export async function seedExperienceTemplateTabs() {
     { slug: "sports-event", name: "Sports Event", tabs: sportsEventTabs, universalFilters: standardUniversalFilters,
       switches: { stops: "many", duration: "range", schedule: true, guests: false, vocabulary: "travelers", visibility: "shown" },
       rolesNeeded: ["private_transportation", "dining_venue", "accommodation"] },
+    // Show / Festival (ledger `2026-09-28-city-events`; landing reorder, item 6): the occasion
+    // "Plan around it" pre-sets from the city-events strip. Duration is `day` BY RULING; stops,
+    // schedule, guests, vocabulary and roles are those of the NEAREST occasion, `sports-event`
+    // (a ticketed event you travel to). It reuses sports-event's tabs and presets — no new filter
+    // content (§13). Whether a plan built from an event is a Moment or a Trip is decided per EVENT
+    // from its nights when the slip is created, never from this row.
+    { slug: "show", name: "Show / Festival", tabs: sportsEventTabs, universalFilters: standardUniversalFilters,
+      switches: { stops: "many", duration: "day", schedule: true, guests: false, vocabulary: "travelers", visibility: "shown" },
+      rolesNeeded: ["private_transportation", "dining_venue", "accommodation"] },
 
     // ── The four occasions shipped surfaces already referenced with NO row behind them ──────────
     // (ledger `2026-09-03-occasion-switches`). Each reuses tabs and presets that already exist —
@@ -5054,6 +5063,7 @@ export async function seedExperienceTemplateTabs() {
   // Migration 276 / ledger `2026-09-03-occasion-switches`: the six occasion switches.
   await updateExperienceTypeSwitches(templates);
   await updateExperienceTypeRoles(templates);
+  await cloneShowTemplateMatrix();
 
   // Ledger `2026-09-03-occasion-hygiene`: reconcile the DISPLAY NAME on rows that already exist.
   await updateExperienceTypeNames(templates);
@@ -5196,6 +5206,28 @@ async function updateExperienceTypeSwitches(
  * Same cheap fast path as the switches: one SELECT decides whether any row is out of date, so a
  * steady-state boot issues zero UPDATEs.
  */
+/**
+ * The `show` occasion's template_category_matrix rows (ledger `2026-09-28-city-events`): CLONED
+ * from `travel` — the matrix key its nearest occasion, `sports-event`, is planned under
+ * (sports-event has no matrix key of its own; docs/planning/tools/trip-slip-spec.mjs FAMILY maps
+ * it to `travel`). INSERT ONLY: a row already keyed `show` is never overwritten, so an admin's
+ * later tuning survives every boot.
+ */
+export const SHOW_MATRIX_CLONED_FROM = "travel";
+async function cloneShowTemplateMatrix(): Promise<void> {
+  try {
+    await db.execute(sql`
+      INSERT INTO template_category_matrix (template_key, category_key, strength)
+      SELECT 'show', category_key, strength
+        FROM template_category_matrix
+       WHERE template_key = ${SHOW_MATRIX_CLONED_FROM}
+      ON CONFLICT (template_key, category_key) DO NOTHING
+    `);
+  } catch (err: any) {
+    console.warn("[experience-template-tabs] show matrix clone skipped:", err?.message);
+  }
+}
+
 async function updateExperienceTypeRoles(
   templates: Array<{ slug: string; rolesNeeded: readonly OccasionRoleKey[] }>,
 ) {
@@ -5296,6 +5328,13 @@ async function updateExperienceTypeHeroConfigs() {
       locationLabel: "Event city",
     },
     "sports-event": {
+      headcountLabel: "fan",
+      showKids: true,
+      showOriginCity: "hide",
+      locationLabel: "Event city",
+    },
+    // Show / Festival — the sports-event answer, its nearest occasion (ledger `2026-09-28-city-events`).
+    "show": {
       headcountLabel: "fan",
       showKids: true,
       showOriginCity: "hide",

@@ -1,9 +1,8 @@
 import { LandingHero } from "@/components/landing/landing-hero";
 import { MomentsSlot } from "@/components/landing/moments-slot";
 import { HowItWorks } from "@/components/landing/how-it-works";
-import { EntryStrips } from "@/components/landing/entry-strips";
+import { EventsStrip } from "@/components/landing/events-strip";
 import { CitiesRail } from "@/components/landing/cities-rail";
-import { NumbersStrip } from "@/components/landing/numbers-strip";
 import { EarnSection } from "@/components/landing/earn-section";
 import { FinalCta } from "@/components/landing/final-cta";
 import { SEOHead } from "@/components/seo-head";
@@ -25,23 +24,20 @@ export default function LandingPage() {
         url="/"
       />
 
-      {/* HERO v2 (landing-build lane) — visual of record: docs/design/landing-earn-mock.html;
-          behavior: docs/design/LANDING_SPEC.md, amended by the single-planning-entry ruling:
-          Plan-my-trip opens the global chooser. The old photo hero + CityTickerTape
-          are replaced by the mock's live bento + beta pill / market caption. */}
-      <LandingHero onPlanTrip={() => open()} />
+      {/* Hero — behaviour contract docs/design/LANDING_SPEC.md; Plan-my-trip opens the one
+          planning modal, and a billboard tile's "Start this plan" opens it pre-set. */}
+      <LandingHero onPlanTrip={() => open()} onStartPlan={(source) => open(source)} />
 
-      {/* Ruled section order (LANDING_SPEC.md v2.5): hero -> position-2 slot (MomentsSlot; L4:
-          ExperiencesRail holds it until Moments has >=1 live moment, then Moments renders in its
-          place) -> how-it-works+price (with the Plus BAND folded in, Lane 1) -> where-to-begin ->
-          cities rail -> numbers -> ways to earn -> final CTA. The standalone PlusOccasions section
-          is removed (Lane 1); the experience_starts ticker return + the rail's eventual removal are
-          filed. The testimonials rail stays hidden until admin-curated reviews exist. */}
-      <MomentsSlot />
+      {/* Ruled order (landing reorder, ledger `2026-09-28-landing-reorder`): hero with the
+          "Where do you want to begin?" pills -> the one-line How-it-works strip -> Some trips are
+          one evening (MomentsSlot) -> Coming up in our cities (absent below three events) ->
+          Cities with momentum -> Know a city well -> closing call to action. Removed by that
+          ruling: the eight-tile entry section, the four-column how-it-works with its price rows,
+          the Plus band and the numbers strip. No empty section and no placeholder on the page. */}
       <HowItWorks />
-      <EntryStrips />
+      <MomentsSlot />
+      <EventsStrip onPlanAround={(source) => open(source)} />
       <CitiesRail />
-      <NumbersStrip />
       <EarnSection />
       <FinalCta onPlanTrip={() => open()} />
     </div>

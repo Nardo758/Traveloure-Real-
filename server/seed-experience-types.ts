@@ -367,6 +367,24 @@ const coreExperienceTypes = [
     typicalDurationMinDays: 1,
     typicalDurationMaxDays: 5
   },
+  {
+    // Show / Festival (ledger `2026-09-28-city-events`): the occasion the city-events strip's
+    // "Plan around it" pre-sets. Logistics copied from its nearest occasion, sports-event.
+    name: "Show / Festival",
+    slug: "show",
+    description: "Plan an evening or a few nights around a concert, show or festival in the city",
+    icon: "Music",
+    color: "#7C3AED",
+    sortOrder: 25,
+    paymentFlowType: "group_split",
+    paymentComplexity: "high",
+    timingComplexity: "high",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 1,
+    typicalGroupSizeMax: 20,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 4
+  },
 ];
 
 const templateSteps: Record<string, Array<{ stepNumber: number; name: string; description: string; icon: string; isRequired: boolean }>> = {
@@ -541,6 +559,14 @@ const templateSteps: Record<string, Array<{ stepNumber: number; name: string; de
     { stepNumber: 4, name: "Transportation", description: "Travel and parking logistics", icon: "Car", isRequired: false },
     { stepNumber: 5, name: "Dining & Entertainment", description: "Restaurants, bars, pregame activities", icon: "UtensilsCrossed", isRequired: false },
     { stepNumber: 6, name: "Review", description: "Full event experience with logistics", icon: "CheckCircle", isRequired: true },
+  ],
+  show: [
+    { stepNumber: 1, name: "Basics", description: "The show, its dates, who's going, budget", icon: "Calendar", isRequired: true },
+    { stepNumber: 2, name: "Tickets", description: "Tickets from the organiser", icon: "Ticket", isRequired: true },
+    { stepNumber: 3, name: "Accommodation", description: "Stays near the venue", icon: "Hotel", isRequired: false },
+    { stepNumber: 4, name: "Transportation", description: "Getting there and back", icon: "Car", isRequired: false },
+    { stepNumber: 5, name: "Dining & Entertainment", description: "Before and after the show", icon: "UtensilsCrossed", isRequired: false },
+    { stepNumber: 6, name: "Review", description: "The whole plan around the show", icon: "CheckCircle", isRequired: true },
   ],
 };
 

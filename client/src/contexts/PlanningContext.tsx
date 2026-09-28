@@ -101,6 +101,24 @@ export interface PlanningSource {
    *  seeded, never a guessed slug (§13). */
   experienceSlug?: string;
   /**
+   * THE EVENT A PLAN IS BUILT AROUND (landing reorder, ledger `2026-09-28-city-events`): passed by
+   * "Plan around it" on the city-events strip and the /events "Coming up" block. On open, and only
+   * when no plan is bound, it seeds the pre-trip context with the event's city, its dates (one
+   * night = a single day, two or more = the range — the Moments/Trips split is made per EVENT from
+   * its nights), the main moment (its first date and local start time) and the event itself as a
+   * pending event, so the plan minted from it carries the event as its anchor and as a real
+   * event row. Every value is the event row's own; nothing is invented. It grants nothing.
+   */
+  anchor?: {
+    title: string;
+    /** Local calendar dates in the event's city, "YYYY-MM-DD". lastDate = firstDate for one night. */
+    firstDate: string;
+    lastDate: string;
+    /** Local wall-clock start, "HH:MM". */
+    startTime: string;
+    venue: string;
+  };
+  /**
    * AUTHORING MODE — this door is an EXPERT building a plan for a CLIENT (ledger
    * `2026-09-04-step4-variants-fields`). It relabels step 4's actor ("Who is traveling with your
    * client?" / "The client's party") and nothing else: same steps, same columns, same writes, same
@@ -250,6 +268,19 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     // its commit may change a plan's occasion.
     if (next?.experienceSlug && !getTripContext().tripId) {
       updateTripContext({ experienceSlug: next.experienceSlug });
+    }
+    // The event a door is built around seeds the unbound pen with the event's own facts (see
+    // `PlanningSource.anchor`). Never onto a pen bound to a plan: that plan's dates are its own.
+    if (next?.anchor && !getTripContext().tripId) {
+      const a = next.anchor;
+      updateTripContext({
+        ...(next.city ? { destination: next.city } : {}),
+        startDate: a.firstDate,
+        endDate: a.lastDate,
+        mainMomentDate: a.firstDate,
+        mainMomentTime: a.startTime,
+        pendingEvents: [{ title: a.title, eventDate: a.firstDate, startTime: a.startTime, location: a.venue }],
+      });
     }
     setModalOpen(true);
   }, []);

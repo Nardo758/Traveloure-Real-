@@ -57,7 +57,7 @@ function readMatrix() {
 // ── §A2 proposed family key, §B group rule ──────────────────────────────────────────────────────
 const FAMILY = {
   travel: "travel", "anniversary-trip": "travel", honeymoon: "travel", romance: "travel", "golf-trip": "travel",
-  "sports-event": "travel", "date-night": "date_night", proposal: "proposal", birthday: "birthday",
+  "sports-event": "travel", show: "travel", "date-night": "date_night", proposal: "proposal", birthday: "birthday",
   "milestone-birthday": "birthday", "corporate-events": "corporate", wedding: "wedding", corporate: "corporate",
   "bachelor-bachelorette": "travel", "boys-trip": "travel", "girls-trip": "travel", retreats: "travel",
 };

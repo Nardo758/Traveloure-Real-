@@ -14,46 +14,20 @@ import {
 } from "lucide-react";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { usePlanning } from "@/contexts/PlanningContext";
+import { HOW_IT_WORKS_STEPS } from "@/lib/how-it-works-steps";
 import { PageLayout, PageSection, SectionTitle, HEADING_STYLE, PAGE_ACTION } from "@/components/company/company-page";
 
-const steps = [
-  {
-    number: "01",
-    title: "Tell Us Your Plans",
-    description: "Share your travel dreams, preferences, and requirements. Whether it's a romantic getaway, adventure trip, or corporate retreat, we'll customize everything to your needs.",
-    icon: ClipboardList,
-    features: [
-      "Choose your event type (Travel, Wedding, Proposal, etc.)",
-      "Set your destination and dates",
-      "Define your budget and preferences",
-      "Select your planning approach"
-    ]
-  },
-  {
-    number: "02",
-    title: "Get Matched & Plan",
-    description: "Our AI analyzes thousands of options to create the perfect itinerary, or we connect you with a local expert who knows your destination inside out.",
-    icon: UserCheck,
-    features: [
-      "AI-generated personalized itineraries",
-      "Expert recommendations and insider tips",
-      "Real-time collaboration on your plan",
-      "Flexible adjustments anytime"
-    ]
-  },
-  {
-    number: "03",
-    title: "Enjoy Your Experience",
-    description: "Travel with confidence knowing every detail is handled. From bookings to local recommendations, we're with you every step of the way.",
-    icon: PartyPopper,
-    features: [
-      "All bookings managed in one place",
-      "In-app messaging with your expert advisor",
-      "Real-time updates and notifications",
-      "Post-trip memories and reviews"
-    ]
-  }
-];
+const STEP_ICONS = [ClipboardList, Sparkles, UserCheck, PartyPopper];
+
+// The four steps come from the ONE shared list the landing strip also reads (ledger
+// `2026-09-28-landing-reorder`): the landing names them, this page describes them.
+const steps = HOW_IT_WORKS_STEPS.map((step, i) => ({
+  number: step.n,
+  title: step.title,
+  description: step.body,
+  icon: STEP_ICONS[i] ?? ClipboardList,
+  features: step.details,
+}));
 
 const planningOptions = [
   {
@@ -87,7 +61,7 @@ export default function HowItWorksPage() {
     <PageLayout
       width="content"
       title="How Traveloure Works"
-      lead="From dream to destination in three simple steps. Our AI-powered platform and expert network make travel planning effortless."
+      lead="From an idea to a plan you can use, in four steps. Build it yourself, sharpen it with AI, or hand it to someone who lives there."
       actions={
         <Button size="lg" className={PAGE_ACTION.primary} onClick={() => openSignInModal()} data-testid="button-get-started">
           Get Started <ArrowRight className="w-4 h-4 ml-2" />

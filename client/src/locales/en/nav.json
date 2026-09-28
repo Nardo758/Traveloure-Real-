@@ -117,6 +117,9 @@
   "hero": {
     "headline": "Any experience. Anywhere. Planned like a local.",
     "subhead": "Tell us the occasion and where in the world you want it. We build the plan around it, and someone who lives there does the rest.",
-    "startPlanning": "Start planning"
+    "startPlanning": "Start planning",
+    "beginPrompt": "Where do you want to begin?",
+    "beginBrowse": "Browse",
+    "beginFindHelp": "Find help"
   }
 }

@@ -1,173 +1,62 @@
 /**
- * how-it-works.tsx — "How it works + price ladder", merged (landing-build Phase 2.2;
- * v2.5 folds the Plus band in — ruling 2026-09-01-plus-in-pricing).
- * Visual of record: docs/design/landing-earn-mock-v2.5.html "HOW IT WORKS + PRICE LADDER".
+ * how-it-works.tsx — the one-line "How it works" strip directly under the hero (landing
+ * reorder, ledger `2026-09-28-landing-reorder`).
  *
- * Every price renders from the LIVE bundle (GET /api/pricing — public; §8: no fee
- * literals here, the numbers are rows). A missing bundle field renders "—", never a
- * remembered number. Step 3 is deliberately number-free ("expert-priced") — expert rates
- * are per-offering and no floor is fabricated (§13). No coral button in this section —
- * "See full pricing →" is the action (the mock's ruling that keeps coral to 4).
- *
- * PLUS BAND (v2.5): Plus is no longer its own section — it renders as a slim band beneath
- * the four travel steps, the home-city product visibly distinct from the travel ladder.
- * It carries the live plusAnnual price and renders "coming soon" while plusSalesEnabled is
- * false. It has NO coral CTA (the former Plus Join button and its coral leave the page —
- * "See full pricing →" stays the only action), so the coral count holds at 4 across the
- * PLUS_SALES_ENABLED flip.
+ * It names the four steps and links out; the step descriptions live on /how-it-works and
+ * every price lives on /pricing, which renders them from fee_bands. The
+ * former four-column section, its price rows (Free, pay-per-use, Trip Pass, expert-priced,
+ * quote) and the Plus band are removed from the landing page by that ruling — they are not
+ * to be re-added here; a missing number is added to /pricing instead.
  */
-import { useQuery } from "@tanstack/react-query";
-import { SectionHeader, OpenSection } from "./section-header";
+import { Fragment } from "react";
+import { Link } from "wouter";
+import { HOW_IT_WORKS_STEPS } from "@/lib/how-it-works-steps";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
-interface PricingBundle {
-  serviceFeePct?: number;
-  serviceFeeCapCents?: number;
-  optimizerRunDisplay?: { priceCents: number };
-  aiTaskCents?: number;
-  tripPass?: { priceCents: number };
-  plusAnnual?: { priceCents: number; interval: string };
-  plusSalesEnabled?: boolean;
-}
-
-function cents(c: number | undefined): string {
-  if (c === undefined || !Number.isFinite(c)) return "—";
-  const d = c / 100;
-  return Number.isInteger(d) ? `$${d}` : `$${d.toFixed(2)}`;
-}
-
-function Price({ eyebrow, main, mainNote, second, secondNote }: {
-  eyebrow: string;
-  main: string;
-  mainNote?: string;
-  second?: string;
-  secondNote?: string;
-}) {
-  return (
-    <div className="mt-3 border-t pt-2.5" style={{ borderColor: "var(--earn-border, #E4E4DE)" }}>
-      <span
-        className="text-[9.5px] font-medium uppercase tracking-[0.1em]"
-        style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
-      >
-        {eyebrow}
-      </span>
-      <span className="mt-[3px] block text-[15px] font-semibold tracking-[-0.01em]" style={{ fontFamily: EARN_MONO }}>
-        {main}
-        {mainNote && (
-          <small className="text-[10px] font-normal" style={{ color: "var(--earn-muted)" }}>
-            {" "}· {mainNote}
-          </small>
-        )}
-      </span>
-      {second && (
-        <span className="mt-1.5 block text-[13px] font-semibold" style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}>
-          {second}
-          {secondNote && (
-            <small className="text-[10px] font-normal" style={{ color: "var(--earn-muted)" }}>
-              {" "}· {secondNote}
-            </small>
-          )}
-        </span>
-      )}
-    </div>
-  );
-}
-
-const STEPS: Array<{ n: string; title: string; body: string }> = [
-  { n: "01", title: "Share your vision", body: "Destination, dates, budget, and what matters. Build it on the slip." },
-  { n: "02", title: "Sharpen it with AI", body: "Three versions around an anchor; re-time a day, fill a gap." },
-  { n: "03", title: "Hand it to a local", body: "A named expert reviews, re-routes, and books what needs a human." },
-  { n: "04", title: "Experience it", body: "Take the plan with you — or have it run for you, end to end." },
-];
-
 export function HowItWorks() {
-  const { data: pricing } = useQuery<PricingBundle>({ queryKey: ["/api/pricing"] });
-
-  const feeNote =
-    pricing?.serviceFeePct !== undefined && pricing?.serviceFeeCapCents !== undefined
-      ? `${pricing.serviceFeePct}% fee on bookings, cap ${cents(pricing.serviceFeeCapCents)}`
-      : undefined;
-
   return (
-    <OpenSection first testId="section-how-it-works">
-      <SectionHeader
-        eyebrow="How it works · and what each step costs"
-        title="From an idea to a plan you can use."
-        link={{ label: "See full pricing →", href: "/pricing", testId: "link-see-full-pricing" }}
-      />
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-0">
-        {STEPS.map((step, i) => (
-          <div
-            key={step.n}
-            className="flex flex-col lg:border-r lg:pr-[22px] lg:[&+&]:pl-[22px]"
-            style={{ borderColor: "var(--earn-border, #E4E4DE)", ...(i === 3 ? { borderRight: 0 } : {}) }}
-          >
-            <span
-              className="self-start rounded-full px-2 py-[3px] text-[10px] font-medium"
-              style={{ fontFamily: EARN_MONO, color: "var(--earn-teal-ink)", background: "var(--earn-teal-wash)" }}
-            >
-              {step.n}
-            </span>
-            <h4 className="mb-1 mt-2.5 text-[18px] font-semibold" style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}>
-              {step.title}
-            </h4>
-            <p className="mb-3 text-[13px]" style={{ color: "var(--earn-muted)" }}>
-              {step.body}
-            </p>
-            {i === 0 && <Price eyebrow="Plan it yourself" main="Free" mainNote={feeNote} />}
-            {i === 1 && (
-              <Price
-                eyebrow="Pay per use"
-                main={cents(pricing?.optimizerRunDisplay?.priceCents)}
-                /* D-21 (ledger `2026-09-15-d20-d21-proposal-charge`): a task is charged once per
-                    proposal APPLIED, never per question. The amount stays band-derived — this note
-                    adds the timing, never a literal. */
-                mainNote={`/ run · ${cents(pricing?.aiTaskCents)} / task, charged on apply`}
-                second={pricing?.tripPass ? `Trip Pass ${cents(pricing.tripPass.priceCents)}` : undefined}
-                secondNote={pricing?.tripPass ? "/ trip · unlimited" : undefined}
-              />
-            )}
-            {i === 2 && <Price eyebrow="With a local" main="expert-priced" mainNote="per offering" />}
-            {/* D-5 (ledger `2026-09-15-d5-no-milestone-billing`): a done-for-you event is a
-                coordination engagement whose fee is quoted server-side and captured ONCE — there
-                is no deposit-then-balance, milestone or instalment rail behind it, so the former
-                `N% deposit` note promised a split nothing performs (§13). */}
-            {i === 3 && <Price eyebrow="Done for you" main="quote" mainNote="one coordination fee" />}
-          </div>
-        ))}
-      </div>
-
-      {/* Plus band (v2.5; ruling 2026-09-01-plus-in-pricing): the home-city product as a slim
-          band beneath the ladder — gold-ink eyebrow, live plusAnnual price, "coming soon" while
-          plusSalesEnabled is false. No coral CTA (See full pricing → in the header is the action). */}
-      <div
-        className="mt-3.5 flex flex-wrap items-center gap-[18px] rounded-[12px] border border-dashed px-4 py-3"
-        style={{ borderColor: "var(--earn-border-dash, #D5D0C8)" }}
-        data-testid="plus-band"
-      >
+    <section
+      className="w-full border-y px-4"
+      style={{ background: "var(--earn-ground)", borderColor: "var(--earn-border)" }}
+      data-testid="section-how-it-works"
+    >
+      <div className="mx-auto flex max-w-[1180px] flex-col gap-3 py-5 lg:flex-row lg:items-center lg:gap-6">
         <span
-          className="text-[10px] font-medium uppercase tracking-[0.14em]"
-          style={{ fontFamily: EARN_MONO, color: "var(--earn-gold-ink)" }}
+          className="shrink-0 text-[10.5px] font-medium uppercase tracking-[0.12em]"
+          style={{ fontFamily: EARN_MONO, color: "var(--earn-teal-ink)" }}
         >
-          Plus · your own city
+          How it works
         </span>
-        <span className="text-[14px]" style={{ color: "var(--earn-ink)" }}>
-          Birthdays, anniversaries, the Friday you keep meaning to plan — a local's plan arrives
-          before each date.
-        </span>
-        <span
-          className="ml-auto text-[13px] font-semibold"
-          style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}
-          data-testid="plus-band-price"
-        >
-          {cents(pricing?.plusAnnual?.priceCents)}
-          <small className="font-normal" style={{ color: "var(--earn-muted)" }}>
-            {" "}/ year{pricing?.plusSalesEnabled === true ? "" : " · coming soon"}
-          </small>
+        <ol className="flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="how-it-works-steps">
+          {HOW_IT_WORKS_STEPS.map((step, i) => (
+            <Fragment key={step.n}>
+              {i > 0 && (
+                <li aria-hidden="true" className="text-[13px]" style={{ color: "var(--earn-faint)" }}>
+                  →
+                </li>
+              )}
+              <li className="flex items-baseline gap-1.5">
+                <span className="text-[10px] font-medium" style={{ fontFamily: EARN_MONO, color: "var(--earn-teal-ink)" }}>
+                  {step.n}
+                </span>
+                <span className="text-[15px] font-semibold" style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}>
+                  {step.title}
+                </span>
+              </li>
+            </Fragment>
+          ))}
+        </ol>
+        <span className="flex shrink-0 gap-4 text-[13px] font-semibold lg:ml-auto">
+          <Link href="/how-it-works" className="hover:underline" style={{ color: "var(--earn-teal-ink)" }} data-testid="link-see-how-it-works">
+            See how it works →
+          </Link>
+          <Link href="/pricing" className="hover:underline" style={{ color: "var(--earn-teal-ink)" }} data-testid="link-see-pricing">
+            See pricing →
+          </Link>
         </span>
       </div>
-    </OpenSection>
+    </section>
   );
 }

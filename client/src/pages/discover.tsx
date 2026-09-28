@@ -140,6 +140,7 @@ import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
 import { CityGrid } from "@/components/travelpulse/CityGrid";
 import { GlobalCalendar } from "@/components/travelpulse/GlobalCalendar";
+import { EventsComingUpBlock } from "@/components/landing/events-strip";
 import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 import { SEOHead } from "@/components/seo-head";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
@@ -2198,6 +2199,9 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
 
               {/* Events Tab - Global Calendar */}
               <TabsContent value="events">
+                {/* "Coming up" (ledger `2026-09-28-city-events`): city_events in the next 180 days,
+                    scoped to the events surface only; absent when there are none. */}
+                {surface === "events" && <EventsComingUpBlock />}
                 <GlobalCalendar />
               </TabsContent>
 
