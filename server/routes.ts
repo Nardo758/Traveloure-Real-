@@ -2117,15 +2117,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           );
         }
 
-        // Fire-and-forget: T6 funnel event
-        trackFunnelEvent({
-          userId,
-          tripId: tripId || undefined,
-          bookingId,
-          eventType: "revenue",
-          funnelStage: "T6",
-          eventData: { amount: totalAmount },
-        }).catch(() => {}); // fire-and-forget funnel event — never blocks booking confirmation
+        // NO T6 revenue event here: this is a booking REQUEST — nothing has been charged. Revenue is
+        // recorded by the paid transition itself (`promoteOneBooking` / `promoteBalancePayment`,
+        // ledger `2026-09-27-funnel-revenue-on-paid`). Do not re-add an emitter at request time.
 
         // Notify the expert/provider that a new booking request has arrived
         try {
@@ -12341,7 +12335,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.get("/api/admin/funnel-stats", requireAdmin, async (req, res) => {
     try {
       const result = await db.execute(
-        sql`SELECT stage, COUNT(*)::int AS count FROM funnel_events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY stage ORDER BY stage`
+        // Void rows (migration 326: revenue emitted before anything was paid) are kept on disk and
+        // never counted (ledger `2026-09-27-funnel-revenue-on-paid`).
+        sql`SELECT stage, COUNT(*)::int AS count FROM funnel_events
+            WHERE created_at >= NOW() - INTERVAL '30 days'
+              AND NOT COALESCE((properties->>'void')::boolean, false)
+            GROUP BY stage ORDER BY stage`
       );
       res.json({ windowDays: 30, stages: result.rows });
     } catch (err) {
