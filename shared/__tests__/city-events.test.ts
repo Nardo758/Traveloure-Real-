@@ -3,7 +3,8 @@
  *
  * E1 strip absent below three events; present at three.
  * E2 nights and countdown derived correctly across a DST boundary (Europe/London, Oct 2026).
- * E3 affiliate-host ticket links are refused; an organiser's own link is not.
+ * E3 a ticket link on a partner's domain (the registry's hosts, passed in) is refused; an organiser's
+ *    own link is not. E3b: city-events and the blog share ONE rule and ONE loader, no second list.
  * E4 no event renders without a venue and a start date, nor once withdrawn.
  * E5 the neighbourhood is the nearest SAME-city row with coordinates, else null — never a guess.
  * E6 the per-event Moments/Trips split comes from nights.
@@ -13,6 +14,8 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   CITY_EVENTS_STRIP_MIN,
   cityEventPhoto,
@@ -68,16 +71,29 @@ describe("city events", () => {
     assert.equal(countdownLabel(-2), "On now");
   });
 
-  it("E3 an affiliate-host ticket link is refused; the organiser's own is accepted", () => {
-    assert.equal(isAcceptableTicketUrl("https://www.viator.com/tours/x"), false);
-    assert.equal(isAcceptableTicketUrl("https://tp.media/r?campaign=1"), false);
-    assert.equal(isAcceptableTicketUrl("https://c137.travelpayouts.com/click"), false);
-    assert.equal(isAcceptableTicketUrl("https://www.stubhub.com/event/1"), false);
-    assert.equal(isAcceptableTicketUrl("https://www.edfringe.com/tickets"), true);
-    // A host that merely CONTAINS an affiliate word is not a match (exact-suffix rule).
-    assert.equal(isAcceptableTicketUrl("https://notviator.com.example.org/"), true);
-    assert.equal(isAcceptableTicketUrl("javascript:alert(1)"), false);
-    assert.equal(isAcceptableTicketUrl("not a url"), false);
+  it("E3 a ticket link on a partner's domain is refused; the organiser's own is accepted", () => {
+    // The hosts are the registry's (loadPartnerHosts), passed in — this module types none.
+    const partners = ["viator.com", "travelpayouts.com", "stubhub.com"];
+    assert.equal(isAcceptableTicketUrl("https://www.viator.com/tours/x", partners), false);
+    assert.equal(isAcceptableTicketUrl("https://c137.travelpayouts.com/click", partners), false);
+    assert.equal(isAcceptableTicketUrl("https://www.stubhub.com/event/1", partners), false);
+    assert.equal(isAcceptableTicketUrl("https://www.edfringe.com/tickets", partners), true);
+    // A host that merely CONTAINS a partner's name is not a match (exact-suffix rule).
+    assert.equal(isAcceptableTicketUrl("https://notviator.com.example.org/", partners), true);
+    assert.equal(isAcceptableTicketUrl("javascript:alert(1)", partners), false);
+    assert.equal(isAcceptableTicketUrl("not a url", partners), false);
+    // With an empty registry nothing is refused on partner grounds — only malformed links are.
+    assert.equal(isAcceptableTicketUrl("https://www.viator.com/tours/x", []), true);
+  });
+
+  it("E3b the rule is the blog's rule: one module, and no hand-typed host list in city-events", () => {
+    const src = readFileSync(join(process.cwd(), "shared/city-events.ts"), "utf8");
+    assert.match(src, /from "\.\/partner-hosts"/, "city-events reads the shared partner-host rule");
+    assert.doesNotMatch(src, /AFFILIATE_TICKET_HOSTS|"viator\.com"|"tp\.media"/, "no second affiliate list");
+    const blog = readFileSync(join(process.cwd(), "server/services/blog-posts.service.ts"), "utf8");
+    assert.match(blog, /isOnPartnerHost/, "the blog calls the same rule");
+    const svc = readFileSync(join(process.cwd(), "server/services/city-events.service.ts"), "utf8");
+    assert.match(svc, /from "\.\/partner-hosts\.service"/, "city events load the same hosts as the blog");
   });
 
   it("E4 no event renders without a venue and a start date, or once withdrawn", () => {

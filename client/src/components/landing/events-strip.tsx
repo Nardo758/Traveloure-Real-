@@ -22,6 +22,7 @@ import {
 } from "@shared/city-events";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { resolveBillboardCredit, type PhotoAttribution } from "@shared/landing-billboard";
+import type { PlanDoor } from "@shared/slip-funnel-events";
 import { usePlanning, type PlanningSource } from "@/contexts/PlanningContext";
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
 import { SectionHeader, OpenSection } from "./section-header";
@@ -37,10 +38,17 @@ function formatDay(date: string): string {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
-/** The PlanningSource "Plan around it" opens — the event row's own facts only. */
-export function planAroundSource(event: CityEventCard): PlanningSource {
+/**
+ * Which surface a "Plan around it" press came from — the funnel door (slip-funnel-events.md §3.1,
+ * amended 2026-09-28): the landing strip is `event_strip`, the /events block is `events_page`.
+ */
+export type CityEventDoor = Extract<PlanDoor, "event_strip" | "events_page">;
+
+/** The PlanningSource "Plan around it" opens — the event row's own facts only, plus the door. */
+export function planAroundSource(event: CityEventCard, door: CityEventDoor): PlanningSource {
   const market = OPERATING_MARKETS.find((m) => m.marketKey === event.marketKey);
   return {
+    door,
     experienceSlug: CITY_EVENT_OCCASION_SLUG,
     city: event.city,
     ...(market ? { country: market.country } : {}),
@@ -54,7 +62,15 @@ export function planAroundSource(event: CityEventCard): PlanningSource {
   };
 }
 
-function EventCard({ event, onPlanAround }: { event: CityEventCard; onPlanAround: (s: PlanningSource) => void }) {
+function EventCard({
+  event,
+  door,
+  onPlanAround,
+}: {
+  event: CityEventCard;
+  door: CityEventDoor;
+  onPlanAround: (s: PlanningSource) => void;
+}) {
   const photo = cityEventPhoto(event.imagePath, event.marketKey);
   const credit = photo?.fallback ? resolveBillboardCredit(photo.src, LANDING_PHOTO_ATTRIBUTION as PhotoAttribution[]) : null;
   const showPhoto = !!photo && (!photo.fallback || !!credit);
@@ -116,7 +132,7 @@ function EventCard({ event, onPlanAround }: { event: CityEventCard; onPlanAround
         )}
         <button
           type="button"
-          onClick={() => onPlanAround(planAroundSource(event))}
+          onClick={() => onPlanAround(planAroundSource(event, door))}
           className="mt-auto inline-flex min-h-[36px] items-center self-start rounded-[8px] border px-3 text-[13px] font-semibold"
           style={{ borderColor: "var(--earn-coral-ink)", color: "var(--earn-coral-ink)" }}
           data-testid={`city-event-plan-${event.id}`}
@@ -130,15 +146,17 @@ function EventCard({ event, onPlanAround }: { event: CityEventCard; onPlanAround
 
 export function CityEventCards({
   events,
+  door,
   onPlanAround,
 }: {
   events: readonly CityEventCard[];
+  door: CityEventDoor;
   onPlanAround: (s: PlanningSource) => void;
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="city-events-cards">
       {events.map((e) => (
-        <EventCard key={e.id} event={e} onPlanAround={onPlanAround} />
+        <EventCard key={e.id} event={e} door={door} onPlanAround={onPlanAround} />
       ))}
     </div>
   );
@@ -166,7 +184,7 @@ export function EventsStripContent({
         title="Coming up in our cities"
         link={{ label: "All events →", href: "/events", testId: "link-all-events" }}
       />
-      <CityEventCards events={cards} onPlanAround={onPlanAround} />
+      <CityEventCards events={cards} door="event_strip" onPlanAround={onPlanAround} />
     </OpenSection>
   );
 }
@@ -197,7 +215,7 @@ export function EventsComingUpBlock() {
           Coming up
         </h2>
       </div>
-      <CityEventCards events={data.events} onPlanAround={(source) => open(source)} />
+      <CityEventCards events={data.events} door="events_page" onPlanAround={(source) => open(source)} />
     </section>
   );
 }

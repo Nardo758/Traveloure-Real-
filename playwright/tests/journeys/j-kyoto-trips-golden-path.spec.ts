@@ -371,10 +371,24 @@ test.describe("8 · a month later", () => {
     await expect(testid(page, "trip-card-rail")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("Final · v1").first()).toBeVisible();
   });
-  test.fixme("§8 — Home's upcoming rows state the traveler-chosen dates as confirmed (a countdown may render)", async () => {
-    // Missing code (found by this lane): `GET /api/me/upcoming`'s loader selects
-    // `trips.dates_confirmed_at` and then drops it before `buildUpcomingRows`, so every plan reads
-    // `datesConfirmed: false` and Home withholds its countdown (LD 30 / LD 45 (8)).
+  test("§8 — Home's upcoming rows state the traveler-chosen dates as confirmed (a countdown may render)", async ({ page }) => {
+    // Ledger `2026-09-28-upcoming-dates-confirmed`: the loader now hands the builder the
+    // `trips.dates_confirmed_at` it reads, so a plan whose dates the traveler chose makes NO
+    // placeholder claim (`datesConfirmed` is present only when it is false — LD 30 / LD 45 (8)).
+    await signedInTraveler(page, "s8c");
+    const tripId = await createTrip(page.request, "Kyoto trip", KYOTO);
+    const [trip] = await rows<{ confirmed: boolean }>(
+      `SELECT dates_confirmed_at IS NOT NULL AS confirmed FROM trips WHERE id = $1`,
+      [tripId],
+    );
+    expect(trip.confirmed, "the traveler's own mint stamps dates_confirmed_at").toBe(true);
+
+    const upcoming = await page.request.get(`${BASE_URL}/api/me/upcoming`);
+    expect(upcoming.status()).toBe(200);
+    const body = (await upcoming.json()) as { rows: Array<{ kind: string; tripId?: string; datesConfirmed?: boolean }> };
+    const start = body.rows.find((r) => r.kind === "trip_start" && r.tripId === tripId);
+    expect(start, "the trip start is on Home's time axis").toBeTruthy();
+    expect("datesConfirmed" in start!, "a chosen window is not labelled a placeholder").toBe(false);
   });
   test.fixme("§8 today — the refunded activity reads refunded on the Trip Card", async () => {
     // Waits on §7's booking + cancel (A0 (a3) supply and a Stripe test key).

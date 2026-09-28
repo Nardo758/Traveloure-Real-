@@ -7,6 +7,7 @@
  *    not rendered at all.
  * B3 a tile shows no expert name, price, "Plan with" or avatar — "Representative photo · <market>".
  * B4 the hero no longer paints billboard images from the live payload (provider_services legs).
+ * B6 Start this plan opens a new plan with the tile's occasion and market, as door "billboard".
  * B5 a byline-gated expert takes the tile: the initial appears, and only then.
  * P1 the pill set is exactly the old eight-tile set — no destination lost.
  * W1 the Wanted strip still renders from the live payload, and is omitted when coverage is unknown.
@@ -114,6 +115,7 @@ describe("billboard doors", () => {
     for (const tile of BILLBOARD_TILES) {
       const source = billboardPlanSource(tile);
       assert.ok(source, `${tile.key} resolves to a market`);
+      assert.equal(source!.door, "billboard", "the billboard names its funnel door");
       assert.equal(source!.experienceSlug, tile.occasionSlug);
       assert.equal(source!.city, "Kyoto");
       assert.equal(source!.country, "Japan");
