@@ -521,6 +521,9 @@ H10).
 
 ## G. Rollout
 
+> **SUPERSEDED (Part 3, pending ratification):** replaced by Track A / Track B in
+> `docs/planning/track-a-rollout.md`, which states the fate of each step below. The table is kept for traceability.
+
 Each step ships something usable and waits for ratification of the next.
 
 | Step | Ships | Modules | Prerequisites |
