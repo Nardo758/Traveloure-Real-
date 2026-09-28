@@ -78,3 +78,31 @@ only measured change there is body text going from #111827 to #1F2733. No button
 | Traveler `/dashboard` | Expert `/expert/today` | Admin `/admin/dashboard` |
 |---|---|---|
 | <a href="footer-pages-after/consoles/traveler.light.jpg"><img src="footer-pages-after/consoles/traveler.light.jpg" width="300"></a> | <a href="footer-pages-after/consoles/expert.light.jpg"><img src="footer-pages-after/consoles/expert.light.jpg" width="300"></a> | <a href="footer-pages-after/consoles/admin.light.jpg"><img src="footer-pages-after/consoles/admin.light.jpg" width="300"></a> |
+
+## Landing reorder (ledger `2026-09-28-landing-reorder`, `2026-09-28-city-events`)
+
+Before is main at `aad336648`; after is this branch. Both are signed-out production builds against the
+same local database. Click a thumbnail for the full page.
+
+| | Before · 1440 | After · 1440 | Before · 390 | After · 390 |
+|---|---|---|---|---|
+| `/` | <a href="footer-pages-after/landing-reorder/before.desktop.jpg"><img src="footer-pages-after/landing-reorder/before.desktop.top.jpg" width="260"></a> | <a href="footer-pages-after/landing-reorder/after.desktop.jpg"><img src="footer-pages-after/landing-reorder/after.desktop.top.jpg" width="260"></a> | <a href="footer-pages-after/landing-reorder/before.mobile.jpg"><img src="footer-pages-after/landing-reorder/before.mobile.top.jpg" width="110"></a> | <a href="footer-pages-after/landing-reorder/after.mobile.jpg"><img src="footer-pages-after/landing-reorder/after.mobile.top.jpg" width="110"></a> |
+
+**Sections, measured on the rendered page:**
+
+| | Order | Page height (1440 / 390) |
+|---|---|---|
+| Before | hero → Some trips are one evening → how it works (four columns with prices) → eight entry tiles → Cities with momentum → Useful numbers → Know a city well → closing CTA | 3448 / 7558 px |
+| After | hero with pills → how-it-works strip → Some trips are one evening → *(Coming up in our cities — absent: the seed is empty)* → Cities with momentum → Know a city well → closing CTA | 2694 / 6050 px |
+
+- **Hero.** Same layout. The billboard tiles are curated, each says "Representative photo · Kyoto" and carries its photo credit from `ATTRIBUTION.json`. No expert name, price or avatar. The pills sit under the two buttons; a wrapped pill stays aligned with its row.
+- **Painted #111827:** 0 at 1440 and 0 at 390. No hex literal was added to the landing components.
+
+**Coming up in our cities.** The table ships empty, so the strip is absent on both builds. These
+captures used three local fixture rows (inserted for the capture, then deleted) to show what it
+looks like at the threshold. The Medellín card has no fallback photo, so it has no image box.
+
+| | 1440 | 390 |
+|---|---|---|
+| Landing strip | <img src="footer-pages-after/landing-reorder/events-strip.desktop.jpg" width="420"> | <img src="footer-pages-after/landing-reorder/events-strip.mobile.jpg" width="150"> |
+| `/events` "Coming up" | <img src="footer-pages-after/landing-reorder/events-page-coming-up.desktop.jpg" width="420"> | <img src="footer-pages-after/landing-reorder/events-page-coming-up.mobile.jpg" width="150"> |
