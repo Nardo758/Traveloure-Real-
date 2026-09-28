@@ -1065,6 +1065,35 @@ jobs:
       - name: Migration 289 category_key repair
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/category-key-repair.db.test.ts
 
+  funnel-share-token-purge:
+    name: funnel-share-token-purge (ledger 2026-09-27-funnel-share-token-purged — migration 326)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      SESSION_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+      JOURNEY_DB_WRITES_OK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # Funnel events store ids and enums only: the tracker hashes any refToken and drops
+      # credential-shaped keys, the share route records `sharedTripId`, and migration 326 (the ONE
+      # recorded exception to 089's append-only table) purges stored tokens and flags unpaid
+      # revenue rows void — run on a throwaway schema, twice, to prove idempotency.
+      - name: Funnel share-token purge + unpaid revenue void (migration 326)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/funnel-share-token-purge.db.test.ts
+
   archetype-fixtures:
     name: archetype-fixtures (ledger 2026-09-12-archetype-fixtures)
     runs-on: ubuntu-latest
