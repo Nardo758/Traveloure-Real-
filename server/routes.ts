@@ -9991,18 +9991,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         })
         .returning();
 
-      // Owner ruling 2026-09-06 (the sweep's F2 open question, ruled): a trip keeps its
-      // NEWEST 3 optimizer runs — creating the 4th AUTHORIZED run discards the oldest
-      // unapplied ones (the whole run tree cascades; APPLIED runs are protected provenance
-      // and don't consume the window). Fires only on an authorized run so free
-      // pending_payment rows can't evict paid runs; a stale pending_payment row sitting
-      // oldest is exactly the junk the ruling wants gone. Non-fatal (§15b posture): the new
+      // Retention (owner ruling 2026-09-06, AMENDED by ledger `2026-09-27-paid-runs-never-pruned`):
+      // a run that ran is NEVER pruned; only never-authorized `pending_payment` previews beyond the
+      // newest 3 are discarded. Fires only on an authorized run. Non-fatal (§15b posture): the new
       // run is already inserted and valid — a sweep failure must never turn it into a 500.
       if (tripId && canRunOptimizer) {
         try {
           const discarded = await enforceTripComparisonRetention(tripId);
           if (discarded.length > 0) {
-            console.log(`[comparison-retention] trip ${tripId}: discarded ${discarded.length} oldest run(s) beyond the 3-run window`);
+            console.log(`[comparison-retention] trip ${tripId}: discarded ${discarded.length} unpaid preview(s) beyond the 3-preview window`);
           }
         } catch (retentionErr) {
           console.error("[comparison-retention] sweep failed (non-fatal):", (retentionErr as any)?.message);

@@ -1282,6 +1282,10 @@ jobs:
       # and not the same fact as a job that runs it. A money-path suite nothing runs cannot fail.
       - name: Checkout payment promotion + plan-work grant (N17-N19, N23)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/checkout-payment-promotion.db.test.ts
+      # Ledger 2026-09-27-paid-runs-never-pruned: optimizer retention prunes only never-authorized
+      # previews; a run that ran (paid, pass-covered or free re-run) is never deleted.
+      - name: Paid optimizer runs are never pruned
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/paid-runs-never-pruned.db.test.ts
 
   booking-agent-claim:
     name: booking-agent-claim (LD 44; ledger 2026-09-08-assignment-is-claimed / 2026-09-15-booking-agent-claim / 2026-09-15-d10-confirmed-needs-partner-evidence)
