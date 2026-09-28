@@ -131,16 +131,22 @@ async function seedBooking(opts: {
 }): Promise<string> {
   const id = `acc-${RUN}-bk-${crypto.randomUUID().slice(0, 6)}`;
   const confirmedDaysAgo = opts.confirmedDaysAgo ?? 2;
+  const paymentIntentId = opts.paymentIntentId === undefined ? `pi_${RUN}_${id}` : opts.paymentIntentId;
+  // A row with a PaymentIntent carries the paid transition's stamp; a PI-less row stays UNPAID and
+  // unstamped (ledger `2026-09-28-no-payment-no-earnings`).
+  const details = paymentIntentId
+    ? { paidCharge: { status: "confirmed", amount: 100, at: "2026-01-01T00:00:00.000Z" } }
+    : {};
   await db.execute(sql`
     INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status,
                                   total_amount, platform_fee, provider_earnings,
                                   confirmed_at, delivered_at, deliverable_file,
-                                  stripe_payment_intent_id)
+                                  stripe_payment_intent_id, booking_details)
     VALUES (${id}, ${opts.serviceId}, ${ids.traveler}, ${ids.provider}, ${opts.status},
             '100.00', '25.00', '75.00',
             NOW() - (${confirmedDaysAgo} || ' days')::interval,
             ${opts.deliveredAt ?? null}, ${opts.deliverableFile ?? null},
-            ${opts.paymentIntentId === undefined ? `pi_${RUN}_${id}` : opts.paymentIntentId})
+            ${paymentIntentId}, ${JSON.stringify(details)}::jsonb)
   `);
   createdBookingIds.push(id);
   return id;

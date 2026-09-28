@@ -24,6 +24,7 @@ import { storage } from "../storage";
 import { enqueueEmail } from "./email-outbox.service";
 import { isNotificationChannelEnabled } from "./notification-preferences.service";
 import { escHtml } from "../utils/email-escape";
+import { paymentOnRecordSql } from "./payment-on-record";
 import {
   alternativeExpertsPath,
   earnerNoResponseCopy,
@@ -62,6 +63,9 @@ async function findCandidates(hours: number): Promise<Candidate[]> {
        AND sb.traveler_id IS NOT NULL
        AND sb.provider_id IS NOT NULL
        AND NOT EXISTS (SELECT 1 FROM service_quotes q WHERE q.booking_id = sb.id)
+       -- NO PAYMENT, NO EARNINGS (ledger \`2026-09-28-no-payment-no-earnings\`): a booking with no
+       -- payment on record is inert by predicate — it gets no notice either. The ONE SQL predicate.
+       AND ${paymentOnRecordSql(sql`sb.booking_details`)}
        AND NOT EXISTS (SELECT 1 FROM user_and_expert_chats c
                         WHERE c.sender_id = sb.provider_id AND c.receiver_id = sb.traveler_id
                           AND c.created_at >= sb.created_at)

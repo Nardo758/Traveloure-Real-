@@ -106,13 +106,18 @@ async function assertDisposableDb(): Promise<void> {
 async function seedBooking(opts: {
   status: string;
   completedAt?: Date | null;
+  /** Carry the paid transition's stamp — a completion/mint requires it (ledger `2026-09-28-no-payment-no-earnings`). */
+  paid?: boolean;
 }): Promise<string> {
   const id = `fsg-${RUN}-bk-${crypto.randomUUID().slice(0, 6)}`;
+  const details = opts.paid
+    ? { paidCharge: { status: "confirmed", amount: 100, at: "2026-01-01T00:00:00.000Z" } }
+    : {};
   await db.execute(sql`
     INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status,
-                                  total_amount, platform_fee, provider_earnings, completed_at)
+                                  total_amount, platform_fee, provider_earnings, completed_at, booking_details)
     VALUES (${id}, ${ids.service}, ${ids.traveler}, ${ids.provider}, ${opts.status},
-            '100.00', '25.00', '75.00', ${opts.completedAt ?? null})
+            '100.00', '25.00', '75.00', ${opts.completedAt ?? null}, ${JSON.stringify(details)}::jsonb)
   `);
   createdBookingIds.push(id);
   return id;
@@ -292,7 +297,7 @@ test("F2: two concurrent disputes on the same booking ⇒ exactly one lands", as
 
 test("F3: admin dispute-reject on a `refunded` booking ⇒ refused, ZERO earnings minted, `completed_at` untouched", async () => {
   const originalCompletedAt = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const bookingId = await seedBooking({ status: "refunded", completedAt: originalCompletedAt });
+  const bookingId = await seedBooking({ status: "refunded", completedAt: originalCompletedAt, paid: true });
 
   const before = await readBooking(bookingId);
   assert.equal(await mintedRowCount(bookingId), 0, "fixture starts unminted");
@@ -344,7 +349,7 @@ test("F3b: the admin reject handler reads for its 404, passes the named list, an
 
 test("F4: reject on a `disputed` row that was previously completed keeps the ORIGINAL `completed_at` (and does mint)", async () => {
   const originalCompletedAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-  const bookingId = await seedBooking({ status: "disputed", completedAt: originalCompletedAt });
+  const bookingId = await seedBooking({ status: "disputed", completedAt: originalCompletedAt, paid: true });
 
   const result = await storage.updateServiceBookingStatus(
     bookingId,

@@ -127,6 +127,14 @@ async function bookLikeCheckout(opts: {
     providerEarnings: netExpertEarningsAmt.toFixed(2),
   } as any);
   createdBookingIds.push(booking.id);
+  // The lifecycle below completes and mints, so this models a PAID booking: it carries the paid
+  // transition's stamp (ledger `2026-09-28-no-payment-no-earnings`).
+  await db.execute(sql`
+    UPDATE service_bookings
+       SET booking_details = COALESCE(booking_details, '{}'::jsonb)
+         || ${JSON.stringify({ paidCharge: { status: "confirmed", amount: Number(price.toFixed(2)), at: "2026-01-01T00:00:00.000Z" } })}::jsonb
+     WHERE id = ${booking.id}
+  `);
   return { bookingId: booking.id, stampedEarnings: netExpertEarningsAmt.toFixed(2) };
 }
 

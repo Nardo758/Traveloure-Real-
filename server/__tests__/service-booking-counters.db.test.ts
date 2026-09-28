@@ -31,11 +31,18 @@ let serviceId: string;
 const bookingIds: string[] = [];
 
 /** Insert a booking directly into the DB, bypassing PS15 PI-strip logic. */
+/** The paid transition's stamp (ledger `2026-09-28-no-payment-no-earnings`) — for a row the test treats as PAID. */
+function paidDetails(total: string): Record<string, unknown> {
+  return { paidCharge: { status: "confirmed", amount: Number(total), at: "2026-01-01T00:00:00.000Z" } };
+}
+
 async function insertBooking(opts: {
   status: string;
   totalAmount?: string;
   platformFee?: string;
   providerEarnings?: string;
+  /** Carry the paid transition's stamp — required to complete (ledger `2026-09-28-no-payment-no-earnings`). */
+  paid?: boolean;
 }): Promise<string> {
   const id = crypto.randomUUID();
   const total = opts.totalAmount ?? "120.00";
@@ -43,9 +50,10 @@ async function insertBooking(opts: {
   const earnings = opts.providerEarnings ?? "90.00";
   await db.execute(sql`
     INSERT INTO service_bookings
-      (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee, provider_earnings, created_at)
+      (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee, provider_earnings, booking_details, created_at)
     VALUES
-      (${id}, ${serviceId}, ${travelerId}, ${providerId}, ${opts.status}, ${total}, ${fee}, ${earnings}, NOW())
+      (${id}, ${serviceId}, ${travelerId}, ${providerId}, ${opts.status}, ${total}, ${fee}, ${earnings},
+       ${JSON.stringify(opts.paid ? paidDetails(total) : {})}::jsonb, NOW())
   `);
   bookingIds.push(id);
   return id;
@@ -207,6 +215,7 @@ test("TR-1: completing a booking increments total_revenue by the provider earnin
     totalAmount: "200.00",
     platformFee: "50.00",
     providerEarnings: "150.00",
+    paid: true,
   });
 
   const completed = await storage.updateServiceBookingStatus(bookingId, "completed", undefined, ["confirmed"]);
@@ -230,6 +239,7 @@ test("TR-2: cancelling a separate booking does not change total_revenue from a p
     totalAmount: "100.00",
     platformFee: "25.00",
     providerEarnings: "75.00",
+    paid: true,
   });
   await storage.updateServiceBookingStatus(completedId, "completed", undefined, ["confirmed"]);
 

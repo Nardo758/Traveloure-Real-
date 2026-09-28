@@ -205,6 +205,8 @@ import {
 } from "../services/platform-concierge-price.service";
 import { sanitizeInput } from "../utils/sanitize";
 import { escHtml } from "../utils/email-escape";
+import { logger } from "../infrastructure/logger";
+import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
 
 const router = Router();
 
@@ -1651,6 +1653,17 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
     // (both come back `undefined`), and those are different facts to an admin (§13).
     const existing = await storage.getServiceBooking(bookingId);
     if (!existing) return res.status(404).json({ message: "Booking not found" });
+    // NO PAYMENT, NO EARNINGS (ledger `2026-09-28-no-payment-no-earnings`): a rejection re-completes
+    // the booking, which mints — so a row with no payment on record is refused by name, before any
+    // write. The status writer's WHERE refuses it too (the guard); this is the honest message.
+    if (!hasPaymentOnRecord(existing)) {
+      logger.warn({ bookingId, reason: NO_PAYMENT_ON_RECORD }, "[admin-dispute-reject] no payment on record — refused");
+      return res.status(409).json({
+        error: NO_PAYMENT_ON_RECORD,
+        message: "This booking has no payment on record, so rejecting the dispute would pay out money nobody paid.",
+        currentStatus: existing.status,
+      });
+    }
     const cleared = await storage.setBookingEarningsDispute(bookingId, false);
     const restored = await storage.updateServiceBookingStatus(
       bookingId,

@@ -1,4 +1,5 @@
 import { helpArticlePath } from "@shared/help-article-slugs";
+import { hasPaymentOnRecord } from "@shared/payment-on-record";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -809,11 +810,15 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
     ? new Date(booking.bookingDetails.scheduledDate).getTime()
     : new Date(booking.confirmedAt ?? booking.createdAt).getTime();
   const confirmedAndDelivered = actionStatus === "confirmed" && Date.now() >= deliveryRefMs + 24 * 60 * 60 * 1000;
-  const canConfirmOrDispute = actionStatus === "completed" || confirmedAndDelivered;
+  // Ledger `2026-09-28-no-payment-no-earnings`: a booking with no payment on record stays VISIBLE
+  // but offers no Cancel, Confirm or Dispute — there is no money to return, release or contest. The
+  // ONE predicate; the server refuses the dispute and every completion on its own.
+  const paymentOnRecord = hasPaymentOnRecord(booking);
+  const canConfirmOrDispute = paymentOnRecord && (actionStatus === "completed" || confirmedAndDelivered);
   // The SAME list `POST /api/bookings/:id/cancel` accepts a booking in, and the SAME list its
   // §18b atomic conditional guards on — so this button can never be offered for a state the
   // server refuses (§18 rule 1).
-  const canCancel = isBookingCancellable(actionStatus);
+  const canCancel = paymentOnRecord && isBookingCancellable(actionStatus);
   const isDisputed = actionStatus === "disputed";
   const showVisaTimeline = isVisaBooking(booking) && booking.bookingMetadata;
   const isConfirmedOrBeyond = ["confirmed", "in_progress", "completed"].includes(actionStatus);

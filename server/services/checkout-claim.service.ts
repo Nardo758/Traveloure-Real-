@@ -96,7 +96,8 @@ import { markItemPurchased } from "./item-routing.service";
 // only a payment SIGNAL can reach (server died between authorization and the primary write).
 import { createHandoffRequestsForBooking } from "./concierge-handoff.service";
 import { logger } from "../infrastructure/logger";
-import { paidTransitionRowFromSql, recordPaidRevenueEvent } from "./funnel-revenue.service";
+import { paidRevenueAmount, paidTransitionRowFromSql, recordPaidRevenueEvent } from "./funnel-revenue.service";
+import { stampPaidCharge } from "./payment-on-record";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 import { getStripeSecretKey } from "../utils/stripe-key";
@@ -1273,10 +1274,15 @@ async function promoteOneBooking(
         });
         diaryRows = 1;
       }
+      // PAYMENT ON RECORD (ledger `2026-09-28-no-payment-no-earnings`): the winning flip stamps
+      // `booking_details.paidCharge` in THIS transaction — not a savepoint, so a failed stamp rolls
+      // the flip back and a paid row can never read as unpaid to the earning paths.
+      const paidRow = paidTransitionRowFromSql(claimed.rows[0]);
+      const stamp = await stampPaidCharge(tx, row.id, targetStatus, paidRevenueAmount(targetStatus, paidRow));
       // T6 revenue is recorded HERE, by the winning flip and inside its transaction, so a paid
       // transition has exactly one event and an unpaid row has none (ledger
-      // `2026-09-27-funnel-revenue-on-paid`). Savepointed and never throwing (§15b).
-      await recordPaidRevenueEvent(tx, targetStatus, paidTransitionRowFromSql(claimed.rows[0]));
+      // `2026-09-27-funnel-revenue-on-paid`). Derived from the stamp; savepointed, never throws (§15b).
+      await recordPaidRevenueEvent(tx, stamp, paidRow);
       return { promoted: true, diaryRows, terminalStatus: null };
     });
   } catch (err) {
@@ -2415,8 +2421,11 @@ export async function promoteBalancePayment(opts: {
 
       const claimedRow = claimed.rows[0] as any;
       result.promoted = true;
-      // The balance is its own paid transition (ledger `2026-09-27-funnel-revenue-on-paid`).
-      await recordPaidRevenueEvent(tx, "balance_paid", paidTransitionRowFromSql(claimedRow));
+      // The balance is its own paid transition (ledger `2026-09-27-funnel-revenue-on-paid`): stamped
+      // in this transaction (ledger `2026-09-28-no-payment-no-earnings`), the event derived from it.
+      const balanceRow = paidTransitionRowFromSql(claimedRow);
+      const balanceStamp = await stampPaidCharge(tx, bookingId, "balance_paid", paidRevenueAmount("balance_paid", balanceRow));
+      await recordPaidRevenueEvent(tx, balanceStamp, balanceRow);
       const tripId = claimedRow.trip_id ?? null;
       if (tripId) {
         const details = (claimedRow.booking_details ?? {}) as Record<string, unknown>;

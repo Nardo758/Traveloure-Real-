@@ -189,9 +189,15 @@ async function bornBundleBooking(opts: {
   } as any);
   createdBookingIds.push(booking.id);
   const pi = opts.paymentIntent === undefined ? `pi_${RUN}_${booking.id.slice(0, 8)}` : opts.paymentIntent;
+  // Every fixture here is a PAID bundle (each one expects the flip to mint), so it carries the paid
+  // transition's stamp (ledger `2026-09-28-no-payment-no-earnings`) — including S8's PI-less row,
+  // which models a payment on record whose CUSTODY is unknown, not an unpaid booking.
   await db.execute(sql`
     UPDATE service_bookings
-       SET stripe_payment_intent_id = ${pi}, confirmed_at = NOW() - interval '10 days'
+       SET stripe_payment_intent_id = ${pi}, confirmed_at = NOW() - interval '10 days',
+           booking_details = COALESCE(booking_details, '{}'::jsonb) || ${JSON.stringify(
+             { paidCharge: { status: "confirmed", amount: Number(opts.totalAmount ?? "100.00"), at: "2026-01-01T00:00:00.000Z" } },
+           )}::jsonb
      WHERE id = ${booking.id}
   `);
   return booking.id;

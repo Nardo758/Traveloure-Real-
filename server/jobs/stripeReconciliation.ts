@@ -947,10 +947,14 @@ async function scanCartRail(args: {
 
   // ── B. DB-first: a paid-equivalent booking must have a succeeded PaymentIntent behind it ────
   const piById = new Map(paymentIntents.map((pi) => [pi.id, pi]));
-  for (const r of rows) {
+  // B0 — NO PAYMENTINTENT AT ALL, OVER EVERY ROW (ledger `2026-09-28-no-payment-no-earnings`). This
+  // rule used to see only rows inside the scan window, so a `confirmed` row with no payment born
+  // before the window — the seven production legacy rows — was never reported. It needs no Stripe
+  // read (the absence is on the row), so it scans the WHOLE table: its own query, not the window's.
+  // Detect only, never repair (§17): no status is touched.
+  const noPiRows = await loadPaidEquivalentRowsWithoutPi(onlyBookingIds);
+  for (const r of noPiRows) {
     if (!inScope(r.id)) continue;
-    if (!PAID_EQUIVALENT_STATUSES.includes(r.status ?? "")) continue;
-
     // R-1 (ledger `2026-09-14-transport-confirm-stamps-pi`) — WHY THIS DETECTOR IS UNCHANGED, and
     // why it must not learn to repair a transport row. Platform-transport bookings confirmed before
     // that lane carry no PaymentIntent and surface here, correctly: the fact is real, only its cause
@@ -962,24 +966,27 @@ async function scanCartRail(args: {
     // enters. There is therefore no server-verified path from a PaymentIntent back to one of these
     // rows, and inventing one from a date window and an amount would be exactly the guess this job
     // refuses everywhere else. They are a human's to reconcile. No backfill was run.
-    if (!r.stripePaymentIntentId) {
-      exceptions.push({
-        rail: "cart",
-        kind: "booking_confirmed_no_pi",
-        severity: "critical",
-        dedupeKey: `cart:booking_confirmed_no_pi:${r.id}`,
-        bookingId: r.id,
-        expectedAmount: round2(expectedChargeForRow(r)),
-        details: {
-          bookingStatus: r.status,
-          note:
-            "A paid-equivalent booking carries NO PaymentIntent — the booking says the traveler paid " +
-            "and there is no payment to point at (scripts/invariants.mjs " +
-            "`paid-service-bookings-have-payment-intent`, now ops-visible on a schedule).",
-        },
-      });
-      continue;
-    }
+    exceptions.push({
+      rail: "cart",
+      kind: "booking_confirmed_no_pi",
+      severity: "critical",
+      dedupeKey: `cart:booking_confirmed_no_pi:${r.id}`,
+      bookingId: r.id,
+      expectedAmount: round2(expectedChargeForRow(r)),
+      details: {
+        bookingStatus: r.status,
+        note:
+          "A paid-equivalent booking carries NO PaymentIntent — the booking says the traveler paid " +
+          "and there is no payment to point at (scripts/invariants.mjs " +
+          "`paid-service-bookings-have-payment-intent`, now ops-visible on a schedule).",
+      },
+    });
+  }
+  for (const r of rows) {
+    if (!inScope(r.id)) continue;
+    if (!PAID_EQUIVALENT_STATUSES.includes(r.status ?? "")) continue;
+    // A row with no PaymentIntent was reported by B0's whole-table pass above.
+    if (!r.stripePaymentIntentId) continue;
 
     const pi = piById.get(r.stripePaymentIntentId);
     // A PI outside the scan window is NOT drift — it is simply older than what we listed. Only
@@ -1697,6 +1704,36 @@ async function loadCartBookings(args: {
       { limit: CART_SCAN_LIMIT },
       "[RECONCILIATION] cart-rail scan hit its row cap — the WINDOW WAS NOT FULLY EXAMINED. " +
         "Raise CART_SCAN_LIMIT or paginate; do not read this pass as clean.",
+    );
+  }
+  return (rows.rows as any[]).map(mapCartRow);
+}
+
+/**
+ * Every paid-equivalent cart booking with NO PaymentIntent, over the WHOLE table — no scan window
+ * (ledger `2026-09-28-no-payment-no-earnings`). The rule it feeds reads nothing from Stripe, so
+ * bounding it by the window only hid old rows. Capped and logged like the windowed loader.
+ */
+async function loadPaidEquivalentRowsWithoutPi(onlyBookingIds?: string[]): Promise<CartBookingRow[]> {
+  if (onlyBookingIds && onlyBookingIds.length === 0) return [];
+  const statuses = sql.join(PAID_EQUIVALENT_STATUSES.map((v) => sql`${v}`), sql`, `);
+  const rows = await db.execute(sql`
+    SELECT ${CART_COLUMNS}
+    FROM service_bookings
+    WHERE stripe_payment_intent_id IS NULL
+      AND status IN (${statuses})
+      ${
+        onlyBookingIds
+          ? sql`AND id IN (${sql.join(onlyBookingIds.map((v) => sql`${v}`), sql`, `)})`
+          : sql``
+      }
+    ORDER BY created_at ASC
+    LIMIT ${CART_SCAN_LIMIT}
+  `);
+  if (rows.rows.length === CART_SCAN_LIMIT) {
+    logger.error(
+      { limit: CART_SCAN_LIMIT },
+      "[RECONCILIATION] no-PaymentIntent scan hit its row cap — NOT FULLY EXAMINED; do not read this pass as clean.",
     );
   }
   return (rows.rows as any[]).map(mapCartRow);
