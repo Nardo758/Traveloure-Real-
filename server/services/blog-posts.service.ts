@@ -36,6 +36,8 @@ import {
 import { BLOG_QUOTE_MAX_CHARS, BLOG_RANK_MIN_IMPRESSIONS } from "../config/blog.config";
 import { rankBlogPosts } from "./blog-ranking";
 import { checkBylineEligibility, type BylineDecision } from "./blog-byline-gate.service";
+import { loadPartnerHosts } from "./partner-hosts.service";
+import { isOnPartnerHost, partnerHostOf } from "@shared/partner-hosts";
 
 export interface BlogSourceInput {
   url: string;
@@ -81,35 +83,15 @@ export function computeContentSha256(c: {
 
 // ── Source admission (ruling 4) ─────────────────────────────────────────────────────────────
 
-/** The partner registry's domains: every `affiliate_partners.website_url` host (approved or not). */
-export async function loadPartnerHosts(): Promise<string[]> {
-  const r = await db.execute(sql`SELECT website_url FROM affiliate_partners WHERE website_url IS NOT NULL`);
-  const hosts = new Set<string>();
-  for (const row of r.rows as any[]) {
-    const h = hostOf(String(row.website_url ?? ""));
-    if (h) hosts.add(h);
-  }
-  return Array.from(hosts);
-}
-
-function hostOf(url: string): string | null {
-  try {
-    const withScheme = /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
-    return new URL(withScheme).hostname.toLowerCase().replace(/^www\./, "");
-  } catch {
-    return null;
-  }
-}
-
 /** Pure. A source host matches a partner host exactly or as a subdomain of it. */
 export function sourceRefusal(
   s: BlogSourceInput,
   partnerHosts: readonly string[],
   quoteMax: number = BLOG_QUOTE_MAX_CHARS,
 ): string | null {
-  const host = hostOf(s.url);
+  const host = partnerHostOf(s.url);
   if (!host || !/^https?:\/\//i.test(s.url)) return "source_url_invalid";
-  if (partnerHosts.some((p) => host === p || host.endsWith(`.${p}`))) return "source_on_partner_domain";
+  if (isOnPartnerHost(host, partnerHosts)) return "source_on_partner_domain";
   if (s.quote != null && s.quote.length > quoteMax) return `quote_over_${quoteMax}_chars`;
   return null;
 }

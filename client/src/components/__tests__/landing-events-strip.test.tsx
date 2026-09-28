@@ -4,13 +4,15 @@
  * S1 absent below three events — nothing rendered, no heading, no placeholder.
  * S2 present at three, every value from the payload: tag, countdown, city · neighbourhood, venue.
  * S3 a NULL neighbourhood is omitted, never "undefined" or a guess.
- * S4 "Plan around it" passes occasion `show`, the market, and the event as the anchor.
+ * S4 "Plan around it" passes occasion `show`, the market, the event as the anchor, and its funnel
+ *    door (`event_strip` on landing, `events_page` on /events — slip-funnel-events.md §3.1).
  * S5 a card for a city with no fallback photo renders no photo, never another city's.
  *
  * Run: npx tsx --test client/src/components/__tests__/landing-events-strip.test.tsx
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
@@ -89,8 +91,10 @@ describe("city events strip", () => {
     assert.ok(!html.includes("null"));
   });
 
-  it("S4 Plan around it passes show, the market and the event as the anchor", () => {
-    const src = planAroundSource(card(1));
+  it("S4 Plan around it passes show, the market, the event as the anchor, and its door", () => {
+    const src = planAroundSource(card(1), "event_strip");
+    assert.equal(src.door, "event_strip");
+    assert.equal(planAroundSource(card(1), "events_page").door, "events_page");
     assert.equal(src.experienceSlug, "show");
     assert.equal(src.city, "Kyoto");
     assert.equal(src.country, "Japan");
@@ -101,6 +105,12 @@ describe("city events strip", () => {
       startTime: "19:00",
       venue: "Hall 1",
     });
+  });
+
+  it("S6 each surface sends its own door", () => {
+    const src = fs.readFileSync("client/src/components/landing/events-strip.tsx", "utf8");
+    assert.match(src, /<CityEventCards events=\{cards\} door="event_strip"/, "the landing strip is event_strip");
+    assert.match(src, /<CityEventCards events=\{data\.events\} door="events_page"/, "the /events block is events_page");
   });
 
   it("S5 a city with no fallback photo renders no photo", () => {

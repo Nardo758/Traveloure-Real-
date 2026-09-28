@@ -21,7 +21,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getTavilyClient } from "./tavily-client";
 import { trackAnthropicResponse } from "./ai-cost-tracker";
 import { BLOG_DRAFT_MAX_TOKENS, BLOG_DRAFT_MODEL, BLOG_QUOTE_MAX_CHARS, BLOG_RESEARCH_MAX_SOURCES } from "../config/blog.config";
-import { BlogError, createPost, loadPartnerHosts, sourceRefusal, type BlogSourceInput, type BlogDeps } from "./blog-posts.service";
+import { BlogError, createPost, sourceRefusal, type BlogSourceInput, type BlogDeps } from "./blog-posts.service";
+import { loadPartnerHosts } from "./partner-hosts.service";
 import { isBlogContentType, type BlogContentType } from "@shared/blog";
 
 export const WEB_DRAFTED_TYPES: readonly BlogContentType[] = ["occasion_market_guide", "travelpulse_weekly", "link_roundup"];

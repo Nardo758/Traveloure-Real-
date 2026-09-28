@@ -6,7 +6,8 @@
  * NOTHING — an existing row is never overwritten, never deleted. It derives `nights` and
  * `neighbourhood_id` itself; a seed entry cannot type them. An entry is refused (logged, not
  * inserted) when its city is not an operating market, it has no venue or start, or its ticket
- * link points at an affiliate host.
+ * link points at a partner's domain — the registry's hosts, read by the SAME `loadPartnerHosts`
+ * the blog's source admission reads (ledger `2026-09-28-landing-doors`).
  *
  * Reader: `listUpcomingCityEvents` returns renderable events starting in the next
  * CITY_EVENTS_WINDOW_DAYS, soonest first, with every display value derived here from the row
@@ -31,6 +32,7 @@ import {
 } from "@shared/city-events";
 import { getMarketByCityName, timezoneForMarket } from "./trend-engine/operating-markets";
 import { logger } from "../infrastructure/logger";
+import { loadPartnerHosts } from "./partner-hosts.service";
 
 /** What a seed entry may state. Derived columns (nights, neighbourhood) are not accepted. */
 export interface CityEventSeedEntry {
@@ -62,11 +64,12 @@ export type CityEventRefusal =
 
 /**
  * Pure: turn a seed entry into the row to insert, or name why it is refused. The neighbourhood
- * candidates are passed in so this stays testable without a database.
+ * candidates and the partner hosts are passed in so this stays testable without a database.
  */
 export function buildCityEventRow(
   entry: CityEventSeedEntry,
   neighbourhoods: readonly NeighbourhoodCandidate[],
+  partnerHosts: readonly string[],
 ): { row: InsertCityEvent } | { refused: CityEventRefusal } {
   if (!entry.sourceId || !entry.sourceId.trim()) return { refused: "empty_source_id" };
   const market = getMarketByCityName(entry.city.trim());
@@ -79,7 +82,7 @@ export function buildCityEventRow(
     endsAt = new Date(entry.endsAt);
     if (Number.isNaN(endsAt.getTime()) || endsAt.getTime() < startsAt.getTime()) return { refused: "bad_end" };
   }
-  if (entry.ticketUrl && !isAcceptableTicketUrl(entry.ticketUrl)) return { refused: "affiliate_ticket_url" };
+  if (entry.ticketUrl && !isAcceptableTicketUrl(entry.ticketUrl, partnerHosts)) return { refused: "affiliate_ticket_url" };
 
   const tz = timezoneForMarket(market.marketKey);
   const lat = entry.venueLat ?? null;
@@ -126,14 +129,16 @@ async function loadNeighbourhoodCandidates(): Promise<NeighbourhoodCandidate[]> 
 /** Insert-only seeder. Returns what it did; never throws for a refused entry. */
 export async function seedCityEvents(
   entries: readonly CityEventSeedEntry[],
+  deps: { partnerHosts?: () => Promise<string[]> } = {},
 ): Promise<{ inserted: number; skipped: number; refused: Array<{ sourceId: string; reason: CityEventRefusal }> }> {
   const refused: Array<{ sourceId: string; reason: CityEventRefusal }> = [];
   if (entries.length === 0) return { inserted: 0, skipped: 0, refused };
   const candidates = await loadNeighbourhoodCandidates();
+  const partnerHosts = await (deps.partnerHosts ?? loadPartnerHosts)();
   let inserted = 0;
   let skipped = 0;
   for (const entry of entries) {
-    const built = buildCityEventRow(entry, candidates);
+    const built = buildCityEventRow(entry, candidates, partnerHosts);
     if ("refused" in built) {
       refused.push({ sourceId: entry.sourceId, reason: built.refused });
       logger.warn({ sourceId: entry.sourceId, reason: built.refused }, "[city-events] seed entry refused");
