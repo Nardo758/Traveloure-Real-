@@ -151,6 +151,7 @@ export default function ConciergePage() {
     // rule 6). An unrecognised hint, and `full` (which is not a finish), narrow nothing.
     const branch = planningBranchForTierHint(tierHint);
     openPlanModal({
+      door: "concierge",
       ...(next.submission.destination ? { destination: next.submission.destination } : {}),
       ...(occasion ? { experienceSlug: occasion.slug } : {}),
       ...(branch ? { branch } : {}),

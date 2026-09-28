@@ -88,6 +88,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import type { PlanningBranch, PlanningSource } from "@/contexts/PlanningContext";
 import type { ExperienceType } from "@shared/schema";
+import { deriveOccasionSource, isPlanDoor, type TripMintEntry } from "@shared/slip-funnel-events";
 
 /**
  * PlanModal — THE planning modal. One modal, many doors.
@@ -271,6 +272,8 @@ export interface PlanModalProps {
     startDate?: string;
     endDate?: string;
     title?: string;
+    /** E1 (ledger `2026-09-28-a0-slice-spec`): event-only door facts; never stored on the trip. */
+    entry?: TripMintEntry;
   }) => Promise<PlanMintOutcome>;
   /** Runs the chosen branch, AFTER the plan has been committed. */
   onFinish?: (branch: PlanningBranch, plan: CommittedPlan) => void;
@@ -443,6 +446,9 @@ export function PlanModal({
   const [step, setStep] = useState<PlanStepId>("occasion");
   /** The start step is resolved ONCE per open, and only once the catalog has answered. */
   const startResolved = useRef(false);
+  /** Did THIS open start at step 1 (Occasion)? Set with the start step; read only by E1's
+   *  `occasionSource` at the mint. `null` until the start step resolves. */
+  const openedAtOccasionStep = useRef<boolean | null>(null);
   /** What the form held when it was seeded, and the occasion the door table set (audit R-3). */
   const seededAnswers = useRef<DraftAnswers | null>(null);
   const seededOccasionSlug = useRef("");
@@ -481,6 +487,7 @@ export function PlanModal({
   // parameter exists to prevent.
   const seedFormFrom = (ctx: TripContext, sourceDestination: string) => {
     startResolved.current = false;
+    openedAtOccasionStep.current = null;
     setFinishError(null);
     setSaveError(null);
     setStep("occasion");
@@ -591,13 +598,13 @@ export function PlanModal({
     startResolved.current = true;
     setOccasionSlug(doorOccasion ? doorOccasion.slug : "");
     seededOccasionSlug.current = doorOccasion ? doorOccasion.slug : "";
-    setStep(
-      resolvePlanSteps(
-        source,
-        doorOccasion,
-        { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
-      ).startStep,
+    const { startStep } = resolvePlanSteps(
+      source,
+      doorOccasion,
+      { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
     );
+    openedAtOccasionStep.current = startStep === "occasion";
+    setStep(startStep);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, occasions, doorOccasion]);
 
@@ -1256,11 +1263,23 @@ export function PlanModal({
   const mintThisPlan = async (): Promise<{ ok: true; tripId: string } | { ok: false; message?: string }> => {
     if (!mintPlan) return { ok: false };
     await releasePendingEventsPen();
+    // E1 — the door the traveler came through, as the DOOR named it (a door outside the closed
+    // list names nothing and nothing is sent, §13), and where the occasion answer came from.
+    // Event-only: the server builds the funnel row from it and stores it nowhere else (§19).
+    const entry: TripMintEntry = {};
+    if (isPlanDoor(source?.door)) entry.door = source.door;
+    if (openedAtOccasionStep.current !== null) {
+      entry.occasionSource = deriveOccasionSource({
+        openedAtOccasionStep: openedAtOccasionStep.current,
+        occasionChosen: !!selectedOccasion,
+      });
+    }
     return mintPlan({
       destination: destination.trim(),
       startDate,
       endDate: shape === "day" ? startDate : endDate,
       title: title.trim() || undefined,
+      ...(Object.keys(entry).length > 0 ? { entry } : {}),
     });
   };
 

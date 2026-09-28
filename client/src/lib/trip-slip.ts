@@ -46,6 +46,9 @@
  * here by injecting its own poster and never touching `fetch`.
  */
 
+// TYPE-ONLY, and therefore erased: the "no top-level imports" rule above is about runtime imports.
+import type { TripMintEntry } from "@shared/slip-funnel-events";
+
 /** The traveler-owned mint door. One endpoint, named once. */
 export const TRIP_MINT_ENDPOINT = "/api/trips";
 
@@ -60,6 +63,9 @@ export interface SlipBasics {
   endDate?: string | null;
   /** Optional traveler-authored title; a destination-derived one is used when absent. */
   title?: string | null;
+  /** E1 (ledger `2026-09-28-a0-slice-spec`): the door facts for the `trip_created` funnel row.
+   *  Event-only — the server admits it by its own `.strict()` pick and stores it on no trip. */
+  entry?: TripMintEntry | null;
 }
 
 export type SlipRefusalReason =
@@ -92,6 +98,8 @@ export interface TripMintBody {
   destination: string;
   startDate: string;
   endDate: string;
+  /** Present only when the caller named at least one door fact (§13 — absent is omitted). */
+  entry?: TripMintEntry;
 }
 
 export type SlipMintOutcome = { ok: true; tripId: string } | SlipRefusal;
@@ -136,12 +144,17 @@ export function checkSlipPrecondition(basics: SlipBasics): SlipRefusal | null {
 export function buildTripMintBody(basics: SlipBasics): TripMintBody {
   const destination = (basics.destination ?? "").trim();
   const stated = (basics.title ?? "").trim();
-  return {
+  const body: TripMintBody = {
     title: stated || `${destination.split(",")[0].trim()} trip`,
     destination,
     startDate: (basics.startDate ?? "").trim(),
     endDate: (basics.endDate ?? "").trim(),
   };
+  const entry: TripMintEntry = {};
+  if (basics.entry?.door) entry.door = basics.entry.door;
+  if (basics.entry?.occasionSource) entry.occasionSource = basics.entry.occasionSource;
+  if (Object.keys(entry).length > 0) body.entry = entry;
+  return body;
 }
 
 /** What a poster must do: send the body to the mint door and hand back whatever the server

@@ -992,7 +992,7 @@ export default function ExperienceTemplatePage() {
           type="button"
           className="text-primary underline underline-offset-2"
           onClick={() =>
-            openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })
+            openPlanModal({ door: "experience_cta", experienceSlug: slug || undefined, destination: destination.trim() || undefined })
           }
           data-testid={`button-set-group-size-${surface}`}
         >
@@ -1422,7 +1422,7 @@ export default function ExperienceTemplatePage() {
       setLocation(`/plans/${linkedTripId}`);
       return;
     }
-    openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined });
+    openPlanModal({ door: "experience_cta", experienceSlug: slug || undefined, destination: destination.trim() || undefined });
   };
 
   const createComparison = async () => {
@@ -2883,7 +2883,7 @@ export default function ExperienceTemplatePage() {
                   externalMinRating={minRating}
                   externalKeyword={currentTabType !== "vendors" ? searchQuery : undefined}
                   hideFilters={true}
-                  onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
+                  onSetLocation={() => openPlanModal({ door: "experience_cta", experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                 />
               </div>
             )
@@ -3154,7 +3154,7 @@ export default function ExperienceTemplatePage() {
                   selectedProviderIds={selectedProviderIds}
                   destination={destination}
                   destinationCenter={destinationCenter}
-                  onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
+                  onSetLocation={() => openPlanModal({ door: "experience_cta", experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                   onAddToCart={(provider) => addToCart({
                     id: provider.id,
                     type: provider.category,
@@ -3274,7 +3274,7 @@ export default function ExperienceTemplatePage() {
                 destinationCenter={destinationCenter}
                 providers={mapProviders}
                 selectedProviderIds={selectedProviderIds}
-                onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
+                onSetLocation={() => openPlanModal({ door: "experience_cta", experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                 /* `cart` was passed here and `ExperienceMap` has never declared or read it — a
                    dead prop that also carried this mount's only type error. The cart is rendered
                    by the floating summary below, not by the map. */
@@ -3321,7 +3321,7 @@ export default function ExperienceTemplatePage() {
                 {/* P3b: destination/dates/travelers now live in the global Trip Strip */}
                 <button
                   type="button"
-                  onClick={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
+                  onClick={() => openPlanModal({ door: "experience_cta", experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                   className="w-full flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground hover:bg-muted transition-colors text-left"
                   data-testid="button-template-edit-trip-mobile"
                 >
@@ -3463,7 +3463,7 @@ export default function ExperienceTemplatePage() {
                     selectedProviderIds={selectedProviderIds}
                     destination={destination}
                     destinationCenter={destinationCenter}
-                    onSetLocation={() => openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
+                    onSetLocation={() => openPlanModal({ door: "experience_cta", experienceSlug: slug || undefined, destination: destination.trim() || undefined })}
                     onAddToCart={(provider) => addToCart({
                       id: provider.id,
                       type: provider.category,
@@ -3659,7 +3659,7 @@ export default function ExperienceTemplatePage() {
                     onClick={() => {
                       setAiItineraryDialogOpen(false);
                       // P3b: the quartet lives in the Trip Strip — open the one plan modal
-                      openPlanModal({ experienceSlug: slug || undefined, destination: destination.trim() || undefined });
+                      openPlanModal({ door: "experience_cta", experienceSlug: slug || undefined, destination: destination.trim() || undefined });
                     }}
                     data-testid="button-close-itinerary-dialog"
                   >

@@ -1621,7 +1621,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                     never a placeholder city to make the modal look better informed. */}
                 <div className="mt-3 flex md:justify-end">
                   <PlanEntryCta
-                    source={urlCity ? { city: urlCity } : undefined}
+                    source={urlCity ? { door: "marketplace", city: urlCity } : { door: "marketplace" }}
                     testId="button-plan-entry-marketplace"
                   />
                 </div>

@@ -1,0 +1,162 @@
+name: Kyoto Slice Gate (Trips golden path — Track A acceptance)
+
+# Track A step A0 item (c) (ledger `2026-09-28-a0-slice-spec`, R200; docs/planning/track-a-rollout.md
+# row A0): the Kyoto Trips slice's acceptance test, wired into a job from the day it is written.
+#
+# The spec is docs/planning/golden-path-trips-kyoto.md "Appendix A" (§1..§8), one test per
+# assertion. Every step is `test.fixme` except §1 and the today-passable halves of §4, §6, §7 and
+# §8, and each fixme names what it waits on — a Track A step (A1…), the A1 supply gate (R193, the
+# production census re-run), or missing code. Each Track A step turns its own fixmes into tests, so
+# this job grows with the slice and cannot go green by skipping a step it was meant to run.
+#
+# Runs against a freshly-built PRODUCTION bundle and a THROWAWAY Postgres built from empty. Every
+# write in the spec goes through the app's own HTTP rails (fresh traveler, fresh plan per test);
+# the DB is read only for assertions. No Kyoto supply is seeded — a step that needs supply is a
+# fixme naming A0 (a) / R193, never a pass against fake rows.
+#
+# STATED NEGATIVE SPACE (§18d — green means green-within-stated-bounds). The server boots with STUB
+# Stripe and model keys, so nothing that needs a real PaymentIntent or a real generation runs here:
+# §4's free draft, §6's paid run and §7's checkout/cancel are fixmes that say so. §4-today is
+# today-passable in the PRODUCT and not in this job, for exactly that reason.
+#
+# REQUIRED-CHECK NOTE. Branch protection is set outside the repo: to make this a required check,
+# add the status context `kyoto-slice (Trips golden path — Appendix A)` to branch protection
+# (.github/branch-protection.json + CI_GATES.md).
+#
+# ANTI-VACUITY: `npx playwright test <path>` with a missing path reports "0 passed"; the spec is
+# asserted to exist first, and `passWithNoTests: false` in playwright.config.ts is the other half.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel superseded PR runs only; a push to main keeps its run (a cancelled main run leaves a merged
+# commit with no green record).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  kyoto-slice:
+    name: kyoto-slice (Trips golden path — Appendix A)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Assert the spec exists
+        run: |
+          if [ ! -f playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts ]; then
+            echo "::error file=.github/workflows/kyoto-slice-gate.yml::playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts is missing — restore it or update this workflow."
+            exit 1
+          fi
+          echo "spec present"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # The spec registers its own fresh travelers; no pre-seeded ci-* accounts are needed.
+          seed-ci-users: 'false'
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # Stubs, deliberately — see the negative space above.
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          # A production boot purges test accounts unless explicitly allowed. This DB is throwaway.
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          # Plain-http loopback: a `secure` session cookie is never replayed. NEVER in production.
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Verify build identity (artifact == this commit)
+        run: |
+          VERSION=$(curl -sf http://localhost:5000/api/version)
+          echo "Server reports: $VERSION"
+          ACTUAL_SHA=$(echo "$VERSION" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))")
+          EXPECTED_SHA="${{ github.sha }}"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Build identity mismatch — server SHA=$ACTUAL_SHA expected=$EXPECTED_SHA."
+            exit 1
+          fi
+          echo "Build identity confirmed: $ACTUAL_SHA"
+
+      - name: Kyoto slice (Appendix A)
+        run: npx playwright test playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts --project=chromium --workers=1
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kyoto-slice-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore

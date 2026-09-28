@@ -195,7 +195,7 @@ describe("S — the door's source", () => {
     // `PlanningSource` says "not known", while "" would be a stated blank (§13).
     assert.match(
       doorHandlerBody(),
-      /openPlanModal\(\{ experienceSlug: slug \|\| undefined, destination: destination\.trim\(\) \|\| undefined \}\)/,
+      /openPlanModal\(\{ door: "experience_cta", experienceSlug: slug \|\| undefined, destination: destination\.trim\(\) \|\| undefined \}\)/,
     );
   });
 });
