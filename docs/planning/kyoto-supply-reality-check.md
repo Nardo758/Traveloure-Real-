@@ -118,27 +118,39 @@ If any row carries a PaymentIntent, the operator reads its mode in the Stripe da
 
 ## What A0 must provide
 
-Named prerequisites for Track A step A0 (`docs/planning/track-a-rollout.md`). **The census is the acceptance check:
-A1 does not start until a re-run shows `can_anchor > 0` and `experts_with_verified_neighborhood ≥ 2`.** Counts for (a)
-and (c) are the decision-maker's to set; this report states the fields only.
+Named prerequisites for Track A step A0 (`docs/planning/track-a-rollout.md`). **The census is the acceptance check
+(ledger `2026-09-28-a1-census-gate`): A1 starts when a re-run of `scripts/report-kyoto-supply.cjs` against
+production shows ALL THREE of:**
 
-**(a) Hotels to anchor on.** `hotel_cache` rows with `city` resolving to Kyoto, `latitude` and `longitude` present,
-not expired (`expires_at > now()`), enough to offer **2–3 candidates per neighbourhood the ten travelers are likely to
-name**, with `location_precision = exact`.
-*Field note (§13):* `hotel_cache` has **no `location_precision` column** today — that column is on `provider_services`
-(`shared/schema.ts`, the `location_precision` declaration). As written, (a) needs either that column added to
-`hotel_cache` (a migration, its own lane) or a ruling that a `hotel_cache` row with a per-hotel latitude/longitude
-counts as exact. The census's `can_anchor` counts `provider_services`, not `hotel_cache`, so the acceptance check reads
-the listing side.
+| # | Census row | A1 needs |
+|---|---|---|
+| 1 | `hotel_anchor_candidates` (Kyoto `hotel_cache` rows with coordinates, by nearest Kyoto neighbourhood) | **≥ 3 in each of at least 4 Kyoto neighbourhoods (≥ 12 total, coordinates present)** |
+| 2 | `experts_with_verified_neighborhood` | **≥ 2** |
+| 3 | slice-ready live listings (coordinates, price, cancellation tier, future open slot) | **≥ 3, across ≥ 2 of the categories Part 1's golden path books** |
+
+The script prints each row and a final "A1 may start: YES/NO". `can_anchor` stays in the census as the **listing**
+anchor count; it is not the Trips gate.
+
+**(a) Hotels to anchor on.** `hotel_cache` rows the anchor loader reads (`city ILIKE '%kyoto%'`) **with their own
+latitude and longitude**. **Ruling (Sep 28, 2026): for the slice such a row counts as exact; a row without coordinates
+is not an anchor candidate. No migration.** The "est." label on plan-fit is driven by whether the travel-time matrix
+has the pair, not by a hotel's precision. `hotel_cache` has no neighbourhood field, so the census assigns each row to
+the nearest of the Kyoto `city_neighborhoods` centroids (8 on production).
+*Source check (as ruled — report, don't build):* the only live writer is the Booking.com refresh
+(`booking-com.service.ts`, `bookings.getHotels`), which stores each property's own latitude/longitude; the Amadeus
+writer (`cache.service.ts cacheHotels`) has no caller (ledger row 34). **No hotel source found returns
+centroid-level coordinates**, so `location_precision` is not added to `hotel_cache`.
 
 **(b) Two experts who can sign and check plans.** The two approved Kyoto experts each given a **handle** and **one
 verified neighbourhood**, through the existing flow — the handle claim prompt, and a neighbourhood claim ratified by
 admin (`expert_neighborhood_claims` → `ratifyClaim`, Locked Decision 27) — **never by SQL**; LD 27's trigger refuses a
 direct insert.
 
-**(c) Bookable supply for a five-day Trips plan.** At least the listing categories a five-day Trips plan books, each
-live (`status = 'active'`, `approval_status = 'approved'`) with the fields the census reads: coordinates and
-`location_precision`, a price (or custom quote), a cancellation **tier**, and a future open slot.
+**(c) Bookable supply for a five-day Trips plan.** Live listings (`status = 'active'`, `approval_status = 'approved'`)
+carrying every field the slice reads: coordinates, a price, a cancellation **tier**, and a future open slot — in the
+categories the golden path books. The golden path names these as day-plan supply (tours, dining, activities — Part 1
+P-1d) rather than as category keys, so the census reports slice-ready listings **by category** and counts distinct
+categories; which of them the golden path books is read from that table.
 
 ---
 
@@ -157,6 +169,9 @@ A listing is "live" when it passes the public read gate: `status = 'active' AND 
 | Neighborhood claims | `expert_neighborhoods` × `city_neighborhoods` | Experts with a VERIFIED Kyoto neighborhood (LD 27), and the Kyoto neighborhood count |
 | Affiliate inventory | `affiliate_products` × `affiliate_partners` | Rows by partner and category; active; active with coordinates / price |
 | Hotel anchor candidates | `hotel_cache` | The **only** hotel source the anchor loader reads (`anchor-candidates.ts`: `city ILIKE '%kyoto%'`, limit 60). Rows by provider, with coordinates, not expired, newest |
+| Hotel anchor candidates by neighbourhood (A1 row 1) | `hotel_cache` × `city_neighborhoods` | Rows with coordinates, each assigned to the nearest Kyoto centroid |
+| Slice-ready listings by category (A1 row 3) | live `provider_services` | Coordinates + price + cancellation tier + future open slot, per category |
+| A1 gate | the rows above | The three conditions and "A1 may start: YES/NO" |
 | Bookings and plans | `service_bookings`, `trips` | Total and Kyoto bookings; Kyoto plans (`market_slug`) |
 
 **Negative space:** live partner APIs (Viator availability, the Travelpayouts catalog feeds) are not in the database and are not measured. The census says whether the fields the slice reads are **present**, never whether a listing is **good**.
