@@ -1833,4 +1833,9 @@ export const MIGRATION_FILES = [
   // (`per_person` | `per_booking`, NULL read as per booking) — additive NULLABLE, NO DEFAULT, NO
   // CHECK, NO BACKFILL; declared in shared/schema.ts in the same commit.
   "325_provider_services_price_basis.sql",
+  // Ledger `2026-09-27-migration-indexes-declared` (R175): re-creates migration 089's five
+  // NON-UNIQUE funnel_events indexes, which schema.ts never declared and the deploy push therefore
+  // dropped. Now declared on `funnelEvents` in shared/schema.ts in the same commit; IF NOT EXISTS,
+  // no CHECK, no DEFAULT, no preflight-prod-constraints manifest entry needed.
+  "328_funnel_events_indexes_redeclared.sql",
 ] as const;

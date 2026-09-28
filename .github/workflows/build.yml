@@ -3152,6 +3152,14 @@ jobs:
       - name: omit-schema-ratchet · Omit-schema-ratchet guard
         if: ${{ !cancelled() }}
         run: node scripts/check-omit-schema-ratchet.cjs
+      # 2026-09-27-migration-indexes-declared: an index a migration creates must be declared in shared/,
+      # or the publish push drops it and the stamped migration never recreates it. Baseline only shrinks.
+      - name: migration-indexes-declared · predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-migration-indexes-declared.cjs --self-test
+      - name: migration-indexes-declared · guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-migration-indexes-declared.cjs
       # 
       - name: demand-rollup-guard · Demand-rollup gate predicate self-test
         if: ${{ !cancelled() }}
