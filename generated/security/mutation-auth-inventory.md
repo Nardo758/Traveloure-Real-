@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **624** raw mounted mutation registrations and **615** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **625** raw mounted mutation registrations and **616** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+69** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+70** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 157; user-data 211; other 216.
-Boundary totals: admin-role 157; session-self 319; resource-owner 95; signature 6; public-or-system 38; unknown 0.
+Category totals: payments 31; admin 158; user-data 211; other 216.
+Boundary totals: admin-role 158; session-self 319; resource-owner 95; signature 6; public-or-system 38; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -16,11 +16,12 @@ Boundary totals: admin-role 157; session-self 319; resource-owner 95; signature 
 | POST | `/api/admin/affiliate/partners/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9220` | unknown | unknown |
 | POST | `/api/admin/affiliate/partners/:id/scrape` | admin | admin-role | no | unknown | `server/routes/content.routes.ts:8842` | unknown | unknown |
 | PATCH | `/api/admin/affiliate/reconciliation/:earningId` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4187` | unknown | unknown |
-| POST | `/api/admin/blog/posts` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:81` | unknown | unknown |
-| PATCH | `/api/admin/blog/posts/:id` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:87` | unknown | unknown |
-| POST | `/api/admin/blog/posts/:id/publish` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:97` | unknown | unknown |
-| POST | `/api/admin/blog/posts/:id/submit` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:93` | unknown | unknown |
-| POST | `/api/admin/blog/posts/:id/withdraw` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:101` | unknown | unknown |
+| POST | `/api/admin/blog/drafts` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:98` | unknown | unknown |
+| POST | `/api/admin/blog/posts` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:83` | unknown | unknown |
+| PATCH | `/api/admin/blog/posts/:id` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:104` | unknown | unknown |
+| POST | `/api/admin/blog/posts/:id/publish` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:114` | unknown | unknown |
+| POST | `/api/admin/blog/posts/:id/submit` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:110` | unknown | unknown |
+| POST | `/api/admin/blog/posts/:id/withdraw` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:118` | unknown | unknown |
 | POST | `/api/admin/bookings/:bookingId/exception-refund` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:712` | unknown | unknown |
 | POST | `/api/admin/bookings/:bookingId/lost-chargeback/reconcile` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:778` | unknown | unknown |
 | POST | `/api/admin/bookings/:bookingId/out-of-band-refund/clear` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:633` | unknown | unknown |
@@ -299,7 +300,7 @@ Boundary totals: admin-role 157; session-self 319; resource-owner 95; signature 
 | POST | `/api/expert/ai-tasks/delegate` | user-data | session-self | yes | unknown | `server/routes.ts:11972` | unknown | unknown |
 | POST | `/api/expert/assignments/:assignmentId/accept` | user-data | session-self | yes | unknown | `server/routes/booking-actions.ts:1331` (/expert/assignments/:assignmentId/accept) | unknown | unknown |
 | PATCH | `/api/expert/assignments/:assignmentId/workspace-status` | user-data | resource-owner | yes | verified | `server/routes/booking-actions.ts:1349` (/expert/assignments/:assignmentId/workspace-status) | unknown | unknown |
-| POST | `/api/expert/blog/posts/:id/sign` | user-data | session-self | yes | unknown | `server/routes/blog.routes.ts:113` | unknown | unknown |
+| POST | `/api/expert/blog/posts/:id/sign` | user-data | session-self | yes | unknown | `server/routes/blog.routes.ts:130` | unknown | unknown |
 | POST | `/api/expert/bookings/:id/complete` | user-data | session-self | yes | unknown | `server/routes.ts:7797` | unknown | unknown |
 | POST | `/api/expert/bookings/:id/component-failed` | user-data | session-self | yes | unknown | `server/routes.ts:7892` | unknown | unknown |
 | PATCH | `/api/expert/bookings/:id/status` | user-data | session-self | yes | unknown | `server/routes.ts:7626` | unknown | unknown |
