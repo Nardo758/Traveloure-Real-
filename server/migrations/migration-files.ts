@@ -1838,4 +1838,9 @@ export const MIGRATION_FILES = [
   // `revenue` rows flagged void (ledger `2026-09-27-funnel-revenue-on-paid`). DATA ONLY — no DDL,
   // nothing for the publish push to offer (§20). Append-only again after this file.
   "326_funnel_events_purge_share_tokens.sql",
+  // Ledger `2026-09-27-migration-indexes-declared` (R175): re-creates migration 089's five
+  // NON-UNIQUE funnel_events indexes, which schema.ts never declared and the deploy push therefore
+  // dropped. Now declared on `funnelEvents` in shared/schema.ts in the same commit; IF NOT EXISTS,
+  // no CHECK, no DEFAULT, no preflight-prod-constraints manifest entry needed.
+  "328_funnel_events_indexes_redeclared.sql",
 ] as const;
