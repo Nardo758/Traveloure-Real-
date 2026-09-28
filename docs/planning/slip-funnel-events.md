@@ -7,8 +7,8 @@
 2. Every event carries the **actor id** (LD 44 (f)'s posture: the acting user, server-derived, never client-supplied).
 3. The §7 defaults are accepted **except** any that adds a table, takes a client-supplied amount, or takes a
    client-supplied actor — those come back to the decision-maker. Checked on ratification: none of the nine adds a
-   table or takes a client amount/actor. **Q6 (retention) is reported back**: its default nulls `user_id` on account
-   deletion, which conflicts with condition 2, and the doc already marks it as needing its own ruling.
+   table or takes a client amount/actor. **Q6 (retention) is RULED (decision-maker, Sep 28, 2026 — ledger
+   `2026-09-28-analytics-retention`):** see §7 item 6; it applies to `funnel_events` and `optimizer_runs` alike.
 The three defects in §1 (share token in T7 properties, T6 "revenue" on an unpaid request, the undeclared
 `funnel_events` indexes) are fixed in their own lanes (ledger `2026-09-27-funnel-share-token-purged`,
 `2026-09-27-funnel-revenue-on-paid`, `2026-09-27-migration-indexes-declared`). The free-draft event, the adopt-stop
@@ -349,9 +349,12 @@ as in §7 Q4.
    *Default:* add one `slip_plan_deleted` event at the delete rail so a survivor row is never read as drop-off.
 5. **Advisor and delegate views.** Count views by an expert or EA? *Default:* record them with `viewerRole` and
    report traveler views only; a `pending` advisor's views are recorded (it may read).
-6. **Retention.** `funnel_events` has no FK and keeps `user_id` after account deletion. *Default:* null `user_id`
-   and `trip_id` on account deletion, keep the event (the analytics survive, the person does not); retention of
-   slip events 24 months. Needs its own ruling.
+6. **Retention — RULED (decision-maker, Sep 28, 2026; ledger `2026-09-28-analytics-retention`; one rule for
+   `funnel_events` and `optimizer_runs`, Part 2 §N).** Rows are **never deleted for retention**, and there is **no
+   time-based purge** on either table (the 24-month default is withdrawn). On **account deletion**: `user_id` is
+   nulled on both tables; any snapshot field that carries traveler-typed text is redacted; structured fields (plan
+   state ids, options, weights, metrics, outcomes) are kept. Condition 2 (actor id on every event) binds while the
+   account exists; the nulling is the account deletion's own effect.
 7. **Existing defects found (§1).** The share token in T7 properties, the T6 "revenue" on an unpaid request, and
    the unbounded signup `source`. *Default:* file each as its own lane; not fixed by the slice. The share token
    should be removed first, because it is a live read grant sitting in an analytics table.
