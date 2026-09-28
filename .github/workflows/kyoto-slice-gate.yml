@@ -16,8 +16,10 @@ name: Kyoto Slice Gate (Trips golden path — Track A acceptance)
 #
 # STATED NEGATIVE SPACE (§18d — green means green-within-stated-bounds). The server boots with STUB
 # Stripe and model keys, so nothing that needs a real PaymentIntent or a real generation runs here:
-# §4's free draft, §6's paid run and §7's checkout/cancel are fixmes that say so. §4-today is
-# today-passable in the PRODUCT and not in this job, for exactly that reason.
+# §6's paid run and §7's checkout/cancel are fixmes that say so. §4-today's free draft runs against
+# the ONE explicit model stand-in, E2E_AI_STUB=1 (set below, on the server only — never a fallback;
+# grok.service.ts refuses it where ENVIRONMENT=PROD), so the draft's STRUCTURE and its funnel row
+# are proven here and what a real model writes is not (ledger `2026-09-28-kyoto-s4-draft-ci`).
 #
 # REQUIRED (decision-maker, Sep 28, 2026 — ledger `2026-09-28-kyoto-slice-required`). Status context:
 #   * kyoto-slice (Trips golden path — Appendix A) — listed in .github/branch-protection.json and applied
@@ -112,6 +114,7 @@ jobs:
           NODE_ENV: production
           # A production boot purges test accounts unless explicitly allowed. This DB is throwaway.
           ALLOW_TEST_ACCOUNTS: '1'
+          E2E_AI_STUB: '1'
           PORT: 5000
           # Plain-http loopback: a `secure` session cookie is never replayed. NEVER in production.
           SESSION_COOKIE_INSECURE: '1'

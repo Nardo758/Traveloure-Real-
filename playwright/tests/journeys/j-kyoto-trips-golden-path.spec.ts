@@ -31,9 +31,10 @@ import {
  * fake Kyoto supply anywhere).
  *
  * WHERE TODAY'S RUN STOPS SHORT OF THE OUTLINE, AND WHY (stated, not hidden — §18d):
- *   · §4 today (the free draft) makes a REAL model call. This job boots with stub model keys and
- *     no egress (the same negative space `slip-rail-actions-gate.yml` states), so the press cannot
- *     succeed here; it is a fixme naming that, not a pass that stops before the press.
+ *   · §4 today (the free draft) runs against the ONE explicit model stand-in, `E2E_AI_STUB=1`
+ *     (ledger `2026-09-28-kyoto-s4-draft-ci`): the job sets it, nothing falls back to it, and the
+ *     test asserts the draft's STRUCTURE and its funnel row, never its prose. What the real model
+ *     writes is therefore NOT proven here.
  *   · §6 today is split: the free preview and the fee line PASS; paying, the board and adopt-stop
  *     need a Stripe test key (this job runs the stub — ruling 38's declared-503 contract).
  *     The outline says the fee equals the `fee_bands`-derived amount; on `main` the optimizer fee
@@ -170,10 +171,77 @@ test.describe("3 · plan-fit per hotel", () => {
 
 // ── §4 · free draft around the set ────────────────────────────────────────────────────────────
 test.describe("4 · free draft around the set", () => {
-  test.fixme("§4 today — Draft it with AI on an empty slip writes origin='ai' items and an 'AI draft' chip", async () => {
-    // TODAY-PASSABLE IN THE PRODUCT, NOT IN THIS JOB: the press makes a real model call and the
-    // job boots with stub model keys and no egress. Missing code: a deterministic draft fixture for
-    // CI. Until one exists this half is proven by `server/__tests__/generated-itinerary-*.db.test.ts`.
+  test("§4 today — Draft it with AI on an empty slip writes origin='ai' items and an 'AI draft' chip", async ({ page }) => {
+    // Ledger `2026-09-28-kyoto-s4-draft-ci`: the job's server runs with E2E_AI_STUB=1, the ONE
+    // explicit stand-in for the draft model (grok.service.ts; refused where ENVIRONMENT=PROD, and it
+    // names itself `e2e-ai-stub` on every cost row). Everything after the model call is real code.
+    // Assertions are STRUCTURAL — never the stand-in's prose.
+    await signedInTraveler(page, "s4");
+    const tripId = await createTrip(page.request, "Kyoto trip", KYOTO);
+    await page.goto(`/plans/${tripId}`);
+    await expect(testid(page, "slip-action-draft-ai")).toBeVisible({ timeout: 20_000 });
+
+    const status = await actAndAwait(
+      page,
+      async () => {
+        await testid(page, "slip-action-draft-ai").click();
+      },
+      { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
+    );
+    expect(ok2xx(status), `draft answered ${status}`).toBe(true);
+
+    const [span] = await rows<{ days: number }>(
+      `SELECT (end_date - start_date) + 1 AS days FROM trips WHERE id = $1`,
+      [tripId],
+    );
+    const items = await rows<{ id: string; title: string | null; day_number: number | null; origin: string | null }>(
+      `SELECT id, title, day_number, origin FROM itinerary_items WHERE trip_id = $1`,
+      [tripId],
+    );
+    expect(items.length, "the draft wrote rows onto the empty plan").toBeGreaterThan(0);
+    for (const it of items) {
+      expect(it.origin, "every drafted row is stamped origin='ai' server-side").toBe("ai");
+      expect((it.title ?? "").trim().length, "every drafted row has a title").toBeGreaterThan(0);
+      expect(it.day_number, "every drafted row sits on a day of the plan").toBeGreaterThanOrEqual(1);
+      expect(it.day_number!).toBeLessThanOrEqual(Number(span.days));
+    }
+
+    // E6 (slip-funnel-events.md §3.6): one row, written after the snapshot commits — poll the READ.
+    await expect
+      .poll(
+        async () =>
+          (
+            await rows<{ stage: string; properties: Record<string, unknown> | null }>(
+              `SELECT stage, properties FROM funnel_events WHERE trip_id = $1 AND event_type = 'slip_free_draft_run'`,
+              [tripId],
+            )
+          ).map((r) => ({ stage: r.stage, properties: r.properties })),
+        { timeout: 10_000 },
+      )
+      .toEqual([{ stage: "SLIP", properties: { outcome: "drafted", itemsWritten: items.length } }]);
+
+    await page.reload();
+    await expect(testid(page, `badge-origin-${items[0].id}`)).toHaveText(/AI draft/, { timeout: 20_000 });
+
+    // LD 41 (b): the plan is no longer empty, so a second free draft is refused (409) before any
+    // model call — and the refusal is its own E6 row, with no count.
+    const again = await page.request.post(`${BASE_URL}/api/ai/generate-itinerary`, {
+      data: { tripId, destination: KYOTO, dates: { start: "2099-01-01", end: "2099-01-02" } },
+    });
+    expect(again.status()).toBe(409);
+    await expect
+      .poll(
+        async () =>
+          (
+            await rows<{ properties: Record<string, unknown> | null }>(
+              `SELECT properties FROM funnel_events WHERE trip_id = $1 AND event_type = 'slip_free_draft_run'
+                 AND properties->>'outcome' = 'refused_not_empty'`,
+              [tripId],
+            )
+          ).map((r) => r.properties),
+        { timeout: 10_000 },
+      )
+      .toEqual([{ outcome: "refused_not_empty" }]);
   });
   test.fixme("§4 — with an open hotel set the draft succeeds, leaves the set open and adds no accommodation", async () => {
     // Waits on the R126 held slot (P-2c) — the Track A step that builds the draft around an open set.
