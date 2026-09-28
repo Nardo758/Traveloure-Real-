@@ -13,22 +13,31 @@
  *     GET  /api/expert/blog/review                  my posts awaiting my signature
  *     POST /api/expert/blog/posts/:id/sign          { contentSha256 } — the version I reviewed
  *   Public (published only; allowlist projection; no user ids — LD 40):
- *     GET  /api/blog/posts[?market=]                GET /api/blog/posts/:slug
+ *     GET  /api/blog/posts[?market=]                ranked (ruling 6) — no counts emitted
+ *     GET  /api/blog/posts/:slug
+ *   Reader reactions (signed-in, the SESSION user, published posts only — ruling 6):
+ *     GET  /api/blog/posts/:slug/reactions/mine     POST /api/blog/posts/:slug/reactions { kind }
+ *     DELETE /api/blog/posts/:slug/reactions/:kind
+ *   "Ask the local" is NOT here: it is the `blogPostSlug` address on the ONE contact start rail
+ *   (`POST /api/conversations/start`, ruling 7 / LD 40 amended).
  */
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
-import { BLOG_POST_STATUSES } from "@shared/blog";
+import { BLOG_POST_STATUSES, BLOG_REACTION_KINDS } from "@shared/blog";
 import {
   BlogError,
+  addReaction,
   adminListPosts,
   createPost,
   editPost,
   getPublishedBySlug,
   listForReview,
   listPublished,
+  myReactions,
   publishPost,
+  removeReaction,
   signPost,
   submitForReview,
   withdrawPost,
@@ -64,6 +73,8 @@ const editBody = z.object({
 }).strict();
 
 const signBody = z.object({ contentSha256: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
+const reactionBody = z.object({ kind: z.enum(BLOG_REACTION_KINDS) }).strict();
+const reactionKindParam = z.enum(BLOG_REACTION_KINDS);
 const withdrawBody = z.object({ reason: z.string().max(200).nullable().optional() }).strict();
 
 function fail(res: Response, err: unknown) {
@@ -146,6 +157,24 @@ router.get("/api/blog/posts/:slug", async (req, res) => {
     if (!post) return res.status(404).json({ error: "not_found" });
     res.json({ post });
   } catch (e) { fail(res, e); }
+});
+
+// ── Reactions (ruling 6) — the reader is the session user; no count is ever returned ─────────
+
+router.get("/api/blog/posts/:slug/reactions/mine", isAuthenticated, async (req, res) => {
+  try { res.json({ reactions: await myReactions(req.params.slug, getUserId(req)!) }); } catch (e) { fail(res, e); }
+});
+
+router.post("/api/blog/posts/:slug/reactions", isAuthenticated, async (req, res) => {
+  const parsed = reactionBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
+  try { res.json({ reactions: await addReaction(req.params.slug, getUserId(req)!, parsed.data.kind) }); } catch (e) { fail(res, e); }
+});
+
+router.delete("/api/blog/posts/:slug/reactions/:kind", isAuthenticated, async (req, res) => {
+  const kind = reactionKindParam.safeParse(req.params.kind);
+  if (!kind.success) return res.status(400).json({ error: "invalid_kind" });
+  try { res.json({ reactions: await removeReaction(req.params.slug, getUserId(req)!, kind.data) }); } catch (e) { fail(res, e); }
 });
 
 export default router;

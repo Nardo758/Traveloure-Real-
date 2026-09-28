@@ -889,6 +889,12 @@ This document captures architectural decisions to maintain consistency across co
     which already carries the handle redirect, the `?tripId=` handoff and the cover image — so it is
     struck from the list above by §18c, not by a lane-2 removal; `storefront.tsx` keeps the
     `LD 40 lane 2: still id-addressed` marker for the handle-less earner the id route still serves.
+    **A FIFTH ADDRESS, `blogPostSlug`, AND A FIFTH CONTEXT KIND, `blog_post` — "ASK THE LOCAL" (Lane C
+    ruling 7; ledger `2026-09-27-blog-reactions-ask`; NO migration, exactly as D10/D22 designed).** The
+    client names a PUBLISHED post by its public slug and the server resolves the post's BYLINE EXPERT
+    through ONE `resolveAskTheLocal`; a draft, a withdrawn post, a platform-authored post (no local to ask)
+    and an unknown slug are one `not_found`. The label is the post's title or "A blog post", never an id.
+    It opens a CONVERSATION and nothing else — no advisor row, no request, no lead (LD 32 governs hiring).
     **THE INBOXES AND THE EARNER'S MESSAGE BUTTONS NO LONGER NAME A USER ID (ledger
     `2026-09-25-ld40-lane2-inboxes`).** Both earner inboxes read the shared `useConversationThreads`
     (they had each grouped `/api/chats` themselves) and link every thread through ONE rule,
@@ -2235,9 +2241,14 @@ This document captures architectural decisions to maintain consistency across co
     `BLOG_QUOTE_MAX_CHARS` (config, 300) and sources on a partner's domain (every `affiliate_partners.website_url`
     host — the only partner registry that carries domains) are **REFUSED, never trimmed** (ruling 4). The public read
     is an allowlist projection whose byline is the expert's HANDLE, never a user id (LD 40). No payment for posts
-    (ruling 10). **Not in this lane, named:** the research + AI draft pipeline, reactions and ranking, the
-    "Ask the local" `blog_post` context kind (LD 40 amendment, ruling 7), the blog page, the sitemap and the
-    conditional `noindex` — `/blog` stays `noindex` until the page renders published posts.
+    (ruling 10). **The research + AI draft pipeline landed with ledger `2026-09-27-blog-draft`.**
+    **Reactions, ranking, "Ask the local" and crawler honesty landed with ledger
+    `2026-09-27-blog-reactions-ask` (ruling 6/7):** reactions are the session reader's own, on published posts
+    only, and NO count is ever shown; the index is ranked by ONE pure `rankBlogPosts` on `featured-sort`'s
+    null-until-N pattern (`BLOG_RANK_MIN_IMPRESSIONS`, config); "Ask the local" is LD 40's fifth address
+    (below); and `/blog`, `/blog/:slug` and the sitemap all read ONE predicate, `status = 'published'` —
+    `noindex` until something is published, and a failed read answers `noindex`. The client pages are the
+    remaining lane (C.3b).
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

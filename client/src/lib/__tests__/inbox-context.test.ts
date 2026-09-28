@@ -73,9 +73,9 @@ test("X5: the client RENDERS the server's label and restates none of its own (§
   const page = read("client", "src", "pages", "inbox.tsx");
   assert.match(page, /data-testid=\{`inbox-thread-context-\$\{ctx\.kind\}`\}/);
   assert.match(page, /\{ctx\.label\}/, "the chip prints the server's own label");
-  // The four kind WORDS are the server's to write. A client-side switch over them would be a
+  // The kind WORDS are the server's to write. A client-side switch over them would be a
   // second labeller and would drift the day a fifth kind lands (LD 40: no DB CHECK, on purpose).
-  for (const kind of ["storefront", "service", "booking", "advisor"]) {
+  for (const kind of ["storefront", "service", "booking", "advisor", "blog_post"]) {
     assert.ok(
       !new RegExp(`case "${kind}"`).test(page),
       `inbox.tsx must not label the ${kind} kind itself`,

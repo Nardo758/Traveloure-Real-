@@ -46,3 +46,10 @@ export function isBlogReactionKind(v: unknown): v is BlogReactionKind {
 
 /** URL slug rule for posts: lower-case words joined by single hyphens. */
 export const BLOG_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * The `content_impressions.content_type` a blog post is counted under (ruling 6). The impression's
+ * `content_id` is the post's public SLUG — the id a reader's page already holds — never the row id,
+ * which no public payload carries.
+ */
+export const BLOG_IMPRESSION_CONTENT_TYPE = "blog_post";

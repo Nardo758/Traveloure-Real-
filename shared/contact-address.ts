@@ -26,6 +26,12 @@
  * counterpart depends on WHO IS ASKING, which is exactly why it can carry no id: an address that
  * resolves differently per caller must be resolved by the side that knows who the caller is.
  *
+ * `blogPostSlug` IS "ASK THE LOCAL" (Lane C ruling 7, ledger `2026-09-27-blog-reactions-ask`). It
+ * names a PUBLISHED, expert-authored blog post by its public slug, and the server resolves the
+ * post's byline expert as the counterpart. It is a CONVERSATION, never a lead: no advisor row, no
+ * request and no trip is created (Locked Decision 32 — no expert touchpoint without a slip applies
+ * to hiring, and a question about a post hires nobody).
+ *
  * NEGATIVE SPACE: this module decides SHAPE only. Whether the handle exists, whether the service is
  * approved and public, whether the caller is on the booking, whether either party has blocked the
  * other — every one of those is a database question answered server-side by
@@ -33,15 +39,17 @@
  */
 import { z } from "zod";
 import { HANDLE_RE } from "./handle";
+import { BLOG_SLUG_RE } from "./blog";
 
 /** Max length of the optional opening message sent with a start request. */
 export const CONTACT_ABOUT_MAX = 500;
 
 /**
- * The address kinds, and they are the whole set (Locked Decision 40, amended by its D22 addendum).
- * `tripId` is the plan-scoped `advisor` thread; the first three are unchanged.
+ * The address kinds, and they are the whole set (Locked Decision 40, amended by its D22 addendum and
+ * by Lane C ruling 7). `tripId` is the plan-scoped `advisor` thread; `blogPostSlug` is "Ask the
+ * local" on a published post; the first three are unchanged.
  */
-export const CONTACT_ADDRESS_KINDS = ["handle", "serviceId", "bookingId", "tripId"] as const;
+export const CONTACT_ADDRESS_KINDS = ["handle", "serviceId", "bookingId", "tripId", "blogPostSlug"] as const;
 export type ContactAddressKind = (typeof CONTACT_ADDRESS_KINDS)[number];
 
 export const contactStartBodySchema = z
@@ -59,6 +67,11 @@ export const contactStartBodySchema = z
      * from the trip's own rows; no user id, handle or advisor row id is ever accepted here.
      */
     tripId: z.string().trim().min(1).max(64).optional(),
+    /**
+     * Lane C ruling 7 — "Ask the local" on a PUBLISHED expert post. The slug is public; the
+     * recipient (the post's byline expert) is resolved server-side and never named by the client.
+     */
+    blogPostSlug: z.string().trim().toLowerCase().regex(BLOG_SLUG_RE, "Not a valid post").max(160).optional(),
     // The opening message. Optional: a caller may open the thread without saying anything yet.
     about: z.string().trim().min(1).max(CONTACT_ABOUT_MAX).optional(),
   })
@@ -68,7 +81,7 @@ export const contactStartBodySchema = z
     if (given.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Exactly one of handle, serviceId, bookingId or tripId is required",
+        message: "Exactly one of handle, serviceId, bookingId, tripId or blogPostSlug is required",
       });
       return;
     }

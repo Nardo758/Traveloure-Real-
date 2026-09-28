@@ -23,15 +23,18 @@
 import crypto from "node:crypto";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { blogPosts, blogPostSources } from "@shared/schema";
+import { blogPosts, blogPostSources, blogPostReactions } from "@shared/schema";
 import {
+  BLOG_IMPRESSION_CONTENT_TYPE,
   BLOG_SLUG_RE,
   PLATFORM_POST_LABEL,
   authorshipFor,
   isBlogContentType,
   type BlogContentType,
+  type BlogReactionKind,
 } from "@shared/blog";
-import { BLOG_QUOTE_MAX_CHARS } from "../config/blog.config";
+import { BLOG_QUOTE_MAX_CHARS, BLOG_RANK_MIN_IMPRESSIONS } from "../config/blog.config";
+import { rankBlogPosts } from "./blog-ranking";
 import { checkBylineEligibility, type BylineDecision } from "./blog-byline-gate.service";
 
 export interface BlogSourceInput {
@@ -364,16 +367,39 @@ export async function toPublicPost(row: any) {
   };
 }
 
-export async function listPublished(opts: { marketSlug?: string | null; limit?: number } = {}) {
+/** How many published posts the index ranks over before it cuts to a page (the index is small). */
+const RANK_POOL_CAP = 500;
+
+/**
+ * The blog index, RANKED (ruling 6): measured quality first, recency otherwise, through the ONE
+ * pure `rankBlogPosts`. Reaction and impression counts are read here to ORDER the list and are
+ * never emitted — the public projection carries no count (ruling 6: no displayed counts).
+ * `minImpressions` is injectable for tests only; production reads the config.
+ */
+export async function listPublished(
+  opts: { marketSlug?: string | null; limit?: number; minImpressions?: number } = {},
+) {
   const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
   const r = await db.execute(sql`
-    SELECT * FROM blog_posts
-     WHERE status = 'published'
-       ${opts.marketSlug ? sql`AND market_slug = ${opts.marketSlug}` : sql``}
-     ORDER BY published_at DESC NULLS LAST
-     LIMIT ${limit}
+    SELECT p.*,
+           (SELECT count(*)::int FROM blog_post_reactions x WHERE x.post_id = p.id) AS rank_reactions,
+           (SELECT count(*)::int FROM content_impressions ci
+             WHERE ci.content_type = ${BLOG_IMPRESSION_CONTENT_TYPE} AND ci.content_id = p.slug) AS rank_impressions
+      FROM blog_posts p
+     WHERE p.status = 'published'
+       ${opts.marketSlug ? sql`AND p.market_slug = ${opts.marketSlug}` : sql``}
+     ORDER BY p.published_at DESC NULLS LAST
+     LIMIT ${RANK_POOL_CAP}
   `);
-  return Promise.all((r.rows as any[]).map((row) => toPublicPost(row)));
+  const rows = (r.rows as any[]).map((row) => ({
+    row,
+    slug: String(row.slug),
+    publishedAt: row.published_at ?? null,
+    impressions: Number(row.rank_impressions ?? 0),
+    reactions: Number(row.rank_reactions ?? 0),
+  }));
+  const ranked = rankBlogPosts(rows, opts.minImpressions ?? BLOG_RANK_MIN_IMPRESSIONS).slice(0, limit);
+  return Promise.all(ranked.map((x) => toPublicPost(x.row)));
 }
 
 export async function getPublishedBySlug(slug: string) {
@@ -402,4 +428,60 @@ export async function listForReview(expertId: string) {
 export async function adminListPosts(status?: string | null) {
   const where = status ? eq(blogPosts.status, status) : undefined;
   return db.select().from(blogPosts).where(where).orderBy(desc(blogPosts.updatedAt)).limit(200);
+}
+
+// ── Reactions (ruling 6) ─────────────────────────────────────────────────────────────────────
+// The reader is the SESSION user (§14 applied to a write that moves no money). A reaction exists
+// only on a PUBLISHED post; any other slug is the one `not_found` (LD 40 posture — this rail
+// cannot be used to learn which drafts exist). Adding is idempotent at the statement (the UNIQUE
+// (post, user, kind) + ON CONFLICT DO NOTHING); removing a reaction that is not there is a no-op.
+
+async function publishedPostIdBySlug(slug: string): Promise<string> {
+  const r = await db.execute(sql`SELECT id FROM blog_posts WHERE slug = ${slug} AND status = 'published' LIMIT 1`);
+  const id = (r.rows[0] as any)?.id;
+  if (!id) throw new BlogError("not_found", 404);
+  return String(id);
+}
+
+export async function addReaction(slug: string, userId: string, kind: BlogReactionKind) {
+  const postId = await publishedPostIdBySlug(slug);
+  await db.insert(blogPostReactions).values({ postId, userId, kind }).onConflictDoNothing();
+  return myReactions(slug, userId);
+}
+
+export async function removeReaction(slug: string, userId: string, kind: BlogReactionKind) {
+  const postId = await publishedPostIdBySlug(slug);
+  await db.delete(blogPostReactions).where(and(
+    eq(blogPostReactions.postId, postId),
+    eq(blogPostReactions.userId, userId),
+    eq(blogPostReactions.kind, kind),
+  ));
+  return myReactions(slug, userId);
+}
+
+/** The viewer's OWN reactions on one post — never anyone else's, and never a count. */
+export async function myReactions(slug: string, userId: string): Promise<BlogReactionKind[]> {
+  const postId = await publishedPostIdBySlug(slug);
+  const rows = await db.select({ kind: blogPostReactions.kind }).from(blogPostReactions)
+    .where(and(eq(blogPostReactions.postId, postId), eq(blogPostReactions.userId, userId)))
+    .orderBy(asc(blogPostReactions.kind));
+  return rows.map((r) => r.kind as BlogReactionKind);
+}
+
+// ── "Ask the local" (ruling 7) ───────────────────────────────────────────────────────────────
+
+/**
+ * The conversation target of an "Ask the local" press: a PUBLISHED, EXPERT-authored post and the
+ * expert whose byline it carries. A platform post has no local to ask, and an unpublished one does
+ * not exist to a reader — both are null, which the contact rail answers as its one `not_found`.
+ * The recipient is server-derived from the row (LD 40); the client names only the post's slug.
+ */
+export async function resolveAskTheLocal(slug: string): Promise<{ postId: string; expertId: string } | null> {
+  const r = await db.execute(sql`
+    SELECT id, byline_expert_id FROM blog_posts
+     WHERE slug = ${slug} AND status = 'published' AND authorship = 'expert' AND byline_expert_id IS NOT NULL
+     LIMIT 1
+  `);
+  const row = r.rows[0] as any;
+  return row ? { postId: String(row.id), expertId: String(row.byline_expert_id) } : null;
 }

@@ -23,6 +23,7 @@ import { users, providerServices, readyMadeTrips } from "@shared/schema";
 import { transformDevHtml } from "../vite-dev-html";
 import { injectIntoHead } from "../utils/html-head";
 import { PUBLISHED_HELP_ARTICLE_SLUGS, helpArticlePath } from "@shared/help-article-slugs";
+import { blogIndexRobots, blogPostRobots, publishedBlogSitemapEntries } from "../services/blog-seo.service";
 
 const router = Router();
 
@@ -55,7 +56,7 @@ const escXml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 async function buildSitemap(): Promise<string> {
-  const [services, readyMade, storefronts] = await Promise.all([
+  const [services, readyMade, storefronts, blog] = await Promise.all([
     db
       .select({ id: providerServices.id, updatedAt: providerServices.updatedAt })
       .from(providerServices)
@@ -87,6 +88,9 @@ async function buildSitemap(): Promise<string> {
       `);
       return result.rows as { handle: string }[];
     })(),
+    // Lane C (ledger `2026-09-27-blog-reactions-ask`): PUBLISHED posts only, and `/blog` itself
+    // only once at least one is published — an empty index is never offered to a crawler.
+    publishedBlogSitemapEntries(),
   ]);
 
   const urls: { loc: string; lastmod?: string }[] = [
@@ -102,6 +106,7 @@ async function buildSitemap(): Promise<string> {
     ...storefronts
       .filter((u) => !!u.handle)
       .map((u) => ({ loc: `${CANONICAL_ORIGIN}/s/${u.handle}` })),
+    ...blog.map((b) => ({ loc: `${CANONICAL_ORIGIN}${b.path}`, lastmod: b.lastmod })),
   ];
 
   const body = urls
@@ -226,15 +231,20 @@ async function serveWithHead(
   }
 }
 
-// ─── /blog: noindex while it is an empty state ──────────────────────────────
-// The blog has no post store yet, so /blog is ALWAYS its empty state, and an empty
-// page must not be indexed (footer lane, Sep 2026 — the route stays so inbound links
-// resolve; the footer hides the link until five posts are published). The header
-// works for crawlers that never run the SPA; `BlogPage` also sets a robots meta tag.
-// When a post store exists this must become conditional on it — never a blanket
-// noindex over published, reviewed posts.
-router.get("/blog", (_req, res, next) => {
-  res.setHeader("X-Robots-Tag", "noindex, follow");
+// ─── /blog: noindex only while there is nothing published ───────────────────
+// Lane C (ledger `2026-09-27-blog-reactions-ask`) replaces the old BLANKET noindex, which its own
+// comment said must become conditional the day a post store existed. The index is `noindex` while
+// no post is published; a post page is `noindex` unless that slug is published. A read that fails
+// answers `noindex` — a wrong "index" publishes an empty or unreviewed page, a wrong "noindex" only
+// delays one (§13). The header serves crawlers that never run the SPA; the page sets the same meta.
+router.get("/blog", async (_req, res, next) => {
+  const robots = await blogIndexRobots();
+  if (robots) res.setHeader("X-Robots-Tag", robots);
+  next();
+});
+router.get("/blog/:slug", async (req, res, next) => {
+  const robots = await blogPostRobots(req.params.slug);
+  if (robots) res.setHeader("X-Robots-Tag", robots);
   next();
 });
 

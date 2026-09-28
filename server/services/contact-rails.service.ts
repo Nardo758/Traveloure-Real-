@@ -23,6 +23,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
+  blogPosts,
   conversationContexts,
   insertConversationContextSchema,
   providerServices,
@@ -43,6 +44,7 @@ import { isEarnerRole } from "@shared/roles";
 import { addressKindOf, type ContactStartBody } from "@shared/contact-address";
 import { getDisplayName } from "../utils/data-sanitizer";
 import { isOwnerIdentityVerified } from "../utils/earner-verification";
+import { resolveAskTheLocal } from "./blog-posts.service";
 import {
   contextLabel,
   resolveBookingCounterpart,
@@ -172,6 +174,17 @@ export async function resolveContactTarget(
     if (!counterpart) return { ok: false, reason: "not_found" };
     if (counterpart === sessionUserId) return { ok: false, reason: "self" };
     return { ok: true, target: { recipientId: counterpart, context: { kind: "advisor", id: trip.id } } };
+  }
+
+  if (kind === "blogPostSlug") {
+    // Lane C ruling 7 — "Ask the local". The ONE lookup (`resolveAskTheLocal`) admits only a
+    // PUBLISHED, EXPERT-authored post; a draft, a withdrawn post, a platform post and a slug that
+    // never existed are all the same `not_found` (LD 40 — this rail cannot probe the drafts). It
+    // creates a conversation and nothing else: no advisor row, no request, no lead (LD 32).
+    const post = await resolveAskTheLocal(body.blogPostSlug!);
+    if (!post) return { ok: false, reason: "not_found" };
+    if (post.expertId === sessionUserId) return { ok: false, reason: "self" };
+    return { ok: true, target: { recipientId: post.expertId, context: { kind: "blog_post", id: post.postId } } };
   }
 
   // bookingId — the caller must already be a party to it. The ownership rule itself is
@@ -312,6 +325,18 @@ async function loadConversationContexts(
     for (const t of plans) if (t.title) planTitles.set(t.id, t.title);
   }
 
+  // Lane C ruling 7 — a blog-post thread's label is the post's title, read by id. A post that is
+  // gone resolves to no name and `contextLabel` says "A blog post" (§13).
+  const postIds = rows.filter((r) => r.contextKind === "blog_post").map((r) => r.contextId);
+  const postTitles = new Map<string, string>();
+  if (postIds.length > 0) {
+    const posts = await db
+      .select({ id: blogPosts.id, title: blogPosts.title })
+      .from(blogPosts)
+      .where(inArray(blogPosts.id, postIds));
+    for (const p of posts) if (p.title) postTitles.set(p.id, p.title);
+  }
+
   const bookingRefs = new Map<string, string>();
   if (bookingIds.length > 0) {
     const bks = await db
@@ -330,7 +355,9 @@ async function loadConversationContexts(
           ? bookingRefs.get(row.contextId)
           : kind === "advisor"
             ? planTitles.get(row.contextId) // undefined ⇒ "A plan", never the trip id (§13)
-            : row.contextId; // a storefront context IS the handle
+            : kind === "blog_post"
+              ? postTitles.get(row.contextId) // undefined ⇒ "A blog post", never the row id
+              : row.contextId; // a storefront context IS the handle
     const list = out.get(row.conversationId) ?? [];
     list.push({ kind, id: row.contextId, label: contextLabel(kind, row.contextId, name ?? null) });
     out.set(row.conversationId, list);

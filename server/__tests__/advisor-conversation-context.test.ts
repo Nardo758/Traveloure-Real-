@@ -67,13 +67,15 @@ test("V1 the context-kind vocabulary includes `advisor`, and keeps the original 
       `context kind ${kind} missing`,
     );
   }
-  // The set is exactly four — a fifth would be a ruling, not a refactor.
-  assert.equal(conversationContextKindEnum.length, 4);
+  // The set is closed — a new kind is a ruling, not a refactor. The fifth, `blog_post`, IS one:
+  // Lane C ruling 7 ("Ask the local"), ledger `2026-09-27-blog-reactions-ask`.
+  assert.deepEqual([...conversationContextKindEnum].sort(), ["advisor", "blog_post", "booking", "service", "storefront"]);
 });
 
 test("V2 `tripId` is an ADDRESS kind, and the address kinds are still a closed set", () => {
   assert.ok((CONTACT_ADDRESS_KINDS as readonly string[]).includes("tripId"));
   assert.deepEqual([...CONTACT_ADDRESS_KINDS].sort(), [
+    "blogPostSlug", // Lane C ruling 7 — "Ask the local"
     "bookingId",
     "handle",
     "serviceId",
