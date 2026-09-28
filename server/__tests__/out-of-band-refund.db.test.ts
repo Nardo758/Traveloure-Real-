@@ -50,13 +50,19 @@ const PI_CLEAR = `pi_oob_${RUN}_clear`;
 const PI_DISPUTED = `pi_oob_${RUN}_disputed`;
 const bookingIds: string[] = [];
 
+// Every seeded row is a PAID booking, so it carries the paid transition's stamp (ledger
+// `2026-09-28-no-payment-no-earnings`).
+const PAID_DETAILS = { paidCharge: { status: "confirmed", amount: 100, at: "2026-01-01T00:00:00.000Z" } };
+
 async function seedBooking(status: string, paymentIntentId: string): Promise<string> {
   const id = `oob-${RUN}-bk-${crypto.randomUUID().slice(0, 6)}`;
   await db.execute(sql`
     INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status,
-                                  total_amount, platform_fee, provider_earnings, stripe_payment_intent_id)
+                                  total_amount, platform_fee, provider_earnings, stripe_payment_intent_id,
+                                  booking_details)
     VALUES (${id}, ${ids.service}, ${ids.traveler}, ${ids.provider}, ${status},
-            '100.00', '25.00', '75.00', ${paymentIntentId})
+            '100.00', '25.00', '75.00', ${paymentIntentId},
+            ${JSON.stringify(PAID_DETAILS)}::jsonb)
   `);
   bookingIds.push(id);
   return id;

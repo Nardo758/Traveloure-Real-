@@ -31,6 +31,7 @@ import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/pri
 // Customers/Money all consume — the same "sixth answer" ledger 90 closed elsewhere. Consuming
 // the shared predicate here closes the parity gap rather than adding a second, hand-kept copy.
 import { isEarningBooking, isHistoryBooking } from "@shared/booking-visibility";
+import { isEarningBookingRow } from "@shared/payment-on-record";
 import {
   Inbox as InboxIcon,
   CalendarDays,
@@ -1288,15 +1289,18 @@ function HistorySection() {
                           if (payout == null && total == null) return null;
                           // QA-1: History now includes declined/cancelled/refunded rows, which
                           // still carry their originally-quoted totalAmount/providerEarnings —
-                          // gate on isEarningBooking so a closed row never reads as payable
+                          // gate on isEarningBookingRow so a closed row — or one with no payment on
+                          // record (ledger `2026-09-28-no-payment-no-earnings`) — never reads as payable
                           // (the FP-5 idiom: disclosed via the status badge, never banked).
-                          if (!isEarningBooking(booking.status)) {
+                          if (!isEarningBookingRow(booking)) {
                             return (
                               <div
                                 className="mt-3 rounded-md bg-console-hover border border-console-light px-3 py-2 text-xs text-console-mid"
                                 data-testid={`booking-no-payout-${booking.id}`}
                               >
-                                No payout — this booking was {booking.status === "refunded" ? "refunded" : "cancelled"}.
+                                {isEarningBooking(booking.status)
+                                  ? "No payout — this booking has no payment on record."
+                                  : `No payout — this booking was ${booking.status === "refunded" ? "refunded" : "cancelled"}.`}
                               </div>
                             );
                           }

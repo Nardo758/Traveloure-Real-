@@ -65,12 +65,18 @@ function ledger(l: Partial<PaymentIntentLedger>) {
 const refundCalls: any[] = [];
 const realCreate = stripe.refunds.create.bind(stripe.refunds);
 
+/** The paid transition's stamp (ledger `2026-09-28-no-payment-no-earnings`) — every seeded row carries a charged PI, so it is PAID. */
+function paidDetails(total: string): Record<string, unknown> {
+  return { paidCharge: { status: "confirmed", amount: Number(total), at: "2026-01-01T00:00:00.000Z" } };
+}
+
 async function seedBooking(pi: string, status = "confirmed", total = "100.00"): Promise<string> {
   const id = `lcb-${RUN}-bk-${crypto.randomUUID().slice(0, 6)}`;
   await db.execute(sql`
     INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee,
-                                  provider_earnings, stripe_payment_intent_id)
-    VALUES (${id}, ${ids.service}, ${ids.traveler}, ${ids.provider}, ${status}, ${total}, '0.00', '75.00', ${pi})
+                                  provider_earnings, stripe_payment_intent_id, booking_details)
+    VALUES (${id}, ${ids.service}, ${ids.traveler}, ${ids.provider}, ${status}, ${total}, '0.00', '75.00', ${pi},
+            ${JSON.stringify(paidDetails(total))}::jsonb)
   `);
   bookingIds.push(id);
   return id;

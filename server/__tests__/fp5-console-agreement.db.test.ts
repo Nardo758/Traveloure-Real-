@@ -115,9 +115,15 @@ async function seedBooking(opts: {
   acquisitionRef?: string | null;
 }): Promise<string> {
   const id = crypto.randomUUID();
+  // A row the promotion flip PAID carries its stamp (ledger `2026-09-28-no-payment-no-earnings`):
+  // the flip is the one writer and it stamps only a row with a PaymentIntent, so neither does this
+  // fixture — a PI-less row carries no stamp.
+  const paid = opts.paymentIntentId && ["confirmed", "deposit_paid", "balance_paid"].includes(opts.status)
+    ? { paidCharge: { status: opts.status, amount: Number(opts.totalAmount), at: new Date().toISOString() } }
+    : {};
   const details = opts.status === "payment_pending"
     ? JSON.stringify({ stripeAttemptAt: new Date().toISOString() })
-    : JSON.stringify({});
+    : JSON.stringify(paid);
   await db.execute(sql`
     INSERT INTO service_bookings
       (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee,

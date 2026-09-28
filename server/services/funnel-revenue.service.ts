@@ -20,11 +20,18 @@
  *
  * THE INSERT RUNS IN A SAVEPOINT AND NEVER THROWS (§15b): analytics may not roll back the payment
  * that authorizes it. A failed insert is logged and the promotion commits without its event.
+ *
+ * THE EVENT DERIVES FROM THE PAYMENT STAMP, NEVER THE REVERSE (ledger
+ * `2026-09-28-no-payment-no-earnings`). The same flip first stamps `booking_details.paidCharge`
+ * (`server/services/payment-on-record.ts`, NOT savepointed — a paid row without its stamp would read
+ * as unpaid to every earning path); the event's `paidStatus` and `amount` are read off that stamp.
+ * `paidRevenueAmount` computes the amount the STAMP records.
  */
 import { sql } from "drizzle-orm";
 import { funnelEvents } from "../../shared/schema";
 import { bookingChargeShare } from "./booking-charge-share";
 import { logger } from "../infrastructure/logger";
+import type { PaidCharge } from "@shared/payment-on-record";
 
 export type PaidRevenueStatus = "confirmed" | "deposit_paid" | "balance_paid";
 
@@ -61,11 +68,13 @@ export function paidRevenueAmount(status: PaidRevenueStatus, row: PaidTransition
   );
 }
 
-/** The funnel_events row a paid transition writes. Pure; exported for tests. Ids and enums only. */
-export function paidRevenueEventValues(status: PaidRevenueStatus, row: PaidTransitionRow) {
-  const amount = paidRevenueAmount(status, row);
-  const properties: Record<string, unknown> = { bookingId: String(row.id), paidStatus: status };
-  if (amount !== null) properties.amount = amount;
+/**
+ * The funnel_events row a paid transition writes, DERIVED FROM ITS PAYMENT STAMP. Pure; exported for
+ * tests. Ids and enums only; the row supplies identity (traveler, trip, booking), never the amount.
+ */
+export function paidRevenueEventValues(stamp: PaidCharge, row: PaidTransitionRow) {
+  const properties: Record<string, unknown> = { bookingId: String(row.id), paidStatus: stamp.status };
+  if (stamp.amount !== null) properties.amount = stamp.amount;
   return {
     userId: row.travelerId ?? undefined,
     tripId: row.tripId ?? undefined,
@@ -95,13 +104,14 @@ export function paidTransitionRowFromSql(r: any): PaidTransitionRow {
  */
 export async function recordPaidRevenueEvent(
   tx: any,
-  status: PaidRevenueStatus,
+  stamp: PaidCharge,
   row: PaidTransitionRow,
 ): Promise<boolean> {
+  const status = stamp.status;
   try {
     await tx.execute(sql`SAVEPOINT funnel_revenue_event`);
     try {
-      await tx.insert(funnelEvents).values(paidRevenueEventValues(status, row));
+      await tx.insert(funnelEvents).values(paidRevenueEventValues(stamp, row));
       await tx.execute(sql`RELEASE SAVEPOINT funnel_revenue_event`);
       return true;
     } catch (err) {
