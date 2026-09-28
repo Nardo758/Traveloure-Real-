@@ -1,11 +1,8 @@
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { 
-  MessageSquare, 
-  Users, 
-  Sparkles, 
+import {
+  Sparkles,
   ArrowRight,
   ClipboardList,
   UserCheck,
@@ -15,7 +12,7 @@ import {
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { HOW_IT_WORKS_STEPS } from "@/lib/how-it-works-steps";
-import { PageLayout, PageSection, SectionTitle, HEADING_STYLE, PAGE_ACTION } from "@/components/company/company-page";
+import { PageLayout, SectionTitle, PAGE_ACTION } from "@/components/company/company-page";
 
 const STEP_ICONS = [ClipboardList, Sparkles, UserCheck, PartyPopper];
 
@@ -28,30 +25,6 @@ const steps = HOW_IT_WORKS_STEPS.map((step, i) => ({
   icon: STEP_ICONS[i] ?? ClipboardList,
   features: step.details,
 }));
-
-const planningOptions = [
-  {
-    title: "AI-Powered Planning",
-    description: "Let our advanced AI create personalized itineraries based on your preferences, budget, and travel style.",
-    icon: Sparkles,
-    price: "Free – 1 optimize run",
-    features: ["Instant itinerary generation", "Budget optimization", "Multi-destination support", "24/7 AI assistance"]
-  },
-  {
-    title: "Hybrid AI + Expert",
-    description: "Combine AI efficiency with human expertise. Get AI suggestions refined by local experts and trip planners.",
-    icon: Users,
-    price: "$5.99 – $19.99 / run", // fee-literal-ok: UI display string, fees resolve from config
-    features: ["AI-generated base plan", "Expert review and refinement", "Insider local tips", "Priority support"]
-  },
-  {
-    title: "Expert-Led Planning",
-    description: "Work directly with a certified local expert who crafts every detail of your trip personally.",
-    icon: MessageSquare,
-    price: "8% or $499 flat",
-    features: ["Dedicated trip planner", "Fully customized experience", "Real-time chat support", "Concierge-level service"]
-  }
-];
 
 export default function HowItWorksPage() {
   const { openSignInModal } = useSignInModal();
@@ -113,47 +86,24 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
-      {/* Planning Options Section */}
-      <PageSection title="Choose Your Planning Style">
+      {/* What it costs. The hand-typed "Choose Your Planning Style" price cards were removed
+          (ledger `2026-09-28-landing-doors`): their prices were literals beside a page that is now
+          the destination of the landing's "See pricing", and every number lives on /pricing, which
+          renders from fee_bands. The three ways to plan are the steps above. */}
+      <section className="rounded-2xl border bg-card p-6 md:p-8" data-testid="section-what-it-costs">
+        <SectionTitle className="mb-2">What it costs</SectionTitle>
         <p className="text-muted-foreground max-w-2xl">
-          Whether you prefer AI efficiency, expert guidance, or a combination of both, we have the perfect option for you.
+          Building a plan yourself is free. What an AI run or a Trip Pass costs, and the platform's fees, are on the
+          pricing page, read from our live fee settings. A local expert sets their own price on their listing.
         </p>
-
-        <div className="grid md:grid-cols-3 gap-6 pt-6">
-          {planningOptions.map((option, i) => (
-            <motion.div
-              key={option.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.1 }}
-            >
-              <Card className="h-full bg-card" data-testid={`card-planning-option-${i}`}>
-                <CardContent className="p-6">
-                  <div className="w-12 h-12 rounded-xl bg-[color:var(--earn-coral-bg)] flex items-center justify-center mb-4">
-                    <option.icon className="w-6 h-6 text-primary" />
-                  </div>
-                  <h3 className="text-[18px] font-semibold mb-2" style={HEADING_STYLE}>
-                    {option.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {option.description}
-                  </p>
-                  <p className="text-lg font-bold text-primary mb-4">{option.price}</p>
-                  <ul className="space-y-2">
-                    {option.features.map((feature, j) => (
-                      <li key={j} className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Check className="w-4 h-4 text-primary" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-      </PageSection>
+        <Link
+          href="/pricing"
+          className="mt-4 inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+          data-testid="link-see-pricing"
+        >
+          See pricing <ArrowRight className="w-4 h-4" />
+        </Link>
+      </section>
 
       {/* CTA Section */}
       <section className="rounded-2xl border bg-card p-8 md:p-12 text-center">

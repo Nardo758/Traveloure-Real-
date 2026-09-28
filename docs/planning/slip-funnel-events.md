@@ -112,11 +112,17 @@ or cookie value).
   is not declared yet. So the occasion VALUE is **derived** later from the row (`experience_type`, `moment_key`, and
   `experience_type_id` once D1 lands); only its SOURCE needs a write.
 - **Proposed:** `PlanningSource` gains a `door` key from a closed list (`hero`, `start_events`, `marketplace`,
-  `moment`, `nav_occasion`, `experience_cta`, `city_grid`, `trip_strip_edit`, `concierge`, `pricing_ladder`), and
+  `moment`, `nav_occasion`, `experience_cta`, `city_grid`, `trip_strip_edit`, `concierge`, `pricing_ladder`,
+  and — amended 2026-09-28, ledger `2026-09-28-landing-doors` — `billboard`, `event_strip`, `events_page`), and
   the mint body gains an optional `entry: { door, occasionSource }`, admitted by a `.strict()` pick used ONLY by the
   event writer and never stored on `trips`. `occasionSource` comes from `resolvePlanSteps`: step 1 skipped by a
   resolved occasion ⇒ `door_prefilled`; step 1 answered ⇒ `asked`; neither ⇒ `none`. A client that sends nothing
   records nothing (omitted, not `none`).
+- **Amendment 2026-09-28 (ledger `2026-09-28-landing-doors`; decision-maker dispatch).** Three doors join the list,
+  because they are the entry points the landing marketing test measures and a door off the list records nothing:
+  `billboard` (a landing billboard tile's "Start this plan"), `event_strip` (the landing "Coming up in our cities"
+  strip's "Plan around it") and `events_page` (the `/events` "Coming up" block's "Plan around it"). The list stays
+  closed and stated once in `shared/slip-funnel-events.ts`; a door still off it sends nothing.
 - **Idempotency:** one mint, one row; no dedupe needed. **Emitter:** server (door fact is client-supplied, labelled as such).
 
 ### 3.2 Anchor set opened — NOT BUILT

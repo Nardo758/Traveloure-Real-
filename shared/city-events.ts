@@ -11,10 +11,13 @@
  *   - An event with no venue or no start date is never rendered.
  *   - `neighbourhood_id` is the nearest `city_neighborhoods` row IN THE SAME CITY, and only when
  *     both the venue and that row have coordinates. Otherwise it is NULL, never a guess.
- *   - A `ticket_url` whose host is on the affiliate-domain list is refused: this strip links the
- *     organiser's own page, never a commission link (§16 governs affiliate outbound elsewhere).
+ *   - A `ticket_url` whose host is on a partner's domain is refused: this strip links the
+ *     organiser's own page, never a commission link (§16 governs affiliate outbound elsewhere). The
+ *     partner domains are the registry's (`affiliate_partners`), read by the ONE loader the blog
+ *     uses too — never a list typed here (ledger `2026-09-28-landing-doors`).
  *   - The strip is absent below CITY_EVENTS_STRIP_MIN events in the window. It is never padded.
  */
+import { isOnPartnerHost } from "./partner-hosts";
 
 /** Where a row came from. `ticketmaster` is reserved: nothing writes it yet (probe script only). */
 export const CITY_EVENT_SOURCES = ["manual", "ticketmaster"] as const;
@@ -27,35 +30,6 @@ export const CITY_EVENTS_STRIP_MIN = 3;
 /** The strip shows at most this many cards. */
 export const CITY_EVENTS_STRIP_MAX = 4;
 
-/**
- * Hosts a ticket link may never point at — affiliate and resale programmes. A host matches when
- * it equals an entry or is a subdomain of it. Extend by hand; the check is exact-suffix, so an
- * organiser domain that merely contains one of these words is not refused.
- */
-export const AFFILIATE_TICKET_HOSTS: readonly string[] = [
-  "travelpayouts.com",
-  "tp.media",
-  "tpk.lv",
-  "tp.st",
-  "c137.travelpayouts.com",
-  "viator.com",
-  "getyourguide.com",
-  "klook.com",
-  "tiqets.com",
-  "awin1.com",
-  "awin.com",
-  "impact.com",
-  "sjv.io",
-  "anrdoezrs.net",
-  "jdoqocy.com",
-  "tkqlhce.com",
-  "dpbolvw.net",
-  "kqzyfj.com",
-  "linksynergy.com",
-  "stubhub.com",
-  "viagogo.com",
-];
-
 export function ticketHost(url: string): string | null {
   try {
     const u = new URL(url);
@@ -66,11 +40,16 @@ export function ticketHost(url: string): string | null {
   }
 }
 
-/** True when the URL is well-formed http(s) and its host is not an affiliate host. */
-export function isAcceptableTicketUrl(url: string, hosts: readonly string[] = AFFILIATE_TICKET_HOSTS): boolean {
+/**
+ * True when the URL is well-formed http(s) and its host is not on a partner's domain. The partner
+ * hosts are the registry's (`loadPartnerHosts`, `server/services/partner-hosts.service.ts`) — the
+ * SAME source the blog's source admission reads — passed in, never typed here (ledger
+ * `2026-09-28-landing-doors`). The rule itself is `shared/partner-hosts.ts`.
+ */
+export function isAcceptableTicketUrl(url: string, partnerHosts: readonly string[]): boolean {
   const host = ticketHost(url);
   if (!host) return false;
-  return !hosts.some((h) => host === h || host.endsWith(`.${h}`));
+  return !isOnPartnerHost(host, partnerHosts);
 }
 
 /** The calendar date (YYYY-MM-DD) an instant falls on in `timeZone`. */
