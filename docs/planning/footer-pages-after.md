@@ -68,3 +68,13 @@ Each row was captured 1.5 s after load, with `GET /api/pricing` held for 4 s.
 - **Pro price.** "$0 / month during beta" on `/pricing` is Pro's real beta price, not a missing value.
 - **Broken photo.** The Kyoto card on `/destinations` shows a broken image, because the seeded photo does not load locally. That is data, not layout.
 
+## Consoles after the token change (fixed build, light theme, 1440)
+
+The public `:root` tokens are also read by the consoles. Inside `.console-scope` (the traveler and
+expert consoles) most are overridden. The admin shell has no scope, so it reads them directly. The
+only measured change there is body text going from #111827 to #1F2733. No button lost contrast.
+`--secondary` and the `.dark` theme keep main's values.
+
+| Traveler `/dashboard` | Expert `/expert/today` | Admin `/admin/dashboard` |
+|---|---|---|
+| <a href="footer-pages-after/consoles/traveler.light.jpg"><img src="footer-pages-after/consoles/traveler.light.jpg" width="300"></a> | <a href="footer-pages-after/consoles/expert.light.jpg"><img src="footer-pages-after/consoles/expert.light.jpg" width="300"></a> | <a href="footer-pages-after/consoles/admin.light.jpg"><img src="footer-pages-after/consoles/admin.light.jpg" width="300"></a> |

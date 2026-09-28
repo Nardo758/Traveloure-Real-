@@ -3,7 +3,8 @@
  * `2026-09-28-footer-pages-one-layout`).
  *
  * F1 one red: the public --primary is coral #E85D55; #FF385C / #FB3B63 and the "two palettes by
- *    design" comment are gone from the token sheet and every footer page.
+ *    design" comment are gone from the light theme and every footer page. The unused .dark theme
+ *    and the app-wide --secondary keep main's values.
  * F2 cream ground: the public --background is the --earn-ground token.
  * F3 widths: the two page-width tokens exist, and no footer page sets its own page width.
  * F4 headings: every footer page renders its H1 through the shared PageTitle (no raw <h1>).
@@ -36,7 +37,11 @@ test("F1 one red: public primary is coral, the retired reds and the by-design co
   const css = read("client/src/index.css");
   const root = css.slice(css.indexOf(":root {"), css.indexOf("}", css.indexOf(":root {")));
   assert.match(root, /--primary:\s*3\.3 76\.2% 62\.2%;/, "public --primary is #E85D55");
-  assert.doesNotMatch(css, /350 100% 6[15]%/, "the pink primary is retired in every theme");
+  assert.doesNotMatch(root, /350 100% 6[15]%/, "the pink primary is retired from the light theme");
+  // The .dark theme is left exactly as main has it: no code sets the class, so no page renders it.
+  const dark = css.slice(css.indexOf(".dark {"), css.indexOf("}", css.indexOf(".dark {")));
+  assert.match(dark, /--primary:\s*350 100% 65%;/, "the unused dark theme is not touched by this ruling");
+  assert.match(root, /--secondary:\s*220 9% 46%;/, "--secondary keeps its app-wide value (consoles read it)");
   assert.doesNotMatch(css, /TWO PALETTES BY DESIGN/i);
   for (const f of [...FOOTER_PAGE_FILES.map(PAGE), "client/src/components/company/company-page.tsx", "client/src/components/expert-card.tsx"]) {
     assert.doesNotMatch(read(f), /#FF385C|#FF3859|#FB3B63|#fb3b63|#d92d55|#E23350/i, `${f} carries a retired red`);

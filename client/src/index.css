@@ -13,9 +13,12 @@
   --primary-foreground: 0 0% 100%;
   --primary-hover: 3.3 66% 52%; /* darkened coral */
 
-  /* Secondary: the chip grey with navy text (a secondary ACTION is the outline variant) */
-  --secondary: 48 21.7% 95.5%; /* #F6F5F1 = --earn-chip */
-  --secondary-foreground: 214.2 52% 24.5%; /* #1E3A5F = --earn-navy */
+  /* Secondary: kept at its pre-ruling value. It is read app-wide (123 files, the consoles and admin
+     included) and .console-scope does not override it, so moving it would restyle console buttons
+     and badges the footer ruling never looked at. Footer pages state their secondary action as
+     PAGE_ACTION.secondary (navy outline) instead. */
+  --secondary: 220 9% 46%; /* #6B7280 */
+  --secondary-foreground: 0 0% 100%;
 
   /* Accent: Green for success */
   --accent: 160 84% 39%; /* #10B981 */
@@ -175,7 +178,7 @@
   --popover: 222 47% 13%;
   --popover-foreground: 210 40% 98%;
   
-  --primary: 3 76% 66%;
+  --primary: 350 100% 65%;
   --primary-foreground: 222 47% 11%;
   
   --secondary: 217 33% 17%;
@@ -193,17 +196,17 @@
   --border: 217 33% 20%;
   --input: 217 33% 20%;
   
-  --ring: 3 76% 66%;
+  --ring: 350 100% 65%;
 
   /* Sidebar Dark */
   --sidebar-background: 222 47% 11%;
   --sidebar-foreground: 210 40% 98%;
-  --sidebar-primary: 3 76% 66%;
+  --sidebar-primary: 350 100% 65%;
   --sidebar-primary-foreground: 222 47% 11%;
   --sidebar-accent: 217 33% 17%;
   --sidebar-accent-foreground: 210 40% 98%;
   --sidebar-border: 217 33% 20%;
-  --sidebar-ring: 3 76% 66%;
+  --sidebar-ring: 350 100% 65%;
 
   /* ── Ways-to-Earn palette — dark counterpart (warm-neutral, not a naive invert) ── */
   --earn-ground: #17181A;
