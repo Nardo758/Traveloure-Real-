@@ -2250,7 +2250,9 @@ This document captures architectural decisions to maintain consistency across co
     `noindex` until something is published, and a failed read answers `noindex`. **The client pages landed
     with ledger `2026-09-27-blog-pages`** (`/blog`, `/blog/:slug`): plain-text bodies (never HTML), bylines
     linked by HANDLE, sources with attribution and `nofollow noopener noreferrer`, the reader's own reactions
-    and no count anywhere. **Not built, named:** the footer's Blog link, which returns behind a count of
+    and no count anywhere. **The consoles landed with ledger `2026-09-28-blog-consoles`** (`/admin/blog`,
+    `/expert/blog-review`): buttons mirror the server's from-states through ONE pure `client/src/lib/blog-console.ts`,
+    and the expert signs the `contentSha256` the review rail returned, never one computed client-side. **Not built, named:** the footer's Blog link, which returns behind a count of
     five published posts and never a hand-flipped flag.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
