@@ -210,7 +210,10 @@ export default function AdminCategories() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<ServiceCategory> }) => {
+    // Typed as what this page sends (the Activate/Deactivate toggle), never the whole row: a
+    // Partial<ServiceCategory> admits id/createdAt/subcategories, keys the PATCH route does not take
+    // (ledger `2026-09-27-form-fields-admitted`).
+    mutationFn: async ({ id, data }: { id: string; data: Pick<ServiceCategory, "isActive"> }) => {
       return apiRequest("PATCH", `/api/admin/categories/${id}`, data);
     },
     onSuccess: () => {
