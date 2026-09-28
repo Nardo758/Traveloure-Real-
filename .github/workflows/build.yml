@@ -233,9 +233,12 @@ jobs:
       # request never answered. Deleting that unreachable branch removed the error. Note the shape
       # again: a ceiling that only forbids the number going UP is how a KNOWN runtime defect sat
       # inside it. ZERO new type errors in any file this lane touched. Locked in, same PR.
+      # 128 measured 2026-09-27 (ledger `2026-09-27-form-fields-admitted`): one of the two orphaned
+      # client files that lane deleted (AssignExpertDialog.tsx, quick-start-itinerary.tsx — no
+      # importer, §18c) carried a type error. ZERO new type errors in any file it touched.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '129'
+          TSC_BASELINE: '128'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
