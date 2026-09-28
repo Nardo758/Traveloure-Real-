@@ -133,6 +133,9 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * published post, POST /api/blog/posts/:slug/reactions and DELETE
  * /api/blog/posts/:slug/reactions/:kind, both `isAuthenticated` and acting on the SESSION user only —
  * other 216 → 218, session-self 319 → 321.
+ * 627 / 618 unchanged (ledger `2026-09-28-cart-add-trip-ownership`, R210): POST /api/cart/items now
+ * refuses a foreign plan through the one ownership read before any write, so the extractor classes
+ * it resource-owner / verified — session-self 321 → 320, resource-owner 95 → 96. No rail added.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -163,7 +166,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 2026-09-26-adopt-stop-write-access, R130): it now calls authorizeTripLogistics with
   // requireWriteAccess, so the plan's owner or a write-status advisor is verified before any write.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 158, "session-self": 321, "resource-owner": 95,
+    "admin-role": 158, "session-self": 320, "resource-owner": 96,
     signature: 6, "public-or-system": 38, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
