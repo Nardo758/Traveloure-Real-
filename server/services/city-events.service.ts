@@ -20,7 +20,7 @@ import {
   CITY_EVENTS_WINDOW_DAYS,
   daysUntil,
   deriveNights,
-  isAcceptableTicketUrl,
+  ticketUrlRefusal,
   isRenderableCityEvent,
   localDate,
   localTime,
@@ -60,6 +60,7 @@ export type CityEventRefusal =
   | "bad_start"
   | "bad_end"
   | "affiliate_ticket_url"
+  | "resale_ticket_url"
   | "empty_source_id";
 
 /**
@@ -82,7 +83,12 @@ export function buildCityEventRow(
     endsAt = new Date(entry.endsAt);
     if (Number.isNaN(endsAt.getTime()) || endsAt.getTime() < startsAt.getTime()) return { refused: "bad_end" };
   }
-  if (entry.ticketUrl && !isAcceptableTicketUrl(entry.ticketUrl, partnerHosts)) return { refused: "affiliate_ticket_url" };
+  if (entry.ticketUrl) {
+    // A malformed link keeps its historical reason, affiliate_ticket_url; a resale host is named.
+    const why = ticketUrlRefusal(entry.ticketUrl, partnerHosts);
+    if (why === "resale_ticket_url") return { refused: "resale_ticket_url" };
+    if (why) return { refused: "affiliate_ticket_url" };
+  }
 
   const tz = timezoneForMarket(market.marketKey);
   const lat = entry.venueLat ?? null;

@@ -8,7 +8,9 @@
  * `loadPartnerHosts` in `server/services/partner-hosts.service.ts`. Two callers, one rule (§18
  * rule 1): the blog's source admission refuses a source on a partner domain, and `city_events`
  * refuses a ticket link on one. A second hand-typed list beside the registry is the drift this
- * module exists to prevent.
+ * module exists to prevent. (`RESALE_TICKET_HOSTS` in `shared/city-events.ts` is NOT that: it is
+ * a platform policy, not a partner list, and is typed by hand on purpose — ledger
+ * `2026-09-28-resale-ticket-hosts`.)
  */
 
 /** A URL's host, lower-cased with any leading `www.` dropped; a scheme-less URL is read as https. */

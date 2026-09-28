@@ -15,6 +15,10 @@
  *     organiser's own page, never a commission link (§16 governs affiliate outbound elsewhere). The
  *     partner domains are the registry's (`affiliate_partners`), read by the ONE loader the blog
  *     uses too — never a list typed here (ledger `2026-09-28-landing-doors`).
+ *   - A `ticket_url` on a RESALE marketplace is refused too: an event's ticket link is the
+ *     organiser's or primary seller's page only. That is our POLICY, not a partner relationship, so
+ *     its hosts are typed here (`RESALE_TICKET_HOSTS`) and never go in `affiliate_partners`
+ *     (ledger `2026-09-28-resale-ticket-hosts`).
  *   - The strip is absent below CITY_EVENTS_STRIP_MIN events in the window. It is never padded.
  */
 import { isOnPartnerHost } from "./partner-hosts";
@@ -47,9 +51,67 @@ export function ticketHost(url: string): string | null {
  * `2026-09-28-landing-doors`). The rule itself is `shared/partner-hosts.ts`.
  */
 export function isAcceptableTicketUrl(url: string, partnerHosts: readonly string[]): boolean {
+  return ticketUrlRefusal(url, partnerHosts) === null;
+}
+
+/**
+ * Resale ticket marketplaces. An event's ticket link is the organiser's or the primary seller's
+ * page, never a resale listing (ledger `2026-09-28-resale-ticket-hosts`). This list is typed by
+ * hand ON PURPOSE: it states our rule, it is not a registry of anyone we have a relationship with,
+ * so it does not belong in `affiliate_partners` and is not read from there. Matching is the shared
+ * exact-suffix rule (`isOnPartnerHost`): a host matches when it is one of these or a subdomain of
+ * one, so a domain that merely CONTAINS a name ("notstubhub.example") does not.
+ *
+ * Negative space, stated: a resale seller not named here, or a country domain of one not named
+ * here, is NOT refused. Ticketmaster itself is a primary seller and is allowed; only its resale
+ * hosts are listed.
+ */
+export const RESALE_TICKET_HOSTS: readonly string[] = [
+  // StubHub
+  "stubhub.com",
+  "stubhub.co.uk",
+  "stubhub.ca",
+  "stubhub.ie",
+  "stubhub.de",
+  "stubhub.fr",
+  "stubhub.es",
+  "stubhub.it",
+  "stubhub.com.au",
+  // Viagogo
+  "viagogo.com",
+  "viagogo.co.uk",
+  "viagogo.de",
+  "viagogo.fr",
+  "viagogo.es",
+  "viagogo.it",
+  "viagogo.com.au",
+  "viagogo.jp",
+  // Vivid Seats, SeatGeek, TickPick, Gametime
+  "vividseats.com",
+  "seatgeek.com",
+  "tickpick.com",
+  "gametime.co",
+  // Ticketmaster's resale hosts (not Ticketmaster's primary pages)
+  "resale.ticketmaster.com",
+  "ticketexchangebyticketmaster.com",
+  "ticketsnow.com",
+  "getmein.com",
+  "seatwave.com",
+];
+
+/**
+ * Why a ticket link is refused, or null when it is acceptable. Malformed or non-http(s) first,
+ * then resale (our policy), then a partner's domain (the registry).
+ */
+export function ticketUrlRefusal(
+  url: string,
+  partnerHosts: readonly string[],
+): "bad_ticket_url" | "resale_ticket_url" | "affiliate_ticket_url" | null {
   const host = ticketHost(url);
-  if (!host) return false;
-  return !isOnPartnerHost(host, partnerHosts);
+  if (!host) return "bad_ticket_url";
+  if (isOnPartnerHost(host, RESALE_TICKET_HOSTS)) return "resale_ticket_url";
+  if (isOnPartnerHost(host, partnerHosts)) return "affiliate_ticket_url";
+  return null;
 }
 
 /** The calendar date (YYYY-MM-DD) an instant falls on in `timeZone`. */

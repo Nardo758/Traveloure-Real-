@@ -14,7 +14,8 @@
  *   - `imagePath` only for a photo the repo has rights to; never an organiser's, venue's or
  *     artist's official image. Leave it out and the card uses the city's own repo fallback
  *     (today Kyoto and Bogotá), else no photo.
- *   - `ticketUrl` is the organiser's own page; an affiliate host is refused by the seeder.
+ *   - `ticketUrl` is the organiser's or primary seller's page; an affiliate or resale host is refused
+ *     by the seeder.
  *   - Do not state nights or a neighbourhood: both are derived.
  *
  * Run: `tsx server/seeds/city-events.manual.ts` (also runs at boot; a no-op while empty).
