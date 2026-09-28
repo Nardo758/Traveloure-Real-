@@ -1843,4 +1843,8 @@ export const MIGRATION_FILES = [
   // dropped. Now declared on `funnelEvents` in shared/schema.ts in the same commit; IF NOT EXISTS,
   // no CHECK, no DEFAULT, no preflight-prod-constraints manifest entry needed.
   "328_funnel_events_indexes_redeclared.sql",
+  // Ledger `2026-09-27-blog-lifecycle` (Lane C, Locked Decision 57): `blog_posts`,
+  // `blog_post_sources`, `blog_post_reactions` — three NEW tables born empty with their indexes;
+  // NO CHECK, NO DEFAULT on status; all declared in shared/schema.ts. §20 new-object carve-out.
+  "329_blog_posts.sql",
 ] as const;
