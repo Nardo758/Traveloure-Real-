@@ -2247,8 +2247,11 @@ This document captures architectural decisions to maintain consistency across co
     only, and NO count is ever shown; the index is ranked by ONE pure `rankBlogPosts` on `featured-sort`'s
     null-until-N pattern (`BLOG_RANK_MIN_IMPRESSIONS`, config); "Ask the local" is LD 40's fifth address
     (below); and `/blog`, `/blog/:slug` and the sitemap all read ONE predicate, `status = 'published'` —
-    `noindex` until something is published, and a failed read answers `noindex`. The client pages are the
-    remaining lane (C.3b).
+    `noindex` until something is published, and a failed read answers `noindex`. **The client pages landed
+    with ledger `2026-09-27-blog-pages`** (`/blog`, `/blog/:slug`): plain-text bodies (never HTML), bylines
+    linked by HANDLE, sources with attribution and `nofollow noopener noreferrer`, the reader's own reactions
+    and no count anywhere. **Not built, named:** the footer's Blog link, which returns behind a count of
+    five published posts and never a hand-flipped flag.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

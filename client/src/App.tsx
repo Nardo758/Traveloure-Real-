@@ -186,6 +186,7 @@ const TermsOfServicePage = lazy(() => import("@/pages/terms"));
 const AcceptTermsPage = lazy(() => import("@/pages/accept-terms"));
 const CareersPage = lazy(() => import("@/pages/careers"));
 const BlogPage = lazy(() => import("@/pages/blog"));
+const BlogPostPage = lazy(() => import("@/pages/blog-post"));
 const PressPage = lazy(() => import("@/pages/press"));
 const HelpPage = lazy(() => import("@/pages/help"));
 const HelpArticlePage = lazy(() => import("@/pages/help").then((m) => ({ default: m.HelpArticlePage })));
@@ -558,6 +559,9 @@ function Router() {
       </Route>
       <Route path="/careers">
         <Layout><CareersPage /></Layout>
+      </Route>
+      <Route path="/blog/:slug">
+        <Layout><BlogPostPage /></Layout>
       </Route>
       <Route path="/blog">
         <Layout><BlogPage /></Layout>
