@@ -76,6 +76,7 @@ import {
   type BookingPlanRef,
   type PlanBookingGroup,
 } from "@/lib/bookings-by-plan";
+import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 
 interface VisaBookingMetadata {
   passportNationality?: string;
@@ -1032,7 +1033,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 ) : (
                   <p className="text-xs text-muted-foreground" data-testid={`no-code-${booking.id}`}>
                     Confirmation code not yet available.{" "}
-                    <a href="mailto:support@traveloure.com" className="underline hover:text-foreground transition-colors">
+                    <a href={`mailto:${COMPANY_CONTACT_EMAIL}`} className="underline hover:text-foreground transition-colors">
                       Contact support
                     </a>{" "}
                     if you need help.

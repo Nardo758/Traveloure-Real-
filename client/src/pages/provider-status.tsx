@@ -23,6 +23,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
+import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 
 interface ApplicationStep {
   id: number;
@@ -226,7 +227,7 @@ export default function ProviderStatusPage() {
                         Update &amp; Resubmit
                       </Button>
                     </Link>
-                    <a href="mailto:support@traveloure.com" data-testid="link-contact-support">
+                    <a href={`mailto:${COMPANY_CONTACT_EMAIL}`} data-testid="link-contact-support">
                       <Button
                         variant="outline"
                         size="sm"
@@ -343,7 +344,7 @@ export default function ProviderStatusPage() {
                   {bizStatus === "failed" ? "Retry Connect Onboarding" : "Complete Connect Onboarding →"}
                 </Button>
                 {bizStatus === "failed" && (
-                  <a href="mailto:support@traveloure.com">
+                  <a href={`mailto:${COMPANY_CONTACT_EMAIL}`}>
                     <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400">
                       <MessageSquare className="w-4 h-4 mr-2" />Contact Support
                     </Button>

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SEOHead } from "@/components/seo-head";
-import { CompanyPage, CompanySection, FRAUNCES } from "@/components/company/company-page";
+import { CompanyPage, CompanySection, FRAUNCES, PAGE_LINK } from "@/components/company/company-page";
 import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 import {
   PUBLISHED_HELP_ARTICLES,
@@ -44,7 +44,7 @@ function HelpText({ text }: { text: string }) {
         ) : "strong" in part ? (
           <strong key={i} className="font-semibold">{part.strong}</strong>
         ) : (
-          <Link key={i} href={helpArticlePath(part.slug)} className="underline underline-offset-2" data-testid={`link-help-ref-${part.slug}`}>
+          <Link key={i} href={helpArticlePath(part.slug)} className={PAGE_LINK} data-testid={`link-help-ref-${part.slug}`}>
             {part.title}
           </Link>
         ),
@@ -58,11 +58,11 @@ function ContactCard() {
     <CompanySection title="Still stuck?" testId="section-help-contact">
       <p>
         Write to{" "}
-        <a href={`mailto:${COMPANY_CONTACT_EMAIL}`} className="underline underline-offset-2" data-testid="link-help-email">
+        <a href={`mailto:${COMPANY_CONTACT_EMAIL}`} className={PAGE_LINK} data-testid="link-help-email">
           {COMPANY_CONTACT_EMAIL}
         </a>{" "}
         or use the{" "}
-        <Link href="/contact" className="underline underline-offset-2" data-testid="link-help-contact">
+        <Link href="/contact" className={PAGE_LINK} data-testid="link-help-contact">
           contact form
         </Link>
         .
@@ -138,7 +138,7 @@ export function HelpArticlePage() {
         <SEOHead title="Help article not found" url="/help" noindex />
         <CompanyPage eyebrow="Help center" title="We couldn't find that article" testId="page-help-article-missing">
           <p>
-            <Link href="/help" className="underline underline-offset-2" data-testid="link-help-back">
+            <Link href="/help" className={PAGE_LINK} data-testid="link-help-back">
               See all help articles
             </Link>
           </p>
@@ -179,22 +179,22 @@ export function HelpArticlePage() {
             }
             return (
               <p key={i}>
-                <Link href={b.href} className="font-semibold underline underline-offset-2">{b.text} →</Link>
+                <Link href={b.href} className={`${PAGE_LINK} font-semibold`}>{b.text} →</Link>
               </p>
             );
           })}
           {pricingOmitted && (
             <p data-testid="text-help-see-pricing">
               Current prices are on the{" "}
-              <Link href="/pricing" className="underline underline-offset-2">Pricing</Link> page.
+              <Link href="/pricing" className={PAGE_LINK}>Pricing</Link> page.
             </p>
           )}
         </article>
 
         <nav className="flex flex-wrap items-center justify-between gap-3 border-t pt-6 text-sm" style={{ borderColor: "var(--earn-border)" }}>
-          <Link href="/help" className="underline underline-offset-2" data-testid="link-help-all">← All help articles</Link>
+          <Link href="/help" className={PAGE_LINK} data-testid="link-help-all">← All help articles</Link>
           {next && (
-            <Link href={helpArticlePath(next.slug)} className="underline underline-offset-2" style={{ fontFamily: FRAUNCES }}>
+            <Link href={helpArticlePath(next.slug)} className={PAGE_LINK} style={{ fontFamily: FRAUNCES }}>
               Next: {next.title} →
             </Link>
           )}
