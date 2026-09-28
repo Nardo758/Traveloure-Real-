@@ -48,12 +48,17 @@ async function insertBooking(opts: {
   const total = opts.totalAmount ?? "120.00";
   const fee = opts.platformFee ?? "30.00";
   const earnings = opts.providerEarnings ?? "90.00";
+  // A PAID row carries the PaymentIntent its paid flip ran on beside the stamp — the promotion flip is
+  // the stamp's one writer and only runs on a row with a PI, so a stamp with no PI is a state
+  // production cannot reach (R195 S8 ruling). An unpaid row carries neither.
+  const paymentIntentId = opts.paid ? `pi_${RUN}_${id}` : null;
   await db.execute(sql`
     INSERT INTO service_bookings
-      (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee, provider_earnings, booking_details, created_at)
+      (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee, provider_earnings, booking_details,
+       stripe_payment_intent_id, created_at)
     VALUES
       (${id}, ${serviceId}, ${travelerId}, ${providerId}, ${opts.status}, ${total}, ${fee}, ${earnings},
-       ${JSON.stringify(opts.paid ? paidDetails(total) : {})}::jsonb, NOW())
+       ${JSON.stringify(opts.paid ? paidDetails(total) : {})}::jsonb, ${paymentIntentId}, NOW())
   `);
   bookingIds.push(id);
   return id;

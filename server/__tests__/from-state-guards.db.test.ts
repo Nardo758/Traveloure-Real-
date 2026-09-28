@@ -110,14 +110,20 @@ async function seedBooking(opts: {
   paid?: boolean;
 }): Promise<string> {
   const id = `fsg-${RUN}-bk-${crypto.randomUUID().slice(0, 6)}`;
+  // A PAID row carries the PaymentIntent its paid flip ran on, and the stamp beside it — the promotion
+  // flip is the one writer of `paidCharge` and it only ever runs on a row with a PI, so a stamp with
+  // no PI is a state production cannot reach (R195 S8 ruling). An unpaid row carries neither.
+  const paymentIntentId = opts.paid ? `pi_${RUN}_${id}` : null;
   const details = opts.paid
     ? { paidCharge: { status: "confirmed", amount: 100, at: "2026-01-01T00:00:00.000Z" } }
     : {};
   await db.execute(sql`
     INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status,
-                                  total_amount, platform_fee, provider_earnings, completed_at, booking_details)
+                                  total_amount, platform_fee, provider_earnings, completed_at, booking_details,
+                                  stripe_payment_intent_id)
     VALUES (${id}, ${ids.service}, ${ids.traveler}, ${ids.provider}, ${opts.status},
-            '100.00', '25.00', '75.00', ${opts.completedAt ?? null}, ${JSON.stringify(details)}::jsonb)
+            '100.00', '25.00', '75.00', ${opts.completedAt ?? null}, ${JSON.stringify(details)}::jsonb,
+            ${paymentIntentId})
   `);
   createdBookingIds.push(id);
   return id;
