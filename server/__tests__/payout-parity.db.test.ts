@@ -127,6 +127,17 @@ async function bookLikeCheckout(opts: {
     providerEarnings: netExpertEarningsAmt.toFixed(2),
   } as any);
   createdBookingIds.push(booking.id);
+  // The lifecycle below completes and mints, so this models a PAID booking: it carries the PaymentIntent
+  // its paid flip ran on and the paid transition's stamp beside it (ledger
+  // `2026-09-28-no-payment-no-earnings`). The promotion flip is the stamp's one writer and it only runs
+  // on a row with a PI, so a stamp with no PI is a state production cannot reach (R195 S8 ruling).
+  await db.execute(sql`
+    UPDATE service_bookings
+       SET stripe_payment_intent_id = ${`pi_${RUN}_${booking.id.slice(0, 8)}`},
+           booking_details = COALESCE(booking_details, '{}'::jsonb)
+         || ${JSON.stringify({ paidCharge: { status: "confirmed", amount: Number(price.toFixed(2)), at: "2026-01-01T00:00:00.000Z" } })}::jsonb
+     WHERE id = ${booking.id}
+  `);
   return { bookingId: booking.id, stampedEarnings: netExpertEarningsAmt.toFixed(2) };
 }
 

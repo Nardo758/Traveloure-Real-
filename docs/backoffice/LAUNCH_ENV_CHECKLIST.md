@@ -16,7 +16,7 @@ The following environment variables are required for money and identity verifica
 
 1. **Stripe Keys (Payment):** Confirm `STRIPE_SECRET_KEY` is set and resolvable (test with `curl -H "Authorization: Bearer $STRIPE_SECRET_KEY" https://api.stripe.com/v1/account`)
 2. **Stripe Webhooks:** Ensure all three webhook secrets are set and registered in the Stripe Dashboard under Webhooks (Settings > Webhooks)
-3. **Persona Keys (KYB):** Confirm `PERSONA_API_KEY` and `PERSONA_TEMPLATE_ID` are set; test with the `/api/identity/business/create-inquiry` endpoint
+3. **Persona Keys (KYB):** n/a: Persona retired; `create-inquiry` is a 410 stub
 4. **Persona Webhook:** Register `PERSONA_WEBHOOK_SECRET` in Persona Dashboard for business verification events
 
 ## Launch Go/No-Go Criteria
@@ -29,3 +29,4 @@ The following environment variables are required for money and identity verifica
 ## Recorded Changes
 
 - **Jul 26, 2026:** Baseline checklist created from server-side env references (grep `process.env.PERSONA_*` + `process.env.STRIPE_*` under `server/`). Stripe webhook secrets mapped per webhook.routes.ts registrations. Persona fallback behavior documented per identity.routes.ts.
+- **Sep 28, 2026:** Step 3 retired in place (ledger `2026-09-28-s20-decline-diff-and-persona-step`). Persona KYB was removed in Aug 2026: `POST /api/identity/business/create-inquiry` now answers 410 `PERSONA_KYB_RETIRED` (`server/routes/identity.routes.ts`), so there is nothing to test. The step keeps its number so references to steps 1–4 do not shift.

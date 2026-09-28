@@ -28,10 +28,11 @@
  * routes into signup carrying ?offeringTypeKey=… (the one canonical param).
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
 import { useSearch, useLocation, Link } from "wouter";
 import { Layout } from "@/components/layout";
+import { PageLayout, SectionTitle, PAGE_ACTION, PAGE_LINK } from "@/components/company/company-page";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
@@ -98,7 +99,7 @@ function TrackPill({ track }: { track: EarnRole["track"] }) {
   return (
     <span
       className={`text-[10px] font-medium px-2 py-0.5 rounded ${
-        isInPerson ? "bg-[#5DCAA5]/15 text-[#1f7a5c]" : "bg-[#2E8B8B]/12 text-[#2E8B8B]"
+        isInPerson ? "bg-[color:var(--earn-green-wash)] text-[color:var(--earn-green-ink)]" : "bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal)]"
       }`}
     >
       {track}
@@ -110,7 +111,7 @@ function EarningBadge({ text, testId }: { text: string | null; testId: string })
   if (!text) return null;
   return (
     <span
-      className="text-xs font-medium text-[#8a6414] bg-[#E8B339]/15 px-2.5 py-0.5 rounded-md whitespace-nowrap"
+      className="text-xs font-medium text-[color:var(--earn-gold-ink)] bg-[color:var(--earn-gold-wash)] px-2.5 py-0.5 rounded-md whitespace-nowrap"
       data-testid={testId}
     >
       {text}
@@ -136,19 +137,19 @@ function RoleCard({
       type="button"
       onClick={onSelect}
       className={`text-left bg-white rounded-xl p-4 transition-colors ${
-        active ? "border-2 border-[#2E8B8B]" : "border border-[#E7E4DD] hover:border-[#2E8B8B]/60"
+        active ? "border-2 border-[color:var(--earn-teal)]" : "border border-[color:var(--earn-border)] hover:border-[color:var(--earn-teal)]"
       }`}
       data-testid={`earn-role-${role.key}`}
       aria-pressed={active}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="text-sm font-semibold text-[#1E3A5F]">{role.label}</span>
+        <span className="text-sm font-semibold text-[color:var(--earn-navy)]">{role.label}</span>
         <TrackPill track={role.track} />
       </div>
-      <p className="text-xs text-[#6A7480] leading-snug mb-2">{role.blurb}</p>
+      <p className="text-xs text-[color:var(--earn-muted)] leading-snug mb-2">{role.blurb}</p>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {chips.map((c) => (
-          <span key={c} className="text-[11px] text-[#6A7480] bg-[#F6F5F1] px-2 py-0.5 rounded-md">
+          <span key={c} className="text-[11px] text-[color:var(--earn-muted)] bg-[color:var(--earn-chip)] px-2 py-0.5 rounded-md">
             {c}
           </span>
         ))}
@@ -173,14 +174,14 @@ function OfferingRow({
     <button
       type="button"
       onClick={onClick}
-      className="group flex items-center justify-between gap-3 w-full text-left bg-white border border-[#E7E4DD] rounded-lg px-3.5 py-2.5 transition-colors hover:border-[#2E8B8B]"
+      className="group flex items-center justify-between gap-3 w-full text-left bg-white border border-[color:var(--earn-border)] rounded-lg px-3.5 py-2.5 transition-colors hover:border-[color:var(--earn-teal)]"
       data-testid={testId}
     >
       <div className="min-w-0">
-        <div className="text-[13px] font-medium text-[#1F2733]">{name}</div>
-        {tagline && <div className="text-xs text-[#6A7480] mt-0.5">{tagline}</div>}
+        <div className="text-[13px] font-medium text-[color:var(--earn-ink)]">{name}</div>
+        {tagline && <div className="text-xs text-[color:var(--earn-muted)] mt-0.5">{tagline}</div>}
       </div>
-      <span className="text-xs font-medium text-[#0F6E56] whitespace-nowrap group-hover:translate-x-0.5 transition-transform">
+      <span className="text-xs font-medium text-[color:var(--earn-teal-ink)] whitespace-nowrap group-hover:translate-x-0.5 transition-transform">
         I do this →
       </span>
     </button>
@@ -247,6 +248,21 @@ export default function EarnPage() {
   const activeRole = EARN_ROLES.find((r) => r.key === activeKey)!;
 
   const setRole = (key: RoleKey) => navigate(`/earn?role=${key}`, { replace: true });
+
+  // A deep link names a track (`/earn?role=…`, the footer's four links): bring that card into
+  // view once on arrival. On a phone the four cards stack, so the 3rd and 4th sit below the fold
+  // and the page used to open with the selected track out of sight (footer-pages audit). Only
+  // when the URL named a role, and only if the card is not already fully visible.
+  const scrolledForRole = useRef(false);
+  useEffect(() => {
+    if (!roleParam || scrolledForRole.current) return;
+    scrolledForRole.current = true;
+    const el = document.querySelector<HTMLElement>(`[data-testid="earn-role-${activeKey}"]`);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.top >= 0 && r.bottom <= window.innerHeight) return;
+    el.scrollIntoView({ block: "center" });
+  }, [roleParam, activeKey]);
 
   // ── Data: the two offering catalogs + categories (names + band keys) ──────
   const { data: providerOfferings, isLoading: loadingProv, error: errProv, refetch: refetchProv } = useQuery<ServiceOfferingType[]>({
@@ -383,43 +399,39 @@ export default function EarnPage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-[#F6F5F1]">
-        {/* ── Hero ─────────────────────────────────────────────────────── */}
-        <div className="bg-white border-b border-[#E7E4DD]" data-testid="earn-hero">
-          <div className="max-w-5xl mx-auto px-5 pt-9 pb-6">
-            <h1
-              className="text-[26px] font-semibold text-[#1E3A5F] tracking-tight mb-2"
-              data-testid="earn-hero-title"
-            >
-              Get paid for what you already know
-            </h1>
-            <p className="text-[15px] text-[#6A7480] max-w-xl mb-3">
+      <PageLayout
+        title="Get paid for what you already know"
+        titleTestId="earn-hero-title"
+        testId="earn-hero"
+        lead={
+          <>
+            <p className="text-muted-foreground">
               Pick the role that sounds like you — see exactly what you'd offer and what you keep.
             </p>
-            <div className="text-[13px]">
-              <span className="text-[#6A7480]">Already a partner?</span>{" "}
+            <p className="mt-3 text-[14px]">
+              <span className="text-muted-foreground">Already a partner?</span>{" "}
               <button
                 type="button"
                 onClick={() => openSignInModal()}
-                className="text-[#0F6E56] font-medium"
+                className={PAGE_LINK}
                 data-testid="earn-signin"
               >
                 Sign in →
               </button>
-            </div>
-          </div>
-        </div>
-
+            </p>
+          </>
+        }
+      >
         {/* ── Role band: "Which of these is you?" ──────────────────────── */}
-        <div className="bg-white border-b border-[#E7E4DD]">
-          <div className="max-w-5xl mx-auto px-5 py-5">
-            <div className="flex items-center gap-4 mb-3">
-              <span className="text-[13px] font-semibold text-[#1F2733]">Which of these is you?</span>
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-[#6A7480]">
-                <span className="w-2 h-2 rounded-sm bg-[#5DCAA5]" /> in-person
+        <section>
+          <div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
+              <SectionTitle className="w-full sm:w-auto">Which of these is you?</SectionTitle>
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--earn-muted)]">
+                <span className="w-2 h-2 rounded-sm bg-[color:var(--earn-green)]" /> in-person
               </span>
-              <span className="inline-flex items-center gap-1.5 text-[11px] text-[#6A7480]">
-                <span className="w-2 h-2 rounded-sm bg-[#2E8B8B]" /> remote
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-[color:var(--earn-muted)]">
+                <span className="w-2 h-2 rounded-sm bg-[color:var(--earn-teal)]" /> remote
               </span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5" data-testid="earn-role-band">
@@ -435,45 +447,45 @@ export default function EarnPage() {
               ))}
             </div>
             {/* EA: real signup, no offering backing yet — text link, not a card. */}
-            <p className="text-xs text-[#6A7480] mt-3">
+            <p className="text-xs text-[color:var(--earn-muted)] mt-3">
               {EA_SIGNUP.label} — {EA_SIGNUP.blurb}.{" "}
               <Link
                 href={EA_SIGNUP.signupPath}
-                className="text-[#0F6E56] font-medium"
+                className={PAGE_LINK}
                 data-testid="earn-ea-signup"
               >
                 Apply as an EA →
               </Link>
             </p>
           </div>
-        </div>
+        </section>
 
         {/* ── Catalog: the selected role's full mapped offering list ───── */}
-        <section className="bg-[#FAFAF8] border-b border-[#E7E4DD]">
-          <div className="max-w-5xl mx-auto px-5 py-6">
+        <section className="rounded-xl border bg-card p-5 sm:p-6">
+          <div>
             <div className="flex items-baseline justify-between mb-3">
-              <h3 className="text-base font-semibold text-[#1E3A5F]" data-testid="earn-catalog-title">
+              <SectionTitle testId="earn-catalog-title">
                 {activeRole.label} · all services
-              </h3>
+              </SectionTitle>
               <EarningBadge text={roleEarning(activeRole)} testId="earn-catalog-earning" />
             </div>
             {catalogLoading ? (
-              <p className="text-sm text-[#6A7480]">Loading offerings…</p>
+              <p className="text-sm text-[color:var(--earn-muted)]">Loading offerings…</p>
             ) : catalogError ? (
               <div
-                className="flex flex-col items-center gap-3 py-8 px-5 bg-[#FFF4F4] border border-[#FCCACA] rounded-xl text-center"
+                className="flex flex-col items-center gap-3 py-8 px-5 bg-[color:var(--earn-coral-bg)] border border-[color:var(--earn-coral-border)] rounded-xl text-center"
                 data-testid="earn-catalog-error"
               >
-                <AlertCircle className="w-7 h-7 text-[#E85D55]" />
+                <AlertCircle className="w-7 h-7 text-[color:var(--earn-coral-ink)]" />
                 <div>
-                  <p className="text-sm font-semibold text-[#C0392B]">Couldn't load offerings</p>
-                  <p className="text-xs text-[#8B3A3A] mt-0.5">There was a problem fetching the catalog. Please try again.</p>
+                  <p className="text-sm font-semibold text-destructive">Couldn't load offerings</p>
+                  <p className="text-xs text-destructive/80 mt-0.5">There was a problem fetching the catalog. Please try again.</p>
                 </div>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => catalogRefetch()}
-                  className="border-[#E85D55] text-[#E85D55] hover:bg-[#FFF0F0]"
+                  className={PAGE_ACTION.secondary}
                   data-testid="earn-catalog-retry"
                 >
                   Retry
@@ -481,11 +493,11 @@ export default function EarnPage() {
               </div>
             ) : catalog.length === 0 ? (
               <div
-                className="flex flex-col items-center gap-2 py-8 px-5 bg-white border border-dashed border-[#D5D0C8] rounded-xl text-center"
+                className="flex flex-col items-center gap-2 py-8 px-5 bg-white border border-dashed border-[color:var(--earn-border-dash)] rounded-xl text-center"
                 data-testid="earn-catalog-empty"
               >
-                <PackageOpen className="w-7 h-7 text-[#B0AAA0]" />
-                <p className="text-sm text-[#6A7480]">No offerings published yet.</p>
+                <PackageOpen className="w-7 h-7 text-[color:var(--earn-faint)]" />
+                <p className="text-sm text-[color:var(--earn-muted)]">No offerings published yet.</p>
               </div>
             ) : (
               <div className="grid gap-2" data-testid="earn-catalog">
@@ -508,7 +520,7 @@ export default function EarnPage() {
             <div className="mt-3" data-testid="earn-trade-request">
               {requestSubmitted ? (
                 <p
-                  className="inline-flex items-start gap-1.5 text-xs text-[#0F6E56]"
+                  className="inline-flex items-start gap-1.5 text-xs text-[color:var(--earn-teal-ink)]"
                   data-testid="earn-trade-request-done"
                 >
                   <Check className="w-3.5 h-3.5 mt-[1px] flex-shrink-0" />
@@ -519,7 +531,7 @@ export default function EarnPage() {
                 </p>
               ) : requestOpen ? (
                 <form
-                  className="rounded-lg border border-[#E7E4DD] bg-white p-3.5 max-w-md"
+                  className="rounded-lg border border-[color:var(--earn-border)] bg-white p-3.5 max-w-md"
                   onSubmit={(e) => {
                     e.preventDefault();
                     if (!requestName.trim()) return;
@@ -527,7 +539,7 @@ export default function EarnPage() {
                   }}
                   data-testid="earn-trade-request-form"
                 >
-                  <Label htmlFor="earn-request-name" className="text-[13px] font-medium text-[#1F2733]">
+                  <Label htmlFor="earn-request-name" className="text-[13px] font-medium text-[color:var(--earn-ink)]">
                     What do you do?
                   </Label>
                   <Input
@@ -539,7 +551,7 @@ export default function EarnPage() {
                     className="mt-1.5"
                     data-testid="earn-trade-request-name"
                   />
-                  <Label htmlFor="earn-request-desc" className="mt-3 block text-[13px] font-medium text-[#1F2733]">
+                  <Label htmlFor="earn-request-desc" className="mt-3 block text-[13px] font-medium text-[color:var(--earn-ink)]">
                     Anything else? (optional)
                   </Label>
                   <Textarea
@@ -552,7 +564,7 @@ export default function EarnPage() {
                     data-testid="earn-trade-request-description"
                   />
                   {offeringRequestMutation.isError && (
-                    <p className="mt-2 text-xs text-[#C0392B]" data-testid="earn-trade-request-error">
+                    <p className="mt-2 text-xs text-destructive" data-testid="earn-trade-request-error">
                       We couldn't send that. Please try again.
                     </p>
                   )}
@@ -561,7 +573,7 @@ export default function EarnPage() {
                       type="submit"
                       size="sm"
                       disabled={!requestName.trim() || offeringRequestMutation.isPending}
-                      className="bg-[#0F6E56] hover:bg-[#0F6E56]/90 text-white"
+                      className={PAGE_ACTION.primary}
                       data-testid="earn-trade-request-submit"
                     >
                       {offeringRequestMutation.isPending ? "Sending…" : "Send"}
@@ -581,7 +593,7 @@ export default function EarnPage() {
                 <button
                   type="button"
                   onClick={openOfferingRequest}
-                  className="text-xs font-medium text-[#0F6E56] hover:underline"
+                  className={`${PAGE_LINK} text-xs`}
                   data-testid="earn-trade-request-open"
                 >
                   Don't see your trade? Tell us →
@@ -593,12 +605,12 @@ export default function EarnPage() {
 
         {/* ── Featured strip: is_surprising rows ───────────────────────── */}
         {surprising.length > 0 && (
-          <div className="max-w-5xl mx-auto px-5 py-5">
+          <div>
             <div
-              className="flex items-center gap-1.5 text-[13px] font-medium text-[#1F2733] mb-2.5"
+              className="flex items-center gap-1.5 text-[13px] font-medium text-[color:var(--earn-ink)] mb-2.5"
               data-testid="earn-surprising-label"
             >
-              <Star className="w-4 h-4 text-[#E8B339]" />
+              <Star className="w-4 h-4 text-[color:var(--earn-gold)]" />
               <span>You probably didn't know you could get paid to…</span>
             </div>
             <div className="flex flex-wrap gap-2" data-testid="earn-surprising-row">
@@ -607,7 +619,7 @@ export default function EarnPage() {
                   key={`${s.catalog}:${s.key}`}
                   type="button"
                   onClick={() => handleSelect(s.role, s.key, s.name)}
-                  className="text-xs text-[#2E8B8B] bg-[#2E8B8B]/10 px-2.5 py-1 rounded-md hover:bg-[#2E8B8B]/20 transition-colors inline-flex items-center gap-1"
+                  className="text-xs text-[color:var(--earn-teal)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 rounded-md hover:bg-[color:var(--earn-teal-wash)] hover:opacity-80 transition-colors inline-flex items-center gap-1"
                   data-testid={`earn-surprising-${s.catalog}-${s.key}`}
                 >
                   {s.name}
@@ -617,7 +629,7 @@ export default function EarnPage() {
             </div>
           </div>
         )}
-      </div>
+      </PageLayout>
     </Layout>
   );
 }

@@ -38,9 +38,14 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 // reads it, never a restated glyph.
 import { NAV_LEAF_ICONS } from "@/components/layout";
 import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
-
-const FRAUNCES = "'Fraunces', Georgia, serif";
-const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+import {
+  EARN_MONO,
+  FRAUNCES,
+  HEADING_STYLE,
+  PageTitle,
+  SectionTitle,
+  pageContainerClass,
+} from "@/components/company/company-page";
 
 // FIND HELP rail (ruling 2026-08-25-surface-rail) — Providers is the current surface (filled
 // navy); the three expert-role links carry live counts from /api/experts/counts.
@@ -63,6 +68,12 @@ function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
   const more = moreListingsCount(provider.serviceCount, listings.length);
   const fromPrice = provider.fromPrice != null ? formatListingPrice(provider.fromPrice) : null;
   const storefrontHref = `/s/${provider.handle}`;
+  // No zero where the source has no value: the Services figure renders only from a real,
+  // finite count. An absent/non-numeric count omits the figure rather than printing "0".
+  const serviceCount =
+    typeof provider.serviceCount === "number" && Number.isFinite(provider.serviceCount)
+      ? Math.max(0, Math.trunc(provider.serviceCount))
+      : null;
 
   function message() {
     // Locked Decision 40: the HANDLE is the address; the server resolves the recipient.
@@ -92,7 +103,7 @@ function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
           </div>
         )}
         <div className="min-w-0">
-          <h3 className="text-[18px] font-semibold leading-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>
+          <h3 className="text-[18px] font-semibold leading-tight" style={HEADING_STYLE}>
             <Link
               href={storefrontHref}
               className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
@@ -183,7 +194,7 @@ function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
           <dt className="text-[9.5px] uppercase text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>Rating</dt>
           {rating.kind === "rated" ? (
             <dd className="flex items-center gap-1 text-lg font-semibold text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid={`text-provider-rating-${provider.handle}`}>
-              <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" aria-hidden="true" />
+              <Star className="h-3.5 w-3.5 fill-[color:var(--earn-gold)] text-[color:var(--earn-gold)]" aria-hidden="true" />
               <span className="tabular-nums">{rating.ratingLabel}</span>
               <span className="tabular-nums text-sm font-normal text-[color:var(--earn-muted)]">{rating.reviewCountLabel}</span>
             </dd>
@@ -191,12 +202,14 @@ function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
             <dd className="text-lg font-semibold text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid={`badge-provider-new-${provider.handle}`}>New</dd>
           )}
         </div>
-        <div className="flex flex-col-reverse gap-0.5 border-l border-[color:var(--earn-border)] pl-3.5">
-          <dt className="text-[9.5px] uppercase text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>Services</dt>
-          <dd className="text-lg font-semibold tabular-nums text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid={`text-provider-service-count-${provider.handle}`}>
-            {Math.max(0, Math.trunc(provider.serviceCount || 0))}
-          </dd>
-        </div>
+        {serviceCount !== null && (
+          <div className="flex flex-col-reverse gap-0.5 border-l border-[color:var(--earn-border)] pl-3.5">
+            <dt className="text-[9.5px] uppercase text-[color:var(--earn-muted)]" style={{ fontFamily: EARN_MONO }}>Services</dt>
+            <dd className="text-lg font-semibold tabular-nums text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }} data-testid={`text-provider-service-count-${provider.handle}`}>
+              {serviceCount}
+            </dd>
+          </div>
+        )}
       </dl>
 
       <div className="mt-auto grid grid-cols-2 gap-2">
@@ -204,7 +217,7 @@ function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
           type="button"
           variant="outline"
           onClick={message}
-          className="min-h-[42px] border-[color:var(--earn-border)] bg-[var(--earn-card)] font-bold text-[color:var(--earn-navy)] hover:bg-[var(--earn-chip)]"
+          className="min-h-[42px] rounded-[10px] border-[color:var(--earn-navy)] bg-transparent font-bold text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-chip)]"
           data-testid={`button-message-provider-${provider.handle}`}
         >
           <MessageCircle className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
@@ -212,7 +225,7 @@ function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
         </Button>
         <Button
           asChild
-          className="min-h-[42px] bg-[color:var(--earn-coral-ink)] font-bold text-white hover:bg-[color:var(--earn-coral-ink)]/90"
+          className="min-h-[42px] rounded-[10px] bg-[color:var(--earn-coral-ink)] font-bold text-white hover:bg-[color:var(--earn-coral-ink)] hover:opacity-90"
         >
           <Link href={storefrontHref} data-testid={`link-provider-storefront-${provider.handle}`}>
             View storefront
@@ -279,7 +292,7 @@ export default function ProvidersDirectoryPage() {
           ShoppingBag tile + Fraunces title + sub on the left; FIND HELP eyebrow + four-link
           rail on the right, Providers the current surface (filled navy). */}
       <section className="border-b border-[color:var(--earn-border)] bg-[var(--earn-card)] py-[26px]">
-        <div className="container mx-auto max-w-6xl px-4">
+        <div className={pageContainerClass("content")}>
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div className="flex items-start gap-3 text-left">
               <span className="w-[42px] h-[42px] rounded-xl bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] grid place-items-center shrink-0">
@@ -289,9 +302,7 @@ export default function ProvidersDirectoryPage() {
                 })()}
               </span>
               <div>
-                <h1 className="text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)] leading-tight" style={{ fontFamily: FRAUNCES }}>
-                  Service Providers
-                </h1>
+                <PageTitle>Service Providers</PageTitle>
                 <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
                   Local businesses you can book directly — no middleman, no markup beyond the listing price.
                 </p>
@@ -351,7 +362,7 @@ export default function ProvidersDirectoryPage() {
         </div>
       </section>
 
-      <main className="container mx-auto max-w-6xl px-4 py-8">
+      <main className={`${pageContainerClass("content")} py-8`}>
         <div className="relative mb-6 max-w-xl">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--earn-muted)]" />
           <Input
@@ -371,9 +382,7 @@ export default function ProvidersDirectoryPage() {
             <p className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-coral-ink)]" style={{ fontFamily: EARN_MONO }}>
               Providers · {providerTotal}
             </p>
-            <h2 className="text-[24px] font-semibold tracking-tight text-[color:var(--earn-navy)]" style={{ fontFamily: FRAUNCES }}>
-              Book the business directly
-            </h2>
+            <SectionTitle>Book the business directly</SectionTitle>
           </div>
         )}
 
@@ -392,7 +401,7 @@ export default function ProvidersDirectoryPage() {
         ) : (providers ?? []).length === 0 ? (
           <div className="rounded-xl border bg-[var(--earn-card)] px-6 py-16 text-center" data-testid="providers-empty">
             <Store className="mx-auto mb-3 h-8 w-8 text-[color:var(--earn-muted)]" />
-            <h2 className="text-lg font-semibold text-[color:var(--earn-ink)]">No providers yet</h2>
+            <h2 className="text-lg font-semibold" style={HEADING_STYLE}>No providers yet</h2>
             <p className="mt-1 text-sm text-[color:var(--earn-muted)]">
               Check back soon — approved local businesses will appear here as they join.
             </p>

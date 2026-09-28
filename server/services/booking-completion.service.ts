@@ -151,6 +151,7 @@ import { storage } from "../storage";
 // file's NEGATIVE SPACE note before using it on a surface — status is not the whole eligibility.
 import { COMPLETION_ALLOWED_FROM_STATUSES } from "@shared/declared-completion-window";
 import { outOfBandRefundOf } from "@shared/out-of-band-refund";
+import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
 export { COMPLETION_ALLOWED_FROM_STATUSES };
 
 /** Who drove this completion. Recorded on the booking row; mapped to a diary actorType below. */
@@ -281,6 +282,12 @@ export type IneligibleReason =
    * nothing mints. Named rather than reported as `lost_race`, which would say a competitor won (§13).
    */
   | "out_of_band_refund"
+  /**
+   * Ledger `2026-09-28-no-payment-no-earnings`: the booking carries no payment on record (no
+   * `booking_details.paidCharge` stamp — `hasPaymentOnRecord`), so the status writer refuses to
+   * complete it and nothing mints. A status is not a payment.
+   */
+  | "no_payment_on_record"
   /**
    * D-6/D-40: the traveler accepted, but this listing's acceptance does NOT complete the booking.
    * Either it takes no acceptance at all, or it is a `hybrid` with a DECLARED artifact, whose
@@ -868,7 +875,11 @@ export async function completeBooking(input: {
       completed: false,
       bookingId: input.bookingId,
       rule: eligibility.rule,
-      reason: current && outOfBandRefundOf(current.bookingDetails) ? "out_of_band_refund" : "lost_race",
+      reason: current && outOfBandRefundOf(current.bookingDetails)
+        ? "out_of_band_refund"
+        : current && !hasPaymentOnRecord(current)
+          ? NO_PAYMENT_ON_RECORD
+          : "lost_race",
       evidence: eligibility.evidence,
     };
   }

@@ -1,4 +1,5 @@
 import { helpArticlePath } from "@shared/help-article-slugs";
+import { hasPaymentOnRecord } from "@shared/payment-on-record";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -76,6 +77,7 @@ import {
   type BookingPlanRef,
   type PlanBookingGroup,
 } from "@/lib/bookings-by-plan";
+import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 
 interface VisaBookingMetadata {
   passportNationality?: string;
@@ -809,7 +811,12 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
     ? new Date(booking.bookingDetails.scheduledDate).getTime()
     : new Date(booking.confirmedAt ?? booking.createdAt).getTime();
   const confirmedAndDelivered = actionStatus === "confirmed" && Date.now() >= deliveryRefMs + 24 * 60 * 60 * 1000;
-  const canConfirmOrDispute = actionStatus === "completed" || confirmedAndDelivered;
+  // Ledger `2026-09-28-no-payment-no-earnings`: the paid predicate governs MONEY — a booking with no
+  // payment on record offers no Confirm or Dispute, since there is nothing to release or contest (the
+  // server refuses both on its own). It does NOT govern Cancel: a real unpaid request (an expert
+  // booking awaiting acceptance) must stay cancellable, so Cancel keys on status alone.
+  const paymentOnRecord = hasPaymentOnRecord(booking);
+  const canConfirmOrDispute = paymentOnRecord && (actionStatus === "completed" || confirmedAndDelivered);
   // The SAME list `POST /api/bookings/:id/cancel` accepts a booking in, and the SAME list its
   // §18b atomic conditional guards on — so this button can never be offered for a state the
   // server refuses (§18 rule 1).
@@ -1032,7 +1039,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 ) : (
                   <p className="text-xs text-muted-foreground" data-testid={`no-code-${booking.id}`}>
                     Confirmation code not yet available.{" "}
-                    <a href="mailto:support@traveloure.com" className="underline hover:text-foreground transition-colors">
+                    <a href={`mailto:${COMPANY_CONTACT_EMAIL}`} className="underline hover:text-foreground transition-colors">
                       Contact support
                     </a>{" "}
                     if you need help.

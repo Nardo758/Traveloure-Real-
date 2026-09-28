@@ -47,6 +47,7 @@ import { SHARE_FRAMES, SHARE_FRAME_LABEL, UNTAGGED_FRAME_LABEL, type ShareFrame 
 // Both aggregations below summed EVERY booking row regardless of status, so an unauthorized
 // §15b claim (nothing charged, no PaymentIntent) was reported as revenue.
 import { EARNING_BOOKING_STATUSES } from "@shared/booking-visibility";
+import { paymentOnRecordSql } from "../services/payment-on-record";
 
 const router = Router();
 
@@ -353,6 +354,9 @@ router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
           inArray(serviceBookings.acquisitionRef, codes),
           gte(serviceBookings.createdAt, since),
           inArray(serviceBookings.status, [...EARNING_BOOKING_STATUSES]),
+          // …AND a payment on record (ledger `2026-09-28-no-payment-no-earnings`): the SQL form of the
+          // ONE predicate the Money page and payout breakdown read. A status is not a payment.
+          paymentOnRecordSql(serviceBookings.bookingDetails),
         ),
       )
       .groupBy(serviceBookings.acquisitionRef);
@@ -479,6 +483,9 @@ router.get("/api/me/earnings-by-source", isAuthenticated, async (req: any, res) 
           // "Direct · 1 booking · $95.00" for a never-charged §15b claim, on the same page whose
           // ledger correctly read $0.00.
           inArray(serviceBookings.status, [...EARNING_BOOKING_STATUSES]),
+          // …AND a payment on record (ledger `2026-09-28-no-payment-no-earnings`): the SQL form of the
+          // ONE predicate the Money page and payout breakdown read. A status is not a payment.
+          paymentOnRecordSql(serviceBookings.bookingDetails),
         ),
       )
       .groupBy(sql`coalesce(${serviceBookings.source}, 'direct')`);

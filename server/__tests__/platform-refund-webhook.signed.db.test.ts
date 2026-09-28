@@ -52,9 +52,16 @@ test("signed platform charge.refunded reaches #1288 and blocks booking earnings"
       "INSERT INTO users (id,email,role) VALUES ($1,$2,'service_provider')",
       [providerId, `${providerId}@test.invalid`],
     );
+    // A PAID booking (charged PI, minted earning) carries the paid transition's stamp (ledger
+    // `2026-09-28-no-payment-no-earnings`).
     await pool.query(
-      "INSERT INTO service_bookings (id,total_amount,status,stripe_payment_intent_id,provider_id) VALUES ($1,100,'confirmed',$2,$3)",
-      [bookingId, paymentIntentId, providerId],
+      "INSERT INTO service_bookings (id,total_amount,status,stripe_payment_intent_id,provider_id,booking_details) VALUES ($1,100,'confirmed',$2,$3,$4::jsonb)",
+      [
+        bookingId,
+        paymentIntentId,
+        providerId,
+        JSON.stringify({ paidCharge: { status: "confirmed", amount: 100, at: "2026-01-01T00:00:00.000Z" } }),
+      ],
     );
     await pool.query(
       `INSERT INTO provider_earnings

@@ -131,3 +131,15 @@ export function cancellationTierSchedule(policy: CancellationPolicyType): string
 export const CANCELLATION_TIER_LABELS: Readonly<Record<CancellationPolicyType, string>> = Object.fromEntries(
   CANCELLATION_POLICY_TYPES.map((p) => [p, cancellationTierLabel(p)]),
 ) as Record<CancellationPolicyType, string>;
+
+/**
+ * The SHORT label a filter chip shows, e.g. "Strict (50% refund at least 7 days before)" — the
+ * tier's first window only, generated from the schedule like every other tier label (ledger
+ * `2026-09-27-cancel-filter-labels`). A filter must never name a refund the schedule does not pay.
+ */
+export function cancellationTierFilterLabel(policy: CancellationPolicyType): string {
+  const tier = CANCELLATION_SCHEDULE[policy];
+  if (tier.steps.length === 0) return `${tier.name} (no refund once booked)`;
+  const first = tier.steps[0];
+  return `${tier.name} (${percentPhrase(first.percent)} at least ${formatHoursBefore(first.minHoursBefore)} before)`;
+}

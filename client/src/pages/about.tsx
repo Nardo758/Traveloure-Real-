@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import { SEOHead } from "@/components/seo-head";
-import { CompanyPage, CompanySection } from "@/components/company/company-page";
+import { CompanyPage, CompanySection, PAGE_LINK, PAGE_ACTION } from "@/components/company/company-page";
 import {
   ABOUT_LAST_UPDATED,
   COMPANY_FOUNDED_YEAR,
@@ -80,10 +80,10 @@ export default function AboutPage() {
             Last updated: {ABOUT_LAST_UPDATED}. This page changes as markets open.
           </p>
           <div className="flex flex-wrap items-center gap-4 pt-2">
-            <Button onClick={() => openPlanning()} data-testid="button-start-planning">
+            <Button onClick={() => openPlanning()} className={PAGE_ACTION.primary} data-testid="button-start-planning">
               {START_PLAN_LABEL}
             </Button>
-            <Link href="/earn" className="text-sm underline underline-offset-2">Work with travelers in your city →</Link>
+            <Link href="/earn" className={`${PAGE_LINK} text-sm`}>Work with travelers in your city →</Link>
           </div>
         </CompanySection>
       </CompanyPage>

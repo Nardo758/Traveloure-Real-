@@ -71,7 +71,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
-import { navGroupsConfig, authNavConfig, footerSectionsConfig } from "@/lib/nav-config";
+import { navGroupsConfig, authNavConfig, footerSectionsConfig, activeNavGroupName } from "@/lib/nav-config";
 import { TripStrip } from "@/components/trip/trip-strip";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
@@ -322,10 +322,12 @@ function DesktopDropdown({
         ref={triggerRef}
         className={cn(
           "flex items-center text-[12.5px] font-medium tracking-[.05em] transition-colors px-3 py-2 rounded-md whitespace-nowrap",
-          CHROME_LINK_REST,
+          isActive ? CHROME_LINK_ACTIVE : CHROME_LINK_REST,
           FOCUS_RING
         )}
         style={{ fontFamily: CHROME_MONO }}
+        // The current page sits inside this group (activeNavGroupName).
+        aria-current={isActive ? "true" : undefined}
         type="button"
         aria-expanded={isOpen}
         aria-haspopup="true"
@@ -677,6 +679,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [isMobileMenuOpen]);
 
   const isActive = (path: string) => location === path;
+  // A dropdown page lights its parent group (footer-pages ruling): the ONE rule, nav-config.
+  const activeGroup = activeNavGroupName(location);
 
   // TEST 8 — Reduced motion props for Framer Motion
   const slideMotion = shouldReduceMotion
@@ -730,7 +734,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <DesktopDropdown
                     key={item.name}
                     item={item}
-                    isActive={item.href === location}
+                    isActive={item.href === location || activeGroup === item.name}
                     openMenu={openMenu}
                     setOpenMenu={setOpenMenu}
                   />

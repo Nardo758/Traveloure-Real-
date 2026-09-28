@@ -17,6 +17,7 @@ import {
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
 import { PageHeader, StatCard, StatusBadge, EmptyState } from "@/components/backoffice/primitives";
+import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 
 // Console IA C8 (§17 17→9 collapse): module renamed Earnings → Money — route moved to
 // /expert/money (/expert/earnings redirects); label/title only, no endpoint or queryKey change.
@@ -311,7 +312,7 @@ export default function ExpertEarnings() {
                           >
                             This request has been {payout.status} for more than {PAYOUT_CONTACT_DAYS} days.{" "}
                             <a
-                              href="mailto:support@traveloure.com"
+                              href={`mailto:${COMPANY_CONTACT_EMAIL}`}
                               className="underline font-medium"
                               data-testid={`link-payout-support-${payout.id}`}
                             >

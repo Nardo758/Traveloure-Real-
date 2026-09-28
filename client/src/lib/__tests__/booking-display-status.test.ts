@@ -36,7 +36,9 @@ test("A3 My Bookings gates every action on the SAME status the badge reads", () 
     "const status = getStatusDisplay(actionStatus);",
     'const canReview = actionStatus === "completed"',
     "const canCancel = isBookingCancellable(actionStatus);",
-    'const canConfirmOrDispute = actionStatus === "completed" || confirmedAndDelivered;',
+    // Confirm completion and Dispute also sit behind the one paid predicate (ledger
+    // `2026-09-28-no-payment-no-earnings`); the status half still reads actionStatus.
+    'const canConfirmOrDispute = paymentOnRecord && (actionStatus === "completed" || confirmedAndDelivered);',
     'const confirmedAndDelivered = actionStatus === "confirmed"',
     "booking={{ ...booking, status: actionStatus } as any}",
   ]) {
