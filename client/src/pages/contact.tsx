@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
+import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
+import { PageLayout, HEADING_STYLE, PAGE_ACTION, PAGE_LINK } from "@/components/company/company-page";
 
 /**
  * §13 (fabrication removal): this page previously listed THREE invented office
@@ -44,7 +46,6 @@ const contactReasons = [
   { id: "feedback", label: "Feedback" },
 ];
 
-const CONTACT_EMAIL = "hello@traveloure.com";
 
 export default function ContactPage() {
   const { toast } = useToast();
@@ -103,66 +104,56 @@ export default function ContactPage() {
   };
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <>
       <SEOHead 
         title="Contact Us"
         description="Get in touch with the Traveloure team. We're here to help with inquiries, support, partnerships, and feedback. Send us a message or email us directly."
         keywords={["contact traveloure", "customer support", "travel help", "partnership inquiry"]}
         url="/contact"
       />
-      {/* Hero Section */}
-      <section className="bg-gradient-to-br from-[#111827] to-[#1F2937] text-white py-16">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center"
-          >
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-white">Get in Touch</h1>
-            <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-              Have a question, feedback, or want to partner with us? We'd love to
-              hear from you. Our team is here to help.
-            </p>
-          </motion.div>
-        </div>
-      </section>
-
+      <PageLayout
+        width="content"
+        title="Get in Touch"
+        lead={
+          <>
+            Have a question, feedback, or want to partner with us? We'd love to
+            hear from you. Our team is here to help.
+          </>
+        }
+      >
       {/* Email us — the one contact fact we can stand behind */}
-      <section className="py-12 -mt-8">
-        <div className="container mx-auto px-4 max-w-6xl">
+      <section>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-md mx-auto"
+            className="max-w-md"
           >
-            <Card className="border-border hover:shadow-lg transition-shadow">
+            <Card className="border-border bg-card hover:shadow-lg transition-shadow">
               <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[color:var(--earn-coral-bg)] flex items-center justify-center">
                   <Mail className="w-6 h-6 text-primary" />
                 </div>
-                <h3 className="font-semibold text-foreground mb-1">Email Us</h3>
+                <h3 className="text-[18px] font-semibold mb-1" style={HEADING_STYLE}>Email Us</h3>
                 <a
-                  href={`mailto:${CONTACT_EMAIL}`}
-                  className="text-primary font-medium break-words hover:underline"
+                  href={`mailto:${COMPANY_CONTACT_EMAIL}`}
+                  className={`${PAGE_LINK} break-words`}
                   data-testid="link-contact-email"
                 >
-                  {CONTACT_EMAIL}
+                  {COMPANY_CONTACT_EMAIL}
                 </a>
               </CardContent>
             </Card>
           </motion.div>
-        </div>
       </section>
 
       {/* Contact Form & Info */}
-      <section className="py-12">
-        <div className="container mx-auto px-4 max-w-6xl">
+      <section>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Contact Form */}
             <div className="lg:col-span-2">
-              <Card className="border-border">
+              <Card className="border-border bg-card">
                 <CardHeader>
-                  <CardTitle className="text-2xl text-foreground">
+                  <CardTitle className="text-[26px] font-semibold" style={HEADING_STYLE}>
                     Send Us a Message
                   </CardTitle>
                 </CardHeader>
@@ -259,7 +250,7 @@ export default function ContactPage() {
                     <Button
                       type="submit"
                       disabled={isSubmitting || !formData.name || !formData.email || !formData.message}
-                      className="w-full h-12 bg-primary hover:bg-primary/90 text-white"
+                      className={`${PAGE_ACTION.primary} w-full h-12`}
                       data-testid="button-submit-contact"
                     >
                       {isSubmitting ? (
@@ -279,16 +270,16 @@ export default function ContactPage() {
             {/* Sidebar */}
             <div className="space-y-6">
               {/* Quick Links */}
-              <Card className="border-border">
+              <Card className="border-border bg-card">
                 <CardHeader>
-                  <CardTitle className="text-lg text-foreground">
+                  <CardTitle className="text-[18px] font-semibold" style={HEADING_STYLE}>
                     Quick Links
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <a
                     href="/help"
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-[color:var(--earn-chip)] transition-colors"
                     data-testid="link-faq"
                   >
                     <HelpCircle className="w-5 h-5 text-primary" />
@@ -301,7 +292,7 @@ export default function ContactPage() {
                   </a>
                   <a
                     href="/earn"
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-[color:var(--earn-chip)] transition-colors"
                     data-testid="link-partner"
                   >
                     <Users className="w-5 h-5 text-primary" />
@@ -316,7 +307,7 @@ export default function ContactPage() {
                   </a>
                   <a
                     href="/about"
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-[color:var(--earn-chip)] transition-colors"
                     data-testid="link-about"
                   >
                     <Briefcase className="w-5 h-5 text-primary" />
@@ -332,8 +323,8 @@ export default function ContactPage() {
 
             </div>
           </div>
-        </div>
       </section>
-    </div>
+      </PageLayout>
+    </>
   );
 }

@@ -1,5 +1,5 @@
 import { SEOHead } from "@/components/seo-head";
-import { CompanyPage, CompanySection } from "@/components/company/company-page";
+import { CompanyPage, CompanySection, PAGE_LINK } from "@/components/company/company-page";
 import {
   COMPANY_CONTACT_EMAIL,
   COMPANY_FOUNDED_YEAR,
@@ -58,7 +58,7 @@ export default function PressPage() {
 
         <CompanySection title="Press contact" testId="section-press-contact">
           <p>
-            <a href={`mailto:${COMPANY_CONTACT_EMAIL}`} className="underline underline-offset-2" data-testid="link-press-email">
+            <a href={`mailto:${COMPANY_CONTACT_EMAIL}`} className={PAGE_LINK} data-testid="link-press-email">
               {COMPANY_CONTACT_EMAIL}
             </a>
             . We reply within two business days.
@@ -69,7 +69,7 @@ export default function PressPage() {
           <ul className="space-y-1.5">
             {LOGO_ASSETS.map((a) => (
               <li key={a.href}>
-                <a href={a.href} download className="underline underline-offset-2">{a.label}</a>
+                <a href={a.href} download className={PAGE_LINK}>{a.label}</a>
               </li>
             ))}
           </ul>
@@ -80,7 +80,7 @@ export default function PressPage() {
             <ul className="space-y-1.5">
               {PRESS_COVERAGE.map((c) => (
                 <li key={c.url}>
-                  <a href={c.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                  <a href={c.url} target="_blank" rel="noopener noreferrer" className={PAGE_LINK}>
                     {c.outlet}: {c.title}
                   </a>{" "}
                   <span style={{ color: "var(--earn-muted)" }}>({c.date})</span>

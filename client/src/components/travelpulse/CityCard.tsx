@@ -117,7 +117,7 @@ export function CityCard(props: CityCardProps) {
       >
         <div
           className={`relative overflow-hidden rounded-[12px] ${props.compactPhotoSize === "large" ? "h-40 sm:h-44" : "h-24"}`}
-          style={imageUrl ? undefined : { background: "linear-gradient(135deg,#B9C8D8,#7C97B4)" }}
+          style={imageUrl ? undefined : { background: "var(--earn-chip)" }}
         >
           {imageUrl && (
             <img
@@ -150,6 +150,15 @@ export function CityCard(props: CityCardProps) {
   }
 
   const priceDown = typeof priceChangePct === "number" && priceChangePct < 0;
+  // No zero where the source has no value (footer-pages ruling, Sep 28, 2026): a stat renders only
+  // when it is a finite number greater than 0; otherwise the element is omitted — never "0", never
+  // a placeholder dash (§13).
+  const isPositive = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
+  const avgPriceNum = avgPrice != null && avgPrice !== "" ? Number(avgPrice) : NaN;
+  const showAvgPrice = isPositive(avgPriceNum);
+  const showScore = isPositive(score);
+  const showTrending = isPositive(trendingSpots);
+  const showGems = isPositive(hiddenGems);
   const countSegments = [
     eventsCount > 0 ? `🎆 ${eventsCount} ${eventsCount === 1 ? "event" : "events"}` : null,
     packagesCount > 0 ? `📔 ${packagesCount} ${packagesCount === 1 ? "trip" : "trips"}` : null,
@@ -218,7 +227,7 @@ export function CityCard(props: CityCardProps) {
         </div>
 
         {inTrip && (
-          <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded-md bg-[var(--earn-green)] text-[#14201b] text-[11px] font-bold flex items-center gap-1"><Check className="w-3 h-3" />In Trip</span>
+          <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded-md bg-[var(--earn-green)] text-[color:var(--earn-ink)] text-[11px] font-bold flex items-center gap-1"><Check className="w-3 h-3" />In Trip</span>
         )}
 
         <div className="absolute bottom-2 left-3 right-14 z-[1]">
@@ -246,12 +255,12 @@ export function CityCard(props: CityCardProps) {
           </div>
         )}
 
-        {variant === "pulse" && (avgPrice || crowdLevel) && (
+        {variant === "pulse" && (showAvgPrice || crowdLevel) && (
           <div className="flex items-center justify-between gap-2 mb-2.5">
-            {avgPrice && (
+            {showAvgPrice && (
               <span className="text-[15px] font-bold text-[var(--earn-navy)] tabular-nums flex items-center gap-1">
                 ${avgPrice}<span className="text-[11px] font-medium text-[var(--earn-muted)]">/night</span>
-                {typeof priceChangePct === "number" && priceChangePct !== 0 && (
+                {typeof priceChangePct === "number" && Number.isFinite(priceChangePct) && priceChangePct !== 0 && (
                   <span className={`text-[11px] font-semibold flex items-center ${priceDown ? "text-[var(--earn-green-ink)]" : "text-[var(--earn-coral-ink)]"}`}>
                     {priceDown ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}{Math.abs(priceChangePct)}%
                   </span>
@@ -270,11 +279,13 @@ export function CityCard(props: CityCardProps) {
 
         {/* stat footer */}
         {variant === "pulse" ? (
-          <div className="flex items-center justify-between text-[11px] text-[var(--earn-muted)] border-t border-[color:var(--earn-border)] pt-2.5 mt-auto tabular-nums">
-            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[var(--earn-green)]" />Pulse {score ?? "—"}</span>
-            <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{trendingSpots ?? 0} trending</span>
-            <span className="flex items-center gap-1"><Gem className="w-3 h-3 text-[var(--earn-teal)]" />{hiddenGems ?? 0} gems</span>
-          </div>
+          (showScore || showTrending || showGems) && (
+            <div className="flex items-center justify-between text-[11px] text-[var(--earn-muted)] border-t border-[color:var(--earn-border)] pt-2.5 mt-auto tabular-nums">
+              {showScore && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[var(--earn-green)]" />Pulse {score}</span>}
+              {showTrending && <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{trendingSpots} trending</span>}
+              {showGems && <span className="flex items-center gap-1"><Gem className="w-3 h-3 text-[var(--earn-teal)]" />{hiddenGems} gems</span>}
+            </div>
+          )
         ) : (
           countSegments.length > 0 && (
             <div className="flex items-center gap-3 text-[11px] text-[var(--earn-muted)] border-t border-[color:var(--earn-border)] pt-2.5 mt-auto">
