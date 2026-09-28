@@ -2117,15 +2117,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           );
         }
 
-        // Fire-and-forget: T6 funnel event
-        trackFunnelEvent({
-          userId,
-          tripId: tripId || undefined,
-          bookingId,
-          eventType: "revenue",
-          funnelStage: "T6",
-          eventData: { amount: totalAmount },
-        }).catch(() => {}); // fire-and-forget funnel event — never blocks booking confirmation
+        // NO T6 revenue event here: this is a booking REQUEST — nothing has been charged. Revenue is
+        // recorded by the paid transition itself (`promoteOneBooking` / `promoteBalancePayment`,
+        // ledger `2026-09-27-funnel-revenue-on-paid`). Do not re-add an emitter at request time.
 
         // Notify the expert/provider that a new booking request has arrived
         try {
@@ -9991,18 +9985,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         })
         .returning();
 
-      // Owner ruling 2026-09-06 (the sweep's F2 open question, ruled): a trip keeps its
-      // NEWEST 3 optimizer runs — creating the 4th AUTHORIZED run discards the oldest
-      // unapplied ones (the whole run tree cascades; APPLIED runs are protected provenance
-      // and don't consume the window). Fires only on an authorized run so free
-      // pending_payment rows can't evict paid runs; a stale pending_payment row sitting
-      // oldest is exactly the junk the ruling wants gone. Non-fatal (§15b posture): the new
+      // Retention (owner ruling 2026-09-06, AMENDED by ledger `2026-09-27-paid-runs-never-pruned`):
+      // a run that ran is NEVER pruned; only never-authorized `pending_payment` previews beyond the
+      // newest 3 are discarded. Fires only on an authorized run. Non-fatal (§15b posture): the new
       // run is already inserted and valid — a sweep failure must never turn it into a 500.
       if (tripId && canRunOptimizer) {
         try {
           const discarded = await enforceTripComparisonRetention(tripId);
           if (discarded.length > 0) {
-            console.log(`[comparison-retention] trip ${tripId}: discarded ${discarded.length} oldest run(s) beyond the 3-run window`);
+            console.log(`[comparison-retention] trip ${tripId}: discarded ${discarded.length} unpaid preview(s) beyond the 3-preview window`);
           }
         } catch (retentionErr) {
           console.error("[comparison-retention] sweep failed (non-fatal):", (retentionErr as any)?.message);
@@ -12344,7 +12335,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.get("/api/admin/funnel-stats", requireAdmin, async (req, res) => {
     try {
       const result = await db.execute(
-        sql`SELECT stage, COUNT(*)::int AS count FROM funnel_events WHERE created_at >= NOW() - INTERVAL '30 days' GROUP BY stage ORDER BY stage`
+        // Void rows (migration 326: revenue emitted before anything was paid) are kept on disk and
+        // never counted (ledger `2026-09-27-funnel-revenue-on-paid`).
+        sql`SELECT stage, COUNT(*)::int AS count FROM funnel_events
+            WHERE created_at >= NOW() - INTERVAL '30 days'
+              AND NOT COALESCE((properties->>'void')::boolean, false)
+            GROUP BY stage ORDER BY stage`
       );
       res.json({ windowDays: 30, stages: result.rows });
     } catch (err) {

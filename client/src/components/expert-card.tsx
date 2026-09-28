@@ -40,20 +40,22 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 // this card reads as one system with the rest of the marketplace-continuity
 // direction without importing the sandbox file (that file is a design
 // reference, not app code).
-const INK = "#111827";
-const MUTED = "#667085";
-const LINE = "#e4e7ec";
-const SURFACE = "#ffffff";
-const PINK = "#fb3b63";
-const PINK_SOFT = "#fff0f3";
-const GOLD = "#b54708";
+// Brand tokens only (footer-pages ruling, Sep 28, 2026): the card used to carry its own greys, a
+// second red and an amber, none of them the site's.
+const INK = "var(--earn-ink)";
+const MUTED = "var(--earn-muted)";
+const LINE = "var(--earn-border)";
+const SURFACE = "var(--earn-card)";
+const PINK = "var(--earn-coral-ink)";
+const PINK_SOFT = "var(--earn-coral-bg)";
+const GOLD = "var(--earn-gold-ink)";
 // Geist Mono for the earn family-card facts row + source row (SPEC §1: labels/numbers).
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 const ROLE_BADGE: Record<string, { label: string; bg: string; ink: string; Icon: React.ElementType }> = {
-  local_expert: { label: "Local Expert", bg: "#E1F5EE", ink: "#0F6E56", Icon: MapPin },
-  travel_expert: { label: "Trip Planner", bg: "#E6F1FB", ink: "#185FA5", Icon: Plane },
-  event_planner: { label: "Event Planner", bg: PINK_SOFT, ink: "#d92d55", Icon: PartyPopper },
+  local_expert: { label: "Local Expert", bg: "var(--earn-teal-wash)", ink: "var(--earn-teal-ink)", Icon: MapPin },
+  travel_expert: { label: "Trip Planner", bg: "var(--earn-chip)", ink: "var(--earn-navy)", Icon: Plane },
+  event_planner: { label: "Event Planner", bg: PINK_SOFT, ink: PINK, Icon: PartyPopper },
 };
 
 interface ExpertCardProps {
@@ -207,7 +209,7 @@ function ExpertAnchorCard({ expert, detailQuery }: { expert: ExpertCardProps["ex
           <Link href={`${earnerProfilePath(expert) ?? "/experts"}${detailQuery ?? ""}`}>
             <button
               className="inline-flex h-9 items-center rounded-md px-3.5 text-[12px] font-bold text-white"
-              style={{ background: "#E85D55", boxShadow: "0 4px 14px rgba(232,93,85,.35)" }}
+              style={{ background: "var(--earn-coral-ink)", boxShadow: "0 4px 14px rgba(232,93,85,.35)" }}
               data-testid="button-plan-with-expert"
             >
               {price !== null ? `Plan with ${firstName} · from $${price}` : `Plan with ${firstName}`}
@@ -242,9 +244,9 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Expert";
   const initials = `${expert.firstName?.[0] || "T"}${expert.lastName?.[0] || "E"}`;
 
-  const lowestPrice = expert.selectedServices?.length
-    ? Math.min(...expert.selectedServices.map(s => parseFloat(s.offering?.price || "0")))
-    : null;
+  // A listing with no price is no price: `expertLowestPrice` answers null, never 0, so the card
+  // never prints "from $0" (footer-pages ruling — omit the field where the source has no value).
+  const lowestPrice = expertLowestPrice(expert);
 
   const location = expert.expertForm?.city && expert.expertForm?.country
     ? `${expert.expertForm.city}, ${expert.expertForm.country}`
@@ -295,7 +297,7 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
             {expert.profileImageUrl ? (
               <img src={expert.profileImageUrl} alt={fullName} className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#fb3b63] to-[#d92d55] text-sm font-semibold text-white">
+              <div className="flex h-full w-full items-center justify-center bg-[color:var(--earn-coral-bg)] text-sm font-semibold text-[color:var(--earn-coral-ink)]">
                 {initials}
               </div>
             )}
@@ -326,7 +328,7 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
             >
               {fullName}
             </h3>
-            {verified && <CheckCircle className="h-3.5 w-3.5 shrink-0 fill-blue-500 text-blue-500" />}
+            {verified && <CheckCircle className="h-3.5 w-3.5 shrink-0 fill-[color:var(--earn-teal)] text-[color:var(--earn-teal)]" />}
           </div>
           {location && (
             <div className="flex items-center gap-1 text-[11px]" style={{ color: MUTED }}>
@@ -349,7 +351,7 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
           data-testid="button-favorite"
           aria-label="Save expert"
         >
-          <Heart className={cn("h-4 w-4 transition-colors", isFavorite ? "fill-[#fb3b63] text-[#fb3b63]" : "text-gray-400")} />
+          <Heart className={cn("h-4 w-4 transition-colors", isFavorite ? "fill-[color:var(--earn-coral-ink)] text-[color:var(--earn-coral-ink)]" : "text-[color:var(--earn-faint)]")} />
         </button>
       </div>
 
@@ -389,7 +391,7 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
             <span
               key={idx}
               className="rounded-[5px] px-1.5 py-0.5 text-[10px] font-medium"
-              style={{ background: "#f5f7fa", color: "#667085" }}
+              style={{ background: "var(--earn-chip)", color: MUTED }}
               data-testid={`badge-specialty-${idx}`}
             >
               {labelForExpertSpecialization(specialty, offeringLabels)}
@@ -406,7 +408,7 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
 
       {showNeighbourhoods && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1" data-testid="neighbourhood-chips" title="Neighbourhoods covered by this expert">
-          <Home className="h-3 w-3 shrink-0" style={{ color: "#0F6E56" }} />
+          <Home className="h-3 w-3 shrink-0" style={{ color: "var(--earn-teal-ink)" }} />
           {neighbourhoods.slice(0, 3).map((n, idx) => (
             <Badge
               key={idx}
@@ -422,7 +424,7 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
             </Badge>
           ))}
           {neighbourhoods.length > 3 && (
-            <span className="text-[10px] text-[#9CA3AF]">+{neighbourhoods.length - 3}</span>
+            <span className="text-[10px] text-[color:var(--earn-faint)]">+{neighbourhoods.length - 3}</span>
           )}
         </div>
       )}
@@ -484,14 +486,16 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
         style={{ borderColor: LINE }}
         data-testid="expert-facts"
       >
-        <div>
-          <div className="text-[13px] font-semibold leading-none" style={{ color: INK, fontFamily: EARN_MONO }} data-testid="fact-expert-price">
-            {lowestPrice !== null ? `$${lowestPrice}` : "—"}
+        {lowestPrice !== null && (
+          <div>
+            <div className="text-[13px] font-semibold leading-none" style={{ color: INK, fontFamily: EARN_MONO }} data-testid="fact-expert-price">
+              ${lowestPrice}
+            </div>
+            <div className="mt-1 text-[10px] uppercase tracking-wide leading-none" style={{ color: MUTED, fontFamily: EARN_MONO }}>
+              plan it for me
+            </div>
           </div>
-          <div className="mt-1 text-[10px] uppercase tracking-wide leading-none" style={{ color: MUTED, fontFamily: EARN_MONO }}>
-            plan it for me
-          </div>
-        </div>
+        )}
         <div>
           <div className="text-[13px] font-semibold leading-none" style={{ color: INK, fontFamily: EARN_MONO }} data-testid="fact-expert-rating">
             {expertRating !== null ? expertRating.toFixed(1) : "New"}
@@ -525,7 +529,7 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
           <Link
             href={`/s/${expert.handle}`}
             className="inline-flex items-center gap-1 hover:underline"
-            style={{ color: "#185FA5" }}
+            style={{ color: "var(--earn-navy)" }}
             data-testid={`source-storefront-${expert.id}`}
           >
             <Home className="h-3 w-3 shrink-0" /> @{expert.handle}
@@ -545,7 +549,7 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
       <div className="mt-auto flex items-center gap-2 pt-2.5" style={{ borderTop: `1px solid ${LINE}`, marginTop: "10px" }}>
         <button
           className="flex h-7 flex-1 items-center justify-center gap-1 rounded-md border text-[11px] font-semibold transition-colors hover:bg-black/[.03]"
-          style={{ borderColor: "#d0d5dd", color: "#344054" }}
+          style={{ borderColor: "var(--earn-navy)", color: "var(--earn-navy)" }}
           data-testid="button-message"
           onClick={() =>
             askExpert({

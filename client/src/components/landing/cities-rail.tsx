@@ -3,7 +3,7 @@
  * Visual of record: docs/design/landing-earn-mock.html "TRENDING: photo tiles".
  *
  * Ranked by the live trend resolver (GET /api/travelpulse/cities — already sorted, the 8
- * operating markets). Five tiles show at a time via `CityCard density="compact"` (the
+ * operating markets). Four tiles show at a time via `CityCard density="compact"` (the
  * shared card — Lane-3's filed compact gap, landed additively); the SHARED useRotation
  * hook advances the window every 8s (pause on hover/focus, frozen under
  * prefers-reduced-motion) so the hottest-first ordering rotates through all eight. The
@@ -28,7 +28,7 @@ interface PulseCity {
   imageUrl?: string | null;
 }
 
-const VISIBLE = 5;
+const VISIBLE = 4;
 
 export function CitiesRail() {
   const [, navigate] = useLocation();
@@ -82,18 +82,19 @@ export function CitiesRail() {
         ))}
       </div>
       <div
-        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5"
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onFocus={() => setHovered(true)}
         onBlur={() => setHovered(false)}
         data-testid="cities-rail"
       >
-        {windowed.map((c, i) => (
-          <div key={c.cityName} style={i === VISIBLE - 1 ? { opacity: 0.55 } : undefined}>
+        {windowed.map((c) => (
+          <div key={c.cityName}>
             <CityCard
               variant="pulse"
               density="compact"
+              compactPhotoSize="large"
               cityName={c.cityName}
               country={c.country}
               imageUrl={c.imageUrl ?? null}
