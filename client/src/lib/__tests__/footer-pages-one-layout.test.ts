@@ -133,3 +133,15 @@ test("F7 a dropdown page lights its parent header group", () => {
   const layout = read("client/src/components/layout.tsx");
   assert.match(layout, /isActive=\{item\.href === location \|\| activeGroup === item\.name\}/);
 });
+
+test("F8 every landing heading states its colour — none inherits the global text-gray-900 (#111827)", () => {
+  const dir = path.join(ROOT, "client/src/components/landing");
+  const unstyled: string[] = [];
+  for (const f of fs.readdirSync(dir).filter((n) => n.endsWith(".tsx"))) {
+    const src = fs.readFileSync(path.join(dir, f), "utf8");
+    const re = /<h[1-6]\b[^>]*>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src))) if (!/color\s*:/.test(m[0])) unstyled.push(`${f}: ${m[0].slice(0, 80)}`);
+  }
+  assert.deepEqual(unstyled, [], "a landing heading without its own colour inherits the base rule's #111827");
+});

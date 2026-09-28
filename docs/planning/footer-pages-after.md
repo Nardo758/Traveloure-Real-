@@ -64,7 +64,7 @@ Each row was captured 1.5 s after load, with `GET /api/pricing` held for 4 s.
 
 **Left as is, named:**
 - **Photo scrims.** `/destinations` city photos and `/pricing` occasion tiles keep a dark overlay, so white text stays readable on a photograph. They are the only gradients left on footer pages.
-- **Landing page.** `/` still carries #111827 ×4, because #1142 is changing `landing.tsx`.
+- **Landing page.** Fixed in a follow-up (R197): the four #111827 values were the "How it works" step titles, which inherited the global heading grey. They are now navy, like every other landing heading, and `/` paints no #111827 at either width ([section after](footer-pages-after/landing-how-it-works.desktop.jpg)).
 - **Pro price.** "$0 / month during beta" on `/pricing` is Pro's real beta price, not a missing value.
 - **Broken photo.** The Kyoto card on `/destinations` shows a broken image, because the seeded photo does not load locally. That is data, not layout.
 
