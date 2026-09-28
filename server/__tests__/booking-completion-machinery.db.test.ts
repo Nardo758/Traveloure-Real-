@@ -133,6 +133,12 @@ function api(path: string, cookie: string | undefined, method = "GET", body?: un
   });
 }
 
+/**
+ * The paid transition's stamp — these fixtures model PAID bookings, so they carry the payment on
+ * record the completion flip and the mint now require (ledger `2026-09-28-no-payment-no-earnings`).
+ */
+const PAID_CHARGE_STAMP = { paidCharge: { status: "confirmed", amount: 100, at: "2026-01-01T00:00:00.000Z" } };
+
 /** A confirmed booking on `serviceId`, with the money columns a completion needs. */
 async function makeBooking(opts: {
   serviceId: string;
@@ -158,7 +164,11 @@ async function makeBooking(opts: {
     VALUES (
       ${id}, ${opts.serviceId}, ${ids.traveler}, ${owner.id},
       ${opts.withTrip === false ? null : ids.trip},
-      ${JSON.stringify(opts.details ?? {})}::jsonb,
+      ${JSON.stringify({
+        // A provisional `payment_pending` claim has not been paid, so it carries no stamp.
+        ...((opts.status ?? "confirmed") === "payment_pending" ? {} : PAID_CHARGE_STAMP),
+        ...(opts.details ?? {}),
+      })}::jsonb,
       ${opts.status ?? "confirmed"},
       '100.00', '20.00', '80.00',
       ${confirmedAt}, ${opts.slotId ?? null},

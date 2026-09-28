@@ -103,6 +103,13 @@ async function assertDisposableDb(): Promise<void> {
 // ── Fixtures ─────────────────────────────────────────────────────────────────────────────────────
 
 /**
+ * The paid transition's stamp the spine writes when it authorizes a claim — stamped here beside the
+ * PaymentIntent, since the completion flip and the mint require it (ledger
+ * `2026-09-28-no-payment-no-earnings`).
+ */
+const PAID_DETAILS = { paidCharge: { status: "confirmed", amount: 100, at: "2026-01-01T00:00:00.000Z" } };
+
+/**
  * A bundle booking BORN THE WAY CHECKOUT BIRTHS IT: through `storage.createServiceBooking` with the
  * purchase-time snapshot the checkout route composes (`payments.routes.ts` — id, name and, since
  * D-33, `priceCents`). The claim is then authorized the way the spine authorizes it — a PaymentIntent
@@ -123,7 +130,8 @@ async function bornBundleBooking(opts: { snapshot?: unknown[]; status?: string }
     },
   } as any);
   await db.execute(sql`
-    UPDATE service_bookings SET stripe_payment_intent_id = ${`pi_${RUN}_${booking.id}`}, confirmed_at = NOW() - interval '10 days'
+    UPDATE service_bookings SET stripe_payment_intent_id = ${`pi_${RUN}_${booking.id}`}, confirmed_at = NOW() - interval '10 days',
+           booking_details = COALESCE(booking_details, '{}'::jsonb) || ${JSON.stringify(PAID_DETAILS)}::jsonb
     WHERE id = ${booking.id}
   `);
   createdBookingIds.push(booking.id);
@@ -134,6 +142,7 @@ async function bornBundleBooking(opts: { snapshot?: unknown[]; status?: string }
 async function legacyBundleBooking(completions: Record<string, string>): Promise<string> {
   const id = `bcs-${RUN}-legacy-${crypto.randomUUID().slice(0, 6)}`;
   const details = {
+    ...PAID_DETAILS,
     bundleComponents: COMPONENTS.map((c) => ({ id: c.id, serviceName: c.serviceName })),
     componentCompletions: completions,
   };

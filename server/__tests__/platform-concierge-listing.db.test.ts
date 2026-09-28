@@ -89,7 +89,11 @@ async function makeBooking(opts: {
   conciergeFeeExpertShare?: string;
 }): Promise<string> {
   const id = crypto.randomUUID();
-  const details: Record<string, unknown> = {};
+  // Every seeded row carries a PI, so it is PAID and carries the paid transition's stamp (ledger
+  // `2026-09-28-no-payment-no-earnings`).
+  const details: Record<string, unknown> = {
+    paidCharge: { status: "confirmed", amount: Number(opts.totalAmount), at: "2026-01-01T00:00:00.000Z" },
+  };
   if (opts.itineraryItemId) details.itineraryItemId = opts.itineraryItemId;
   if (opts.conciergeFeeExpertShare) {
     details.travelerCharge = { conciergeFee: "20.00", conciergeFeeExpertShare: opts.conciergeFeeExpertShare };

@@ -126,7 +126,9 @@ describe("D-5 — no surface promises milestone, staged, instalment or hourly bi
     for (const expected of [
       "pages/pricing.tsx",
       "components/landing/how-it-works.tsx",
-      "components/plancard/AssignExpertDialog.tsx",
+      // AssignExpertDialog.tsx had no importer and was deleted (ledger `2026-09-27-form-fields-admitted`);
+      // HireExpertDialog is the ONE plan-level picker (LD 42 D7) and carries the same rail marker.
+      "components/plancard/HireExpertDialog.tsx",
       "pages/travel-experts.tsx",
       "pages/my-events.tsx",
       "pages/expert/workspace.tsx",

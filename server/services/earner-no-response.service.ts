@@ -14,6 +14,10 @@
  *      counted. A pair already covered by case 1 is left to case 1 — one request, one notice.
  * A reply in chat since the request counts as a response.
  *
+ * NOT GATED ON PAYMENT (ledger `2026-09-28-no-payment-no-earnings`, decision-maker Sep 28, 2026): the
+ * paid predicate governs money, not whether a traveler is told the earner hasn't replied. A real
+ * request is `pending` and unpaid by design, so the notice keys on status as it always did.
+ *
  * EXACTLY ONCE: the notification's dedupe key (the notifications table's partial UNIQUE index) is
  * the marker; the email is sent only by the pass that inserted it (the ready-made announcer's
  * pattern). The email honours the traveler's own "Booking Request" email preference (#1230).

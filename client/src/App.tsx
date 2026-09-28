@@ -579,16 +579,16 @@ function Router() {
         <Layout><HelpPage /></Layout>
       </Route>
       <Route path="/privacy">
-        <PrivacyPolicyPage />
+        <Layout><PrivacyPolicyPage /></Layout>
       </Route>
       <Route path="/terms">
-        <TermsOfServicePage />
+        <Layout><TermsOfServicePage /></Layout>
       </Route>
       <Route path="/accept-terms">
         <AcceptTermsPage />
       </Route>
       <Route path="/experiences">
-        <ExperiencesPage />
+        <Layout><ExperiencesPage /></Layout>
       </Route>
       <Route path="/experiences/:slug">
         <ExperienceTemplatePage />

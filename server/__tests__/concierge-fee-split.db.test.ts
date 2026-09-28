@@ -49,6 +49,12 @@ async function insertBooking(opts: {
       : opts.conciergeFeeExpertShare === null
         ? { travelerCharge: { conciergeFee: "20.00" } } // present, but WITHOUT the share key
         : { travelerCharge: { conciergeFee: "20.00", conciergeFeeExpertShare: opts.conciergeFeeExpertShare } };
+  // Every seeded row carries a PI, so it is PAID and carries the paid transition's stamp (ledger
+  // `2026-09-28-no-payment-no-earnings`).
+  const paidDetails = {
+    paidCharge: { status: "confirmed", amount: Number(opts.totalAmount), at: "2026-01-01T00:00:00.000Z" },
+    ...(bookingDetails ?? {}),
+  };
   await db.execute(sql`
     INSERT INTO service_bookings
       (id, service_id, traveler_id, provider_id, status,
@@ -58,7 +64,7 @@ async function insertBooking(opts: {
       (${id}, ${serviceId}, ${travelerId}, ${providerId}, 'confirmed',
        ${opts.totalAmount}, ${opts.platformFee}, ${opts.providerEarnings},
        ${`pi_cfs_${RUN}_${id}`}, NOW() - interval '10 days',
-       ${bookingDetails ? JSON.stringify(bookingDetails) : null}::jsonb)
+       ${JSON.stringify(paidDetails)}::jsonb)
   `);
   bookingIds.push(id);
   return id;

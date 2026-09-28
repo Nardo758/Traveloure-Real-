@@ -36,6 +36,8 @@ import {
 import Stripe from 'stripe';
 import { getStripeSecretKey, getStripeWebhookSecret } from '../utils/stripe-key';
 import { processPlatformWebhookEvent, PLATFORM_EVENT_TYPES } from '../services/stripe-dispute.service';
+import { logger } from '../infrastructure/logger';
+import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from '@shared/payment-on-record';
 
 const router = Router();
 
@@ -842,10 +844,23 @@ router.post('/:id/dispute', isAuthenticated, async (req, res) => {
     // `completed_at` verbatim; no anchor at all (not completed, not declared) → no matured earning →
     // the window doesn't apply (dispute allowed; the STATE bound below still holds).
     const [bk] = await db
-      .select({ completedAt: serviceBookings.completedAt, completionDeclaredAt: serviceBookings.completionDeclaredAt })
+      .select({
+        completedAt: serviceBookings.completedAt,
+        completionDeclaredAt: serviceBookings.completionDeclaredAt,
+        bookingDetails: serviceBookings.bookingDetails,
+      })
       .from(serviceBookings)
       .where(eq(serviceBookings.id, bookingId));
     if (!bk) return res.status(404).json({ error: 'Booking not found' });
+    // NO PAYMENT, NO EARNINGS (ledger `2026-09-28-no-payment-no-earnings`): a booking nobody paid for
+    // has no money to dispute and no earning to hold — refused by the ONE predicate, before any write.
+    if (!hasPaymentOnRecord(bk)) {
+      logger.warn({ bookingId, reason: NO_PAYMENT_ON_RECORD }, '[dispute] no payment on record — refused');
+      return res.status(409).json({
+        error: NO_PAYMENT_ON_RECORD,
+        message: 'This booking has no payment on record, so there is nothing to dispute.',
+      });
+    }
     const anchor = disputeWindowAnchor(bk);
     if (anchor) {
       const windowDays = holdWindowDays('service_booking');

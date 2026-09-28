@@ -1,3 +1,4 @@
+import { hasPaymentOnRecord } from "@shared/payment-on-record";
 /**
  * Data Sanitization Layer
  * Protects sensitive user information from being exposed to experts and other roles
@@ -192,13 +193,18 @@ export function sanitizeBookingForExpert<T extends Record<string, any>>(
   const role = (requesterRole || 'user') as UserRole;
   const permissions = ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.user;
 
+  // Ledger `2026-09-28-no-payment-no-earnings`: the ONE payment-on-record predicate is answered on the
+  // RAW row, before the projection below cuts `booking_details` down to operational keys, and rides
+  // the payload as a boolean — so every earnings display reads the same answer and never the stamp.
+  const paymentOnRecord = hasPaymentOnRecord(booking as any);
+
   // Admins and EAs see everything
   if (permissions.canSeeFull) {
-    return booking;
+    return { ...booking, paymentOnRecord };
   }
 
   // For experts/providers: remove payment details but keep operational info
-  const sanitized = { ...booking };
+  const sanitized = { ...booking, paymentOnRecord };
 
   // Remove sensitive payment/billing info.
   // QA-1 fix: the real `service_bookings` payment-identity columns are camelCase

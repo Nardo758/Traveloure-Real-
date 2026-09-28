@@ -79,6 +79,7 @@ import {
   timerActorFor,
   timerOpensDeclaredWindow,
 } from "../services/booking-completion.service";
+import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
 import { bookingAutoCompleteScheduler, type PiVerifier } from "../services/booking-auto-complete.service";
 import { runArtifactAcceptancePass } from "../services/artifact-acceptance-timer.service";
 import { runCoordinationWindowPass } from "../services/coordination-completion.service";
@@ -161,8 +162,16 @@ async function passesPaymentGate(input: {
     bump("booking_not_found");
     return false;
   }
+  // NO PAYMENT, NO EARNINGS (ledger `2026-09-28-no-payment-no-earnings`): the ONE predicate first —
+  // a row with no paid stamp is refused by name, whatever its status says. The PaymentIntent check
+  // below stays as the LIVE verification of a stamped row.
+  if (!hasPaymentOnRecord(booking)) {
+    logger.warn({ bookingId, reason: NO_PAYMENT_ON_RECORD }, "[auto-complete] no payment on record — refused");
+    bump(NO_PAYMENT_ON_RECORD);
+    return false;
+  }
   if (!booking.stripePaymentIntentId) {
-    bump("no_payment_on_record");
+    bump("no_payment_intent");
     return false;
   }
   let paid = false;
@@ -261,6 +270,23 @@ export async function runBookingAutoCompletion(
       // nothing, so it needs no payment gate — the gate stays at the flip that mints (pass 1b),
       // exactly as brief §11 rule 6 requires.
       if (timerOpensDeclaredWindow(eligibility.rule)) {
+        // A declaration mints nothing, but it opens the window whose close DOES — so an unpaid row
+        // is refused here too, by the ONE predicate (ledger `2026-09-28-no-payment-no-earnings`).
+        // Before this, a `confirmed` row with no payment was declared and then refused at the close
+        // forever, sitting in `completion_declared` as though work had been paid for.
+        let declaring;
+        try {
+          declaring = await storage.getServiceBooking(bookingId);
+        } catch (err) {
+          logger.error({ err, bookingId }, "[auto-complete] booking reload failed — left untouched");
+          bump("eligibility_error");
+          continue;
+        }
+        if (!hasPaymentOnRecord(declaring)) {
+          logger.warn({ bookingId, reason: NO_PAYMENT_ON_RECORD }, "[auto-complete] no payment on record — not declared");
+          bump(NO_PAYMENT_ON_RECORD);
+          continue;
+        }
         try {
           const declared = await declareBookingCompletion({
             bookingId,

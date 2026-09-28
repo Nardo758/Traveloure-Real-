@@ -5,6 +5,11 @@ export default {
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
+      // The two page widths (footer-pages ruling (2)); read through the shared page layout.
+      maxWidth: {
+        content: "var(--page-content)",
+        reading: "var(--page-reading)",
+      },
       borderRadius: {
         lg: ".5625rem", /* 9px */
         md: ".375rem", /* 6px */
@@ -145,7 +150,7 @@ export default {
         'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.08)',
         'soft-lg': '0 10px 40px -4px rgba(0, 0, 0, 0.12)',
         'glow': '0 0 40px -10px rgba(14, 165, 233, 0.4)',
-        'glow-primary': '0 0 40px -10px rgba(255, 56, 92, 0.4)',
+        'glow-primary': '0 0 40px -10px rgba(232, 93, 85, 0.4)',
         'card': '0 2px 16px -2px rgba(0, 0, 0, 0.08)',
         'card-hover': '0 8px 32px -4px rgba(0, 0, 0, 0.15)',
       },

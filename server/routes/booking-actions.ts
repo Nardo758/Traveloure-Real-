@@ -48,7 +48,7 @@ import {
   getSharedTripByVariantToken,
   incrementSharedTripViews,
   upsertTripShareToken,
-  getCanonicalTripShareToken,
+  getCanonicalTripShare,
   getTripByShareToken,
   insertSharedTripView,
   getApprovedExperts,
@@ -597,20 +597,22 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
     expiresAt.setDate(expiresAt.getDate() + 90);
 
     await upsertTripShareToken(id, userId, shareToken, expiresAt);
-    const canonical = await getCanonicalTripShareToken(id);
+    const canonical = await getCanonicalTripShare(id);
 
-    // Fire-and-forget: T7 funnel event (viral share token created)
+    // Fire-and-forget: T7 funnel event (viral share link created). The share TOKEN is a live
+    // 90-day read grant on this plan and is NEVER written to funnel_events; the event records the
+    // non-secret `shared_trips.id` instead (ledger `2026-09-27-funnel-share-token-purged`).
     try {
       await trackFunnelEvent({
         userId,
         tripId: id,
         eventType: "viral_share",
         funnelStage: "T7",
-        refToken: shareToken,
+        eventData: canonical ? { sharedTripId: canonical.id } : undefined,
       });
     } catch (_) { /* fire-and-forget funnel event — never blocks the share response */ }
 
-    res.json({ success: true, shareToken: canonical });
+    res.json({ success: true, shareToken: canonical?.shareToken ?? null });
   } catch (error: any) {
     console.error('Trip share error:', error);
     res.status(500).json({ success: false, error: error.message });
