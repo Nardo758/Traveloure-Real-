@@ -6,11 +6,16 @@
  * Billboard (landing reorder, ledger `2026-09-28-landing-reorder`, item 5): the three tiles are
  * CURATED rows from shared/landing-billboard.ts — occasion, market, a repo photo, a headline and
  * three lines — never a live listing, expert name, price or avatar. Each photo is credited from
- * public/images/landing/ATTRIBUTION.json and a photo with no entry is not rendered. A tile says
- * "Representative photo · <market>" until a real expert who passes the byline gate
- * (GET /api/landing/billboard-experts) takes it, and only then shows their initial. "Start this
- * plan" opens a NEW plan with the tile's occasion and market pre-set. The live payload
- * (GET /api/landing/hero) now feeds only the ticker line and the Wanted strip.
+ * public/images/landing/ATTRIBUTION.json and a photo with no entry is not rendered. A curated tile
+ * says "Representative photo · <market>" and "Start this plan" opens a NEW plan with its occasion
+ * and market pre-set.
+ *
+ * Override (follow-up 4, ledger `2026-09-28-billboard-override-listing`): when a real expert passes
+ * the byline gate for a tile's market (GET /api/landing/billboard-experts, decided server-side), THAT
+ * tile renders the expert's live listing instead — title, own lines, price as the storefront card
+ * shows it, photo — with "Plan with @handle" and "View listing". Per market and per tile; a tile
+ * without a qualifying expert stays curated. The live payload (GET /api/landing/hero) feeds only
+ * the ticker line and the Wanted strip.
  *
  * "Where do you want to begin?" pills: the nav's BROWSE and FIND HELP sections (the same eight
  * destinations the removed entry tiles carried), read from nav-config, never retyped.
@@ -38,11 +43,13 @@ import {
   billboardLabel,
   resolveBillboardCredit,
   type BillboardCredit,
-  type BillboardExpert,
   type BillboardTile,
   type PhotoAttribution,
 } from "@shared/landing-billboard";
 import type { PlanningSource } from "@/contexts/PlanningContext";
+import type { BillboardOverride } from "@shared/landing-billboard-override";
+import { derivePreviewPrice } from "@/lib/catalog-preview-presentation";
+import { earnerProfilePath } from "@/lib/earner-address";
 // The ONE credit record for the repo's landing photos — never retyped into the tiles.
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
 
@@ -143,15 +150,70 @@ export function billboardPlanSource(tile: BillboardTile): PlanningSource | null 
   return { door: "billboard", experienceSlug: tile.occasionSlug, city: market.cityName, country: market.country };
 }
 
-function BillboardTileCard({
+/**
+ * "Plan with <handle>" on an overridden tile (follow-up 4, ledger
+ * `2026-09-28-billboard-override-listing`): a NEW plan with the tile's occasion and market pre-set,
+ * finished as "plan with a local" and returned to that expert (Locked Decision 42 D5/D15) — the
+ * slip is minted, then the traveler lands on the expert's storefront carrying `?tripId=`, where
+ * the one storefront request rail assigns the expert (Locked Decision 32(b), `ensureTripAdvisorRow`).
+ * The landing writes no advisor row itself: a door grants nothing. Door `billboard` (follow-up 1).
+ */
+export function billboardOverridePlanSource(tile: BillboardTile, override: BillboardOverride): PlanningSource | null {
+  const base = billboardPlanSource(tile);
+  if (!base) return null;
+  return { ...base, branch: "local", returnTo: { kind: "expert", handle: override.handle } };
+}
+
+function TilePhoto({ src, onFail }: { src: string; onFail: () => void }) {
+  return (
+    <img
+      key={src}
+      src={src}
+      alt=""
+      aria-hidden="true"
+      className="absolute inset-0 h-full w-full object-cover"
+      loading="eager"
+      onError={onFail}
+    />
+  );
+}
+
+function TileShade() {
+  return (
+    <div
+      className="absolute inset-0"
+      style={{ background: "linear-gradient(180deg,rgba(13,33,55,.15) 0%,rgba(13,33,55,.9) 100%)" }}
+      aria-hidden="true"
+    />
+  );
+}
+
+function TileCredit({ tileKey, credit }: { tileKey: string; credit: BillboardCredit }) {
+  return (
+    <a
+      href={credit.source}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="relative z-10 mt-2 text-[9.5px] opacity-75 hover:underline"
+      style={{ fontFamily: EARN_MONO }}
+      data-testid={`hero-billboard-credit-${tileKey}`}
+    >
+      Photo: {credit.creator} · {credit.site}
+    </a>
+  );
+}
+
+const TILE_FRAME = "relative flex flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white";
+const TILE_GROUND = { background: "linear-gradient(160deg,#7C6A63,#1E3A5F)" };
+
+/** A CURATED tile — placeholder copy and a credited repo photo; names no expert and no price. */
+function CuratedTileCard({
   tile,
   large,
-  expert,
   onStartPlan,
 }: {
   tile: BillboardTile & { credit: BillboardCredit };
   large: boolean;
-  expert: BillboardExpert | null;
   onStartPlan: (source: PlanningSource) => void;
 }) {
   const [photoFailed, setPhotoFailed] = useState(false);
@@ -159,42 +221,18 @@ function BillboardTileCard({
   if (!market) return null;
   return (
     <div
-      className={`relative flex flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`}
-      style={{ background: "linear-gradient(160deg,#7C6A63,#1E3A5F)" }}
+      className={`${TILE_FRAME} ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`}
+      style={TILE_GROUND}
       data-testid={`hero-billboard-${tile.key}`}
     >
-      {!photoFailed && (
-        <img
-          src={tile.imagePath}
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 h-full w-full object-cover"
-          loading="eager"
-          onError={() => setPhotoFailed(true)}
-        />
-      )}
-      <div
-        className="absolute inset-0"
-        style={{ background: "linear-gradient(180deg,rgba(13,33,55,.15) 0%,rgba(13,33,55,.9) 100%)" }}
-        aria-hidden="true"
-      />
+      {!photoFailed && <TilePhoto src={tile.imagePath} onFail={() => setPhotoFailed(true)} />}
+      <TileShade />
       <span
-        className="absolute left-2.5 top-2.5 z-10 flex items-center gap-1.5 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
+        className="absolute left-2.5 top-2.5 z-10 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
         style={{ fontFamily: EARN_MONO }}
         data-testid={`hero-billboard-label-${tile.key}`}
       >
-        {expert ? (
-          <Link
-            href={`/s/${expert.handle}`}
-            className="grid h-4 w-4 place-items-center rounded-full bg-white text-[9px] font-semibold"
-            style={{ color: "var(--earn-navy)" }}
-            aria-label={`Local expert @${expert.handle}`}
-            data-testid={`hero-billboard-expert-${tile.key}`}
-          >
-            {expert.initial}
-          </Link>
-        ) : null}
-        {expert ? `Local expert · ${market.cityName}` : billboardLabel(market.cityName)}
+        {billboardLabel(market.cityName)}
       </span>
       <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
         {tile.occasionLabel} · {market.cityName}
@@ -218,16 +256,105 @@ function BillboardTileCard({
       >
         Start this plan
       </button>
-      <a
-        href={tile.credit.source}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="relative z-10 mt-2 text-[9.5px] opacity-75 hover:underline"
+      <TileCredit tileKey={tile.key} credit={tile.credit} />
+    </div>
+  );
+}
+
+/**
+ * An OVERRIDDEN tile — a byline-gated expert's LIVE LISTING (follow-up 4). Every value is the
+ * listing's own: its title, its lines, and the price as the storefront card shows it
+ * (`derivePreviewPrice`, the storefront's own derivation — never typed here; hidden when the
+ * listing hides it). The listing's photo carries no third-party credit because it is the owner's
+ * own; with no listing photo, or when it fails to load, the tile keeps its market's repo photo and
+ * that photo's credit.
+ */
+function OverrideTileCard({
+  tile,
+  large,
+  override,
+  onStartPlan,
+}: {
+  tile: BillboardTile & { credit: BillboardCredit };
+  large: boolean;
+  override: BillboardOverride;
+  onStartPlan: (source: PlanningSource) => void;
+}) {
+  const [listingPhotoFailed, setListingPhotoFailed] = useState(false);
+  const [fallbackFailed, setFallbackFailed] = useState(false);
+  const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
+  if (!market) return null;
+  const { listing } = override;
+  const usesListingPhoto = !!listing.imageUrl && !listingPhotoFailed;
+  const price = derivePreviewPrice(listing);
+  const storefront = earnerProfilePath({ handle: override.handle });
+  return (
+    <div
+      className={`${TILE_FRAME} pt-10 ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`}
+      style={TILE_GROUND}
+      data-testid={`hero-billboard-${tile.key}`}
+      data-override="listing"
+    >
+      {usesListingPhoto ? (
+        <TilePhoto src={listing.imageUrl!} onFail={() => setListingPhotoFailed(true)} />
+      ) : (
+        !fallbackFailed && <TilePhoto src={tile.imagePath} onFail={() => setFallbackFailed(true)} />
+      )}
+      <TileShade />
+      <span
+        className="absolute left-2.5 top-2.5 z-10 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
         style={{ fontFamily: EARN_MONO }}
-        data-testid={`hero-billboard-credit-${tile.key}`}
+        data-testid={`hero-billboard-label-${tile.key}`}
       >
-        Photo: {tile.credit.creator} · {tile.credit.site}
-      </a>
+        {override.roleLabel} · @{override.handle}
+      </span>
+      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
+        {market.cityName}
+      </span>
+      <b
+        className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`}
+        style={{ fontFamily: FRAUNCES }}
+        data-testid={`hero-billboard-listing-title-${tile.key}`}
+      >
+        {listing.title}
+      </b>
+      {listing.lines.length > 0 && (
+        <ul className="relative z-10 mt-1.5 space-y-0.5 text-[12px] leading-snug opacity-90">
+          {listing.lines.map((line) => (
+            <li key={line} className="line-clamp-2">{line}</li>
+          ))}
+        </ul>
+      )}
+      {!price.hidden && (
+        <span className="relative z-10 mt-1.5 text-[13px] font-semibold" data-testid={`hero-billboard-price-${tile.key}`}>
+          {price.text}
+          {price.unit ? <span className="ml-1 text-[11px] font-normal opacity-80">{price.unit}</span> : null}
+        </span>
+      )}
+      <div className="relative z-10 mt-2.5 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => {
+            const source = billboardOverridePlanSource(tile, override);
+            if (source) onStartPlan(source);
+          }}
+          className="inline-flex min-h-[32px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white"
+          style={{ background: "var(--earn-coral-ink)" }}
+          data-testid={`hero-billboard-plan-with-${tile.key}`}
+        >
+          Plan with @{override.handle}
+        </button>
+        {storefront && (
+          <Link
+            href={storefront}
+            className="inline-flex min-h-[32px] items-center rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+            data-testid={`hero-billboard-view-listing-${tile.key}`}
+          >
+            View listing
+          </Link>
+        )}
+      </div>
+      {!usesListingPhoto && !fallbackFailed && <TileCredit tileKey={tile.key} credit={tile.credit} />}
     </div>
   );
 }
@@ -240,13 +367,13 @@ export function LandingHero({
   onStartPlan: (source: PlanningSource) => void;
 }) {
   const { data: hero } = useQuery<LandingHeroData>({ queryKey: ["/api/landing/hero"] });
-  const { data: override } = useQuery<{ experts: BillboardExpert[] }>({ queryKey: ["/api/landing/billboard-experts"] });
+  const { data: override } = useQuery<{ overrides: BillboardOverride[] }>({ queryKey: ["/api/landing/billboard-experts"] });
   return (
     <LandingHeroContent
       hero={hero ?? null}
       onPlanTrip={onPlanTrip}
       onStartPlan={onStartPlan}
-      experts={override?.experts ?? []}
+      overrides={override?.overrides ?? []}
     />
   );
 }
@@ -255,12 +382,12 @@ export function LandingHeroContent({
   hero,
   onPlanTrip,
   onStartPlan = () => {},
-  experts = [],
+  overrides = [],
 }: {
   hero: LandingHeroData | null;
   onPlanTrip: () => void;
   onStartPlan?: (source: PlanningSource) => void;
-  experts?: readonly BillboardExpert[];
+  overrides?: readonly BillboardOverride[];
 }) {
   const { t } = useTranslation("nav");
   const [, navigate] = useLocation();
@@ -417,13 +544,14 @@ export function LandingHeroContent({
 
           <div className="grid grid-cols-2 gap-2.5" data-testid="hero-bento">
             {tiles.map((tile, i) => (
-              <BillboardTileCard
-                key={tile.key}
-                tile={tile}
-                large={i === 0}
-                expert={experts.find((e) => e.marketKey === tile.marketKey) ?? null}
-                onStartPlan={onStartPlan}
-              />
+              (() => {
+                const taken = overrides.find((o) => o.tileKey === tile.key && o.marketKey === tile.marketKey);
+                return taken ? (
+                  <OverrideTileCard key={tile.key} tile={tile} large={i === 0} override={taken} onStartPlan={onStartPlan} />
+                ) : (
+                  <CuratedTileCard key={tile.key} tile={tile} large={i === 0} onStartPlan={onStartPlan} />
+                );
+              })()
             ))}
 
             {wanted && (

@@ -2,7 +2,8 @@
  * Landing hero — the curated billboard and the "Where do you want to begin?" pills (landing
  * reorder, ledger `2026-09-28-landing-reorder`, items 1 and 5).
  *
- * B1 the billboard's data file never reads `users` or `provider_services`, and never says "Demo".
+ * B1 CURATED CASE: the billboard's data file never reads `users` or `provider_services`, and never
+ *    says "Demo" (narrowed to the curated case by follow-up 4 — the override reads a live listing).
  * B2 every rendered tile carries a credit resolved from ATTRIBUTION.json; a photo with no entry is
  *    not rendered at all.
  * B3 a tile shows no expert name, price, "Plan with" or avatar — "Representative photo · <market>".
@@ -21,7 +22,8 @@ import path from "node:path";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
-import { LandingHeroContent, billboardPlanSource, heroBeginRows, resolveBillboardTiles } from "../landing/landing-hero";
+import { LandingHeroContent, billboardOverridePlanSource, billboardPlanSource, heroBeginRows, resolveBillboardTiles } from "../landing/landing-hero";
+import type { BillboardOverride } from "@shared/landing-billboard-override";
 import { BILLBOARD_TILES, type PhotoAttribution } from "@shared/landing-billboard";
 import type { LandingHeroPayload } from "@shared/landing-hero";
 
@@ -45,10 +47,10 @@ const PAYLOAD = {
   ],
 } satisfies LandingHeroPayload;
 
-function render(payload: LandingHeroPayload | null, experts: any[] = []): string {
+function render(payload: LandingHeroPayload | null, overrides: BillboardOverride[] = []): string {
   return renderToString(
     <Router ssrPath="/">
-      <LandingHeroContent hero={payload} onPlanTrip={() => {}} experts={experts} />
+      <LandingHeroContent hero={payload} onPlanTrip={() => {}} overrides={overrides} />
     </Router>,
   ).replace(/<!--.*?-->/g, "");
 }
@@ -93,22 +95,75 @@ describe("landing hero billboard", () => {
     assert.ok(!html.includes('data-testid="hero-billboard-expert-'), "no initial without a real expert");
   });
 
-  it("B4 the hero paints no billboard image from the live payload", () => {
+  it("B4 a curated tile paints no image from the live payload, and its code reads no listing", () => {
     const html = render(PAYLOAD);
     for (const url of ["/fixture/expert.jpg", "/fixture/gem.jpg", "/fixture/service.jpg"]) {
       assert.ok(!html.includes(url), `${url} must not be painted`);
     }
     const src = fs.readFileSync(path.join(ROOT, "client/src/components/landing/landing-hero.tsx"), "utf8");
-    assert.doesNotMatch(src, /anchorExpert|hero\?\.gem|hero\?\.service|\.imageUrl/, "no live billboard leg is read");
+    // The live hero payload's old billboard legs are never read, by either tile.
+    assert.doesNotMatch(src, /anchorExpert|hero\?\.gem|hero\?\.service/, "no live billboard leg is read");
+    // Narrowed to the curated case: the curated tile's own code names no listing, price or expert.
+    const start = src.indexOf("function CuratedTileCard(");
+    const end = src.indexOf(" * An OVERRIDDEN tile");
+    assert.ok(start > 0 && end > start, "the curated and override tiles are separate components");
+    assert.doesNotMatch(src.slice(start, end), /listing|price|handle|imageUrl|override/i, "a curated tile reads no listing data");
   });
 
-  it("B5 a byline-gated expert takes their market's tiles: the initial appears, linked by handle", () => {
-    const html = render(PAYLOAD, [{ marketKey: "kyoto", handle: "aiko", initial: "A" }]);
-    assert.ok(html.includes('href="/s/aiko"'));
-    assert.ok(html.includes("Local expert · Kyoto"));
-    assert.ok(!html.includes("Representative photo · Kyoto"));
+  const OVERRIDE: BillboardOverride = {
+    tileKey: "early-start",
+    marketKey: "kyoto",
+    handle: "aiko",
+    roleLabel: "Local expert",
+    listing: {
+      id: "svc-1",
+      title: "Dawn at Fushimi Inari with Aiko",
+      lines: ["Up the mountain before the tour buses, with tea after."],
+      price: "120",
+      priceType: "fixed",
+      pricingUnit: null,
+      showPrice: true,
+      imageUrl: "/fixture/listing.jpg",
+    },
+  };
+
+  it("B5 an override renders the expert's live listing on THAT tile; the rest stay curated", () => {
+    const html = render(PAYLOAD, [OVERRIDE]);
+    // Tiles render in order weekend-away, early-start, date-night: the early-start tile's markup is
+    // everything from its own wrapper to the next tile's.
+    const from = html.indexOf('data-testid="hero-billboard-early-start"');
+    const to = html.indexOf('data-testid="hero-billboard-date-night"');
+    assert.ok(from > 0 && to > from);
+    const tileHtml = html.slice(from, to);
+    assert.ok(tileHtml.includes('data-override="listing"'));
+    assert.ok(tileHtml.includes("Local expert · @aiko"));
+    assert.ok(tileHtml.includes("Dawn at Fushimi Inari with Aiko"));
+    assert.ok(tileHtml.includes("Up the mountain before the tour buses, with tea after."));
+    assert.ok(tileHtml.includes("$120"), "the price as the storefront card renders it");
+    assert.ok(tileHtml.includes("Plan with @aiko"));
+    assert.ok(tileHtml.includes('href="/s/aiko"'), "View listing goes to the storefront");
+    assert.ok(tileHtml.includes("/fixture/listing.jpg"), "the listing's own photo");
+    assert.ok(!tileHtml.includes("Photo: "), "the owner's own photo carries no third-party credit");
+    assert.ok(!tileHtml.includes("Demo"));
+    // Per tile: the other Kyoto tiles are still curated and still credited.
+    assert.ok(html.includes('data-testid="hero-billboard-weekend-away"'));
+    assert.equal((html.match(/Representative photo · Kyoto/g) ?? []).length, 2);
+    // No listing photo ⇒ the tile keeps its repo photo AND that photo's credit.
+    const noPhoto = render(PAYLOAD, [{ ...OVERRIDE, listing: { ...OVERRIDE.listing, imageUrl: null } }]);
+    assert.ok(noPhoto.includes('data-testid="hero-billboard-credit-early-start"'));
+    // A listing that hides its price shows none.
+    const hidden = render(PAYLOAD, [{ ...OVERRIDE, listing: { ...OVERRIDE.listing, showPrice: false } }]);
+    assert.ok(!hidden.includes('data-testid="hero-billboard-price-early-start"'));
   });
 });
+
+const OVERRIDE_FOR_SOURCE: BillboardOverride = {
+  tileKey: "early-start",
+  marketKey: "kyoto",
+  handle: "aiko",
+  roleLabel: "Local expert",
+  listing: { id: "x", title: "T", lines: [], price: null, priceType: null, pricingUnit: null, showPrice: true, imageUrl: null },
+};
 
 describe("billboard doors", () => {
   it("B6 each tile's Start this plan opens a NEW plan with its occasion and market pre-set", () => {
@@ -121,6 +176,17 @@ describe("billboard doors", () => {
       assert.equal(source!.country, "Japan");
       assert.equal(source!.tripId, undefined, "a new plan, never an existing one");
     }
+  });
+
+  it("B6b Plan with @handle opens a new plan, finished with that expert, as door billboard", () => {
+    const tile = BILLBOARD_TILES.find((t) => t.key === "early-start")!;
+    const source = billboardOverridePlanSource(tile, OVERRIDE_FOR_SOURCE)!;
+    assert.equal(source.door, "billboard");
+    assert.equal(source.experienceSlug, tile.occasionSlug);
+    assert.equal(source.city, "Kyoto");
+    assert.equal(source.branch, "local", "finished as plan-with-a-local, which mints the slip first");
+    assert.deepEqual(source.returnTo, { kind: "expert", handle: "aiko" }, "returned to that expert by handle");
+    assert.equal(source.tripId, undefined, "a new plan");
   });
 
   it("B7 every occasion a landing door pre-sets is a seeded slug (billboard tiles and Plan around it's show)", () => {
