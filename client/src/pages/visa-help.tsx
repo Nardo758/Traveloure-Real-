@@ -35,6 +35,7 @@ import {
 import { SEOHead } from "@/components/seo-head";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { PageLayout, SectionTitle, HEADING_STYLE, PAGE_ACTION, PAGE_LINK } from "@/components/company/company-page";
 
 const COUNTRIES = [
   "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Argentina", "Armenia", "Australia",
@@ -259,32 +260,32 @@ export default function VisaHelpPage() {
               initial={{ opacity: 0, scale: 0.95, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 16 }}
-              className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+              className="bg-card rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
             >
-              <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center justify-between p-5 border-b">
                 <div>
-                  <h2 className="font-bold text-lg text-gray-900 dark:text-white">Book Visa Assistance</h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{bookingService.serviceName}</p>
+                  <h2 className="text-[18px] font-semibold" style={HEADING_STYLE}>Book Visa Assistance</h2>
+                  <p className="text-sm text-muted-foreground">{bookingService.serviceName}</p>
                 </div>
                 <button
                   onClick={() => setBookingService(null)}
-                  className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  className="p-1.5 rounded-full hover:bg-[color:var(--earn-chip)] transition-colors"
                   data-testid="button-close-visa-modal"
                 >
-                  <X className="w-5 h-5 text-gray-500" />
+                  <X className="w-5 h-5 text-muted-foreground" />
                 </button>
               </div>
 
               {bookingSuccess ? (
                 <div className="p-8 text-center space-y-3">
-                  <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto">
-                    <CheckCircle className="w-8 h-8 text-green-600" />
+                  <div className="w-14 h-14 rounded-full bg-[color:var(--earn-coral-bg)] flex items-center justify-center mx-auto">
+                    <CheckCircle className="w-8 h-8 text-primary" />
                   </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white text-lg">Added to checkout</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <h3 className="text-[18px] font-semibold" style={HEADING_STYLE}>Added to checkout</h3>
+                  <p className="text-sm text-muted-foreground">
                     Your details are attached. Pay at checkout to send the request to the expert.
                   </p>
-                  <Button className="mt-2 bg-primary hover:bg-primary/90 text-white" onClick={() => setBookingService(null)}>
+                  <Button className={`${PAGE_ACTION.primary} mt-2`} onClick={() => setBookingService(null)}>
                     Done
                   </Button>
                 </div>
@@ -292,7 +293,7 @@ export default function VisaHelpPage() {
                 <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Your Passport (Nationality)</label>
+                      <label className="text-sm font-medium text-foreground">Your Passport (Nationality)</label>
                       <Select value={intakePassport} onValueChange={setIntakePassport}>
                         <SelectTrigger data-testid="select-intake-passport">
                           <SelectValue placeholder="Select country…" />
@@ -303,7 +304,7 @@ export default function VisaHelpPage() {
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Destination Country</label>
+                      <label className="text-sm font-medium text-foreground">Destination Country</label>
                       <Select value={intakeDestination} onValueChange={setIntakeDestination}>
                         <SelectTrigger data-testid="select-intake-destination">
                           <SelectValue placeholder="Select country…" />
@@ -314,7 +315,7 @@ export default function VisaHelpPage() {
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Travel Start Date</label>
+                      <label className="text-sm font-medium text-foreground">Travel Start Date</label>
                       <input
                         type="date"
                         value={intakeStartDate}
@@ -324,7 +325,7 @@ export default function VisaHelpPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Travel End Date</label>
+                      <label className="text-sm font-medium text-foreground">Travel End Date</label>
                       <input
                         type="date"
                         value={intakeEndDate}
@@ -335,7 +336,7 @@ export default function VisaHelpPage() {
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Visa Type</label>
+                    <label className="text-sm font-medium text-foreground">Visa Type</label>
                     <Select value={intakeVisaType} onValueChange={setIntakeVisaType}>
                       <SelectTrigger data-testid="select-intake-visa-type">
                         <SelectValue placeholder="Select type…" />
@@ -346,7 +347,7 @@ export default function VisaHelpPage() {
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Special Circumstances <span className="text-gray-400 font-normal">(optional)</span></label>
+                    <label className="text-sm font-medium text-foreground">Special Circumstances <span className="text-muted-foreground font-normal">(optional)</span></label>
                     <Textarea
                       value={intakeCircumstances}
                       onChange={(e) => setIntakeCircumstances(e.target.value)}
@@ -358,14 +359,14 @@ export default function VisaHelpPage() {
                   <div className="flex gap-3 pt-2">
                     <Button
                       variant="outline"
-                      className="flex-1"
+                      className={`${PAGE_ACTION.secondary} flex-1`}
                       onClick={() => setBookingService(null)}
                       data-testid="button-cancel-visa-booking"
                     >
                       Cancel
                     </Button>
                     <Button
-                      className="flex-1 bg-primary hover:bg-primary/90 text-white"
+                      className={`${PAGE_ACTION.primary} flex-1`}
                       onClick={handleSubmitBooking}
                       disabled={!intakePassport || !intakeDestination || !intakeStartDate || bookingMutation.isPending}
                       data-testid="button-submit-visa-booking"
@@ -384,28 +385,17 @@ export default function VisaHelpPage() {
         )}
       </AnimatePresence>
 
-      {/* Hero */}
-      <div className="bg-gradient-to-br from-[#FF385C]/10 via-orange-50 to-blue-50 dark:from-[#FF385C]/20 dark:via-gray-900 dark:to-gray-900 py-16 px-4">
-        <div className="max-w-3xl mx-auto text-center space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium">
-            <Shield className="w-4 h-4" />
-            AI-Powered Visa Requirements
-          </div>
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
-            Visa Help &amp; Expert Guidance
-          </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-300">
-            Instantly look up visa requirements for any country, then connect with a certified visa expert for hands-on help.
-          </p>
-        </div>
-      </div>
-
-      <div className="max-w-5xl mx-auto px-4 py-12 space-y-12">
+      <PageLayout
+        width="content"
+        eyebrow="AI-Powered Visa Requirements"
+        title="Visa Help & Expert Guidance"
+        lead="Instantly look up visa requirements for any country, then connect with a certified visa expert for hands-on help."
+      >
 
         {/* Lookup Form */}
-        <Card className="shadow-lg border-0">
+        <Card className="bg-card">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
+            <CardTitle className="flex items-center gap-2 text-[18px] font-semibold" style={HEADING_STYLE}>
               <Globe className="w-5 h-5 text-primary" />
               Visa Requirements Lookup
             </CardTitle>
@@ -413,7 +403,7 @@ export default function VisaHelpPage() {
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <label className="text-sm font-medium text-foreground">
                   Your Passport (Nationality)
                 </label>
                 <Select value={passportCountry} onValueChange={setPassportCountry}>
@@ -429,7 +419,7 @@ export default function VisaHelpPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                <label className="text-sm font-medium text-foreground">
                   Destination Country
                 </label>
                 <Select value={destinationCountry} onValueChange={setDestinationCountry}>
@@ -448,7 +438,7 @@ export default function VisaHelpPage() {
             <Button
               onClick={handleLookup}
               disabled={!passportCountry || !destinationCountry || requirementsMutation.isPending}
-              className="w-full bg-primary hover:bg-primary/90 text-white"
+              className={`${PAGE_ACTION.primary} w-full`}
               data-testid="button-lookup-visa"
             >
               {requirementsMutation.isPending ? (
@@ -465,7 +455,7 @@ export default function VisaHelpPage() {
             </Button>
 
             {requirementsMutation.isError && (
-              <p className="text-sm text-red-500 text-center">
+              <p className="text-sm text-destructive text-center">
                 Failed to fetch requirements. Please try again.
               </p>
             )}
@@ -482,29 +472,29 @@ export default function VisaHelpPage() {
             {/* Visa Required Badge */}
             <div className="flex flex-wrap items-center gap-3">
               {result.visaRequired ? (
-                <Badge className="flex items-center gap-1.5 px-4 py-2 text-base bg-red-100 text-red-700 border-red-200 hover:bg-red-100">
+                <Badge className="flex items-center gap-1.5 px-4 py-2 text-base bg-[color:var(--earn-coral-bg)] text-[color:var(--earn-coral-ink)] border-[color:var(--earn-coral-bg)] hover:bg-[color:var(--earn-coral-bg)]">
                   <XCircle className="w-4 h-4" />
                   Visa Required
                 </Badge>
               ) : (
-                <Badge className="flex items-center gap-1.5 px-4 py-2 text-base bg-green-100 text-green-700 border-green-200 hover:bg-green-100">
+                <Badge className="flex items-center gap-1.5 px-4 py-2 text-base bg-[color:var(--earn-chip)] text-[color:var(--earn-teal)] border-[color:var(--earn-border)] hover:bg-[color:var(--earn-chip)]">
                   <CheckCircle className="w-4 h-4" />
                   No Visa Required
                 </Badge>
               )}
-              <span className="text-sm text-gray-500 dark:text-gray-400">
+              <span className="text-sm text-muted-foreground">
                 {passportCountry} passport → {destinationCountry}
               </span>
               {result.cachedAt && (
                 <div className="flex items-center gap-2 ml-auto">
-                  <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500" data-testid="text-visa-cached-at">
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="text-visa-cached-at">
                     <Clock className="w-3 h-3" />
                     Last checked {formatCachedAt(result.cachedAt)}
                   </span>
                   <button
                     onClick={handleForceRefresh}
                     disabled={requirementsMutation.isPending}
-                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 disabled:opacity-50 transition-colors"
+                    className={`${PAGE_LINK} flex items-center gap-1 text-xs disabled:opacity-50 transition-colors`}
                     title="Force refresh from AI"
                     data-testid="button-visa-refresh"
                   >
@@ -528,8 +518,8 @@ export default function VisaHelpPage() {
                   <CardContent>
                     <ul className="space-y-2">
                       {(result.visaTypes as string[]).map((type, i) => (
-                        <li key={i} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                        <li key={i} className="flex items-center gap-2 text-sm text-foreground">
+                          <CheckCircle className="w-4 h-4 text-primary flex-shrink-0" />
                           {type}
                         </li>
                       ))}
@@ -549,19 +539,19 @@ export default function VisaHelpPage() {
                 <CardContent className="space-y-3">
                   {result.processingTime && (
                     <div className="flex items-start gap-2">
-                      <Clock className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <Clock className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                       <div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Processing Time</p>
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{result.processingTime}</p>
+                        <p className="text-xs text-muted-foreground">Processing Time</p>
+                        <p className="text-sm font-medium text-foreground">{result.processingTime}</p>
                       </div>
                     </div>
                   )}
                   {result.feeRange && (
                     <div className="flex items-start gap-2">
-                      <DollarSign className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <DollarSign className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                       <div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Fee Range</p>
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{result.feeRange}</p>
+                        <p className="text-xs text-muted-foreground">Fee Range</p>
+                        <p className="text-sm font-medium text-foreground">{result.feeRange}</p>
                       </div>
                     </div>
                   )}
@@ -581,7 +571,7 @@ export default function VisaHelpPage() {
                 <CardContent>
                   <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {(result.requiredDocuments as string[]).map((doc, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <li key={i} className="flex items-start gap-2 text-sm text-foreground">
                         <CheckCircle className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
                         {doc}
                       </li>
@@ -593,18 +583,18 @@ export default function VisaHelpPage() {
 
             {/* Disclaimer */}
             {result.disclaimer && (
-              <div className="flex items-start gap-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4">
-                <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-amber-800 dark:text-amber-300">{result.disclaimer}</p>
+              <div className="flex items-start gap-3 rounded-xl bg-[color:var(--earn-chip)] border p-4">
+                <AlertTriangle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-foreground">{result.disclaimer}</p>
               </div>
             )}
 
             {/* iVisa CTA */}
-            <Card className="bg-gradient-to-r from-blue-600 to-blue-700 text-white border-0">
+            <Card className="bg-card">
               <CardContent className="py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div>
-                  <p className="font-semibold text-lg">Ready to apply?</p>
-                  <p className="text-blue-100 text-sm">Start your {destinationCountry} visa application with our partner iVisa</p>
+                  <p className="text-[18px] font-semibold" style={HEADING_STYLE}>Ready to apply?</p>
+                  <p className="text-muted-foreground text-sm">Start your {destinationCountry} visa application with our partner iVisa</p>
                 </div>
                 <a
                   href={iVisakUrl}
@@ -613,7 +603,7 @@ export default function VisaHelpPage() {
                   data-testid="button-ivisa-apply"
                   onClick={() => trackIVisaClick(destinationCountry)}
                 >
-                  <Button className="bg-white text-blue-700 hover:bg-blue-50 font-semibold whitespace-nowrap">
+                  <Button className={`${PAGE_ACTION.primary} whitespace-nowrap`}>
                     Apply Now on iVisa
                     <ExternalLink className="w-4 h-4 ml-2" />
                   </Button>
@@ -626,8 +616,8 @@ export default function VisaHelpPage() {
         {/* Visa Experts Grid */}
         <div className="space-y-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Visa Assistance Experts</h2>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
+            <SectionTitle>Visa Assistance Experts</SectionTitle>
+            <p className="text-muted-foreground mt-1">
               Connect with a certified expert who can handle your entire visa process.
             </p>
           </div>
@@ -645,14 +635,14 @@ export default function VisaHelpPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
-              <Globe className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 dark:text-gray-400 font-medium">No visa experts listed yet</p>
-              <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+            <div className="text-center py-12 bg-card rounded-2xl border border-dashed">
+              <Globe className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+              <p className="text-muted-foreground font-medium">No visa experts listed yet</p>
+              <p className="text-sm text-muted-foreground mt-1">
                 Check back soon — we're onboarding certified visa specialists.
               </p>
               <Link href="/services?category=visa-assistance">
-                <Button variant="outline" className="mt-4" data-testid="button-browse-experts">
+                <Button variant="outline" className={`${PAGE_ACTION.secondary} mt-4`} data-testid="button-browse-experts">
                   Browse All Services
                 </Button>
               </Link>
@@ -662,7 +652,7 @@ export default function VisaHelpPage() {
 
         {/* How it works */}
         <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">How Visa Assistance Works</h2>
+          <SectionTitle>How Visa Assistance Works</SectionTitle>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { step: "1", title: "Look up requirements", desc: "Enter your passport and destination above. Our AI surfaces all requirements in seconds.", icon: Globe },
@@ -670,18 +660,18 @@ export default function VisaHelpPage() {
               { step: "3", title: "Travel confidently", desc: "Your expert keeps you updated until your visa is approved and you're ready to go.", icon: CheckCircle },
             ].map(({ step, title, desc, icon: Icon }) => (
               <div key={step} className="flex gap-4">
-                <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold flex-shrink-0">
+                <div className="w-10 h-10 rounded-full bg-[color:var(--earn-coral-bg)] text-primary flex items-center justify-center font-bold flex-shrink-0">
                   {step}
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{title}</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">{desc}</p>
+                  <h3 className="text-[18px] font-semibold mb-1" style={HEADING_STYLE}>{title}</h3>
+                  <p className="text-sm text-muted-foreground">{desc}</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      </PageLayout>
     </>
   );
 }
@@ -700,46 +690,46 @@ function VisaExpertCard({ service, onBook }: { service: Service; onBook: (servic
             {avatar ? (
               <img src={avatar} alt={name} className="w-12 h-12 rounded-full object-cover border-2 border-primary/20" />
             ) : (
-              <div className="w-12 h-12 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center text-primary font-bold text-lg">
+              <div className="w-12 h-12 rounded-full bg-[color:var(--earn-coral-bg)] border-2 border-primary/20 flex items-center justify-center text-primary font-bold text-lg">
                 {name.charAt(0).toUpperCase()}
               </div>
             )}
             <div>
-              <p className="font-semibold text-gray-900 dark:text-white text-sm">{name}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+              <p className="font-semibold text-foreground text-sm">{name}</p>
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <MapPin className="w-3 h-3" />
                 {service.location || "Remote"}
               </p>
             </div>
           </div>
 
-          <p className="font-medium text-gray-800 dark:text-gray-200 text-sm leading-snug">
+          <p className="font-medium text-foreground text-sm leading-snug">
             {service.serviceName}
           </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+          <p className="text-xs text-muted-foreground line-clamp-2">
             {service.shortDescription || service.description}
           </p>
 
           <div className="flex items-center gap-3 text-xs">
             {rating > 0 && (
-              <span className="flex items-center gap-1 text-amber-500 font-medium">
-                <Star className="w-3.5 h-3.5 fill-amber-500" />
+              <span className="flex items-center gap-1 text-[color:var(--earn-coral-ink)] font-medium">
+                <Star className="w-3.5 h-3.5 fill-current" />
                 {rating.toFixed(1)}
-                <span className="text-gray-400">({service.reviewCount})</span>
+                <span className="text-muted-foreground">({service.reviewCount})</span>
               </span>
             )}
-            <span className="text-gray-500 dark:text-gray-400">{service.deliveryMethod || "Remote"}</span>
+            <span className="text-muted-foreground">{service.deliveryMethod || "Remote"}</span>
           </div>
         </div>
 
         <div className="px-5 pb-5 flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs text-gray-400">Starting from</p>
-            <p className="font-bold text-gray-900 dark:text-white">${price.toFixed(0)}</p>
+            <p className="text-xs text-muted-foreground">Starting from</p>
+            <p className="font-bold text-foreground">${price.toFixed(0)}</p>
           </div>
           <Button
             size="sm"
-            className="bg-primary hover:bg-primary/90 text-white"
+            className={PAGE_ACTION.primary}
             onClick={() => onBook(service)}
             data-testid={`button-book-visa-${service.id}`}
           >

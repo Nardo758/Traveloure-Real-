@@ -44,8 +44,15 @@ import { expertFacetValues, expertSearchMatches } from "@/lib/expert-search";
 // One-source nav-icon map (ruling 2026-08-25-nav-icons) — the masthead tile reads it
 // rather than restating the role→glyph mapping; keyed by the nav leaf `name`.
 import { NAV_LEAF_ICONS } from "@/components/layout";
-
-const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+import {
+  EARN_MONO,
+  HEADING_STYLE,
+  PAGE_ACTION,
+  PAGE_LINK,
+  PageTitle,
+  SectionTitle,
+  pageContainerClass,
+} from "@/components/company/company-page";
 
 // Role → the nav leaf name whose earn glyph the masthead tile shows
 // (Local Experts→Lamp · Trip Planners→Waypoints · Event Planners→Wine).
@@ -409,7 +416,7 @@ export default function ExpertsPage() {
           live count badges; they preserve query params via buildRoleHref. Same band idiom as
           /discover's Marketplace band (discover.tsx). */}
       <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-[26px]">
-        <div className="container mx-auto px-4 max-w-6xl">
+        <div className={pageContainerClass("content")}>
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -423,16 +430,13 @@ export default function ExpertsPage() {
                 })()}
               </span>
               <div>
-                <h1
-                  className="text-2xl md:text-[26px] font-semibold text-[color:var(--earn-navy)] leading-tight"
-                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-                >
+                <PageTitle>
                   {selectedRole === "travel_expert"
                     ? "Work with a Trip Planner"
                     : selectedRole === "event_planner"
                     ? "Plan Your Event"
                     : "Find Your Perfect Local Expert"}
-                </h1>
+                </PageTitle>
                 <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
                   {selectedRole === "travel_expert"
                     ? "Experienced trip planners who handle every detail — from itineraries to bookings — so you can just enjoy the journey."
@@ -485,7 +489,7 @@ export default function ExpertsPage() {
                         <span
                           className={cn(
                             "inline-block w-4 h-3.5 rounded-full animate-pulse",
-                            active ? "bg-white/30" : "bg-black/10",
+                            active ? "bg-white/30" : "bg-[color:var(--earn-border)]",
                           )}
                           data-testid={`skeleton-count-${item.role}`}
                         />
@@ -513,14 +517,14 @@ export default function ExpertsPage() {
 
       {/* Filters & Results */}
       <section className="py-8">
-        <div className="container mx-auto px-4 max-w-6xl">
+        <div className={pageContainerClass("content")}>
           {/* Unified Filter Bar — continuity tc-card idiom: hairline border,
               soft shadow, 14px radius (marketplace-continuity language). */}
-          <div className="bg-white border rounded-[14px] p-3 mb-6" style={{ borderColor: "#e4e7ec", boxShadow: "0 1px 3px rgba(17,24,39,.04)" }}>
+          <div className="bg-[color:var(--earn-card)] border border-[color:var(--earn-border)] rounded-[14px] p-3 mb-6 shadow-sm">
             {/* Top row: search + destination */}
             <div className="flex flex-col sm:flex-row gap-2 mb-3">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[color:var(--earn-faint)]" />
                 <Input
                   placeholder="What do you need help with?"
                   value={searchQuery}
@@ -531,7 +535,7 @@ export default function ExpertsPage() {
               </div>
               <Select value={selectedDestination} onValueChange={setSelectedDestination}>
                 <SelectTrigger className="w-full sm:w-44 h-10 border-border" data-testid="select-destination">
-                  <MapPin className="w-4 h-4 mr-1.5 text-gray-400 flex-shrink-0" />
+                  <MapPin className="w-4 h-4 mr-1.5 text-[color:var(--earn-faint)] flex-shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -549,8 +553,8 @@ export default function ExpertsPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap gap-2">
                 <Select value={selectedExperienceType || "all"} onValueChange={(val) => setSelectedExperienceType(val === "all" ? "" : val)}>
-                  <SelectTrigger className="h-9 w-44 border-border bg-[#F9FAFB] text-sm" data-testid="select-experience-type">
-                    <Calendar className="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0" />
+                  <SelectTrigger className="h-9 w-44 border-border bg-[color:var(--earn-chip)] text-sm" data-testid="select-experience-type">
+                    <Calendar className="w-3.5 h-3.5 mr-1.5 text-[color:var(--earn-faint)] flex-shrink-0" />
                     <SelectValue placeholder="Experience Type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -562,8 +566,8 @@ export default function ExpertsPage() {
                 </Select>
 
                 <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-                  <SelectTrigger className="h-9 w-36 border-border bg-[#F9FAFB] text-sm" data-testid="select-language">
-                    <Languages className="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0" />
+                  <SelectTrigger className="h-9 w-36 border-border bg-[color:var(--earn-chip)] text-sm" data-testid="select-language">
+                    <Languages className="w-3.5 h-3.5 mr-1.5 text-[color:var(--earn-faint)] flex-shrink-0" />
                     <SelectValue placeholder="Language" />
                   </SelectTrigger>
                   <SelectContent>
@@ -575,37 +579,37 @@ export default function ExpertsPage() {
 
                 {selectedRole === "local_expert" && (
                   <div className="relative">
-                    <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[color:var(--earn-faint)]" />
                     <Input
                       ref={neighbourhoodInputRef}
                       placeholder="Neighbourhood"
                       value={neighbourhoodQuery}
                       onChange={(e) => setNeighbourhoodQuery(e.target.value)}
-                      className="pl-8 h-9 border-border bg-[#F9FAFB] w-44 text-sm"
+                      className="pl-8 h-9 border-border bg-[color:var(--earn-chip)] w-44 text-sm"
                       data-testid="input-neighbourhood-filter"
                     />
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setAvailableNowOnly((v) => !v)}
                   aria-pressed={availableNowOnly}
                   className={`h-9 inline-flex items-center gap-1.5 rounded-md border px-3 text-sm whitespace-nowrap ${
-                    availableNowOnly ? "border-[#22C55E] bg-[rgba(34,197,94,0.10)] text-[#15803D]" : "border-border bg-[#F9FAFB] text-foreground"
+                    availableNowOnly ? "border-[color:var(--earn-green)] bg-[color:var(--earn-green-wash)] text-[color:var(--earn-green-ink)]" : "border-border bg-[color:var(--earn-chip)] text-foreground"
                   }`}
                   data-testid="filter-available-now"
                 >
-                  <span className={`w-1.5 h-1.5 rounded-full ${availableNowOnly ? "bg-[#22C55E]" : "bg-gray-300"}`} aria-hidden />
+                  <span className={`w-1.5 h-1.5 rounded-full ${availableNowOnly ? "bg-[color:var(--earn-green)]" : "bg-[color:var(--earn-border)]"}`} aria-hidden />
                   Available now
                 </button>
                 <span className="text-sm text-muted-foreground whitespace-nowrap">
                   {sortedExperts.length} found
                 </span>
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="h-9 w-40 border-border bg-[#F9FAFB] text-sm" data-testid="select-sort">
+                  <SelectTrigger className="h-9 min-w-0 flex-1 border-border bg-[color:var(--earn-chip)] text-sm sm:w-40 sm:flex-none" data-testid="select-sort">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
@@ -629,14 +633,14 @@ export default function ExpertsPage() {
               </span>
               {selectedDestination !== "All Destinations" && (
                 <Badge
-                  className="flex items-center gap-1 bg-[#FFF1F3] text-primary border border-[#FECDD3] px-2.5 py-1 text-xs font-medium rounded-full"
+                  className="flex items-center gap-1 bg-[color:var(--earn-coral-bg)] text-[color:var(--earn-coral-ink)] border border-[color:var(--earn-coral-border)] hover:bg-[color:var(--earn-coral-bg)] px-2.5 py-1 text-xs font-medium rounded-full"
                   data-testid="chip-filter-destination"
                 >
                   <MapPin className="w-3 h-3" />
                   {selectedDestination}
                   <button
                     onClick={() => setSelectedDestination("All Destinations")}
-                    className="ml-0.5 hover:text-[#E23350] focus:outline-none"
+                    className="ml-0.5 hover:opacity-70 focus:outline-none"
                     data-testid="button-clear-destination-chip"
                     aria-label="Clear destination filter"
                   >
@@ -646,14 +650,14 @@ export default function ExpertsPage() {
               )}
               {neighbourhoodQuery.trim().length >= 2 && (
                 <Badge
-                  className="flex items-center gap-1 bg-[#EEF2FF] text-[#6366F1] border border-[#C7D2FE] px-2.5 py-1 text-xs font-medium rounded-full"
+                  className="flex items-center gap-1 bg-[color:var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] border border-[color:var(--earn-teal)] hover:bg-[color:var(--earn-teal-wash)] px-2.5 py-1 text-xs font-medium rounded-full"
                   data-testid="chip-filter-neighbourhood"
                 >
                   <Home className="w-3 h-3" />
                   {neighbourhoodQuery.trim()}
                   <button
                     onClick={() => setNeighbourhoodQuery("")}
-                    className="ml-0.5 hover:text-[#4F46E5] focus:outline-none"
+                    className="ml-0.5 hover:opacity-70 focus:outline-none"
                     data-testid="button-clear-neighbourhood-chip"
                     aria-label="Clear neighbourhood filter"
                   >
@@ -691,7 +695,7 @@ export default function ExpertsPage() {
                           "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
                           active
                             ? "border-[color:var(--earn-teal-ink)] bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]"
-                            : "border-[color:var(--earn-border)] bg-white text-[color:var(--earn-muted)] hover:border-[color:var(--earn-teal)] hover:text-[color:var(--earn-teal-ink)]",
+                            : "border-[color:var(--earn-border)] bg-[color:var(--earn-card)] text-[color:var(--earn-muted)] hover:border-[color:var(--earn-teal)] hover:text-[color:var(--earn-teal-ink)]",
                         )}
                         data-testid={`chip-specialty-${slug}`}
                         aria-pressed={active}
@@ -720,7 +724,7 @@ export default function ExpertsPage() {
                         key={neighbourhood}
                         type="button"
                         onClick={() => handleNeighbourhoodChipClick(neighbourhood)}
-                        className="rounded-full border border-[color:var(--earn-border)] bg-white px-2.5 py-1 text-[11px] font-medium text-[color:var(--earn-muted)] transition-colors hover:border-[color:var(--earn-teal)] hover:text-[color:var(--earn-teal-ink)]"
+                        className="rounded-full border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-2.5 py-1 text-[11px] font-medium text-[color:var(--earn-muted)] transition-colors hover:border-[color:var(--earn-teal)] hover:text-[color:var(--earn-teal-ink)]"
                         data-testid={`chip-neighborhood-${slug}`}
                       >
                         {neighbourhood} <span className="tabular-nums">({count})</span>
@@ -746,16 +750,13 @@ export default function ExpertsPage() {
                 >
                   {roleLabels[selectedRole] ?? "Experts"} · {sortedExperts.length}
                 </p>
-                <h2
-                  className="text-[22px] font-semibold tracking-tight text-[color:var(--earn-navy)]"
-                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-                >
+                <SectionTitle>
                   {selectedRole === "travel_expert"
                     ? "Hand the logistics to a planner"
                     : selectedRole === "event_planner"
                     ? "Make the occasion unforgettable"
                     : "Someone who already knows the way"}
-                </h2>
+                </SectionTitle>
               </div>
               <p
                 className="hidden sm:block text-[12px] text-[color:var(--earn-muted)] whitespace-nowrap"
@@ -796,13 +797,12 @@ export default function ExpertsPage() {
           {/* Empty State */}
           {sortedExperts.length === 0 && (
             <div
-              className="flex flex-col items-center justify-center gap-3 rounded-[14px] border border-dashed py-16 text-center"
-              style={{ borderColor: "#d0d5dd" }}
+              className="flex flex-col items-center justify-center gap-3 rounded-[14px] border border-dashed border-[color:var(--earn-border-dash)] py-16 text-center"
             >
-              <div className="w-16 h-16 rounded-full bg-[#F3F4F6] flex items-center justify-center">
-                <Search className="w-8 h-8 text-[#9CA3AF]" />
+              <div className="w-16 h-16 rounded-full bg-[color:var(--earn-chip)] flex items-center justify-center">
+                <Search className="w-8 h-8 text-[color:var(--earn-faint)]" />
               </div>
-              <h3 className="text-lg font-semibold" style={{ color: "#111827" }} data-testid="experts-empty-heading">
+              <h3 className="text-lg font-semibold" style={HEADING_STYLE} data-testid="experts-empty-heading">
                 {availableNowOnly
                   ? "Nobody is available right now"
                   : selectedRole === "event_planner"
@@ -825,15 +825,14 @@ export default function ExpertsPage() {
               {selectedRole === "event_planner" && (
                 <Link
                   href={buildRoleHref("travel_expert")}
-                  className="rounded-md px-4 py-2 text-sm font-bold text-[color:var(--earn-coral-ink)] hover:underline"
+                  className={`px-4 py-2 text-sm ${PAGE_LINK}`}
                   data-testid="link-trip-planners-fallback"
                 >
                   Browse trip planners
                 </Link>
               )}
               <button
-                className="mt-1 rounded-md px-4 py-2 text-sm font-bold"
-                style={{ color: "#d92d55" }}
+                className={`mt-1 px-4 py-2 text-sm ${PAGE_LINK}`}
                 onClick={() => {
                   setSearchQuery("");
                   setSelectedDestination("All Destinations");
@@ -861,12 +860,7 @@ export default function ExpertsPage() {
                 >
                   {roleLabels[fallbackRole] ?? "Experts"} · {fallbackExperts.length}
                 </p>
-                <h2
-                  className="text-[22px] font-semibold tracking-tight text-[color:var(--earn-navy)]"
-                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-                >
-                  Available now in the marketplace
-                </h2>
+                <SectionTitle>Available now in the marketplace</SectionTitle>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {fallbackExperts.slice(0, 8).map((expert: any, idx: number) => (
@@ -887,8 +881,7 @@ export default function ExpertsPage() {
           {sortedExperts.length > visibleCount && (
             <div className="text-center mt-8">
               <button
-                className="inline-flex items-center gap-2 rounded-md border px-5 py-2.5 text-sm font-bold transition-colors hover:bg-black/[.03]"
-                style={{ borderColor: "#d0d5dd", color: "#344054" }}
+                className={PAGE_ACTION.secondary}
                 onClick={() => setVisibleCount(c => c + 12)}
                 data-testid="button-load-more"
               >
@@ -911,12 +904,7 @@ export default function ExpertsPage() {
                 >
                   Ready-Made · {crossSellTrips.length}
                 </p>
-                <h2
-                  className="text-[22px] font-semibold tracking-tight text-[color:var(--earn-navy)]"
-                  style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-                >
-                  Or start with a trip they already built
-                </h2>
+                <SectionTitle>Or start with a trip they already built</SectionTitle>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="experts-cross-sell">
                 {crossSellTrips.map((trip: any) => (
@@ -924,8 +912,7 @@ export default function ExpertsPage() {
                     key={trip.id}
                     href={`/ready-made/${trip.id}`}
                     data-testid={`cross-sell-trip-${trip.id}`}
-                    className="group flex flex-col overflow-hidden rounded-[14px] border bg-white transition-all hover:-translate-y-0.5"
-                    style={{ borderColor: "var(--earn-border)", boxShadow: "0 1px 3px rgba(17,24,39,.04)" }}
+                    className="group flex flex-col overflow-hidden rounded-[14px] border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] shadow-sm transition-all hover:-translate-y-0.5"
                   >
                     <div className="relative h-32 bg-[var(--earn-chip)]">
                       {trip.heroImageUrl && (
@@ -933,7 +920,7 @@ export default function ExpertsPage() {
                       )}
                       {trip.market && (
                         <span
-                          className="absolute left-2 top-2 rounded-md bg-white/90 px-1.5 py-0.5 text-[9.5px] font-semibold text-[color:var(--earn-ink)]"
+                          className="absolute left-2 top-2 rounded-md bg-[color:var(--earn-card)] px-1.5 py-0.5 text-[9.5px] font-semibold text-[color:var(--earn-ink)]"
                           style={{ fontFamily: EARN_MONO }}
                         >
                           {trip.market}
@@ -941,7 +928,7 @@ export default function ExpertsPage() {
                       )}
                     </div>
                     <div className="flex flex-1 flex-col p-3">
-                      <h3 className="line-clamp-2 text-[14px] font-semibold leading-snug text-[color:var(--earn-ink)]">
+                      <h3 className="line-clamp-2 text-[14px] font-semibold leading-snug" style={HEADING_STYLE}>
                         {trip.title}
                       </h3>
                       <p
@@ -990,19 +977,18 @@ export default function ExpertsPage() {
         };
         const config = ctaConfig[selectedRole] ?? ctaConfig.local_expert;
         return (
-          <section className="py-16 bg-white border-t" style={{ borderColor: "#e4e7ec" }}>
-            <div className="container mx-auto px-4 max-w-4xl text-center">
-              <h2 className="text-3xl font-bold mb-4" style={{ color: "#111827" }}>
+          <section className="py-16 bg-[color:var(--earn-card)] border-t border-[color:var(--earn-border)]">
+            <div className={`${pageContainerClass("reading")} text-center`}>
+              <SectionTitle className="mb-4">
                 {config.heading}
-              </h2>
-              <p className="text-lg mb-8 max-w-2xl mx-auto" style={{ color: "#667085" }}>
+              </SectionTitle>
+              <p className="text-lg mb-8 text-[color:var(--earn-muted)]">
                 {config.body}
               </p>
               <div className="flex flex-wrap justify-center gap-3">
                 <Link href={config.href}>
                   <button
-                    className="rounded-md px-8 py-3 text-sm font-bold text-white transition-transform hover:-translate-y-px"
-                    style={{ background: "#fb3b63", boxShadow: "0 4px 12px rgba(251,59,99,.18)" }}
+                    className={PAGE_ACTION.primary}
                     data-testid="button-become-expert-experts"
                   >
                     {config.cta}
@@ -1010,8 +996,7 @@ export default function ExpertsPage() {
                 </Link>
                 <Link href="/earn">
                   <button
-                    className="rounded-md border px-8 py-3 text-sm font-bold transition-colors hover:bg-black/[.03]"
-                    style={{ borderColor: "#d0d5dd", color: "#344054" }}
+                    className={PAGE_ACTION.secondary}
                     data-testid="button-learn-more"
                   >
                     Learn more

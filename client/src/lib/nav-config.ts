@@ -266,7 +266,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
       },
     ],
   },
-  { name: "Ways to Earn", i18nKey: "groups.waysToEarn", shortName: "Earn", shortI18nKey: "groups.waysToEarnShort", href: "/earn" },
+  { name: "Ways to Earn", i18nKey: "groups.waysToEarn", href: "/earn" },
   // 2026-08-26: plain main-nav leaf beside Ways to Earn per the ratified pricing map
   // (ledger 2026-08-27-pricing-nav, corrected same day) — not the utility cluster.
   { name: "Pricing", i18nKey: "groups.pricing", href: "/pricing" },
@@ -436,4 +436,28 @@ export function getAllNavHrefs(): string[] {
 export function getAllHrefs(): string[] {
   const seen = new Set<string>([...getAllNavHrefs(), ...getAllFooterHrefs()]);
   return Array.from(seen);
+}
+
+/**
+ * Which header group the current page belongs to, so a page reached through a DROPDOWN lights up
+ * its parent item the way a top-level link already does (footer-pages ruling, Sep 28, 2026 —
+ * the header used to highlight only the top-level links, so Destinations, Local Experts, Service
+ * Providers and Visa Help highlighted nothing).
+ *
+ * A page belongs to a group when its path equals one of the group's links (query string ignored),
+ * or is the parent path of one (`/experiences` for `/experiences/wedding`). The first group in
+ * header order wins, so one page never lights two items. Returns null for a page no group names.
+ */
+export function activeNavGroupName(location: string, groups: NavGroupConfig[] = navGroupsConfig): string | null {
+  const path = location.split("?")[0].split("#")[0].replace(/\/+$/, "") || "/";
+  if (path === "/") return null;
+  for (const group of groups) {
+    const hrefs = [
+      ...(group.href ? [group.href] : []),
+      ...(group.sections ?? []).flatMap((s) => s.items.map((i) => i.href)),
+      ...(group.footer ? [group.footer.href] : []),
+    ].map((h) => h.split("?")[0].split("#")[0].replace(/\/+$/, ""));
+    if (hrefs.some((h) => h === path || h.startsWith(path + "/"))) return group.name;
+  }
+  return null;
 }

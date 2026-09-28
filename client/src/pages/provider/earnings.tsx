@@ -30,6 +30,7 @@ import { StatCard, StatusBadge, EmptyState } from "@/components/backoffice/primi
 // aggregations (short-links.routes.ts) and the other console tabs. Every number on this page that
 // carries an earnings/revenue label derives from it — see the `useMemo`s below.
 import { isEarningBooking, isProvisionalBooking } from "@shared/booking-visibility";
+import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 
 type BookingWithService = ServiceBooking & { service?: ProviderService };
 
@@ -924,7 +925,7 @@ export default function ProviderEarnings() {
                           >
                             This request has been {payout.status} for more than {PAYOUT_CONTACT_DAYS} days.{" "}
                             <a
-                              href="mailto:support@traveloure.com"
+                              href={`mailto:${COMPANY_CONTACT_EMAIL}`}
                               className="underline font-medium"
                               data-testid={`link-payout-support-${payout.id}`}
                             >

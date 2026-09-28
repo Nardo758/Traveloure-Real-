@@ -25,7 +25,6 @@ import {
   Cake,
   HeartHandshake,
   Moon,
-  Loader2,
   AlertTriangle,
 } from "lucide-react";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -33,6 +32,17 @@ import { usePlanning } from "@/contexts/PlanningContext";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  pageContainerClass,
+  PageTitle,
+  SectionTitle,
+  HEADING_STYLE,
+  EYEBROW_CLASS,
+  EYEBROW_STYLE,
+  PAGE_ACTION,
+  PAGE_LINK,
+} from "@/components/company/company-page";
 import {
   startMembershipCheckout,
   type MembershipCheckoutNotice,
@@ -71,6 +81,77 @@ function dollars(cents: number): string {
 
 function pct(n: number): string {
   return Number.isInteger(n) ? `${n}%` : `${n.toFixed(1)}%`;
+}
+
+/**
+ * The page header, rendered in the loading state too, so the page never opens blank
+ * (footer-pages ruling: a skeleton at final height, no blank-then-jump). Shared title scale
+ * (PageTitle, Fraunces 42) and the shared content width.
+ */
+function PricingBand() {
+  return (
+    <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-8">
+      <div className={pageContainerClass("content")}>
+        <div className={EYEBROW_CLASS} style={EYEBROW_STYLE} data-testid="text-pricing-eyebrow">
+          PLAN IT YOUR WAY
+        </div>
+        <div className="mt-2">
+          <PageTitle testId="text-pricing-title">Plan it your way</PageTitle>
+        </div>
+        <p className="text-[15px] text-[color:var(--earn-muted)] mt-3 max-w-[62ch]">
+          Yourself, with AI, with a local, or done for you. Every AI action is pay-per-use —
+          no membership needed.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The loading state: the same bands and grid as the loaded page, with each block held at the
+ * height it renders at (measured per breakpoint on the loaded page, Sep 28, 2026), so nothing
+ * moves when `/api/pricing` answers — a copy edit that changes a block's height changes these
+ * numbers too. No number is shown — a
+ * price is never drawn before the bundle that owns it has arrived (§13).
+ */
+function PricingSkeleton() {
+  return (
+    <div className="min-h-screen bg-[var(--earn-ground)] [--pricing-grid-h:1286px] [--pricing-disclosure-h:49px] [--pricing-plus-h:1170px] [--pricing-pro-h:683px] sm:[--pricing-grid-h:1247px] sm:[--pricing-disclosure-h:33px] sm:[--pricing-plus-h:742px] sm:[--pricing-pro-h:605px] md:[--pricing-grid-h:654px] lg:[--pricing-grid-h:397px] lg:[--pricing-plus-h:565px] lg:[--pricing-pro-h:385px] xl:[--pricing-grid-h:358px] xl:[--pricing-plus-h:529px] xl:[--pricing-pro-h:368px]" data-testid="loader-pricing" aria-busy="true">
+      <PricingBand />
+      <section className={`${pageContainerClass("content")} py-10`}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 auto-rows-fr gap-4 h-[var(--pricing-grid-h)]">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-[color:var(--earn-border)] bg-[var(--earn-card)] p-5 flex flex-col gap-3 overflow-hidden">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-8 w-24" />
+              <div className="flex-1 space-y-2 pt-2">
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-5/6" />
+                <Skeleton className="h-3 w-4/6" />
+              </div>
+              <Skeleton className="h-11 w-full rounded-[10px]" />
+            </div>
+          ))}
+        </div>
+        <div className="h-[var(--pricing-disclosure-h)]" />
+      </section>
+      <section className="bg-[var(--earn-ground)] border-y border-[color:var(--earn-border)]">
+        <div className={`${pageContainerClass("content")} py-12 h-[var(--pricing-plus-h)]`}>
+          <Skeleton className="h-3 w-48" />
+          <Skeleton className="mt-3 h-7 w-3/4 max-w-md" />
+          <Skeleton className="mt-4 h-4 w-2/3 max-w-sm" />
+        </div>
+      </section>
+      <section className={`${pageContainerClass("content")} py-12 h-[var(--pricing-pro-h)]`}>
+        <Skeleton className="h-3 w-40" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-5">
+          <Skeleton className="h-56 w-full rounded-2xl" />
+          <Skeleton className="h-56 w-full rounded-2xl" />
+        </div>
+      </section>
+    </div>
+  );
 }
 
 export default function PricingPage() {
@@ -161,11 +242,7 @@ export default function PricingPage() {
   }, [membershipReturn, authLoading, user, openSignInModal]);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen grid place-items-center bg-[var(--earn-ground)]">
-        <Loader2 className="w-6 h-6 animate-spin text-[color:var(--earn-teal-ink)]" data-testid="loader-pricing" />
-      </div>
-    );
+    return <PricingSkeleton />;
   }
 
   if (isError || !pricing) {
@@ -293,7 +370,7 @@ export default function PricingPage() {
 
       {membershipReturn === "cancelled" && (
         <div
-          className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-center text-sm text-amber-900"
+          className="border-b border-[color:var(--earn-gold)] bg-[var(--earn-gold-wash)] px-6 py-3 text-center text-sm text-[color:var(--earn-gold-ink)]"
           data-testid="banner-membership-cancelled"
         >
           Plus checkout was cancelled. No membership change was made.
@@ -312,39 +389,10 @@ export default function PricingPage() {
         </div>
       )}
 
-      {/* Band header */}
-      <section className="bg-[var(--earn-card)] border-b border-[color:var(--earn-border)] py-[26px]">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="flex items-center gap-[14px]">
-            <span className="w-[42px] h-[42px] rounded-xl bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] grid place-items-center shrink-0">
-              <Palmtree className="w-[22px] h-[22px]" />
-            </span>
-            <div>
-              <div
-                className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--earn-coral-ink)]"
-                style={{ fontFamily: EARN_MONO }}
-                data-testid="text-pricing-eyebrow"
-              >
-                PLAN IT YOUR WAY
-              </div>
-              <h1
-                className="text-[28px] md:text-[30px] font-semibold text-[color:var(--earn-navy)] leading-tight"
-                style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-                data-testid="text-pricing-title"
-              >
-                Plan it your way
-              </h1>
-            </div>
-          </div>
-          <p className="text-sm text-[color:var(--earn-muted)] mt-[6px] ml-[56px] max-w-[62ch]">
-            Yourself, with AI, with a local, or done for you. Every AI action is pay-per-use —
-            no membership needed.
-          </p>
-        </div>
-      </section>
+      <PricingBand />
 
       {/* Four-column ladder */}
-      <section className="max-w-6xl mx-auto px-6 py-10">
+      <section className={`${pageContainerClass("content")} py-10`}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
           {ladder.map((col) => (
             <div
@@ -365,7 +413,7 @@ export default function PricingPage() {
               </div>
               <h2
                 className="text-[19px] font-semibold mt-1.5"
-                style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                style={HEADING_STYLE}
               >
                 {col.name}
               </h2>
@@ -404,12 +452,7 @@ export default function PricingPage() {
               <button
                 onClick={col.onClick}
                 data-testid={`button-plan-${col.testid}`}
-                className={
-                  "mt-5 w-full rounded-lg py-2.5 text-sm font-semibold transition-colors " +
-                  (col.variant === "coral"
-                    ? "bg-[var(--earn-coral-ink)] text-white hover:opacity-90"
-                    : "border border-[color:var(--earn-border)] text-[color:var(--earn-ink)] hover:bg-[var(--earn-chip)]")
-                }
+                className={`mt-5 w-full ${col.variant === "coral" ? PAGE_ACTION.primary : PAGE_ACTION.secondary}`}
               >
                 {col.cta}
               </button>
@@ -433,7 +476,7 @@ export default function PricingPage() {
 
       {/* Plus band */}
       <section id="plus" className="bg-[var(--earn-ground)] border-y border-[color:var(--earn-border)]">
-        <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div className={`${pageContainerClass("content")} py-12 grid grid-cols-1 lg:grid-cols-2 gap-8 items-start`}>
           <div>
             <div
               className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--earn-coral-ink)]"
@@ -441,12 +484,7 @@ export default function PricingPage() {
             >
               PLUS · FOR THE CITY YOU LIVE IN
             </div>
-            <h3
-              className="text-[26px] font-semibold text-[color:var(--earn-navy)] mt-2 leading-tight"
-              style={{ fontFamily: "'Fraunces', Georgia, serif" }}
-            >
-              A plan arrives before every date that matters.
-            </h3>
+            <SectionTitle className="mt-2">A plan arrives before every date that matters.</SectionTitle>
             <p className="text-sm text-[color:var(--earn-muted)] mt-3 max-w-[52ch]">
               Birthdays, anniversaries, date nights — the ones you always mean to plan ahead
               for and never do. Plus keeps a draft ready before you need it.
@@ -479,7 +517,7 @@ export default function PricingPage() {
                 onClick={() => void beginPlusCheckout()}
                 disabled={plusCheckoutPending}
                 data-testid="button-join-plus"
-                className="mt-5 rounded-lg py-2.5 px-5 text-sm font-semibold bg-[var(--earn-coral-ink)] text-white hover:opacity-90 transition-colors disabled:opacity-60"
+                className={`mt-5 ${PAGE_ACTION.primary} disabled:opacity-60`}
               >
                 {plusCheckoutPending
                   ? "Opening checkout…"
@@ -494,7 +532,7 @@ export default function PricingPage() {
                   })
                 }
                 data-testid="button-join-plus-waitlist"
-                className="mt-5 rounded-lg py-2.5 px-5 text-sm font-semibold border border-[color:var(--earn-coral-ink)] text-[color:var(--earn-coral-ink)] bg-transparent hover:bg-[color:var(--earn-coral-ink)]/5 transition-colors"
+                className={`mt-5 ${PAGE_ACTION.secondary}`}
               >
                 Join Plus · Coming soon
               </button>
@@ -505,7 +543,7 @@ export default function PricingPage() {
             <button
               onClick={() => setLocation("/plus/occasions")}
               data-testid="link-setup-occasions"
-              className="mt-2 text-[12px] text-[color:var(--earn-coral-ink)] underline underline-offset-2 hover:opacity-80"
+              className={`mt-2 text-[12px] ${PAGE_LINK}`}
             >
               Set up your occasions →
             </button>
@@ -567,7 +605,7 @@ export default function PricingPage() {
       </section>
 
       {/* Pro band */}
-      <section className="max-w-6xl mx-auto px-6 py-12">
+      <section className={`${pageContainerClass("content")} py-12`}>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div
             className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--earn-muted)]"
@@ -577,7 +615,7 @@ export default function PricingPage() {
           </div>
           {pricing.proMonthly.betaFreeUntil && (
             <span
-              className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--earn-gold-ink)] bg-[var(--earn-gold-wash)] border border-[#F0DCA6] rounded-full px-2.5 py-1"
+              className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--earn-gold-ink)] bg-[var(--earn-gold-wash)] border border-[color:var(--earn-gold)] rounded-full px-2.5 py-1"
               style={{ fontFamily: EARN_MONO }}
               data-testid="text-pro-beta-pill"
             >
@@ -591,7 +629,7 @@ export default function PricingPage() {
             <div>
               <h3
                 className="text-[22px] font-semibold"
-                style={{ fontFamily: "'Fraunces', Georgia, serif" }}
+                style={HEADING_STYLE}
               >
                 Turn on Pro
               </h3>
@@ -617,7 +655,7 @@ export default function PricingPage() {
             <button
               onClick={() => stub("Pro")}
               data-testid="button-turn-on-pro"
-              className="mt-6 w-full rounded-lg py-2.5 text-sm font-semibold bg-[var(--earn-teal)] text-white hover:opacity-90 transition-colors"
+              className={`mt-6 w-full ${PAGE_ACTION.primary}`}
             >
               Turn on Pro · free
             </button>
