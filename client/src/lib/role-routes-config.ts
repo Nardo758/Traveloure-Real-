@@ -73,6 +73,7 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   { href: '/expert/ai-assistant',       description: 'Expert AI task delegation' },
   { href: '/expert/content-studio',     description: 'Content creation studio' },
   { href: '/expert/neighborhoods',      description: 'Neighborhood claims — claimed / verified (expert field knowledge)' },
+  { href: '/expert/blog-review',        description: 'Blog posts awaiting my signature (LD 57)' },
   // /expert/profile is kept deliberately (B5/C1 redirect pattern): it redirects to
   // /expert/settings?tab=profile (C8 Profile → Settings first-tab merge), so the gate
   // exercises the redirect AND the Settings page it lands on.
@@ -193,6 +194,7 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/neighborhood-backfill', description: 'Neighborhood backfill tool' },
   { href: '/admin/gem-photo-backfill',  description: 'Gem photo backfill tool' },
   { href: '/admin/gem-candidates',      description: 'Nugget → gem promotion review queue' },
+  { href: '/admin/blog',                description: 'Expert-signed blog console (LD 57)' },
   { href: '/admin/neighborhood-claims/manual-entry', description: 'Neighborhood claims — ops manual entry for email backfill replies' },
   { href: '/admin/neighborhood-claims', description: 'Neighborhood claims — review queue (Ratify / Return), scorer output, web-gap verdicts' },
   { href: '/admin/review-moderation',   description: 'Review moderation queue' },

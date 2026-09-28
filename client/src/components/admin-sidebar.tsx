@@ -49,6 +49,7 @@ import {
   Sparkles,
   Wrench,
   RefreshCw,
+  Newspaper,
 } from "lucide-react";
 
 // D4 (UX audit Jul 29) admin nav regrouping — labels/grouping only, no route changes:
@@ -99,6 +100,8 @@ const menuGroups = [
       { title: "Event Review", href: "/admin/destination-events", icon: CalendarDays },
       // Nugget → gem review + scoring queue (2026-08-29-replit-gem-audit ruling 4).
       { title: "Gem Candidates", href: "/admin/gem-candidates", icon: Sparkles },
+      // Expert-signed blog console (Locked Decision 57; ledger `2026-09-28-blog-consoles`).
+      { title: "Blog", href: "/admin/blog", icon: Newspaper },
       // Expert field knowledge v2 Phase 1: ops manual entry for the backfill email replies.
       // Phase 2: the review queue (Ratify / Return) — the ops manual-entry form is linked from it.
       { title: "Neighborhood Claims", href: "/admin/neighborhood-claims", icon: MapPin },

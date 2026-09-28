@@ -29,6 +29,7 @@ import {
   Users,
   Store,
   MapPin,
+  PenLine,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null, handle?: string | null) {
@@ -91,6 +92,10 @@ function buildMenuGroups(expertType?: string | null, handle?: string | null) {
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
         // Expert field knowledge v2: claim neighborhoods and show us them (local experts only).
         ...(isLocalExpert ? [{ title: "Neighborhoods", href: "/expert/neighborhoods", icon: MapPin }] : []),
+        // Expert-signed blog: posts naming this expert as byline, awaiting their signature
+        // (Locked Decision 57; ledger `2026-09-28-blog-consoles`). Shown to every expert — the
+        // server decides whose posts exist; an empty queue says so.
+        { title: "Blog review", href: "/expert/blog-review", icon: PenLine },
         // Console IA C7: "DMO Library" entry RETIRED — the C1 keep-reason is resolved: the
         // Workstation Add panel's DMO drawer (DmoPickerCore) now carries the review-and-refine
         // flow (expert_dmo_edits) alongside browse/add, so the library's one home is the
