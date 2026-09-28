@@ -3,20 +3,144 @@
 > **Target:** ten real Kyoto travelers using the Trips slice in November 2026.
 > Brief: `docs/planning/briefs/vertical-slice.md` §C Part 5. Report only; no code, no data changes.
 
-## Status: the instrument is built; the production numbers are not in yet
+## Status: CLOSED by the production census (decision-maker, Sep 28, 2026; ledger `2026-09-28-kyoto-supply-closed`)
 
-This session has no production database access. What exists:
+| | |
+|---|---|
+| Taken | **2026-09-28T01:22:57Z**, against production, read-only (Replit, `PROD_DATABASE_URL`; value not shown) |
+| Script | `scripts/report-kyoto-supply.cjs` (sets `default_transaction_read_only = on` before any query) |
+| Commit | the Replit checkout at **`a20f27ae2b9df09d65485a7e5b9edb78fed63ce5`** (detached HEAD, clean; `origin/main` was `b0462730d`) |
+| Errors | none |
 
-- **`scripts/report-kyoto-supply.cjs`** is a read-only census. It sets `default_transaction_read_only = on` before any query. Run it against production:
+## Production results — the census, verbatim
 
-  ```
-  node scripts/report-kyoto-supply.cjs "<PROD_DATABASE_URL>"          # markdown
-  node scripts/report-kyoto-supply.cjs "<PROD_DATABASE_URL>" --json   # the same rows as JSON
-  ```
+```text
+# Kyoto supply census — 2026-09-28T01:22:57.036Z
 
-- **Local results** (see below) are from a development database that holds leftover e2e rows. They show the script runs and what each section reads. **They are NOT production supply**, and nothing in Part 1 or Part 3 may be sized on them.
+## Listings by category (city = Kyoto)
 
-Stated separately, as the brief asks: **production `service_bookings` has zero rows.** Every "booking" step of the golden path is therefore unexercised on production.
+| category | all_rows | live | awaiting_review | rejected |
+|---|---|---|---|---|
+| (no category) | 1 | 0 | 0 | 0 |
+
+## Live listings — the fields the Trips slice reads
+
+| live | has_coordinates | precision_exact | precision_centroid | precision_null | has_price | custom_quote | has_cancellation_tier | free_text_policy_only | has_future_open_slot | has_availability_json | can_anchor | stays |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+## NOT counted as Kyoto: city blank, location text mentions Kyoto
+
+| rows | live |
+|---|---|
+| 0 | 0 |
+
+## Expert applications (city = Kyoto)
+
+| form_status | role | experts | with_handle |
+|---|---|---|---|
+| approved | expert | 2 | 0 |
+
+## Neighborhood claims in Kyoto
+
+| experts_with_verified_neighborhood | experts_with_any_neighborhood_row | kyoto_neighborhoods |
+|---|---|---|
+| 0 | 0 | 8 |
+
+## Affiliate inventory rows (city = Kyoto)
+
+_(no rows)_
+
+## Hotel anchor candidates (hotel_cache, the anchor loader's source)
+
+_(no rows)_
+
+## Bookings and plans
+
+| service_bookings_total | service_bookings_kyoto | kyoto_plans |
+|---|---|---|
+| 7 | 0 | 10 |
+```
+
+## The Lane C byline query, verbatim (same session)
+
+```text
+BEGIN
+ handle | verified_kyoto_neighborhoods | live_listings 
+--------+------------------------------+---------------
+(0 rows)
+ROLLBACK
+```
+
+**Byline count: 0.** Lane C ships with an empty schedule, as briefed: no padding and no platform-authored guides in
+expert slots. TravelPulse weekly is the only content type that can publish before an expert qualifies (Locked
+Decision 57).
+
+## What the numbers say
+
+- **Nothing on the platform can anchor or be booked in Kyoto today.** One Kyoto `provider_services` row exists, with no
+  category, and it is not live; every live-field count is 0, including `can_anchor` and stays.
+- **The anchor question has no hotel candidates.** `hotel_cache` holds no Kyoto rows, and no affiliate inventory is in
+  the database.
+- **Two approved Kyoto experts, neither with a handle, neither with any neighbourhood row.** Eight Kyoto neighbourhoods
+  exist to claim.
+- **Ten Kyoto plans exist** (`trips.market_slug = 'kyoto'`), with no Kyoto booking behind them.
+
+## `service_bookings_total = 7` — reconciled against the brief's "zero rows"
+
+The brief (and this doc's earlier status) said production `service_bookings` had zero rows. The census reports **7**,
+**none of them Kyoto**. That statement is withdrawn; seven rows exist.
+
+**What the census can and cannot say about them.** Its query is only
+`select count(*) from service_bookings` beside a Kyoto join (`scripts/report-kyoto-supply.cjs`, the `bookings`
+query). It surfaces **no status, no date and no mode**, so this report says nothing about whether they are live-mode
+or test rows and does not assume either.
+
+**Live vs test is not a database fact.** `service_bookings` has no livemode column; a row carries only a
+`stripe_payment_intent_id`, whose mode is the key it was created with and is read in the Stripe dashboard, not in
+SQL. The proposed Replit read, read-only, gives everything the database does hold:
+
+```sql
+BEGIN READ ONLY;
+SELECT status,
+       count(*)                                          AS rows,
+       count(stripe_payment_intent_id)                   AS with_payment_intent,
+       count(*) FILTER (WHERE service_id IS NULL)        AS no_service,
+       min(created_at)                                   AS first_created,
+       max(created_at)                                   AS last_created
+  FROM service_bookings
+ GROUP BY status
+ ORDER BY rows DESC;
+ROLLBACK;
+```
+
+If any row carries a PaymentIntent, the operator reads its mode in the Stripe dashboard (the id alone does not show it).
+
+## What A0 must provide
+
+Named prerequisites for Track A step A0 (`docs/planning/track-a-rollout.md`). **The census is the acceptance check:
+A1 does not start until a re-run shows `can_anchor > 0` and `experts_with_verified_neighborhood ≥ 2`.** Counts for (a)
+and (c) are the decision-maker's to set; this report states the fields only.
+
+**(a) Hotels to anchor on.** `hotel_cache` rows with `city` resolving to Kyoto, `latitude` and `longitude` present,
+not expired (`expires_at > now()`), enough to offer **2–3 candidates per neighbourhood the ten travelers are likely to
+name**, with `location_precision = exact`.
+*Field note (§13):* `hotel_cache` has **no `location_precision` column** today — that column is on `provider_services`
+(`shared/schema.ts`, the `location_precision` declaration). As written, (a) needs either that column added to
+`hotel_cache` (a migration, its own lane) or a ruling that a `hotel_cache` row with a per-hotel latitude/longitude
+counts as exact. The census's `can_anchor` counts `provider_services`, not `hotel_cache`, so the acceptance check reads
+the listing side.
+
+**(b) Two experts who can sign and check plans.** The two approved Kyoto experts each given a **handle** and **one
+verified neighbourhood**, through the existing flow — the handle claim prompt, and a neighbourhood claim ratified by
+admin (`expert_neighborhood_claims` → `ratifyClaim`, Locked Decision 27) — **never by SQL**; LD 27's trigger refuses a
+direct insert.
+
+**(c) Bookable supply for a five-day Trips plan.** At least the listing categories a five-day Trips plan books, each
+live (`status = 'active'`, `approval_status = 'approved'`) with the fields the census reads: coordinates and
+`location_precision`, a price (or custom quote), a cancellation **tier**, and a future open slot.
+
+---
 
 ## What the census counts, and how "Kyoto" is decided
 
@@ -50,15 +174,6 @@ A listing is "live" when it passes the public read gate: `status = 'active' AND 
 | Affiliate Kyoto rows | 0 | No partner inventory in the database |
 | Kyoto expert applications | 4 approved, 2 with a handle | |
 | Verified Kyoto neighborhood | 1 expert (10 Kyoto neighborhoods seeded) | Lane C's byline gate would admit at most one expert |
-| Bookings | 0 total | As on production |
+| Bookings | 0 total | Production has 7 (none Kyoto) — see the reconciliation above |
 
-## What Part 1 (golden path) needs from the production run
-
-Each of these is a **prerequisite question** for a Track A step (Part 3). The production numbers answer them, and none is assumed:
-
-1. **Hotels for the anchor question.** Are there enough non-expired `hotel_cache` Kyoto rows with coordinates for a traveler to add 2–3 hotels? If not, the first Track A step is a hotel-inventory step: refresh the cache from the hotel provider, or let a traveler add a hotel as a custom venue (R147's single-venue anchor).
-2. **Located items for plan-fit.** What share of live listings and affiliate rows carry coordinates, and at what `location_precision`? Plan-fit says "est." below `exact`.
-3. **Bookable in November.** How many live listings have a future open slot, a price and a cancellation tier? The golden path's one booking and one cancellation need at least one that has all three.
-4. **Experts.** How many approved Kyoto experts have a handle and a verified neighborhood? This sizes both "a local checks the plan" and Lane C's byline schedule. The Lane C byline count itself comes from the decision-maker's own read-only query.
-
-HARD STOP: Part 5 ends here. Parts 1 and 4 start only when you say so.
+HARD STOP: Part 5 is closed. Track A starts at A0 as ruled.
