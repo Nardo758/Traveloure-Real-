@@ -55,12 +55,19 @@ function CuratedCard({ tile, large }: { tile: typeof tiles[number]; large: boole
       <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[22px]" : "text-[16px]"}`} style={{ fontFamily: FRAUNCES }}>
         {tile.headline}
       </b>
-      <ul className="relative z-10 mt-1.5 space-y-0.5 border-l border-white/50 pl-2 text-[11px] leading-[1.35] opacity-85">
-        {tile.lines.map((line) => <li key={line}>{line}</li>)}
-      </ul>
-      <button type="button" className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" style={{ background: "var(--earn-coral-ink, #DF5852)" }}>
-        Start this plan
-      </button>
+      <div className="relative z-10 mt-2 flex flex-wrap items-start gap-2">
+        <button type="button" className="inline-flex min-h-[36px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" style={{ background: "var(--earn-coral-ink, #DF5852)" }}>
+          Start this plan
+        </button>
+        <details className="min-w-[120px] flex-1">
+          <summary className="inline-flex min-h-[36px] cursor-pointer list-none items-center rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white [&::-webkit-details-marker]:hidden">
+            Plan details
+          </summary>
+          <ul className="mt-2 space-y-0.5 border-l border-white/50 pl-2 text-[11px] leading-[1.35]">
+            {tile.lines.map((line) => <li key={line}>{line}</li>)}
+          </ul>
+        </details>
+      </div>
       <a href={tile.source} target="_blank" rel="noopener noreferrer" className="relative z-10 mt-2 text-[9.5px] opacity-75 hover:underline" style={{ fontFamily: EARN_MONO }}>
         Photo: {tile.creator} · Pexels
       </a>
@@ -75,8 +82,7 @@ export function Curated() {
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#CF5750]" style={{ fontFamily: EARN_MONO }}>
           Kyoto fallback · production copy and credited photos
         </p>
-        <h1 className="mb-2 text-2xl font-semibold" style={{ fontFamily: FRAUNCES }}>Updated curated card layout</h1>
-        <p className="mb-5 text-sm text-slate-600">This is the fallback you will see on the homepage until eligible live sources fill the billboard slots.</p>
+        <h1 className="mb-5 text-2xl font-semibold" style={{ fontFamily: FRAUNCES }}>Kyoto fallback cards</h1>
         <div className="grid grid-cols-2 gap-2.5">
           {tiles.map((tile, index) => <CuratedCard key={tile.key} tile={tile} large={index === 0} />)}
         </div>

@@ -96,7 +96,10 @@ describe("landing hero billboard", () => {
     for (const tile of BILLBOARD_TILES) {
       assert.ok(html.includes(tile.headline), `${tile.key} retains its original headline`);
       for (const line of tile.lines) assert.ok(html.includes(line), `${tile.key} retains its original itinerary copy`);
+      assert.ok(html.includes(`data-testid="hero-billboard-details-${tile.key}"`), `${tile.key} has expandable plan details`);
     }
+    assert.equal((html.match(/<summary[^>]*>Plan details<\/summary>/g) ?? []).length, 3, "all three curated cards offer details on demand");
+    assert.ok(!/<details[^>]*\sopen(?:\s|=|>)/.test(html), "itinerary lines are collapsed by default");
     assert.equal((html.match(/background:var\(--earn-coral-ink, #DF5852\)/g) ?? []).length, 3, "each curated plan action uses the compact primary treatment");
     assert.ok(!html.includes("Plan with"));
     assert.ok(!html.includes("from $"));

@@ -254,23 +254,30 @@ function CuratedTileCard({
       <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[22px]" : "text-[16px]"}`} style={{ fontFamily: FRAUNCES }}>
         {tile.headline}
       </b>
-      <ul className="relative z-10 mt-1.5 space-y-0.5 border-l border-white/50 pl-2 text-[11px] leading-[1.35] opacity-85">
-        {tile.lines.map((line) => (
-          <li key={line}>{line}</li>
-        ))}
-      </ul>
-      <button
-        type="button"
-        onClick={() => {
-          const source = billboardPlanSource(tile);
-          if (source) onStartPlan(source);
-        }}
-        className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        style={{ background: "var(--earn-coral-ink, #DF5852)" }}
-        data-testid={`hero-billboard-start-${tile.key}`}
-      >
-        Start this plan
-      </button>
+      <div className="relative z-10 mt-2 flex flex-wrap items-start gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            const source = billboardPlanSource(tile);
+            if (source) onStartPlan(source);
+          }}
+          className="inline-flex min-h-[36px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          style={{ background: "var(--earn-coral-ink, #DF5852)" }}
+          data-testid={`hero-billboard-start-${tile.key}`}
+        >
+          Start this plan
+        </button>
+        <details className="min-w-[120px] flex-1" data-testid={`hero-billboard-details-${tile.key}`}>
+          <summary className="inline-flex min-h-[36px] cursor-pointer list-none items-center rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white [&::-webkit-details-marker]:hidden">
+            Plan details
+          </summary>
+          <ul className="mt-2 space-y-0.5 border-l border-white/50 pl-2 text-[11px] leading-[1.35]">
+            {tile.lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </details>
+      </div>
       <TileCredit tileKey={tile.key} credit={tile.credit} />
     </div>
   );

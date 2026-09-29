@@ -258,3 +258,17 @@ mtime_ms = 1790685075663
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/d8aeb83c-ea3f-4638-9e70-154be567d317/38ad8c70-4966-4056-aa60-5bb457fa2a7d"
 storage_version_token = "1790685106062056"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "2uzkxzt6GpQeHsWTH32Wf"
+uri = "file://.canvas/assets/billboard-kyoto-compact.jpg"
+type = "image"
+title = "Kyoto fallback — compact cards"
+description = "Static view with minimal visible text and expandable Plan details. The live canvas preview is alongside it."
+logical_id = "ebb07924-8521-47a0-81a4-724364259c02"
+content_hash = "sha256:6cac645663d8d0f5ff51b15cc253575575379a4ec2474ffbe9452ade3c1bcb5c"
+size = 75536
+mtime_ms = 1790685972459
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/ebb07924-8521-47a0-81a4-724364259c02/b9b7e9aa-2ab0-472c-8ab5-b4c984c76168"
+storage_version_token = "1790685988971995"
+content_type = "image/jpeg"
