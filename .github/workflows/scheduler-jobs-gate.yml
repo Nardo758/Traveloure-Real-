@@ -116,6 +116,8 @@ jobs:
       # choose, R129, finalize/routing guards, M7/M8. O1–O10. Rides this DB job beside A2's matrix.
       - name: Plan option sets — cap, atomic choose, R129, M7/M8
         run: npx tsx --test --test-force-exit server/__tests__/plan-option-sets.db.test.ts
+      - name: A5 content facts — engine order, Places cache, plan-fit points, no public reader
+        run: npx tsx --test --test-force-exit server/__tests__/content-facts.db.test.ts
 
       # TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): no legacy crowd/pulse field on
       # the four public routes, the 48h Trend freshness gate, and /api/health's score age. T1–T4.

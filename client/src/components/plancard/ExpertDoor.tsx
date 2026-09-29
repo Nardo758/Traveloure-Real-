@@ -142,7 +142,11 @@ function ExpertPicker({
   const interest = useMutation({
     mutationFn: async () => {
       reportDoorEvent(tripId, "expert_interest", level);
-      if (itemCount === 0) await runFreeDraft(trip);
+      if (itemCount === 0) {
+        const r = await runFreeDraft(trip);
+        // A5 (§M5): the draft asked where the traveler is staying — say so; never answer for them.
+        if (r.kind === "anchor_needed") toast({ title: "Where are you staying?", description: r.message });
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
@@ -229,7 +233,8 @@ export function ExpertDoorCard({
       reportDoorEvent(tripId, "expert_help_level_chosen", l);
       // "Check my plan" on an empty plan runs the free draft first, so there is a plan to check.
       if (l === "check" && itemCount === 0) {
-        await runFreeDraft(trip);
+        const r = await runFreeDraft(trip);
+        if (r.kind === "anchor_needed") toast({ title: "Where are you staying?", description: r.message });
         void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       }
       return l;

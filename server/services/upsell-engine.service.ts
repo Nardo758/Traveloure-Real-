@@ -27,6 +27,7 @@
 
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { originTier } from "@shared/content-facts";
 
 // ─── Types (per spec §B1) ────────────────────────────────────────────────────
 
@@ -362,6 +363,44 @@ export function rankCandidates(
   const capped = scored.slice(0, slotConfig.maxItems).map((c, i) => ({ ...c, rank: i + 1 }));
 
   return { candidates: capped, suppressed };
+}
+
+// ─── FACT ORDER (content sourcing brief §3; ledger `2026-09-29-a5-draft-open-set`) ───────────
+//
+// The upsell engine is the ONE ranker (convergence brief), so the order in which the engine READS
+// facts about a place lives here too — never in a second sort beside it. Origin tier first
+// (platform-native → verified → Places → crawled → traveler note, `originTier` in
+// shared/content-facts.ts), then a VERIFIED fact before an unverified one of the same tier, then an
+// unexpired fact before a stale one, then the most recently fetched. Pure; stable for ties.
+
+export interface RankableFact {
+  origin: string | null | undefined;
+  verifiedAt?: Date | string | null;
+  fetchedAt?: Date | string | null;
+  expiresAt?: Date | string | null;
+}
+
+const factMs = (v: Date | string | null | undefined): number => {
+  if (v == null || v === "") return Number.NEGATIVE_INFINITY;
+  const n = v instanceof Date ? v.getTime() : Date.parse(v);
+  return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY;
+};
+
+export function rankFactsByOrigin<F extends RankableFact>(facts: readonly F[], now: Date = new Date()): F[] {
+  const stale = (f: F) => {
+    const exp = factMs(f.expiresAt);
+    return exp !== Number.NEGATIVE_INFINITY && exp <= now.getTime() ? 1 : 0;
+  };
+  return facts
+    .map((f, i) => ({ f, i }))
+    .sort((a, b) =>
+      originTier(a.f.origin) - originTier(b.f.origin) ||
+      (a.f.verifiedAt ? 0 : 1) - (b.f.verifiedAt ? 0 : 1) ||
+      stale(a.f) - stale(b.f) ||
+      factMs(b.f.fetchedAt) - factMs(a.f.fetchedAt) ||
+      a.i - b.i,
+    )
+    .map((x) => x.f);
 }
 
 function humanReason(c: RankInputCandidate, relevance: number, revenue: number): string {

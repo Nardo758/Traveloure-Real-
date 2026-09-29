@@ -99,13 +99,21 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
     // (Was matching /api/trips/generate-itinerary — a path the modal never fires, so this
     //  promise could never resolve and the test silently skipped via the catch below. The
     //  hardcoded stub that owned that path was deleted in Lane 2a.)
+    // A5 (ledger `2026-09-29-a5-draft-open-set`): a Trip plan with no place to stay first answers
+    // 409 anchor_needed ("Where are you staying?"). The DRAFT's response is the one that is not the
+    // question, so the matcher waits past the 409.
     const generateResponsePromise = page.waitForResponse(
       (resp) =>
-        resp.url().includes('/api/ai/generate-itinerary') && resp.request().method() === 'POST',
+        resp.url().includes('/api/ai/generate-itinerary') && resp.request().method() === 'POST' && resp.status() !== 409,
       { timeout: 60_000 },
     );
 
     await page.click(SELECTORS.generateBtn);
+    // The traveler's own answer to the anchor question, when it is asked.
+    const anchorAsk = page.locator('[data-testid="ai-draft-anchor-ask"]');
+    if (await anchorAsk.waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false)) {
+      await page.click('[data-testid="ai-draft-without-anchor"]');
+    }
     // The redirect only happens when the AI service responds successfully.
     // If XAI_API_KEY is absent in the deployed app the endpoint may error or
     // stay on the loading state.  Catch the timeout and skip so the CI gate

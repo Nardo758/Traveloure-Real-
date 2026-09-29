@@ -3,6 +3,7 @@
  *   D1  drafted carries outcome + itemsWritten, and nothing else
  *   D2  refused_not_empty / provider_failed carry the outcome only (no count, no model claim)
  *   D3  the event name and stage are the doc's
+ *   D4  A5: draftBasis and heldSlots ride a drafted run only when known; the ask is its own outcome
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -21,4 +22,19 @@ test("D3: event name and stage are the design doc's", () => {
   assert.equal(FREE_DRAFT_RUN_EVENT, "slip_free_draft_run");
   assert.equal(SLIP_FUNNEL_STAGE, "SLIP");
   assert.ok(SLIP_FUNNEL_STAGE.length <= 4, "funnel_events.stage is varchar(4)");
+});
+
+test("D4: A5 — basis and held slots when known, omitted when not; the ask is an outcome", () => {
+  assert.deepEqual(freeDraftRunEventData({ outcome: "drafted", itemsWritten: 9, draftBasis: "open_anchor_set", heldSlots: 1 }), {
+    outcome: "drafted",
+    itemsWritten: 9,
+    draftBasis: "open_anchor_set",
+    heldSlots: 1,
+  });
+  assert.deepEqual(freeDraftRunEventData({ outcome: "drafted", itemsWritten: 2, draftBasis: null, heldSlots: 0 }), {
+    outcome: "drafted",
+    itemsWritten: 2,
+    heldSlots: 0,
+  });
+  assert.deepEqual(freeDraftRunEventData({ outcome: "anchor_asked" }), { outcome: "anchor_asked" });
 });

@@ -47,6 +47,21 @@ import {
 import { z } from "zod";
 import { trackFunnelEvent } from "../utils/funnelTracker";
 import { FREE_DRAFT_RUN_EVENT, SLIP_FUNNEL_STAGE, freeDraftRunEventData } from "../services/free-draft-event";
+import {
+  ANCHOR_NEEDED_ERROR,
+  ANCHOR_NEEDED_MESSAGE,
+  ANCHOR_NEEDED_STATUS,
+  decideDraftBasis,
+  draftBasisKey,
+  draftBasisLine,
+  draftBasisPromptBlock,
+  heldSlotsFor,
+  withoutHeldItems,
+  type DraftBasis,
+  type HeldSlot,
+} from "@shared/draft-basis";
+import { draftBasisInputs } from "../services/plan-option-sets.service";
+import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
@@ -4816,7 +4831,11 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         specialRequests,
         momentKey,
         tripId: tripIdParam,
+        withoutAnchor: withoutAnchorRaw,
       } = req.body;
+      // A5 (§M5): the traveler's own answer to "Where are you staying?" — "draft without a hotel".
+      // Only a literal `true` counts; anything else is "not answered".
+      const withoutAnchor = withoutAnchorRaw === true;
 
       // Landing v2.5 Moment CTA (ruling 2026-09-01-moment-key; L2): the FINE occasion reaches the
       // generation PROMPT only — as an "Occasion:" line — and is NEVER written to a user-authored
@@ -4909,6 +4928,9 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       let tripAnchors: Awaited<ReturnType<typeof storage.getTemporalAnchors>> = [];
       let tripBoundaries: Awaited<ReturnType<typeof storage.getDayBoundaries>> = [];
       let resolvedTripId = "";
+      let draftBasis: DraftBasis = { kind: "not_anchored" };
+      let heldSlots: HeldSlot[] = [];
+      let openSetCount: number | null = null;
       if (tripIdParam) {
         if (!(await verifyTripOwnership(tripIdParam, userId))) {
           return res.status(403).json({ message: "Forbidden: you do not own this trip" });
@@ -4935,12 +4957,32 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           return res.status(AI_DRAFT_REFUSAL_STATUS).json(aiDraftRefusalBody(draftEligibility));
         }
 
+        // A5 (ledger `2026-09-29-a5-draft-open-set`; §M5, R126): what the draft is built around,
+        // and the slots open option sets hold. A lodging-anchored Trip with no stay and no open set
+        // ASKS instead of drafting — before the model call, so the question costs no tokens.
+        const basisInputs = await draftBasisInputs(tripIdParam);
+        const decision = decideDraftBasis({ ...basisInputs, withoutAnchor });
+        if (decision.ask) {
+          void trackFunnelEvent({
+            userId,
+            tripId: tripIdParam,
+            eventType: FREE_DRAFT_RUN_EVENT,
+            funnelStage: SLIP_FUNNEL_STAGE,
+            eventData: freeDraftRunEventData({ outcome: "anchor_asked" }),
+          });
+          return res.status(ANCHOR_NEEDED_STATUS).json({ error: ANCHOR_NEEDED_ERROR, message: ANCHOR_NEEDED_MESSAGE, tripId: tripIdParam });
+        }
+        draftBasis = decision.basis;
+        heldSlots = heldSlotsFor(basisInputs.openSets);
+        openSetCount = basisInputs.openSets.length;
+
         [tripAnchors, tripBoundaries] = await Promise.all([
           storage.getTemporalAnchors(tripIdParam),
           storage.getDayBoundaries(tripIdParam),
         ]);
       }
-      const anchorBlock = buildAnchorPromptBlock(tripAnchors, tripBoundaries, dates.start);
+      const anchorBlock =
+        buildAnchorPromptBlock(tripAnchors, tripBoundaries, dates.start) + draftBasisPromptBlock(draftBasis, heldSlots);
 
       // Generate itinerary using Grok — deduplicated + circuit-broken.
       //
@@ -5019,6 +5061,20 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           / (24 * 60 * 60 * 1000),
       ) + 1;
       const normalizedResult = normalizeGeneratedItineraryPayload(result as any, tripDayCount);
+      // R126: a held slot is never filled — whatever the model wrote, an item of a held category
+      // on a held day is dropped here, and a held lodging slot carries no hotel suggestions either.
+      if (heldSlots.length) {
+        normalizedResult.canonicalItems = withoutHeldItems(normalizedResult.canonicalItems, heldSlots).kept;
+        // The stored generated plan must not disagree with the rows (the normalizer's own rule).
+        normalizedResult.dailyItinerary = normalizedResult.dailyItinerary.map((d: any) => ({
+          ...d,
+          activities: withoutHeldItems(
+            (Array.isArray(d.activities) ? d.activities : []).map((a: any) => ({ ...a, dayNumber: Number(d.day) })),
+            heldSlots,
+          ).kept.map(({ dayNumber: _d, ...a }: any) => a),
+        }));
+        if (heldSlots.some((h) => h.categoryKey === "accommodation")) normalizedResult.accommodationSuggestions = [];
+      }
       const snapshot = await saveGeneratedItinerarySnapshot({
         userId,
         tripId: resolvedTripId || null,
@@ -5078,7 +5134,20 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           tripId: resolvedTripId,
           eventType: FREE_DRAFT_RUN_EVENT,
           funnelStage: SLIP_FUNNEL_STAGE,
-          eventData: freeDraftRunEventData({ outcome: "drafted", itemsWritten: insertedItems.length }),
+          eventData: freeDraftRunEventData({
+            outcome: "drafted",
+            itemsWritten: insertedItems.length,
+            draftBasis: draftBasisKey(draftBasis),
+            ...(openSetCount !== null ? { heldSlots: openSetCount } : {}),
+          }),
+        });
+        // A5: the drafted stops' facts (hours, dining basics, coordinates) — cache first, then the
+        // Places spine when it is switched on. Fire-and-forget: it never blocks or fails the draft.
+        void enrichPlanItems({
+          tripId: resolvedTripId,
+          market: snapshot.trip.marketSlug ?? null,
+          city: destination,
+          items: insertedItems.map((it: any) => ({ id: it.id, title: it.title, type: it.type ?? null })),
         });
       }
       const comparison = snapshot.comparison;
@@ -5213,6 +5282,9 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         itineraryId: savedItinerary.id,
         itinerary: { items: insertedItems },
         anchorValidation,
+        // A5 (§M5 "says which"): what the draft was built around, in the server's own words. Present
+        // only when this lane decided a basis; absent otherwise (§13).
+        ...(draftBasisKey(draftBasis) ? { draftBasis: { kind: draftBasisKey(draftBasis), line: draftBasisLine(draftBasis) } } : {}),
         message: 'Itinerary generated! Creating optimized variants...',
         title: normalizedResult.title,
         summary: normalizedResult.summary,

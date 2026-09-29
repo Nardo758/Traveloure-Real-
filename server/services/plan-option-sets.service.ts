@@ -39,11 +39,14 @@ import {
   type PlanOptionSet,
 } from "@shared/schema";
 import { OPTION_SET_CAP, nextOptionPosition, pinPrecision, type AnchorRole } from "@shared/plan-options";
-import { experienceGroupFor, tripsAnchorFor } from "@shared/experience-group";
+import { experienceGroupFor, resolvedTripsAnchor, tripsAnchorFor } from "@shared/experience-group";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isManagingEaForTrip } from "./ea-plan-delegate.service";
 import { readPlanPenOccasionSlug } from "./plan-pen-occasion.service";
+import { factPointsForTrip } from "./content-facts/place-facts.service";
+import { resolveOccasionForPlan } from "@shared/occasions";
+import type { DraftOpenSet } from "@shared/draft-basis";
 import { trackFunnelEvent } from "../utils/funnelTracker";
 import { loadMarketCentroids, loadMatrixReader } from "./travel-time-matrix.service";
 import { WITHIN_WALK_METERS } from "./anchor-scoring";
@@ -482,11 +485,15 @@ export async function reopenOptionSet(input: { tripId: string; setId: string; us
 /** The plan's stops plan-fit scores against: every item that is not itself a place to stay. */
 async function fitItems(tripId: string): Promise<FitItem[]> {
   const rows = await db
-    .select({ dayNumber: itineraryItems.dayNumber, lat: itineraryItems.latitude, lng: itineraryItems.longitude })
+    .select({ id: itineraryItems.id, dayNumber: itineraryItems.dayNumber, lat: itineraryItems.latitude, lng: itineraryItems.longitude })
     .from(itineraryItems)
     .where(and(eq(itineraryItems.tripId, tripId), ne(itineraryItems.itemType, "accommodation")));
+  // A5 (ledger `2026-09-29-a5-draft-open-set`): an item with no coordinates of its own counts as
+  // located when an unexpired `location` fact places it (a drafted stop the Places spine found). The
+  // fact is never copied onto the item row, where it would outlive Google's 30-day cache.
+  const factPoints = rows.some((r) => !toPoint(r.lat, r.lng)) ? await factPointsForTrip(tripId) : new Map();
   return rows.map((r) => {
-    const p = toPoint(r.lat, r.lng);
+    const p = toPoint(r.lat, r.lng) ?? factPoints.get(r.id) ?? null;
     return { dayNumber: r.dayNumber ?? null, lat: p?.lat ?? null, lng: p?.lng ?? null };
   });
 }
@@ -731,4 +738,48 @@ export async function suggestLodging(input: { tripId: string; userId: string }):
   }
   const [view] = (await listOptionSets(input.tripId)).filter((x) => x.id === set.id);
   return view;
+}
+
+// ── A5: what the free draft is built around (ledger `2026-09-29-a5-draft-open-set`) ─────────────
+
+/**
+ * The inputs `decideDraftBasis` (shared/draft-basis.ts) reads, from the plan's own rows:
+ *   · lodgingAnchored — the plan is a Trip (§B2) whose anchor is lodging (M7). The occasion row is
+ *     resolved by the SAME `resolveOccasionForPlan` the slip uses (events → recorded occasion → event
+ *     type), so the draft and the slip can never disagree about what the plan is (§18 rule 1).
+ *   · hasStay — the plan holds an accommodation item.
+ *   · openSets — every OPEN set with its options and each option's server plan-fit rank.
+ */
+export async function draftBasisInputs(tripId: string): Promise<{ lodgingAnchored: boolean; hasStay: boolean; openSets: DraftOpenSet[] }> {
+  const [trip] = await db.select({ userId: trips.userId, eventType: trips.eventType }).from(trips).where(eq(trips.id, tripId)).limit(1);
+  const [events, penSlug, occasions] = await Promise.all([
+    storage.getUserExperiencesByTrip(tripId),
+    readPlanPenOccasionSlug(trip?.userId, tripId),
+    storage.getExperienceTypes(),
+  ]);
+  const row = resolveOccasionForPlan({ events: events as any, penSlug, eventType: trip?.eventType ?? null, occasions });
+  // R215: a Trip only when the occasion RESOLVED — the SAME predicate the slip uses, imported. The
+  // `vacation` column default is not the traveler's answer, so a default-typed plan is not asked.
+  const lodgingAnchored = resolvedTripsAnchor(row as any)?.kind === "lodging";
+  const [stay] = await db
+    .select({ id: itineraryItems.id })
+    .from(itineraryItems)
+    .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.itemType, "accommodation")))
+    .limit(1);
+  const sets = (await listOptionSetsWithFit(tripId)).filter((s) => s.status === "open");
+  const num = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+  const openSets: DraftOpenSet[] = sets.map((s) => ({
+    id: s.id,
+    categoryKey: s.categoryKey,
+    dayNumber: s.dayNumber,
+    anchorRole: s.anchorRole,
+    options: s.options.map((o) => ({
+      title: o.title,
+      neighborhood: o.neighborhood,
+      latitude: num(o.latitude),
+      longitude: num(o.longitude),
+      fitRank: o.fitRank,
+    })),
+  }));
+  return { lodgingAnchored, hasStay: !!stay, openSets };
 }

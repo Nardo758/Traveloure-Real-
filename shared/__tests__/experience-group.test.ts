@@ -13,6 +13,7 @@ import {
   tripsAnchorLine,
   tripsAnchorQuestion,
   tripsAnchorState,
+  resolvedTripsAnchor,
 } from "../experience-group";
 import { resolveOccasionForPlan } from "../occasions";
 
@@ -114,4 +115,13 @@ test("R2: a recorded slug the catalog does not carry resolves nothing and falls 
   const occasions = [{ id: "9", slug: "wedding" }];
   assert.equal(resolveOccasionForPlan({ eventType: "wedding", penSlug: "retired-slug", occasions })?.slug, "wedding");
   assert.equal(resolveOccasionForPlan({ penSlug: "retired-slug", occasions }), null);
+});
+
+test("R3: resolvedTripsAnchor — a Trip only when the occasion RESOLVED; the `vacation` default never makes one (R215, A5)", () => {
+  assert.equal(resolvedTripsAnchor(null), null, "no occasion row ⇒ not a Trip, whatever trips.event_type says");
+  const trip = { slug: "travel", defaultDuration: "range", defaultGuests: false, defaultStops: "one", defaultSchedule: false };
+  assert.deepEqual(resolvedTripsAnchor(trip), { kind: "lodging", fromFallback: false });
+  assert.deepEqual(resolvedTripsAnchor({ ...trip, defaultSchedule: true }), { kind: "fixed_item", fromFallback: false });
+  assert.equal(resolvedTripsAnchor({ ...trip, defaultGuests: true }), null, "group travel is not the Trips frame");
+  assert.equal(resolvedTripsAnchor({ ...trip, defaultDuration: "day" }), null, "a day-shaped occasion is not a Trip");
 });

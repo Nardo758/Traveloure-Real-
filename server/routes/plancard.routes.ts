@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { factsForTrip } from "../services/content-facts/place-facts.service";
 import { getUserId } from "../utils/auth";
 import { storage } from "../storage";
 import {
@@ -523,6 +524,13 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // claim ("this plan is yours"). Additive; existing consumers ignore the key.
     const aiSketch = await isUntouchedAiDraft(tripId);
 
+    // A5 (ledger `2026-09-29-a5-draft-open-set`; content sourcing brief §2/§3): each item's facts
+    // (hours, dining basics, coordinates), first of each type in the engine's order, each with its
+    // provenance line. READ HERE, behind this handler's gate, and never in the assembler that also
+    // serves the public share channels: a Places fact is display-inside-a-plan only. Keyed by item
+    // id; an item with no facts is absent (§13). Additive — existing consumers ignore the key.
+    const placeFacts = await factsForTrip(tripId);
+
     // IS AN EXPERT ASSIGNED? (ledger `2026-09-26-send-to-expert-needs-expert`; audit G2.) An
     // advisor in a §12 WRITE status (accepted/assigned) — the SAME predicate the routing rail refuses
     // "Send to expert" on, so a surface never offers an edge the server will refuse and never labels
@@ -571,6 +579,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       aiSketch,
       // See the note above. ADDITIVE: existing consumers ignore the key.
       expertAssigned,
+      // A5 — see the note above.
+      placeFacts,
     });
   } catch (error) {
     if (error instanceof TripPlanNotFoundError) {

@@ -12017,3 +12017,69 @@ export const planOptions = pgTable("plan_options", {
 
 export type PlanOptionSet = typeof planOptionSets.$inferSelect;
 export type PlanOption = typeof planOptions.$inferSelect;
+
+// ── Content facts (migration 333; ledger `2026-09-29-a5-draft-open-set`; content sourcing brief) ──
+// Two tables born empty. Value sets (needs, fact types, origins, license classes, adapters) are
+// APP-enforced and stated ONCE in `shared/content-facts.ts`; NO CHECK. No seed: a source is added by
+// an admin through a surface, never by a deploy.
+export const contentSources = pgTable("content_sources", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  name: varchar("name", { length: 200 }).notNull(),
+  homepage: text("homepage"),
+  // NULL = global.
+  market: varchar("market", { length: 64 }),
+  adapter: varchar("adapter", { length: 30 }).notNull(),
+  covers: text("covers").array().notNull(),
+  // Mandatory: coverage gaps are data (brief §5).
+  doesNotCover: text("does_not_cover").array().notNull(),
+  licenseClass: varchar("license_class", { length: 20 }).notNull(),
+  termsUrl: text("terms_url"),
+  termsCheckedAt: timestamp("terms_checked_at"),
+  termsCheckedBy: varchar("terms_checked_by").references(() => users.id, { onDelete: "set null" }),
+  robotsOk: boolean("robots_ok"),
+  refreshIntervalDays: integer("refresh_interval_days"),
+  costCeilingCentsPerDay: integer("cost_ceiling_cents_per_day"),
+  // No default: the writer states it; never active without a terms check (`canActivateSource`).
+  active: boolean("active").notNull(),
+  addedBy: varchar("added_by").references(() => users.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  marketIdx: index("idx_content_sources_market").on(table.market),
+}));
+
+// Insert-only; a superseded fact points at its successor. `isPublishable` (shared/content-facts.ts)
+// is the ONE predicate for whether a row may reach a public surface.
+export const placeFacts = pgTable("place_facts", {
+  id: varchar("id").primaryKey(),
+  placeRefKind: varchar("place_ref_kind", { length: 20 }).notNull(),
+  placeRef: varchar("place_ref", { length: 300 }).notNull(),
+  placeLat: decimal("place_lat", { precision: 10, scale: 7 }),
+  placeLng: decimal("place_lng", { precision: 10, scale: 7 }),
+  market: varchar("market", { length: 64 }),
+  need: varchar("need", { length: 40 }).notNull(),
+  factType: varchar("fact_type", { length: 30 }).notNull(),
+  value: jsonb("value").notNull(),
+  origin: varchar("origin", { length: 30 }).notNull(),
+  // NULL for platform origins, and for the Places spine until the A6 registry holds it.
+  sourceId: varchar("source_id", { length: 64 }).references(() => contentSources.id, { onDelete: "set null" }),
+  sourceUrl: text("source_url"),
+  license: varchar("license", { length: 20 }),
+  fetchedAt: timestamp("fetched_at").notNull(),
+  // TTL by fact type (config); a Places fact never past 30 days.
+  expiresAt: timestamp("expires_at"),
+  verifiedBy: varchar("verified_by").references(() => users.id, { onDelete: "set null" }),
+  verifiedAt: timestamp("verified_at"),
+  costCents: decimal("cost_cents", { precision: 10, scale: 3 }),
+  planId: varchar("plan_id").references(() => trips.id, { onDelete: "set null" }),
+  itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "set null" }),
+  supersededBy: varchar("superseded_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  refIdx: index("idx_place_facts_ref").on(table.placeRefKind, table.placeRef),
+  planIdx: index("idx_place_facts_plan").on(table.planId),
+  itemIdx: index("idx_place_facts_item").on(table.itineraryItemId),
+}));
+
+export type ContentSource = typeof contentSources.$inferSelect;
+export type PlaceFact = typeof placeFacts.$inferSelect;
