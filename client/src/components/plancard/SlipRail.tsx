@@ -86,7 +86,7 @@ import {
   type OptimizationFeeQuote,
   type TripOptimizationPreview,
 } from "@/lib/optimization-preview";
-import { runFreeDraft } from "@/lib/slip-free-draft";
+import { runFreeDraft, type FreeDraftResult } from "@/lib/slip-free-draft";
 import { readSlipHasItemsRefusal } from "@/lib/ai-draft-refusal";
 import { countOptimizableItems, slipOptimizeDisabledReason } from "@/lib/slip-plan-actions";
 import {
@@ -442,9 +442,9 @@ function BuildCard({
   });
   // A5 (§M5): the server's anchor question, when the draft asked instead of drafting.
   const [draftAsk, setDraftAsk] = useState<string | null>(null);
-  const draft = useMutation({
+  const draft = useMutation<FreeDraftResult, Error, { withoutAnchor?: boolean } | void>({
     // ONE call, shared with the expert door (`@/lib/slip-free-draft`, §18 rule 1).
-    mutationFn: (opts?: { withoutAnchor?: boolean }) => runFreeDraft(trip as any, opts ?? {}),
+    mutationFn: (opts) => runFreeDraft(trip as any, opts ?? {}),
     onSuccess: (result) => {
       if (result.kind === "anchor_needed") {
         setDraftAsk(result.message);
