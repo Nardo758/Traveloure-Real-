@@ -44,6 +44,10 @@ import {
  *     line, checkout and cancel need a bookable instant-mode Kyoto listing (P-1c — A0 (a3) supply)
  *     plus a Stripe test key, and no seeder writes such a listing into a DB built from empty.
  *   · §8 today is split: the upcoming row and the Trip Card PASS; the refunded activity waits on §7.
+ *   · §2/§3 (A3, ledger `2026-09-29-a3b-option-sets-slip`) add places BY NAME AND PIN through the
+ *     slip's own control, fixture-free: the CI database seeds no `hotel_cache` rows (R211 — the census
+ *     gate governs release, not the build), so the list source and M9's ranking are proven by the DB
+ *     suite (`plan-option-sets.db.test.ts` O11/O12). §3's figures are all "est." here — no matrix.
  *
  * Run solo: npx playwright test playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts --project=chromium
  * Needs: DATABASE_URL (read-only asserts), the app on BASE_URL (default http://127.0.0.1:5000).
@@ -180,15 +184,53 @@ test.describe("1 · entry and occasion", () => {
 });
 
 // ── §2 · where are you staying ────────────────────────────────────────────────────────────────
-test.describe("2 · where are you staying", () => {
-  /** A plan whose occasion is recorded through the owner-gated occasion rail (the modal's own save). */
-  async function planWithOccasion(page: Page, label: string, slug: string): Promise<string> {
-    await signedInTraveler(page, label);
-    const tripId = await createTrip(page.request, `Kyoto ${label}`, KYOTO);
-    const res = await page.request.patch(`${BASE_URL}/api/trips/${tripId}/occasion`, { data: { experienceSlug: slug } });
-    expect(res.status(), `occasion write: ${await res.text()}`).toBe(200);
-    return tripId;
+/** A plan whose occasion is recorded through the owner-gated occasion rail (the modal's own save). */
+async function planWithOccasion(page: Page, label: string, slug: string): Promise<string> {
+  await signedInTraveler(page, label);
+  const tripId = await createTrip(page.request, `Kyoto ${label}`, KYOTO);
+  const res = await page.request.patch(`${BASE_URL}/api/trips/${tripId}/occasion`, { data: { experienceSlug: slug } });
+  expect(res.status(), `occasion write: ${await res.text()}`).toBe(200);
+  return tripId;
+}
+
+/**
+ * A3b — three Kyoto places to stay, each added through the slip's own "Add one that isn't listed"
+ * control with a pin (the traveler's own point). FIXTURE-FREE on purpose: the CI database seeds no
+ * `hotel_cache` rows (R211 — the census gate governs release, not this build), so the list source is
+ * proven by the DB suite and the phone path here uses the by-name rail. Returns the set id.
+ */
+const KYOTO_STAYS = [
+  { name: "Gion inn", lat: "35.0037", lng: "135.7788" },
+  { name: "Station hotel", lat: "34.9858", lng: "135.7588" },
+  { name: "Arashiyama ryokan", lat: "35.0094", lng: "135.6669" },
+];
+
+async function openLodgingSetWithThree(page: Page, tripId: string): Promise<string> {
+  await page.goto(`/plans/${tripId}`);
+  const compare = testid(page, "slip-anchor-compare");
+  expect(await appears(compare, 20_000), "the anchor question offers 'I'm deciding'").toBe(true);
+  const created = await actAndAwait(page, () => compare.click(), { method: "POST", path: new RegExp(`^/api/trips/${tripId}/option-sets$`) });
+  expect(created, "POST option-sets").toBe(201);
+  const setEl = page.locator('[data-testid^="slip-option-set-"]').first();
+  await expect(setEl).toBeVisible({ timeout: 10_000 });
+  const setId = ((await setEl.getAttribute("data-testid")) ?? "").replace("slip-option-set-", "");
+  for (const stay of KYOTO_STAYS) {
+    await testid(page, `slip-option-add-${setId}`).click();
+    await testid(page, "slip-option-mode-name").click();
+    await testid(page, "slip-option-name").fill(stay.name);
+    await testid(page, "slip-option-lat").fill(stay.lat);
+    await testid(page, "slip-option-lng").fill(stay.lng);
+    const added = await actAndAwait(page, () => testid(page, "slip-option-add-name").click(), {
+      method: "POST",
+      path: new RegExp(`^/api/trips/${tripId}/option-sets/${setId}/options$`),
+    });
+    expect(added, `add ${stay.name}`).toBe(201);
+    await expect(page.getByText(stay.name, { exact: true })).toBeVisible({ timeout: 10_000 });
   }
+  return setId;
+}
+
+test.describe("2 · where are you staying", () => {
 
   test("§2 A1 — an empty Travel slip asks 'Where are you staying?' and offers the stays browse", async ({ page }) => {
     const tripId = await planWithOccasion(page, "a1-stay", "travel");
@@ -229,26 +271,110 @@ test.describe("2 · where are you staying", () => {
     expect(q && firstRailCard && q.y < firstRailCard.y, "the anchor question is above the rail on a phone").toBeTruthy();
   });
 
-  test.fixme("§2 — the anchor question card opens a set; three options admitted, a fourth refused (cap 3)", async () => {
-    // Waits on A3 (S1/S2: the anchor question card + the plan_option_sets rails, P-2a/P-2b) and on
-    // the A1 supply gate (R193: ≥ 12 located Kyoto hotel_cache rows). POST …/option-sets → 201;
-    // POST …/options ×3 → 201, 4th → 409; DB: one set 'open', 3 plan_options, itinerary_items 0.
+  test("§2 — at 390 px an item's whole name is readable beside its chips (ledger `2026-09-29-slip-item-name-390`)", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await signedInTraveler(page, "name390");
+    const tripId = await createTrip(page.request, "Kyoto trip", KYOTO);
+    const name = "Fushimi Inari Taisha early morning walk";
+    await createItem(page.request, tripId, name, 1);
+    const read = await actAndAwait(page, () => page.goto(`/plans/${tripId}`), { method: "GET", path: new RegExp(`^/api/trips/${tripId}/plancard$`) });
+    expect(ok2xx(read)).toBe(true);
+    // Located by its TEXT, not a test id, so the same assertion reads the row as it was before.
+    const label = page.getByText(name, { exact: true });
+    await expect(label).toBeVisible({ timeout: 20_000 });
+    const clipped = await label.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(clipped, "the name is not cut off with an ellipsis").toBeLessThanOrEqual(1);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, "no horizontal scroll at phone width").toBeLessThanOrEqual(0);
   });
-  test.fixme("§2 — GLANCE reads '3 to compare' and an option with no stated price shows no price", async () => {
-    // Waits on A3 (S1 compare set at GLANCE; K1 rule 1 — no "$0").
+
+  test("§2 A3 — the anchor question opens a set; three places admitted, a fourth refused (cap 3)", async ({ page }) => {
+    const tripId = await planWithOccasion(page, "a3-cap", "travel");
+    const setId = await openLodgingSetWithThree(page, tripId);
+    // DOM: a full set offers no fourth add.
+    await expect(testid(page, `slip-option-add-${setId}`)).toHaveCount(0);
+    await expect(testid(page, `slip-option-set-${setId}`)).toContainText("3 places is the most one comparison holds.");
+    // HTTP: the rail refuses a fourth with a 409, never a clamp.
+    const fourth = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/options`, {
+      data: { source: { kind: "custom", title: "One too many" } },
+    });
+    expect(fourth.status()).toBe(409);
+    expect((await fourth.json()).code).toBe("set_full");
+    // DB: one open set, three options, and NO item — an open set is not an item (R126).
+    const [set] = await rows<{ status: string; n: number }>(
+      `SELECT s.status, (SELECT count(*)::int FROM plan_options o WHERE o.set_id = s.id) AS n FROM plan_option_sets s WHERE s.id = $1`,
+      [setId],
+    );
+    expect(set).toEqual({ status: "open", n: 3 });
+    const [items] = await rows<{ n: number }>(`SELECT count(*)::int AS n FROM itinerary_items WHERE trip_id = $1`, [tripId]);
+    expect(items.n).toBe(0);
+  });
+
+  test("§2 A3 — GLANCE reads '3 to compare' and a place with no stated price shows no price", async ({ page }) => {
+    const tripId = await planWithOccasion(page, "a3-glance", "travel");
+    const setId = await openLodgingSetWithThree(page, tripId);
+    await expect(testid(page, `slip-option-glance-${setId}`)).toHaveText("Where you'll stay · 3 to compare");
+    // K1 rule 1: nothing stated ⇒ nothing shown — never "$0".
+    await expect(page.locator('[data-testid^="slip-option-price-"]')).toHaveCount(0);
+    await expect(testid(page, `slip-option-set-${setId}`)).not.toContainText("$0");
   });
 });
 
 // ── §3 · plan-fit per hotel ───────────────────────────────────────────────────────────────────
 test.describe("3 · plan-fit per hotel", () => {
-  test.fixme("§3 — before the draft every option shows the 'add a few things' line and no minutes", async () => {
-    // Waits on A4 (plan-fit in the compare view, §E4 scoring the CHOSEN options).
+  test("§3 A3 — before the days have stops every place shows the 'add a few things' line and no minutes", async ({ page }) => {
+    const tripId = await planWithOccasion(page, "a3-fit0", "travel");
+    const setId = await openLodgingSetWithThree(page, tripId);
+    const fits = page.locator(`[data-testid="slip-option-set-${setId}"] [data-testid^="slip-option-fit-"]`);
+    await expect(fits).toHaveCount(3);
+    for (const line of await fits.allTextContents()) {
+      expect(line).toBe("Add a few things to your days to see how each place fits");
+      expect(line).not.toMatch(/\d/);
+    }
   });
-  test.fixme("§3 — after the draft each option carries medianMeters|null and a line with 'est.' and 'of N located'", async () => {
-    // Waits on A4, with A2's Kyoto travel-time matrix deciding where "est." remains.
+
+  test("§3 A3 — with located stops each place carries a server fit and a line with 'est.' and 'of N located'", async ({ page }) => {
+    const tripId = await planWithOccasion(page, "a3-fit", "travel");
+    const setId = await openLodgingSetWithThree(page, tripId);
+    // Three located stops and one without a pin (excluded and counted, never guessed).
+    await createItem(page.request, tripId, "Yasaka Shrine", 1, { latitude: "35.0036", longitude: "135.7786" });
+    await createItem(page.request, tripId, "Kennin-ji", 1, { latitude: "35.0005", longitude: "135.7736" });
+    await createItem(page.request, tripId, "Fushimi Inari", 2, { latitude: "34.9671", longitude: "135.7727" });
+    await createItem(page.request, tripId, "A friend's recommendation", 2);
+    const read = await actAndAwait(page, () => page.goto(`/plans/${tripId}`), { method: "GET", path: new RegExp(`^/api/trips/${tripId}/option-sets$`) });
+    expect(ok2xx(read)).toBe(true);
+    // Response: the server derives every figure (§E4) — the slip computes none.
+    const body = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/option-sets`)).json();
+    const set = body.sets.find((x: any) => x.id === setId);
+    for (const o of set.options) {
+      expect(o.fit.scored).toBe(true);
+      expect(o.fit.basis).toBe("est");
+      expect(o.fit.located).toBe(3);
+      expect(o.fit.total).toBe(4);
+      expect(typeof o.fit.minutesPerDay).toBe("number");
+    }
+    const fits = page.locator(`[data-testid="slip-option-set-${setId}"] [data-testid^="slip-option-fit-"]`);
+    await expect(fits).toHaveCount(3);
+    for (const line of await fits.allTextContents()) {
+      expect(line).toContain("est.");
+      expect(line).toContain("of 4 located");
+      expect(line).toContain("3 of 4");
+    }
   });
-  test.fixme("§3 — at 375×812 the option cards stack with no horizontal scroll", async () => {
-    // Waits on A4 (the compare view at phone width; Part 6 mock screen 2).
+
+  test("§3 A3 — at 375×812 the place cards stack with no horizontal scroll", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const tripId = await planWithOccasion(page, "a3-phone", "travel");
+    const setId = await openLodgingSetWithThree(page, tripId);
+    const cards = page.locator(`[data-testid="slip-option-list-${setId}"] > li`);
+    await expect(cards).toHaveCount(3);
+    const boxes = await Promise.all([0, 1, 2].map((i) => cards.nth(i).boundingBox()));
+    expect(boxes.every(Boolean)).toBe(true);
+    expect(boxes[1]!.y).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height - 1);
+    expect(boxes[2]!.y).toBeGreaterThan(boxes[1]!.y + boxes[1]!.height - 1);
+    expect(Math.abs(boxes[0]!.x - boxes[2]!.x)).toBeLessThan(2);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, "no horizontal scroll at phone width").toBeLessThanOrEqual(0);
   });
 });
 
@@ -383,8 +509,37 @@ test.describe("6 · paid run", () => {
 
 // ── §7 · choose, finalize, checkout, book, cancel ─────────────────────────────────────────────
 test.describe("7 · choose, finalize, checkout, book, cancel", () => {
-  test.fixme("§7 — Finalize with an open set → 409 open_option_sets; choose → set 'chosen', one stay item", async () => {
-    // Waits on the S1 choose rail and B7's open-set refusal (R125, P-2f) — A3 onward.
+  test("§7 A3 — Finalize with an open set → 409 open_option_sets; choose → set 'chosen', one stay item", async ({ page }) => {
+    const tripId = await planWithOccasion(page, "a3-final", "travel");
+    await createItem(page.request, tripId, "Nishiki Market lunch", 1);
+    const created = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, {
+      data: { categoryKey: "accommodation", label: "Where you'll stay", anchor: true },
+    });
+    expect(created.status()).toBe(201);
+    const setId = (await created.json()).set.id as string;
+    for (const stay of KYOTO_STAYS.slice(0, 2)) {
+      const r = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/options`, {
+        data: { source: { kind: "custom", title: stay.name, lat: Number(stay.lat), lng: Number(stay.lng) } },
+      });
+      expect(r.status()).toBe(201);
+    }
+    await page.goto(`/plans/${tripId}`);
+    const finalize = testid(page, "slip-action-finalize-plan");
+    await expect(finalize).toBeVisible({ timeout: 20_000 });
+    const refused = await actAndAwait(page, () => finalize.click(), { method: "POST", path: new RegExp(`^/api/trips/${tripId}/finalize$`) });
+    expect(refused, "an open comparison blocks Finalize (R125)").toBe(409);
+    const [before] = await rows<{ finalized: boolean }>(`SELECT finalized_at IS NOT NULL AS finalized FROM trips WHERE id = $1`, [tripId]);
+    expect(before.finalized).toBe(false);
+
+    const first = page.locator(`[data-testid="slip-option-set-${setId}"] [data-testid^="slip-option-choose-"]`).first();
+    await expect(first).toBeVisible({ timeout: 10_000 });
+    const chose = await actAndAwait(page, () => first.click(), { method: "POST", path: new RegExp(`^/api/trips/${tripId}/option-sets/${setId}/choose$`) });
+    expect(ok2xx(chose)).toBe(true);
+    await expect(testid(page, `slip-option-set-${setId}`)).toHaveCount(0);
+    const [set] = await rows<{ status: string }>(`SELECT status FROM plan_option_sets WHERE id = $1`, [setId]);
+    expect(set.status).toBe("chosen");
+    const [stays] = await rows<{ n: number }>(`SELECT count(*)::int AS n FROM itinerary_items WHERE trip_id = $1 AND item_type = 'accommodation'`, [tripId]);
+    expect(stays.n).toBe(1);
   });
   test("§7 today — Finalize snapshots the plan and the chooser asks once who books", async ({ page }) => {
     await signedInTraveler(page, "s7");

@@ -86,6 +86,7 @@ import { syncItemProjection } from "../services/cart-projection.service";
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
 import { logItemTransition } from "../services/item-transition-log.service";
 import { finalizeTrip, getLatestTripFinal, TripNotFoundError } from "../services/trip-finalize.service";
+import { itemHasOpenSet, openOptionSets } from "../services/plan-option-sets.service";
 import { logger } from "../infrastructure/logger";
 
 const router = Router();
@@ -171,6 +172,15 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
       .limit(1);
 
     if (!item) return res.status(404).json({ message: "Itinerary item not found on this trip" });
+
+    // §E3 (ledger `2026-09-29-a3-option-sets`): an item that is the slot of an OPEN comparison is
+    // not decided yet, so it is routed nowhere until the traveler chooses or closes the comparison.
+    if (to !== "in_planning" && (await itemHasOpenSet(itemId))) {
+      return res.status(409).json({
+        code: "open_option_set",
+        message: "Choose between the places you're comparing before sending this on",
+      });
+    }
 
     let from = item.routingStatus as RoutingStatus;
 
@@ -469,6 +479,18 @@ router.post("/api/trips/:tripId/finalize", isAuthenticated, async (req, res) => 
 
     if (!(await verifyTripOwnership(tripId, userId))) {
       return res.status(403).json({ message: "Only the trip owner can finalize this plan" });
+    }
+
+    // R125 (ledger `2026-09-29-a3-option-sets`): a plan with an open comparison is not decided, so
+    // it is not finalized. Checked at the route, before the one finalize author; a comparison opened
+    // in the instant between this read and the flip is the stated limit (it stays open on the slip).
+    const openSets = await openOptionSets(tripId);
+    if (openSets.length > 0) {
+      return res.status(409).json({
+        code: "open_option_sets",
+        message: "Choose between the places you're comparing before you finalize",
+        openSets,
+      });
     }
 
     // ONE finalize author (§18 rule 1): the versioned trip_finals snapshot + the finalized_at flip

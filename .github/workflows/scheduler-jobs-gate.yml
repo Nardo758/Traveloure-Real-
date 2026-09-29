@@ -107,6 +107,16 @@ jobs:
       - name: Stripe reconciliation — append-only drift detection
         run: npx tsx --test server/__tests__/reconciliation-detection.db.test.ts
 
+      # Track A step A2 (ledger `2026-09-29-a2-travel-time-matrix`): the travel-time matrix refresh
+      # against a fake Routes API — never the network. M1–M8.
+      - name: Travel-time matrix — refresh job + read helper (fake Routes API)
+        run: npx tsx --test --test-force-exit server/__tests__/travel-time-matrix.db.test.ts
+
+      # Track A step A3 (ledger `2026-09-29-a3-option-sets`): comparisons on the plan — cap, atomic
+      # choose, R129, finalize/routing guards, M7/M8. O1–O10. Rides this DB job beside A2's matrix.
+      - name: Plan option sets — cap, atomic choose, R129, M7/M8
+        run: npx tsx --test --test-force-exit server/__tests__/plan-option-sets.db.test.ts
+
       - name: Internal job endpoints — default-deny auth (no DB touched)
         run: npx tsx --test server/routes/__tests__/internal-jobs-auth.http.test.ts
 
