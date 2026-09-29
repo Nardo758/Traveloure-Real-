@@ -1107,6 +1107,14 @@ This document captures architectural decisions to maintain consistency across co
     signed in and the basics are complete (`saveMintsPlan`), and otherwise stays the edit it was.
     Dismissal still creates nothing. `occasion` still mints nothing, and a door that names a plan
     (`source.tripId`) is never minted a second one.
+    **AMENDED — THE `local` FINISH LANDS ON THE SLIP, NOT `/experts` (decision-maker dispatch
+    Sep 29, 2026 — ledger `2026-09-29-expert-door`).** With a plan minted, "Get a local expert" lands
+    on `/plans/:tripId` and the slip asks "How much help do you want?" (three levels mapped to expert
+    offering tiers, plus Ask-Me-Anything), then shows the byline-gated experts in the plan's market who
+    offer that level; Request is the SAME storefront rail with this plan attached (32(b)), so the
+    advisor row keeps its one author. The `/experts` browse remains only for a finish that minted
+    nothing, and D15's return-to-expert path is unchanged. The finish is recorded as `entry.finish` on
+    `trip_created` — a separate fact from the door.
 
     **D6 — TWO ROLE QUESTIONS, TWO CATALOGS, AND THEY ARE NEVER MERGED (§4, and the FAQ's refusal
     of a new service table).** "Who plans this WITH me" is a **plan-level** question and its answer

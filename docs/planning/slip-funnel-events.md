@@ -123,7 +123,27 @@ or cookie value).
   `billboard` (a landing billboard tile's "Start this plan"), `event_strip` (the landing "Coming up in our cities"
   strip's "Plan around it") and `events_page` (the `/events` "Coming up" block's "Plan around it"). The list stays
   closed and stated once in `shared/slip-funnel-events.ts`; a door still off it sends nothing.
+- **Amendment 2026-09-29 (ledger `2026-09-29-expert-door`; decision-maker dispatch "expert door").** The dispatch
+  asked for a door value `modal_expert`. A door names where the traveler ENTERED the modal; "Get a local expert" is a
+  way to build chosen at its END, so it is recorded as a separate property rather than a door (a plan that entered by
+  the hero and finished with the expert keeps both facts): `entry.finish` ∈ `myself | ai | local_expert`, the three
+  finishes that mint (Save and the occasion finish send none), same `.strict()` pick, same "client-supplied, omitted
+  when absent" rules. Stated once as `PLAN_FINISHES` in `shared/slip-funnel-events.ts`.
 - **Idempotency:** one mint, one row; no dedupe needed. **Emitter:** server (door fact is client-supplied, labelled as such).
+
+### 3.1b The expert door (ledger `2026-09-29-expert-door`) — WRITTEN
+After "Get a local expert" the slip asks "How much help do you want?" and opens a picker. Four rows, all `funnel_events`,
+stage `SLIP`:
+- `expert_help_level_chosen` — `{ level, tier, market }`; via the client rail (§5). `level` ∈ `check | plan | handle |
+  question`; `tier` is its offering tier (`advisory | planning | coordination`, or `ask_me_anything`); `market` is the
+  plan's own, server-derived.
+- `expert_picker_shown` — `{ level, tier, market, count }`; via the client rail; `count` is RECOMPUTED server-side from
+  the picker, never taken from the client.
+- `expert_interest` — `{ level, tier, market }`; via the client rail, when no expert in the market offers the level
+  and the traveler takes the empty state's action.
+- `expert_request_sent` — `{ serviceId, offeringTypeKey, level, tier }`; written by the SERVER on
+  `POST /api/expert-booking-requests` when the request names a plan. Deliberately not `expert_requested`, which is the
+  existing PAID event (written by the payment path, no plan id); this row is the request itself.
 
 ### 3.2 Anchor set opened — NOT BUILT
 - **Fires:** the insert of a `plan_option_sets` row (product map §E2, rail `POST /api/trips/:tripId/option-sets`;

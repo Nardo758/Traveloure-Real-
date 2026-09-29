@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -88,7 +89,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import type { PlanningBranch, PlanningSource } from "@/contexts/PlanningContext";
 import type { ExperienceType } from "@shared/schema";
-import { deriveOccasionSource, isPlanDoor, type TripMintEntry } from "@shared/slip-funnel-events";
+import { deriveOccasionSource, finishForBranch, isPlanDoor, type TripMintEntry } from "@shared/slip-funnel-events";
 
 /**
  * PlanModal — THE planning modal. One modal, many doors.
@@ -345,6 +346,8 @@ export function PlanModal({
   onPendingGemRecovered,
   onFinish,
 }: PlanModalProps) {
+  // The finish cards' copy (en + ja, `nav.json` `planFinish.*`; ledger `2026-09-29-expert-door`).
+  const { t: tNav } = useTranslation("nav");
   const [ctx] = useTripContext();
   const [title, setTitle] = useState("");
   /**
@@ -1296,7 +1299,7 @@ export function PlanModal({
    * AWAITED, and its answer is deliberately NOT branched on: a release the server did not confirm
    * leaves `commitPlan`'s idempotency filter to do exactly what it is there for.
    */
-  const mintThisPlan = async (): Promise<{ ok: true; tripId: string } | { ok: false; message?: string }> => {
+  const mintThisPlan = async (finishBranch?: PlanningBranch): Promise<{ ok: true; tripId: string } | { ok: false; message?: string }> => {
     if (!mintPlan) return { ok: false };
     await releasePendingEventsPen();
     // E1 — the door the traveler came through, as the DOOR named it (a door outside the closed
@@ -1310,6 +1313,10 @@ export function PlanModal({
         occasionChosen: !!selectedOccasion,
       });
     }
+    // Which way to build the traveler chose at the finish (ledger `2026-09-29-expert-door`) — a
+    // separate fact from the door; Save sends none.
+    const finishValue = finishBranch ? finishForBranch(finishBranch) : null;
+    if (finishValue) entry.finish = finishValue;
     return mintPlan({
       destination: destination.trim(),
       startDate,
@@ -1469,7 +1476,7 @@ export function PlanModal({
         !!mintPlan &&
         (mintRequired || !!user);
       if (shouldMint) {
-        const outcome = await mintThisPlan();
+        const outcome = await mintThisPlan(branch);
         if (!outcome.ok) {
           // A refusal with no message means the opener already took the screen (sign-in).
           if (outcome.message) setFinishError(outcome.message);
@@ -1683,11 +1690,15 @@ export function PlanModal({
     "flex w-full items-start gap-3 rounded-lg border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-4 py-3 text-left transition-colors hover:bg-[color:var(--earn-teal-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
   const finishMeta = { fontFamily: MONO, color: "var(--earn-muted)" } as const;
 
+  // The four finishes' copy lives in `nav.json` (en + ja), `planFinish.*`. The local card says what
+  // the finish now does — mint the plan, then choose how much help and pick an expert on the slip
+  // (ledger `2026-09-29-expert-door`); "experts who live there build it with you" promised a build
+  // the finish never started.
   const branchCopy: Record<PlanningBranch, { label: string; meta: string }> = {
-    myself: { label: "Build it myself", meta: "free · browse and build your own slip" },
-    ai: { label: "Plan with AI", meta: "a full draft itinerary from what you just told us" },
-    local: { label: "Get a local expert", meta: "experts who live there build it with you" },
-    occasion: { label: "For an occasion", meta: "Plus builds a plan before every date you register" },
+    myself: { label: tNav("planFinish.myself.label"), meta: tNav("planFinish.myself.meta") },
+    ai: { label: tNav("planFinish.ai.label"), meta: tNav("planFinish.ai.meta") },
+    local: { label: tNav("planFinish.local.label"), meta: tNav("planFinish.local.meta") },
+    occasion: { label: tNav("planFinish.occasion.label"), meta: tNav("planFinish.occasion.meta") },
   };
 
   return (

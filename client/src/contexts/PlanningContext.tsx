@@ -65,6 +65,7 @@ import type { PlanDoor, TripMintEntry } from "@shared/slip-funnel-events";
 import { earnerProfilePath } from "@/lib/earner-address";
 import { startMembershipCheckout } from "@/lib/membership-checkout";
 import { buildExpertsBrowseHref, withPlanTripId } from "@/lib/experts-browse";
+import { expertDoorHref } from "@/lib/expert-door";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 import { PlanModal, type CommittedPlan, type PlanMintOutcome } from "@/components/trip/plan-modal";
 import { addPendingGemToTrip } from "@/lib/billboard-gem-planning";
@@ -528,6 +529,15 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
          * sign-in gate, or one that failed, leaves `plan.tripId` empty and this falls back to
          * exactly the browse this branch has always shown rather than sending `tripId=undefined`.
          */
+        // THE EXPERT DOOR (ledger `2026-09-29-expert-door`; decision-maker dispatch Sep 29, 2026):
+        // with a plan minted, the finish lands on the SLIP, which opens with "How much help do you
+        // want?" and a picker of the experts who offer that level in the plan's market — the
+        // request then rides the storefront rail with this plan attached (LD 32). The browse below
+        // stays only for a finish that minted nothing (§13 — no plan, nothing to land on).
+        if (plan.tripId) {
+          setLocation(expertDoorHref(plan.tripId));
+          return;
+        }
         const dest = plan.destination || sourceDestination(source);
         setLocation(buildExpertsBrowseHref({ destination: dest, tripId: plan.tripId }));
         return;

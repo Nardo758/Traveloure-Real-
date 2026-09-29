@@ -45,6 +45,7 @@ export function tripCreatedEventData(input: {
   const data: Record<string, unknown> = { datesConfirmed: input.datesChosenByTraveler };
   if (input.entry?.door) data.door = input.entry.door;
   if (input.entry?.occasionSource) data.occasionSource = input.entry.occasionSource;
+  if (input.entry?.finish) data.finish = input.entry.finish;
   if (typeof input.marketSlug === "string" && input.marketSlug.length > 0) data.market = input.marketSlug;
   return data;
 }

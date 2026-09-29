@@ -20,6 +20,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { HELP_LEVELS } from "@shared/expert-door";
+import { ExpertDoorError, recordExpertDoorEvent } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
 import {
   OptionSetError,
@@ -74,7 +76,7 @@ const promoteBody = z.object({ itemId: z.string().min(1).max(64) }).strict();
 
 /**
  * A4 — the ONE client event rail (slip-funnel-events §5). A `.strict()` discriminated union of the
- * events a view may report; today exactly `slip_plan_fit_shown`. No value is taken from the client:
+ * events a view may report: `slip_plan_fit_shown` (A4) and the expert door's three (below). No value is taken from the client:
  * the fit is recomputed server-side (§E4).
  */
 const slipEventBody = z.discriminatedUnion("type", [
@@ -88,7 +90,13 @@ const slipEventBody = z.discriminatedUnion("type", [
       viewId: z.string().min(1).max(64),
     })
     .strict(),
-]);
+  // The expert door (ledger `2026-09-29-expert-door`): the level chosen, the picker shown (its count
+  // RECOMPUTED server-side) and the interest recorded when no expert offers the level. The market is
+  // the plan's own; the client names only the level.
+  ...(["expert_help_level_chosen", "expert_picker_shown", "expert_interest"] as const).map((t) =>
+    z.object({ type: z.literal(t), level: z.enum(HELP_LEVELS) }).strict(),
+  ),
+] as any);
 
 function fail(res: any, err: unknown, what: string) {
   if (err instanceof OptionSetError) {
@@ -239,11 +247,17 @@ router.post("/api/trips/:tripId/slip-events", isAuthenticated, async (req: any, 
   const parsed = slipEventBody.safeParse(req.body ?? {});
   if (!parsed.success) return badBody(res);
   try {
-    const { type: _type, ...event } = parsed.data;
-    await recordPlanFitShown({ tripId: req.params.tripId, userId: getUserId(req)!, ...event });
+    const body = parsed.data as any;
+    if (body.type === "slip_plan_fit_shown") {
+      const { type: _type, ...event } = body;
+      await recordPlanFitShown({ tripId: req.params.tripId, userId: getUserId(req)!, ...event });
+    } else {
+      await recordExpertDoorEvent({ tripId: req.params.tripId, userId: getUserId(req)!, type: body.type, level: body.level });
+    }
     res.status(202).json({ accepted: true });
   } catch (err) {
     if (err instanceof OptionSetError) return fail(res, err, "slip-event");
+    if (err instanceof ExpertDoorError) return res.status(err.status).json({ code: err.code, message: err.message });
     // A view that fails to record never fails the view (§15b): logged, answered 202.
     console.error("[option-sets] slip-event write failed:", err);
     res.status(202).json({ accepted: true });

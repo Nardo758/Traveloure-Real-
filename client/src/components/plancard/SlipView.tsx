@@ -113,6 +113,7 @@ import {
   primaryAnchorItemId,
   useOptionSets,
 } from "./SlipOptionSets";
+import { AddLocalExpertButton, ExpertDoorCard, useExpertDoorState } from "./ExpertDoor";
 import {
   resolveAddDayNumber,
   slipItemTools,
@@ -378,8 +379,11 @@ function SlipHeader({
   onAskParty,
   occasionName,
   anchorLine,
+  expertControl,
 }: {
   data: SlipData;
+  /** The expert door's small "Add a local expert" control (ledger `2026-09-29-expert-door`), or null. */
+  expertControl?: React.ReactNode;
   hasOptimized: boolean;
   /**
    * A1 (ledger `2026-09-29-a1-trips-frame`) — the occasion's OWN name (`experience_types.name`),
@@ -441,6 +445,7 @@ function SlipHeader({
 
   return (
     <div className="space-y-1.5" data-testid="slip-header">
+      {expertControl ? <div className="flex justify-end">{expertControl}</div> : null}
       {occasionName ? (
         <p
           className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
@@ -1527,6 +1532,12 @@ export function SlipView({
     enabled: isOwner && !!tripId,
   });
   const hasAdvisor = isExpertViewer || !!slipAdvisorData?.advisor;
+  // THE EXPERT DOOR (ledger `2026-09-29-expert-door`): owner only, and only until an expert is
+  // attached — the owner's own advisor read (above) is the one signal, never a second query. The
+  // advisor read must have ANSWERED before the card shows, so a plan that has an expert never
+  // flashes the question.
+  const [expertDoorState, setExpertDoorState] = useExpertDoorState(tripId);
+  const expertDoorLive = isOwner && slipAdvisorData !== undefined && !slipAdvisorData?.advisor;
   const transitions = data.recentTransitions ?? [];
   const hasOptimized = transitions.some((t) => t.eventType === "variant_applied");
   const planVersion = data.trip?.planVersion ?? transitions.length;
@@ -1833,6 +1844,11 @@ export function SlipView({
       )}
 
       <SlipHeader
+        expertControl={
+          expertDoorLive && expertDoorState === "dismissed" ? (
+            <AddLocalExpertButton onOpen={() => setExpertDoorState("open")} />
+          ) : null
+        }
         occasionName={occasion?.name ?? null}
         anchorLine={
           tripsAnchor && occasionResolved
@@ -1984,6 +2000,19 @@ export function SlipView({
         </div>
       ) : (
       <>
+      {expertDoorLive && expertDoorState === "open" && data.trip ? (
+        <ExpertDoorCard
+          trip={{
+            id: tripId,
+            destination: data.trip.destination ?? "",
+            startDate: data.trip.startDate as any,
+            endDate: data.trip.endDate as any,
+            travelers: (data.trip as any).travelers ?? null,
+          }}
+          itemCount={allActivities.length}
+          onDismiss={() => setExpertDoorState("dismissed")}
+        />
+      ) : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
       {optionSets.some((st) => st.status === "open" || (st.status === "chosen" && (st.easierCount ?? 0) > 0)) ||
