@@ -2788,6 +2788,13 @@ reasoned from an older publish report; production had already recorded 319–323
 missing, and the ledger table is `schema_migrations`, not `migrations`. A session that cannot reach
 production says so and asks for the read — a §13 honesty question, not a rounding error.
 
+**POST-PUBLISH VERIFICATION IS `/api/health` (decision-maker, Sep 29, 2026 — ledger
+`2026-09-29-health-last-migration`).** After a publish, the check is `GET /api/health` answering
+`migrations.current: true` with `migrations.lastApplied` equal to the last file in
+`server/migrations/migration-files.ts` at the published commit (and `build.commit` naming that
+commit). `migrations: null` is NOT a pass — the ledger could not be read. The boot-log read
+("migrations current, no new applies") is now SECONDARY: a corroboration, not the verification.
+
 **THE STOP LIST GOVERNS THE DIFF, NOT THE PUBLISH — DECLINE THE DIFF, PUBLISH, READ THE BOOT LOG
 (amended Sep 28, 2026 — decision-maker; ledger `2026-09-28-s20-decline-diff-and-persona-step`).**
 The stop list above (`DROP`, `ALTER COLUMN … TYPE`, NOT NULL or DEFAULT changes, CHECK, UNIQUE
