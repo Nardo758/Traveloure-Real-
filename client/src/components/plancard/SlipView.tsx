@@ -1579,12 +1579,15 @@ export function SlipView({
   const groupByEvent = showsSchedule(occasion) && planEvents.length > 0;
   /**
    * A1 — THE TRIPS FRAME (ledger `2026-09-29-a1-trips-frame`; product map §B2, §M7). The group is
-   * derived from the resolved occasion ROW (R132's coarse fallback when none resolved), and only
+   * derived from the resolved occasion ROW only (see below for why not R132's coarse key), and only
    * the Trips group changes anything in this step: its header states the anchor, and its EMPTY slip
    * asks the anchor question instead of saying "No items". Every other group renders as before.
    * `null` anchor ⇒ not a Trip ⇒ nothing new renders.
    */
-  const experienceGroup = experienceGroupFor(occasion, data.trip?.eventType ?? null);
+  // The coarse `trips.event_type` is deliberately NOT passed: the column DEFAULTS to `vacation`, so
+  // R132's fallback would make every plan whose occasion was never recorded a Trip. A column default
+  // is not the traveler's answer (§13) — the frame applies only when the occasion resolved to a row.
+  const experienceGroup = experienceGroupFor(occasion);
   const tripsAnchor: TripsAnchor | null = experienceGroup === "trips" ? tripsAnchorFor(occasion) : null;
 
   /**
