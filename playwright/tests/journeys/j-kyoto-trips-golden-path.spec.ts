@@ -138,14 +138,97 @@ test.describe("1 · entry and occasion", () => {
       .toEqual({ door: "hero", occasionSource: "asked", datesConfirmed: true, market: "kyoto" });
   });
 
-  test.fixme("§1 — the header shows the occasion's own name and the plan resolves to the Trips group", async () => {
-    // Waits on A1 (the Trips frame): `experienceGroupFor` + the B1 header. Today the slip header
-    // renders no occasion name (golden path step 1, "Gap — NOT BUILT"; P-2h).
+  test("§1 — the header shows the occasion's own name and the plan resolves to the Trips group", async ({ page }) => {
+    // A1 (ledger `2026-09-29-a1-trips-frame`). The occasion is the one the traveler picked in the
+    // modal, recorded into the plan's pen by the occasion rail — not guessed from `vacation`.
+    await signedInTraveler(page, "a1");
+    await openModalFromHero(page);
+    expect(await fillPlanModalToFinish(page, KYOTO, { occasionSlug: "travel", lenDays: 5 })).toBe(true);
+    let tripId: string | null = null;
+    const status = await actAndAwait(
+      page,
+      async () => {
+        tripId = await clickPlanFinish(page, "myself");
+      },
+      { method: "POST", path: /^\/api\/trips$/ },
+    );
+    expect(ok2xx(status)).toBe(true);
+    await expect(testid(page, "slip-title")).toBeVisible({ timeout: 20_000 });
+
+    // The occasion write is fire-and-forget after the mint (§15b): poll the READ, then load fresh.
+    await expect
+      .poll(
+        async () =>
+          (
+            await rows<{ slug: string | null }>(
+              `SELECT context->>'experienceSlug' AS slug FROM trip_contexts WHERE trip_id = $1`,
+              [tripId],
+            )
+          )[0]?.slug ?? null,
+        { timeout: 10_000 },
+      )
+      .toBe("travel");
+    const tripRead = await actAndAwait(page, async () => { await page.reload(); }, { method: "GET", path: new RegExp(`^/api/trips/${tripId}$`) });
+    expect(ok2xx(tripRead)).toBe(true);
+
+    await expect(testid(page, "slip-occasion-name")).toHaveText(/Travel/, { timeout: 20_000 });
+    await expect(testid(page, `slip-view-${tripId}`)).toHaveAttribute("data-experience-group", "trips");
+    // The group is a key, never display text (R127).
+    await expect(page.getByText("Trips", { exact: true })).toHaveCount(0);
+    await expect(testid(page, "slip-anchor-state")).toHaveText("Where you'll stay: not chosen yet");
   });
 });
 
 // ── §2 · where are you staying ────────────────────────────────────────────────────────────────
 test.describe("2 · where are you staying", () => {
+  /** A plan whose occasion is recorded through the owner-gated occasion rail (the modal's own save). */
+  async function planWithOccasion(page: Page, label: string, slug: string): Promise<string> {
+    await signedInTraveler(page, label);
+    const tripId = await createTrip(page.request, `Kyoto ${label}`, KYOTO);
+    const res = await page.request.patch(`${BASE_URL}/api/trips/${tripId}/occasion`, { data: { experienceSlug: slug } });
+    expect(res.status(), `occasion write: ${await res.text()}`).toBe(200);
+    return tripId;
+  }
+
+  test("§2 A1 — an empty Travel slip asks 'Where are you staying?' and offers the stays browse", async ({ page }) => {
+    const tripId = await planWithOccasion(page, "a1-stay", "travel");
+    const read = await actAndAwait(page, async () => { await page.goto(`/plans/${tripId}`); }, { method: "GET", path: new RegExp(`^/api/trips/${tripId}$`) });
+    expect(ok2xx(read)).toBe(true);
+    const card = testid(page, "slip-anchor-question");
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card).toHaveAttribute("data-anchor-kind", "lodging");
+    await expect(card).toContainText("Where are you staying?");
+    await expect(testid(page, "slip-empty-items")).toHaveCount(0);
+    const browse = testid(page, "slip-anchor-browse-stays");
+    await expect(browse).toHaveAttribute("href", new RegExp(`accommodation.*${tripId}|${tripId}.*accommodation`));
+  });
+
+  test("§2 A1 — a golf trip (schedule on) asks what is fixed first; lodging is secondary (M7)", async ({ page }) => {
+    const tripId = await planWithOccasion(page, "a1-golf", "golf-trip");
+    await page.goto(`/plans/${tripId}`);
+    const card = testid(page, "slip-anchor-question");
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card).toHaveAttribute("data-anchor-kind", "fixed_item");
+    await expect(card).toContainText("What's fixed on these dates?");
+    await expect(testid(page, "slip-anchor-state")).toHaveText("Built around: nothing fixed yet");
+    await expect(testid(page, `slip-view-${tripId}`)).toHaveAttribute("data-experience-group", "trips");
+  });
+
+  test("§2 A1 — at 390 px the question card fits with no horizontal scroll", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const tripId = await planWithOccasion(page, "a1-phone", "travel");
+    await page.goto(`/plans/${tripId}`);
+    await expect(testid(page, "slip-anchor-question")).toBeVisible({ timeout: 20_000 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, "no horizontal scroll at phone width").toBeLessThanOrEqual(0);
+    // List before rail on a phone (track-a-rollout A1): the question is above the rail's first card.
+    const q = await testid(page, "slip-anchor-question").boundingBox();
+    const rail = await testid(page, "slip-view-toggle").boundingBox();
+    expect(q && rail && q.y > rail.y, "the question follows the view bar, inside the plan column").toBeTruthy();
+    const firstRailCard = await page.getByText("Browse services for this trip").first().boundingBox();
+    expect(q && firstRailCard && q.y < firstRailCard.y, "the anchor question is above the rail on a phone").toBeTruthy();
+  });
+
   test.fixme("§2 — the anchor question card opens a set; three options admitted, a fourth refused (cap 3)", async () => {
     // Waits on A3 (S1/S2: the anchor question card + the plan_option_sets rails, P-2a/P-2b) and on
     // the A1 supply gate (R193: ≥ 12 located Kyoto hotel_cache rows). POST …/option-sets → 201;
