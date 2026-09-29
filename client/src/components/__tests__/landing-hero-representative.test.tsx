@@ -6,9 +6,10 @@
  *    says "Demo" (narrowed to the curated case by follow-up 4 — the override reads a live listing).
  * B2 every rendered tile carries a credit resolved from ATTRIBUTION.json; a photo with no entry is
  *    not rendered at all.
- * B3 a tile shows no expert name, price, "Plan with" or avatar — "Representative photo · <market>".
- * B4 the hero no longer paints billboard images from the live payload (provider_services legs).
- * B6 Start this plan opens a new plan with the tile's occasion and market, as door "billboard".
+ * B3 a representative photo is labeled and never paired with another market's live copy.
+ * B4 the restored compact captions/actions use real Kyoto data when it matches the photos,
+ *    without swapping in a live payload photo or inventing a listing.
+ * B6 the override's plan door still pre-sets the tile's occasion and market.
  * B5 a byline-gated expert takes the tile: the initial appears, and only then.
  * P1 the pill set is exactly the old eight-tile set — no destination lost.
  * W1 the Wanted strip still renders from the live payload, and is omitted when coverage is unknown.
@@ -85,29 +86,43 @@ describe("landing hero billboard", () => {
     );
   });
 
-  it("B3 a curated tile names no expert, price or avatar — it says it is a representative photo", () => {
+  it("B3 mismatched live data stays off Kyoto photos and the fallback button browses Kyoto", () => {
     const html = render(PAYLOAD);
     assert.ok(html.includes("Representative photo · Kyoto"));
-    assert.ok(html.includes("Start this plan"));
+    assert.ok(html.includes("Representative destination"));
+    assert.ok(html.includes("Browse Kyoto"));
+    assert.ok(html.includes('href="/discover/location/Kyoto"'));
+    assert.ok(!html.includes("Start this plan"));
     assert.ok(!html.includes("Plan with"));
     assert.ok(!html.includes("from $"));
     assert.ok(!html.includes("Demo"));
+    assert.ok(!html.includes("Tito’s Lane"));
     assert.ok(!html.includes('data-testid="hero-billboard-expert-'), "no initial without a real expert");
   });
 
-  it("B4 a curated tile paints no image from the live payload, and its code reads no listing", () => {
-    const html = render(PAYLOAD);
+  it("B4 matching live text restores the compact expert/gem/service cards with correct storefront link", () => {
+    const html = render({
+      ...PAYLOAD,
+      city: "Kyoto",
+      anchorExpert: { name: "Aiko Mori", handle: "aiko", fromPriceCents: 4500, imageUrl: "/fixture/expert.jpg" },
+      gem: { name: "Fushimi Inari", score: 85, imageUrl: "/fixture/gem.jpg" },
+      service: { name: "Kyoto walking tour", priceCents: 1200, imageUrl: "/fixture/service.jpg" },
+    });
+    assert.ok(html.includes("Local expert · Kyoto"));
+    assert.ok(html.includes("Aiko Mori"));
+    assert.ok(html.includes("Plan with Aiko · from $45"));
+    assert.ok(html.includes('href="/s/aiko"'));
+    assert.ok(html.includes("Hidden gem"));
+    assert.ok(html.includes("Fushimi Inari"));
+    assert.ok(html.includes("Book on Traveloure"));
+    assert.ok(html.includes("Kyoto walking tour"));
+    assert.ok(html.includes("$12"));
+    assert.ok(!html.includes("Start this plan"));
     for (const url of ["/fixture/expert.jpg", "/fixture/gem.jpg", "/fixture/service.jpg"]) {
-      assert.ok(!html.includes(url), `${url} must not be painted`);
+      assert.ok(!html.includes(url), `${url} must not replace the credited photo`);
     }
-    const src = fs.readFileSync(path.join(ROOT, "client/src/components/landing/landing-hero.tsx"), "utf8");
-    // The live hero payload's old billboard legs are never read, by either tile.
-    assert.doesNotMatch(src, /anchorExpert|hero\?\.gem|hero\?\.service/, "no live billboard leg is read");
-    // Narrowed to the curated case: the curated tile's own code names no listing, price or expert.
-    const start = src.indexOf("function CuratedTileCard(");
-    const end = src.indexOf(" * An OVERRIDDEN tile");
-    assert.ok(start > 0 && end > start, "the curated and override tiles are separate components");
-    assert.doesNotMatch(src.slice(start, end), /listing|price|handle|imageUrl|override/i, "a curated tile reads no listing data");
+    const noHandle = render({ ...PAYLOAD, city: "Kyoto", anchorExpert: { name: "Aiko Mori", handle: null, fromPriceCents: 4500 } });
+    assert.ok(noHandle.includes('href="/discover/location/Kyoto"'), "no dead Plan with button without a storefront");
   });
 
   const OVERRIDE: BillboardOverride = {
@@ -166,7 +181,7 @@ const OVERRIDE_FOR_SOURCE: BillboardOverride = {
 };
 
 describe("billboard doors", () => {
-  it("B6 each tile's Start this plan opens a NEW plan with its occasion and market pre-set", () => {
+  it("B6 the plan source still pre-sets occasion and market for expert overrides", () => {
     for (const tile of BILLBOARD_TILES) {
       const source = billboardPlanSource(tile);
       assert.ok(source, `${tile.key} resolves to a market`);
