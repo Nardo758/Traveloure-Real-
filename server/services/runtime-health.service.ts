@@ -326,103 +326,46 @@ export async function runH4ProviderHealthRollup(): Promise<QAResults> {
 // H5 — Data invariants
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function runH5DataInvariants(): Promise<QAResults> {
+export async function runH5DataInvariants(scriptPath = "scripts/invariants.mjs"): Promise<QAResults> {
   const { existsSync } = await import("fs");
-  const path = "scripts/invariants.mjs";
 
-  if (!existsSync(path)) {
+  if (!existsSync(scriptPath)) {
     return { H5: { pass: true, detail: "SKIP: scripts/invariants.mjs not present on this build" } };
   }
 
-  // Prefer an importable runner (a named/default export) so we can read structured output
-  // directly; fall back to shelling the CLI entry and parsing its exit code + a best-effort
-  // severity-count scrape, since we can't assume a particular export shape from a script this
-  // check didn't write.
-  try {
-    // IMPORTANT: the specifier is built in a separate statement, NOT as a template literal
-    // written directly inside `import(...)`. esbuild's automatic "glob import" feature
-    // triggers specifically when a template literal appears literally at the import() call
-    // site — writing `import(\`../../${path}\`)` inline would make esbuild try to statically
-    // bundle EVERY file under the repo root matching that pattern (proven: it blew up the
-    // server build trying to resolve attached_assets/, artifacts/, .githooks/, etc.). Building
-    // the string one line earlier and passing a plain variable keeps this a genuinely opaque
-    // runtime import, resolved only after the existsSync guard above confirms the file exists.
-    const specifier = "../../" + path;
-    const mod: any = await import(specifier);
-    const runner = mod.runInvariants ?? mod.checkInvariants ?? mod.default;
-    if (typeof runner === "function") {
-      const result = await runner();
-      const detail = summarizeInvariantResult(result);
-      const violations = countInvariantViolations(result);
-      return { H5: { pass: violations === 0, detail } };
-    }
-  } catch (err: any) {
-    // Fall through to the CLI path below — an import failure doesn't necessarily mean the
-    // script is broken, just that it isn't designed to be imported.
-    console.warn(`[runtime-health] H5: import of ${path} did not yield a usable runner (${err?.message ?? err}); falling back to CLI invocation`);
-  }
-
+  // This is a CLI, not a library: it calls process.exit(1) when invariants fail.
+  // Importing it in the web server would terminate the entire application during nightly QA.
+  // Keep its exit status and output inside a child process, and report failures through H5.
   try {
     const { execFile } = await import("child_process");
     const { promisify } = await import("util");
     const execFileAsync = promisify(execFile);
-    const { stdout, stderr } = await execFileAsync("node", [path], {
+    const { stdout } = await execFileAsync(process.execPath, [scriptPath], {
       env: process.env,
       timeout: 60_000,
     });
-    const output = `${stdout}\n${stderr}`;
-    const bySeverity = extractSeverityCounts(output);
-    const totalViolations = Object.values(bySeverity).reduce((a, b) => a + b, 0);
     return {
       H5: {
-        pass: totalViolations === 0,
-        detail: totalViolations === 0
-          ? `OK: exit 0, no violations parsed from output. ${snippet(output, 200)}`
-          : `FAIL: ${totalViolations} violation(s) — ${Object.entries(bySeverity).map(([s, n]) => `${s}=${n}`).join(", ")}. ${snippet(output, 200)}`,
+        pass: true,
+        detail: `OK: ${invariantSummary(stdout) ?? "invariant runner exited 0"}`,
       },
     };
   } catch (err: any) {
-    // A non-zero exit from execFile throws — that itself is the FAIL signal (the invariants
-    // script's own convention, mirroring a lint/test runner).
-    const output = `${err?.stdout ?? ""}\n${err?.stderr ?? ""}`.trim();
+    // Do not include raw CLI output: the runner prints its database URL, which may contain
+    // credentials. Its summary and failed check names are enough for a useful QA result.
+    const output = `${err?.stdout ?? ""}\n${err?.stderr ?? ""}`;
+    const failedChecks = Array.from(output.matchAll(/^\[(?:VIOLATED|ERROR)\]\s+([\w-]+)/gm), (match) => match[1]);
     return {
       H5: {
         pass: false,
-        detail: `FAIL: scripts/invariants.mjs exited non-zero (${err?.code ?? "unknown code"}). ${snippet(output || err?.message || String(err), 200)}`,
+        detail: `FAIL: invariant runner exited ${err?.code ?? "with an error"}. ${invariantSummary(output) ?? "No summary available."}${failedChecks.length ? ` Failed checks: ${failedChecks.join(", ")}.` : ""}`,
       },
     };
   }
 }
 
-function summarizeInvariantResult(result: any): string {
-  if (result && typeof result === "object") {
-    if (Array.isArray(result.violations)) return `${result.violations.length} violation(s) reported by imported runner. ${snippet(JSON.stringify(result.bySeverity ?? result.violations.slice(0, 5)))}`;
-    if (result.bySeverity) return `Imported runner returned bySeverity: ${JSON.stringify(result.bySeverity)}`;
-  }
-  return `Imported runner ran; result shape unrecognized — recorded raw: ${snippet(JSON.stringify(result))}`;
-}
-
-function countInvariantViolations(result: any): number {
-  if (Array.isArray(result?.violations)) return result.violations.length;
-  if (result?.bySeverity && typeof result.bySeverity === "object") {
-    return Object.values(result.bySeverity).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-  }
-  if (typeof result?.violationCount === "number") return result.violationCount;
-  // Unrecognized shape: don't fabricate a pass — treat as "couldn't determine", so report 0
-  // ONLY reflects "found nothing to parse", not "confirmed clean". Callers see the raw detail.
-  return 0;
-}
-
-function extractSeverityCounts(output: string): Record<string, number> {
-  const counts: Record<string, number> = {};
-  const re = /\b(\d+)\s+(critical|high|medium|low|warning)s?\b/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(output)) !== null) {
-    const n = parseInt(m[1], 10);
-    const sev = m[2].toLowerCase();
-    counts[sev] = (counts[sev] ?? 0) + n;
-  }
-  return counts;
+function invariantSummary(output: string): string | null {
+  return output.match(/^\d+ invariants: \d+ OK, \d+ KNOWN-OPEN, \d+ VIOLATED\/ERROR$/m)?.[0] ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

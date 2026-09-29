@@ -106,3 +106,22 @@ looks like at the threshold. The Medellín card has no fallback photo, so it has
 |---|---|---|
 | Landing strip | <img src="footer-pages-after/landing-reorder/events-strip.desktop.jpg" width="420"> | <img src="footer-pages-after/landing-reorder/events-strip.mobile.jpg" width="150"> |
 | `/events` "Coming up" | <img src="footer-pages-after/landing-reorder/events-page-coming-up.desktop.jpg" width="420"> | <img src="footer-pages-after/landing-reorder/events-page-coming-up.mobile.jpg" width="150"> |
+
+## Billboard slot types (ledger `2026-09-28-billboard-slot-types`)
+
+One frame, three slots, real or curated. Production build of this branch, signed out. The **real** row
+serves a fixture dispatch to `GET /api/landing/billboard-experts` through Playwright: expert `@aiko`,
+gem score 87, listing $145, none with its own photo, so each keeps its market's credited photo and says
+so. The **curated** row is the local database as it is, where no expert passes the byline gate.
+
+| | 1440 | 390 |
+|---|---|---|
+| Real (fixture): LOCAL EXPERT · KYOTO / HIDDEN GEM / BOOK ON TRAVELOURE | <img src="footer-pages-after/billboard-slot-types/real.desktop.jpg" width="420"> | <img src="footer-pages-after/billboard-slot-types/real.mobile.jpg" width="150"> |
+| Curated fallback | <img src="footer-pages-after/billboard-slot-types/curated.desktop.jpg" width="420"> | <img src="footer-pages-after/billboard-slot-types/curated.mobile.jpg" width="150"> |
+
+- **Real expert:** "Plan with @aiko · $120" (price from the storefront's own derivation) and "View listing". No badge.
+- **Real gem:** score 87 top right; "Plan around this gem".
+- **Real listing:** $145 top right; "Book now" to `/services/:id`.
+- **Curated:** "Start this plan" only. No handle, price, score or second action.
+- **At 390 px** the representative label wraps short of a top-right badge. Before this change they collided.
+- **Hex:** `client/src/components/landing` holds none, and `check-page-hex` now enforces that.

@@ -275,6 +275,10 @@ export interface PlanModalProps {
     /** E1 (ledger `2026-09-28-a0-slice-spec`): event-only door facts; never stored on the trip. */
     entry?: TripMintEntry;
   }) => Promise<PlanMintOutcome>;
+  /** A minted plan whose source item still needs a confirmed attach. */
+  pendingGemRetry?: { title: string } | null;
+  retryPendingGem?: () => Promise<PlanMintOutcome>;
+  onPendingGemRecovered?: (tripId: string) => void;
   /** Runs the chosen branch, AFTER the plan has been committed. */
   onFinish?: (branch: PlanningBranch, plan: CommittedPlan) => void;
 }
@@ -336,6 +340,9 @@ export function PlanModal({
   continueLabel = null,
   onContinue,
   mintPlan,
+  pendingGemRetry = null,
+  retryPendingGem,
+  onPendingGemRecovered,
   onFinish,
 }: PlanModalProps) {
   const [ctx] = useTripContext();
@@ -427,6 +434,7 @@ export function PlanModal({
   const [customOpen, setCustomOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
+  const [pendingGemRetryError, setPendingGemRetryError] = useState<string | null>(null);
   /** Save's own refusal. Separate from `finishError` because Save is on EVERY step and the finish
    *  error renders only inside the finish block on the last one. */
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -559,12 +567,20 @@ export function PlanModal({
   // pre-fill over it — a door that names a city is describing the plan the traveler just asked for.
   useEffect(() => {
     if (!open) return;
-    seedFormFrom(ctx, doorDestination);
+    // An item door is explicitly a NEW plan. Do not seed its dates, party, occasion or events from
+    // whichever plan happened to be active; only the source's stated destination crosses over.
+    const seedContext = source?.newPlan ? ({} as TripContext) : ctx;
+    seedFormFrom(seedContext, doorDestination);
     // RESUME (audit R-3): an unminted pen holding a destination or dates is offered back, named —
     // and only when the form is showing it (a door naming another city is a different plan).
-    const draft = resumablePenDraft(ctx);
+    const draft = source?.newPlan ? null : resumablePenDraft(ctx);
     setResumeOffer(
-      offersResume(draft, { boundTripId: ctx.tripId || source?.tripId, doorDestination }) ? draft : null,
+      offersResume(draft, {
+        boundTripId: source?.newPlan ? undefined : ctx.tripId || source?.tripId,
+        doorDestination,
+      })
+        ? draft
+        : null,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -671,7 +687,7 @@ export function PlanModal({
    * and the save silently skips the stop write. Losing an edit is recoverable; deleting a list we
    * could not see is not (§13).
    */
-  const contextTripId = ctx.tripId ?? "";
+  const contextTripId = source?.newPlan ? "" : ctx.tripId ?? "";
   const { data: boundTrip } = useQuery<{
     destination?: string | null;
     destinations?: Array<{
@@ -922,7 +938,7 @@ export function PlanModal({
 
     // Read fresh (not the `ctx` React-state snapshot from when the modal opened) —
     // this is the ground truth to compare the edited destination against.
-    const liveCtx = getTripContext();
+    const liveCtx = source?.newPlan ? ({} as TripContext) : getTripContext();
     // The ONE city rule (`sameCity`, RC-6) — "Kyoto" and "Kyoto, Japan" do not unbind a plan.
     const destinationChanged = !sameCity(liveCtx.destination, trimmedDestination);
     // A freshly minted trip is the plan being described, so it survives a destination change by
@@ -937,7 +953,7 @@ export function PlanModal({
     const tripId =
       boundTripId ??
       keepTripId ??
-      (liveCtx.tripId && !destinationChanged ? liveCtx.tripId : undefined);
+      (!source?.newPlan && liveCtx.tripId && !destinationChanged ? liveCtx.tripId : undefined);
 
     /**
      * THE PARTY, derived and never re-masked. `partyTotal` is the one place adults+kids becomes
@@ -1232,6 +1248,26 @@ export function PlanModal({
     return tripId;
   }
 
+  const retryGemAttach = async () => {
+    if (saving || !pendingGemRetry || !retryPendingGem) return;
+    setSaving(true);
+    setPendingGemRetryError(null);
+    try {
+      const outcome = await retryPendingGem();
+      if (!outcome.ok) {
+        setPendingGemRetryError(outcome.message || "The gem could not be added. Please retry.");
+        return;
+      }
+      onPendingGemRecovered?.(outcome.tripId);
+    } catch (error) {
+      setPendingGemRetryError(
+        error instanceof Error ? error.message : "The gem could not be added. Please retry.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const committedPlan = (tripId?: string): CommittedPlan => ({
     tripId,
     destination: destination.trim() || undefined,
@@ -1298,6 +1334,7 @@ export function PlanModal({
    * id to protect, and a suggested home city is not yet an answer (§13).
    */
   const needsCityChoice = () =>
+    !source?.newPlan &&
     !!user &&
     boundPlanCityChanged({
       boundTripId: getTripContext().tripId,
@@ -1329,6 +1366,10 @@ export function PlanModal({
   const save = async (answer?: "change" | "new") => {
     if (saving) return;
     setSaveError(null);
+    if (pendingGemRetry) {
+      setSaveError("Retry adding the gem to your created plan before continuing.");
+      return;
+    }
     if (!answer && needsCityChoice()) {
       setCityChoice({ action: "save" });
       return;
@@ -1349,7 +1390,7 @@ export function PlanModal({
       let bound: string | undefined;
       if (
         saveMintsPlan({
-          boundTripId: getTripContext().tripId || source?.tripId,
+          boundTripId: source?.newPlan ? undefined : getTripContext().tripId || source?.tripId,
           signedIn: !!user,
           // §13 — A SUGGESTION IS NOT AN ANSWER: the home-city default is not yet the traveler's
           // destination (see `commitPlan`), so it can never be the city a plan is minted in.
@@ -1386,6 +1427,10 @@ export function PlanModal({
   const finish = async (branch: PlanningBranch, answer?: "change" | "new") => {
     if (saving) return;
     setFinishError(null);
+    if (pendingGemRetry) {
+      setFinishError("Retry adding the gem to your created plan before continuing.");
+      return;
+    }
     // Only a branch that can create a plan is asked: `occasion` never mints (RC-1), so "start a new
     // plan" is not an answer it can act on and its finish stays exactly as it was.
     if (!answer && BRANCHES_THAT_MINT.includes(branch) && needsCityChoice()) {
@@ -1412,10 +1457,11 @@ export function PlanModal({
        * browse the traveler could always reach. `myself` is required (its route is protected) and
        * is attempted for everyone, guest included, because being gated there IS its behaviour.
        */
-      const mintRequired = BRANCHES_THAT_REQUIRE_THE_MINT.includes(branch);
+      const mintRequired =
+        BRANCHES_THAT_REQUIRE_THE_MINT.includes(branch) || !!source?.pendingItem;
       const shouldMint =
         BRANCHES_THAT_MINT.includes(branch) &&
-        !getTripContext().tripId &&
+        (source?.newPlan || !getTripContext().tripId) &&
         // A door that NAMES a plan (`source.tripId` — the trip-details re-plan door) is never
         // minted a second one; before `ai` joined the set this could only bite `myself`/`local`,
         // which no such door opens (ledger `2026-09-24-rc1-finish-mints`).
@@ -1497,6 +1543,7 @@ export function PlanModal({
         draftSignature(currentAnswers()) !==
           draftSignature({ ...seeded, occasionSlug: seededOccasionSlug.current });
       if (
+        !source?.newPlan &&
         holdsDraftOnDismiss({
           boundTripId: getTripContext().tripId || source?.tripId,
           saving,
@@ -1746,6 +1793,31 @@ export function PlanModal({
                 Continue
               </Button>
             </span>
+          </div>
+        )}
+
+        {pendingGemRetry && (
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2"
+            role="alert"
+            data-testid="pending-gem-retry"
+          >
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-destructive">Your plan was created; “{pendingGemRetry.title}” still needs to be added.</p>
+              <p className="text-[12px]" style={{ color: "var(--earn-muted)" }}>
+                Retry adding it to this plan. The plan will not be minted again.
+              </p>
+              {pendingGemRetryError && <p className="text-xs text-destructive">{pendingGemRetryError}</p>}
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={saving}
+              onClick={() => void retryGemAttach()}
+              data-testid="button-retry-pending-gem"
+            >
+              {saving ? "Retrying…" : "Retry adding gem"}
+            </Button>
           </div>
         )}
 

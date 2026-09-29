@@ -120,6 +120,16 @@
     "startPlanning": "Start planning",
     "beginPrompt": "Where do you want to begin?",
     "beginBrowse": "Browse",
-    "beginFindHelp": "Find help"
+    "beginFindHelp": "Find help",
+    "billboard": {
+      "startThisPlan": "Start this plan",
+      "planWith": "Plan with @{{handle}}",
+      "viewListing": "View listing",
+      "planAroundGem": "Plan around this gem",
+      "bookNow": "Book now",
+      "slotLocalExpert": "Local expert",
+      "slotHiddenGem": "Hidden gem",
+      "slotBookOnTraveloure": "Book on Traveloure"
+    }
   }
 }

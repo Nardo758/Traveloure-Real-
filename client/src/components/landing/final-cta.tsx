@@ -20,12 +20,12 @@ export function FinalCta({ onPlanTrip }: { onPlanTrip: () => void }) {
   return (
     <section
       className="w-full px-4"
-      style={{ background: "var(--earn-ground, #FAFAF8)" }}
+      style={{ background: "var(--earn-ground)" }}
       data-testid="section-final-cta"
     >
       <div
         className="mx-auto max-w-[1180px] pb-[30px] pt-12 text-center"
-        style={{ borderTop: "1px solid var(--earn-border, #E4E4DE)" }}
+        style={{ borderTop: "1px solid var(--earn-border)" }}
       >
         <span
           className="text-[10.5px] font-medium uppercase tracking-[0.12em]"
@@ -57,7 +57,7 @@ export function FinalCta({ onPlanTrip }: { onPlanTrip: () => void }) {
           <Link
             href="/experts"
             className="inline-flex items-center rounded-[8px] border px-3.5 py-2 text-[13px] font-semibold"
-            style={{ borderColor: "var(--earn-border, #E4E4DE)", color: "var(--earn-ink)", background: "#fff" }}
+            style={{ borderColor: "var(--earn-border)", color: "var(--earn-ink)", background: "var(--earn-card)" }}
             data-testid="button-final-browse-experts"
           >
             {t("closing.meetTheLocals", "Meet the locals")}

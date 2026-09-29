@@ -67,7 +67,7 @@ export function CitiesRail() {
       >
         <i
           className="h-[7px] w-[7px] shrink-0 rounded-full"
-          style={{ background: "var(--earn-green, #5DCAA5)", boxShadow: "0 0 0 4px rgba(93,202,165,.18)" }}
+          style={{ background: "var(--earn-green)", boxShadow: "0 0 0 4px rgba(93,202,165,.18)" }}
         />
         {cities.map((c) => (
           <span key={c.cityName}>

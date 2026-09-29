@@ -135,7 +135,7 @@ export function MomentsSection() {
         {/* ONE moment per slide: photo slideshow + the story */}
         <div
           className="grid min-w-0 auto-rows-[minmax(300px,auto)] overflow-hidden rounded-[16px] border lg:auto-rows-[minmax(340px,auto)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]"
-          style={{ borderColor: "var(--earn-border, #E4E4DE)", background: "var(--earn-card, #fff)" }}
+          style={{ borderColor: "var(--earn-border)", background: "var(--earn-card)" }}
           data-testid={`moment-slide-${moment.key}`}
         >
           {/* photo slideshow */}
@@ -147,7 +147,7 @@ export function MomentsSection() {
             {photoFailed ? (
               <div
                 className="absolute inset-0"
-                style={{ background: "linear-gradient(135deg,#B9C8D8,#7C97B4 52%,#E5C6B6)" }}
+                style={{ background: "var(--landing-moments-ground)" }}
                 data-testid="moment-photo-fallback"
                 role="img"
                 aria-label={photo.place}
@@ -209,7 +209,7 @@ export function MomentsSection() {
                     className="h-1 rounded-[2px]"
                     style={{
                       width: i === Math.min(photoIdx, photoCount - 1) ? 18 : 8,
-                      background: i === Math.min(photoIdx, photoCount - 1) ? "#fff" : "rgba(255,255,255,0.5)",
+                      background: i === Math.min(photoIdx, photoCount - 1) ? "white" : "rgba(255,255,255,0.5)",
                     }}
                   />
                 ))}
@@ -298,7 +298,7 @@ export function MomentsSection() {
                   key={r.key}
                   title="Coming as locals join"
                   className="cursor-default rounded-full px-2.5 py-[5px] text-[11px] font-medium uppercase tracking-[0.06em]"
-                  style={{ fontFamily: EARN_MONO, color: "var(--earn-faint)", border: "1px dashed var(--earn-border-dash, #D5D0C8)" }}
+                  style={{ fontFamily: EARN_MONO, color: "var(--earn-faint)", border: "1px dashed var(--earn-border-dash)" }}
                   data-testid={`moment-tab-faint-${r.key}`}
                 >
                   {r.label}
@@ -317,8 +317,8 @@ export function MomentsSection() {
                 style={{
                   fontFamily: EARN_MONO,
                   background: isActive ? "var(--earn-navy)" : "transparent",
-                  color: isActive ? "#fff" : "var(--earn-ink)",
-                  border: isActive ? "1px solid var(--earn-navy)" : "1px solid var(--earn-border, #E4E4DE)",
+                  color: isActive ? "var(--earn-card)" : "var(--earn-ink)",
+                  border: isActive ? "1px solid var(--earn-navy)" : "1px solid var(--earn-border)",
                 }}
                 data-testid={`moment-tab-${r.key}`}
               >
@@ -345,8 +345,8 @@ export function MomentsSection() {
         <div
           className="mt-1.5 flex flex-wrap items-center gap-3 rounded-[12px] border px-4 py-3 text-[13px]"
           style={{
-            borderColor: "var(--earn-border, #E4E4DE)",
-            background: "var(--earn-card, #fff)",
+            borderColor: "var(--earn-border)",
+            background: "var(--earn-card)",
             color: "var(--earn-muted)",
           }}
           data-testid="moments-planning-callout"

@@ -68,6 +68,7 @@ import { api } from "@shared/routes";
 // ONE derivation of the plan's party total, shared with the client (ledger
 // `2026-09-05-slip-events-first-render`; CLAUDE.md Locked Decision 33 / §18 rule 1).
 import { partyTotal } from "@shared/plan-vocabulary";
+import { pendingPlanItemMarker } from "@shared/pending-plan-items";
 // Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
 // see shared/booking-visibility.ts for why three tabs disagreed about one row.
 import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visibility";
@@ -12902,6 +12903,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userName = (req.user as any).claims.name || "User";
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
+      const pendingGemId = req.body?.pendingGemId;
+      if (pendingGemId !== undefined) {
+        if (
+          typeof pendingGemId !== "string" ||
+          pendingGemId.trim() === "" ||
+          pendingGemId.length > 255
+        ) {
+          return res.status(400).json({ message: "Invalid pending gem source id" });
+        }
+        // The retry/idempotency key is reserved for the traveler who owns this plan.
+        if (!owned) return res.status(403).json({ message: "Only the plan owner can add a pending gem." });
+      }
       // Split out from the OR'd `assigned` boolean below so the mode-flip gate can target the
       // advisor-only path — never the owner (owned ? true : ...) short-circuits, so `isAdvisor`
       // is deliberately NOT that combined flag.
@@ -13032,11 +13045,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // by the reader rather than deleted from the row.
       const authoringRefusal = authored ? authoredItemPriceRefusal(itemData) : null;
       if (authoringRefusal) return res.status(400).json({ message: authoringRefusal });
-      const item = await storage.createItineraryItem(itemData);
-      logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
+      const gemWrite = pendingGemId
+        ? await storage.createPendingBillboardGemItemIfAbsent(
+            { ...itemData, notes: pendingPlanItemMarker(pendingGemId) },
+            pendingGemId,
+          )
+        : null;
+      const item = gemWrite?.item ?? await storage.createItineraryItem(itemData);
+      if (!gemWrite || gemWrite.created) {
+        logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
+      }
 
       // If traveler added item and expert is assigned, notify the expert
-      if (owned) {
+      if (owned && (!gemWrite || gemWrite.created)) {
         try {
           const advisors = await db.select().from(tripExpertAdvisors)
             .where(and(
@@ -13069,7 +13090,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      res.status(201).json(item);
+      res.status(gemWrite && !gemWrite.created ? 200 : 201).json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to create itinerary item" });
     }

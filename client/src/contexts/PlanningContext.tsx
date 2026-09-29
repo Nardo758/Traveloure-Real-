@@ -48,6 +48,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type Context,
@@ -66,6 +67,8 @@ import { startMembershipCheckout } from "@/lib/membership-checkout";
 import { buildExpertsBrowseHref, withPlanTripId } from "@/lib/experts-browse";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 import { PlanModal, type CommittedPlan, type PlanMintOutcome } from "@/components/trip/plan-modal";
+import { addPendingGemToTrip } from "@/lib/billboard-gem-planning";
+import { normalizePendingPlanItems, type PendingPlanItem } from "@shared/pending-plan-items";
 
 export type PlanningBranch = "myself" | "ai" | "local" | "occasion";
 // Which branches need a plan ROW before they run is `BRANCHES_THAT_MINT` in `@/lib/plan-steps` —
@@ -86,6 +89,10 @@ export interface PlanningSource {
   city?: string;
   country?: string;
   destination?: string;
+  /** Force a fresh plan rather than editing the currently bound plan. */
+  newPlan?: boolean;
+  /** An itinerary item to attach only after this door's new plan has been minted. */
+  pendingItem?: PendingPlanItem;
   /** Re-plan context: the trip this entry belongs to. */
   tripId?: string;
   /** RC-12: open on step 4 (Who) — honoured only with `tripId`; see `resolvePlanSteps`. */
@@ -201,6 +208,53 @@ interface PlanningApi {
   close: () => void;
 }
 
+interface PendingGemRecovery {
+  tripId: string;
+  item: PendingPlanItem;
+}
+
+type PendingGemRetryOutcome =
+  | { ok: true; tripId: string }
+  | { ok: false; message: string };
+
+const PENDING_GEM_RECOVERY_KEY = "pendingBillboardGemRecovery";
+
+function readPendingGemRecovery(): PendingGemRecovery | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const saved = window.sessionStorage.getItem(PENDING_GEM_RECOVERY_KEY);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved) as { tripId?: unknown; item?: unknown };
+    const tripId = typeof parsed.tripId === "string" ? parsed.tripId.trim() : "";
+    const [item] = normalizePendingPlanItems([parsed.item]);
+    if (tripId && item) return { tripId, item };
+    window.sessionStorage.removeItem(PENDING_GEM_RECOVERY_KEY);
+  } catch {
+    try {
+      window.sessionStorage.removeItem(PENDING_GEM_RECOVERY_KEY);
+    } catch {
+      // Storage is optional; malformed/unavailable recovery storage cannot block the app.
+    }
+  }
+  return null;
+}
+
+function savePendingGemRecovery(recovery: PendingGemRecovery): void {
+  try {
+    window.sessionStorage.setItem(PENDING_GEM_RECOVERY_KEY, JSON.stringify(recovery));
+  } catch {
+    // The in-memory recovery UI remains available if browser storage is disabled.
+  }
+}
+
+function clearPendingGemRecovery(): void {
+  try {
+    window.sessionStorage.removeItem(PENDING_GEM_RECOVERY_KEY);
+  } catch {
+    // Clearing the in-memory state still completes recovery for this session.
+  }
+}
+
 interface PlanningHotData {
   planningContext?: Context<PlanningApi | null>;
 }
@@ -256,8 +310,15 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [source, setSource] = useState<PlanningSource | null>(null);
+  const [pendingGemRecovery, setPendingGemRecovery] = useState<PendingGemRecovery | null>(
+    readPendingGemRecovery,
+  );
   /** The plan as the modal committed it — what the AI branch is handed instead of asking again. */
   const [committed, setCommitted] = useState<CommittedPlan | null>(null);
+
+  useEffect(() => {
+    if (pendingGemRecovery) setModalOpen(true);
+  }, [pendingGemRecovery]);
 
   // PLUS_SALES_ENABLED rides the public pricing bundle (§8 posture — no literals here).
   const { data: pricing } = useQuery<{ plusSalesEnabled?: boolean }>({
@@ -267,6 +328,11 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   const plusSalesEnabled = pricing?.plusSalesEnabled === true;
 
   const open = useCallback((src?: PlanningSource) => {
+    if (pendingGemRecovery) {
+      // Preserve the unresolved door and its gem; a second opener cannot replace the retry source.
+      setModalOpen(true);
+      return;
+    }
     const next = src ?? null;
     setSource(next);
     setCommitted(null);
@@ -292,12 +358,20 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       });
     }
     setModalOpen(true);
-  }, []);
+  }, [pendingGemRecovery]);
 
   const close = useCallback(() => {
+    if (pendingGemRecovery) {
+      toast({
+        variant: "destructive",
+        title: "Gem still needs to be added",
+        description: "Your plan is already created. Retry adding the gem before closing this planning window.",
+      });
+      return;
+    }
     setModalOpen(false);
     setAiOpen(false);
-  }, []);
+  }, [pendingGemRecovery, toast]);
 
   /**
    * THE ONE MINT DOOR, reached from the modal's finish for every branch in `BRANCHES_THAT_MINT`
@@ -330,12 +404,72 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         openSignInModal();
         return { ok: false };
       }
+      // The plan row already exists. Never mint another one while its gem is awaiting attachment.
+      if (pendingGemRecovery) {
+        return {
+          ok: false,
+          message: "Your plan was created, but its gem still needs to be added. Use the retry button below.",
+        };
+      }
       const outcome = await mintTripSlip(basics);
       if (!outcome.ok) return { ok: false, message: outcome.message };
+      if (source?.newPlan && source.pendingItem) {
+        const pendingItem = source.pendingItem;
+        try {
+          await addPendingGemToTrip(outcome.tripId, pendingItem);
+        } catch (error) {
+          const recovery = { tripId: outcome.tripId, item: pendingItem };
+          savePendingGemRecovery(recovery);
+          setPendingGemRecovery(recovery);
+          return {
+            ok: false,
+            message:
+              error instanceof Error
+                ? `Your plan was created, but the gem was not added: ${error.message}`
+                : "Your plan was created, but the gem was not added. Retry below; the plan will not be created again.",
+          };
+        }
+        // Only consume the source after the item is confirmed on the newly minted plan.
+        setSource((current) =>
+          current?.pendingItem?.id === pendingItem.id
+            ? { ...current, newPlan: false, pendingItem: undefined }
+            : current,
+        );
+      }
       return { ok: true, tripId: outcome.tripId };
     },
-    [user, openSignInModal],
+    [user, openSignInModal, source, pendingGemRecovery],
   );
+
+  const retryPendingGem = useCallback(async (): Promise<PendingGemRetryOutcome> => {
+    if (!pendingGemRecovery) return { ok: false, message: "There is no pending gem to retry." };
+    try {
+      await addPendingGemToTrip(pendingGemRecovery.tripId, pendingGemRecovery.item);
+      clearPendingGemRecovery();
+      setPendingGemRecovery(null);
+      setSource((current) =>
+        current?.pendingItem?.id === pendingGemRecovery.item.id
+          ? { ...current, newPlan: false, pendingItem: undefined }
+          : current,
+      );
+      return { ok: true, tripId: pendingGemRecovery.tripId };
+    } catch (error) {
+      return {
+        ok: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "The gem still could not be added. Please retry again.",
+      };
+    }
+  }, [pendingGemRecovery]);
+
+  const finishPendingGemRecovery = useCallback((tripId: string) => {
+    clearPendingGemRecovery();
+    setPendingGemRecovery(null);
+    setModalOpen(false);
+    setLocation(`/plans/${tripId}`);
+  }, [setLocation]);
 
   /**
    * Run the chosen branch, AFTER the modal has committed the plan. Each branch's downstream
@@ -454,6 +588,9 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         continueLabel={continueLabel}
         onContinue={(href) => setLocation(href)}
         mintPlan={mintPlan}
+        pendingGemRetry={pendingGemRecovery ? { title: pendingGemRecovery.item.title } : null}
+        retryPendingGem={retryPendingGem}
+        onPendingGemRecovered={finishPendingGemRecovery}
         onFinish={runBranch}
       />
 

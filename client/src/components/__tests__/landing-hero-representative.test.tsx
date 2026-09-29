@@ -6,9 +6,9 @@
  *    says "Demo" (narrowed to the curated case by follow-up 4 — the override reads a live listing).
  * B2 every rendered tile carries a credit resolved from ATTRIBUTION.json; a photo with no entry is
  *    not rendered at all.
- * B3 representative photos remain credited even when the restored live caption is for another city.
- * B4 the restored compact captions/actions follow the live city without swapping in payload photos.
- * B6 the override's plan door still pre-sets the tile's occasion and market.
+ * B3 a tile shows no expert name, price, "Plan with" or avatar — "Representative photo · <market>".
+ * B4 the hero no longer paints billboard images from the live payload (provider_services legs).
+ * B6 Start this plan opens a new plan with the tile's seeded occasion and market, as door "billboard".
  * B5 a byline-gated expert takes the tile: the initial appears, and only then.
  * P1 the pill set is exactly the old eight-tile set — no destination lost.
  * W1 the Wanted strip still renders from the live payload, and is omitted when coverage is unknown.
@@ -23,7 +23,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
 import { LandingHeroContent, billboardOverridePlanSource, billboardPlanSource, heroBeginRows, resolveBillboardTiles } from "../landing/landing-hero";
-import type { BillboardOverride } from "@shared/landing-billboard-override";
+import type { BillboardMarketSelection, BillboardOverride } from "@shared/landing-billboard-override";
 import { BILLBOARD_TILES, type PhotoAttribution } from "@shared/landing-billboard";
 import type { LandingHeroPayload } from "@shared/landing-hero";
 
@@ -47,10 +47,14 @@ const PAYLOAD = {
   ],
 } satisfies LandingHeroPayload;
 
-function render(payload: LandingHeroPayload | null, overrides: BillboardOverride[] = []): string {
+function render(
+  payload: LandingHeroPayload | null,
+  overrides: BillboardOverride[] = [],
+  marketSelection?: BillboardMarketSelection,
+): string {
   return renderToString(
     <Router ssrPath="/">
-      <LandingHeroContent hero={payload} onPlanTrip={() => {}} overrides={overrides} />
+      <LandingHeroContent hero={payload} onPlanTrip={() => {}} overrides={overrides} marketSelection={marketSelection} />
     </Router>,
   ).replace(/<!--.*?-->/g, "");
 }
@@ -85,46 +89,46 @@ describe("landing hero billboard", () => {
     );
   });
 
-  it("B3 Kyoto photos stay representative while Goa live copy and the expert link appear", () => {
+  it("B3 a curated tile names no expert, price or avatar — it says it is a representative photo", () => {
     const html = render(PAYLOAD);
     assert.ok(html.includes("Representative photo · Kyoto"));
-    assert.ok(html.includes("Local expert · Goa"));
-    assert.ok(html.includes("Demo Expert"));
-    assert.ok(html.includes("Plan with Demo · from $45"));
-    assert.ok(html.includes('href="/s/demo"'));
-    assert.ok(html.includes("Hidden gem"));
-    assert.ok(html.includes("Tito’s Lane"));
-    assert.ok(html.includes("Book on Traveloure"));
-    assert.ok(html.includes("Demo Tour"));
-    assert.ok(!html.includes("Start this plan"));
+    for (const tile of BILLBOARD_TILES) {
+      assert.ok(html.includes(tile.headline), `${tile.key} retains its original headline`);
+      for (const line of tile.lines) assert.ok(!html.includes(line), `${tile.key} has no extra itinerary/details in the compact template`);
+      const actionTag = html.match(new RegExp(`<button[^>]+data-testid="hero-billboard-start-${tile.key}"[^>]*>Start this plan</button>`));
+      assert.ok(actionTag, `${tile.key} has one planning action`);
+      assert.ok(html.includes(tile.imagePath), `${tile.key} retains its credited photo`);
+      assert.ok(html.includes(`hero-billboard-label-${tile.key}`), `${tile.key} has its slot label`);
+    }
+    assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
+    assert.ok(html.includes("HIDDEN GEM"));
+    assert.ok(html.includes("BOOK ON TRAVELOURE"));
+    assert.ok(!html.includes("<details"), "no expandable details on the template");
+    const startButtons = html.match(/<button[^>]+data-testid="hero-billboard-start-[^"]+"[^>]*>/g) ?? [];
+    assert.equal(startButtons.length, 3, "one planning action per curated tile");
+    for (const tag of startButtons) assert.ok(tag.includes("background:var(--earn-coral-ink)"), "each curated plan action uses the compact primary treatment");
+    assert.ok(!html.includes("Plan with"));
+    assert.ok(!html.includes("from $"));
+    assert.ok(!html.includes('data-testid="hero-billboard-price-'));
+    assert.ok(!html.includes('data-testid="hero-billboard-gem-score-'));
+    assert.ok(!html.includes('data-testid="hero-billboard-view-listing-'));
+    assert.ok(!html.includes("Demo"));
     assert.ok(!html.includes('data-testid="hero-billboard-expert-'), "no initial without a real expert");
-    const noExpert = render({ ...PAYLOAD, anchorExpert: null });
-    assert.ok(noExpert.includes('href="/discover/location/Goa"'), "fallback browse follows the live city, not the photo");
   });
 
-  it("B4 compact text never swaps credited photos for live payload images", () => {
-    const html = render({
-      ...PAYLOAD,
-      city: "Kyoto",
-      anchorExpert: { name: "Aiko Mori", handle: "aiko", fromPriceCents: 4500, imageUrl: "/fixture/expert.jpg" },
-      gem: { name: "Fushimi Inari", score: 85, imageUrl: "/fixture/gem.jpg" },
-      service: { name: "Kyoto walking tour", priceCents: 1200, imageUrl: "/fixture/service.jpg" },
-    });
-    assert.ok(html.includes("Local expert · Kyoto"));
-    assert.ok(html.includes("Aiko Mori"));
-    assert.ok(html.includes("Plan with Aiko · from $45"));
-    assert.ok(html.includes('href="/s/aiko"'));
-    assert.ok(html.includes("Hidden gem"));
-    assert.ok(html.includes("Fushimi Inari"));
-    assert.ok(html.includes("Book on Traveloure"));
-    assert.ok(html.includes("Kyoto walking tour"));
-    assert.ok(html.includes("$12"));
-    assert.ok(!html.includes("Start this plan"));
+  it("B4 a curated tile paints no image from the live payload, and its code reads no listing", () => {
+    const html = render(PAYLOAD);
     for (const url of ["/fixture/expert.jpg", "/fixture/gem.jpg", "/fixture/service.jpg"]) {
-      assert.ok(!html.includes(url), `${url} must not replace the credited photo`);
+      assert.ok(!html.includes(url), `${url} must not be painted`);
     }
-    const noHandle = render({ ...PAYLOAD, city: "Kyoto", anchorExpert: { name: "Aiko Mori", handle: null, fromPriceCents: 4500 } });
-    assert.ok(noHandle.includes('href="/discover/location/Kyoto"'), "no dead Plan with button without a storefront");
+    const src = fs.readFileSync(path.join(ROOT, "client/src/components/landing/landing-hero.tsx"), "utf8");
+    // The live hero payload's old billboard legs are never read, by either tile.
+    assert.doesNotMatch(src, /anchorExpert|hero\?\.gem|hero\?\.service/, "no live billboard leg is read");
+    // Narrowed to the curated case: the curated tile's own code names no listing, price or expert.
+    const start = src.indexOf("function CuratedTileCard(");
+    const end = src.indexOf(" * An OVERRIDDEN tile");
+    assert.ok(start > 0 && end > start, "the curated and override tiles are separate components");
+    assert.doesNotMatch(src.slice(start, end), /listing|price|handle|imageUrl|override/i, "a curated tile reads no listing data");
   });
 
   const OVERRIDE: BillboardOverride = {
@@ -153,11 +157,12 @@ describe("landing hero billboard", () => {
     assert.ok(from > 0 && to > from);
     const tileHtml = html.slice(from, to);
     assert.ok(tileHtml.includes('data-override="listing"'));
-    assert.ok(tileHtml.includes("Local expert · @aiko"));
+    assert.ok(tileHtml.includes("LOCAL EXPERT · KYOTO"));
     assert.ok(tileHtml.includes("Dawn at Fushimi Inari with Aiko"));
-    assert.ok(tileHtml.includes("Up the mountain before the tour buses, with tea after."));
-    assert.ok(tileHtml.includes("$120"), "the price as the storefront card renders it");
+    assert.ok(!tileHtml.includes("Up the mountain before the tour buses, with tea after."), "real cards keep the screenshot's compact title-and-action format");
     assert.ok(tileHtml.includes("Plan with @aiko"));
+    const planButton = tileHtml.slice(tileHtml.indexOf('data-testid="hero-billboard-plan-with-early-start"'), tileHtml.indexOf("</button>"));
+    assert.ok(planButton.includes("$120"), "the storefront-derived price appears in the Plan with action");
     assert.ok(tileHtml.includes('href="/s/aiko"'), "View listing goes to the storefront");
     assert.ok(tileHtml.includes("/fixture/listing.jpg"), "the listing's own photo");
     assert.ok(!tileHtml.includes("Photo: "), "the owner's own photo carries no third-party credit");
@@ -168,9 +173,183 @@ describe("landing hero billboard", () => {
     // No listing photo ⇒ the tile keeps its repo photo AND that photo's credit.
     const noPhoto = render(PAYLOAD, [{ ...OVERRIDE, listing: { ...OVERRIDE.listing, imageUrl: null } }]);
     assert.ok(noPhoto.includes('data-testid="hero-billboard-credit-early-start"'));
+    assert.ok(noPhoto.includes("Representative photo · Kyoto"), "credited fallback photos retain their truthful market label");
     // A listing that hides its price shows none.
     const hidden = render(PAYLOAD, [{ ...OVERRIDE, listing: { ...OVERRIDE.listing, showPrice: false } }]);
     assert.ok(!hidden.includes('data-testid="hero-billboard-price-early-start"'));
+  });
+
+  const DISPATCH_OVERRIDE: BillboardOverride = {
+    ...OVERRIDE,
+    tileKey: "weekend-away",
+    listing: { ...OVERRIDE.listing, title: "Dispatch slot one listing" },
+  };
+  const DISPATCH: BillboardMarketSelection = {
+    market: { key: "kyoto", cityName: "Kyoto" },
+    constraint: "kyoto-curated-photos",
+    slots: [
+      { slot: 1, marketKey: "kyoto", override: DISPATCH_OVERRIDE },
+      {
+        slot: 2,
+        marketKey: "kyoto",
+        handle: "hana",
+        gem: {
+          id: "gem-1",
+          name: "Tito’s Lane",
+          score: 87,
+          image: { url: "/fixture/gem-attributed.jpg", attribution: "Mina Sato" },
+        },
+      },
+      {
+        slot: 3,
+        marketKey: "kyoto",
+        handle: "ren",
+        listing: {
+          id: "service/with space",
+          title: "Tea ceremony in a machiya",
+          lines: ["A quiet afternoon with a local host."],
+          price: "145",
+          priceType: "fixed",
+          pricingUnit: null,
+          showPrice: true,
+          imageUrl: "/fixture/bookable-listing.jpg",
+        },
+        nextOpenSlot: { date: "2027-03-18", startTime: "10:30" },
+      },
+    ],
+  };
+
+  it("renders the complete three-slot dispatch from each slot's own data", () => {
+    const html = render(PAYLOAD, [OVERRIDE], DISPATCH);
+    for (const action of ["hero-billboard-plan-gem-early-start", "hero-billboard-book-date-night"]) {
+      const actionTag = html.match(new RegExp(`<[^>]+data-testid="${action}"[^>]*>`))?.[0];
+      assert.ok(actionTag, `${action} renders`);
+      assert.ok(actionTag.includes("background:var(--earn-coral-ink)"), `${action} matches the primary expert action`);
+    }
+    assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
+    assert.ok(html.includes("Plan with @aiko"));
+    assert.ok(html.includes('href="/s/aiko"'));
+    assert.ok(html.includes("HIDDEN GEM"));
+    assert.ok(html.includes("Tito’s Lane"));
+    assert.ok(html.includes('aria-label="Score 87"'));
+    assert.ok(html.indexOf('aria-label="Score 87"') < html.indexOf("Tito’s Lane"), "the gem score is a top-right badge, not a line under the title");
+    assert.ok(html.includes("Plan around this gem"));
+    assert.ok(html.includes("/fixture/gem-attributed.jpg"));
+    assert.ok(html.includes("Photo: Mina Sato"));
+    assert.ok(html.includes("BOOK ON TRAVELOURE"));
+    assert.ok(html.includes("Tea ceremony in a machiya"));
+    assert.ok(html.includes("$145"));
+    assert.ok(html.indexOf('data-testid="hero-billboard-price-date-night"') < html.indexOf("Tea ceremony in a machiya"), "the bookable price is a top-right badge");
+    assert.ok(html.includes("Book now"));
+    assert.ok(!html.includes("A quiet afternoon with a local host."), "live cards keep the screenshot's compact label-title-action hierarchy");
+    assert.ok(html.includes("/fixture/bookable-listing.jpg"));
+    assert.ok(html.includes('href="/services/service%2Fwith%20space"'));
+    assert.ok(!html.includes("Dawn at Fushimi Inari with Aiko"), "legacy overrides don't replace dispatched slots");
+
+    const dispatchGem = DISPATCH.slots[1];
+    if (dispatchGem.slot !== 2) throw new Error("Expected the second dispatch slot to be a gem.");
+    const uncreditedGem = {
+      ...DISPATCH,
+      slots: [DISPATCH.slots[0], { ...dispatchGem, gem: { ...dispatchGem.gem, image: undefined } }, DISPATCH.slots[2]],
+    };
+    const fallbackPhotoHtml = render(PAYLOAD, [], uncreditedGem);
+    assert.ok(!fallbackPhotoHtml.includes("/fixture/gem-attributed.jpg"));
+    assert.ok(fallbackPhotoHtml.includes('data-testid="hero-billboard-credit-early-start"'));
+  });
+
+  it("falls back independently for empty slots in an anchored dispatch", () => {
+    const selection: BillboardMarketSelection = {
+      market: DISPATCH.market,
+      constraint: DISPATCH.constraint,
+      slots: [DISPATCH.slots[0]],
+    };
+    const html = render(PAYLOAD, [], selection);
+    assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
+    assert.ok(html.includes('data-testid="hero-billboard-weekend-away"'));
+    assert.ok(html.includes('data-testid="hero-billboard-early-start"'));
+    assert.ok(html.includes('data-testid="hero-billboard-date-night"'));
+    assert.equal((html.match(/Representative photo · Kyoto/g) ?? []).length, 2);
+    assert.ok(html.includes('data-testid="hero-billboard-label-early-start">HIDDEN GEM'));
+    assert.ok(html.includes('data-testid="hero-billboard-label-date-night">BOOK ON TRAVELOURE'));
+    assert.equal((html.match(/Start this plan<\/button>/g) ?? []).length, 2);
+    assert.ok(!html.includes("Plan details"));
+  });
+
+  /** The HTML of one tile: the balanced <div> carrying data-testid="hero-billboard-<key>". */
+  function tileHtml(html: string, key: string): string {
+    const open = html.indexOf(`data-testid="hero-billboard-${key}"`);
+    assert.ok(open > 0, `tile ${key} renders`);
+    const start = html.lastIndexOf("<div", open);
+    let depth = 0;
+    const re = /<div\b|<\/div>/g;
+    re.lastIndex = start;
+    for (let m = re.exec(html); m; m = re.exec(html)) {
+      depth += m[0] === "</div>" ? -1 : 1;
+      if (depth === 0) return html.slice(start, m.index + 6);
+    }
+    throw new Error(`tile ${key} never closes`);
+  }
+  /** The visible text of every action (button or link) on a tile, excluding its photo credit. */
+  function actions(tile: string): string[] {
+    const out: string[] = [];
+    for (const m of Array.from(tile.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/g))) {
+      if (/data-testid="hero-billboard-credit-/.test(m[2])) continue;
+      out.push(m[3].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim());
+    }
+    return out;
+  }
+  /** The top-right badge's text, or null when the tile has none. */
+  function badge(tile: string): string | null {
+    const m = tile.match(/<span[^>]*class="absolute right-2\.5 top-2\.5[^"]*"[^>]*>([\s\S]*?)<\/span>/);
+    return m ? m[1].replace(/<[^>]+>/g, "").trim() : null;
+  }
+
+  it("R1 each REAL card shows exactly its own buttons and badge (dispatch fixture)", () => {
+    const html = render(PAYLOAD, [OVERRIDE], DISPATCH);
+    const [one, two, three] = BILLBOARD_TILES.map((t) => tileHtml(html, t.key));
+    assert.deepEqual(actions(one), ["Plan with @aiko · $120", "View listing"], "expert: plan (coral, with price) + view listing");
+    assert.equal(badge(one), null, "the expert card carries no badge");
+    assert.ok(one.includes("LOCAL EXPERT · KYOTO"));
+    assert.deepEqual(actions(two), ["Plan around this gem"], "gem: one action");
+    assert.equal(badge(two), "87", "gem: its own score, top right");
+    assert.ok(two.includes("HIDDEN GEM"));
+    assert.deepEqual(actions(three), ["Book now"], "listing: one action");
+    assert.equal(badge(three), "$145", "listing: its own price, top right");
+    assert.ok(three.includes("BOOK ON TRAVELOURE"));
+    assert.ok(three.includes('href="/services/service%2Fwith%20space"'), "Book now goes to the listing's own booking path");
+    for (const tile of [one, two, three]) assert.ok(!tile.includes("Start this plan"), "a real card never offers the curated action");
+    // The listing's and the gem's own photos: no representative label, no repo credit.
+    assert.ok(!one.includes("Representative photo") && !one.includes("hero-billboard-credit-"), "expert card on its listing's own photo");
+    assert.ok(!three.includes("Representative photo") && !three.includes("hero-billboard-credit-"), "listing card on its own photo");
+    assert.ok(two.includes("Photo: Mina Sato") && !two.includes("Representative photo"), "gem card credits the gem's own photo");
+  });
+
+  it("R2 each CURATED card shows only Start this plan — no handle, price, score or second action", () => {
+    const html = render(PAYLOAD, [], undefined);
+    for (const t of BILLBOARD_TILES) {
+      const tile = tileHtml(html, t.key);
+      assert.deepEqual(actions(tile), ["Start this plan"], `${t.key}: exactly one action`);
+      assert.equal(badge(tile), null, `${t.key}: no badge`);
+      assert.ok(!/@\w/.test(tile.replace(/<[^>]+>/g, "")), `${t.key}: no handle`);
+      assert.ok(!/\$\d/.test(tile.replace(/<[^>]+>/g, "")), `${t.key}: no price`);
+      assert.ok(tile.includes("Representative photo · Kyoto"), `${t.key}: says the photo is representative`);
+      assert.ok(tile.includes(`hero-billboard-credit-${t.key}`), `${t.key}: credits its photo`);
+    }
+  });
+
+  it("uses credited curated cards when dispatch has no anchored market", () => {
+    const selection: BillboardMarketSelection = {
+      market: null,
+      constraint: DISPATCH.constraint,
+      slots: DISPATCH.slots,
+    };
+    const html = render(PAYLOAD, [OVERRIDE], selection);
+    assert.equal((html.match(/Representative photo · Kyoto/g) ?? []).length, 3);
+    assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
+    assert.ok(html.includes("HIDDEN GEM"));
+    assert.ok(html.includes("BOOK ON TRAVELOURE"));
+    assert.equal((html.match(/Start this plan<\/button>/g) ?? []).length, 3);
+    assert.ok(!html.includes("Plan with"));
   });
 });
 
@@ -183,7 +362,7 @@ const OVERRIDE_FOR_SOURCE: BillboardOverride = {
 };
 
 describe("billboard doors", () => {
-  it("B6 the plan source still pre-sets occasion and market for expert overrides", () => {
+  it("B6 each tile's planning action opens a NEW plan with its seeded occasion and market pre-set", () => {
     for (const tile of BILLBOARD_TILES) {
       const source = billboardPlanSource(tile);
       assert.ok(source, `${tile.key} resolves to a market`);
