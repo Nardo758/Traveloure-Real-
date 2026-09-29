@@ -11,6 +11,7 @@ const tiles = [
   {
     key: "weekend-away",
     occasionLabel: "Weekend away",
+    actionLabel: "Plan a weekend away",
     image: "hero-generic-expert.jpg",
     headline: "Two days in Kyoto, walked with a local",
     lines: [
@@ -24,6 +25,7 @@ const tiles = [
   {
     key: "early-start",
     occasionLabel: "Early start",
+    actionLabel: "Plan an early start",
     image: "hero-fushimi-inari.jpg",
     headline: "Fushimi Inari at first light",
     lines: ["06:30 · in before the tour buses", "The upper shrines, on quiet paths", "Breakfast by the station after"],
@@ -33,6 +35,7 @@ const tiles = [
   {
     key: "date-night",
     occasionLabel: "Date night",
+    actionLabel: "Plan a date night",
     image: "hero-kyoto-temple.jpg",
     headline: "An evening under the Yasaka Pagoda",
     lines: ["Dusk walk up Sannenzaka", "Kaiseki dinner for two", "Lantern-lit lanes on the way back"],
@@ -57,7 +60,7 @@ function CuratedCard({ tile, large }: { tile: typeof tiles[number]; large: boole
       </b>
       <div className="relative z-10 mt-2 flex flex-wrap items-start gap-2">
         <button type="button" className="inline-flex min-h-[36px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" style={{ background: "var(--earn-coral-ink, #DF5852)" }}>
-          Start this plan
+          {tile.actionLabel}
         </button>
         <details className="min-w-[120px] flex-1">
           <summary className="inline-flex min-h-[36px] cursor-pointer list-none items-center rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white [&::-webkit-details-marker]:hidden">

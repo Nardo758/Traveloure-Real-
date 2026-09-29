@@ -22,6 +22,8 @@ export interface BillboardTile {
   occasionSlug: string;
   /** The occasion as the tile names it (the eyebrow before the market). */
   occasionLabel: string;
+  /** An occasion-specific planning action for a curated fallback (never a listing/booking claim). */
+  actionLabel: string;
   /** An operating market's key (shared/operating-markets.ts). */
   marketKey: string;
   /** A path under client/public — must have an ATTRIBUTION.json entry. */
@@ -35,6 +37,7 @@ export const BILLBOARD_TILES: readonly BillboardTile[] = [
     key: "weekend-away",
     occasionSlug: "travel",
     occasionLabel: "Weekend away",
+    actionLabel: "Plan a weekend away",
     marketKey: "kyoto",
     imagePath: "/images/landing/hero-generic-expert.jpg",
     headline: "Two days in Kyoto, walked with a local",
@@ -48,6 +51,7 @@ export const BILLBOARD_TILES: readonly BillboardTile[] = [
     key: "early-start",
     occasionSlug: "travel",
     occasionLabel: "Early start",
+    actionLabel: "Plan an early start",
     marketKey: "kyoto",
     imagePath: "/images/landing/hero-fushimi-inari.jpg",
     headline: "Fushimi Inari at first light",
@@ -57,6 +61,7 @@ export const BILLBOARD_TILES: readonly BillboardTile[] = [
     key: "date-night",
     occasionSlug: "date-night",
     occasionLabel: "Date night",
+    actionLabel: "Plan a date night",
     marketKey: "kyoto",
     imagePath: "/images/landing/hero-kyoto-temple.jpg",
     headline: "An evening under the Yasaka Pagoda",

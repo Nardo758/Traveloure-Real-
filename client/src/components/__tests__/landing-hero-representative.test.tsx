@@ -8,7 +8,7 @@
  *    not rendered at all.
  * B3 a tile shows no expert name, price, "Plan with" or avatar — "Representative photo · <market>".
  * B4 the hero no longer paints billboard images from the live payload (provider_services legs).
- * B6 Start this plan opens a new plan with the tile's occasion and market, as door "billboard".
+ * B6 Each curated occasion action opens a new plan with the tile's seeded occasion and market, as door "billboard".
  * B5 a byline-gated expert takes the tile: the initial appears, and only then.
  * P1 the pill set is exactly the old eight-tile set — no destination lost.
  * W1 the Wanted strip still renders from the live payload, and is omitted when coverage is unknown.
@@ -92,11 +92,14 @@ describe("landing hero billboard", () => {
   it("B3 a curated tile names no expert, price or avatar — it says it is a representative photo", () => {
     const html = render(PAYLOAD);
     assert.ok(html.includes("Representative photo · Kyoto"));
-    assert.ok(html.includes("Start this plan"));
+    const labels = ["Plan a weekend away", "Plan an early start", "Plan a date night"];
+    assert.deepEqual(BILLBOARD_TILES.map((tile) => tile.actionLabel), labels);
     for (const tile of BILLBOARD_TILES) {
       assert.ok(html.includes(tile.headline), `${tile.key} retains its original headline`);
       for (const line of tile.lines) assert.ok(html.includes(line), `${tile.key} retains its original itinerary copy`);
       assert.ok(html.includes(`data-testid="hero-billboard-details-${tile.key}"`), `${tile.key} has expandable plan details`);
+      const actionTag = html.match(new RegExp(`<button[^>]+data-testid="hero-billboard-start-${tile.key}"[^>]*>${tile.actionLabel}</button>`));
+      assert.ok(actionTag, `${tile.key} has its own planning action`);
     }
     assert.equal((html.match(/<summary[^>]*>Plan details<\/summary>/g) ?? []).length, 3, "all three curated cards offer details on demand");
     assert.ok(!/<details[^>]*\sopen(?:\s|=|>)/.test(html), "itinerary lines are collapsed by default");
@@ -288,7 +291,7 @@ const OVERRIDE_FOR_SOURCE: BillboardOverride = {
 };
 
 describe("billboard doors", () => {
-  it("B6 each tile's Start this plan opens a NEW plan with its occasion and market pre-set", () => {
+  it("B6 each tile's planning action opens a NEW plan with its seeded occasion and market pre-set", () => {
     for (const tile of BILLBOARD_TILES) {
       const source = billboardPlanSource(tile);
       assert.ok(source, `${tile.key} resolves to a market`);

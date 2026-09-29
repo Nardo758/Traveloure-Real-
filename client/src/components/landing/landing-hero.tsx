@@ -146,7 +146,7 @@ export function resolveBillboardTiles(
   });
 }
 
-/** The PlanningSource a tile's "Start this plan" opens: the tile's occasion and its market. */
+/** The PlanningSource a curated tile's occasion-specific action opens: the tile's occasion and market. */
 export function billboardPlanSource(tile: BillboardTile): PlanningSource | null {
   const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
   if (!market) return null;
@@ -265,7 +265,7 @@ function CuratedTileCard({
           style={{ background: "var(--earn-coral-ink, #DF5852)" }}
           data-testid={`hero-billboard-start-${tile.key}`}
         >
-          Start this plan
+          {tile.actionLabel}
         </button>
         <details className="min-w-[120px] flex-1" data-testid={`hero-billboard-details-${tile.key}`}>
           <summary className="inline-flex min-h-[36px] cursor-pointer list-none items-center rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white [&::-webkit-details-marker]:hidden">
