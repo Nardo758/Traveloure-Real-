@@ -36,6 +36,8 @@ import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "../services/itinerary-generation-sweep-scheduler.service";
 import { drainOutboxAndSweepPush } from "../services/email-outbox.service";
 import { scorePendingClaims } from "../services/evidence-scorer.service";
+import { z } from "zod";
+import { refreshMarketMatrix } from "../services/travel-time-matrix.service";
 import { EVIDENCE_SCORER_JOB_NAME } from "../services/evidence-scorer-scheduler.service";
 import {
   recordJobSuccess,
@@ -299,6 +301,25 @@ router.post("/internal/jobs/email-outbox", requireInternalSecret, async (_req, r
 router.post("/internal/jobs/score-neighborhood-claims", requireInternalSecret, async (req, res) => {
   const limit = typeof req.body?.limit === "number" && req.body.limit > 0 ? Math.floor(req.body.limit) : undefined;
   const { status, body } = await runJob(EVIDENCE_SCORER_JOB_NAME, () => scorePendingClaims({ limit }));
+  res.status(status).json(body);
+});
+
+// travel-matrix-refresh — Track A step A2 (ledger `2026-09-29-a2-travel-time-matrix`). The ONLY
+// way the launch-city travel-time matrix is refreshed: the operator's signal (first run), then a
+// monthly external cron. Runs only where GOOGLE_MAPS_API_KEY is set; with none it answers a skip
+// and bills nothing. `{ market, force }` in a .strict() body — `market` must be an operating market
+// key (default kyoto); `force` runs even when the matrix is fresh. A run over the configured
+// ceiling is refused before any Routes call.
+const travelMatrixBody = z.object({ market: z.string().trim().min(1).max(40).optional(), force: z.boolean().optional() }).strict();
+router.post("/internal/jobs/travel-matrix-refresh", requireInternalSecret, async (req, res) => {
+  const parsed = travelMatrixBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ ok: false, error: "body must be { market?, force? }" });
+  const market = parsed.data.market ?? "kyoto";
+  const { status, body } = await runJob(
+    "travel-matrix-refresh",
+    () => refreshMarketMatrix({ marketSlug: market, force: parsed.data.force === true }),
+    (r) => r?.status === "failed" || !!r?.refused,
+  );
   res.status(status).json(body);
 });
 

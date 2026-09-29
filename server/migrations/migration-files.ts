@@ -1,4 +1,3 @@
-// hint: Logic changed on both sides. Requires understanding intent of each change.
 /**
  * Canonical migration chain registration — side-effect-free.
  *
@@ -1852,4 +1851,9 @@ export const MIGRATION_FILES = [
   // on id; all declared in shared/schema.ts. §20 new-object carve-out (the UNIQUE is on a table the
   // same statement set creates).
   "330_city_events.sql",
+  // Ledger `2026-09-29-a2-travel-time-matrix` (Track A step A2): `travel_time_matrix_refreshes` and
+  // `travel_time_matrix` — TWO NEW tables born empty with their indexes (a UNIQUE on the pair+mode,
+  // on the table the same file creates); NO CHECK; all declared in shared/schema.ts. §20 new-object
+  // carve-out.
+  "331_travel_time_matrix.sql",
 ] as const;

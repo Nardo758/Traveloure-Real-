@@ -4875,6 +4875,49 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
 // stable, cheap to query, and lets the location-view ecosystem-unit roll up by name.
 // This table provides centroids so gems (which have lat/lng) can auto-backfill,
 // and powers the provider listing form's neighborhood picker per selected city.
+/**
+ * TRACK A STEP A2 — THE LAUNCH-CITY TRAVEL-TIME MATRIX (migration 331; ledger
+ * `2026-09-29-a2-travel-time-matrix`; product map §M3/§M4). Declared here, index for index, because
+ * an object `shared/schema.ts` does not declare is dropped by the deploy push and never recreated
+ * (the migration is already stamped). Written ONLY by `server/services/travel-time-matrix.service.ts`.
+ */
+export const travelTimeMatrixRefreshes = pgTable("travel_time_matrix_refreshes", {
+  id: varchar("id").primaryKey(),
+  marketSlug: varchar("market_slug", { length: 40 }).notNull(),
+  modes: text("modes").array().notNull(),
+  centroidHash: varchar("centroid_hash", { length: 64 }).notNull(),
+  centroidCount: integer("centroid_count").notNull(),
+  // App-enforced: running | complete | failed | skipped. No CHECK (publish-trap posture).
+  status: varchar("status", { length: 20 }).notNull(),
+  elementsRequested: integer("elements_requested").notNull(),
+  elementsReturned: integer("elements_returned"),
+  // The unit prices the run was costed at, read from config at run time — never re-derived later.
+  essentialsPricePer1000: decimal("essentials_price_per_1000", { precision: 10, scale: 4 }).notNull(),
+  proPricePer1000: decimal("pro_price_per_1000", { precision: 10, scale: 4 }).notNull(),
+  estimatedListCostUsd: decimal("estimated_list_cost_usd", { precision: 10, scale: 2 }).notNull(),
+  error: text("error"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
+}, (table) => ({
+  marketStartedIdx: index("idx_travel_time_matrix_refreshes_market_started").on(table.marketSlug, table.startedAt),
+}));
+
+export const travelTimeMatrix = pgTable("travel_time_matrix", {
+  id: varchar("id").primaryKey(),
+  marketSlug: varchar("market_slug", { length: 40 }).notNull(),
+  originSlug: varchar("origin_slug", { length: 100 }).notNull(),
+  destSlug: varchar("dest_slug", { length: 100 }).notNull(),
+  // App-enforced: walk | transit (shared/travel-time.ts TRAVEL_MODES). No CHECK.
+  mode: varchar("mode", { length: 10 }).notNull(),
+  // NULL = the Routes API returned no route for this pair and mode — never a guessed number (§13).
+  durationSeconds: integer("duration_seconds"),
+  distanceMeters: integer("distance_meters"),
+  refreshId: varchar("refresh_id").references(() => travelTimeMatrixRefreshes.id, { onDelete: "set null" }),
+  computedAt: timestamp("computed_at").notNull().defaultNow(),
+}, (table) => ({
+  pairModeUniq: uniqueIndex("travel_time_matrix_pair_mode_uniq").on(table.marketSlug, table.originSlug, table.destSlug, table.mode),
+}));
+
 export const cityNeighborhoods = pgTable("city_neighborhoods", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   city: varchar("city", { length: 100 }).notNull(),
