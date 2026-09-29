@@ -384,7 +384,7 @@ describe("R7b — the plancard skin routes through the occasion classifier", () 
 describe("A — the shipped wiring, because a resolver nobody calls resolves nothing", () => {
   it("A1: the hook takes the plan's events and delegates to the ONE resolver", () => {
     assert.ok(
-      hookSrc.includes("resolveOccasionForPlan({ events, eventType, occasions })"),
+      hookSrc.includes("resolveOccasionForPlan({ events, penSlug, eventType, occasions })"),
       "useOccasionSwitches must call the shared resolver, not re-implement either attempt",
     );
     assert.ok(

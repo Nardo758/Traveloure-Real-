@@ -89,6 +89,15 @@ import { ItemComments } from "./ItemComments";
 // hrefs and the §13 rule that a NULL `roles_needed` draws nothing at all.
 import { roleLabel, type HireRoleCategory } from "@/lib/hire-from-slip";
 import { slipEventRoleChips } from "@/lib/slip-event-roles";
+import { servicesBrowseHref } from "@/lib/services-browse";
+import {
+  experienceGroupFor,
+  tripsAnchorFor,
+  tripsAnchorLine,
+  tripsAnchorQuestion,
+  tripsAnchorState,
+  type TripsAnchor,
+} from "@shared/experience-group";
 // The advisor's standing, spelled ONCE — this header and the rail's Expert card read it.
 import { slipAdvisorStandingLine, type SlipRailAdvisor } from "@/lib/slip-rail";
 // LD 42 rows 1.6 / S1 / S2 / D16 (ledger `2026-09-05-slip-own-your-plan`): the owner's own hands on
@@ -286,6 +295,51 @@ function slipDayHeading(day: {
 
 // ── SlipHeader ─────────────────────────────────────────────────────────────────────────
 
+/**
+ * A1 — THE EMPTY TRIP'S FIRST QUESTION (ledger `2026-09-29-a1-trips-frame`; product map §M2 Trips
+ * row as amended by §M7). Rendered ONLY on an empty slip of a Trips plan, in place of "No items on
+ * this plan yet". The words come from ONE home (`tripsAnchorQuestion`); the action is an EXISTING
+ * rail and the OWNER's alone (D16):
+ *   · lodging — "Browse places to stay": the services browse pre-filtered to `accommodation` with
+ *     this plan's id, so Add to plan lands on the ruling 39 rail. Comparing up to three places is
+ *     A3's option sets, not built here, and this card does not pretend otherwise.
+ *   · fixed item — the day-1 add control, the same one the delegate's empty-plan note uses.
+ * When `default_schedule` was not set, the card says the plan was treated as a plain trip (§13).
+ */
+function SlipAnchorQuestion({ tripId, anchor, isOwner }: { tripId: string; anchor: TripsAnchor; isOwner: boolean }) {
+  const q = tripsAnchorQuestion(anchor);
+  return (
+    <div className="p-4 space-y-3" data-testid="slip-anchor-question" data-anchor-kind={anchor.kind}>
+      <h2 className={`${SLIP_TITLE_FONT_CLASS} text-xl font-semibold text-foreground`}>{q.question}</h2>
+      <p className="text-sm text-muted-foreground">{q.detail}</p>
+      {anchor.fromFallback ? (
+        <p className="text-xs text-muted-foreground" data-testid="slip-anchor-fallback">
+          This occasion doesn't say whether it has a fixed schedule, so the plan starts from where you stay.
+        </p>
+      ) : null}
+      {isOwner ? (
+        anchor.kind === "lodging" ? (
+          <Link
+            href={servicesBrowseHref("accommodation", tripId)}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted/40"
+            data-testid="slip-anchor-browse-stays"
+          >
+            Browse places to stay
+          </Link>
+        ) : (
+          <SlipAddItemControl
+            tripId={tripId}
+            dayNumber={1}
+            userExperienceId={null}
+            label={SLIP_ADD_DAY_LABEL}
+            testId="slip-anchor-add-fixed"
+          />
+        )
+      ) : null}
+    </div>
+  );
+}
+
 function SlipHeader({
   data,
   hasOptimized,
@@ -297,9 +351,20 @@ function SlipHeader({
   zoneLine,
   onEditStops,
   onAskParty,
+  occasionName,
+  anchorLine,
 }: {
   data: SlipData;
   hasOptimized: boolean;
+  /**
+   * A1 (ledger `2026-09-29-a1-trips-frame`) — the occasion's OWN name (`experience_types.name`),
+   * the B1 header's eyebrow. Only when the occasion resolved to a row; `null` renders nothing — a
+   * plan whose occasion did not resolve is never labelled with a guessed one (§13), and the
+   * experience GROUP is never rendered at all (R127).
+   */
+  occasionName?: string | null;
+  /** A1 — the Trips anchor state line (`tripsAnchorLine`), for a Trips plan only; `null` otherwise. */
+  anchorLine?: string | null;
   /** `countPlanEvents(data.events)` — resolved by the caller, never counted twice (re-audit A16). */
   eventCount: number;
   /**
@@ -351,6 +416,14 @@ function SlipHeader({
 
   return (
     <div className="space-y-1.5" data-testid="slip-header">
+      {occasionName ? (
+        <p
+          className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
+          data-testid="slip-occasion-name"
+        >
+          Your plan · {occasionName}
+        </p>
+      ) : null}
       <div className="flex items-center gap-2 flex-wrap">
         {/* ── NO SLIP NUMBER AND NO VERSION ON THE WORKING HEADER ─────────────────────────────
             Ledger `2026-09-06-slip-conformance`; the ratified `header()` artboard says it in one
@@ -478,6 +551,11 @@ function SlipHeader({
           </span>
         ) : null}
       </p>
+      {anchorLine ? (
+        <p className="text-sm text-foreground" data-testid="slip-anchor-state">
+          {anchorLine}
+        </p>
+      ) : null}
       {/* ── S6 · THE STOPS LINE, and S7 · THE ZONE LINE — the ratified header's third row ───────
           "Kyoto → Osaka  |  Times shown in Asia/Tokyo  ·  Edit ›". Three independent renders, and
           each absence is its own finished answer (§13):
@@ -1499,6 +1577,15 @@ export function SlipView({
   } = useOccasionSwitches(tripId);
   const planEvents: PlanEvent[] = data.events ?? [];
   const groupByEvent = showsSchedule(occasion) && planEvents.length > 0;
+  /**
+   * A1 — THE TRIPS FRAME (ledger `2026-09-29-a1-trips-frame`; product map §B2, §M7). The group is
+   * derived from the resolved occasion ROW (R132's coarse fallback when none resolved), and only
+   * the Trips group changes anything in this step: its header states the anchor, and its EMPTY slip
+   * asks the anchor question instead of saying "No items". Every other group renders as before.
+   * `null` anchor ⇒ not a Trip ⇒ nothing new renders.
+   */
+  const experienceGroup = experienceGroupFor(occasion, data.trip?.eventType ?? null);
+  const tripsAnchor: TripsAnchor | null = experienceGroup === "trips" ? tripsAnchorFor(occasion) : null;
 
   /**
    * ── THE DAY SLOTS (ledger `2026-09-05-slip-events-first-render`) ──────────────────────────────
@@ -1640,7 +1727,12 @@ export function SlipView({
   const zoneLine = slipZoneLine(data.trip?.timezone);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5" data-testid={`slip-view-${tripId}`}>
+    <div
+      className="max-w-6xl mx-auto space-y-5"
+      data-testid={`slip-view-${tripId}`}
+      /* A1: the group is an internal key (R127) — a data attribute for tests, never display text. */
+      data-experience-group={occasionResolved ? experienceGroup : undefined}
+    >
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
           stays fully reachable below — this is a presentation flip, not a navigation away. */}
       {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} />}
@@ -1689,6 +1781,12 @@ export function SlipView({
       )}
 
       <SlipHeader
+        occasionName={occasion?.name ?? null}
+        anchorLine={
+          tripsAnchor && occasionResolved
+            ? tripsAnchorLine(tripsAnchor, tripsAnchorState({ anchor: tripsAnchor, items: allActivities, events: planEvents }))
+            : null
+        }
         data={data}
         hasOptimized={hasOptimized}
         eventCount={countPlanEvents(planEvents)}
@@ -1717,7 +1815,7 @@ export function SlipView({
           does the flip, so the DOM order is unchanged and nothing about focus order or the reading
           order of the two regions depends on the breakpoint's direction. */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8" data-testid="slip-columns">
-        <div className="order-2 lg:order-1 min-w-0 flex-1 space-y-5">
+        <div className={`${tripsAnchor ? "order-1 lg:order-1" : "order-2 lg:order-1"} min-w-0 flex-1 space-y-5`}>
           {/* ── THE VIEW BAR — the counts and the view toggle, ONE row (the canvas `viewbar`) ──
               These were two stacked rows with the whole rail between them, so the plan's status
               line and the control that changes how the plan is displayed read as unrelated. They
@@ -1846,7 +1944,9 @@ export function SlipView({
               before the plan has answered — so the sentence waits for `occasionResolved` (the ONE
               signal, from the hook that owns the lookup) and a neutral placeholder stands in its
               place. The placeholder states nothing; it is not an empty state and never says one. */}
-          {showsSlipEmptyState(daySlots.length, occasionResolved) ? (
+          {showsSlipEmptyState(daySlots.length, occasionResolved) && tripsAnchor ? (
+            <SlipAnchorQuestion tripId={tripId} anchor={tripsAnchor} isOwner={isOwner} />
+          ) : showsSlipEmptyState(daySlots.length, occasionResolved) ? (
             <p
               className="text-sm text-muted-foreground p-4 text-center"
               data-testid="slip-empty-items"
@@ -2036,7 +2136,11 @@ export function SlipView({
             derivations stay this component's and are never recomputed inside the rail
             (§18 rule 1). */}
         {data.trip && (
-          <div className="order-1 lg:order-2 mb-5 lg:mb-0 lg:w-80 lg:shrink-0">
+          /* A1 (ledger `2026-09-29-a1-trips-frame`; track-a-rollout A1, "list before rail on phone"):
+             for a Trip the PLAN comes first below `lg`, so the anchor question is the first thing
+             the traveler reads on a phone rather than the last. Every other group keeps the
+             artboard's rail-first order; at `lg` nothing moves. */
+          <div className={`${tripsAnchor ? "order-2 lg:order-2 mt-5 lg:mt-0" : "order-1 lg:order-2 mb-5"} lg:mb-0 lg:w-80 lg:shrink-0`}>
             <SlipRail
               trip={data.trip}
               tripId={tripId}
