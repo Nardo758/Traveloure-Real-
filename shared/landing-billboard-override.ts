@@ -41,6 +41,52 @@ export interface BillboardOverride {
   listing: BillboardListing;
 }
 
+/** An image is public only when its actual source credit travels with it. */
+export interface BillboardAttributedImage {
+  url: string;
+  attribution: string;
+}
+
+/** Billboard dispatch slot 1 keeps the legacy expert-listing override intact. */
+export interface BillboardSlotOne {
+  slot: 1;
+  marketKey: string;
+  override: BillboardOverride;
+}
+
+/** Slot 2 is a market gem whose named curator passed the market's expert byline gate. */
+export interface BillboardSlotTwo {
+  slot: 2;
+  marketKey: string;
+  handle: string;
+  gem: {
+    id: string;
+    name: string;
+    score: number;
+    image?: BillboardAttributedImage;
+  };
+}
+
+/** Slot 3 is a located, priced listing with a real future open slot. */
+export interface BillboardSlotThree {
+  slot: 3;
+  marketKey: string;
+  handle: string;
+  listing: BillboardListing;
+  nextOpenSlot: { date: string; startTime: string | null };
+}
+
+/** Discriminated union used by the landing billboard dispatch. */
+export type BillboardDispatchSlot = BillboardSlotOne | BillboardSlotTwo | BillboardSlotThree;
+
+/** Selected market is absent unless a real slot-1 expert listing anchors it. */
+export interface BillboardMarketSelection {
+  market: { key: string; cityName: string } | null;
+  slots: BillboardDispatchSlot[];
+  /** Existing curated photos are Kyoto-only; no other market is selected without credited tile inventory. */
+  constraint: string;
+}
+
 /** An expert who passed the byline gate for a market, with their public listings in that market. */
 export interface QualifiedExpert {
   handle: string;

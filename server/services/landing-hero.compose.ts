@@ -7,6 +7,7 @@
  */
 
 import type { LandingHeroPayload } from "@shared/landing-hero";
+import type { BillboardMarketSelection } from "@shared/landing-billboard-override";
 export type { LandingHeroPayload } from "@shared/landing-hero";
 
 // ── Types ────────────────────────────────────────────────────────────────────────────────
@@ -25,6 +26,29 @@ export interface HeroNeighborhood {
 export interface HeroOfferingType {
   offering_type_key: string;
   display_name: string;
+}
+
+/**
+ * Limit the TravelPulse eyebrow to a market actually anchored by dispatch slot 1. A missing
+ * selection or missing matching TravelPulse row is honest null, not a forced default city.
+ */
+export function pickBillboardEligibleTravelPulseCity(
+  cities: ReadonlyArray<{ cityName: string; country?: string | null; trendingScore?: number | null; crowdLevel?: string | null }>,
+  selection: BillboardMarketSelection | null | undefined,
+  observedMarketCity?: { cityName: string; country?: string | null } | null,
+): { cityName: string; country?: string | null; trendingScore?: number | null; crowdLevel?: string | null } | null {
+  const market = selection?.market;
+  if (!market || !selection.slots.some((slot) => slot.slot === 1 && slot.marketKey === market.key)) return null;
+  const matchingTrend = cities.find((city) => city.cityName.trim().toLowerCase() === market.cityName.toLowerCase());
+  if (matchingTrend) return matchingTrend;
+  if (observedMarketCity?.cityName.trim().toLowerCase() === market.cityName.toLowerCase()) {
+    // A row-backed market name is honest, but no score or crowd value is inferred from the city.
+    return {
+      cityName: observedMarketCity.cityName,
+      ...(observedMarketCity.country ? { country: observedMarketCity.country } : {}),
+    };
+  }
+  return null;
 }
 
 // ── Pure composers (exported for tests) ─────────────────────────────────────────────────
@@ -99,7 +123,7 @@ export function composeLandingHero(input: {
     input.services.find((s) => (s?.serviceName ?? "").toString().trim().length > 0) ?? null;
   const payload: LandingHeroPayload = {
     city: topCity?.cityName ?? null,
-    trend: topCity ? Number(topCity.trendingScore ?? 0) : null,
+    trend: topCity?.trendingScore == null ? null : Number(topCity.trendingScore),
     crowd: topCity?.crowdLevel ?? null,
     anchorExpert: input.anchorExpert,
     gem: gemRow

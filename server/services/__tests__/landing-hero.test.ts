@@ -12,8 +12,10 @@ import {
   composeLandingHero,
   deriveWantedSlots,
   dollarsToCents,
+  pickBillboardEligibleTravelPulseCity,
   pickAnchorExpert,
 } from "../landing-hero.compose";
+import type { BillboardMarketSelection } from "@shared/landing-billboard-override";
 import { resolveLandingHeroWanted } from "../landing-hero-wanted.service";
 
 describe("dollarsToCents", () => {
@@ -194,5 +196,78 @@ describe("composeLandingHero — honest collapse", () => {
     assert.equal(p.trend, 92);
     assert.deepEqual(p.anchorExpert, { name: "Yuki Flowers", handle: "yuki-flowers", fromPriceCents: 24900 });
     assert.deepEqual(p.wanted, [{ title: "Evening kaiseki host", city: "Kyoto" }]);
+  });
+});
+
+describe("TravelPulse eyebrow market restriction", () => {
+  const cities = [
+    { cityName: "Porto", trendingScore: 91 },
+    { cityName: "Kyoto", trendingScore: 73 },
+  ];
+  const selectedKyoto: BillboardMarketSelection = {
+    market: { key: "kyoto", cityName: "Kyoto" },
+    slots: [{
+      slot: 1,
+      marketKey: "kyoto",
+      override: {
+        tileKey: "weekend-away",
+        marketKey: "kyoto",
+        handle: "local-expert",
+        roleLabel: "Local expert",
+        listing: {
+          id: "listing",
+          title: "Kyoto walk",
+          lines: [],
+          price: null,
+          priceType: null,
+          pricingUnit: null,
+          showPrice: true,
+          imageUrl: null,
+        },
+      },
+    }],
+    constraint: "credited tile inventory",
+  };
+
+  test("no eligible slot-1 market suppresses TravelPulse city even when cities are trending", () => {
+    assert.equal(pickBillboardEligibleTravelPulseCity(cities, null), null);
+    assert.equal(pickBillboardEligibleTravelPulseCity(cities, {
+      ...selectedKyoto,
+      market: null,
+    }), null);
+    assert.equal(pickBillboardEligibleTravelPulseCity(cities, {
+      ...selectedKyoto,
+      slots: [],
+    }), null);
+  });
+
+  test("the eligible slot-1 market wins over a higher-ranked unrelated city", () => {
+    assert.deepEqual(pickBillboardEligibleTravelPulseCity(cities, selectedKyoto), cities[1]);
+  });
+
+  test("a selected market outside the ranked slice uses only an observed city row, with no invented trend", () => {
+    const fallback = pickBillboardEligibleTravelPulseCity(
+      [{ cityName: "Porto", trendingScore: 91 }],
+      selectedKyoto,
+      { cityName: "Kyoto", country: "Japan" },
+    );
+    assert.deepEqual(fallback, { cityName: "Kyoto", country: "Japan" });
+    const payload = composeLandingHero({
+      topCity: fallback,
+      anchorExpert: null,
+      gems: [],
+      services: [],
+      wanted: null,
+    });
+    assert.equal(payload.city, "Kyoto");
+    assert.equal(payload.trend, null);
+    assert.equal(payload.crowd, null);
+  });
+
+  test("a selected market with no trend row and no observed city row remains absent", () => {
+    assert.equal(
+      pickBillboardEligibleTravelPulseCity([{ cityName: "Porto", trendingScore: 91 }], selectedKyoto),
+      null,
+    );
   });
 });

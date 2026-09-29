@@ -3,12 +3,9 @@
  * Visual of record: docs/design/landing-earn-mock.html "HERO v2"; behavior contract:
  * docs/design/LANDING_SPEC.md.
  *
- * Billboard (landing reorder, ledger `2026-09-28-landing-reorder`, item 5): the three tiles are
- * CURATED rows from shared/landing-billboard.ts — occasion, market, a repo photo, a headline and
- * three lines — never a live listing, expert name, price or avatar. Each photo is credited from
- * public/images/landing/ATTRIBUTION.json and a photo with no entry is not rendered. A curated tile
- * says "Representative photo · <market>" and "Start this plan" opens a NEW plan with its occasion
- * and market pre-set.
+ * Billboard (task-billboard-slot-types): three server-dispatched slots can render an expert listing,
+ * a hidden gem, or a bookable listing. Each missing slot independently remains its credited curated
+ * tile. The old overrides prop remains supported for consumers without a dispatch response.
  *
  * Override (follow-up 4, ledger `2026-09-28-billboard-override-listing`): when a real expert passes
  * the byline gate for a tile's market (GET /api/landing/billboard-experts, decided server-side), THAT
@@ -47,9 +44,15 @@ import {
   type PhotoAttribution,
 } from "@shared/landing-billboard";
 import type { PlanningSource } from "@/contexts/PlanningContext";
-import type { BillboardOverride } from "@shared/landing-billboard-override";
+import type {
+  BillboardMarketSelection,
+  BillboardOverride,
+  BillboardSlotThree,
+  BillboardSlotTwo,
+} from "@shared/landing-billboard-override";
 import { derivePreviewPrice } from "@/lib/catalog-preview-presentation";
 import { earnerProfilePath } from "@/lib/earner-address";
+import { buildBillboardGemPlanningSource } from "@/lib/billboard-gem-planning";
 // The ONE credit record for the repo's landing photos — never retyped into the tiles.
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
 
@@ -273,11 +276,13 @@ function OverrideTileCard({
   tile,
   large,
   override,
+  marketLabel,
   onStartPlan,
 }: {
   tile: BillboardTile & { credit: BillboardCredit };
   large: boolean;
   override: BillboardOverride;
+  marketLabel?: string;
   onStartPlan: (source: PlanningSource) => void;
 }) {
   const [listingPhotoFailed, setListingPhotoFailed] = useState(false);
@@ -306,7 +311,7 @@ function OverrideTileCard({
         style={{ fontFamily: EARN_MONO }}
         data-testid={`hero-billboard-label-${tile.key}`}
       >
-        {override.roleLabel} · @{override.handle}
+        {marketLabel ?? `${override.roleLabel} · @${override.handle}`}
       </span>
       <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
         {market.cityName}
@@ -359,6 +364,156 @@ function OverrideTileCard({
   );
 }
 
+function billboardMarketSource(marketKey: string, pendingGem?: BillboardSlotTwo["gem"]): PlanningSource | null {
+  const market = OPERATING_MARKETS.find((m) => m.marketKey === marketKey);
+  if (!market) return null;
+  if (pendingGem) {
+    return {
+      ...buildBillboardGemPlanningSource({ id: pendingGem.id, title: pendingGem.name, city: market.cityName }),
+      door: "billboard",
+      country: market.country,
+    };
+  }
+  return { door: "billboard", city: market.cityName, country: market.country };
+}
+
+/** A byline-gated gem: its own score and only an image carrying its own attribution. */
+function GemTileCard({
+  tile,
+  large,
+  slot,
+  onStartPlan,
+}: {
+  tile: BillboardTile & { credit: BillboardCredit };
+  large: boolean;
+  slot: BillboardSlotTwo;
+  onStartPlan: (source: PlanningSource) => void;
+}) {
+  const [gemPhotoFailed, setGemPhotoFailed] = useState(false);
+  const [fallbackFailed, setFallbackFailed] = useState(false);
+  const market = OPERATING_MARKETS.find((m) => m.marketKey === slot.marketKey);
+  if (!market) return null;
+  const usesGemPhoto = !!slot.gem.image && !gemPhotoFailed;
+  return (
+    <div
+      className={`${TILE_FRAME} pt-10 ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`}
+      style={TILE_GROUND}
+      data-testid={`hero-billboard-${tile.key}`}
+      data-dispatch-slot="2"
+    >
+      {usesGemPhoto ? (
+        <TilePhoto src={slot.gem.image!.url} onFail={() => setGemPhotoFailed(true)} />
+      ) : (
+        !fallbackFailed && <TilePhoto src={tile.imagePath} onFail={() => setFallbackFailed(true)} />
+      )}
+      <TileShade />
+      <span
+        className="absolute left-2.5 top-2.5 z-10 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
+        style={{ fontFamily: EARN_MONO }}
+        data-testid={`hero-billboard-label-${tile.key}`}
+      >
+        HIDDEN GEM
+      </span>
+      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
+        {market.cityName}
+      </span>
+      <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`} style={{ fontFamily: FRAUNCES }}>
+        {slot.gem.name}
+      </b>
+      <span
+        className="relative z-10 mt-1.5 self-start rounded-full bg-black/45 px-2 py-1 text-[11px] font-semibold"
+        aria-label={`Score ${slot.gem.score}`}
+        data-testid={`hero-billboard-gem-score-${tile.key}`}
+      >
+        {slot.gem.score}
+      </span>
+      <button
+        type="button"
+        onClick={() => {
+          const source = billboardMarketSource(slot.marketKey, slot.gem);
+          if (source) onStartPlan(source);
+        }}
+        className="relative z-10 mt-2.5 inline-flex min-h-[32px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+        data-testid={`hero-billboard-plan-gem-${tile.key}`}
+      >
+        Plan around this gem
+      </button>
+      {usesGemPhoto ? (
+        <span className="relative z-10 mt-2 text-[9.5px] opacity-75" style={{ fontFamily: EARN_MONO }}>
+          Photo: {slot.gem.image!.attribution}
+        </span>
+      ) : (
+        !fallbackFailed && <TileCredit tileKey={tile.key} credit={tile.credit} />
+      )}
+    </div>
+  );
+}
+
+/** A directly bookable listing: its own listing data and price, never legacy expert overrides. */
+function BookableTileCard({
+  tile,
+  large,
+  slot,
+}: {
+  tile: BillboardTile & { credit: BillboardCredit };
+  large: boolean;
+  slot: BillboardSlotThree;
+}) {
+  const [listingPhotoFailed, setListingPhotoFailed] = useState(false);
+  const [fallbackFailed, setFallbackFailed] = useState(false);
+  const market = OPERATING_MARKETS.find((m) => m.marketKey === slot.marketKey);
+  if (!market) return null;
+  const usesListingPhoto = !!slot.listing.imageUrl && !listingPhotoFailed;
+  const price = derivePreviewPrice(slot.listing);
+  return (
+    <div
+      className={`${TILE_FRAME} pt-10 ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`}
+      style={TILE_GROUND}
+      data-testid={`hero-billboard-${tile.key}`}
+      data-dispatch-slot="3"
+    >
+      {usesListingPhoto ? (
+        <TilePhoto src={slot.listing.imageUrl!} onFail={() => setListingPhotoFailed(true)} />
+      ) : (
+        !fallbackFailed && <TilePhoto src={tile.imagePath} onFail={() => setFallbackFailed(true)} />
+      )}
+      <TileShade />
+      <span
+        className="absolute left-2.5 top-2.5 z-10 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
+        style={{ fontFamily: EARN_MONO }}
+        data-testid={`hero-billboard-label-${tile.key}`}
+      >
+        BOOK ON TRAVELOURE
+      </span>
+      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
+        {market.cityName}
+      </span>
+      <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`} style={{ fontFamily: FRAUNCES }}>
+        {slot.listing.title}
+      </b>
+      {slot.listing.lines.length > 0 && (
+        <ul className="relative z-10 mt-1.5 space-y-0.5 text-[12px] leading-snug opacity-90">
+          {slot.listing.lines.map((line) => <li key={line} className="line-clamp-2">{line}</li>)}
+        </ul>
+      )}
+      {!price.hidden && (
+        <span className="relative z-10 mt-1.5 text-[13px] font-semibold" data-testid={`hero-billboard-price-${tile.key}`}>
+          {price.text}
+          {price.unit ? <span className="ml-1 text-[11px] font-normal opacity-80">{price.unit}</span> : null}
+        </span>
+      )}
+      <Link
+        href={`/services/${encodeURIComponent(slot.listing.id)}`}
+        className="relative z-10 mt-2.5 inline-flex min-h-[32px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+        data-testid={`hero-billboard-book-${tile.key}`}
+      >
+        Book now
+      </Link>
+      {!usesListingPhoto && !fallbackFailed && <TileCredit tileKey={tile.key} credit={tile.credit} />}
+    </div>
+  );
+}
+
 export function LandingHero({
   onPlanTrip,
   onStartPlan,
@@ -367,13 +522,16 @@ export function LandingHero({
   onStartPlan: (source: PlanningSource) => void;
 }) {
   const { data: hero } = useQuery<LandingHeroData>({ queryKey: ["/api/landing/hero"] });
-  const { data: override } = useQuery<{ overrides: BillboardOverride[] }>({ queryKey: ["/api/landing/billboard-experts"] });
+  const { data: override } = useQuery<{ overrides: BillboardOverride[]; marketSelection?: BillboardMarketSelection }>({
+    queryKey: ["/api/landing/billboard-experts"],
+  });
   return (
     <LandingHeroContent
       hero={hero ?? null}
       onPlanTrip={onPlanTrip}
       onStartPlan={onStartPlan}
       overrides={override?.overrides ?? []}
+      marketSelection={override?.marketSelection}
     />
   );
 }
@@ -383,11 +541,13 @@ export function LandingHeroContent({
   onPlanTrip,
   onStartPlan = () => {},
   overrides = [],
+  marketSelection,
 }: {
   hero: LandingHeroData | null;
   onPlanTrip: () => void;
   onStartPlan?: (source: PlanningSource) => void;
   overrides?: readonly BillboardOverride[];
+  marketSelection?: BillboardMarketSelection;
 }) {
   const { t } = useTranslation("nav");
   const [, navigate] = useLocation();
@@ -543,16 +703,41 @@ export function LandingHeroContent({
           )}
 
           <div className="grid grid-cols-2 gap-2.5" data-testid="hero-bento">
-            {tiles.map((tile, i) => (
-              (() => {
-                const taken = overrides.find((o) => o.tileKey === tile.key && o.marketKey === tile.marketKey);
-                return taken ? (
-                  <OverrideTileCard key={tile.key} tile={tile} large={i === 0} override={taken} onStartPlan={onStartPlan} />
-                ) : (
-                  <CuratedTileCard key={tile.key} tile={tile} large={i === 0} onStartPlan={onStartPlan} />
-                );
-              })()
-            ))}
+            {tiles.map((tile, i) => {
+              const selectedMarket = marketSelection?.market;
+              const marketKey = selectedMarket?.key;
+              const dispatched = marketKey
+                ? marketSelection?.slots.find((slot) => slot.slot === i + 1 && slot.marketKey === marketKey)
+                : undefined;
+              if (marketSelection !== undefined && selectedMarket && dispatched && tile.marketKey === dispatched.marketKey) {
+                if (dispatched.slot === 1) {
+                  return (
+                    <OverrideTileCard
+                      key={tile.key}
+                      tile={tile}
+                      large={i === 0}
+                      override={dispatched.override}
+                      marketLabel={`LOCAL EXPERT · ${selectedMarket.cityName.toUpperCase()}`}
+                      onStartPlan={onStartPlan}
+                    />
+                  );
+                }
+                if (dispatched.slot === 2) {
+                  return <GemTileCard key={tile.key} tile={tile} large={i === 0} slot={dispatched} onStartPlan={onStartPlan} />;
+                }
+                return <BookableTileCard key={tile.key} tile={tile} large={i === 0} slot={dispatched} />;
+              }
+              // The endpoint's dispatch is authoritative, including an empty market selection:
+              // legacy overrides must not leak into its unfilled slots.
+              const taken = marketSelection === undefined
+                ? overrides.find((o) => o.tileKey === tile.key && o.marketKey === tile.marketKey)
+                : undefined;
+              return taken ? (
+                <OverrideTileCard key={tile.key} tile={tile} large={i === 0} override={taken} marketLabel={`LOCAL EXPERT · ${OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey)?.cityName.toUpperCase() ?? ""}`} onStartPlan={onStartPlan} />
+              ) : (
+                <CuratedTileCard key={tile.key} tile={tile} large={i === 0} onStartPlan={onStartPlan} />
+              );
+            })}
 
             {wanted && (
               <div

@@ -34,9 +34,11 @@ import {
   MOMENT_EVENT_KINDS,
 } from "../services/landing-moments";
 import { getUserId } from "../utils/auth";
+import type { BillboardMarketSelection } from "@shared/landing-billboard-override";
 import {
   composeLandingHero,
   dollarsToCents,
+  pickBillboardEligibleTravelPulseCity,
   pickAnchorExpert,
   type HeroNeighborhood,
   type HeroOfferingType,
@@ -104,8 +106,30 @@ const EMPTY: LandingHeroPayload = {
 
 router.get("/api/landing/hero", async (_req, res) => {
   try {
+    let marketSelection: BillboardMarketSelection | null = null;
+    try {
+      const { resolveBillboardDispatch } = await import("../services/landing-billboard.service");
+      marketSelection = (await resolveBillboardDispatch()).marketSelection;
+    } catch (e: any) {
+      // Dispatch failure is the same honest empty-market state as no qualified slot 1: do not
+      // let an unrelated TravelPulse city imply that a live billboard market was selected.
+      console.error("[landing-hero] billboard market selection failed; suppressing live city:", e?.message);
+      marketSelection = null;
+    }
+    if (!marketSelection?.market) {
+      res.set("Cache-Control", "public, max-age=300");
+      return res.json(EMPTY);
+    }
+
     const { travelPulseService } = await import("../services/travelpulse.service");
-    const [top] = await travelPulseService.getTrendingCities(1);
+    const trendingCities = await travelPulseService.getTrendingCities(20);
+    let top = pickBillboardEligibleTravelPulseCity(trendingCities, marketSelection);
+    if (!top) {
+      // getTrendingCities is ranked/limited; if the qualified market is outside that slice, use
+      // only its directly observed TravelPulse row and deliberately omit trend/crowd claims.
+      const observedMarketCity = await travelPulseService.getCityByName(marketSelection.market.cityName);
+      top = pickBillboardEligibleTravelPulseCity(trendingCities, marketSelection, observedMarketCity);
+    }
     if (!top) {
       res.set("Cache-Control", "public, max-age=300");
       return res.json(EMPTY);
@@ -209,12 +233,20 @@ router.post("/api/landing/moments/event", async (req, res) => {
 // list (curated), never an error on the landing page.
 router.get("/api/landing/billboard-experts", async (_req, res) => {
   try {
-    const { resolveBillboardOverrides } = await import("../services/landing-billboard.service");
+    const { resolveBillboardDispatch } = await import("../services/landing-billboard.service");
     res.set("Cache-Control", "public, max-age=300");
-    return res.json({ overrides: await resolveBillboardOverrides() });
+    return res.json(await resolveBillboardDispatch());
   } catch (e: any) {
     console.error("[landing-billboard] override read failed (tiles stay curated):", e?.message);
-    return res.json({ overrides: [] });
+    return res.json({
+      overrides: [],
+      marketSelection: {
+        market: null,
+        slots: [],
+        constraint:
+          "Only markets with existing credited billboard tile inventory and a real slot-1 expert listing can be selected; current curated tiles are Kyoto-only.",
+      },
+    });
   }
 });
 

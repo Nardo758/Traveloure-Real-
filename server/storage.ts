@@ -18,6 +18,7 @@ import { isPlatformConciergeUserId } from "./services/platform-concierge.service
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
 import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
 import { PARTIALLY_COMPLETED_STATUS, reducedBundleFigures } from "@shared/bundle-component-states";
+import { pendingPlanItemMarker } from "@shared/pending-plan-items";
 import { OUT_OF_BAND_REFUND_KEY, outOfBandRefundOf } from "@shared/out-of-band-refund";
 import { paymentOnRecordSql } from "./services/payment-on-record";
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
@@ -1076,6 +1077,10 @@ export interface IStorage {
   getItineraryItems(tripId: string): Promise<any[]>;
 
   createItineraryItem(item: any): Promise<any>;
+  createPendingBillboardGemItemIfAbsent(
+    item: InsertItineraryItem & { tripId: string },
+    gemId: string,
+  ): Promise<{ item: ItineraryItem; created: boolean }>;
 
   updateItineraryItem(id: string, updates: any): Promise<any>;
 
@@ -7917,6 +7922,38 @@ export class DatabaseStorage implements IStorage {
     const safeItem = stripItineraryItemRoutingFields(item as Record<string, unknown>);
     const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
     return created;
+  }
+
+  async createPendingBillboardGemItemIfAbsent(
+    item: InsertItineraryItem & { tripId: string },
+    gemId: string,
+  ): Promise<{ item: ItineraryItem; created: boolean }> {
+    const marker = pendingPlanItemMarker(gemId);
+    const safeItem = stripItineraryItemRoutingFields({
+      ...item,
+      notes: marker,
+    } as Record<string, unknown>);
+    return db.transaction(async (tx) => {
+      // Serialize retries for this exact trip/source pair. This avoids the GET-then-POST race
+      // without changing the itinerary schema or affecting unrelated item writes.
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${"billboard-gem:" + item.tripId + ":" + gemId}))`,
+      );
+      const [existing] = await tx
+        .select()
+        .from(itineraryItems)
+        .where(and(
+          eq(itineraryItems.tripId, item.tripId),
+          eq(itineraryItems.notes, marker),
+        ))
+        .limit(1);
+      if (existing) return { item: existing, created: false };
+      const [created] = await tx
+        .insert(itineraryItems)
+        .values(safeItem as any)
+        .returning();
+      return { item: created, created: true };
+    });
   }
 
   async updateItineraryItem(id: string, updates: Partial<InsertItineraryItem>): Promise<ItineraryItem | undefined> {

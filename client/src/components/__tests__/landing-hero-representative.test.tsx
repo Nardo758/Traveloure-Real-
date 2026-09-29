@@ -23,7 +23,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
 import { LandingHeroContent, billboardOverridePlanSource, billboardPlanSource, heroBeginRows, resolveBillboardTiles } from "../landing/landing-hero";
-import type { BillboardOverride } from "@shared/landing-billboard-override";
+import type { BillboardMarketSelection, BillboardOverride } from "@shared/landing-billboard-override";
 import { BILLBOARD_TILES, type PhotoAttribution } from "@shared/landing-billboard";
 import type { LandingHeroPayload } from "@shared/landing-hero";
 
@@ -47,10 +47,14 @@ const PAYLOAD = {
   ],
 } satisfies LandingHeroPayload;
 
-function render(payload: LandingHeroPayload | null, overrides: BillboardOverride[] = []): string {
+function render(
+  payload: LandingHeroPayload | null,
+  overrides: BillboardOverride[] = [],
+  marketSelection?: BillboardMarketSelection,
+): string {
   return renderToString(
     <Router ssrPath="/">
-      <LandingHeroContent hero={payload} onPlanTrip={() => {}} overrides={overrides} />
+      <LandingHeroContent hero={payload} onPlanTrip={() => {}} overrides={overrides} marketSelection={marketSelection} />
     </Router>,
   ).replace(/<!--.*?-->/g, "");
 }
@@ -136,7 +140,7 @@ describe("landing hero billboard", () => {
     assert.ok(from > 0 && to > from);
     const tileHtml = html.slice(from, to);
     assert.ok(tileHtml.includes('data-override="listing"'));
-    assert.ok(tileHtml.includes("Local expert · @aiko"));
+    assert.ok(tileHtml.includes("LOCAL EXPERT · KYOTO"));
     assert.ok(tileHtml.includes("Dawn at Fushimi Inari with Aiko"));
     assert.ok(tileHtml.includes("Up the mountain before the tour buses, with tea after."));
     assert.ok(tileHtml.includes("$120"), "the price as the storefront card renders it");
@@ -154,6 +158,104 @@ describe("landing hero billboard", () => {
     // A listing that hides its price shows none.
     const hidden = render(PAYLOAD, [{ ...OVERRIDE, listing: { ...OVERRIDE.listing, showPrice: false } }]);
     assert.ok(!hidden.includes('data-testid="hero-billboard-price-early-start"'));
+  });
+
+  const DISPATCH_OVERRIDE: BillboardOverride = {
+    ...OVERRIDE,
+    tileKey: "weekend-away",
+    listing: { ...OVERRIDE.listing, title: "Dispatch slot one listing" },
+  };
+  const DISPATCH: BillboardMarketSelection = {
+    market: { key: "kyoto", cityName: "Kyoto" },
+    constraint: "kyoto-curated-photos",
+    slots: [
+      { slot: 1, marketKey: "kyoto", override: DISPATCH_OVERRIDE },
+      {
+        slot: 2,
+        marketKey: "kyoto",
+        handle: "hana",
+        gem: {
+          id: "gem-1",
+          name: "Tito’s Lane",
+          score: 87,
+          image: { url: "/fixture/gem-attributed.jpg", attribution: "Mina Sato" },
+        },
+      },
+      {
+        slot: 3,
+        marketKey: "kyoto",
+        handle: "ren",
+        listing: {
+          id: "service/with space",
+          title: "Tea ceremony in a machiya",
+          lines: ["A quiet afternoon with a local host."],
+          price: "145",
+          priceType: "fixed",
+          pricingUnit: null,
+          showPrice: true,
+          imageUrl: "/fixture/bookable-listing.jpg",
+        },
+        nextOpenSlot: { date: "2027-03-18", startTime: "10:30" },
+      },
+    ],
+  };
+
+  it("renders the complete three-slot dispatch from each slot's own data", () => {
+    const html = render(PAYLOAD, [OVERRIDE], DISPATCH);
+    assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
+    assert.ok(html.includes("Plan with @aiko"));
+    assert.ok(html.includes('href="/s/aiko"'));
+    assert.ok(html.includes("HIDDEN GEM"));
+    assert.ok(html.includes("Tito’s Lane"));
+    assert.ok(html.includes('aria-label="Score 87"'));
+    assert.ok(html.includes("/fixture/gem-attributed.jpg"));
+    assert.ok(html.includes("Photo: Mina Sato"));
+    assert.ok(html.includes("BOOK ON TRAVELOURE"));
+    assert.ok(html.includes("Tea ceremony in a machiya"));
+    assert.ok(html.includes("$145"));
+    assert.ok(html.includes("/fixture/bookable-listing.jpg"));
+    assert.ok(html.includes('href="/services/service%2Fwith%20space"'));
+    assert.ok(!html.includes("Dawn at Fushimi Inari with Aiko"), "legacy overrides don't replace dispatched slots");
+
+    const dispatchGem = DISPATCH.slots[1];
+    if (dispatchGem.slot !== 2) throw new Error("Expected the second dispatch slot to be a gem.");
+    const uncreditedGem = {
+      ...DISPATCH,
+      slots: [DISPATCH.slots[0], { ...dispatchGem, gem: { ...dispatchGem.gem, image: undefined } }, DISPATCH.slots[2]],
+    };
+    const fallbackPhotoHtml = render(PAYLOAD, [], uncreditedGem);
+    assert.ok(!fallbackPhotoHtml.includes("/fixture/gem-attributed.jpg"));
+    assert.ok(fallbackPhotoHtml.includes('data-testid="hero-billboard-credit-early-start"'));
+  });
+
+  it("falls back independently for empty slots in an anchored dispatch", () => {
+    const selection: BillboardMarketSelection = {
+      market: DISPATCH.market,
+      constraint: DISPATCH.constraint,
+      slots: [DISPATCH.slots[0]],
+    };
+    const html = render(PAYLOAD, [], selection);
+    assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
+    assert.ok(html.includes('data-testid="hero-billboard-weekend-away"'));
+    assert.ok(html.includes('data-testid="hero-billboard-early-start"'));
+    assert.ok(html.includes('data-testid="hero-billboard-date-night"'));
+    assert.equal((html.match(/Representative photo · Kyoto/g) ?? []).length, 2);
+    assert.ok(!html.includes("HIDDEN GEM"));
+    assert.ok(!html.includes("BOOK ON TRAVELOURE"));
+  });
+
+  it("uses credited curated cards when dispatch has no anchored market", () => {
+    const selection: BillboardMarketSelection = {
+      market: null,
+      constraint: DISPATCH.constraint,
+      slots: DISPATCH.slots,
+    };
+    const html = render(PAYLOAD, [OVERRIDE], selection);
+    assert.equal((html.match(/Representative photo · Kyoto/g) ?? []).length, 3);
+    assert.ok(!html.includes("LOCAL EXPERT · KYOTO"));
+    assert.ok(!html.includes("HIDDEN GEM"));
+    assert.ok(!html.includes("BOOK ON TRAVELOURE"));
+    assert.ok(!html.includes("Plan with"));
   });
 });
 

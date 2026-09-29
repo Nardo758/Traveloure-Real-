@@ -74,3 +74,4 @@
 - [Storefront plan handoff](storefront-plan-handoff.md) — a trip-scoped expert browse is return navigation only; preserve tripId but never create or share a booking implicitly.
 - [Dispute-scoped aggregate payouts](dispute-scoped-aggregate-payouts.md) — hold the booking's earnings, not the earner; reserve exact eligible rows before transfer and treat processing as possibly sent.
 - [Stripe CLI sandbox verification](stripe-cli-sandbox-webhook-verification.md) — CLI dispute fixtures can be warnings; use a full test-card dispute for won/lost evidence and verify forwarded webhooks.
+- [Billboard market inventory](billboard-market-inventory.md) — live slot one alone cannot select a market without truthful credited fallbacks for the other slots.
