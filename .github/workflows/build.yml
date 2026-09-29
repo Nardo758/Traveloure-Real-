@@ -955,6 +955,7 @@ jobs:
       - name: Build identity + map city-centre fallback pin
         run: |
           npx tsx --test server/__tests__/build-info.test.ts
+          npx tsx --test server/services/__tests__/migration-state.test.ts
           npx tsx --test client/src/lib/__tests__/map-no-city-center-fallback.test.ts
 
       # LD 41 lane 2 (ledger 2026-09-05-draft-only-on-empty + 2026-09-05-draft-cost-tracking-and-tier):
