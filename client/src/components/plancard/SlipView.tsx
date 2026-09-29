@@ -796,15 +796,19 @@ function SlipItemRow({
       }`}
       data-testid={`slip-item-${a.id}`}
     >
-      <div className="flex items-start justify-between gap-3">
+      {/* Below `sm` the chips sit ABOVE the name, and the name wraps instead of truncating: at
+          390 px three chips beside it left the name a few letters wide ("Ya…"), and the name is
+          what a traveler reads (ledger `2026-09-29-slip-item-name-390`). From `sm` up the row is
+          unchanged: chips on the right, the name truncated to one line. */}
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-foreground flex items-center gap-1.5">
+          <p className="font-medium text-foreground flex items-start gap-1.5">
             {/* Spec B anchor glyph: purchased items are the plan's fixed points once a real
                 optimization was applied. */}
             {purchased && hasOptimized && (
               <Anchor className="w-3.5 h-3.5 flex-shrink-0" style={{ color: ROUTING_TINTS.purchased.fg }} data-testid={`slip-anchor-${a.id}`} />
             )}
-            <span className="truncate">{a.name}</span>
+            <span className="min-w-0 break-words sm:truncate" data-testid={`slip-item-name-${a.id}`}>{a.name}</span>
           </p>
           <p className="text-xs text-muted-foreground">
             {a.time ? a.time : null}
@@ -898,7 +902,7 @@ function SlipItemRow({
             (LD 44 — a kind and a routing status are never merged). It is DERIVED from the row's own
             link columns on every render and stored nowhere, so it cannot drift from what checkout
             charges; unlike the other two it is total, so every item wears exactly one. */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="order-first flex flex-wrap items-center gap-1.5 sm:order-none sm:flex-shrink-0">
           <RoutingBadge activity={a} showPlanning expertAssigned={expertAssigned} />
           <ItemKindBadge activity={a} />
           <OriginBadge activity={a} />
