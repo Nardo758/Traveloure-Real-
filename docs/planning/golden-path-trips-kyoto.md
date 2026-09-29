@@ -252,6 +252,23 @@ outward from the hotel set".
 - **Money:** fee visible before pay (R144); Trip Pass waiver (R148); idempotent checkout (§15); one Stripe refund on
   cancel under the refund rail's key. The hotel mints no platform PaymentIntent (LD 43 (c)).
 
+### Step 7b — A local expert checks the plan (amended 2026-09-29, ledger `2026-09-29-expert-door`)
+
+- **Traveler (375px):** "Get a local expert" mints the plan like the other two finishes and lands on the slip, which
+  opens with ONE card above the list: **"How much help do you want?"** — *Check my plan* (advisory; runs the free AI
+  draft first when the plan is empty), *Plan it with me* (planning), *Handle it for me* (coordination) — each with the
+  real price range of the Kyoto experts who offer it, and a text link, *I just have a question* (Ask-Me-Anything).
+  Dismissed, it becomes a small "Add a local expert" control in the header until an expert is attached. A choice opens
+  the picker: the byline-gated Kyoto experts who list that level — name, the neighbourhoods verified for them in Kyoto,
+  the offering and its price, their measured reply time — each with **Request**. With nobody offering the level:
+  "No local expert offers this in Kyoto yet" and "Start with the free AI draft; we'll tell you when one does".
+- **Server truth:** Request is the existing storefront rail (`POST /api/expert-booking-requests` with this plan's id);
+  the advisor row comes from its ONE author (LD 32) — no second attach path. The band is the min–max of published
+  prices on the picker's own listings (no fee-table rate is shown as a price). No `users.id` in any response (LD 40).
+- **Supply:** for the sessions, the two Kyoto experts are the whole picker (decision-maker, Sep 29, 2026). CI proves
+  the step against a fixture expert (`scripts/seed-fixture-kyoto-expert.ts`, test databases only).
+- **P-1e amended:** experts are no longer optional to the path the moment a traveler takes this door.
+
 ### Step 8 — A month later
 
 See the next section; module B7/S5 (read-only on the Trip Card), A1 (history), level GLANCE on Home, DETAIL on the card.
@@ -356,6 +373,14 @@ test.describe("7 · choose, finalize, checkout, book, cancel", () => {
   //   confirmPaymentIntentTestMode; DB: one service_bookings row 'confirmed', item 'purchased'
   //   cancel: button-cancel-booking-* → GET cancel-preview; confirm → POST cancel 2xx;
   //   DB: refund row amount = preview amount (R166); DOM: item not "Booked" (R145)
+});
+test.describe("7b · a local expert checks the plan", () => {
+  // finish local → POST /api/trips; trip_created.finish = 'local_expert'; DOM: expert-door-card
+  // dismiss → slip-add-local-expert in the header; it reopens the card
+  // a market with no expert: picker says "No local expert offers this in <City> yet"; expert_interest row
+  // picker lists only byline-gated experts who list the level (fixture gated + ungated)
+  // Request → POST /api/expert-booking-requests 2xx; trip_expert_advisors row 'pending'; expert_request_sent;
+  //   the card and the header control no longer render
 });
 test.describe("8 · a month later", () => {
   // TODAY-PASSABLE: GET /api/me/upcoming contains the trip start; /trip/:id shows trip-card-rail and the

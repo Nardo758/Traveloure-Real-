@@ -153,6 +153,7 @@ export function buildTripMintBody(basics: SlipBasics): TripMintBody {
   const entry: TripMintEntry = {};
   if (basics.entry?.door) entry.door = basics.entry.door;
   if (basics.entry?.occasionSource) entry.occasionSource = basics.entry.occasionSource;
+  if (basics.entry?.finish) entry.finish = basics.entry.finish;
   if (Object.keys(entry).length > 0) body.entry = entry;
   return body;
 }

@@ -86,6 +86,7 @@ import {
   type OptimizationFeeQuote,
   type TripOptimizationPreview,
 } from "@/lib/optimization-preview";
+import { runFreeDraft } from "@/lib/slip-free-draft";
 import { readSlipHasItemsRefusal } from "@/lib/ai-draft-refusal";
 import { countOptimizableItems, slipOptimizeDisabledReason } from "@/lib/slip-plan-actions";
 import {
@@ -440,28 +441,8 @@ function BuildCard({
     endDate: trip.endDate,
   });
   const draft = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/ai/generate-itinerary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          tripId: trip.id,
-          destination: trip.destination,
-          dates: { start: String(trip.startDate).slice(0, 10), end: String(trip.endDate).slice(0, 10) },
-          // RC-12: a party nobody stated is not sent; the draft route plans without one.
-          ...(trip.travelers ? { travelers: trip.travelers } : {}),
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        // The server's OWN sentence for a non-empty slip — never a second copy of the rule.
-        const refusal = readSlipHasItemsRefusal(res.status, body);
-        if (refusal) throw new Error(refusal.message);
-        throw new Error(body?.message || "Couldn't draft this plan");
-      }
-      return res.json();
-    },
+    // ONE call, shared with the expert door (`@/lib/slip-free-draft`, §18 rule 1).
+    mutationFn: () => runFreeDraft(trip as any),
     onSuccess: () => {
       sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       toast({

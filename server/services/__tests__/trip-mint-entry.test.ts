@@ -25,7 +25,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { splitTripMintBody, tripCreatedEventData } from "../trip-mint-entry";
-import { deriveOccasionSource, PLAN_DOORS } from "@shared/slip-funnel-events";
+import { deriveOccasionSource, finishForBranch, PLAN_DOORS, PLAN_FINISHES } from "@shared/slip-funnel-events";
 import { tripClientBodySchema } from "@shared/schema";
 import { buildTripMintBody } from "../../../client/src/lib/trip-slip";
 
@@ -126,5 +126,22 @@ describe("E1 — trip_created carries the door the traveler came through", () =>
     // The closed list is the doc's thirteen doors (ten, plus the 2026-09-28 amendment's three), stated once.
     assert.equal(PLAN_DOORS.length, 13);
     for (const d of ["billboard", "event_strip", "events_page"]) assert.ok((PLAN_DOORS as readonly string[]).includes(d), d);
+  });
+
+  it("E9 — the finish is its own property beside the door (§3.1 amendment 2026-09-29, ledger `2026-09-29-expert-door`)", () => {
+    assert.deepEqual([...PLAN_FINISHES], ["myself", "ai", "local_expert"]);
+    assert.equal(finishForBranch("local"), "local_expert");
+    assert.equal(finishForBranch("myself"), "myself");
+    assert.equal(finishForBranch("ai"), "ai");
+    assert.equal(finishForBranch("occasion"), null, "a finish that mints nothing sends nothing");
+    const { entry } = splitTripMintBody({ ...TRIP, entry: { door: "hero", finish: "local_expert" } });
+    assert.deepEqual(tripCreatedEventData({ entry, datesChosenByTraveler: true, marketSlug: "kyoto" }), {
+      datesConfirmed: true,
+      door: "hero",
+      finish: "local_expert",
+      market: "kyoto",
+    });
+    assert.equal(splitTripMintBody({ ...TRIP, entry: { finish: "modal_expert" } }).entryRefused, true, "a finish off the list is refused, not stored");
+    assert.deepEqual((buildTripMintBody({ ...TRIP, entry: { finish: "ai" } }) as any).entry, { finish: "ai" });
   });
 });

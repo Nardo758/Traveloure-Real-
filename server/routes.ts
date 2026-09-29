@@ -153,6 +153,8 @@ import serviceQuotesRoutes from "./routes/service-quotes.routes";
 import pushRoutes from "./routes/push.routes";
 import liveHelpRoutes from "./routes/live-help.routes";
 import planOptionSetsRoutes from "./routes/plan-option-sets.routes";
+import { expertRequestSentProperties } from "./services/expert-door.service";
+import expertDoorRoutes from "./routes/expert-door.routes";
 import { loadLiveStatus } from "./services/live-status.service";
 import { liveListingTermsRefusal } from "@shared/live-availability";
 import bookingComponentsRoutes from "./routes/booking-components.routes";
@@ -1175,6 +1177,8 @@ export async function registerRoutes(
   app.use(liveHelpRoutes);
   // Track A step A3 (ledger `2026-09-29-a3-option-sets`): comparisons on the plan and M8's promote.
   app.use(planOptionSetsRoutes);
+  // The expert door (ledger `2026-09-29-expert-door`): help-level card and the gated picker.
+  app.use(expertDoorRoutes);
   // ledger `2026-09-17-surfaces-quotes-settlement`: the ONE read of a purchased bundle's
   // components + its settlement (GET /api/bookings/:id/components). Read-only; every action on
   // those surfaces still calls the existing component rails.
@@ -2138,6 +2142,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           await ensureTripAdvisorRow(tripId, providerId, notes || null).catch(err =>
             console.error("[ExpertBookingRequest] Failed to create advisor row:", err)
           );
+        }
+
+        // The expert door's `expert_request_sent` (ledger `2026-09-29-expert-door`): a request that
+        // names a plan. NOT `expert_requested`, which is the PAID event written by the payment path
+        // and carries no plan; this row is the request itself. Fire-and-forget — an analytics row
+        // never fails the request (§15b).
+        if (tripId && serviceId) {
+          void trackFunnelEvent({
+            userId,
+            tripId,
+            eventType: "expert_request_sent",
+            funnelStage: "SLIP",
+            eventData: expertRequestSentProperties((service as any).expertOfferingTypeKey ?? null, serviceId),
+          });
         }
 
         // NO T6 revenue event here: this is a booking REQUEST — nothing has been charged. Revenue is

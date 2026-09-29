@@ -54,11 +54,30 @@ export type PlanDoor = (typeof PLAN_DOORS)[number];
 export const OCCASION_SOURCES = ["door_prefilled", "asked", "none"] as const;
 export type OccasionSource = (typeof OCCASION_SOURCES)[number];
 
+/**
+ * WHICH FINISH MINTED THE PLAN (slip-funnel-events.md §3.1 amendment 2026-09-29, ledger
+ * `2026-09-29-expert-door`). A door says where the traveler ENTERED the modal; the finish says which
+ * way to build they chose at its end — two different facts, so a separate property, never a door
+ * value (a plan that entered by the hero and finished with "Get a local expert" keeps both). Only the
+ * three finishes that mint are listed; Save and the occasion finish send none.
+ */
+export const PLAN_FINISHES = ["myself", "ai", "local_expert"] as const;
+export type PlanFinish = (typeof PLAN_FINISHES)[number];
+
+/** The modal's branch → its finish value; a branch that does not mint has none. */
+export function finishForBranch(branch: string): PlanFinish | null {
+  if (branch === "myself") return "myself";
+  if (branch === "ai") return "ai";
+  if (branch === "local") return "local_expert";
+  return null;
+}
+
 /** The mint body's event-only `entry` (§19 — `.strict()`: an extra key is refused, not stripped). */
 export const tripMintEntrySchema = z
   .object({
     door: z.enum(PLAN_DOORS).optional(),
     occasionSource: z.enum(OCCASION_SOURCES).optional(),
+    finish: z.enum(PLAN_FINISHES).optional(),
   })
   .strict();
 export type TripMintEntry = z.infer<typeof tripMintEntrySchema>;

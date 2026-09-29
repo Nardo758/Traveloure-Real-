@@ -88,7 +88,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import type { PlanningBranch, PlanningSource } from "@/contexts/PlanningContext";
 import type { ExperienceType } from "@shared/schema";
-import { deriveOccasionSource, isPlanDoor, type TripMintEntry } from "@shared/slip-funnel-events";
+import { deriveOccasionSource, finishForBranch, isPlanDoor, type TripMintEntry } from "@shared/slip-funnel-events";
 
 /**
  * PlanModal — THE planning modal. One modal, many doors.
@@ -1296,7 +1296,7 @@ export function PlanModal({
    * AWAITED, and its answer is deliberately NOT branched on: a release the server did not confirm
    * leaves `commitPlan`'s idempotency filter to do exactly what it is there for.
    */
-  const mintThisPlan = async (): Promise<{ ok: true; tripId: string } | { ok: false; message?: string }> => {
+  const mintThisPlan = async (finishBranch?: PlanningBranch): Promise<{ ok: true; tripId: string } | { ok: false; message?: string }> => {
     if (!mintPlan) return { ok: false };
     await releasePendingEventsPen();
     // E1 — the door the traveler came through, as the DOOR named it (a door outside the closed
@@ -1310,6 +1310,10 @@ export function PlanModal({
         occasionChosen: !!selectedOccasion,
       });
     }
+    // Which way to build the traveler chose at the finish (ledger `2026-09-29-expert-door`) — a
+    // separate fact from the door; Save sends none.
+    const finishValue = finishBranch ? finishForBranch(finishBranch) : null;
+    if (finishValue) entry.finish = finishValue;
     return mintPlan({
       destination: destination.trim(),
       startDate,
@@ -1469,7 +1473,7 @@ export function PlanModal({
         !!mintPlan &&
         (mintRequired || !!user);
       if (shouldMint) {
-        const outcome = await mintThisPlan();
+        const outcome = await mintThisPlan(branch);
         if (!outcome.ok) {
           // A refusal with no message means the opener already took the screen (sign-in).
           if (outcome.message) setFinishError(outcome.message);
