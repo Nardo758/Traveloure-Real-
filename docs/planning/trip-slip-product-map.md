@@ -3,7 +3,7 @@
 > **Status header (Sep 27, 2026):** Target architecture. Build order superseded by the vertical-slice plan
 > (`golden-path-trips-kyoto.md`, pending). §G to be re-sequenced in Part 3.
 
-**Status: RATIFIED AS TARGET; §M/§N (Part 2) RATIFIED Sep 28, 2026 with four amendments (ledger `2026-09-28-part2-m2-flags`, `-m4-matrix-first`, `-m6-free-rerun-hotel`, `-n4-runs-outlive-plan`); §M7–M9 PROPOSED Sep 28, awaiting ratification** — except the §J overrides (decision-maker, Sep 27, 2026; ledger `2026-09-27-slip-map-ratified`,
+**Status: RATIFIED AS TARGET; §M/§N (Part 2) RATIFIED Sep 28, 2026 with four amendments (ledger `2026-09-28-part2-m2-flags`, `-m4-matrix-first`, `-m6-free-rerun-hotel`, `-n4-runs-outlive-plan`); §M7–M9 RATIFIED Sep 29, 2026 (ledger `2026-09-29-m7-m9-ratified`; the M9 threshold is PROVISIONAL until the Part 6 sessions have run)** — except the §J overrides (decision-maker, Sep 27, 2026; ledger `2026-09-27-slip-map-ratified`,
 R146). §I was ruled Sep 26 (R124–R129) and §J–§L's questions Sep 27 (R136–R142). The §J override record holds the one
 confirmed override (R147). Build order: superseded — see the status header above. Brief section H is now steps
 1–2 in build detail. Schema named here is ratified as target (M/N included), but each migration still lands in its own lane under
@@ -1154,9 +1154,9 @@ default: the free re-run is decided per **user** today (`hasRecentOptimizationRu
 added"; changing the key is a charge-behaviour change and belongs in its own ruling (already recorded as open under
 LD 41 (a)'s amendment).
 
-### M7–M9. Amendment: which anchor comes first, and entering from the days — PROPOSED (Sep 28, 2026; awaiting ratification)
+### M7–M9. Amendment: which anchor comes first, and entering from the days — RATIFIED (Sep 29, 2026; ledger `2026-09-29-m7-m9-ratified`)
 
-> Design only. Nothing here is built. It amends M1/M2 for the Trips group (M7), makes the anchor editable per plan
+> Ratified as written, including the M9 threshold, which is **provisional until the Part 6 sessions have run** — the sessions may move it. Nothing here is built yet; A1 builds M7's question and header. It amends M1/M2 for the Trips group (M7), makes the anchor editable per plan
 > (M8), and gives S1/S3 a second entry point (M9). The mechanism is unchanged: plan-fit is still computed between an
 > anchor set's candidates and the plan's located items (M3). Only the entry point and which set counts as primary move.
 
@@ -1238,7 +1238,7 @@ Two consequences are stated, not changed:
   - **Dependency, named:** Kyoto has zero `hotel_cache` rows today (Part 5 census). This entry point is empty until the Booking.com fetch lands.
 - **After a choice — "N places would make your days easier".** Once a set is `chosen`, the compare view keeps **one line**, never a modal and never a badge on the slip. It reads "N places would make your days easier", with a link that reopens the comparison. It appears when N ≥ 1 unchosen candidates **beat the chosen option on plan-fit by the threshold below**. It never re-opens the set by itself; choosing again is the traveler's act, through the same choose rail. The line is the same surface as "suggest better places", so there is no second compare screen.
 
-**Proposed threshold** (config, not a literal — `planFitEasierThreshold`, two numbers). A candidate counts toward N only when **all** of these hold:
+**Threshold — RATIFIED, PROVISIONAL until the Part 6 sessions run** (config, not a literal — `planFitEasierThreshold`, two numbers). In the decision-maker's words: another candidate beats the chosen one "by 15 min/day or 20% of daily travel burden, whichever is larger" — which is conditions 1 and 2 together. A candidate counts toward N only when **all** of these hold:
 1. **Travel burden per day is lower by at least 15 minutes.** That is an hour and a quarter over a five-day trip — noticeable. Below it, straight-line "est." noise can reorder hotels.
 2. **It is lower by at least 20% of the chosen option's burden**, so a 15-minute gap on a 3-hour day does not count.
 3. **Both figures come from the same basis** (both matrix or both "est."). A matrix figure is never compared with a straight line.

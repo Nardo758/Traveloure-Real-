@@ -4,8 +4,9 @@
 > travelers and two Kyoto experts** before Track A builds compare-options (A3/A4 in `track-a-rollout.md`).
 
 **Status: RATIFIED (decision-maker, Sep 28, 2026; ledger `2026-09-28-validation-kit-ratified`), with ONE amendment
-PROPOSED Sep 28 and awaiting ratification** — screen 1b, the "easier days" line on screen 2 and one script question
-(product map §M8–M9). The decision-maker asked for it; no other change is made before the sessions run. Part 6
+RATIFIED Sep 29 (ledger `2026-09-29-m7-m9-ratified`)** — screen 1b, the "easier days" line on screen 2 and one script
+question (product map §M8–M9). The "easier days" threshold is provisional; these sessions may move it. No other
+change is made before the sessions run. Part 6
 sessions must run before Track A step A4 starts (R189).
 
 **Mock — open it here:** [Kyoto Trips slip — validation mock](https://claude.ai/artifact/VbnL9j6Mfq9PE5nWzW1SPD)
@@ -13,18 +14,18 @@ sessions must run before Track A step A4 starts (R189).
 shared from its Share menu — share it with the decision-maker and the session laptop's account before the first
 session.
 
-**Mock version 8 (Sep 28, 2026) adds screen 1b and the easier-days line (proposed, §M9); screens 1 and 3 are unchanged. Confirmed against the ratified wording (Sep 28, 2026):** screen 1 asks "Where are you staying?" (the §M2 anchor
+**Mock version 8 (Sep 28, 2026) adds screen 1b and the easier-days line (§M9); screens 1 and 3 are unchanged. Confirmed against the ratified wording (Sep 28, 2026):** screen 1 asks "Where are you staying?" (the §M2 anchor
 question, verbatim); every plan-fit number carries "est." — Travel / day, Walkable (added to the Walkable figure on
 Sep 28, version 4, the only change) and every leg on screen 3 — because the Kyoto matrix (A2) does not exist yet. Phone width (390 px), four linked screens; open each in **Play**:
 
 1. **Where are you staying?** — the anchor question; add/remove up to three places; "I've already booked".
-1b. **Days first** (proposed, §M9) — the same plan with nine located stops and no place to stay; "Suggest places that
+1b. **Days first** (§M9) — the same plan with nine located stops and no place to stay; "Suggest places that
    fit these days" fills three candidates ranked by plan-fit ("est."), then opens screen 2. "Add places myself" goes
    to screen 1.
 2. **Compare 3 places** — plan-fit leads (travel per day, "est."; walkable stops; price only where the source states
-   one, "—" otherwise); one "Easiest days" badge only on the winner; "Not chosen yet". **Proposed (§M9):** each card
+   one, "—" otherwise); one "Easiest days" badge only on the winner; "Not chosen yet". **§M9:** each card
    has "Choose this place"; after a choice, one quiet line "N places would make your days easier" appears when an
-   unchosen place beats the chosen one by the proposed threshold (15 min/day and 20%). Choosing Hotel A shows it
+   unchosen place beats the chosen one by the provisional threshold (15 min/day or 20%, whichever is larger). Choosing Hotel A shows it
    (Ryokan B); choosing Ryokan B or Hotel C does not.
 3. **Day 2 from the chosen place** — travel legs between stops ("est."), an open evening with two nearby ideas.
 
@@ -40,7 +41,7 @@ the product; do not say "plan-fit".
 **1. Warm-up (5 min).** "Tell me about the last trip you planned for a city you didn't know. Where did you decide to
 stay, and how?" Note: did they pick the hotel **before** or **after** the days?
 
-Then ask, **before any screen is shown** (proposed, §M9): **"Planning a few days somewhere new, would you pick the
+Then ask, **before any screen is shown** (§M9): **"Planning a few days somewhere new, would you pick the
 hotel first or the days first?"** Record their answer verbatim, then show screens 1 and 1b in **that** order
 (hotel first ⇒ 1 then 1b; days first ⇒ 1b then 1; "depends" ⇒ 1 then 1b).
 
@@ -50,7 +51,7 @@ here." Watch, don't lead. Then ask:
 - "You have three places in mind — does adding them here make sense before anything else?"
 - Experts only: "Is this the first question you'd ask a client?"
 
-**2b. Screen 1b — days first (3 min, proposed).** "Here you've already got the days and nowhere to stay yet. What
+**2b. Screen 1b — days first (3 min).** "Here you've already got the days and nowhere to stay yet. What
 would you do?"
 - If they tap "Suggest places that fit these days": "Would you trust these three? What would you check first?"
 - "Is this how you'd rather start, or the other screen?"
@@ -61,7 +62,7 @@ would you do?"
 - "Easiest days" on one card: "Is that the one you'd choose? What would make you pick another?"
 - Price shows "—" for one place: "What do you make of this?" (Do they read "not stated" as "free" or "missing"?)
 - Experts only: "Would you rank these the same way for a first-time visitor?"
-- (Proposed, §M9.) Ask them to choose **Hotel A** if they haven't. When the "1 place would make your days easier" line
+- (§M9.) Ask them to choose **Hotel A** if they haven't. When the "1 place would make your days easier" line
   appears: "What do you make of this line? Would you look, or ignore it?" (Do they read it as help or as a nag?)
 
 **4. Screen 3 — one day (5 min).** Tap "See my days from here". "What's your day like from this hotel?"
@@ -90,6 +91,6 @@ price first.
 | Would pay for three versions; what worth | free text, their number first |
 
 **Decision this informs:** whether plan-fit leads the compare view (A4) and whether the Kyoto matrix must precede it
-(Part 2 §M4) — i.e. whether "est." is acceptable to the first ten travelers. **Also (proposed):** which entry the slip
+(Part 2 §M4) — i.e. whether "est." is acceptable to the first ten travelers. **Also:** which entry the slip
 leads with for Trips (the anchor question or "Suggest places that fit these days", §M9), and whether the "easier days"
 line stays one quiet line.
