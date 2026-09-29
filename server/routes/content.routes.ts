@@ -58,6 +58,7 @@ import { buildAttributedAffiliateUrl } from "../services/affiliate-attribution.s
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
 import { getProviderHealth } from "../services/provider-health.service";
 import { getBuildInfo } from "../services/build-info";
+import { readMigrationState } from "../services/migration-state";
 // L23 (brief §11.5, ruling 9): the ONE author of a buy button, shipped on the payload.
 import { buildListingBuyAction, buildListingBuyActions, listingBuyFacts, resolveBuyerState } from "../services/buy-action-payload";
 import { applyPropertyLocationPrivacy } from "../services/property-location-privacy.service";
@@ -344,7 +345,11 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
     try {
       const ok = await dbHealthCheck();
       if (ok) {
-        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build });
+        // Ledger `2026-09-29-health-last-migration`: the database's own migration state, read
+        // from `schema_migrations` in registry order (§20 — read, never inferred). A failed read
+        // is `null`, never "current" (§13), and never fails the health answer itself.
+        const migrations = await readMigrationState(db).catch(() => null);
+        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, migrations });
       } else {
         res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build });
       }
