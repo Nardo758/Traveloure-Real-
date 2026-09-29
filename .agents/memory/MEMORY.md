@@ -41,6 +41,7 @@
 - [Partner Demand lane](partner-demand-lane.md) — 2B rollup live (migration 243, nightly job +95min); Kyoto cells hand-verified; @journey-w1.test rows pass R16 as written (flagged, ruling pending); lane work only on explicit dispatch.
 - [Partner Demand R38 provenance](partner-demand-r38-provenance.md) — unowned, same-day destination/date cohorts at n≥10 are excluded from all demand grains; materialized rollups must drop invalidated cells.
 - [Mockup preview discovery](mockup-preview-discovery.md) — any non-underscore .tsx in mockups/ becomes a no-props preview route; prefix shared helpers with _.
+- [Isolated preview routing](isolated-preview-routing.md) — a new mockup artifact may start before dependencies finish; screenshot its own port, not the main app's localhost port.
 - [Calendar-date boundaries](calendar-date-boundaries.md) — date-only trip values and exported wall-clock events must never pass through viewer/server timezone conversion.
 - [TravelPulse city index publish compatibility](travelpulse-city-index-publish.md) — production duplicate city pairs block the normalized unique index; keep enforcement in lookup paths until approved cleanup.
 - [Landing Moment demo seeding](landing-moment-demo-seeding.md) — demos use licensed real photos and a labeled test curator; production activates through publish, never direct SQL.
