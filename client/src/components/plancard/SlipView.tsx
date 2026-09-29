@@ -59,6 +59,8 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // `slip-action-*` control this file used to render inline, plus the browse link, the logistics
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
 import { SlipRail } from "./SlipRail";
+import { itemFactLine } from "@/lib/place-facts";
+import type { FactView } from "@shared/content-facts";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { showsSchedule } from "@/lib/occasion-switches";
 import {
@@ -188,6 +190,8 @@ export interface SlipTrip {
 
 export interface SlipData extends PlanCardData {
   trip?: SlipTrip;
+  /** A5 — each item's facts with their provenance, keyed by item id (server-projected; absent ⇒ none). */
+  placeFacts?: Record<string, FactView[]>;
   /** The §4 diary — last 20 log rows, newest first. Absent on pre-BUILD-1 responses. */
   recentTransitions?: TripPlanTransition[];
   /**
@@ -751,9 +755,14 @@ function SlipItemRow({
   dayItemIds,
   groupItemIds,
   promotable = false,
+  facts,
+  dateIso = null,
 }: {
   tripId: string;
   activity: PlanCardActivity;
+  /** A5 — this item's facts (server-projected), and the plan day's date the hours are read for. */
+  facts?: FactView[];
+  dateIso?: string | null;
   /** M8 (A3b): this located, dated row may become what the plan is built around — decided by the caller. */
   promotable?: boolean;
   isOwner: boolean;
@@ -780,6 +789,7 @@ function SlipItemRow({
   groupItemIds: readonly string[];
 }) {
   const a = activity;
+  const factLine = itemFactLine(facts, dateIso);
   const purchased = isPurchasedRow(a);
   const secondary = secondaryLine(a, expertName, expertAssigned);
   // D16 — OWNER ONLY, and the money rules of the ratified `ItemRow` artboard: a paid row carries no
@@ -913,6 +923,19 @@ function SlipItemRow({
           <OriginBadge activity={a} />
         </div>
       </div>
+      {factLine ? (
+        <p className="mt-1 text-xs text-muted-foreground" data-testid={`slip-item-facts-${a.id}`}>
+          {factLine.text}
+          {" · "}
+          {factLine.sourceUrl ? (
+            <a href={factLine.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline" data-testid={`slip-item-facts-source-${a.id}`}>
+              {factLine.provenance}
+            </a>
+          ) : (
+            <span data-testid={`slip-item-facts-source-${a.id}`}>{factLine.provenance}</span>
+          )}
+        </p>
+      ) : null}
       {/* M8 (A3b): a full-width line under the row, so on a phone it never squeezes the item's name. */}
       {promotable ? (
         <div className="mt-1">
@@ -2105,6 +2128,8 @@ export function SlipView({
                       key={a.id}
                       tripId={tripId}
                       activity={a}
+                      facts={data.placeFacts?.[a.id]}
+                      dateIso={slot.dateIso ?? null}
                       isOwner={isOwner}
                       canEditItems={canEditItems}
                       isExpertViewer={isExpertViewer}

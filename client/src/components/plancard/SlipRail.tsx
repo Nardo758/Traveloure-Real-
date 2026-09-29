@@ -440,14 +440,23 @@ function BuildCard({
     startDate: trip.startDate,
     endDate: trip.endDate,
   });
+  // A5 (§M5): the server's anchor question, when the draft asked instead of drafting.
+  const [draftAsk, setDraftAsk] = useState<string | null>(null);
   const draft = useMutation({
     // ONE call, shared with the expert door (`@/lib/slip-free-draft`, §18 rule 1).
-    mutationFn: () => runFreeDraft(trip as any),
-    onSuccess: () => {
+    mutationFn: (opts?: { withoutAnchor?: boolean }) => runFreeDraft(trip as any, opts ?? {}),
+    onSuccess: (result) => {
+      if (result.kind === "anchor_needed") {
+        setDraftAsk(result.message);
+        return;
+      }
+      setDraftAsk(null);
       sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/option-sets`] });
       toast({
         title: "Draft added to your plan",
-        description: "A starting sketch — one version, without live prices. Optimize builds around it.",
+        description:
+          result.basisLine ?? "A starting sketch — one version, without live prices. Optimize builds around it.",
       });
     },
     onError: (err: any) => {
@@ -487,6 +496,20 @@ function BuildCard({
           <RailNote testId="slip-draft-note">
             Offered only on an empty plan — one row of any status and this becomes Optimize.
           </RailNote>
+          {draftAsk ? (
+            <div className="rounded-md border border-border p-3 space-y-2" data-testid="slip-draft-anchor-ask">
+              <p className="text-sm text-foreground">{draftAsk}</p>
+              <button
+                type="button"
+                className="inline-flex min-h-[44px] items-center rounded-md border border-border px-3 text-sm font-semibold hover:bg-muted/40"
+                onClick={() => draft.mutate({ withoutAnchor: true })}
+                disabled={draft.isPending}
+                data-testid="slip-draft-without-anchor"
+              >
+                Draft without a hotel
+              </button>
+            </div>
+          ) : null}
         </>
       )}
 

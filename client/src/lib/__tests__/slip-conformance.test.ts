@@ -164,6 +164,11 @@ const ALLOWED_ADDITIONS = {
   // placeholder, not a new action: it carries no handler, and the zero-omitting rule on the count
   // SEGMENTS is untouched (§13 — four zeroes would be four claims about rows that do not exist).
   "slip-viewbar-empty": "1 — the empty plan's placeholder, so the view toggle still renders",
+  // A LATER ruling's controls, declared (ledger `2026-09-29-a5-draft-open-set`, §M5): the free draft
+  // asks where the traveler is staying on a Trip with no stay and no set, and the traveler's own
+  // answer is "Draft without a hotel". Neither re-wires the Draft button, whose handler is unchanged.
+  "slip-draft-anchor-ask": "A5 — the draft's anchor question, the server's own sentence",
+  "slip-draft-without-anchor": "A5 — the traveler's answer: draft without a hotel (never sent for them)",
   // Ledger `2026-09-07-my-events-fold` (Locked Decision 45 (5)). A LATER ruling's card, declared
   // here for the reason this list exists: a control that appears without a named ruling behind it
   // is exactly what the pin refuses. It renders ONLY when this plan has a `coordination_states`
