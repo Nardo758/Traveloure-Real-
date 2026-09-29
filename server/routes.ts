@@ -151,6 +151,7 @@ import conversationsRoutes from "./routes/conversations.routes";
 import serviceQuotesRoutes from "./routes/service-quotes.routes";
 import pushRoutes from "./routes/push.routes";
 import liveHelpRoutes from "./routes/live-help.routes";
+import planOptionSetsRoutes from "./routes/plan-option-sets.routes";
 import { loadLiveStatus } from "./services/live-status.service";
 import { liveListingTermsRefusal } from "@shared/live-availability";
 import bookingComponentsRoutes from "./routes/booking-components.routes";
@@ -1171,6 +1172,8 @@ export async function registerRoutes(
   app.use(serviceQuotesRoutes);
   app.use(pushRoutes);
   app.use(liveHelpRoutes);
+  // Track A step A3 (ledger `2026-09-29-a3-option-sets`): comparisons on the plan and M8's promote.
+  app.use(planOptionSetsRoutes);
   // ledger `2026-09-17-surfaces-quotes-settlement`: the ONE read of a purchased bundle's
   // components + its settlement (GET /api/bookings/:id/components). Read-only; every action on
   // those surfaces still calls the existing component rails.
