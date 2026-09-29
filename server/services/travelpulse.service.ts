@@ -34,6 +34,17 @@ import { CONFIDENCE_FLOOR } from "./trend-engine/trend-score.service";
 import crypto from "crypto";
 
 
+/**
+ * A city as the PUBLIC rail sees it (TravelPulse PR 1, ledger `2026-09-29-travelpulse-hygiene`): the
+ * legacy `crowd_level` / `pulse_score` are not on it, and `trendingScore` is the resolver's (0 = not
+ * shown — the rail's suppression path).
+ */
+export type PublicTrendingCity = Omit<TravelPulseCity, "crowdLevel" | "pulseScore"> & {
+  trendingScore: number;
+  _resolverScore: number | null;
+  _isRanked: boolean;
+};
+
 export class TravelPulseService {
   async getTrendingDestinations(city: string, limit: number = 10): Promise<TravelPulseTrending[]> {
     const cached = await db
@@ -214,7 +225,7 @@ export class TravelPulseService {
     return out;
   }
 
-  async getTrendingCities(limit: number = 20): Promise<TravelPulseCity[]> {
+  async getTrendingCities(limit: number = 20): Promise<PublicTrendingCity[]> {
     // Phase E rewire: rank by the v0 resolver trend_score (trend_scores table),
     // restricted to the 8 operating markets. Below-floor markets (trendConfidence <
     // CONFIDENCE_FLOOR) sort last and receive trendingScore = 0 (no "hot" badge).
@@ -262,7 +273,7 @@ export class TravelPulseService {
       return a.cityName.localeCompare(b.cityName);
     });
 
-    return withScores.slice(0, limit) as TravelPulseCity[];
+    return withScores.slice(0, limit);
   }
 
   async getCityByName(cityName: string): Promise<TravelPulseCity | null> {

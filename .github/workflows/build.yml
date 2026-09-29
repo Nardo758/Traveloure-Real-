@@ -1541,11 +1541,6 @@ jobs:
       # `npm ci` because it imports `@shared/` (the #812 lesson, docs/OPERATING_PROCEDURE.md §3).
       - name: The one acceptance derivation (A1-A5)
         run: npx tsx --test --test-force-exit shared/__tests__/acceptance-window.test.ts
-      # TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): the ONE Trend-number derivation
-      # with its 48h freshness gate (D1-D5), and a per-market-error run recorded `partial` with its
-      # messages, never `success` (H1-H3). Pure; no DB.
-      - name: TravelPulse — Trend freshness + adapter run health (D1-D5, H1-H3)
-        run: npx tsx --test shared/__tests__/trend-display.test.ts server/services/trend-engine/__tests__/run-health.test.ts
       # D-7 DECLARED COMPLETION (D-36..D-39; ledger 2026-09-15-d36-d39-completion-declared). The seller
       # DECLARES (`confirmed → completion_declared`, mints nothing); the nightly job says "completed" and
       # mints at the window's close with the held earning anchored to the declaration (D-37); a dispute

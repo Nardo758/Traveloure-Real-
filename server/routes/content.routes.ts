@@ -6301,8 +6301,10 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
         const aRating = a.seasonalRating ? ratingOrder[a.seasonalRating] ?? 2 : 2;
         const bRating = b.seasonalRating ? ratingOrder[b.seasonalRating] ?? 2 : 2;
         if (aRating !== bRating) return aRating - bRating;
-        // Secondary sort by pulse score
-        return (b.pulseScore || 0) - (a.pulseScore || 0);
+        // Secondary sort by the resolver's Trend number (PR 1: the legacy pulse score is gone;
+        // an unshown Trend sorts last, then by name so the order is stable).
+        const d = (b.trendingScore ?? -1) - (a.trendingScore ?? -1);
+        return d !== 0 ? d : a.cityName.localeCompare(b.cityName);
       });
       
       // Group by rating for easier display
