@@ -1856,4 +1856,9 @@ export const MIGRATION_FILES = [
   // on the table the same file creates); NO CHECK; all declared in shared/schema.ts. §20 new-object
   // carve-out.
   "331_travel_time_matrix.sql",
+  // Ledger `2026-09-29-a3-option-sets` (Track A step A3; §E2 approved R124): `plan_option_sets` and
+  // `plan_options` — TWO NEW tables born empty with their indexes (a partial UNIQUE on the open
+  // set's item and a UNIQUE on (set, position), both on tables this file creates); NO CHECK, NO
+  // DEFAULT on status; all declared in shared/schema.ts. §20 new-object carve-out.
+  "332_plan_option_sets.sql",
 ] as const;

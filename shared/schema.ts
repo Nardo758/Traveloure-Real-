@@ -11951,3 +11951,69 @@ export const blogPostReactions = pgTable("blog_post_reactions", {
 
 export type BlogPost = typeof blogPosts.$inferSelect;
 export type BlogPostSource = typeof blogPostSources.$inferSelect;
+
+/**
+ * TRACK A STEP A3 — PLAN OPTION SETS (migration 332; ledger `2026-09-29-a3-option-sets`; product map
+ * §E2 approved R124, §M1/§M7–M9 ratified). Declared index for index (the deploy-push durability
+ * rule). ONE writer: `server/services/plan-option-sets.service.ts`. An option is a CANDIDATE, never
+ * plan content — only the chosen option becomes an `itinerary_items` row (LD 39), so every existing
+ * reader of `itinerary_items` is untouched by construction. Value sets are app-enforced
+ * (`shared/plan-options.ts`); no CHECK anywhere (publish-trap posture).
+ */
+export const planOptionSets = pgTable("plan_option_sets", {
+  id: varchar("id").primaryKey(),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "set null" }),
+  userExperienceId: varchar("user_experience_id").references(() => userExperiences.id, { onDelete: "set null" }),
+  // NULL = not placed. Never defaulted to 1 (audit G17).
+  dayNumber: integer("day_number"),
+  categoryKey: varchar("category_key", { length: 64 }),
+  label: varchar("label", { length: 120 }),
+  status: varchar("status", { length: 20 }).notNull(),
+  // Part 4 §3.2's owed marker: primary | secondary | NULL (not an anchor). One primary per
+  // (trip, stop) is enforced in the service's transaction, never by an index.
+  anchorRole: varchar("anchor_role", { length: 20 }),
+  stopPosition: integer("stop_position"),
+  chosenOptionId: varchar("chosen_option_id"),
+  chosenAt: timestamp("chosen_at"),
+  chosenBy: varchar("chosen_by"),
+  // Part 4 §3.5's owed field: choose | version_whole | version_stop.
+  chosenVia: varchar("chosen_via", { length: 20 }),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  tripIdx: index("idx_plan_option_sets_trip").on(table.tripId),
+  openItemUniq: uniqueIndex("plan_option_sets_open_item_uniq").on(table.itineraryItemId).where(sql`status = 'open'`),
+}));
+
+export const planOptions = pgTable("plan_options", {
+  id: varchar("id").primaryKey(),
+  setId: varchar("set_id").notNull().references(() => planOptionSets.id, { onDelete: "cascade" }),
+  // Server-derived, 1..3 (cap app-enforced).
+  position: integer("position").notNull(),
+  // incumbent | listing | affiliate | saved_place | custom | engine
+  sourceKind: varchar("source_kind", { length: 20 }).notNull(),
+  providerServiceId: varchar("provider_service_id").references(() => providerServices.id, { onDelete: "set null" }),
+  affiliateProductId: varchar("affiliate_product_id").references(() => affiliateProducts.id, { onDelete: "set null" }),
+  hotelCacheId: varchar("hotel_cache_id").references(() => hotelCache.id, { onDelete: "set null" }),
+  // Server-copied from the source row; typed only for `custom`.
+  title: varchar("title", { length: 255 }).notNull(),
+  locationName: varchar("location_name", { length: 255 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  // exact | neighborhood_centroid | NULL (unlocated — never guessed onto a map).
+  locationPrecision: varchar("location_precision", { length: 30 }),
+  // Display only, server-derived at add (§14). Never charged. NULL = not stated, never "$0".
+  priceSnapshot: decimal("price_snapshot", { precision: 10, scale: 2 }),
+  addedByUserId: varchar("added_by_user_id"),
+  addedByRole: varchar("added_by_role", { length: 20 }),
+  expertRecommendation: text("expert_recommendation"),
+  expertRecommendedBy: varchar("expert_recommended_by"),
+  sourceImpressionId: varchar("source_impression_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  setPositionUniq: uniqueIndex("plan_options_set_position_uniq").on(table.setId, table.position),
+}));
+
+export type PlanOptionSet = typeof planOptionSets.$inferSelect;
+export type PlanOption = typeof planOptions.$inferSelect;
