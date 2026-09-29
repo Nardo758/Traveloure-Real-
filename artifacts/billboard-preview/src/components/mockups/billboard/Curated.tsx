@@ -10,41 +10,30 @@ const TILE_GROUND = { background: "linear-gradient(160deg,#7C6A63,#1E3A5F)" };
 const tiles = [
   {
     key: "weekend-away",
-    occasionLabel: "Weekend away",
-    actionLabel: "Plan a weekend away",
     image: "hero-generic-expert.jpg",
     headline: "Two days in Kyoto, walked with a local",
-    lines: [
-      "Day 1 · Higashiyama lanes before the crowds",
-      "Evening · a Pontochō dinner, booked for you",
-      "Day 2 · Arashiyama, then the slow train back",
-    ],
     creator: "Mico Medel",
     source: "https://www.pexels.com/photo/group-tour-guide-engaging-with-visitors-outdoors-37573881/",
   },
   {
     key: "early-start",
-    occasionLabel: "Early start",
-    actionLabel: "Plan an early start",
     image: "hero-fushimi-inari.jpg",
     headline: "Fushimi Inari at first light",
-    lines: ["06:30 · in before the tour buses", "The upper shrines, on quiet paths", "Breakfast by the station after"],
     creator: "G N",
     source: "https://www.pexels.com/photo/vibrant-torii-gates-pathway-in-fushimi-inari-kyoto-29537651/",
   },
   {
     key: "date-night",
-    occasionLabel: "Date night",
-    actionLabel: "Plan a date night",
     image: "hero-kyoto-temple.jpg",
     headline: "An evening under the Yasaka Pagoda",
-    lines: ["Dusk walk up Sannenzaka", "Kaiseki dinner for two", "Lantern-lit lanes on the way back"],
     creator: "Alec Doualetas",
     source: "https://www.pexels.com/photo/kyoto-yasaka-pagoda-at-dusk-in-historic-district-36900988/",
   },
 ] as const;
 
-function CuratedCard({ tile, large }: { tile: typeof tiles[number]; large: boolean }) {
+const SLOT_LABELS = ["LOCAL EXPERT · KYOTO", "HIDDEN GEM", "BOOK ON TRAVELOURE"] as const;
+
+function CuratedCard({ tile, large, slotLabel }: { tile: typeof tiles[number]; large: boolean; slotLabel: string }) {
   return (
     <div className={`${TILE_FRAME} pt-10 ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`} style={TILE_GROUND} data-testid={`hero-billboard-${tile.key}`}>
       <img src={`/__billboard/images/${tile.image}`} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" />
@@ -53,23 +42,15 @@ function CuratedCard({ tile, large }: { tile: typeof tiles[number]; large: boole
         Representative photo · Kyoto
       </span>
       <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
-        {tile.occasionLabel} · Kyoto
+        {slotLabel}
       </span>
-      <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[22px]" : "text-[16px]"}`} style={{ fontFamily: FRAUNCES }}>
+      <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`} style={{ fontFamily: FRAUNCES }}>
         {tile.headline}
       </b>
-      <div className="relative z-10 mt-2 flex flex-wrap items-start gap-2">
+      <div className="relative z-10 mt-2 flex flex-wrap items-center gap-2">
         <button type="button" className="inline-flex min-h-[36px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" style={{ background: "var(--earn-coral-ink, #DF5852)" }}>
-          {tile.actionLabel}
+          Start this plan
         </button>
-        <details className="min-w-[120px] flex-1">
-          <summary className="inline-flex min-h-[36px] cursor-pointer list-none items-center rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white [&::-webkit-details-marker]:hidden">
-            Plan details
-          </summary>
-          <ul className="mt-2 space-y-0.5 border-l border-white/50 pl-2 text-[11px] leading-[1.35]">
-            {tile.lines.map((line) => <li key={line}>{line}</li>)}
-          </ul>
-        </details>
       </div>
       <a href={tile.source} target="_blank" rel="noopener noreferrer" className="relative z-10 mt-2 text-[9.5px] opacity-75 hover:underline" style={{ fontFamily: EARN_MONO }}>
         Photo: {tile.creator} · Pexels
@@ -87,7 +68,7 @@ export function Curated() {
         </p>
         <h1 className="mb-5 text-2xl font-semibold" style={{ fontFamily: FRAUNCES }}>Kyoto fallback cards</h1>
         <div className="grid grid-cols-2 gap-2.5">
-          {tiles.map((tile, index) => <CuratedCard key={tile.key} tile={tile} large={index === 0} />)}
+          {tiles.map((tile, index) => <CuratedCard key={tile.key} tile={tile} large={index === 0} slotLabel={SLOT_LABELS[index]} />)}
         </div>
       </div>
     </main>

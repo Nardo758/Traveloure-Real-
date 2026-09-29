@@ -8,7 +8,7 @@
  *    not rendered at all.
  * B3 a tile shows no expert name, price, "Plan with" or avatar — "Representative photo · <market>".
  * B4 the hero no longer paints billboard images from the live payload (provider_services legs).
- * B6 Each curated occasion action opens a new plan with the tile's seeded occasion and market, as door "billboard".
+ * B6 Start this plan opens a new plan with the tile's seeded occasion and market, as door "billboard".
  * B5 a byline-gated expert takes the tile: the initial appears, and only then.
  * P1 the pill set is exactly the old eight-tile set — no destination lost.
  * W1 the Wanted strip still renders from the live payload, and is omitted when coverage is unknown.
@@ -92,20 +92,24 @@ describe("landing hero billboard", () => {
   it("B3 a curated tile names no expert, price or avatar — it says it is a representative photo", () => {
     const html = render(PAYLOAD);
     assert.ok(html.includes("Representative photo · Kyoto"));
-    const labels = ["Plan a weekend away", "Plan an early start", "Plan a date night"];
-    assert.deepEqual(BILLBOARD_TILES.map((tile) => tile.actionLabel), labels);
     for (const tile of BILLBOARD_TILES) {
       assert.ok(html.includes(tile.headline), `${tile.key} retains its original headline`);
-      for (const line of tile.lines) assert.ok(html.includes(line), `${tile.key} retains its original itinerary copy`);
-      assert.ok(html.includes(`data-testid="hero-billboard-details-${tile.key}"`), `${tile.key} has expandable plan details`);
-      const actionTag = html.match(new RegExp(`<button[^>]+data-testid="hero-billboard-start-${tile.key}"[^>]*>${tile.actionLabel}</button>`));
-      assert.ok(actionTag, `${tile.key} has its own planning action`);
+      for (const line of tile.lines) assert.ok(!html.includes(line), `${tile.key} has no extra itinerary/details in the compact template`);
+      const actionTag = html.match(new RegExp(`<button[^>]+data-testid="hero-billboard-start-${tile.key}"[^>]*>Start this plan</button>`));
+      assert.ok(actionTag, `${tile.key} has one planning action`);
+      assert.ok(html.includes(tile.imagePath), `${tile.key} retains its credited photo`);
+      assert.ok(html.includes(`hero-billboard-label-${tile.key}`), `${tile.key} has its slot label`);
     }
-    assert.equal((html.match(/<summary[^>]*>Plan details<\/summary>/g) ?? []).length, 3, "all three curated cards offer details on demand");
-    assert.ok(!/<details[^>]*\sopen(?:\s|=|>)/.test(html), "itinerary lines are collapsed by default");
+    assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
+    assert.ok(html.includes("HIDDEN GEM"));
+    assert.ok(html.includes("BOOK ON TRAVELOURE"));
+    assert.ok(!html.includes("<details"), "no expandable details on the template");
     assert.equal((html.match(/background:var\(--earn-coral-ink, #DF5852\)/g) ?? []).length, 3, "each curated plan action uses the compact primary treatment");
     assert.ok(!html.includes("Plan with"));
     assert.ok(!html.includes("from $"));
+    assert.ok(!html.includes('data-testid="hero-billboard-price-'));
+    assert.ok(!html.includes('data-testid="hero-billboard-gem-score-'));
+    assert.ok(!html.includes('data-testid="hero-billboard-view-listing-'));
     assert.ok(!html.includes("Demo"));
     assert.ok(!html.includes('data-testid="hero-billboard-expert-'), "no initial without a real expert");
   });
@@ -263,8 +267,10 @@ describe("landing hero billboard", () => {
     assert.ok(html.includes('data-testid="hero-billboard-early-start"'));
     assert.ok(html.includes('data-testid="hero-billboard-date-night"'));
     assert.equal((html.match(/Representative photo · Kyoto/g) ?? []).length, 2);
-    assert.ok(!html.includes("HIDDEN GEM"));
-    assert.ok(!html.includes("BOOK ON TRAVELOURE"));
+    assert.ok(html.includes('data-testid="hero-billboard-label-early-start">HIDDEN GEM'));
+    assert.ok(html.includes('data-testid="hero-billboard-label-date-night">BOOK ON TRAVELOURE'));
+    assert.equal((html.match(/Start this plan<\/button>/g) ?? []).length, 2);
+    assert.ok(!html.includes("Plan details"));
   });
 
   it("uses credited curated cards when dispatch has no anchored market", () => {
@@ -275,9 +281,10 @@ describe("landing hero billboard", () => {
     };
     const html = render(PAYLOAD, [OVERRIDE], selection);
     assert.equal((html.match(/Representative photo · Kyoto/g) ?? []).length, 3);
-    assert.ok(!html.includes("LOCAL EXPERT · KYOTO"));
-    assert.ok(!html.includes("HIDDEN GEM"));
-    assert.ok(!html.includes("BOOK ON TRAVELOURE"));
+    assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
+    assert.ok(html.includes("HIDDEN GEM"));
+    assert.ok(html.includes("BOOK ON TRAVELOURE"));
+    assert.equal((html.match(/Start this plan<\/button>/g) ?? []).length, 3);
     assert.ok(!html.includes("Plan with"));
   });
 });
