@@ -28,5 +28,5 @@ Replace §G with Track A (the slice: minimum steps that make Part 1 true end to 
 ### Part 6 — Validation kit
 A clickable mock of the Trips slip (Design artifact if listed, else self-contained HTML), phone width: anchor question, hotel compare with plan-fit, one day of the plan. Plus a one-page 30-minute session script. The decision-maker runs it with five travelers and two Kyoto experts before Track A builds compare-options.
 
-Standing rules: a PR is Ready only after its own branch CI is fully green; bring main in before merge (R171); code cites ledger slugs, not R-numbers.
+Standing rules: a PR is Ready only after its own branch CI is fully green; bring main in before merge (R171); code cites ledger slugs, not R-numbers; a new ledger row is written `R?` and numbered by `node scripts/assign-r-numbers.cjs --write` as the last step before merge, after main is in — lint on main fails on any `R?` (ledger `2026-09-29-r-number-at-merge`).
 

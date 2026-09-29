@@ -93,15 +93,17 @@ export function useOccasionSwitches(
 ): OccasionSwitchesForTrip {
   const { data: trip, isLoading: tripLoading } = useTrip(tripId || "");
   const eventType = trip?.eventType ?? null;
+  const penSlug = (trip as { occasionSlug?: string | null } | undefined)?.occasionSlug ?? null;
   // The list is worth fetching as soon as EITHER attempt could use it. Before events-first that
   // was an event type alone; a plan whose events name an occasion needs the rows too, and gating
   // on `eventType` would have kept attempt 1 from ever having a list to look in.
   const hasEventOccasionId = !!unanimousEventOccasionId(events);
   const { data: occasions, isLoading: occasionsLoading } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
-    enabled: !!tripId && (!!eventType || hasEventOccasionId),
+    enabled: !!tripId && (!!eventType || hasEventOccasionId || !!penSlug),
   });
-  const occasion = resolveOccasionForPlan({ events, eventType, occasions });
+  // Attempt 2 is the plan's recorded fine occasion (ledger `2026-09-29-a1-trips-frame`).
+  const occasion = resolveOccasionForPlan({ events, penSlug, eventType, occasions });
   return {
     occasion: occasion ?? null,
     isHidden: isHiddenOccasion(occasion),

@@ -3,7 +3,7 @@
 > **Status header (Sep 27, 2026):** Target architecture. Build order superseded by the vertical-slice plan
 > (`golden-path-trips-kyoto.md`, pending). §G to be re-sequenced in Part 3.
 
-**Status: RATIFIED AS TARGET; §M/§N (Part 2) RATIFIED Sep 28, 2026 with four amendments (ledger `2026-09-28-part2-m2-flags`, `-m4-matrix-first`, `-m6-free-rerun-hotel`, `-n4-runs-outlive-plan`)** — except the §J overrides (decision-maker, Sep 27, 2026; ledger `2026-09-27-slip-map-ratified`,
+**Status: RATIFIED AS TARGET; §M/§N (Part 2) RATIFIED Sep 28, 2026 with four amendments (ledger `2026-09-28-part2-m2-flags`, `-m4-matrix-first`, `-m6-free-rerun-hotel`, `-n4-runs-outlive-plan`); §M7–M9 RATIFIED Sep 29, 2026 (ledger `2026-09-29-m7-m9-ratified`; the M9 threshold is PROVISIONAL until the Part 6 sessions have run)** — except the §J overrides (decision-maker, Sep 27, 2026; ledger `2026-09-27-slip-map-ratified`,
 R146). §I was ruled Sep 26 (R124–R129) and §J–§L's questions Sep 27 (R136–R142). The §J override record holds the one
 confirmed override (R147). Build order: superseded — see the status header above. Brief section H is now steps
 1–2 in build detail. Schema named here is ratified as target (M/N included), but each migration still lands in its own lane under
@@ -1153,6 +1153,101 @@ default: the free re-run is decided per **user** today (`hasRecentOptimizationRu
 (`server/routes/plancard.routes.ts:227`). A per-trip key would be the honest unit for "rebuild around the hotel I just
 added"; changing the key is a charge-behaviour change and belongs in its own ruling (already recorded as open under
 LD 41 (a)'s amendment).
+
+### M7–M9. Amendment: which anchor comes first, and entering from the days — RATIFIED (Sep 29, 2026; ledger `2026-09-29-m7-m9-ratified`)
+
+> Ratified as written, including the M9 threshold, which is **provisional until the Part 6 sessions have run** — the sessions may move it. Nothing here is built yet; A1 builds M7's question and header. It amends M1/M2 for the Trips group (M7), makes the anchor editable per plan
+> (M8), and gives S1/S3 a second entry point (M9). The mechanism is unchanged: plan-fit is still computed between an
+> anchor set's candidates and the plan's located items (M3). Only the entry point and which set counts as primary move.
+
+#### M7. Trips derive their primary anchor from the `schedule` switch
+
+**Rule (Trips group only, §B2 step 3):**
+
+| `default_schedule` (LD 28 switch) | Primary anchor | Secondary anchor | Why |
+|---|---|---|---|
+| **true** | The occasion's **fixed dated items**: its immovable `temporal_anchors` (`isImmovable: true` presets) and the items attached to them | **Lodging** (`accommodation`) | The dated thing is fixed and lodging is chosen relative to it. Golf: the rounds are booked and the hotel follows the courses. Sports event: the match is fixed. |
+| **false** | **Lodging** (`accommodation`) | One fixed reservation (M2, unchanged) | No fixed dated item. The days are built around where you sleep (travel, honeymoon, anniversary trip, romance). |
+| NULL | As `false`, explained on screen | — | LD 28 fallback: the plain-trip shape, never a guessed schedule (§13). |
+
+**Which Trips occasions this touches** (seed switches, `server/seeds/experience-template-tabs.seed.ts`):
+- `schedule: true`: `golf-trip` (`:4974`) and `sports-event` (`:4916`).
+- `schedule: false`: `travel` (`:4842`), `anniversary-trip` (`:4839`), `honeymoon` (`:4957`) and `romance` (`:4933`).
+
+**What "the fixed dated item" is, per occasion.** Read from the existing presets (`server/services/logistics-presets.service.ts`); no new vocabulary.
+- **`golf-trip`:** the rounds, `tee_time_round_1…4` (`:988` onward). Each has its own anchor type and `isImmovable: true`, and the category of the course listing is `activity_provider` (in its `roles_needed`). A golf trip has **several** fixed points, not one. That matches M1's *one primary per stop*: with four courses in four places (`stops: many`), each stop's primary is that stop's round(s).
+  - The ratified "no main moment for a golf trip" rule is untouched (`showsMainMoment`, `client/src/lib/plan-steps.ts:458-490`, re-audit B4). M7 adds **no** "main moment" card. The primary is the set of rounds, not a single centre.
+- **`sports-event`:** `event_time` ("Game/Event Start", `:697`, `isImmovable: true`). The match is one fixed item, not a choice, so its primary set has one member and nothing to compare.
+- **Out of M7's scope, flagged:** `show` is **Moments** (`duration: day`, `:4925`), not Trips, so M7 does not move it. Its §J Anchor still reads `dinner_reservation`, although the thing a show plan is built around is the performance. The same "fixed dated item is primary" reading probably applies there. It is **not** a switch rule for Moments, though: `date-night` also has `schedule: true` (`:4851`) and its reservation *is* its anchor. This is left for a separate ruling.
+
+**Plan-fit for a secondary lodging.** Same formula as M3: travel burden from each lodging option to **the primary's located items**, day-weighted by located-item count. Golf: the course(s) that stop's rounds are at. Sports event: the venue.
+- The plan's other located items are added to the same sum with the **same** weight as M3. Otherwise a hotel next to the stadium but far from everything else would win a five-day trip on one afternoon.
+- A primary item that is **unlocated** (a round with no course chosen yet) is excluded and counted, exactly as M3 says: "based on 2 of 4 rounds located".
+- With no located primary item, lodging plan-fit falls back to M3's plain form (all located items), and the compare view says which basis it used.
+- **Compare-first when the primary is a single fixed item.** The compare view has nothing to compare for the primary. The slip's compare-first is then the secondary (lodging), which is why `sports-event` keeps `accommodation`.
+
+**§J re-derived under M7 — the rows that change.** Only the Trips rows can change, and only those with `schedule: true`. The other four Trips rows and every other group are unchanged.
+
+| Occasion | Column | Today (§J) | Under M7 |
+|---|---|---|---|
+| `golf-trip` | Anchor | hotel (`hotel_checkin`) | **rounds** (`tee_time_round_1…4`, `activity_provider`); lodging secondary (`hotel_checkin`) |
+| `golf-trip` | Compare default | `accommodation` | **`activity_provider`** (which course for each round; the rounds are the set being decided) |
+| `golf-trip` | Lead zone *(follows)* | Day list with the hotel anchor (S2) | Day list around the rounds (A2 schedule), lodging shown per stop |
+| `sports-event` | Anchor | hotel (`hotel_checkin`) | **the event** (`event_time`); lodging secondary (`hotel_checkin`) |
+| `sports-event` | Compare default | `accommodation` | `accommodation` — **unchanged**: a single fixed item has nothing to compare, so the secondary is compared first |
+| `sports-event` | Lead zone *(follows)* | Day list with the hotel anchor (S2) | Day list around the event (A2 schedule), then lodging |
+
+Two consequences are stated, not changed:
+- **REQ is unchanged.** `golf-trip`'s REQ stays `accommodation` (R137). M7 changes *what the plan is built around*, not *what completeness counts*. Adding `activity_provider` to golf's REQ would be an R137 amendment and is not proposed.
+- **The generated table is not edited in this PR.** §J is produced by `docs/planning/tools/trip-slip-spec.mjs`. On ratification, `anchorFor`/`compareDefault` gain the `schedule` branch for Trips, and the table and JSON regenerate. The rows above are exactly the diff that run must produce.
+
+#### M8. The anchor is editable on any plan
+
+- **The control.** Any **located, dated** item on the slip carries **"Build my days around this"**. "Located" means it has coordinates (LD 22 — never guessed); "dated" means it has a day.
+- **Promoting it:**
+  1. The item becomes the **primary anchor** for its stop, as the chosen, single-member option set whose option 0 is the `incumbent` (§E2's existing source kind — no new mechanism).
+  2. The previous primary becomes **secondary**.
+  3. **Open option sets are preserved.** Nothing is chosen, closed or deleted. An open hotel set is still open, now scored as a secondary.
+  4. **Plan-fit recomputes** for every set on that stop against the new primary.
+  5. **The free draft**, on its next run, builds outward from the new primary (M5), and says which anchor it used. A paid run anchors as M5 says, with the new primary.
+- **Where "primary/secondary" lives.** This is the anchor marker Part 4 already names as owed by M (`slip-funnel-events.md` §3.2): `plan_option_sets.anchor_role` — `primary | secondary`, NULL = not an anchor. It is additive nullable varchar with no CHECK and no DEFAULT, declared in `shared/schema.ts`, and born with the §E2 table (so no separate migration). One primary per `(trip, stop)` is **app-enforced inside one transaction**, not a UNIQUE index. A swap briefly holds two primaries mid-statement, and a partial UNIQUE over a column that flips in the same transaction is exactly the kind of index that fails a publish.
+- **Record.** Each change writes one `funnel_events` row: `event_type = 'slip_anchor_changed'`, stage `SLIP`, properties `fromCategory` (nullable — none before) and `toCategory`, `stopPosition`, and `derived` (true when the change came from M7's switch rule at plan birth rather than from the traveler). This is the Part 4 funnel write, one more `event_type` — **E14**. Part 4's §3 list gains it on ratification.
+- **Who.** The owner and a delegate (LD 52 C) may promote. A §12 WRITE advisor may *suggest* it (the Workstation "Suggest" action), never do it — the same line as choose (R129).
+- **Finalized plans.** A finalized plan cannot change its anchor without **Reopen** (#1109's refusal: a 409 naming the reason, with Reopen offered).
+- **Guards (§13).**
+  - An **unlocated** or **undated** item does not show the control. It is not hidden behind a disabled button.
+  - Promoting never moves an item, never changes its day and never touches a booking.
+
+#### M9. S1/S3 amendment — candidates from the plan ("Suggest places that fit these days")
+
+**The second direction.** The traveler has the days and no place to stay. Plan-fit already scores candidates against located items, so the missing piece is only the **entry point**.
+
+- **When it shows.** The **primary anchor set for lodging is empty** (no set, or a set with no options) **and** the plan has **≥3 located items** (the M2 Celebrations threshold, reused rather than invented).
+  - The slip then offers **"Suggest places that fit these days"** beside the anchor question.
+  - Under M7, a `schedule: true` Trip asks this for its **secondary** (lodging) set once the rounds or the event are located.
+  - For a primary in another category, the same control reads from that category's source (for example, `activity_provider` listings for golf courses).
+- **Candidates.**
+  - **Source:** from `hotel_cache` for the plan's city (and `hotel_offer_cache` for a price on the plan's own dates), ranked by plan-fit.
+  - **Opening:** the **top three** open as an ordinary **open option set** in the same compare view (§E4). Nothing is chosen.
+  - **Source kind:** each option is added with `source_kind = 'engine'`, the value Part 4 §3.3 already anticipates. It has a nullable `hotel_cache_id` reference on `plan_options` (additive, SET NULL, declared in `shared/schema.ts`, and born with the table). Title and coordinates are server-copied from the row.
+  - **Price:** shown only when an offer row for the plan's dates exists. Otherwise "—", "not stated" — never "$0".
+- **Honesty.**
+  - With **no `hotel_cache` rows for the city**, the control says "No places to suggest yet" and offers the manual add. It never shows another city's hotels.
+  - Rank is plan-fit only, "est." until the M4 matrix exists.
+  - The ranking pre-filters by neighbourhood centroid so the work is bounded. It is never a sort by price or commission (§8: no rate enters a rank).
+  - **Dependency, named:** Kyoto has zero `hotel_cache` rows today (Part 5 census). This entry point is empty until the Booking.com fetch lands.
+- **After a choice — "N places would make your days easier".** Once a set is `chosen`, the compare view keeps **one line**, never a modal and never a badge on the slip. It reads "N places would make your days easier", with a link that reopens the comparison. It appears when N ≥ 1 unchosen candidates **beat the chosen option on plan-fit by the threshold below**. It never re-opens the set by itself; choosing again is the traveler's act, through the same choose rail. The line is the same surface as "suggest better places", so there is no second compare screen.
+
+**Threshold — RATIFIED, PROVISIONAL until the Part 6 sessions run** (config, not a literal — `planFitEasierThreshold`, two numbers). In the decision-maker's words: another candidate beats the chosen one "by 15 min/day or 20% of daily travel burden, whichever is larger" — which is conditions 1 and 2 together. A candidate counts toward N only when **all** of these hold:
+1. **Travel burden per day is lower by at least 15 minutes.** That is an hour and a quarter over a five-day trip — noticeable. Below it, straight-line "est." noise can reorder hotels.
+2. **It is lower by at least 20% of the chosen option's burden**, so a 15-minute gap on a 3-hour day does not count.
+3. **Both figures come from the same basis** (both matrix or both "est."). A matrix figure is never compared with a straight line.
+4. **Its neighbourhood coverage is not lower** than the chosen option's.
+
+On the mock's sample numbers, choosing Hotel A (52 min) shows "1 place" (Ryokan B, 31 min: −21 min, −40%). Hotel C (38 min) does not count (−14 min). Choosing B shows nothing.
+
+**Not proposed.** No price filter on N. A cheaper-or-dearer judgement would put money into a plan-fit statement, and the line says "easier days", not "better value". Whether to also require a stated price within a band is left open; nothing in the sessions measures it.
+
 
 ---
 

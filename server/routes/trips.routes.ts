@@ -12,7 +12,7 @@ import { Router } from "express";
 import type { Response } from "express";
 import { storage } from "../storage";
 import { eventTypeForSlug } from "@shared/occasions";
-import { writePlanPenOccasion } from "../services/plan-pen-occasion.service";
+import { writePlanPenOccasion, readPlanPenOccasionSlug } from "../services/plan-pen-occasion.service";
 import { db } from "../db";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // NOTE: the apply-to-cart handler below is a §9 SHADOWED copy (this router mounts LAST, so the
@@ -448,11 +448,17 @@ router.get(api.trips.get.path, async (req, res) => {
     // `trip.destination` and says so; it must never render such a plan as having nowhere to go.
     const destinations = await getTripDestinations(trip.id);
 
+    // Ledger `2026-09-29-a1-trips-frame`: the plan's RECORDED fine occasion (the slug the plan modal
+    // wrote into the owner's pen), behind exactly the gate above. NULL = not recorded (§13); the
+    // client's one resolver (`resolveOccasionForPlan`) then falls through to its other attempts.
+    const occasionSlug = await readPlanPenOccasionSlug(trip.userId, trip.id);
+
     res.json({
       ...trip,
       expertNotes: canSeePrivateExpertNotes ? trip.expertNotes : null,
       expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null,
       destinations,
+      occasionSlug,
     });
   });
 

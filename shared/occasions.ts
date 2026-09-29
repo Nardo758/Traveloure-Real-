@@ -338,18 +338,33 @@ export function findOccasionById<T extends { id: string }>(
 }
 
 /**
- * Resolve the occasion behind a plan: events first (exact), then the event-type lookup (unique
- * match only), then `null` (the plain-trip shape).
+ * Resolve the occasion behind a plan: events first (exact), then the plan's recorded occasion slug
+ * (exact), then the event-type lookup (unique match only), then `null` (the plain-trip shape).
  */
 export function resolveOccasionForPlan<T extends { id: string; slug: string }>(input: {
   events?: readonly PlanEventOccasionRef[] | null;
+  /**
+   * The plan's RECORDED fine occasion — the `experienceSlug` its pen row holds, written only by the
+   * plan modal's owner-gated occasion rail (ledger `2026-09-26-occasion-read-only`) and served on
+   * `GET /api/trips/:id` as `occasionSlug` (ledger `2026-09-29-a1-trips-frame`). Exact slug match.
+   */
+  penSlug?: string | null;
   eventType?: string | null;
   occasions?: readonly T[] | null;
 }): T | null {
-  const { events, eventType, occasions } = input;
+  const { events, penSlug, eventType, occasions } = input;
   // ATTEMPT 1 — the plan's own events name the occasion by id. Exact; no vocabulary bridge.
   const byId = findOccasionById(occasions, unanimousEventOccasionId(events));
   if (byId) return byId;
-  // ATTEMPT 2 — today's lookup, unchanged: a row only when the event type identifies exactly one.
+  // ATTEMPT 2 — the occasion the traveler chose in the plan modal, as the plan recorded it. Exact
+  // slug; a slug the catalog does not carry resolves nothing here and falls through (§13). This is
+  // what lets a `travel` plan — whose coarse event type `vacation` three occasions share — name
+  // itself, where attempt 3 honestly cannot.
+  const wanted = (penSlug || "").trim();
+  if (wanted && occasions) {
+    const bySlug = occasions.find((r) => r.slug === wanted);
+    if (bySlug) return bySlug;
+  }
+  // ATTEMPT 3 — today's lookup, unchanged: a row only when the event type identifies exactly one.
   return findOccasionByEventType(occasions, eventType);
 }

@@ -955,6 +955,7 @@ jobs:
       - name: Build identity + map city-centre fallback pin
         run: |
           npx tsx --test server/__tests__/build-info.test.ts
+          npx tsx --test server/services/__tests__/migration-state.test.ts
           npx tsx --test client/src/lib/__tests__/map-no-city-center-fallback.test.ts
 
       # LD 41 lane 2 (ledger 2026-09-05-draft-only-on-empty + 2026-09-05-draft-cost-tracking-and-tier):
@@ -3164,6 +3165,15 @@ jobs:
       - name: decision-guards-lint · Ledger lint
         if: ${{ !cancelled() }}
         run: node scripts/check-decision-guards.cjs
+      # Ledger `2026-09-29-r-number-at-merge`: rows may be authored as R? and are numbered by
+      # scripts/assign-r-numbers.cjs as the last step before merge. On main itself no R? may remain,
+      # so a forgotten assignment is red on the first main build rather than kept silently.
+      - name: decision-guards-lint · R-number assigner self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/assign-r-numbers.cjs --self-test
+      - name: decision-guards-lint · No unassigned R? on main
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: node scripts/check-decision-guards.cjs --require-assigned
       # 
       - name: ledger-union-merge · Ledger union-merge self-test
         if: ${{ !cancelled() }}
