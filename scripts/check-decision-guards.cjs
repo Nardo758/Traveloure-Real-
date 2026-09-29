@@ -20,6 +20,11 @@
  *   (b) every `numeric citation R<n>` number appears on exactly ONE row;
  *   (c) no cited R-number reuses a FROZEN numeric row id (the 1–122 series, ruling 25 —
  *       "never reused"). The frozen set is read from the ledger's own numeric rows.
+ *   (d) UNASSIGNED rows (ledger `2026-09-29-r-number-at-merge`): a row may be authored with the
+ *       placeholder `**R? —` and `numeric citation R?`. It carries no number, so it cannot collide;
+ *       the pair must still agree, and `scripts/assign-r-numbers.cjs --write` numbers it as the last
+ *       step before merge. `--require-assigned` (run on pushes to main only) fails while any `R?`
+ *       remains, so a forgotten assignment is seen on the first main build, never silently kept.
  *   NEGATIVE SPACE: a lane-LOCAL R series that predates the global numbering (the partner-demand
  *   lane's R1–R38) is not a global R-id; its rows are exempted BY NAME in the ledger's own
  *   `## Lane-local R numbering` section. The lint is silent while that list matches the ledger and
@@ -144,6 +149,7 @@ function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
   const exempted = [];
   const frozen = new Set();
   const cited = new Map(); // n -> [row ids]
+  const unassigned = []; // row ids still carrying the R? placeholder
   for (const line of ledgerText.split("\n")) {
     const prefix = line.match(ROW_ID_PREFIX_RE);
     if (!prefix) continue;
@@ -152,8 +158,8 @@ function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
     const cells = rowCells(line);
     const body = cells[3] ?? "";
     const last = cells[cells.length - 1] ?? "";
-    const head = body.match(/^\*\*R(\d+) —/);
-    const cite = last.match(/^numeric citation R(\d+)\b/);
+    const head = body.match(/^\*\*R(\d+|\?) —/);
+    const cite = last.match(/^numeric citation R(\d+|\?)(?![\w])/);
     if (head) {
       if (id in exempt) {
         exempted.push(`${id} (${exempt[id]})`);
@@ -162,6 +168,10 @@ function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
       } else if (cite[1] !== head[1]) {
         failures.push(`Ruling ${id}: heading says R${head[1]} but the citation column says R${cite[1]}.`);
       }
+    }
+    if (head?.[1] === "?" || cite?.[1] === "?") {
+      unassigned.push(id);
+      continue;
     }
     if (cite) {
       const n = Number(cite[1]);
@@ -173,7 +183,7 @@ function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
   const headed = new Set();
   for (const line of ledgerText.split("\n")) {
     const prefix = line.match(ROW_ID_PREFIX_RE);
-    if (prefix && /^\*\*R\d+ —/.test(rowCells(line)[3] ?? "")) headed.add(prefix[1]);
+    if (prefix && /^\*\*R(\d+|\?) —/.test(rowCells(line)[3] ?? "")) headed.add(prefix[1]);
   }
   for (const id of Object.keys(exempt)) {
     if (!headed.has(id)) failures.push(`Lane-local R list names ${id}, but no ledger row with that id opens with an R heading — remove it from "## Lane-local R numbering".`);
@@ -182,10 +192,10 @@ function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
     if (ids.length > 1) failures.push(`Duplicate R-number R${n} cited by ${ids.length} rows: ${ids.join(", ")}.`);
     if (frozen.has(n)) failures.push(`R${n} (row ${ids.join(", ")}) reuses frozen numeric row id ${n} (ruling 25: never reused).`);
   }
-  return { failures, exempted };
+  return { failures, exempted, unassigned, cited };
 }
 
-function lint({ ledgerText, workflowText }) {
+function lint({ ledgerText, workflowText, requireAssigned = false }) {
   const failures = [];
   const warnings = [];
   const { entries, ids, malformed } = parseLedger(ledgerText);
@@ -201,6 +211,9 @@ function lint({ ledgerText, workflowText }) {
 
   const r = lintRNumbers(ledgerText);
   failures.push(...r.failures);
+  if (requireAssigned && r.unassigned.length) {
+    failures.push(`Unassigned R-number (R?) on ${r.unassigned.length} row(s): ${r.unassigned.join(", ")} — run \`node scripts/assign-r-numbers.cjs --write\` (ledger \`2026-09-29-r-number-at-merge\`).`);
+  }
 
   for (const e of entries) {
     for (const g of e.guards) {
@@ -305,23 +318,39 @@ function selfTest() {
   const rStale = lintRNumbers(["## Lane-local R numbering", "- `2026-01-09-gone` — some lane R9", ""].join("\n"));
   const ok13 = rGood.failures.length === 0 && rGood.exempted.length === 1
     && rStale.failures.some((f) => f.includes("2026-01-09-gone"));
-  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13) {
+  // (j) an R? row passes and is reported unassigned; a half-placeholder (R? heading, numbered
+  // citation) fails; two R? rows never collide.
+  const rQ = lintRNumbers([
+    "| 2026-01-03-q | 2026-01-03 | [advisory] | **R? — Q.** | numeric citation R?; refs |",
+    "| 2026-01-04-q2 | 2026-01-04 | [advisory] | **R? — Q2.** | numeric citation R? |",
+  ].join("\n"), {});
+  const rHalf = lintRNumbers("| 2026-01-05-h | 2026-01-05 | [advisory] | **R? — H.** | numeric citation R300 |", {});
+  const ok14 = rQ.failures.length === 0 && rQ.unassigned.length === 2 && rHalf.failures.some((f) => f.includes("R?") && f.includes("R300"));
+  // (k) --require-assigned turns an R? row into a failure.
+  const qLedger = ledgerText + "\n| 2026-01-06-q | 2026-01-06 | [advisory] | **R? — Q.** | numeric citation R? |";
+  const ok15 = lint({ ledgerText: qLedger, workflowText }).failures.length === lint({ ledgerText, workflowText }).failures.length
+    && lint({ ledgerText: qLedger, workflowText, requireAssigned: true }).failures.some((f) => f.includes("Unassigned R-number"));
+  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13 || !ok14 || !ok15) {
     console.error("SELF-TEST FAILED", {
-      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13,
+      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15,
       failures, warnings, dupe: dupe.failures, bad: bad.failures,
       slugGhost: slugGhost.failures, slugDupe: slugDupe.failures, slugBad: slugBad.failures,
     });
     process.exit(1);
   }
-  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale)");
+  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned)");
   process.exit(0);
 }
+
+module.exports = { lintRNumbers, rowCells, readLaneLocalRows, ROW_ID_PREFIX_RE };
+if (require.main !== module) return;
 
 if (process.argv.includes("--self-test")) selfTest();
 
 const ledgerText = fs.readFileSync(LEDGER, "utf8");
 const workflowText = collectWorkflowText(WORKFLOW_DIR);
-const { failures, warnings, laneLocal } = lint({ ledgerText, workflowText });
+const requireAssigned = process.argv.includes("--require-assigned");
+const { failures, warnings, laneLocal } = lint({ ledgerText, workflowText, requireAssigned });
 
 for (const w of warnings) console.warn(`WARN  ${w}`);
 if (failures.length) {
