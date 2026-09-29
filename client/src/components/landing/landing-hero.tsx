@@ -3,19 +3,16 @@
  * Visual of record: docs/design/landing-earn-mock.html "HERO v2"; behavior contract:
  * docs/design/LANDING_SPEC.md.
  *
- * Billboard (landing reorder, ledger `2026-09-28-landing-reorder`, item 5): the three tiles are
- * CURATED rows from shared/landing-billboard.ts — occasion, market, a repo photo, a headline and
- * three lines — never a live listing, expert name, price or avatar. Each photo is credited from
- * public/images/landing/ATTRIBUTION.json and a photo with no entry is not rendered. A curated tile
- * says "Representative photo · <market>" and "Start this plan" opens a NEW plan with its occasion
- * and market pre-set.
+ * Billboard photos are curated and credited from shared/landing-billboard.ts. The representative
+ * photo label identifies the pictured market; the compact expert / gem / service captions and
+ * actions use the live hero feed's city independently (the photo is not a listing photo).
  *
  * Override (follow-up 4, ledger `2026-09-28-billboard-override-listing`): when a real expert passes
  * the byline gate for a tile's market (GET /api/landing/billboard-experts, decided server-side), THAT
  * tile renders the expert's live listing instead — title, own lines, price as the storefront card
  * shows it, photo — with "Plan with @handle" and "View listing". Per market and per tile; a tile
- * without a qualifying expert stays curated. The live payload (GET /api/landing/hero) feeds only
- * the ticker line and the Wanted strip.
+ * without a qualifying expert keeps its credited photo. The live payload (GET /api/landing/hero)
+ * feeds the ticker, Wanted strip, and the compact card captions/actions.
  *
  * "Where do you want to begin?" pills: the nav's BROWSE and FIND HELP sections (the same eight
  * destinations the removed entry tiles carried), read from nav-config, never retyped.
@@ -206,19 +203,48 @@ function TileCredit({ tileKey, credit }: { tileKey: string; credit: BillboardCre
 const TILE_FRAME = "relative flex flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white";
 const TILE_GROUND = { background: "linear-gradient(160deg,#7C6A63,#1E3A5F)" };
 
-/** A CURATED tile — placeholder copy and a credited repo photo; names no expert and no price. */
+function centsToDollarsLabel(cents: number | null | undefined): string | null {
+  if (cents == null || !Number.isFinite(cents)) return null;
+  const dollars = cents / 100;
+  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+}
+
+/** Credited representative photos, with the original compact live/fallback text hierarchy. */
 function CuratedTileCard({
   tile,
   large,
-  onStartPlan,
+  kind,
+  hero,
 }: {
   tile: BillboardTile & { credit: BillboardCredit };
   large: boolean;
-  onStartPlan: (source: PlanningSource) => void;
+  kind: "expert" | "gem" | "service";
+  hero: LandingHeroData | null;
 }) {
   const [photoFailed, setPhotoFailed] = useState(false);
   const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
   if (!market) return null;
+  const liveCity = hero?.city?.trim() || market.cityName;
+  const anchor = kind === "expert" ? hero?.anchorExpert : null;
+  const gem = kind === "gem" ? hero?.gem : null;
+  const service = kind === "service" ? hero?.service : null;
+  const storefront = anchor?.handle ? earnerProfilePath({ handle: anchor.handle }) : null;
+  const expertPrice = centsToDollarsLabel(anchor?.fromPriceCents);
+  const servicePrice = centsToDollarsLabel(service?.priceCents);
+  const caption =
+    kind === "expert" && anchor
+      ? `Local expert${hero?.city ? ` · ${liveCity}` : ""}`
+      : kind === "gem" && gem
+        ? "Hidden gem"
+        : kind === "service" && service
+          ? "Book on Traveloure"
+          : "Representative destination";
+  const title =
+    kind === "expert"
+      ? anchor?.name ?? liveCity
+      : kind === "gem"
+        ? gem?.name ?? liveCity
+        : service?.name ?? `Ways to explore ${liveCity}`;
   return (
     <div
       className={`${TILE_FRAME} ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`}
@@ -234,28 +260,48 @@ function CuratedTileCard({
       >
         {billboardLabel(market.cityName)}
       </span>
+      {kind === "gem" && gem?.score != null && (
+        <span
+          className="absolute right-2.5 top-2.5 z-10 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
+          style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}
+        >
+          {gem.score}
+        </span>
+      )}
+      {kind === "service" && servicePrice && (
+        <span
+          className="absolute right-2.5 top-2.5 z-10 rounded-[8px] bg-white px-[7px] py-[3px] text-[11px] font-semibold"
+          style={{ fontFamily: EARN_MONO, color: "var(--earn-ink)" }}
+        >
+          {servicePrice}
+        </span>
+      )}
       <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
-        {tile.occasionLabel} · {market.cityName}
+        {caption}
       </span>
       <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`} style={{ fontFamily: FRAUNCES }}>
-        {tile.headline}
+        {title}
       </b>
-      <ul className="relative z-10 mt-1.5 space-y-0.5 text-[12px] leading-snug opacity-90">
-        {tile.lines.map((line) => (
-          <li key={line}>{line}</li>
-        ))}
-      </ul>
-      <button
-        type="button"
-        onClick={() => {
-          const source = billboardPlanSource(tile);
-          if (source) onStartPlan(source);
-        }}
-        className="relative z-10 mt-2.5 inline-flex min-h-[32px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
-        data-testid={`hero-billboard-start-${tile.key}`}
-      >
-        Start this plan
-      </button>
+      {kind === "expert" && (
+        storefront ? (
+          <Link
+            href={storefront}
+            className="relative z-10 mt-2 inline-flex min-h-[32px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white"
+            style={{ background: "var(--earn-coral-ink)" }}
+            data-testid="hero-anchor-cta"
+          >
+            Plan with {anchor!.name.split(" ")[0]}{expertPrice ? ` · from ${expertPrice}` : ""}
+          </Link>
+        ) : (
+          <Link
+            href={getCityDiscoverHref(liveCity)}
+            className="relative z-10 mt-2 inline-flex min-h-[32px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+            data-testid="hero-anchor-browse"
+          >
+            Browse {liveCity}
+          </Link>
+        )
+      )}
       <TileCredit tileKey={tile.key} credit={tile.credit} />
     </div>
   );
@@ -549,7 +595,13 @@ export function LandingHeroContent({
                 return taken ? (
                   <OverrideTileCard key={tile.key} tile={tile} large={i === 0} override={taken} onStartPlan={onStartPlan} />
                 ) : (
-                  <CuratedTileCard key={tile.key} tile={tile} large={i === 0} onStartPlan={onStartPlan} />
+                  <CuratedTileCard
+                    key={tile.key}
+                    tile={tile}
+                    large={i === 0}
+                    kind={i === 0 ? "expert" : i === 1 ? "gem" : "service"}
+                    hero={hero}
+                  />
                 );
               })()
             ))}
