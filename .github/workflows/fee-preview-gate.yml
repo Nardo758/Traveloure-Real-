@@ -148,6 +148,19 @@ jobs:
           NODE_ENV: test
           JOURNEY_DB_WRITES_OK: '1'
 
+      # R210 (ledger `2026-09-28-cart-add-trip-ownership`): a cart line is never born on a plan the
+      # session user does not own — both add rails ask the ONE ownership read before any write.
+      - name: Cart add refuses a foreign plan (C1–C5)
+        run: npx tsx --test --test-force-exit server/__tests__/cart-add-trip-ownership.http.test.ts
+        timeout-minutes: 15
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+          JOURNEY_DB_WRITES_OK: '1'
+
       - name: Traveler-fee ledger netting (+X / −X, $0-no-row, idempotency)
         run: npx tsx --test --test-force-exit server/__tests__/traveler-fee-ledger.db.test.ts
         timeout-minutes: 15
