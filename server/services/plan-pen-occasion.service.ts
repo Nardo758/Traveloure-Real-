@@ -39,3 +39,26 @@ export async function writePlanPenOccasion(
                   updated_at = NOW()
   `);
 }
+
+/**
+ * THE PLAN'S RECORDED FINE OCCASION — read beside its ONE writer (ledger `2026-09-29-a1-trips-frame`).
+ *
+ * The occasion slug the plan modal recorded into the OWNER's plan-scoped pen row. Keyed on the trip
+ * owner, never the viewer: an advisor or delegate reading the plan sees the same occasion the owner
+ * chose. Returns `null` when nothing was recorded — never a nearest guess (§13) — and never throws
+ * (a failed read is `null`; the caller's other attempts still run).
+ */
+export async function readPlanPenOccasionSlug(ownerId: string | null | undefined, tripId: string): Promise<string | null> {
+  if (!ownerId || !tripId) return null;
+  try {
+    const result = await db.execute(sql`
+      SELECT context->>'experienceSlug' AS slug FROM trip_contexts
+      WHERE user_id = ${ownerId} AND trip_id = ${tripId}
+      LIMIT 1
+    `);
+    const slug = (result.rows?.[0] as { slug?: unknown } | undefined)?.slug;
+    return typeof slug === "string" && slug.trim().length > 0 ? slug.trim() : null;
+  } catch {
+    return null;
+  }
+}
