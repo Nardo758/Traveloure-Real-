@@ -212,6 +212,11 @@ describe("landing hero billboard", () => {
 
   it("renders the complete three-slot dispatch from each slot's own data", () => {
     const html = render(PAYLOAD, [OVERRIDE], DISPATCH);
+    for (const action of ["hero-billboard-plan-gem-early-start", "hero-billboard-book-date-night"]) {
+      const actionTag = html.match(new RegExp(`<[^>]+data-testid="${action}"[^>]*>`))?.[0];
+      assert.ok(actionTag, `${action} renders`);
+      assert.ok(actionTag.includes("background:var(--earn-coral-ink, #DF5852)"), `${action} matches the primary expert action`);
+    }
     assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
     assert.ok(html.includes("Plan with @aiko"));
     assert.ok(html.includes('href="/s/aiko"'));

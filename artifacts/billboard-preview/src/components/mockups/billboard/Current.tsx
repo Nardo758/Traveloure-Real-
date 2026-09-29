@@ -78,7 +78,7 @@ function GemCard() {
         HIDDEN GEM
       </span>
       <b className="relative z-10 text-[15px] font-semibold leading-tight" style={{ fontFamily: FRAUNCES }}>Example Kyoto garden stop</b>
-      <button type="button" className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white">
+      <button type="button" className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" style={{ background: "var(--earn-coral-ink, #DF5852)" }}>
         Plan around this gem
       </button>
       <Credit index={1} />
@@ -95,7 +95,7 @@ function BookableCard() {
         BOOK ON TRAVELOURE
       </span>
       <b className="relative z-10 text-[15px] font-semibold leading-tight" style={{ fontFamily: FRAUNCES }}>Tea ceremony in a machiya</b>
-      <a href="#" onClick={(event) => event.preventDefault()} className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white">
+      <a href="#" onClick={(event) => event.preventDefault()} className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" style={{ background: "var(--earn-coral-ink, #DF5852)" }}>
         Book now
       </a>
       <Credit index={2} />

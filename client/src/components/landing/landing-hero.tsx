@@ -432,7 +432,8 @@ function GemTileCard({
           const source = billboardMarketSource(slot.marketKey, slot.gem);
           if (source) onStartPlan(source);
         }}
-        className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+        className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        style={{ background: "var(--earn-coral-ink, #DF5852)" }}
         data-testid={`hero-billboard-plan-gem-${tile.key}`}
       >
         Plan around this gem
@@ -494,7 +495,8 @@ function BookableTileCard({
       </b>
       <Link
         href={`/services/${encodeURIComponent(slot.listing.id)}`}
-        className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+        className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        style={{ background: "var(--earn-coral-ink, #DF5852)" }}
         data-testid={`hero-billboard-book-${tile.key}`}
       >
         Book now
