@@ -80,6 +80,17 @@ export function tripsAnchorFor(row: ExperienceGroupRow | null | undefined): Trip
   return { kind: "lodging", fromFallback: schedule !== false };
 }
 
+/**
+ * R215 (ledger `2026-09-29-a1-trips-frame`): a plan is a Trip ONLY when its occasion RESOLVED to a real
+ * row whose switches say Trips. `trips.event_type` is deliberately NOT passed: that column DEFAULTS to
+ * `vacation`, and a column default is not the traveler's answer (§13). ONE predicate for every reader
+ * that asks "is this a Trip, and what is it built around?" — the slip and the free draft (A5, ledger
+ * `2026-09-29-a5-draft-open-set`) both import it (§18 rule 1). `null` = not a resolved Trip.
+ */
+export function resolvedTripsAnchor(row: ExperienceGroupRow | null | undefined): TripsAnchor | null {
+  return experienceGroupFor(row) === "trips" ? tripsAnchorFor(row) : null;
+}
+
 /** The empty slip's first question for a Trip (§M2's Trips row as amended by M7). ONE home for the words. */
 export interface TripsAnchorQuestion {
   question: string;

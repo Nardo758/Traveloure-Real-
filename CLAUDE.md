@@ -2266,7 +2266,7 @@ This document captures architectural decisions to maintain consistency across co
 57. **A PLAN'S FACTS ARE ROWS WITH PROVENANCE; THE FREE DRAFT IS BUILT AROUND THE OPEN STAY AND ASKS
     WHEN THERE IS NONE (decision-maker dispatch Sep 29, 2026, under R211 — the Part 6 sessions ratify;
     ledger `2026-09-29-a5-draft-open-set`; content sourcing brief `docs/planning/briefs/content-sourcing-brief.md`;
-    migration 333 — HELD FOR RULING).** Two additive tables born empty, NO CHECK, NO UNIQUE, no default on a
+    migration 333 — APPROVED by the decision-maker, Sep 29, 2026).** Two additive tables born empty, NO CHECK, NO UNIQUE, no default on a
     status column, NO seed, both declared in `shared/schema.ts`: **`content_sources`** (the registry — a
     source is added by an admin through a surface, never by a deploy; never `active` without a terms check
     and a license class, `canActivateSource`) and **`place_facts`** (every fact the engine can use, INSERT-ONLY,
@@ -2281,7 +2281,9 @@ This document captures architectural decisions to maintain consistency across co
     OFF until `PLACE_FACTS_PLACES_ENABLED=1` (it bills per call); the A6 registry surface moves it under a
     `content_sources` row. **The free draft (§M5, R126):** open option sets hold their slots (no item of the
     held category on the held day, no hotel suggestions under a held stay, the set never closed or chosen);
-    a lodging-anchored Trip is built around its open lodging set — the best plan-fit option when one ranks,
+    a lodging-anchored Trip — a RESOLVED Trips occasion only, through the ONE shared `resolvedTripsAnchor`
+    the slip also uses (R215: the `vacation` column default is not the traveler's answer, so a default-typed
+    plan drafts exactly as before, with no question) — is built around its open lodging set — the best plan-fit option when one ranks,
     otherwise every located option named equally — and SAYS which; with no stay and no open set it
     **asks** (`409 anchor_needed`, E6 `anchor_asked`) and "Draft without a hotel" is the traveler's own
     answer (`withoutAnchor`, E6 `draftBasis: none_asked`), never sent on their behalf.

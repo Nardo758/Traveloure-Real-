@@ -94,7 +94,7 @@ import { slipEventRoleChips } from "@/lib/slip-event-roles";
 import { servicesBrowseHref } from "@/lib/services-browse";
 import {
   experienceGroupFor,
-  tripsAnchorFor,
+  resolvedTripsAnchor,
   tripsAnchorLine,
   tripsAnchorQuestion,
   tripsAnchorState,
@@ -1671,7 +1671,7 @@ export function SlipView({
   // R132's fallback would make every plan whose occasion was never recorded a Trip. A column default
   // is not the traveler's answer (§13) — the frame applies only when the occasion resolved to a row.
   const experienceGroup = experienceGroupFor(occasion);
-  const tripsAnchor: TripsAnchor | null = experienceGroup === "trips" ? tripsAnchorFor(occasion) : null;
+  const tripsAnchor: TripsAnchor | null = resolvedTripsAnchor(occasion);
 
   /**
    * ── THE DAY SLOTS (ledger `2026-09-05-slip-events-first-render`) ──────────────────────────────

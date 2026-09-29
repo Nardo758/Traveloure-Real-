@@ -1,6 +1,6 @@
 -- 333 — Content facts: the source registry and the one fact table (Track A step A5; content
 -- sourcing brief `docs/planning/briefs/content-sourcing-brief.md` §3/§5; ledger
--- `2026-09-29-a5-draft-open-set`). HELD FOR RULING before merge (dispatch: "migration → hold").
+-- `2026-09-29-a5-draft-open-set`). APPROVED by the decision-maker, Sep 29, 2026.
 --
 -- TWO NEW TABLES born empty, with their indexes; NO CHECK (every value set is app-enforced and
 -- stated ONCE in shared/content-facts.ts), NO DB DEFAULT on a status column; all declared in

@@ -39,7 +39,7 @@ import {
   type PlanOptionSet,
 } from "@shared/schema";
 import { OPTION_SET_CAP, nextOptionPosition, pinPrecision, type AnchorRole } from "@shared/plan-options";
-import { experienceGroupFor, tripsAnchorFor } from "@shared/experience-group";
+import { experienceGroupFor, resolvedTripsAnchor, tripsAnchorFor } from "@shared/experience-group";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isManagingEaForTrip } from "./ea-plan-delegate.service";
@@ -758,8 +758,9 @@ export async function draftBasisInputs(tripId: string): Promise<{ lodgingAnchore
     storage.getExperienceTypes(),
   ]);
   const row = resolveOccasionForPlan({ events: events as any, penSlug, eventType: trip?.eventType ?? null, occasions });
-  const group = experienceGroupFor(row as any, trip?.eventType ?? null);
-  const lodgingAnchored = group === "trips" && tripsAnchorFor(row as any).kind === "lodging";
+  // R215: a Trip only when the occasion RESOLVED — the SAME predicate the slip uses, imported. The
+  // `vacation` column default is not the traveler's answer, so a default-typed plan is not asked.
+  const lodgingAnchored = resolvedTripsAnchor(row as any)?.kind === "lodging";
   const [stay] = await db
     .select({ id: itineraryItems.id })
     .from(itineraryItems)

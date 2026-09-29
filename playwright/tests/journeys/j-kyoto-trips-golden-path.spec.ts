@@ -566,26 +566,16 @@ test.describe("4 · free draft around the set", () => {
     await page.goto(`/plans/${tripId}`);
     await expect(testid(page, "slip-action-draft-ai")).toBeVisible({ timeout: 20_000 });
 
-    // A5 (§M5): a Trip with no place to stay and no places being compared is ASKED first — the draft
-    // is built around where the traveler stays. The ask is its own E6 row, and no model call is made.
-    const asked = await actAndAwait(
+    // A5 + R215: this plan has no recorded occasion — its `vacation` event type is the column default,
+    // not the traveler's answer — so it is not a Trip and the draft does NOT ask where they are staying.
+    const status = await actAndAwait(
       page,
       async () => {
         await testid(page, "slip-action-draft-ai").click();
       },
       { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
     );
-    expect(asked, "the draft asks where the traveler is staying").toBe(409);
-    await expect(testid(page, "slip-draft-anchor-ask")).toContainText("Where are you staying?");
-    expect(await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [tripId]), "the ask wrote nothing").toEqual([]);
-    // The traveler's own answer: draft without a hotel.
-    const status = await actAndAwait(
-      page,
-      async () => {
-        await testid(page, "slip-draft-without-anchor").click();
-      },
-      { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
-    );
+    await expect(testid(page, "slip-draft-anchor-ask")).toHaveCount(0);
     expect(ok2xx(status), `draft answered ${status}`).toBe(true);
 
     const [span] = await rows<{ days: number }>(
@@ -617,10 +607,7 @@ test.describe("4 · free draft around the set", () => {
           ).map((r) => ({ stage: r.stage, properties: r.properties })),
         { timeout: 10_000 },
       )
-      .toEqual([
-        { stage: "SLIP", properties: { outcome: "anchor_asked" } },
-        { stage: "SLIP", properties: { outcome: "drafted", itemsWritten: items.length, draftBasis: "none_asked", heldSlots: 0 } },
-      ]);
+      .toEqual([{ stage: "SLIP", properties: { outcome: "drafted", itemsWritten: items.length, heldSlots: 0 } }]);
 
     await page.reload();
     await expect(testid(page, `badge-origin-${items[0].id}`)).toHaveText(/AI draft/, { timeout: 20_000 });
@@ -645,10 +632,51 @@ test.describe("4 · free draft around the set", () => {
       )
       .toEqual([{ outcome: "refused_not_empty" }]);
   });
+  test("§4 — a Travel plan with no stay and no set asks where you're staying; 'Draft without a hotel' drafts", async ({ page }) => {
+    // A5 (§M5) on a RESOLVED Trips occasion (R215). Same stand-in as §4-today (E2E_AI_STUB).
+    const tripId = await planWithOccasion(page, "s4-ask", "travel");
+    await page.goto(`/plans/${tripId}`);
+    await expect(testid(page, "slip-action-draft-ai")).toBeVisible({ timeout: 20_000 });
+    const asked = await actAndAwait(
+      page,
+      async () => {
+        await testid(page, "slip-action-draft-ai").click();
+      },
+      { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
+    );
+    expect(asked, "the draft asks where the traveler is staying").toBe(409);
+    await expect(testid(page, "slip-draft-anchor-ask")).toContainText("Where are you staying?");
+    expect(await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [tripId]), "the ask wrote nothing").toEqual([]);
+    const status = await actAndAwait(
+      page,
+      async () => {
+        await testid(page, "slip-draft-without-anchor").click();
+      },
+      { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
+    );
+    expect(ok2xx(status), `draft answered ${status}`).toBe(true);
+    const items = await rows<{ id: string }>(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [tripId]);
+    expect(items.length, "the traveler's own answer drafted the days").toBeGreaterThan(0);
+    await expect
+      .poll(
+        async () =>
+          (
+            await rows<{ properties: Record<string, unknown> | null }>(
+              `SELECT properties FROM funnel_events WHERE trip_id = $1 AND event_type = 'slip_free_draft_run' ORDER BY created_at`,
+              [tripId],
+            )
+          ).map((r) => r.properties),
+        { timeout: 10_000 },
+      )
+      .toEqual([
+        { outcome: "anchor_asked" },
+        { outcome: "drafted", itemsWritten: items.length, draftBasis: "none_asked", heldSlots: 0 },
+      ]);
+  });
+
   test("§4 — with an open hotel set the draft succeeds, leaves the set open and adds no accommodation", async ({ page }) => {
-    // A5 (ledger `2026-09-29-a5-draft-open-set`; §M5, R126). Same stand-in as §4-today (E2E_AI_STUB).
-    await signedInTraveler(page, "s4-set");
-    const tripId = await createTrip(page.request, "Kyoto trip", KYOTO);
+    // A5 (ledger `2026-09-29-a5-draft-open-set`; §M5, R126) on a RESOLVED Trips occasion (R215).
+    const tripId = await planWithOccasion(page, "s4-set", "travel");
     const setRes = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, {
       data: { categoryKey: "accommodation", label: "Where you'll stay", anchor: true },
     });

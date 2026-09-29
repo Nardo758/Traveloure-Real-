@@ -23,12 +23,19 @@ Every fact the engine can use is a row in `place_facts`:
 ```
 place_facts
   id, place_ref (place_id | listing_id | event_id | hotel_cache_id | free-text + coords),
-  market, need (see §4), fact_type (hours | closure | price | ticketing_rule | transit | event | description | tip),
+  market, need (see §4), fact_type (hours | closure | price | ticketing_rule | transit | event | description | tip | location | dining_basics),
   value (jsonb), origin (platform_listing | expert_nugget | gem | event | hotel_cache | places_api | crawled | traveler_note),
   source_id (→ content_sources, null for platform origins), source_url, license,
   fetched_at, expires_at (TTL by fact_type), verified_by (expert user id | null), verified_at,
-  cost_cents (fetch cost attributed), plan_id (when fetched on behalf of a plan), created_at
+  cost_cents (fetch cost attributed), plan_id (when fetched on behalf of a plan), itinerary_item_id,
+  place_lat, place_lng, superseded_by, created_at
 ```
+
+**Amended 2026-09-29 to match migration 333 (decision-maker accepted, ledger `2026-09-29-a5-draft-open-set`):**
+two more fact types, `location` (the coordinates §6/§10 name) and `dining_basics` (reservable, vegetarian — §6's
+"dining basics"); and two more columns, `itinerary_item_id` (the plan item a fact was fetched for, so a plan
+reads its own facts without a second mapping table) and `place_lat` / `place_lng` (the free-text-plus-coords
+ref, split into columns). `place_ref` is stored as `place_ref_kind` + `place_ref`.
 
 No DELETE; superseded facts get `superseded_by`. The upsell engine is the only ranker (convergence brief); it orders by origin: platform-native → verified → Places → crawled → traveler note. No parallel ranking path for sourced content.
 

@@ -136,27 +136,14 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
   await generateBtn.click().catch(() => {});
   await shot(page, 'D4', '03', 'generating');
 
-  // A5 (ledger `2026-09-29-a5-draft-open-set`, §M5): a Trip plan with no place to stay and no places
-  // being compared is ASKED first — the draft is built around where the traveler stays. This plan has
-  // neither, so the question must appear; the traveler's own answer is "Draft without a hotel".
+  // A5 (ledger `2026-09-29-a5-draft-open-set`, §M5) + R215: a plan whose occasion RESOLVED to a Trip,
+  // with no place to stay and no places being compared, is ASKED where the traveler is staying first.
+  // A plan with no resolved occasion is not asked (the `vacation` default is not an answer). When the
+  // question appears, the traveler's own answer is "Draft without a hotel".
   const anchorAsk = testid(page, 'ai-draft-anchor-ask');
-  if (await appears(anchorAsk, 15000)) {
+  if (await appears(anchorAsk, 10000)) {
     await shot(page, 'D4', '03b', 'anchor-question');
     await testid(page, 'ai-draft-without-anchor').click();
-  } else {
-    fileFinding({
-      journey: 'D4',
-      step: 'ai-form:anchor-question',
-      class: 'SPEC_DIVERGENCE',
-      severity: 'P2',
-      known: null,
-      title: 'The free draft on a Trip with no stay and no open set did not ask where the traveler is staying',
-      expected: 'ledger 2026-09-29-a5-draft-open-set: 409 anchor_needed, shown as ai-draft-anchor-ask',
-      actual: 'ai-draft-anchor-ask not visible within 15s',
-      where: 'client/src/components/EnhancedPlanningModal.tsx; server/routes/content.routes.ts',
-      evidence: { shot: 'shots/D4-03-generating.png' },
-      behavioural: true,
-    });
   }
 
   // Give the model call a generous window; this is exactly the leg the CI stub key may not be

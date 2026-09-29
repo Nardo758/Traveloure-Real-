@@ -8,8 +8,9 @@
  *       zero cost and keeps the original expiry (the 30-day window is never extended)
  *   C3  a drafted stop with no coordinates of its own counts as located through its unexpired
  *       `location` fact, so plan-fit scores; an expired location fact does not place it
- *   C4  draftBasisInputs: a `vacation` plan with no occasion is a lodging-anchored Trip; its open
- *       lodging set is listed with each option's server plan-fit rank
+ *   C4  draftBasisInputs: a `vacation`-defaulted plan with no resolved occasion is NOT a Trip (R215);
+ *       once a real Trips occasion resolves it is lodging-anchored, its open lodging set listed with
+ *       each option's server plan-fit rank
  *   C5  NO PLACES FACT REACHES A PUBLIC ROUTE: the ONE plan assembler — which also serves the public
  *       share/teaser channels — carries none at any level, and only gated files read the table
  *
@@ -29,7 +30,7 @@ import { assembleTripPlan } from "../services/trip-plan.service";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const id = (s: string) => `a5-${RUN}-${s}`;
-const ids = { owner: id("owner"), trip: id("trip"), s1: id("s1"), s2: id("s2"), s3: id("s3"), s4: id("s4") };
+const ids = { owner: id("owner"), trip: id("trip"), s1: id("s1"), s2: id("s2"), s3: id("s3"), s4: id("s4"), occasion: id("occasion"), event: id("event") };
 const MARKER = `places-marker-${RUN}`;
 
 const fact = (over: Record<string, unknown>) => ({
@@ -71,6 +72,8 @@ after(async () => {
   try {
     await db.execute(sql`DELETE FROM place_facts WHERE plan_id = ${ids.trip} OR place_ref LIKE ${`a5-${RUN}-%`}`);
     await db.execute(sql`DELETE FROM plan_option_sets WHERE trip_id = ${ids.trip}`);
+    await db.execute(sql`DELETE FROM user_experiences WHERE id = ${ids.event}`);
+    await db.execute(sql`DELETE FROM experience_types WHERE id = ${ids.occasion}`);
     await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${ids.trip}`);
     await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`);
     await db.execute(sql`DELETE FROM users WHERE id LIKE ${`a5-${RUN}-%`}`);
@@ -151,7 +154,18 @@ test("C3: a location fact places an unlocated stop for plan-fit; an expired one 
   assert.ok(fit.options.every((o) => o.fit.scored), "plan-fit scores against the fact-located stops");
 });
 
-test("C4: draftBasisInputs — a vacation plan is a lodging-anchored Trip with its open set ranked", async () => {
+test("C4: draftBasisInputs — the `vacation` default is not a Trip (R215); a resolved Trips occasion is, with its open set ranked", async () => {
+  const before = await draftBasisInputs(ids.trip);
+  assert.equal(before.lodgingAnchored, false, "event_type 'vacation' is a column default, not the traveler's answer");
+  // A real Trips occasion, named by the plan's own event (resolveOccasionForPlan's attempt 1).
+  await db.execute(sql`
+    INSERT INTO experience_types (id, name, slug, default_duration, default_guests, default_stops, default_schedule)
+    VALUES (${ids.occasion}, ${`A5 trip ${RUN}`}, ${`a5-trip-${RUN}`}, 'range', false, 'one', false)
+  `);
+  await db.execute(sql`
+    INSERT INTO user_experiences (id, user_id, experience_type_id, trip_id, title)
+    VALUES (${ids.event}, ${ids.owner}, ${ids.occasion}, ${ids.trip}, 'Kyoto')
+  `);
   const inputs = await draftBasisInputs(ids.trip);
   assert.equal(inputs.lodgingAnchored, true);
   assert.equal(inputs.hasStay, false);
