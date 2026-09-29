@@ -17,6 +17,9 @@
  *   · prose elsewhere is never rewritten — code cites ledger SLUGS, not R-numbers, so nothing
  *     outside the row needs the number.
  *
+ * Last step before merge: run it, then `node scripts/check-decision-guards.cjs --require-assigned` and
+ * check its EXIT CODE (never through a pipe that hides it), commit, and let CI re-run on that head.
+ *
  * Usage:  node scripts/assign-r-numbers.cjs            # dry run: print the mapping
  *         node scripts/assign-r-numbers.cjs --write    # rewrite docs/DECISIONS.md
  *         node scripts/assign-r-numbers.cjs --self-test
@@ -53,7 +56,12 @@ function assign(ledgerText) {
     while (frozen.has(next)) next++;
     const n = next++;
     assigned.push({ id: p[1], n });
-    return line.replace("**R? —", `**R${n} —`).replace(/numeric citation R\?(?![\w])/, `numeric citation R${n}`);
+    // The heading is the first "**R? —" (cells 0–2 are id, date and tag, which never carry it); the
+    // citation is the LAST cell. Prose inside the row may quote the placeholder itself, so the
+    // citation is rewritten only at the start of the last cell — never at its first occurrence.
+    const at = line.lastIndexOf(cells[cells.length - 1]);
+    const tail = line.slice(at).replace(/^numeric citation R\?(?![\w])/, `numeric citation R${n}`);
+    return (line.slice(0, at).replace("**R? —", `**R${n} —`)) + tail;
   });
   return { text: lines.join("\n"), assigned, refused };
 }
@@ -74,13 +82,17 @@ function selfTest() {
   // A3: a half-placeholder is refused and left as it was.
   const half = assign("| 2026-01-05-h | 2026-01-05 | [advisory] | **R? — H.** | numeric citation R300 |");
   const ok3 = half.refused.length === 1 && half.assigned.length === 0 && half.text.includes("**R? — H.**");
+  // A5: prose inside the row that quotes the placeholder is left alone; only the last cell moves.
+  const prose = assign("| 2026-01-06-p | 2026-01-06 | [advisory] | **R? — P.** written as `**R? —` with `numeric citation R?` | numeric citation R?; refs |");
+  const ok5 = prose.text === "| 2026-01-06-p | 2026-01-06 | [advisory] | **R1 — P.** written as `**R? —` with `numeric citation R?` | numeric citation R1; refs |"
+    && lintRNumbers(prose.text, {}).failures.length === 0;
   // A4: idempotent — a second run assigns nothing.
   const ok4 = assign(a.text).assigned.length === 0;
-  if (!(ok1 && ok2 && ok3 && ok4)) {
-    console.error("SELF-TEST FAILED", { ok1, ok2, ok3, ok4, assigned: a.assigned, failures: after.failures });
+  if (!(ok1 && ok2 && ok3 && ok4 && ok5)) {
+    console.error("SELF-TEST FAILED", { ok1, ok2, ok3, ok4, ok5, assigned: a.assigned, failures: after.failures });
     process.exit(1);
   }
-  console.log("self-test OK (next past highest cited, file order, frozen skipped, half-placeholder refused, idempotent)");
+  console.log("self-test OK (next past highest cited, file order, frozen skipped, half-placeholder refused, quoted placeholder in prose untouched, idempotent)");
   process.exit(0);
 }
 
