@@ -144,8 +144,11 @@ function HeroBand({
 }) {
   const displayCity = toTitleCase(city);
   const cityIntel = heroData?.city;
-  const pulse = cityIntel?.pulseScore;
-  const crowdLevel = cityIntel?.crowdLevel;
+  // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): the eyebrow's TREND is the
+  // RESOLVER's number (`trendingScore`, null when not ranked or stale), never the legacy
+  // `pulseScore`; and no CROWD fragment until PR 2 computes one (the server no longer sends it).
+  const pulse = typeof cityIntel?.trendingScore === "number" && cityIntel.trendingScore > 0 ? cityIntel.trendingScore : null;
+  const crowdLevel: string | null = null;
   const highlight = cityIntel?.currentHighlight;
   const highlightEmoji = cityIntel?.highlightEmoji ?? "✨";
 

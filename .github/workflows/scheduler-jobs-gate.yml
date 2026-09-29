@@ -117,6 +117,12 @@ jobs:
       - name: Plan option sets — cap, atomic choose, R129, M7/M8
         run: npx tsx --test --test-force-exit server/__tests__/plan-option-sets.db.test.ts
 
+      # TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): no legacy crowd/pulse field on
+      # the four public routes, the 48h Trend freshness gate, and /api/health's score age. T1–T4.
+      # --test-force-exit because importing content.routes.ts starts the TravelPulse scheduler timer.
+      - name: TravelPulse — public routes carry no legacy crowd; stale Trend shows no number
+        run: npx tsx --test --test-force-exit server/__tests__/travelpulse-public-crowd.db.test.ts
+
       - name: Internal job endpoints — default-deny auth (no DB touched)
         run: npx tsx --test server/routes/__tests__/internal-jobs-auth.http.test.ts
 

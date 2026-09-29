@@ -81,7 +81,12 @@ async function btPost(path: string, body: Record<string, string | number>): Prom
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
   });
-  if (!res.ok) throw new Error(`BestTime API ${res.status} at ${path}`);
+  if (!res.ok) {
+    // The body carries BestTime's own reason (plan, credits, key); the status alone never did,
+    // so the per-market error recorded by the runner could not say why (trend-engine audit).
+    const body = await res.text().catch(() => "");
+    throw new Error(`BestTime API ${res.status} at ${path}: ${body.slice(0, 200)}`);
+  }
   const data = await res.json() as any;
   if (data.status !== "OK") throw new Error(`BestTime error: ${JSON.stringify(data.message ?? data.status).slice(0, 200)}`);
   return data;
