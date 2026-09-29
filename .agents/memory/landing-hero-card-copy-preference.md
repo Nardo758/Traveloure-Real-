@@ -5,6 +5,6 @@ description: User-confirmed direction for the landing hero's photo cards and the
 
 Keep the credited hero photos when changing card copy. The user preferred the earlier compact expert/gem/service captions and contextual actions over long editorial descriptions and generic "Start this plan" buttons.
 
-**Why:** The user explicitly said the current photos were correct but the text and action buttons were not, then approved restoring the older compact presentation with appropriate destinations.
+**Why:** The user explicitly said the current photos were correct but the text and action buttons were not, then supplied a screenshot showing live Goa expert/gem/service copy over credited Kyoto representative photos. The earlier assumption that live copy must match the pictured city's market was wrong.
 
-**How to apply:** Preserve photo attribution. Never imply a representative photo depicts a specific live listing from another market; show live details only when they match the pictured market, otherwise use honest destination copy and a working browse link. A real expert action should lead to that expert's storefront or its established planning flow, not a dead or unrelated destination.
+**How to apply:** Preserve photo attribution and the explicit representative-photo label; it distinguishes the pictured scene from the live feed's city. Use live names and prices from the feed even when its city differs from the photograph, and make the expert or fallback browse action follow the live content's expert/city, not the photo's city. Never claim the representative photo is the specific listing's own photo.

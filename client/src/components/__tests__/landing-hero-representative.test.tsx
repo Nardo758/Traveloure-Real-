@@ -6,9 +6,8 @@
  *    says "Demo" (narrowed to the curated case by follow-up 4 — the override reads a live listing).
  * B2 every rendered tile carries a credit resolved from ATTRIBUTION.json; a photo with no entry is
  *    not rendered at all.
- * B3 a representative photo is labeled and never paired with another market's live copy.
- * B4 the restored compact captions/actions use real Kyoto data when it matches the photos,
- *    without swapping in a live payload photo or inventing a listing.
+ * B3 representative photos remain credited even when the restored live caption is for another city.
+ * B4 the restored compact captions/actions follow the live city without swapping in payload photos.
  * B6 the override's plan door still pre-sets the tile's occasion and market.
  * B5 a byline-gated expert takes the tile: the initial appears, and only then.
  * P1 the pill set is exactly the old eight-tile set — no destination lost.
@@ -86,21 +85,24 @@ describe("landing hero billboard", () => {
     );
   });
 
-  it("B3 mismatched live data stays off Kyoto photos and the fallback button browses Kyoto", () => {
+  it("B3 Kyoto photos stay representative while Goa live copy and the expert link appear", () => {
     const html = render(PAYLOAD);
     assert.ok(html.includes("Representative photo · Kyoto"));
-    assert.ok(html.includes("Representative destination"));
-    assert.ok(html.includes("Browse Kyoto"));
-    assert.ok(html.includes('href="/discover/location/Kyoto"'));
+    assert.ok(html.includes("Local expert · Goa"));
+    assert.ok(html.includes("Demo Expert"));
+    assert.ok(html.includes("Plan with Demo · from $45"));
+    assert.ok(html.includes('href="/s/demo"'));
+    assert.ok(html.includes("Hidden gem"));
+    assert.ok(html.includes("Tito’s Lane"));
+    assert.ok(html.includes("Book on Traveloure"));
+    assert.ok(html.includes("Demo Tour"));
     assert.ok(!html.includes("Start this plan"));
-    assert.ok(!html.includes("Plan with"));
-    assert.ok(!html.includes("from $"));
-    assert.ok(!html.includes("Demo"));
-    assert.ok(!html.includes("Tito’s Lane"));
     assert.ok(!html.includes('data-testid="hero-billboard-expert-'), "no initial without a real expert");
+    const noExpert = render({ ...PAYLOAD, anchorExpert: null });
+    assert.ok(noExpert.includes('href="/discover/location/Goa"'), "fallback browse follows the live city, not the photo");
   });
 
-  it("B4 matching live text restores the compact expert/gem/service cards with correct storefront link", () => {
+  it("B4 compact text never swaps credited photos for live payload images", () => {
     const html = render({
       ...PAYLOAD,
       city: "Kyoto",

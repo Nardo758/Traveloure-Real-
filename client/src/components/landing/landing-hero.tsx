@@ -3,17 +3,16 @@
  * Visual of record: docs/design/landing-earn-mock.html "HERO v2"; behavior contract:
  * docs/design/LANDING_SPEC.md.
  *
- * Billboard photos are curated and credited from shared/landing-billboard.ts. The cards use the
- * original compact expert / gem / service captions and actions when the live hero data belongs
- * to the pictured market. Otherwise they display representative destination copy and a market
- * browse link, never a mismatched listing over the photo.
+ * Billboard photos are curated and credited from shared/landing-billboard.ts. The representative
+ * photo label identifies the pictured market; the compact expert / gem / service captions and
+ * actions use the live hero feed's city independently (the photo is not a listing photo).
  *
  * Override (follow-up 4, ledger `2026-09-28-billboard-override-listing`): when a real expert passes
  * the byline gate for a tile's market (GET /api/landing/billboard-experts, decided server-side), THAT
  * tile renders the expert's live listing instead — title, own lines, price as the storefront card
  * shows it, photo — with "Plan with @handle" and "View listing". Per market and per tile; a tile
  * without a qualifying expert keeps its credited photo. The live payload (GET /api/landing/hero)
- * feeds the ticker, Wanted strip, and matching-market card captions/actions.
+ * feeds the ticker, Wanted strip, and the compact card captions/actions.
  *
  * "Where do you want to begin?" pills: the nav's BROWSE and FIND HELP sections (the same eight
  * destinations the removed entry tiles carried), read from nav-config, never retyped.
@@ -225,16 +224,16 @@ function CuratedTileCard({
   const [photoFailed, setPhotoFailed] = useState(false);
   const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
   if (!market) return null;
-  const sameMarket = hero?.city?.trim().toLowerCase() === market.cityName.toLowerCase();
-  const anchor = sameMarket && kind === "expert" ? hero?.anchorExpert : null;
-  const gem = sameMarket && kind === "gem" ? hero?.gem : null;
-  const service = sameMarket && kind === "service" ? hero?.service : null;
+  const liveCity = hero?.city?.trim() || market.cityName;
+  const anchor = kind === "expert" ? hero?.anchorExpert : null;
+  const gem = kind === "gem" ? hero?.gem : null;
+  const service = kind === "service" ? hero?.service : null;
   const storefront = anchor?.handle ? earnerProfilePath({ handle: anchor.handle }) : null;
   const expertPrice = centsToDollarsLabel(anchor?.fromPriceCents);
   const servicePrice = centsToDollarsLabel(service?.priceCents);
   const caption =
     kind === "expert" && anchor
-      ? `Local expert · ${market.cityName}`
+      ? `Local expert${hero?.city ? ` · ${liveCity}` : ""}`
       : kind === "gem" && gem
         ? "Hidden gem"
         : kind === "service" && service
@@ -242,10 +241,10 @@ function CuratedTileCard({
           : "Representative destination";
   const title =
     kind === "expert"
-      ? anchor?.name ?? market.cityName
+      ? anchor?.name ?? liveCity
       : kind === "gem"
-        ? gem?.name ?? market.cityName
-        : service?.name ?? `Ways to explore ${market.cityName}`;
+        ? gem?.name ?? liveCity
+        : service?.name ?? `Ways to explore ${liveCity}`;
   return (
     <div
       className={`${TILE_FRAME} ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`}
@@ -295,11 +294,11 @@ function CuratedTileCard({
           </Link>
         ) : (
           <Link
-            href={getCityDiscoverHref(market.cityName)}
+            href={getCityDiscoverHref(liveCity)}
             className="relative z-10 mt-2 inline-flex min-h-[32px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
             data-testid="hero-anchor-browse"
           >
-            Browse {market.cityName}
+            Browse {liveCity}
           </Link>
         )
       )}

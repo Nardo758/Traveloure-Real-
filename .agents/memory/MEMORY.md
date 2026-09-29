@@ -74,4 +74,4 @@
 - [Storefront plan handoff](storefront-plan-handoff.md) — a trip-scoped expert browse is return navigation only; preserve tripId but never create or share a booking implicitly.
 - [Dispute-scoped aggregate payouts](dispute-scoped-aggregate-payouts.md) — hold the booking's earnings, not the earner; reserve exact eligible rows before transfer and treat processing as possibly sent.
 - [Stripe CLI sandbox verification](stripe-cli-sandbox-webhook-verification.md) — CLI dispute fixtures can be warnings; use a full test-card dispute for won/lost evidence and verify forwarded webhooks.
-- [Landing hero card copy preference](landing-hero-card-copy-preference.md) — preserve credited photos while using compact expert/gem/service captions and contextual links; avoid mismatched live content.
+- [Landing hero card copy preference](landing-hero-card-copy-preference.md) — preserve credited representative photos but show live feed names and contextual links, even when the photo depicts another city.
