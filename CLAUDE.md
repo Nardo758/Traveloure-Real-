@@ -2263,6 +2263,31 @@ This document captures architectural decisions to maintain consistency across co
     and the expert signs the `contentSha256` the review rail returned, never one computed client-side. **Not built, named:** the footer's Blog link, which returns behind a count of
     five published posts and never a hand-flipped flag.
 
+57. **A PLAN'S FACTS ARE ROWS WITH PROVENANCE; THE FREE DRAFT IS BUILT AROUND THE OPEN STAY AND ASKS
+    WHEN THERE IS NONE (decision-maker dispatch Sep 29, 2026, under R211 — the Part 6 sessions ratify;
+    ledger `2026-09-29-a5-draft-open-set`; content sourcing brief `docs/planning/briefs/content-sourcing-brief.md`;
+    migration 333 — APPROVED by the decision-maker, Sep 29, 2026).** Two additive tables born empty, NO CHECK, NO UNIQUE, no default on a
+    status column, NO seed, both declared in `shared/schema.ts`: **`content_sources`** (the registry — a
+    source is added by an admin through a surface, never by a deploy; never `active` without a terms check
+    and a license class, `canActivateSource`) and **`place_facts`** (every fact the engine can use, INSERT-ONLY,
+    one writer `recordFacts`). Value sets live ONCE in `shared/content-facts.ts`. **The engine reads facts in
+    ONE order — `rankFactsByOrigin`, in the upsell engine (the one ranker)**: platform-native → verified →
+    Places → crawled → traveler note. **`isPublishable(fact)` is the ONE predicate for a public surface** and
+    is false for `places_api`, `crawled`, `hotel_cache` and a traveler note, whatever else is true. **Places
+    (the spine) is display-inside-a-plan only**: its facts expire within 30 days, a copy for another item
+    keeps the original expiry, a Places coordinate is never written onto an item row (plan-fit reads it as a
+    fact), every rendered fact carries its provenance line ("Google Maps · checked <date>"), and the ONLY
+    readers of the table sit behind a plan's own gate (pinned by `content-facts.db.test.ts` C5). The spine is
+    OFF until `PLACE_FACTS_PLACES_ENABLED=1` (it bills per call); the A6 registry surface moves it under a
+    `content_sources` row. **The free draft (§M5, R126):** open option sets hold their slots (no item of the
+    held category on the held day, no hotel suggestions under a held stay, the set never closed or chosen);
+    a lodging-anchored Trip — a RESOLVED Trips occasion only, through the ONE shared `resolvedTripsAnchor`
+    the slip also uses (R215: the `vacation` column default is not the traveler's answer, so a default-typed
+    plan drafts exactly as before, with no question) — is built around its open lodging set — the best plan-fit option when one ranks,
+    otherwise every located option named equally — and SAYS which; with no stay and no open set it
+    **asks** (`409 anchor_needed`, E6 `anchor_asked`) and "Draft without a hotel" is the traveler's own
+    answer (`withoutAnchor`, E6 `draftBasis: none_asked`), never sent on their behalf.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

@@ -1861,4 +1861,9 @@ export const MIGRATION_FILES = [
   // set's item and a UNIQUE on (set, position), both on tables this file creates); NO CHECK, NO
   // DEFAULT on status; all declared in shared/schema.ts. §20 new-object carve-out.
   "332_plan_option_sets.sql",
+  // 333 — Track A step A5 (ledger `2026-09-29-a5-draft-open-set`; content sourcing brief §3/§5):
+  // `content_sources` (the registry) and `place_facts` (one fact table, insert-only) — TWO NEW
+  // tables born empty with plain indexes; NO CHECK, NO UNIQUE, NO DEFAULT on a status column; NO
+  // seed (a deploy never adds a source). All declared in shared/schema.ts. §20 new-object carve-out.
+  "333_content_facts.sql",
 ] as const;

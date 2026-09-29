@@ -168,6 +168,12 @@ outward from the hotel set".
   names the engine (LD 41 (c)); the call writes `ai_cost_tracking`.
 - **Money:** free (LD 41 (b)). The only free AI write.
 
+- **Built (A5, ledger `2026-09-29-a5-draft-open-set`, under R211):** the held slot and the geography hint are
+  live. Appendix B Q2's default is what shipped (the hotels are a hint, never a choice). On an EMPTY slip plan-fit
+  cannot rank (no stops yet), so the draft is built around every located option and says so; with no hotel and no set
+  it asks "Where are you staying?" and offers "Draft without a hotel". Drafted stops gain Places facts (hours, dining
+  basics, coordinates) when the spine is switched on, and the fit lines then have stops to score against.
+
 ### Step 5 — Gaps and suggestions fill the days
 
 - **Traveler (375px):** GLANCE line under the header: **"2 of 3 essentials"** (accommodation open, the others covered).

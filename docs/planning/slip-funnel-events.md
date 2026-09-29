@@ -202,6 +202,12 @@ stage `SLIP`:
   env-configured tier name; a cost fact, never shown to travelers — LD 41 (c)).
 - **Emitter:** server. The refusal writes one row per refused request; the model call is never made on that branch,
   so no cost is implied.
+- **Amended by A5 (ledger `2026-09-29-a5-draft-open-set`):** `draftBasis` and `heldSlots` are written. `draftBasis`
+  is `open_anchor_set` or `none_asked` and only for a lodging-anchored Trip (omitted otherwise; `chosen_anchor`
+  cannot occur on the free path, since a chosen stay is an item). `heldSlots` counts the open sets the draft read,
+  0 included. A fourth outcome, `anchor_asked`, is one row per request the draft ASKED where the traveler is staying
+  instead of drafting (no model call). `none_asked` is recorded on the draft that follows the traveler's own
+  "Draft without a hotel".
 
 ### 3.7 Gap shown / gap filled — NOT BUILT
 - **Gap shown fires:** the completeness module (product map B4, §G step 2) renders a REQ category the plan lacks.
