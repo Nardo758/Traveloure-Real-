@@ -135,6 +135,15 @@ function functionBody(src: string, declaration: string): string {
  * pin is about the control existing and pointing where it did, never about which file holds it.
  */
 const ALLOWED_ADDITIONS = {
+  // A1 · the Trips frame (ledger `2026-09-29-a1-trips-frame`): the empty Trip's anchor question
+  // card carries ONE existing rail each, owner only — the services browse for a stay, or the day-1
+  // add control for a fixed dated item (product map §M7).
+  "slip-anchor-browse-stays": "A1 — lodging-first Trip: services browse pre-filtered to accommodation",
+  "slip-anchor-add-fixed": "A1 — schedule-first Trip: the day-1 add control, as the delegate note uses",
+  "slip-anchor-fallback": "A1 — says out loud that a NULL schedule switch was read as a plain trip (§13)",
+  "slip-anchor-question": "A1 — the empty Trip's first question, in place of \"No items\" (§M2/§M7)",
+  "slip-anchor-state": "A1 — the header line: where you'll stay / what the plan is built around",
+  "slip-occasion-name": "A1 — the B1 header eyebrow: the occasion's OWN name, never the group (R127)",
   // 1 · the two-column relayout and the merged view bar
   "slip-columns": "1 — the plan column + the fixed rail track",
   "slip-viewbar": "1 — the status counts and the List | Map toggle, merged into one row",
@@ -278,6 +287,10 @@ describe("1 — the rail is a fixed right column, and its cards run Build → Pl
     // so the reading order of the two regions does not flip with the breakpoint.
     assert.match(viewCode, /order-1 lg:order-2/, "the rail draws above the list below lg");
     assert.match(viewCode, /order-2 lg:order-1/, "and the plan column below it");
+    // A1 (ledger `2026-09-29-a1-trips-frame`): a Trip reads list-first on a phone, so its anchor
+    // question is first on screen; `lg` is unchanged for every group.
+    assert.match(viewCode, /tripsAnchor \? "order-1 lg:order-1" : "order-2 lg:order-1"/, "a Trip's plan column is first below lg");
+    assert.match(viewCode, /tripsAnchor \? "order-2 lg:order-2 mt-5 lg:mt-0" : "order-1 lg:order-2 mb-5"/, "and its rail follows it");
   });
 
   it("the rail is ONE column at lg — the canvas's single 320px track", () => {
