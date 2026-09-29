@@ -271,6 +271,23 @@ test.describe("2 · where are you staying", () => {
     expect(q && firstRailCard && q.y < firstRailCard.y, "the anchor question is above the rail on a phone").toBeTruthy();
   });
 
+  test("§2 — at 390 px an item's whole name is readable beside its chips (ledger `2026-09-29-slip-item-name-390`)", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await signedInTraveler(page, "name390");
+    const tripId = await createTrip(page.request, "Kyoto trip", KYOTO);
+    const name = "Fushimi Inari Taisha early morning walk";
+    await createItem(page.request, tripId, name, 1);
+    const read = await actAndAwait(page, () => page.goto(`/plans/${tripId}`), { method: "GET", path: new RegExp(`^/api/trips/${tripId}/plancard$`) });
+    expect(ok2xx(read)).toBe(true);
+    // Located by its TEXT, not a test id, so the same assertion reads the row as it was before.
+    const label = page.getByText(name, { exact: true });
+    await expect(label).toBeVisible({ timeout: 20_000 });
+    const clipped = await label.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(clipped, "the name is not cut off with an ellipsis").toBeLessThanOrEqual(1);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, "no horizontal scroll at phone width").toBeLessThanOrEqual(0);
+  });
+
   test("§2 A3 — the anchor question opens a set; three places admitted, a fourth refused (cap 3)", async ({ page }) => {
     const tripId = await planWithOccasion(page, "a3-cap", "travel");
     const setId = await openLodgingSetWithThree(page, tripId);
