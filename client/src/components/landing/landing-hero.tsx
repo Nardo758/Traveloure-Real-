@@ -206,6 +206,17 @@ function TileCredit({ tileKey, credit }: { tileKey: string; credit: BillboardCre
   );
 }
 
+function RepresentativePhotoLabel({ cityName }: { cityName: string }) {
+  return (
+    <span
+      className="absolute left-2.5 top-2.5 z-10 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
+      style={{ fontFamily: EARN_MONO }}
+    >
+      {billboardLabel(cityName)}
+    </span>
+  );
+}
+
 const TILE_FRAME = "relative flex flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white";
 const TILE_GROUND = { background: "linear-gradient(160deg,#7C6A63,#1E3A5F)" };
 
@@ -306,15 +317,9 @@ function OverrideTileCard({
         !fallbackFailed && <TilePhoto src={tile.imagePath} onFail={() => setFallbackFailed(true)} />
       )}
       <TileShade />
-      <span
-        className="absolute left-2.5 top-2.5 z-10 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
-        style={{ fontFamily: EARN_MONO }}
-        data-testid={`hero-billboard-label-${tile.key}`}
-      >
+      {!usesListingPhoto && !fallbackFailed && <RepresentativePhotoLabel cityName={market.cityName} />}
+      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }} data-testid={`hero-billboard-label-${tile.key}`}>
         {marketLabel ?? `${override.roleLabel} · @${override.handle}`}
-      </span>
-      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
-        {market.cityName}
       </span>
       <b
         className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`}
@@ -323,36 +328,28 @@ function OverrideTileCard({
       >
         {listing.title}
       </b>
-      {listing.lines.length > 0 && (
-        <ul className="relative z-10 mt-1.5 space-y-0.5 text-[12px] leading-snug opacity-90">
-          {listing.lines.map((line) => (
-            <li key={line} className="line-clamp-2">{line}</li>
-          ))}
-        </ul>
-      )}
-      {!price.hidden && (
-        <span className="relative z-10 mt-1.5 text-[13px] font-semibold" data-testid={`hero-billboard-price-${tile.key}`}>
-          {price.text}
-          {price.unit ? <span className="ml-1 text-[11px] font-normal opacity-80">{price.unit}</span> : null}
-        </span>
-      )}
-      <div className="relative z-10 mt-2.5 flex flex-wrap gap-1.5">
+      <div className="relative z-10 mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => {
             const source = billboardOverridePlanSource(tile, override);
             if (source) onStartPlan(source);
           }}
-          className="inline-flex min-h-[32px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white"
+          className="inline-flex min-h-[36px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white"
           style={{ background: "var(--earn-coral-ink)" }}
           data-testid={`hero-billboard-plan-with-${tile.key}`}
         >
           Plan with @{override.handle}
+          {!price.hidden && (
+            <span data-testid={`hero-billboard-price-${tile.key}`}>
+              {" · "}{price.text}{price.unit ? ` ${price.unit}` : ""}
+            </span>
+          )}
         </button>
         {storefront && (
           <Link
             href={storefront}
-            className="inline-flex min-h-[32px] items-center rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+            className="inline-flex min-h-[36px] items-center rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
             data-testid={`hero-billboard-view-listing-${tile.key}`}
           >
             View listing
@@ -407,33 +404,27 @@ function GemTileCard({
         !fallbackFailed && <TilePhoto src={tile.imagePath} onFail={() => setFallbackFailed(true)} />
       )}
       <TileShade />
+      {!usesGemPhoto && !fallbackFailed && <RepresentativePhotoLabel cityName={market.cityName} />}
       <span
-        className="absolute left-2.5 top-2.5 z-10 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
-        style={{ fontFamily: EARN_MONO }}
-        data-testid={`hero-billboard-label-${tile.key}`}
-      >
-        HIDDEN GEM
-      </span>
-      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
-        {market.cityName}
-      </span>
-      <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`} style={{ fontFamily: FRAUNCES }}>
-        {slot.gem.name}
-      </b>
-      <span
-        className="relative z-10 mt-1.5 self-start rounded-full bg-black/45 px-2 py-1 text-[11px] font-semibold"
+        className="absolute right-2.5 top-2.5 z-10 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#1e3148]"
         aria-label={`Score ${slot.gem.score}`}
         data-testid={`hero-billboard-gem-score-${tile.key}`}
       >
         {slot.gem.score}
       </span>
+      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }} data-testid={`hero-billboard-label-${tile.key}`}>
+        HIDDEN GEM
+      </span>
+      <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`} style={{ fontFamily: FRAUNCES }}>
+        {slot.gem.name}
+      </b>
       <button
         type="button"
         onClick={() => {
           const source = billboardMarketSource(slot.marketKey, slot.gem);
           if (source) onStartPlan(source);
         }}
-        className="relative z-10 mt-2.5 inline-flex min-h-[32px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+        className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
         data-testid={`hero-billboard-plan-gem-${tile.key}`}
       >
         Plan around this gem
@@ -478,33 +469,24 @@ function BookableTileCard({
         !fallbackFailed && <TilePhoto src={tile.imagePath} onFail={() => setFallbackFailed(true)} />
       )}
       <TileShade />
-      <span
-        className="absolute left-2.5 top-2.5 z-10 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
-        style={{ fontFamily: EARN_MONO }}
-        data-testid={`hero-billboard-label-${tile.key}`}
-      >
+      {!usesListingPhoto && !fallbackFailed && <RepresentativePhotoLabel cityName={market.cityName} />}
+      {!price.hidden && (
+        <span
+          className="absolute right-2.5 top-2.5 z-10 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#1e3148]"
+          data-testid={`hero-billboard-price-${tile.key}`}
+        >
+          {price.text}{price.unit ? ` ${price.unit}` : ""}
+        </span>
+      )}
+      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }} data-testid={`hero-billboard-label-${tile.key}`}>
         BOOK ON TRAVELOURE
-      </span>
-      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
-        {market.cityName}
       </span>
       <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`} style={{ fontFamily: FRAUNCES }}>
         {slot.listing.title}
       </b>
-      {slot.listing.lines.length > 0 && (
-        <ul className="relative z-10 mt-1.5 space-y-0.5 text-[12px] leading-snug opacity-90">
-          {slot.listing.lines.map((line) => <li key={line} className="line-clamp-2">{line}</li>)}
-        </ul>
-      )}
-      {!price.hidden && (
-        <span className="relative z-10 mt-1.5 text-[13px] font-semibold" data-testid={`hero-billboard-price-${tile.key}`}>
-          {price.text}
-          {price.unit ? <span className="ml-1 text-[11px] font-normal opacity-80">{price.unit}</span> : null}
-        </span>
-      )}
       <Link
         href={`/services/${encodeURIComponent(slot.listing.id)}`}
-        className="relative z-10 mt-2.5 inline-flex min-h-[32px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+        className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
         data-testid={`hero-billboard-book-${tile.key}`}
       >
         Book now

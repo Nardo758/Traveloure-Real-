@@ -142,9 +142,10 @@ describe("landing hero billboard", () => {
     assert.ok(tileHtml.includes('data-override="listing"'));
     assert.ok(tileHtml.includes("LOCAL EXPERT · KYOTO"));
     assert.ok(tileHtml.includes("Dawn at Fushimi Inari with Aiko"));
-    assert.ok(tileHtml.includes("Up the mountain before the tour buses, with tea after."));
-    assert.ok(tileHtml.includes("$120"), "the price as the storefront card renders it");
+    assert.ok(!tileHtml.includes("Up the mountain before the tour buses, with tea after."), "real cards keep the screenshot's compact title-and-action format");
     assert.ok(tileHtml.includes("Plan with @aiko"));
+    const planButton = tileHtml.slice(tileHtml.indexOf('data-testid="hero-billboard-plan-with-early-start"'), tileHtml.indexOf("</button>"));
+    assert.ok(planButton.includes("$120"), "the storefront-derived price appears in the Plan with action");
     assert.ok(tileHtml.includes('href="/s/aiko"'), "View listing goes to the storefront");
     assert.ok(tileHtml.includes("/fixture/listing.jpg"), "the listing's own photo");
     assert.ok(!tileHtml.includes("Photo: "), "the owner's own photo carries no third-party credit");
@@ -155,6 +156,7 @@ describe("landing hero billboard", () => {
     // No listing photo ⇒ the tile keeps its repo photo AND that photo's credit.
     const noPhoto = render(PAYLOAD, [{ ...OVERRIDE, listing: { ...OVERRIDE.listing, imageUrl: null } }]);
     assert.ok(noPhoto.includes('data-testid="hero-billboard-credit-early-start"'));
+    assert.ok(noPhoto.includes("Representative photo · Kyoto"), "credited fallback photos retain their truthful market label");
     // A listing that hides its price shows none.
     const hidden = render(PAYLOAD, [{ ...OVERRIDE, listing: { ...OVERRIDE.listing, showPrice: false } }]);
     assert.ok(!hidden.includes('data-testid="hero-billboard-price-early-start"'));
@@ -208,11 +210,16 @@ describe("landing hero billboard", () => {
     assert.ok(html.includes("HIDDEN GEM"));
     assert.ok(html.includes("Tito’s Lane"));
     assert.ok(html.includes('aria-label="Score 87"'));
+    assert.ok(html.indexOf('aria-label="Score 87"') < html.indexOf("Tito’s Lane"), "the gem score is a top-right badge, not a line under the title");
+    assert.ok(html.includes("Plan around this gem"));
     assert.ok(html.includes("/fixture/gem-attributed.jpg"));
     assert.ok(html.includes("Photo: Mina Sato"));
     assert.ok(html.includes("BOOK ON TRAVELOURE"));
     assert.ok(html.includes("Tea ceremony in a machiya"));
     assert.ok(html.includes("$145"));
+    assert.ok(html.indexOf('data-testid="hero-billboard-price-date-night"') < html.indexOf("Tea ceremony in a machiya"), "the bookable price is a top-right badge");
+    assert.ok(html.includes("Book now"));
+    assert.ok(!html.includes("A quiet afternoon with a local host."), "live cards keep the screenshot's compact label-title-action hierarchy");
     assert.ok(html.includes("/fixture/bookable-listing.jpg"));
     assert.ok(html.includes('href="/services/service%2Fwith%20space"'));
     assert.ok(!html.includes("Dawn at Fushimi Inari with Aiko"), "legacy overrides don't replace dispatched slots");
