@@ -235,7 +235,7 @@ function CuratedTileCard({
   if (!market) return null;
   return (
     <div
-      className={`${TILE_FRAME} ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`}
+      className={`${TILE_FRAME} pt-10 ${large ? "row-span-2 min-h-[330px]" : "min-h-[220px]"}`}
       style={TILE_GROUND}
       data-testid={`hero-billboard-${tile.key}`}
     >
@@ -251,10 +251,10 @@ function CuratedTileCard({
       <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }}>
         {tile.occasionLabel} · {market.cityName}
       </span>
-      <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`} style={{ fontFamily: FRAUNCES }}>
+      <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[22px]" : "text-[16px]"}`} style={{ fontFamily: FRAUNCES }}>
         {tile.headline}
       </b>
-      <ul className="relative z-10 mt-1.5 space-y-0.5 text-[12px] leading-snug opacity-90">
+      <ul className="relative z-10 mt-1.5 space-y-0.5 border-l border-white/50 pl-2 text-[11px] leading-[1.35] opacity-85">
         {tile.lines.map((line) => (
           <li key={line}>{line}</li>
         ))}
@@ -265,7 +265,8 @@ function CuratedTileCard({
           const source = billboardPlanSource(tile);
           if (source) onStartPlan(source);
         }}
-        className="relative z-10 mt-2.5 inline-flex min-h-[32px] items-center self-start rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
+        className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        style={{ background: "var(--earn-coral-ink, #DF5852)" }}
         data-testid={`hero-billboard-start-${tile.key}`}
       >
         Start this plan

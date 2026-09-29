@@ -93,6 +93,11 @@ describe("landing hero billboard", () => {
     const html = render(PAYLOAD);
     assert.ok(html.includes("Representative photo · Kyoto"));
     assert.ok(html.includes("Start this plan"));
+    for (const tile of BILLBOARD_TILES) {
+      assert.ok(html.includes(tile.headline), `${tile.key} retains its original headline`);
+      for (const line of tile.lines) assert.ok(html.includes(line), `${tile.key} retains its original itinerary copy`);
+    }
+    assert.equal((html.match(/background:var\(--earn-coral-ink, #DF5852\)/g) ?? []).length, 3, "each curated plan action uses the compact primary treatment");
     assert.ok(!html.includes("Plan with"));
     assert.ok(!html.includes("from $"));
     assert.ok(!html.includes("Demo"));
