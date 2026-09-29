@@ -147,7 +147,7 @@ or cookie value).
 - **Emitter:** server. One row per successful insert; a 409 at the cap writes nothing.
 - **Alternative (§7 Q3):** give `plan_options` a `removed_at` instead of a hard delete, and derive this event.
 
-### 3.4 Plan-fit shown — NOT BUILT
+### 3.4 Plan-fit shown — WRITTEN (A4, ledger `2026-09-29-a4-plan-fit-compare`)
 - **Fires:** the compare view renders an option's plan-fit (Part 2 M: day-weighted travel burden plus neighbourhood
   coverage). A view, so the client emits it when the fit line is ≥50% in the viewport for ≥1 s (the
   `content_impressions` visibility rule).
@@ -277,7 +277,7 @@ or cookie value).
 | 1 | plan created | `POST /api/trips` (`routes.ts:1509`) | yes (no door) | `funnel_events` `trip_created` T2 | written (exists; add props) | server (door client-supplied) |
 | 2 | anchor set opened | option-set create | NOT BUILT | `plan_option_sets` | derived | — |
 | 3 | option added | option add | NOT BUILT | `funnel_events` `slip_option_added` | written | server |
-| 4 | plan-fit shown | compare view render | NOT BUILT | `funnel_events` `slip_plan_fit_shown` | written | client (value server-recomputed) |
+| 4 | plan-fit shown | compare view render | WRITTEN (A4) | `funnel_events` `slip_plan_fit_shown` | written | client (value server-recomputed) |
 | 5 | option chosen | choose claim | NOT BUILT | `plan_option_sets` | derived | — |
 | 6 | free draft run | `content.routes.ts:4782` | yes | `funnel_events` `slip_free_draft_run` | written | server |
 | 7a | gap shown | completeness render | NOT BUILT | `funnel_events` `slip_gap_shown` | written | client |

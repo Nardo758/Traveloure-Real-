@@ -181,6 +181,9 @@ const SlipViewPage = lazy(() => import("@/pages/slip-view"));
 // Ledger `2026-09-04-guests-per-event`: the plan's guest roster — one row per person, one column
 // per event. Parameterised, so like the slip it is deliberately NOT in role-routes-config.ts.
 const PlanGuestsPage = lazy(() => import("@/pages/plan-guests"));
+// Track A step A4 (ledger `2026-09-29-a4-plan-fit-compare`): compare the places in one of a plan's
+// comparisons, led by plan-fit. Parameterised, so NOT in role-routes-config.ts.
+const PlanComparePage = lazy(() => import("@/pages/plan-compare"));
 const HiddenGemsPage = lazy(() => import("@/pages/hidden-gems"));
 const TransportationBookingPage = lazy(() => import("@/pages/transportation-booking"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy"));
@@ -686,6 +689,15 @@ function Router() {
         {() => (
           <PageErrorBoundary fallbackHeading="Guest List Not Found">
             <DashboardLayout><ProtectedRoute component={PlanGuestsPage} /></DashboardLayout>
+          </PageErrorBoundary>
+        )}
+      </Route>
+      {/* A4 compare view — registered BEFORE /plans/:tripId; the server's read gate on
+          GET /api/trips/:tripId/option-sets decides, the URL grants nothing. */}
+      <Route path="/plans/:tripId/compare/:setId">
+        {() => (
+          <PageErrorBoundary fallbackHeading="Comparison Not Found">
+            <DashboardLayout><ProtectedRoute component={PlanComparePage} /></DashboardLayout>
           </PageErrorBoundary>
         )}
       </Route>

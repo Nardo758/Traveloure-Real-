@@ -19,6 +19,14 @@
  *       ranked by plan-fit only, the nearest first; a second suggest on a non-empty set ⇒ 409
  *   O12 (A3b) the list carries each option's server-derived plan-fit ("est." here — no matrix)
  *   O13 (A3b) reopen: owner only; choosing the incumbent back rewrites the item to the original place
+ *   O14 (A4) a price FOR THE PLAN'S DATES: none while the dates are a placeholder; once chosen, the
+ *       cheapest unexpired offer whose check-in/out are exactly the plan's dates; other dates and an
+ *       expired offer give none (the view then says "price from the hotel")
+ *   O15 (A4) rank, "Easiest days" and the neighbourhood an exact pin snaps to — all server-derived;
+ *       an unpinned place names no area and is never ranked
+ *   O16 (A4) on a chosen set, each place that beats the choice carries how many minutes it saves
+ *   O17 (A4) E4 `slip_plan_fit_shown`: a stranger or a foreign option is ONE 404; the row records the
+ *       SERVER's recomputed fit; past the hourly cap nothing is written
  *
  * DISPOSABLE DB ONLY: every row is keyed by a per-run prefix and deleted afterwards.
  */
@@ -32,7 +40,9 @@ import { db, pool } from "../db";
 import { storage } from "../storage";
 import {
   OptionSetError,
+  SLIP_PLAN_FIT_SHOWN_EVENT,
   addOption,
+  recordPlanFitShown,
   listOptionSetsWithFit,
   reopenOptionSet,
   suggestLodging,
@@ -47,6 +57,7 @@ import {
   removeOption,
 } from "../services/plan-option-sets.service";
 import { OPTION_SET_CAP } from "@shared/plan-options";
+import { easiestIndex, fitRanks } from "@shared/plan-fit";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const id = (s: string) => `a3-${RUN}-${s}`;
@@ -115,7 +126,9 @@ after(async () => {
     await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${ids.trip}`);
     await db.execute(sql`DELETE FROM trip_collaborators WHERE trip_id = ${ids.trip}`);
     await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`);
+    await db.execute(sql`DELETE FROM hotel_offer_cache WHERE hotel_cache_id LIKE ${`a3-${RUN}-%`}`);
     await db.execute(sql`DELETE FROM hotel_cache WHERE id LIKE ${`a3-${RUN}-%`}`);
+    await db.execute(sql`DELETE FROM city_neighborhoods WHERE slug LIKE ${`a3-${RUN}-%`}`);
     await db.execute(sql`DELETE FROM users WHERE id LIKE ${`a3-${RUN}-%`}`);
   } finally {
     await pool.end();
@@ -325,4 +338,92 @@ test("O13: reopen is the owner's; choosing the incumbent back restores the origi
   const item = await storage.getItineraryItemByIdAndTrip(ids.item, ids.trip);
   assert.equal(item?.title, "Incumbent inn");
   await expectError(reopenOptionSet({ tripId: ids.trip, setId: itemSetId + "x", userId: ids.owner }), 404);
+});
+
+// ── A4 (ledger `2026-09-29-a4-plan-fit-compare`) ────────────────────────────────────────────
+
+let a4SetId = "";
+
+test("O14: a price for the plan's own dates — only once chosen, exact dates, unexpired, cheapest", async () => {
+  const set = await createOptionSet({ tripId: ids.trip, userId: ids.owner, categoryKey: "accommodation", label: "A4 compare" });
+  a4SetId = set.id;
+  for (const h of [ids.h1, ids.h2, ids.h3]) {
+    await addOption({ tripId: ids.trip, setId: set.id, userId: ids.owner, source: { kind: "hotel_cache", hotelCacheId: h } });
+  }
+  await db.execute(sql`
+    INSERT INTO hotel_offer_cache (id, hotel_cache_id, offer_id, check_in_date, check_out_date, price, currency, expires_at)
+    VALUES (${id("of1")}, ${ids.h1}, ${id("of1")}, '2027-05-01', '2027-05-06', 500.00, 'USD', now() + interval '1 day'),
+           (${id("of2")}, ${ids.h1}, ${id("of2")}, '2027-05-01', '2027-05-06', 420.00, 'USD', now() + interval '1 day'),
+           (${id("of3")}, ${ids.h2}, ${id("of3")}, '2027-05-02', '2027-05-06', 300.00, 'USD', now() + interval '1 day'),
+           (${id("of4")}, ${ids.h3}, ${id("of4")}, '2027-05-01', '2027-05-06', 250.00, 'USD', now() - interval '1 minute')
+  `);
+  const priceOf = async (h: string) =>
+    (await listOptionSetsWithFit(ids.trip)).find((x) => x.id === a4SetId)!.options.find((o) => o.hotelCacheId === h)!.datedPrice;
+  assert.equal(await priceOf(ids.h1), null, "a placeholder window carries no dated price (dates_confirmed_at NULL)");
+  await db.execute(sql`UPDATE trips SET dates_confirmed_at = now() WHERE id = ${ids.trip}`);
+  assert.deepEqual(await priceOf(ids.h1), { amount: "420.00", currency: "USD", nights: 5 }, "the cheapest offer for exactly these dates");
+  assert.equal(await priceOf(ids.h2), null, "an offer for other dates is not this plan's price");
+  assert.equal(await priceOf(ids.h3), null, "an expired offer is not a price");
+});
+
+test("O15: rank, 'Easiest days' and the neighbourhood are server-derived; an unpinned place names no area", async () => {
+  await db.execute(sql`UPDATE trips SET market_slug = 'kyoto' WHERE id = ${ids.trip}`);
+  await db.execute(sql`
+    INSERT INTO city_neighborhoods (id, city, country, name, slug, centroid_lat, centroid_lng, radius_km)
+    VALUES (${id("nb")}, 'Kyoto', 'Japan', ${`A4 area ${RUN}`}, ${id("nb")}, 34.9858, 135.7588, 0.05)
+  `);
+  const set = (await listOptionSetsWithFit(ids.trip)).find((x) => x.id === a4SetId)!;
+  const fits = set.options.map((o) => o.fit);
+  assert.deepEqual(set.options.map((o) => o.fitRank), fitRanks(fits));
+  const best = easiestIndex(fits);
+  assert.deepEqual(set.options.map((o) => o.easiest), set.options.map((_, i) => i === best));
+  assert.deepEqual(set.stops, { located: 3, total: 4 });
+  const station = set.options.find((o) => o.hotelCacheId === ids.h2)!;
+  assert.equal(station.neighborhood, `A4 area ${RUN}`, "an exact pin inside the area's radius names it");
+  const unpinned = await addOption({ tripId: ids.trip, setId: a4SetId, userId: ids.owner, source: { kind: "custom", title: "Somewhere unpinned" } }).catch((e) => e);
+  assert.ok(unpinned instanceof OptionSetError && unpinned.code === "set_full", "the set is full at three");
+  const [spare] = (await listOptionSetsWithFit(ids.trip)).filter((x) => x.id !== a4SetId && x.status === "open");
+  if (spare) assert.ok(spare.options.every((o) => o.latitude != null || (o.neighborhood === null && o.fitRank === null)));
+});
+
+test("O16: on a chosen set, a place that beats the choice carries the minutes it saves", async () => {
+  const before = (await listOptionSetsWithFit(ids.trip)).find((x) => x.id === a4SetId)!;
+  const worst = [...before.options].sort((a, b) => (b.fit as any).minutesPerDay - (a.fit as any).minutesPerDay)[0];
+  await chooseOption({ tripId: ids.trip, setId: a4SetId, optionId: worst.id, userId: ids.owner });
+  const set = (await listOptionSetsWithFit(ids.trip)).find((x) => x.id === a4SetId)!;
+  assert.equal(set.status, "chosen");
+  const chosenMin = (set.options.find((o) => o.id === worst.id)!.fit as any).minutesPerDay as number;
+  assert.equal(set.options.find((o) => o.id === worst.id)!.easierByMinutes, null, "the choice never beats itself");
+  for (const o of set.options.filter((x) => x.easierByMinutes != null)) {
+    assert.equal(o.easierByMinutes, chosenMin - (o.fit as any).minutesPerDay);
+  }
+  assert.equal(set.easierCount, set.options.filter((o) => o.easierByMinutes != null).length);
+  assert.ok((set.easierCount ?? 0) >= 1, "the Gion hotel beats the far-west one by the threshold");
+});
+
+test("O17: slip_plan_fit_shown — one 404 for strangers and foreign options; the server's fit is recorded; the cap holds", async () => {
+  const set = (await listOptionSetsWithFit(ids.trip)).find((x) => x.id === a4SetId)!;
+  const opt = set.options[0];
+  const base = { tripId: ids.trip, setId: a4SetId, optionId: opt.id, surface: "compare_view" as const, viewport: "narrow" as const, viewId: id("view") };
+  await expectError(recordPlanFitShown({ ...base, userId: ids.stranger }), 404);
+  await expectError(recordPlanFitShown({ ...base, userId: ids.owner, optionId: id("nope") }), 404);
+  assert.deepEqual(await recordPlanFitShown({ ...base, userId: ids.owner }), { recorded: true });
+  const rowsOf = async () =>
+    (await db.execute(sql`SELECT properties FROM funnel_events WHERE trip_id = ${ids.trip} AND event_type = ${SLIP_PLAN_FIT_SHOWN_EVENT}`)).rows as Array<{ properties: any }>;
+  const [row] = await rowsOf();
+  assert.equal(row.properties.optionId, opt.id);
+  assert.equal(row.properties.fitBasis, "est_straight_line");
+  assert.equal(row.properties.fitVersion, "m3-v1");
+  assert.equal(row.properties.burdenMinutes, (opt.fit as any).minutesPerDay, "the value is the server's, recomputed");
+  assert.equal(row.properties.rank, opt.fitRank);
+  assert.equal(row.properties.surface, "compare_view");
+  const prev = process.env.SLIP_EVENTS_HOURLY_CAP;
+  process.env.SLIP_EVENTS_HOURLY_CAP = "1";
+  try {
+    assert.deepEqual(await recordPlanFitShown({ ...base, userId: ids.owner }), { recorded: false });
+  } finally {
+    if (prev === undefined) delete process.env.SLIP_EVENTS_HOURLY_CAP;
+    else process.env.SLIP_EVENTS_HOURLY_CAP = prev;
+  }
+  assert.equal((await rowsOf()).length, 1);
 });
