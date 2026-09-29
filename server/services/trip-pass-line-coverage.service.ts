@@ -148,3 +148,34 @@ export function lineFeeWaiverBasis(opts: {
   if (opts.tripPassCovered) return "trip_pass";
   return null;
 }
+
+/**
+ * The cart-ADD twin of the checkout pre-flight (ledger `2026-09-28-cart-add-trip-ownership`,
+ * follows R209). `POST /api/cart` and `POST /api/cart/items` accepted a body `tripId` onto the
+ * line with no ownership check. Checkout already refuses a foreign plan, so it could grant nothing,
+ * but a line should never be BORN on someone else's plan. Same ONE ownership read (§18 rule 1).
+ *
+ *   - absent / null / "" ⇒ no plan: `null` (the add proceeds, a standalone line).
+ *   - any other non-string ⇒ 400: a plan id is a string, and a malformed one is not guessed at.
+ *   - a plan the SESSION user does not own ⇒ 403 `trip_not_owned`.
+ *   - an ownership lookup that threw ⇒ 503 `trip_unverified`: never written on a guess.
+ */
+export async function cartAddTripRefusal(
+  userId: string,
+  tripId: unknown,
+  deps?: Pick<TripPassCoverageDeps, "ownsTrip">,
+): Promise<{ status: number; body: Record<string, unknown> } | null> {
+  if (tripId === undefined || tripId === null || tripId === "") return null;
+  if (typeof tripId !== "string") {
+    return { status: 400, body: { message: "tripId must be a string", reason: "trip_id_invalid" } };
+  }
+  const r = await resolveOwnedLineTripIds(userId, [{ tripId }], deps);
+  if (r.owned.has(tripId)) return null;
+  if (r.failed.has(tripId)) {
+    return {
+      status: 503,
+      body: { message: "We couldn't confirm that plan. Please try again.", reason: "trip_unverified" },
+    };
+  }
+  return { status: 403, body: { message: "That plan is not yours.", reason: "trip_not_owned" } };
+}
