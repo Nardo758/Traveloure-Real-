@@ -104,7 +104,9 @@ describe("landing hero billboard", () => {
     assert.ok(html.includes("HIDDEN GEM"));
     assert.ok(html.includes("BOOK ON TRAVELOURE"));
     assert.ok(!html.includes("<details"), "no expandable details on the template");
-    assert.equal((html.match(/background:var\(--earn-coral-ink, #DF5852\)/g) ?? []).length, 3, "each curated plan action uses the compact primary treatment");
+    const startButtons = html.match(/<button[^>]+data-testid="hero-billboard-start-[^"]+"[^>]*>/g) ?? [];
+    assert.equal(startButtons.length, 3, "one planning action per curated tile");
+    for (const tag of startButtons) assert.ok(tag.includes("background:var(--earn-coral-ink)"), "each curated plan action uses the compact primary treatment");
     assert.ok(!html.includes("Plan with"));
     assert.ok(!html.includes("from $"));
     assert.ok(!html.includes('data-testid="hero-billboard-price-'));
@@ -222,7 +224,7 @@ describe("landing hero billboard", () => {
     for (const action of ["hero-billboard-plan-gem-early-start", "hero-billboard-book-date-night"]) {
       const actionTag = html.match(new RegExp(`<[^>]+data-testid="${action}"[^>]*>`))?.[0];
       assert.ok(actionTag, `${action} renders`);
-      assert.ok(actionTag.includes("background:var(--earn-coral-ink, #DF5852)"), `${action} matches the primary expert action`);
+      assert.ok(actionTag.includes("background:var(--earn-coral-ink)"), `${action} matches the primary expert action`);
     }
     assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
     assert.ok(html.includes("Plan with @aiko"));
@@ -271,6 +273,68 @@ describe("landing hero billboard", () => {
     assert.ok(html.includes('data-testid="hero-billboard-label-date-night">BOOK ON TRAVELOURE'));
     assert.equal((html.match(/Start this plan<\/button>/g) ?? []).length, 2);
     assert.ok(!html.includes("Plan details"));
+  });
+
+  /** The HTML of one tile: the balanced <div> carrying data-testid="hero-billboard-<key>". */
+  function tileHtml(html: string, key: string): string {
+    const open = html.indexOf(`data-testid="hero-billboard-${key}"`);
+    assert.ok(open > 0, `tile ${key} renders`);
+    const start = html.lastIndexOf("<div", open);
+    let depth = 0;
+    const re = /<div\b|<\/div>/g;
+    re.lastIndex = start;
+    for (let m = re.exec(html); m; m = re.exec(html)) {
+      depth += m[0] === "</div>" ? -1 : 1;
+      if (depth === 0) return html.slice(start, m.index + 6);
+    }
+    throw new Error(`tile ${key} never closes`);
+  }
+  /** The visible text of every action (button or link) on a tile, excluding its photo credit. */
+  function actions(tile: string): string[] {
+    const out: string[] = [];
+    for (const m of Array.from(tile.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/g))) {
+      if (/data-testid="hero-billboard-credit-/.test(m[2])) continue;
+      out.push(m[3].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim());
+    }
+    return out;
+  }
+  /** The top-right badge's text, or null when the tile has none. */
+  function badge(tile: string): string | null {
+    const m = tile.match(/<span[^>]*class="absolute right-2\.5 top-2\.5[^"]*"[^>]*>([\s\S]*?)<\/span>/);
+    return m ? m[1].replace(/<[^>]+>/g, "").trim() : null;
+  }
+
+  it("R1 each REAL card shows exactly its own buttons and badge (dispatch fixture)", () => {
+    const html = render(PAYLOAD, [OVERRIDE], DISPATCH);
+    const [one, two, three] = BILLBOARD_TILES.map((t) => tileHtml(html, t.key));
+    assert.deepEqual(actions(one), ["Plan with @aiko · $120", "View listing"], "expert: plan (coral, with price) + view listing");
+    assert.equal(badge(one), null, "the expert card carries no badge");
+    assert.ok(one.includes("LOCAL EXPERT · KYOTO"));
+    assert.deepEqual(actions(two), ["Plan around this gem"], "gem: one action");
+    assert.equal(badge(two), "87", "gem: its own score, top right");
+    assert.ok(two.includes("HIDDEN GEM"));
+    assert.deepEqual(actions(three), ["Book now"], "listing: one action");
+    assert.equal(badge(three), "$145", "listing: its own price, top right");
+    assert.ok(three.includes("BOOK ON TRAVELOURE"));
+    assert.ok(three.includes('href="/services/service%2Fwith%20space"'), "Book now goes to the listing's own booking path");
+    for (const tile of [one, two, three]) assert.ok(!tile.includes("Start this plan"), "a real card never offers the curated action");
+    // The listing's and the gem's own photos: no representative label, no repo credit.
+    assert.ok(!one.includes("Representative photo") && !one.includes("hero-billboard-credit-"), "expert card on its listing's own photo");
+    assert.ok(!three.includes("Representative photo") && !three.includes("hero-billboard-credit-"), "listing card on its own photo");
+    assert.ok(two.includes("Photo: Mina Sato") && !two.includes("Representative photo"), "gem card credits the gem's own photo");
+  });
+
+  it("R2 each CURATED card shows only Start this plan — no handle, price, score or second action", () => {
+    const html = render(PAYLOAD, [], undefined);
+    for (const t of BILLBOARD_TILES) {
+      const tile = tileHtml(html, t.key);
+      assert.deepEqual(actions(tile), ["Start this plan"], `${t.key}: exactly one action`);
+      assert.equal(badge(tile), null, `${t.key}: no badge`);
+      assert.ok(!/@\w/.test(tile.replace(/<[^>]+>/g, "")), `${t.key}: no handle`);
+      assert.ok(!/\$\d/.test(tile.replace(/<[^>]+>/g, "")), `${t.key}: no price`);
+      assert.ok(tile.includes("Representative photo · Kyoto"), `${t.key}: says the photo is representative`);
+      assert.ok(tile.includes(`hero-billboard-credit-${t.key}`), `${t.key}: credits its photo`);
+    }
   });
 
   it("uses credited curated cards when dispatch has no anchored market", () => {

@@ -120,6 +120,16 @@
     "startPlanning": "プランニングを始める",
     "beginPrompt": "どこから始めますか？",
     "beginBrowse": "探す",
-    "beginFindHelp": "相談する"
+    "beginFindHelp": "相談する",
+    "billboard": {
+      "startThisPlan": "このプランを始める",
+      "planWith": "@{{handle}}とプランする",
+      "viewListing": "掲載を見る",
+      "planAroundGem": "このスポットを軸にプランする",
+      "bookNow": "今すぐ予約",
+      "slotLocalExpert": "ローカルエキスパート",
+      "slotHiddenGem": "隠れた名所",
+      "slotBookOnTraveloure": "Traveloureで予約"
+    }
   }
 }

@@ -9,6 +9,10 @@
  *
  * RULES
  *   1. Every page a footer link opens (FOOTER_PAGE_FILES) holds ZERO hex literals.
+ *   1b. Every file under a ZERO_HEX_DIRS directory holds ZERO hex literals — the landing page's
+ *       components (billboard slot-types dispatch, Sep 29, 2026; ledger
+ *       `2026-09-28-billboard-slot-types`: "Hex lint at zero for landing"). landing.tsx is a
+ *       page and is held by rule 2 with no baseline entry; what it renders lives here.
  *   2. Every other file under client/src/pages may hold no MORE hex literals than
  *      scripts/page-hex-baseline.json records for it; a file absent from the baseline holds none.
  *      The baseline only shrinks: a file that drops below its count is reported so the number can
@@ -19,8 +23,8 @@
  * an issue reference such as `// #323` is not a colour.
  *
  * NEGATIVE SPACE (§18d) — what this cannot see:
- *   - Files outside client/src/pages. Components render page content too; a hex in a component is
- *     not caught here.
+ *   - Files outside client/src/pages and ZERO_HEX_DIRS. Components render page content too; a hex
+ *     in any other component directory is not caught here.
  *   - Colours written without a hex: `rgb(…)`, `hsl(…)`, named colours (`white`, `black`), and
  *     Tailwind palette classes (`bg-gray-50`, `text-rose-500`). Those are reviewed, not grepped.
  *   - A three-letter hex word used as text (`#add`, `#bad`) counts as a colour; it is rare and
@@ -55,6 +59,9 @@ const FOOTER_PAGE_FILES = [
   "privacy.tsx",
   "terms.tsx",
 ];
+
+/** Component directories held to ZERO hex (rule 1b), relative to the repo root. */
+const ZERO_HEX_DIRS = ["client/src/components/landing"];
 
 const HEX = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})(?![0-9a-zA-Z_-])/g;
 
@@ -132,6 +139,19 @@ function evaluate(sources, baseline, footerFiles = FOOTER_PAGE_FILES) {
   return { failures, shrunk };
 }
 
+/** Pure decision for rule 1b: every file in a zero-hex directory holds none. */
+function evaluateZero(sources) {
+  const failures = [];
+  for (const [rel, src] of Object.entries(sources)) {
+    const hits = hexHits(src);
+    if (hits.length) {
+      const where = hits.slice(0, 5).map((h) => `${rel}:${h.line} ${h.hex}`).join(", ");
+      failures.push(`${rel} is a landing component and must use tokens only — ${hits.length} hex literal(s): ${where}`);
+    }
+  }
+  return failures;
+}
+
 function selfTest() {
   const cases = [
     ["a footer page with a hex fails", () => evaluate({ "about.tsx": 'const x = "bg-[#FF385C]";' }, {}).failures.length === 1],
@@ -145,6 +165,8 @@ function selfTest() {
     ["a new file with a hex fails", () => evaluate({ "new-page.tsx": 'a("#fff");' }, {}).failures.length === 1],
     ["a shrunk file is reported, not failed", () => { const r = evaluate({ "admin/x.tsx": 'a("#fff");' }, { "admin/x.tsx": 2 }); return r.failures.length === 0 && r.shrunk.length === 1; }],
     ["a footer page listed in the baseline fails", () => evaluate({}, { "about.tsx": 1 }).failures.length === 1],
+    ["a landing component with a hex fallback fails", () => evaluateZero({ "client/src/components/landing/x.tsx": 'a("var(--earn-ink, #1F2733)");' }).length === 1],
+    ["a landing component on tokens passes", () => evaluateZero({ "client/src/components/landing/x.tsx": 'a("var(--earn-ink)");' }).length === 0],
   ];
   let ok = true;
   for (const [name, fn] of cases) {
@@ -171,6 +193,8 @@ function main() {
   }
   const baseline = fs.existsSync(BASELINE_PATH) ? JSON.parse(fs.readFileSync(BASELINE_PATH, "utf8")) : {};
   const { failures, shrunk } = evaluate(sources, baseline);
+  const zeroFiles = ZERO_HEX_DIRS.flatMap((d) => listPageFiles(path.join(ROOT, d)));
+  failures.push(...evaluateZero(Object.fromEntries(zeroFiles.map((f) => [path.relative(ROOT, f).split(path.sep).join("/"), fs.readFileSync(f, "utf8")]))));
   for (const s of shrunk) console.log(`note: ${s}`);
   if (failures.length) {
     for (const f of failures) console.error(`FAIL: ${f}`);
@@ -178,8 +202,8 @@ function main() {
     process.exit(1);
   }
   const debt = Object.values(baseline).reduce((a, b) => a + b, 0);
-  console.log(`check-page-hex: OK — ${FOOTER_PAGE_FILES.length} footer pages hold no hex; ${Object.keys(baseline).length} other page files carry ${debt} baselined literal(s), none added.`);
+  console.log(`check-page-hex: OK — ${FOOTER_PAGE_FILES.length} footer pages and ${ZERO_HEX_DIRS.join(", ")} hold no hex; ${Object.keys(baseline).length} other page files carry ${debt} baselined literal(s), none added.`);
 }
 
-module.exports = { hexHits, stripComments, evaluate, FOOTER_PAGE_FILES };
+module.exports = { hexHits, stripComments, evaluate, evaluateZero, FOOTER_PAGE_FILES, ZERO_HEX_DIRS };
 if (require.main === module) main();

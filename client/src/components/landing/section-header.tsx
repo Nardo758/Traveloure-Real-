@@ -67,12 +67,12 @@ export function OpenSection({
   return (
     <section
       className="w-full px-4"
-      style={{ background: "var(--earn-ground, #FAFAF8)" }}
+      style={{ background: "var(--earn-ground)" }}
       data-testid={testId}
     >
       <div
         className="mx-auto max-w-[1180px] pb-2 pt-[34px]"
-        style={first ? undefined : { borderTop: "1px solid var(--earn-border, #E4E4DE)" }}
+        style={first ? undefined : { borderTop: "1px solid var(--earn-border)" }}
       >
         {children}
       </div>

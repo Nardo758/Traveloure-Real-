@@ -17,11 +17,11 @@ const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 
 // Curated order (the mock's five), slugs verified against /experiences/:slug routes.
 const CURATED_EXPERIENCES = [
-  { title: "Date nights", note: "romantic", slug: "date-night", bg: "linear-gradient(135deg,#E5C6B6,#B97C7C)" },
-  { title: "Weddings", note: "luxury", slug: "wedding", bg: "linear-gradient(135deg,#B9C8D8,#7C97B4)" },
-  { title: "Proposals", note: "surprise", slug: "proposal", bg: "linear-gradient(135deg,#F3E2B8,#D2A24C)" },
-  { title: "Celebrations", note: "party", slug: "birthday", bg: "linear-gradient(135deg,#CFE3D3,#6FA383)" },
-  { title: "Travel", note: "culture", slug: "travel", bg: "linear-gradient(135deg,#C9D3DC,#8A9AAA)" },
+  { title: "Date nights", note: "romantic", slug: "date-night", bg: "var(--landing-swatch-date-night)" },
+  { title: "Weddings", note: "luxury", slug: "wedding", bg: "var(--landing-swatch-wedding)" },
+  { title: "Proposals", note: "surprise", slug: "proposal", bg: "var(--landing-swatch-proposal)" },
+  { title: "Celebrations", note: "party", slug: "birthday", bg: "var(--landing-swatch-birthday)" },
+  { title: "Travel", note: "culture", slug: "travel", bg: "var(--landing-swatch-travel)" },
 ];
 
 export function ExperiencesRail() {

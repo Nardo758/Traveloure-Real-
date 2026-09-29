@@ -167,6 +167,8 @@ export interface BillboardSliceReadyCandidate {
 
 export interface BillboardDispatchDeps extends BillboardOverrideDeps {
   creditedMarkets: () => Promise<ReadonlySet<string>>;
+  /** The clock the daily market rotation reads (injected so the pick is proven without waiting a day). */
+  now?: () => Date;
   gems: (marketKey: string) => Promise<BillboardGemCandidate[]>;
   sliceReadyListings: (marketKey: string) => Promise<BillboardSliceReadyCandidate[]>;
 }
@@ -340,6 +342,19 @@ const DEFAULT_DISPATCH_DEPS: BillboardDispatchDeps = {
 };
 
 /**
+ * The day's slot-1 anchor: one qualifying market per UTC day, in operating-market order, then that
+ * market's first qualifying override. Pure; an empty list answers null (every slot stays curated).
+ */
+export function pickRotatedSlotOne(qualifying: readonly BillboardOverride[], now: Date): BillboardOverride | null {
+  const markets: string[] = [];
+  for (const o of qualifying) if (!markets.includes(o.marketKey)) markets.push(o.marketKey);
+  if (!markets.length) return null;
+  const day = Math.floor(now.getTime() / 86_400_000);
+  const marketKey = markets[day % markets.length];
+  return qualifying.find((o) => o.marketKey === marketKey) ?? null;
+}
+
+/**
  * Resolve the three typed billboard slots. The legacy override array remains separately available
  * so #1167 callers keep the exact pure assignment API and payload representation they already use.
  */
@@ -350,7 +365,13 @@ export async function resolveBillboardDispatch(
     resolveBillboardOverrides(deps),
     deps.creditedMarkets(),
   ]);
-  const slotOneOverride = overrides.find((item) => creditedMarkets.has(item.marketKey));
+  // Market rotation (dispatch, Sep 29, 2026): ONLY among markets that can fill slot 1 for real —
+  // a byline-gated expert's live listing in a market with credited tiles. A market that cannot is
+  // never selected, so the anchor is never a curated fallback wearing another market's name.
+  const slotOneOverride = pickRotatedSlotOne(
+    overrides.filter((item) => creditedMarkets.has(item.marketKey)),
+    (deps.now ?? (() => new Date()))(),
+  );
   if (!slotOneOverride) {
     return {
       overrides,

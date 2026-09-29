@@ -206,10 +206,11 @@ function TileCredit({ tileKey, credit }: { tileKey: string; credit: BillboardCre
   );
 }
 
-function RepresentativePhotoLabel({ cityName }: { cityName: string }) {
+function RepresentativePhotoLabel({ cityName, besideBadge = false }: { cityName: string; besideBadge?: boolean }) {
   return (
     <span
-      className="absolute left-2.5 top-2.5 z-10 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em]"
+      // Beside a top-right badge the label wraps short of it (at 390 px they collided).
+      className={`absolute left-2.5 top-2.5 z-10 rounded-[6px] bg-black/45 px-[7px] py-[3px] text-[9px] font-medium uppercase tracking-[0.1em] ${besideBadge ? "max-w-[calc(100%-5rem)]" : ""}`}
       style={{ fontFamily: EARN_MONO }}
     >
       {billboardLabel(cityName)}
@@ -218,9 +219,34 @@ function RepresentativePhotoLabel({ cityName }: { cityName: string }) {
 }
 
 const TILE_FRAME = "relative flex flex-col justify-end overflow-hidden rounded-[14px] p-3 text-white";
-const TILE_GROUND = { background: "linear-gradient(160deg,#7C6A63,#1E3A5F)" };
+const TILE_GROUND = { background: "var(--landing-tile-ground)" };
 
-const SLOT_LABELS = ["LOCAL EXPERT", "HIDDEN GEM", "BOOK ON TRAVELOURE"] as const;
+/**
+ * The three slot labels and the card actions, through i18n (en + ja, `nav` namespace, hero.billboard.*).
+ * Labels render upper-case in the mono eyebrow; the English defaults are the screenshot's words.
+ */
+function useBillboardCopy() {
+  const { t } = useTranslation("nav");
+  return {
+    slotLabels: [
+      t("hero.billboard.slotLocalExpert", "Local expert").toUpperCase(),
+      t("hero.billboard.slotHiddenGem", "Hidden gem").toUpperCase(),
+      t("hero.billboard.slotBookOnTraveloure", "Book on Traveloure").toUpperCase(),
+    ] as const,
+    startThisPlan: t("hero.billboard.startThisPlan", "Start this plan"),
+    // The handle is substituted here as well, so the label is right before i18n initialises.
+    planWith: (handle: string) =>
+      String(t("hero.billboard.planWith", { handle, defaultValue: "Plan with @{{handle}}" })).replace("{{handle}}", handle),
+    viewListing: t("hero.billboard.viewListing", "View listing"),
+    planAroundGem: t("hero.billboard.planAroundGem", "Plan around this gem"),
+    bookNow: t("hero.billboard.bookNow", "Book now"),
+  };
+}
+
+/** Slot 1's eyebrow names its market: "LOCAL EXPERT · KYOTO". */
+function localExpertLabel(copy: ReturnType<typeof useBillboardCopy>, cityName: string): string {
+  return `${copy.slotLabels[0]} · ${cityName.toUpperCase()}`;
+}
 
 /** One visual frame for real and curated slots. Source-specific cards only supply truthful content. */
 function BillboardCardFrame({
@@ -249,7 +275,7 @@ function BillboardCardFrame({
     >
       {photo}
       <TileShade />
-      {representativeCity && <RepresentativePhotoLabel cityName={representativeCity} />}
+      {representativeCity && <RepresentativePhotoLabel cityName={representativeCity} besideBadge={!!badge} />}
       {badge}
       <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }} data-testid={`hero-billboard-label-${tileKey}`}>
         {label}
@@ -277,8 +303,9 @@ function CuratedTileCard({
 }) {
   const [photoFailed, setPhotoFailed] = useState(false);
   const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
+  const copy = useBillboardCopy();
   if (!market) return null;
-  const slotLabel = SLOT_LABELS[slotIndex];
+  const slotLabel = copy.slotLabels[slotIndex as 0 | 1 | 2];
   if (!slotLabel) throw new Error(`Unknown billboard slot ${slotIndex}`);
   return (
     <BillboardCardFrame
@@ -286,7 +313,7 @@ function CuratedTileCard({
       large={large}
       photo={!photoFailed && <TilePhoto src={tile.imagePath} onFail={() => setPhotoFailed(true)} />}
       representativeCity={!photoFailed ? market.cityName : undefined}
-      label={`${slotLabel}${slotIndex === 0 ? ` · ${market.cityName.toUpperCase()}` : ""}`}
+      label={slotIndex === 0 ? localExpertLabel(copy, market.cityName) : slotLabel}
       headline={tile.headline}
       credit={!photoFailed && <TileCredit tileKey={tile.key} credit={tile.credit} />}
       actions={
@@ -297,10 +324,10 @@ function CuratedTileCard({
             if (source) onStartPlan(source);
           }}
           className="inline-flex min-h-[36px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-          style={{ background: "var(--earn-coral-ink, #DF5852)" }}
+          style={{ background: "var(--earn-coral-ink)" }}
           data-testid={`hero-billboard-start-${tile.key}`}
         >
-          Start this plan
+          {copy.startThisPlan}
         </button>
       }
     />
@@ -319,15 +346,14 @@ function OverrideTileCard({
   tile,
   large,
   override,
-  marketLabel,
   onStartPlan,
 }: {
   tile: BillboardTile & { credit: BillboardCredit };
   large: boolean;
   override: BillboardOverride;
-  marketLabel?: string;
   onStartPlan: (source: PlanningSource) => void;
 }) {
+  const copy = useBillboardCopy();
   const [listingPhotoFailed, setListingPhotoFailed] = useState(false);
   const [fallbackFailed, setFallbackFailed] = useState(false);
   const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
@@ -347,7 +373,7 @@ function OverrideTileCard({
         !fallbackFailed && <TilePhoto src={tile.imagePath} onFail={() => setFallbackFailed(true)} />
       )}
       representativeCity={!usesListingPhoto && !fallbackFailed ? market.cityName : undefined}
-      label={marketLabel ?? `LOCAL EXPERT · ${market.cityName.toUpperCase()}`}
+      label={localExpertLabel(copy, market.cityName)}
       headline={listing.title}
       titleTestId={`hero-billboard-listing-title-${tile.key}`}
       credit={!usesListingPhoto && !fallbackFailed && <TileCredit tileKey={tile.key} credit={tile.credit} />}
@@ -362,7 +388,7 @@ function OverrideTileCard({
           style={{ background: "var(--earn-coral-ink)" }}
           data-testid={`hero-billboard-plan-with-${tile.key}`}
         >
-          Plan with @{override.handle}
+          {copy.planWith(override.handle)}
           {!price.hidden && (
             <span data-testid={`hero-billboard-price-${tile.key}`}>
               {" · "}{price.text}{price.unit ? ` ${price.unit}` : ""}
@@ -375,7 +401,7 @@ function OverrideTileCard({
             className="inline-flex min-h-[36px] items-center rounded-[7px] border border-white/70 bg-black/20 px-2.5 text-[12px] font-semibold text-white"
             data-testid={`hero-billboard-view-listing-${tile.key}`}
           >
-            View listing
+            {copy.viewListing}
           </Link>
         )}
       </>}
@@ -408,6 +434,7 @@ function GemTileCard({
   slot: BillboardSlotTwo;
   onStartPlan: (source: PlanningSource) => void;
 }) {
+  const copy = useBillboardCopy();
   const [gemPhotoFailed, setGemPhotoFailed] = useState(false);
   const [fallbackFailed, setFallbackFailed] = useState(false);
   const market = OPERATING_MARKETS.find((m) => m.marketKey === slot.marketKey);
@@ -425,13 +452,13 @@ function GemTileCard({
       )}
       representativeCity={!usesGemPhoto && !fallbackFailed ? market.cityName : undefined}
       badge={<span
-        className="absolute right-2.5 top-2.5 z-10 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#1e3148]"
+        className="absolute right-2.5 top-2.5 z-10 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[color:var(--landing-photo-badge-ink)]"
         aria-label={`Score ${slot.gem.score}`}
         data-testid={`hero-billboard-gem-score-${tile.key}`}
       >
         {slot.gem.score}
       </span>}
-      label={SLOT_LABELS[1]}
+      label={copy.slotLabels[1]}
       headline={slot.gem.name}
       actions={<button
         type="button"
@@ -440,10 +467,10 @@ function GemTileCard({
           if (source) onStartPlan(source);
         }}
         className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        style={{ background: "var(--earn-coral-ink, #DF5852)" }}
+        style={{ background: "var(--earn-coral-ink)" }}
         data-testid={`hero-billboard-plan-gem-${tile.key}`}
       >
-        Plan around this gem
+        {copy.planAroundGem}
       </button>}
       credit={usesGemPhoto ? (
         <span className="relative z-10 mt-2 text-[9.5px] opacity-75" style={{ fontFamily: EARN_MONO }}>
@@ -466,6 +493,7 @@ function BookableTileCard({
   large: boolean;
   slot: BillboardSlotThree;
 }) {
+  const copy = useBillboardCopy();
   const [listingPhotoFailed, setListingPhotoFailed] = useState(false);
   const [fallbackFailed, setFallbackFailed] = useState(false);
   const market = OPERATING_MARKETS.find((m) => m.marketKey === slot.marketKey);
@@ -485,21 +513,21 @@ function BookableTileCard({
       representativeCity={!usesListingPhoto && !fallbackFailed ? market.cityName : undefined}
       badge={!price.hidden && (
         <span
-          className="absolute right-2.5 top-2.5 z-10 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#1e3148]"
+          className="absolute right-2.5 top-2.5 z-10 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[color:var(--landing-photo-badge-ink)]"
           data-testid={`hero-billboard-price-${tile.key}`}
         >
           {price.text}{price.unit ? ` ${price.unit}` : ""}
         </span>
       )}
-      label={SLOT_LABELS[2]}
+      label={copy.slotLabels[2]}
       headline={slot.listing.title}
       actions={<Link
         href={`/services/${encodeURIComponent(slot.listing.id)}`}
         className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        style={{ background: "var(--earn-coral-ink, #DF5852)" }}
+        style={{ background: "var(--earn-coral-ink)" }}
         data-testid={`hero-billboard-book-${tile.key}`}
       >
-        Book now
+        {copy.bookNow}
       </Link>}
       credit={!usesListingPhoto && !fallbackFailed && <TileCredit tileKey={tile.key} credit={tile.credit} />}
     />
@@ -581,7 +609,7 @@ export function LandingHeroContent({
   return (
     <section
       className="w-full px-4"
-      style={{ background: "var(--earn-ground, #FAFAF8)" }}
+      style={{ background: "var(--earn-ground)" }}
       data-testid="landing-hero"
     >
       <div
@@ -596,11 +624,11 @@ export function LandingHeroContent({
               fontFamily: EARN_MONO,
               color: "var(--earn-teal-ink)",
               background: "var(--earn-teal-wash)",
-              borderColor: "#BFDCDC",
+              borderColor: "color-mix(in srgb, var(--earn-teal) 35%, transparent)",
             }}
             data-testid="hero-beta-pill"
           >
-            <i className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--earn-green, #5DCAA5)" }} />
+            <i className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--earn-green)" }} />
             Beta in {OPERATING_MARKETS.length} operating markets
           </span>
           <h1
@@ -609,7 +637,7 @@ export function LandingHeroContent({
           >
             {t("hero.headline", "Any experience. Anywhere. Planned like a local.")}
           </h1>
-          <p className="mb-[18px] mt-3 max-w-[500px] text-[17px]" style={{ color: "#3C4652" }}>
+          <p className="mb-[18px] mt-3 max-w-[500px] text-[17px]" style={{ color: "color-mix(in srgb, var(--earn-ink) 85%, var(--earn-ground))" }}>
             {t(
               "hero.subhead",
               "Tell us the occasion and where in the world you want it. We build the plan around it, and someone who lives there does the rest.",
@@ -618,7 +646,7 @@ export function LandingHeroContent({
 
           <div
             className="flex max-w-[520px] items-center gap-2.5 border-b-[1.5px] px-0.5 py-2.5"
-            style={{ borderColor: "var(--earn-ink, #1A1A18)" }}
+            style={{ borderColor: "var(--earn-ink)" }}
             onMouseEnter={() => setSearchHovered(true)}
             onMouseLeave={() => setSearchHovered(false)}
           >
@@ -640,14 +668,14 @@ export function LandingHeroContent({
             />
             <span
               className="ml-auto whitespace-nowrap text-[10.5px] tracking-[0.06em]"
-              style={{ fontFamily: EARN_MONO, color: "var(--earn-faint, #9AA1A9)" }}
+              style={{ fontFamily: EARN_MONO, color: "var(--earn-faint)" }}
             >
               ↵ to browse
             </span>
           </div>
           <p
             className="mb-[18px] mt-1.5 text-[11px]"
-            style={{ fontFamily: EARN_MONO, color: "var(--earn-faint, #9AA1A9)" }}
+            style={{ fontFamily: EARN_MONO, color: "var(--earn-faint)" }}
           >
             Curated searches from our {OPERATING_MARKETS.length} markets. Stops the moment you
             focus. Browses Services; never writes to your trip.
@@ -668,7 +696,7 @@ export function LandingHeroContent({
             <Link
               href="/experts"
               className="inline-flex items-center rounded-[10px] border px-[18px] py-3 text-[14px] font-semibold"
-              style={{ borderColor: "var(--earn-border, #E4E4DE)", color: "var(--earn-ink)", background: "#fff" }}
+              style={{ borderColor: "var(--earn-border)", color: "var(--earn-ink)", background: "var(--earn-card)" }}
               data-testid="button-browse-experts"
             >
               Browse local experts
@@ -688,7 +716,7 @@ export function LandingHeroContent({
             >
               <i
                 className="h-[7px] w-[7px] rounded-full"
-                style={{ background: "var(--earn-green, #5DCAA5)", boxShadow: "0 0 0 4px rgba(93,202,165,.18)" }}
+                style={{ background: "var(--earn-green)", boxShadow: "0 0 0 4px rgba(93,202,165,.18)" }}
               />
               {tickerParts.join(" · ")}
             </div>
@@ -709,7 +737,6 @@ export function LandingHeroContent({
                       tile={tile}
                       large={i === 0}
                       override={dispatched.override}
-                      marketLabel={`LOCAL EXPERT · ${selectedMarket.cityName.toUpperCase()}`}
                       onStartPlan={onStartPlan}
                     />
                   );
@@ -725,7 +752,7 @@ export function LandingHeroContent({
                 ? overrides.find((o) => o.tileKey === tile.key && o.marketKey === tile.marketKey)
                 : undefined;
               return taken ? (
-                <OverrideTileCard key={tile.key} tile={tile} large={i === 0} override={taken} marketLabel={`LOCAL EXPERT · ${OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey)?.cityName.toUpperCase() ?? ""}`} onStartPlan={onStartPlan} />
+                <OverrideTileCard key={tile.key} tile={tile} large={i === 0} override={taken} onStartPlan={onStartPlan} />
               ) : (
                 <CuratedTileCard key={tile.key} tile={tile} large={i === 0} slotIndex={i} onStartPlan={onStartPlan} />
               );
@@ -735,8 +762,8 @@ export function LandingHeroContent({
               <div
                 className="col-span-2 flex items-center justify-between gap-3 rounded-[14px] border border-dashed px-3.5 py-2.5"
                 style={{
-                  background: "var(--earn-ground, #FAFAF8)",
-                  borderColor: "var(--earn-border-dash, #D8D8D0)",
+                  background: "var(--earn-ground)",
+                  borderColor: "var(--earn-border-dash)",
                   color: "var(--earn-ink)",
                 }}
                 data-testid="hero-tile-wanted"
@@ -748,7 +775,7 @@ export function LandingHeroContent({
                 <span className="flex flex-col">
                   <span
                     className="text-[9px] font-medium uppercase tracking-[0.1em]"
-                    style={{ fontFamily: EARN_MONO, color: "var(--earn-gold-ink, #8A6D1D)" }}
+                    style={{ fontFamily: EARN_MONO, color: "var(--earn-gold-ink)" }}
                   >
                     Wanted in {wanted.city}
                   </span>
@@ -758,9 +785,9 @@ export function LandingHeroContent({
                   href="/earn"
                   className="whitespace-nowrap rounded-[7px] border px-[9px] py-[5px] text-[12px] font-semibold"
                   style={{
-                    color: "var(--earn-gold-ink, #8A6D1D)",
-                    borderColor: "#F0DCA6",
-                    background: "var(--earn-gold-wash, #FBF3DC)",
+                    color: "var(--earn-gold-ink)",
+                    borderColor: "color-mix(in srgb, var(--earn-gold) 40%, transparent)",
+                    background: "var(--earn-gold-wash)",
                   }}
                   data-testid="hero-wanted-cta"
                 >

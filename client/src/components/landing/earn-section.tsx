@@ -75,7 +75,7 @@ export function EarnSection() {
               key={r.testId}
               href={r.href}
               className="flex items-start gap-3 rounded-[12px] border bg-white px-3.5 py-3"
-              style={{ borderColor: "var(--earn-border, #E4E4DE)", color: "var(--earn-ink)" }}
+              style={{ borderColor: "var(--earn-border)", color: "var(--earn-ink)" }}
               data-testid={r.testId}
             >
               <span

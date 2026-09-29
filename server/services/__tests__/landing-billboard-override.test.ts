@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   resolveBillboardDispatch,
+  pickRotatedSlotOne,
   resolveBillboardOverrides,
   isBillboardLiveOwner,
   type BillboardDispatchDeps,
@@ -147,6 +148,30 @@ describe("billboard slot-type dispatch", () => {
     assert.equal(isBillboardLiveOwner("local_expert", "real@example.com"), true);
     assert.equal(isBillboardLiveOwner("local_expert", "landing-hero-demo-kyoto@traveloure.test"), false);
     assert.equal(isBillboardLiveOwner("user", "former-test@traveloure.test"), false);
+  });
+
+  it("rotates slot 1 daily ONLY among markets that can fill it for real", () => {
+    const o = (marketKey: string, handle: string) => ({
+      tileKey: "weekend-away", marketKey, handle, roleLabel: "Local expert", listing: listing(`${handle}-listing`),
+    });
+    const qualifying = [o("kyoto", "a"), o("kyoto", "b"), o("lisbon", "c")];
+    const DAY = 86_400_000;
+    const picks = [0, 1, 2, 3].map((d) => pickRotatedSlotOne(qualifying, new Date(d * DAY))!.marketKey);
+    assert.deepEqual(picks, ["kyoto", "lisbon", "kyoto", "lisbon"], "one market per UTC day, alternating");
+    assert.equal(pickRotatedSlotOne(qualifying, new Date(0))!.handle, "a", "that market's first qualifying expert");
+    assert.equal(pickRotatedSlotOne([], new Date()), null, "no qualifying market ⇒ nothing anchored");
+    assert.equal(pickRotatedSlotOne([o("goa", "d")], new Date(5 * DAY))!.marketKey, "goa", "a single market is picked every day");
+  });
+
+  it("never anchors on a market whose tiles carry no credited photo, whatever the day", async () => {
+    for (const day of [0, 1, 2, 3]) {
+      const result = await resolveBillboardDispatch({
+        ...dispatchDeps({ eligible: new Set(["expert"]) }),
+        now: () => new Date(day * 86_400_000),
+      });
+      const market = result.marketSelection.market?.key ?? null;
+      assert.ok(market === null || market === "kyoto", `day ${day}: only a credited market (kyoto) is selected`);
+    }
   });
 
   it("keeps the shared dispatch as a discriminated slot union without changing legacy override assignment", () => {
