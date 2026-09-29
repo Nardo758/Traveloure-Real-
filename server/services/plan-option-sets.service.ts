@@ -23,7 +23,7 @@
  *     only a `custom` option's title and pin come from the body, and a half pin is refused.
  */
 import crypto from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage, stripItineraryItemRoutingFields } from "../storage";
 import {
@@ -43,6 +43,10 @@ import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isManagingEaForTrip } from "./ea-plan-delegate.service";
 import { readPlanPenOccasionSlug } from "./plan-pen-occasion.service";
 import { trackFunnelEvent } from "../utils/funnelTracker";
+import { loadMarketCentroids, loadMatrixReader } from "./travel-time-matrix.service";
+import { WITHIN_WALK_METERS } from "./anchor-scoring";
+import { beatsChosen, planFitFor, toPoint, type FitItem, type PlanFit } from "@shared/plan-fit";
+import { planFitEasierThreshold } from "../config/plan-fit.config";
 
 export const SLIP_OPTION_ADDED_EVENT = "slip_option_added";
 export const SLIP_ANCHOR_CHANGED_EVENT = "slip_anchor_changed";
@@ -361,7 +365,8 @@ export async function chooseOption(input: { tripId: string; setId: string; optio
       await tx.update(planOptionSets).set({ itineraryItemId: created.id }).where(eq(planOptionSets.id, claimed.id));
       return { set: { ...claimed, itineraryItemId: created.id }, itemId: created.id };
     }
-    if (opt.sourceKind === "incumbent") return { set: claimed, itemId: claimed.itineraryItemId };
+    // The incumbent is rewritten too: after a reopen (§M9) the item holds the LAST choice, and
+    // choosing the original place back must put it back — never a silent no-op.
     const rewritten = await tx
       .update(itineraryItems)
       .set({ ...itemFields, updatedAt: new Date() })
@@ -443,4 +448,126 @@ export async function promoteAnchor(input: { tripId: string; itemId: string; use
     });
   }
   return { setId: result.setId, fromCategory: result.fromCategory, toCategory: result.toCategory };
+}
+
+/** Re-open a chosen comparison (§M9's "compare again"): owner or delegate, one atomic flip. */
+export async function reopenOptionSet(input: { tripId: string; setId: string; userId: string }): Promise<PlanOptionSet> {
+  if (!(await planRole(input.tripId, input.userId, "choose"))) throw notFound();
+  const [row] = await db
+    .update(planOptionSets)
+    .set({ status: "open" })
+    .where(and(eq(planOptionSets.id, input.setId), eq(planOptionSets.tripId, input.tripId), eq(planOptionSets.status, "chosen")))
+    .returning();
+  if (row) return row;
+  const [exists] = await db.select({ id: planOptionSets.id }).from(planOptionSets).where(and(eq(planOptionSets.id, input.setId), eq(planOptionSets.tripId, input.tripId))).limit(1);
+  if (!exists) throw notFound();
+  throw new OptionSetError(409, "set_not_chosen", "Only a decided comparison can be opened again");
+}
+
+// ── Plan-fit (§M3) and the M9 entry ─────────────────────────────────────────────────────────
+
+/** The plan's stops plan-fit scores against: every item that is not itself a place to stay. */
+async function fitItems(tripId: string): Promise<FitItem[]> {
+  const rows = await db
+    .select({ dayNumber: itineraryItems.dayNumber, lat: itineraryItems.latitude, lng: itineraryItems.longitude })
+    .from(itineraryItems)
+    .where(and(eq(itineraryItems.tripId, tripId), ne(itineraryItems.itemType, "accommodation")));
+  return rows.map((r) => {
+    const p = toPoint(r.lat, r.lng);
+    return { dayNumber: r.dayNumber ?? null, lat: p?.lat ?? null, lng: p?.lng ?? null };
+  });
+}
+
+/** ONE scorer for a plan: loads the market's centroids and matrix once (A2's reader). */
+async function planScorer(tripId: string) {
+  const [trip] = await db.select({ marketSlug: trips.marketSlug }).from(trips).where(eq(trips.id, tripId)).limit(1);
+  const market = trip?.marketSlug ?? null;
+  const centroids = market ? await loadMarketCentroids(market) : [];
+  const travel = await loadMatrixReader(market ?? "", async () => centroids);
+  const items = await fitItems(tripId);
+  return (lat: unknown, lng: unknown): PlanFit =>
+    planFitFor({ option: toPoint(lat, lng), items, travel, centroids, walkThresholdMeters: WITHIN_WALK_METERS });
+}
+
+export interface OptionFitView {
+  fit: PlanFit;
+}
+export interface OptionSetWithFit extends OptionSetView {
+  options: Array<PlanOption & OptionFitView>;
+  /** §M9: on a CHOSEN set only — how many unchosen options beat the choice by the threshold. */
+  easierCount: number | null;
+}
+
+/** The plan's comparisons with each option's plan-fit derived server-side (§E4: the client computes nothing). */
+export async function listOptionSetsWithFit(tripId: string): Promise<OptionSetWithFit[]> {
+  const sets = await listOptionSets(tripId);
+  if (!sets.length) return [];
+  const score = await planScorer(tripId);
+  const threshold = planFitEasierThreshold();
+  return sets.map((set) => {
+    const options = set.options.map((o) => ({ ...o, fit: score(o.latitude, o.longitude) }));
+    let easierCount: number | null = null;
+    if (set.status === "chosen" && set.chosenOptionId) {
+      const chosen = options.find((o) => o.id === set.chosenOptionId);
+      easierCount = chosen ? options.filter((o) => o.id !== chosen.id && beatsChosen(o.fit, chosen.fit, threshold)).length : null;
+    }
+    return { ...set, options, easierCount };
+  });
+}
+
+/** `hotel_cache` rows for the plan's own city — never another city's (§M9 honesty). */
+export async function hotelCacheForPlanCity(tripId: string, opts: { q?: string; limit: number; locatedOnly?: boolean }) {
+  const [trip] = await db.select({ destination: trips.destination }).from(trips).where(eq(trips.id, tripId)).limit(1);
+  const city = (trip?.destination ?? "").split(",")[0].trim();
+  if (!city) return { city: null as string | null, rows: [] as Array<typeof hotelCache.$inferSelect> };
+  const conds = [or(ilike(hotelCache.city, city), ilike(hotelCache.cityCode, city))];
+  if (opts.q) conds.push(ilike(hotelCache.name, `%${opts.q.replace(/[%_\\]/g, (c: string) => `\\${c}`)}%`));
+  if (opts.locatedOnly) conds.push(sql`${hotelCache.latitude} IS NOT NULL AND ${hotelCache.longitude} IS NOT NULL`);
+  const rows = await db.select().from(hotelCache).where(and(...conds)).orderBy(hotelCache.name).limit(opts.limit);
+  return { city, rows };
+}
+
+/** Bounded work for M9's ranking: at most this many located rows are scored per request. */
+const SUGGEST_CANDIDATE_LIMIT = 200;
+
+/**
+ * §M9 "Suggest places that fit these days". Allowed when the plan's lodging comparison is EMPTY (no
+ * open lodging set, or one with no options) and the plan has ≥ PLAN_FIT_MIN_LOCATED located stops.
+ * Ranks located `hotel_cache` rows for the plan's city by plan-fit ONLY (never price or commission,
+ * §8) and adds the top three as `engine` options to an open set. Nothing is chosen.
+ */
+export async function suggestLodging(input: { tripId: string; userId: string }): Promise<OptionSetView> {
+  const role = await planRole(input.tripId, input.userId, "write");
+  if (!role) throw notFound();
+  const [open] = await db
+    .select()
+    .from(planOptionSets)
+    .where(and(eq(planOptionSets.tripId, input.tripId), eq(planOptionSets.categoryKey, "accommodation"), eq(planOptionSets.status, "open")))
+    .limit(1);
+  if (open) {
+    const [has] = await db.select({ id: planOptions.id }).from(planOptions).where(eq(planOptions.setId, open.id)).limit(1);
+    if (has) throw new OptionSetError(409, "set_not_empty", "You're already comparing places to stay");
+  }
+  const score = await planScorer(input.tripId);
+  const probe = score(0, 0);
+  if (!probe.scored && probe.reason === "too_few_located") {
+    throw new OptionSetError(409, "too_few_located", "Add a few located stops to your days first", { located: probe.located });
+  }
+  const { rows } = await hotelCacheForPlanCity(input.tripId, { limit: SUGGEST_CANDIDATE_LIMIT, locatedOnly: true });
+  const ranked = rows
+    .map((h) => ({ h, fit: score(h.latitude, h.longitude) }))
+    .filter((r) => r.fit.scored)
+    .sort((a, b) => {
+      const fa = a.fit as Extract<PlanFit, { scored: true }>;
+      const fb = b.fit as Extract<PlanFit, { scored: true }>;
+      return fa.minutesPerDay - fb.minutesPerDay || (fb.coverage ?? 0) - (fa.coverage ?? 0) || a.h.name.localeCompare(b.h.name);
+    })
+    .slice(0, OPTION_SET_CAP);
+  if (!ranked.length) throw new OptionSetError(409, "no_candidates", "No places to suggest yet");
+  const set = open ?? (await createOptionSet({ tripId: input.tripId, userId: input.userId, categoryKey: "accommodation", label: "Where you'll stay", anchor: true }));
+  for (const r of ranked) {
+    await addOption({ tripId: input.tripId, setId: set.id, userId: input.userId, source: { kind: "hotel_cache", hotelCacheId: r.h.id, engine: true } });
+  }
+  const [view] = (await listOptionSets(input.tripId)).filter((x) => x.id === set.id);
+  return view;
 }

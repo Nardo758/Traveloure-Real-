@@ -8,6 +8,8 @@
  *   DELETE /api/trips/:tripId/option-sets/:setId/options/:optionId
  *   POST   /api/trips/:tripId/option-sets/:setId/choose           owner/delegate only (R129)
  *   POST   /api/trips/:tripId/option-sets/:setId/close            keep what the plan has
+ *   POST   /api/trips/:tripId/option-sets/:setId/reopen           §M9 "compare again" (owner/delegate)
+ *   POST   /api/trips/:tripId/option-sets/suggest                 §M9 "Suggest places that fit these days"
  *   POST   /api/trips/:tripId/anchor/promote                      M8 "Build my days around this"
  *
  * §14: the actor is the session; no body carries an identity, a price or a coordinate the server
@@ -16,10 +18,6 @@
  */
 import { Router } from "express";
 import { z } from "zod";
-import { and, eq, ilike, or } from "drizzle-orm";
-
-import { db } from "../db";
-import { hotelCache, trips } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
 import {
@@ -28,10 +26,13 @@ import {
   chooseOption,
   closeOptionSet,
   createOptionSet,
-  listOptionSets,
+  hotelCacheForPlanCity,
+  listOptionSetsWithFit,
   planRole,
   promoteAnchor,
   removeOption,
+  reopenOptionSet,
+  suggestLodging,
 } from "../services/plan-option-sets.service";
 
 const router = Router();
@@ -85,7 +86,7 @@ router.get("/api/trips/:tripId/option-sets", isAuthenticated, async (req: any, r
   try {
     const userId = getUserId(req);
     if (!(await planRole(req.params.tripId, userId, "read"))) return res.status(404).json({ code: "not_found", message: "No such plan" });
-    res.json({ sets: await listOptionSets(req.params.tripId) });
+    res.json({ sets: await listOptionSetsWithFit(req.params.tripId) });
   } catch (err) {
     fail(res, err, "list");
   }
@@ -101,28 +102,18 @@ router.get("/api/trips/:tripId/option-sets/search", isAuthenticated, async (req:
     const userId = getUserId(req);
     const { tripId } = req.params;
     if (!(await planRole(tripId, userId, "write"))) return res.status(404).json({ code: "not_found", message: "No such plan" });
-    const [trip] = await db.select({ destination: trips.destination }).from(trips).where(eq(trips.id, tripId)).limit(1);
-    const city = (trip?.destination ?? "").split(",")[0].trim();
-    if (!city) return res.json({ city: null, results: [] });
     const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 80) : "";
-    const cityMatch = or(ilike(hotelCache.city, city), ilike(hotelCache.cityCode, city));
-    const rows = await db
-      .select({
-        id: hotelCache.id,
-        name: hotelCache.name,
-        address: hotelCache.address,
-        city: hotelCache.city,
-        latitude: hotelCache.latitude,
-        longitude: hotelCache.longitude,
-        starRating: hotelCache.starRating,
-      })
-      .from(hotelCache)
-      .where(q ? and(cityMatch, ilike(hotelCache.name, `%${q.replace(/[%_\\]/g, (c: string) => `\\${c}`)}%`)) : cityMatch)
-      .orderBy(hotelCache.name)
-      .limit(20);
+    const { city, rows } = await hotelCacheForPlanCity(tripId, { q, limit: 20 });
     res.json({
       city,
-      results: rows.map((r) => ({ ...r, located: r.latitude != null && r.longitude != null })),
+      results: rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        address: r.address,
+        city: r.city,
+        starRating: r.starRating,
+        located: r.latitude != null && r.longitude != null,
+      })),
     });
   } catch (err) {
     fail(res, err, "search");
@@ -184,6 +175,26 @@ router.post("/api/trips/:tripId/option-sets/:setId/close", isAuthenticated, asyn
     res.json({ set });
   } catch (err) {
     fail(res, err, "close");
+  }
+});
+
+router.post("/api/trips/:tripId/option-sets/:setId/reopen", isAuthenticated, async (req: any, res) => {
+  if (!emptyBody.safeParse(req.body ?? {}).success) return badBody(res);
+  try {
+    const set = await reopenOptionSet({ tripId: req.params.tripId, setId: req.params.setId, userId: getUserId(req)! });
+    res.json({ set });
+  } catch (err) {
+    fail(res, err, "reopen");
+  }
+});
+
+router.post("/api/trips/:tripId/option-sets/suggest", isAuthenticated, async (req: any, res) => {
+  if (!emptyBody.safeParse(req.body ?? {}).success) return badBody(res);
+  try {
+    const set = await suggestLodging({ tripId: req.params.tripId, userId: getUserId(req)! });
+    res.status(201).json({ set });
+  } catch (err) {
+    fail(res, err, "suggest");
   }
 });
 

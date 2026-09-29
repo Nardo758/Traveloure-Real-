@@ -142,6 +142,9 @@ const ALLOWED_ADDITIONS = {
   "slip-anchor-add-fixed": "A1 — schedule-first Trip: the day-1 add control, as the delegate note uses",
   "slip-anchor-fallback": "A1 — says out loud that a NULL schedule switch was read as a plain trip (§13)",
   "slip-anchor-question": "A1 — the empty Trip's first question, in place of \"No items\" (§M2/§M7)",
+  // A3b · comparisons on the slip (ledger `2026-09-29-a3b-option-sets-slip`): the open sets sit
+  // above the days (golden path Step 2); the controls themselves live in SlipOptionSets.tsx.
+  "slip-option-sets": "A3b — the plan's open comparisons and the lodging entry, above the day list",
   "slip-anchor-state": "A1 — the header line: where you'll stay / what the plan is built around",
   "slip-occasion-name": "A1 — the B1 header eyebrow: the occasion's OWN name, never the group (R127)",
   // 1 · the two-column relayout and the merged view bar

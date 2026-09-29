@@ -15,6 +15,10 @@
  *   O8  M7: the first lodging anchor is primary, a second is secondary (one primary per stop)
  *   O9  M8: promote needs a located, dated item; it demotes the previous primary; a finalized plan is 409
  *   O10 the finalize and routing rails carry the open-set guards before their writes
+ *   O11 (A3b) M9 suggest: too few located stops ⇒ 409; enough ⇒ ONE open set of `engine` options,
+ *       ranked by plan-fit only, the nearest first; a second suggest on a non-empty set ⇒ 409
+ *   O12 (A3b) the list carries each option's server-derived plan-fit ("est." here — no matrix)
+ *   O13 (A3b) reopen: owner only; choosing the incumbent back rewrites the item to the original place
  *
  * DISPOSABLE DB ONLY: every row is keyed by a per-run prefix and deleted afterwards.
  */
@@ -29,6 +33,9 @@ import { storage } from "../storage";
 import {
   OptionSetError,
   addOption,
+  listOptionSetsWithFit,
+  reopenOptionSet,
+  suggestLodging,
   chooseOption,
   closeOptionSet,
   createOptionSet,
@@ -272,4 +279,50 @@ test("O10: the finalize and routing rails check open sets before they write", ()
   const route = src.slice(src.indexOf('router.post("/api/trips/:tripId/items/:itemId/route"'));
   assert.ok(route.indexOf("itemHasOpenSet(itemId)") > 0);
   assert.ok(route.indexOf("itemHasOpenSet(itemId)") < route.indexOf("isTripOwner(tripId, userId)"), "guard precedes any transition");
+});
+
+test("O11: M9 suggest — refused below the located threshold, then ranks by plan-fit into one engine set", async () => {
+  await expectError(suggestLodging({ tripId: ids.trip, userId: ids.owner }), 409, "too_few_located");
+  // Two more located stops near Gion (h1), so h1 should rank first.
+  await db.execute(sql`
+    INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin, latitude, longitude)
+    VALUES (${id("s1")}, ${ids.trip}, 1, 'Yasaka Shrine', 'activity', 'traveler', 35.0036, 135.7786),
+           (${id("s2")}, ${ids.trip}, 2, 'Kennin-ji', 'activity', 'traveler', 35.0005, 135.7736)
+  `);
+  const set = await suggestLodging({ tripId: ids.trip, userId: ids.owner });
+  assert.equal(set.status, "open");
+  assert.equal(set.categoryKey, "accommodation");
+  assert.equal(set.options.length, 3);
+  assert.ok(set.options.every((o) => o.sourceKind === "engine"));
+  assert.equal(set.options[0].title, "Gion Hotel", "nearest to the plan's stops ranks first");
+  assert.equal(set.options[0].position, 1);
+  await expectError(suggestLodging({ tripId: ids.trip, userId: ids.owner }), 409, "set_not_empty");
+  const items = Number(((await db.execute(sql`SELECT count(*)::int AS n FROM itinerary_items WHERE trip_id = ${ids.trip} AND item_type = 'accommodation'`)).rows[0] as any).n);
+  assert.equal(items, 2, "suggesting writes no stay item (R126): the incumbent inn and O5's chosen stay only");
+});
+
+test("O12: the list carries server-derived plan-fit per option", async () => {
+  const sets = await listOptionSetsWithFit(ids.trip);
+  const open = sets.find((st) => st.status === "open" && st.categoryKey === "accommodation")!;
+  for (const o of open.options) {
+    assert.equal(o.fit.scored, true);
+    assert.equal((o.fit as any).basis, "est", "no matrix for this plan ⇒ every figure is est.");
+    assert.equal(o.fit.located, 3);
+    assert.equal(o.fit.total, 4, "the unlocated stop is excluded and counted");
+  }
+  const mins = open.options.map((o) => (o.fit as any).minutesPerDay as number);
+  assert.deepEqual([...mins].sort((a, b) => a - b), mins, "the suggestion order is the plan-fit order");
+  await closeOptionSet({ tripId: ids.trip, setId: open.id, userId: ids.owner });
+});
+
+test("O13: reopen is the owner's; choosing the incumbent back restores the original place", async () => {
+  await expectError(reopenOptionSet({ tripId: ids.trip, setId: itemSetId, userId: ids.advisor }), 404);
+  const reopened = await reopenOptionSet({ tripId: ids.trip, setId: itemSetId, userId: ids.owner });
+  assert.equal(reopened.status, "open");
+  const [set] = (await listOptionSets(ids.trip)).filter((st) => st.id === itemSetId);
+  const incumbent = set.options.find((o) => o.sourceKind === "incumbent")!;
+  await chooseOption({ tripId: ids.trip, setId: itemSetId, optionId: incumbent.id, userId: ids.owner });
+  const item = await storage.getItineraryItemByIdAndTrip(ids.item, ids.trip);
+  assert.equal(item?.title, "Incumbent inn");
+  await expectError(reopenOptionSet({ tripId: ids.trip, setId: itemSetId + "x", userId: ids.owner }), 404);
 });

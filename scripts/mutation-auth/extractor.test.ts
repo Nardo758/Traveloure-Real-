@@ -145,6 +145,10 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * the plan check (owner / delegate / §12 write advisor; choose owner-or-delegate only, R129) lives
  * in `plan-option-sets.service.ts`, not the handler; that gate is proven by the DB suite (O3, O9) —
  * user-data 211 → 217, session-self 320 → 326.
+ * 634 / 625 → 636 / 627 (ledger `2026-09-29-a3b-option-sets-slip`, Track A step A3b): POST
+ * …/option-sets/:setId/reopen and POST …/option-sets/suggest, gated the same way in the same
+ * service (reopen owner/delegate only, R129; proven by the DB suite O11/O13) — user-data 217 → 219,
+ * session-self 326 → 328.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -153,8 +157,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 634);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 625);
+  assert.equal(result.mutations.length, 636);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 627);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -164,10 +168,10 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 625);
-  assert.equal(manifest.rawRegistrationCount, 634);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 625);
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 158, "user-data": 217, other: 219 });
+  assert.equal(endpointRows.length, 627);
+  assert.equal(manifest.rawRegistrationCount, 636);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 627);
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 158, "user-data": 219, other: 219 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -175,7 +179,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 2026-09-26-adopt-stop-write-access, R130): it now calls authorizeTripLogistics with
   // requireWriteAccess, so the plan's owner or a write-status advisor is verified before any write.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 158, "session-self": 326, "resource-owner": 96,
+    "admin-role": 158, "session-self": 328, "resource-owner": 96,
     signature: 6, "public-or-system": 39, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
