@@ -14,13 +14,15 @@
  * says so and is never placed on a map; with no located stops the fit line says what is missing
  * instead of a number; "est." is printed on every straight-line figure.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { planFitLine, PLAN_FIT_MIN_LOCATED, type PlanFit } from "@shared/plan-fit";
+import type { DatedPriceView } from "@/lib/plan-compare";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 
 export interface SlipOption {
@@ -35,6 +37,12 @@ export interface SlipOption {
   priceSnapshot: string | null;
   addedByRole: string | null;
   fit: PlanFit;
+  /** A4 — server-derived (§E4); the view computes none of these. */
+  fitRank?: number | null;
+  easiest?: boolean;
+  neighborhood?: string | null;
+  datedPrice?: DatedPriceView | null;
+  easierByMinutes?: number | null;
 }
 
 export interface SlipOptionSet {
@@ -47,13 +55,76 @@ export interface SlipOptionSet {
   chosenOptionId: string | null;
   options: SlipOption[];
   easierCount: number | null;
+  stops?: { located: number; total: number };
+}
+
+export interface OptionSetsResponse {
+  sets: SlipOptionSet[];
+  /** Server-derived standing (A4): draws only the controls the rails would accept; grants nothing. */
+  viewer?: { canWrite: boolean; canChoose: boolean };
 }
 
 const setsKey = (tripId: string) => [`/api/trips/${tripId}/option-sets`];
 
 /** The plan's comparisons. `enabled` is false for a viewer who cannot read them. */
 export function useOptionSets(tripId: string, enabled: boolean) {
-  return useQuery<{ sets: SlipOptionSet[] }>({ queryKey: setsKey(tripId), enabled });
+  return useQuery<OptionSetsResponse>({ queryKey: setsKey(tripId), enabled });
+}
+
+/**
+ * E4 `slip_plan_fit_shown` (slip-funnel-events §3.4): fires ONCE per option per view when the fit is
+ * at least half on screen for a full second (the `content_impressions` visibility rule). Only a SCORED
+ * fit is an impression of plan-fit. The client sends which option, where and at what width — never
+ * the value; the server recomputes it. A failed write is dropped: an impression never breaks a page.
+ */
+export function usePlanFitShown(
+  ref: RefObject<HTMLElement>,
+  opts: { tripId: string; setId: string; optionId: string; surface: "compare_view" | "anchor_question"; viewId: string; enabled: boolean },
+) {
+  const { tripId, setId, optionId, surface, viewId, enabled } = opts;
+  useEffect(() => {
+    const el = ref.current;
+    if (!enabled || !el || typeof IntersectionObserver === "undefined") return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let sent = false;
+    const send = () => {
+      sent = true;
+      observer.disconnect();
+      const narrow = typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches;
+      void fetch(`/api/trips/${tripId}/slip-events`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "slip_plan_fit_shown", setId, optionId, surface, viewport: narrow ? "narrow" : "wide", viewId }),
+      }).catch(() => undefined);
+    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (sent) return;
+          if (e.intersectionRatio >= 0.5) {
+            if (!timer) timer = setTimeout(send, 1000);
+          } else if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
+        }
+      },
+      { threshold: [0, 0.5, 1] },
+    );
+    observer.observe(el);
+    return () => {
+      if (timer) clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [ref, tripId, setId, optionId, surface, viewId, enabled]);
+}
+
+/** One id per mounted view, so a READ can dedupe impressions by (option, view) (§3.4). */
+export function useViewId(): string {
+  const ref = useRef<string | null>(null);
+  if (!ref.current) ref.current = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `v-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return ref.current;
 }
 
 /** The item the plan is currently BUILT AROUND (the primary anchor of stop 0), or null. */
@@ -62,7 +133,7 @@ export function primaryAnchorItemId(sets: readonly SlipOptionSet[] | undefined):
 }
 
 /** "409: {…json…}" → the server's own sentence. */
-function serverMessage(err: unknown, fallback: string): string {
+export function serverMessage(err: unknown, fallback: string): string {
   const raw = err instanceof Error ? err.message : "";
   const i = raw.indexOf("{");
   if (i >= 0) {
@@ -76,12 +147,15 @@ function serverMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-function invalidatePlan(tripId: string) {
+export function invalidatePlan(tripId: string) {
   void queryClient.invalidateQueries({ queryKey: setsKey(tripId) });
   void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
 }
 
 const LODGING_LABEL = "Where you'll stay";
+
+/** The compare view's address (A4). */
+export const compareHref = (tripId: string, setId: string) => `/plans/${tripId}/compare/${setId}`;
 
 /** A set's GLANCE line — "Where you'll stay · 3 to compare". */
 export function optionSetGlance(set: Pick<SlipOptionSet, "label" | "categoryKey" | "options">): string {
@@ -176,14 +250,18 @@ function OptionCard({
   option,
   canWrite,
   canChoose,
+  viewId,
 }: {
   tripId: string;
   set: SlipOptionSet;
   option: SlipOption;
   canWrite: boolean;
   canChoose: boolean;
+  viewId: string;
 }) {
   const { toast } = useToast();
+  const fitRef = useRef<HTMLParagraphElement>(null);
+  usePlanFitShown(fitRef, { tripId, setId: set.id, optionId: option.id, surface: "anchor_question", viewId, enabled: option.fit.scored });
   const choose = useMutation({
     mutationFn: async () => (await apiRequest("POST", `/api/trips/${tripId}/option-sets/${set.id}/choose`, { optionId: option.id })).json(),
     onSuccess: () => invalidatePlan(tripId),
@@ -194,7 +272,7 @@ function OptionCard({
     onSuccess: () => invalidatePlan(tripId),
     onError: (e) => toast({ title: serverMessage(e, "Couldn't remove this place"), variant: "destructive" }),
   });
-  const chosen = set.chosenOptionId === option.id;
+  const chosen = set.status === "chosen" && set.chosenOptionId === option.id;
   const price = option.priceSnapshot != null && Number(option.priceSnapshot) > 0 ? `$${Number(option.priceSnapshot).toLocaleString()}` : null;
   return (
     <li
@@ -211,7 +289,7 @@ function OptionCard({
         ) : null}
       </div>
       {option.locationName ? <p className="text-xs text-muted-foreground break-words">{option.locationName}</p> : null}
-      <p className="text-xs text-foreground" data-testid={`slip-option-fit-${option.id}`}>
+      <p ref={fitRef} className="text-xs text-foreground" data-testid={`slip-option-fit-${option.id}`}>
         {planFitLine(option.fit)}
       </p>
       {option.sourceKind === "incumbent" ? <p className="text-xs text-muted-foreground">Already on your plan</p> : null}
@@ -337,6 +415,7 @@ export function SlipOptionSetCard({
   canChoose: boolean;
 }) {
   const { toast } = useToast();
+  const viewId = useViewId();
   const [adding, setAdding] = useState(false);
   const close = useMutation({
     mutationFn: async () => (await apiRequest("POST", `/api/trips/${tripId}/option-sets/${set.id}/close`, {})).json(),
@@ -355,6 +434,10 @@ export function SlipOptionSetCard({
     return (
       <p className="text-sm text-foreground" data-testid={`slip-option-easier-${set.id}`}>
         {set.easierCount === 1 ? "1 place would make your days easier" : `${set.easierCount} places would make your days easier`}
+        {" · "}
+        <Link href={compareHref(tripId, set.id)} className="underline" data-testid={`slip-option-compare-${set.id}`}>
+          See how they compare
+        </Link>
         {canChoose ? (
           <>
             {" · "}
@@ -381,9 +464,18 @@ export function SlipOptionSetCard({
       {set.options.length ? (
         <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3" data-testid={`slip-option-list-${set.id}`}>
           {set.options.map((o) => (
-            <OptionCard key={o.id} tripId={tripId} set={set} option={o} canWrite={canWrite} canChoose={canChoose} />
+            <OptionCard key={o.id} tripId={tripId} set={set} option={o} canWrite={canWrite} canChoose={canChoose} viewId={viewId} />
           ))}
         </ul>
+      ) : null}
+      {set.options.length ? (
+        <Link
+          href={compareHref(tripId, set.id)}
+          className="inline-flex min-h-[44px] items-center text-sm font-medium underline"
+          data-testid={`slip-option-compare-${set.id}`}
+        >
+          Compare side by side
+        </Link>
       ) : null}
       {canWrite ? (
         <div className="flex flex-wrap items-center gap-2">

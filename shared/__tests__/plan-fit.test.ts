@@ -8,10 +8,25 @@
  *   P5  §M9 threshold on the mock's own numbers: A 52 → B 31 counts, C 38 does not; B chosen ⇒ none
  *   P6  a different basis, or lower coverage, never counts
  *   P7  the line: "est." printed, "of N located", and no minutes when unscored
+ *   P8  (A4) coverage carries its two counts — "1 of 2 areas" — and 0/0 when no area is known
+ *   P9  (A4) ranks: lower minutes first, then higher coverage; unscored never ranked; ties share
+ *   P10 (A4) "Easiest days": one place ranked 1 alone among ≥ 2 scored on ONE basis, else nobody
+ *   P11 (A4) the event basis key and the compare view's lead sentence
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { beatsChosen, planFitFor, planFitLine, toPoint, type FitItem, type PlanFit } from "../plan-fit";
+import {
+  beatsChosen,
+  compareIntroLine,
+  easiestIndex,
+  fitBasisKey,
+  fitRanks,
+  planFitFor,
+  planFitLine,
+  toPoint,
+  type FitItem,
+  type PlanFit,
+} from "../plan-fit";
 import type { Centroid, LatLng, TravelMode, TravelTime } from "../travel-time";
 
 const WALK = 1200;
@@ -79,11 +94,28 @@ test("P4: coverage is the share of the plan's neighbourhoods within the walk thr
   assert.equal((none as any).coverage, null);
 });
 
+test("P8: coverage carries its two counts, and 0/0 when no area is known", () => {
+  const near: Centroid = { slug: "near", lat: 35.002, lng: 135.7, radiusKm: 0.5 };
+  const far: Centroid = { slug: "far", lat: 35.1, lng: 135.9, radiusKm: 0.5 };
+  const spread: FitItem[] = [
+    { dayNumber: 1, lat: 35.001, lng: 135.7 },
+    { dayNumber: 1, lat: 35.002, lng: 135.7 },
+    { dayNumber: 2, lat: 35.1, lng: 135.9 },
+  ];
+  const fit = planFitFor({ option: O, items: spread, travel: () => est(5), centroids: [near, far], walkThresholdMeters: WALK }) as any;
+  assert.equal(fit.areasNear, 1);
+  assert.equal(fit.areasTotal, 2);
+  const none = planFitFor({ option: O, items: spread, travel: () => est(5), centroids: [], walkThresholdMeters: WALK }) as any;
+  assert.deepEqual([none.areasNear, none.areasTotal, none.coverage], [0, 0, null]);
+});
+
 const scored = (minutesPerDay: number, basis: "matrix" | "est" = "est", coverage: number | null = 0.5): PlanFit => ({
   scored: true,
   minutesPerDay,
   basis,
   coverage,
+  areasNear: 0,
+  areasTotal: 0,
   located: 6,
   total: 9,
 });
@@ -113,4 +145,33 @@ test("P7: the line says est., names the located count, and never prints minutes 
   const unscored = planFitLine({ scored: false, reason: "too_few_located", located: 1, total: 4 });
   assert.equal(unscored, "Add a few things to your days to see how each place fits");
   assert.doesNotMatch(unscored, /\d/);
+});
+
+const unscored: PlanFit = { scored: false, reason: "option_unlocated", located: 3, total: 4 };
+
+test("P9: ranks — lower minutes first, then higher coverage; unscored never ranked; ties share", () => {
+  assert.deepEqual(fitRanks([scored(52), scored(31), scored(38)]), [3, 1, 2]);
+  assert.deepEqual(fitRanks([scored(30, "est", 0.2), scored(30, "est", 0.8)]), [2, 1]);
+  assert.deepEqual(fitRanks([scored(30), unscored, scored(40)]), [1, null, 2]);
+  assert.deepEqual(fitRanks([scored(30), scored(30)]), [1, 1]);
+});
+
+test("P10: 'Easiest days' — one place ranked 1 alone, among ≥ 2 scored on one basis", () => {
+  assert.equal(easiestIndex([scored(52), scored(31), scored(38)]), 1, "the mock's B");
+  assert.equal(easiestIndex([scored(30), scored(30)]), null, "a tie crowns nobody");
+  assert.equal(easiestIndex([scored(30), unscored]), null, "one scored place has nothing to beat");
+  assert.equal(easiestIndex([scored(20, "matrix"), scored(40, "est")]), null, "never across bases");
+  assert.equal(easiestIndex([unscored, unscored]), null);
+});
+
+test("P11: the event basis key and the compare view's lead sentence", () => {
+  assert.equal(fitBasisKey(scored(10, "matrix")), "matrix");
+  assert.equal(fitBasisKey(scored(10, "est")), "est_straight_line");
+  assert.equal(fitBasisKey(unscored), null);
+  assert.equal(
+    compareIntroLine(9, 12),
+    "Plan-fit = how much travelling your days would take from each place. Lower is easier. Based on 9 of 12 stops that have a location.",
+  );
+  assert.match(compareIntroLine(0, 0), /Add a few things/);
+  assert.doesNotMatch(compareIntroLine(0, 0), /\d/);
 });

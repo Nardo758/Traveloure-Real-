@@ -27,7 +27,9 @@ import { and, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage, stripItineraryItemRoutingFields } from "../storage";
 import {
+  cityNeighborhoods,
   hotelCache,
+  hotelOfferCache,
   itineraryItems,
   planOptionSets,
   planOptions,
@@ -45,8 +47,19 @@ import { readPlanPenOccasionSlug } from "./plan-pen-occasion.service";
 import { trackFunnelEvent } from "../utils/funnelTracker";
 import { loadMarketCentroids, loadMatrixReader } from "./travel-time-matrix.service";
 import { WITHIN_WALK_METERS } from "./anchor-scoring";
-import { beatsChosen, planFitFor, toPoint, type FitItem, type PlanFit } from "@shared/plan-fit";
-import { planFitEasierThreshold } from "../config/plan-fit.config";
+import {
+  PLAN_FIT_VERSION,
+  beatsChosen,
+  easiestIndex,
+  fitBasisKey,
+  fitRanks,
+  planFitFor,
+  toPoint,
+  type FitItem,
+  type PlanFit,
+} from "@shared/plan-fit";
+import { snapToCentroid, type Centroid } from "@shared/travel-time";
+import { planFitEasierThreshold, slipEventsHourlyCap } from "../config/plan-fit.config";
 
 export const SLIP_OPTION_ADDED_EVENT = "slip_option_added";
 export const SLIP_ANCHOR_CHANGED_EVENT = "slip_anchor_changed";
@@ -485,34 +498,182 @@ async function planScorer(tripId: string) {
   const centroids = market ? await loadMarketCentroids(market) : [];
   const travel = await loadMatrixReader(market ?? "", async () => centroids);
   const items = await fitItems(tripId);
-  return (lat: unknown, lng: unknown): PlanFit =>
+  const score = (lat: unknown, lng: unknown): PlanFit =>
     planFitFor({ option: toPoint(lat, lng), items, travel, centroids, walkThresholdMeters: WITHIN_WALK_METERS });
+  const located = items.filter((i) => i.lat !== null && i.lng !== null).length;
+  return { score, centroids, market, stops: { located, total: items.length } };
+}
+
+/**
+ * A4: the neighbourhood an EXACT pin sits in, by the same snap A2's reader uses (`snapToCentroid`) —
+ * the name comes from `city_neighborhoods`. A centroid-precision pin, or one outside every radius,
+ * names no neighbourhood (§13: an area is never guessed for a place).
+ */
+async function neighborhoodNamer(market: string | null, centroids: readonly Centroid[]) {
+  if (!market || !centroids.length) return () => null as string | null;
+  const rows = await db
+    .select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name })
+    .from(cityNeighborhoods)
+    .where(inArray(cityNeighborhoods.slug, centroids.map((c) => c.slug)));
+  const names = new Map(rows.map((r) => [r.slug, r.name]));
+  return (lat: unknown, lng: unknown, precision: string | null): string | null => {
+    if (precision !== "exact") return null;
+    const p = toPoint(lat, lng);
+    const c = p ? snapToCentroid(p, centroids) : null;
+    return c ? names.get(c.slug) ?? null : null;
+  };
+}
+
+export interface DatedPrice {
+  /** The cached offer's TOTAL for the stay, as the provider stated it (`hotel_offer_cache.price`). */
+  amount: string;
+  currency: string;
+  nights: number;
+}
+
+/**
+ * A4: a `hotel_cache` place's price FOR THIS PLAN'S DATES — the cheapest unexpired cached offer whose
+ * check-in and check-out are exactly the plan's own dates. Only when the dates were CHOSEN
+ * (`trips.dates_confirmed_at`, LD 30): a price for a placeholder window is a price for dates nobody
+ * picked. No match ⇒ absent, and the view says "price from the hotel" — never a typed or estimated
+ * number, never "$0" (§13).
+ */
+async function datedPrices(tripId: string, hotelCacheIds: string[]): Promise<Map<string, DatedPrice>> {
+  const out = new Map<string, DatedPrice>();
+  if (!hotelCacheIds.length) return out;
+  const [trip] = await db
+    .select({ start: trips.startDate, end: trips.endDate, confirmed: trips.datesConfirmedAt })
+    .from(trips)
+    .where(eq(trips.id, tripId))
+    .limit(1);
+  if (!trip?.confirmed || !trip.start || !trip.end) return out;
+  const start = String(trip.start).slice(0, 10);
+  const end = String(trip.end).slice(0, 10);
+  const nights = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000);
+  if (!(nights > 0)) return out;
+  const rows = await db
+    .select({ hotelCacheId: hotelOfferCache.hotelCacheId, price: hotelOfferCache.price, currency: hotelOfferCache.currency })
+    .from(hotelOfferCache)
+    .where(
+      and(
+        inArray(hotelOfferCache.hotelCacheId, hotelCacheIds),
+        eq(hotelOfferCache.checkInDate, start),
+        eq(hotelOfferCache.checkOutDate, end),
+        sql`${hotelOfferCache.expiresAt} > now()`,
+        sql`${hotelOfferCache.price} > 0`,
+      ),
+    )
+    .orderBy(hotelOfferCache.price);
+  for (const r of rows) {
+    if (!out.has(r.hotelCacheId) && r.price != null) {
+      out.set(r.hotelCacheId, { amount: String(r.price), currency: r.currency ?? "USD", nights });
+    }
+  }
+  return out;
 }
 
 export interface OptionFitView {
   fit: PlanFit;
+  /** A4 — every field below is the SERVER's (§E4); the view computes nothing. */
+  fitRank: number | null;
+  easiest: boolean;
+  neighborhood: string | null;
+  datedPrice: DatedPrice | null;
+  /** On a CHOSEN set: how many fewer minutes a day this place would take than the choice, when it beats it (M9). */
+  easierByMinutes: number | null;
 }
 export interface OptionSetWithFit extends OptionSetView {
   options: Array<PlanOption & OptionFitView>;
   /** §M9: on a CHOSEN set only — how many unchosen options beat the choice by the threshold. */
   easierCount: number | null;
+  /** The plan's stops every fit on this set was scored against ("based on 9 of 12"). */
+  stops: { located: number; total: number };
 }
 
 /** The plan's comparisons with each option's plan-fit derived server-side (§E4: the client computes nothing). */
 export async function listOptionSetsWithFit(tripId: string): Promise<OptionSetWithFit[]> {
   const sets = await listOptionSets(tripId);
   if (!sets.length) return [];
-  const score = await planScorer(tripId);
+  const { score, centroids, market, stops } = await planScorer(tripId);
+  const nameOf = await neighborhoodNamer(market, centroids);
+  const hotelIds = Array.from(new Set(sets.flatMap((s) => s.options.map((o) => o.hotelCacheId).filter((x): x is string => !!x))));
+  const prices = await datedPrices(tripId, hotelIds);
   const threshold = planFitEasierThreshold();
   return sets.map((set) => {
-    const options = set.options.map((o) => ({ ...o, fit: score(o.latitude, o.longitude) }));
-    let easierCount: number | null = null;
-    if (set.status === "chosen" && set.chosenOptionId) {
-      const chosen = options.find((o) => o.id === set.chosenOptionId);
-      easierCount = chosen ? options.filter((o) => o.id !== chosen.id && beatsChosen(o.fit, chosen.fit, threshold)).length : null;
-    }
-    return { ...set, options, easierCount };
+    const fits = set.options.map((o) => score(o.latitude, o.longitude));
+    const ranks = fitRanks(fits);
+    const best = easiestIndex(fits);
+    const chosenIdx = set.status === "chosen" && set.chosenOptionId ? set.options.findIndex((o) => o.id === set.chosenOptionId) : -1;
+    const chosenFit = chosenIdx >= 0 ? fits[chosenIdx] : null;
+    const options = set.options.map((o, i) => {
+      const fit = fits[i];
+      const beats = chosenFit && i !== chosenIdx && beatsChosen(fit, chosenFit, threshold);
+      return {
+        ...o,
+        fit,
+        fitRank: ranks[i],
+        easiest: best === i,
+        neighborhood: nameOf(o.latitude, o.longitude, o.locationPrecision),
+        datedPrice: o.hotelCacheId ? prices.get(o.hotelCacheId) ?? null : null,
+        easierByMinutes:
+          beats && fit.scored && chosenFit!.scored ? chosenFit!.minutesPerDay - fit.minutesPerDay : null,
+      };
+    });
+    const easierCount = chosenIdx >= 0 ? options.filter((o) => o.easierByMinutes != null).length : null;
+    return { ...set, options, easierCount, stops };
   });
+}
+
+export const SLIP_PLAN_FIT_SHOWN_EVENT = "slip_plan_fit_shown";
+
+/**
+ * E4 (slip-funnel-events §3.4): the compare view rendered an option's plan-fit. The client says only
+ * WHICH option it showed, where and at what width; the fit VALUE is recomputed here through the one
+ * derivation and recorded only when it answers. A set or option that is not this plan's is ONE 404
+ * (LD 40). Past the per-(user, trip) hourly cap the view is not recorded — silently, because a
+ * dropped impression must never break the page (§15b).
+ */
+export async function recordPlanFitShown(input: {
+  tripId: string;
+  userId: string;
+  setId: string;
+  optionId: string;
+  surface: "compare_view" | "anchor_question";
+  viewport: "narrow" | "wide";
+  viewId: string;
+}): Promise<{ recorded: boolean }> {
+  if (!(await planRole(input.tripId, input.userId, "read"))) throw notFound();
+  const sets = await listOptionSetsWithFit(input.tripId);
+  const set = sets.find((s) => s.id === input.setId);
+  const option = set?.options.find((o) => o.id === input.optionId);
+  if (!set || !option) throw notFound();
+  const [{ n }] = (await db.execute(sql`
+    SELECT count(*)::int AS n FROM funnel_events
+     WHERE user_id = ${input.userId} AND trip_id = ${input.tripId}
+       AND event_type = ${SLIP_PLAN_FIT_SHOWN_EVENT} AND created_at > now() - interval '1 hour'
+  `)).rows as Array<{ n: number }>;
+  if (n >= slipEventsHourlyCap()) return { recorded: false };
+  const fit = option.fit;
+  await trackFunnelEvent({
+    userId: input.userId,
+    tripId: input.tripId,
+    eventType: SLIP_PLAN_FIT_SHOWN_EVENT,
+    funnelStage: SLIP_STAGE,
+    eventData: {
+      setId: set.id,
+      optionId: option.id,
+      fitBasis: fitBasisKey(fit),
+      fitVersion: PLAN_FIT_VERSION,
+      rank: option.fitRank,
+      coverageOmitted: !fit.scored || fit.coverage === null,
+      surface: input.surface,
+      viewport: input.viewport,
+      viewId: input.viewId,
+      burdenMinutes: fit.scored ? fit.minutesPerDay : null,
+      coverage: fit.scored ? fit.coverage : null,
+    },
+  });
+  return { recorded: true };
 }
 
 /** `hotel_cache` rows for the plan's own city — never another city's (§M9 honesty). */
@@ -548,7 +709,7 @@ export async function suggestLodging(input: { tripId: string; userId: string }):
     const [has] = await db.select({ id: planOptions.id }).from(planOptions).where(eq(planOptions.setId, open.id)).limit(1);
     if (has) throw new OptionSetError(409, "set_not_empty", "You're already comparing places to stay");
   }
-  const score = await planScorer(input.tripId);
+  const { score } = await planScorer(input.tripId);
   const probe = score(0, 0);
   if (!probe.scored && probe.reason === "too_few_located") {
     throw new OptionSetError(409, "too_few_located", "Add a few located stops to your days first", { located: probe.located });

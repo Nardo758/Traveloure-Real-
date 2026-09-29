@@ -35,6 +35,9 @@ export type PlanFit =
       minutesPerDay: number;
       basis: "matrix" | "est";
       coverage: number | null; // 0..1; null when the plan's located items sit in no known neighbourhood
+      /** The two counts `coverage` is the share of (A4 renders "2 of 3 areas"); 0/0 when coverage is null. */
+      areasNear: number;
+      areasTotal: number;
       located: number;
       total: number;
     }
@@ -100,6 +103,8 @@ export function planFitFor(input: {
     minutesPerDay: Math.round(weighted / weights),
     basis: allMatrix ? "matrix" : "est",
     coverage: hoods.size ? reachable / hoods.size : null,
+    areasNear: reachable,
+    areasTotal: hoods.size,
     located: located.length,
     total,
   };
@@ -133,4 +138,54 @@ export function planFitLine(fit: PlanFit): string {
   }
   const basis = fit.basis === "est" ? "est. " : "";
   return `${basis}${fit.minutesPerDay} min/day getting around · based on ${fit.located} of ${fit.total} located stops`;
+}
+
+// ── A4: the compare view (ledger `2026-09-29-a4-plan-fit-compare`; §E4, §M3) ─────────────────
+
+/** The M module's version string, recorded on every `slip_plan_fit_shown` row (slip-funnel-events §3.4). */
+export const PLAN_FIT_VERSION = "m3-v1";
+
+/** The funnel event's basis vocabulary (§3.4): `est` is recorded as what it is, a straight-line estimate. */
+export function fitBasisKey(fit: PlanFit): "matrix" | "est_straight_line" | null {
+  if (!fit.scored) return null;
+  return fit.basis === "matrix" ? "matrix" : "est_straight_line";
+}
+
+/**
+ * Rank each fit among its set, 1 = easiest days: lower minutes per day first, then higher coverage.
+ * Unscored fits are never ranked (null) — an unscorable place is not "last", it is unknown (§13).
+ * Exact ties share a rank.
+ */
+export function fitRanks(fits: readonly PlanFit[]): Array<number | null> {
+  const key = (f: PlanFit) => (f.scored ? [f.minutesPerDay, -(f.coverage ?? -1)] : null);
+  return fits.map((f) => {
+    const k = key(f);
+    if (!k) return null;
+    let better = 0;
+    for (const g of fits) {
+      const kg = key(g);
+      if (kg && (kg[0] < k[0] || (kg[0] === k[0] && kg[1] < k[1]))) better++;
+    }
+    return better + 1;
+  });
+}
+
+/**
+ * The "Easiest days" badge: only on a place that ranks 1 ALONE among at least two scored places, all
+ * on the SAME basis — a matrix figure is never compared against a straight-line one to crown a winner.
+ */
+export function easiestIndex(fits: readonly PlanFit[]): number | null {
+  const scored = fits.filter((f) => f.scored) as Array<Extract<PlanFit, { scored: true }>>;
+  if (scored.length < 2) return null;
+  if (new Set(scored.map((f) => f.basis)).size > 1) return null;
+  const ranks = fitRanks(fits);
+  const firsts = ranks.map((r, i) => (r === 1 ? i : -1)).filter((i) => i >= 0);
+  return firsts.length === 1 ? firsts[0] : null;
+}
+
+/** The compare view's lead sentence; states the located count, never a figure it does not have. */
+export function compareIntroLine(located: number, total: number): string {
+  const base = "Plan-fit = how much travelling your days would take from each place. Lower is easier.";
+  if (total === 0) return `${base} Add a few things to your days to see how each place fits.`;
+  return `${base} Based on ${located} of ${total} ${total === 1 ? "stop" : "stops"} that ${total === 1 ? "has" : "have"} a location.`;
 }

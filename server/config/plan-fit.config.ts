@@ -16,3 +16,12 @@ export function planFitEasierThreshold(): { minMinutesPerDay: number; minFractio
     minFraction: envNumber("PLAN_FIT_EASIER_MIN_FRACTION", 0.2),
   };
 }
+
+/**
+ * A4 (ledger `2026-09-29-a4-plan-fit-compare`; slip-funnel-events §5): the most `slip_plan_fit_shown`
+ * rows one traveler writes for one plan per hour. It bounds table growth from a client rail; a view
+ * past it is simply not recorded. Config, not a literal at the call site.
+ */
+export function slipEventsHourlyCap(): number {
+  return envNumber("SLIP_EVENTS_HOURLY_CAP", 300);
+}

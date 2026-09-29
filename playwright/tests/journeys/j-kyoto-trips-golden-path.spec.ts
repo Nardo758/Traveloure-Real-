@@ -48,6 +48,11 @@ import {
  *     slip's own control, fixture-free: the CI database seeds no `hotel_cache` rows (R211 — the census
  *     gate governs release, not the build), so the list source and M9's ranking are proven by the DB
  *     suite (`plan-option-sets.db.test.ts` O11/O12). §3's figures are all "est." here — no matrix.
+ *   · §3 A4 (ledger `2026-09-29-a4-plan-fit-compare`): the compare view is proven on the same
+ *     fixture-free places, so every price cell reads "price from the hotel"; the dated-offer price is
+ *     proven by the DB suite (O14). "No est. on a located pair" runs LIVE only once a Kyoto matrix
+ *     refresh has completed on the database under test — until then it is a fixme whose reason is
+ *     "matrix not refreshed", read at run time, so it flips live with no code change.
  *
  * Run solo: npx playwright test playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts --project=chromium
  * Needs: DATABASE_URL (read-only asserts), the app on BASE_URL (default http://127.0.0.1:5000).
@@ -375,6 +380,175 @@ test.describe("3 · plan-fit per hotel", () => {
     expect(Math.abs(boxes[0]!.x - boxes[2]!.x)).toBeLessThan(2);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow, "no horizontal scroll at phone width").toBeLessThanOrEqual(0);
+  });
+});
+
+// ── §3 · the compare view (A4) ────────────────────────────────────────────────────────────────
+/** The places on a plan's comparison as the SERVER derived them (the view computes none of this). */
+async function serverSet(page: Page, tripId: string, setId: string): Promise<any> {
+  const body = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/option-sets`)).json();
+  return body.sets.find((x: any) => x.id === setId);
+}
+
+/** Three located stops and one without a pin, as in §3 A3 (excluded and counted, never guessed). */
+async function addKyotoStops(page: Page, tripId: string): Promise<void> {
+  await createItem(page.request, tripId, "Yasaka Shrine", 1, { latitude: "35.0036", longitude: "135.7786" });
+  await createItem(page.request, tripId, "Kennin-ji", 1, { latitude: "35.0005", longitude: "135.7736" });
+  await createItem(page.request, tripId, "Fushimi Inari", 2, { latitude: "34.9671", longitude: "135.7727" });
+  await createItem(page.request, tripId, "A friend's recommendation", 2);
+}
+
+/** Opens the compare view from the slip's own "Compare side by side" link. */
+async function openCompareView(page: Page, tripId: string, setId: string): Promise<void> {
+  await page.goto(`/plans/${tripId}`);
+  const link = testid(page, `slip-option-compare-${setId}`);
+  expect(await appears(link, 20_000), "the open set offers 'Compare side by side'").toBe(true);
+  await link.click();
+  await expect(page).toHaveURL(new RegExp(`/plans/${tripId}/compare/${setId}$`));
+  // The slip's query cache already holds the comparisons, so the click need not refetch; a reload
+  // proves the view stands on its own server read.
+  const read = await actAndAwait(page, () => page.reload(), { method: "GET", path: new RegExp(`^/api/trips/${tripId}/option-sets$`) });
+  expect(ok2xx(read)).toBe(true);
+  await expect(testid(page, `compare-view-${setId}`)).toBeVisible({ timeout: 20_000 });
+}
+
+test.describe("3 · the compare view (A4)", () => {
+  test("§3 A4 — the compare view leads with plan-fit: minutes a day, walkable areas, 'N of M located', 'est.'", async ({ page }) => {
+    const tripId = await planWithOccasion(page, "a4-compare", "travel");
+    const setId = await openLodgingSetWithThree(page, tripId);
+    await addKyotoStops(page, tripId);
+    await openCompareView(page, tripId, setId);
+    const set = await serverSet(page, tripId, setId);
+    await expect(testid(page, "compare-title")).toHaveText("Compare 3 places");
+    await expect(testid(page, "compare-intro")).toContainText("Based on 3 of 4 stops that have a location.");
+    for (const o of set.options) {
+      expect(o.fit.scored).toBe(true);
+      expect(o.fit.basis).toBe("est");
+      // The minutes are the SERVER's figure, printed as-is, with "est." beside it (§E4, §13).
+      await expect(testid(page, `compare-travel-${o.id}-value`)).toHaveText(`${o.fit.minutesPerDay} min`);
+      await expect(testid(page, `compare-travel-${o.id}-note`)).toHaveText("est.");
+      await expect(testid(page, `compare-fit-${o.id}`)).toContainText("based on 3 of 4 located stops");
+      // Coverage: the server's two counts, or — with no known area — a dash and a reason, never 0.
+      const areas = o.fit.coverage === null ? "—" : `${o.fit.areasNear} of ${o.fit.areasTotal}`;
+      await expect(testid(page, `compare-areas-${o.id}-value`)).toHaveText(areas);
+      // No offer for these places (fixture-free), so no number is typed: "price from the hotel".
+      await expect(testid(page, `compare-price-${o.id}-value`)).toHaveText("—");
+      await expect(testid(page, `compare-price-${o.id}-note`)).toHaveText("price from the hotel");
+      await expect(testid(page, `compare-option-${o.id}`)).toHaveAttribute("data-fit-rank", String(o.fitRank ?? ""));
+    }
+    await expect(testid(page, `compare-view-${setId}`)).not.toContainText("$");
+    // "Easiest days" is on exactly the place the server crowned, and nowhere else.
+    const crowned = set.options.filter((o: any) => o.easiest);
+    await expect(page.locator('[data-testid^="compare-easiest-"]')).toHaveCount(crowned.length);
+    for (const o of crowned) await expect(testid(page, `compare-easiest-${o.id}`)).toHaveText("Easiest days");
+    await expect(testid(page, "compare-foot")).toHaveText("Not chosen yet — your plan keeps all 3 open.");
+  });
+
+  test("§3 A4 — at 375×812 the cards stack, a long name wraps whole, and nothing scrolls sideways", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    const tripId = await planWithOccasion(page, "a4-phone", "travel");
+    const set = await (await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, {
+      data: { categoryKey: "accommodation", label: "Where you'll stay", anchor: true },
+    })).json();
+    const setId = set.set.id as string;
+    const longName = "Hotel Kanra Kyoto, a restored machiya stay near Karasuma Gojo";
+    for (const [title, lat, lng] of [[longName, 34.9969, 135.7596], ["Gion inn", 35.0037, 135.7788], ["Station hotel", 34.9858, 135.7588]] as const) {
+      const r = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/options`, { data: { source: { kind: "custom", title, lat, lng } } });
+      expect(r.status(), await r.text()).toBe(201);
+    }
+    await addKyotoStops(page, tripId);
+    await openCompareView(page, tripId, setId);
+    const cards = page.locator('[data-testid="compare-list"] > li');
+    await expect(cards).toHaveCount(3);
+    const boxes = await Promise.all([0, 1, 2].map((i) => cards.nth(i).boundingBox()));
+    expect(boxes.every(Boolean)).toBe(true);
+    expect(boxes[1]!.y).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height - 1);
+    expect(boxes[2]!.y).toBeGreaterThan(boxes[1]!.y + boxes[1]!.height - 1);
+    const name = page.getByText(longName, { exact: true });
+    await expect(name).toBeVisible();
+    expect(await name.evaluate((el) => el.scrollWidth - el.clientWidth), "the whole name is readable").toBeLessThanOrEqual(1);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, "no horizontal scroll at 375 px").toBeLessThanOrEqual(0);
+  });
+
+  test("§3 A4 / E4 — each place's plan-fit view writes one slip_plan_fit_shown row carrying the server's figure", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const tripId = await planWithOccasion(page, "a4-e4", "travel");
+    const setId = await openLodgingSetWithThree(page, tripId);
+    await addKyotoStops(page, tripId);
+    await openCompareView(page, tripId, setId);
+    const set = await serverSet(page, tripId, setId);
+    type Row = { option_id: string; surface: string; viewport: string; basis: string; burden: number | null; version: string };
+    const read = () =>
+      rows<Row>(
+        `SELECT properties->>'optionId' AS option_id, properties->>'surface' AS surface, properties->>'viewport' AS viewport,
+                properties->>'fitBasis' AS basis, (properties->>'burdenMinutes')::int AS burden, properties->>'fitVersion' AS version
+           FROM funnel_events WHERE trip_id = $1 AND event_type = 'slip_plan_fit_shown' AND properties->>'surface' = 'compare_view'`,
+        [tripId],
+      );
+    await expect.poll(async () => (await read()).length, { timeout: 15_000 }).toBe(3);
+    const got = await read();
+    for (const o of set.options) {
+      const row = got.find((r) => r.option_id === o.id);
+      expect(row, `a row for ${o.title}`).toBeTruthy();
+      expect(row).toMatchObject({ surface: "compare_view", viewport: "wide", basis: "est_straight_line", burden: o.fit.minutesPerDay, version: "m3-v1" });
+    }
+  });
+
+  test("§3 A4 — after a choice, 'N places would make your days easier' reveals the minutes each saves", async ({ page }) => {
+    const tripId = await planWithOccasion(page, "a4-easier", "travel");
+    const setId = await openLodgingSetWithThree(page, tripId);
+    await addKyotoStops(page, tripId);
+    await openCompareView(page, tripId, setId);
+    const before = await serverSet(page, tripId, setId);
+    const worst = [...before.options].sort((a: any, b: any) => b.fit.minutesPerDay - a.fit.minutesPerDay)[0];
+    const chose = await actAndAwait(page, () => testid(page, `compare-choose-${worst.id}`).click(), {
+      method: "POST",
+      path: new RegExp(`^/api/trips/${tripId}/option-sets/${setId}/choose$`),
+    });
+    expect(chose).toBe(200);
+    await expect(testid(page, `compare-chosen-${worst.id}`)).toBeVisible({ timeout: 10_000 });
+    const after = await serverSet(page, tripId, setId);
+    expect(after.status).toBe("chosen");
+    expect(after.easierCount, "the Gion inn beats the Arashiyama ryokan by the threshold").toBeGreaterThanOrEqual(1);
+    const easier = testid(page, "compare-easier");
+    await expect(easier).toHaveText(after.easierCount === 1 ? "1 place would make your days easier" : `${after.easierCount} places would make your days easier`);
+    await easier.click();
+    for (const o of after.options.filter((x: any) => x.easierByMinutes != null)) {
+      await expect(testid(page, `compare-saves-${o.id}`)).toHaveText(`${o.easierByMinutes} min less travel per day than your choice · est.`);
+    }
+    await expect(testid(page, "compare-foot")).toHaveText(`You chose ${worst.title}. You can change your mind until you book.`);
+  });
+
+  test("§3 A4 — no 'est.' on a located pair once the Kyoto matrix is refreshed", async ({ page }) => {
+    const [refresh] = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM travel_time_matrix_refreshes WHERE market_slug = 'kyoto' AND status = 'complete'`,
+    );
+    test.fixme(!refresh || refresh.n === 0, "matrix not refreshed");
+    // Stops and places ON the matrix's own centroids, so every pair is a matrix pair.
+    const hoods = await rows<{ lat: string; lng: string }>(
+      `SELECT centroid_lat AS lat, centroid_lng AS lng FROM city_neighborhoods WHERE lower(city) = 'kyoto' ORDER BY slug LIMIT 3`,
+    );
+    expect(hoods.length).toBe(3);
+    const tripId = await planWithOccasion(page, "a4-matrix", "travel");
+    const created = await (await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, {
+      data: { categoryKey: "accommodation", label: "Where you'll stay", anchor: true },
+    })).json();
+    const setId = created.set.id as string;
+    for (const [i, h] of hoods.entries()) {
+      await createItem(page.request, tripId, `Stop ${i + 1}`, 1 + (i % 2), { latitude: h.lat, longitude: h.lng });
+      const r = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/options`, {
+        data: { source: { kind: "custom", title: `Place ${i + 1}`, lat: Number(h.lat), lng: Number(h.lng) } },
+      });
+      expect(r.status()).toBe(201);
+    }
+    await openCompareView(page, tripId, setId);
+    const set = await serverSet(page, tripId, setId);
+    for (const o of set.options) {
+      expect(o.fit.basis, `${o.title}: every located pair is a matrix pair`).toBe("matrix");
+      await expect(testid(page, `compare-travel-${o.id}-note`)).not.toHaveText("est.");
+      await expect(testid(page, `compare-fit-${o.id}`)).not.toContainText("est.");
+    }
   });
 });
 

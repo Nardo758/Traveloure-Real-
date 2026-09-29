@@ -11,6 +11,7 @@
  *   POST   /api/trips/:tripId/option-sets/:setId/reopen           §M9 "compare again" (owner/delegate)
  *   POST   /api/trips/:tripId/option-sets/suggest                 §M9 "Suggest places that fit these days"
  *   POST   /api/trips/:tripId/anchor/promote                      M8 "Build my days around this"
+ *   POST   /api/trips/:tripId/slip-events                         A4 — E4 `slip_plan_fit_shown` (202)
  *
  * §14: the actor is the session; no body carries an identity, a price or a coordinate the server
  * could read from a source row. §19: every body is a `.strict()` object. LD 40: a set, option or
@@ -30,6 +31,7 @@ import {
   listOptionSetsWithFit,
   planRole,
   promoteAnchor,
+  recordPlanFitShown,
   removeOption,
   reopenOptionSet,
   suggestLodging,
@@ -70,6 +72,24 @@ const addBody = z
 const emptyBody = z.object({}).strict();
 const promoteBody = z.object({ itemId: z.string().min(1).max(64) }).strict();
 
+/**
+ * A4 — the ONE client event rail (slip-funnel-events §5). A `.strict()` discriminated union of the
+ * events a view may report; today exactly `slip_plan_fit_shown`. No value is taken from the client:
+ * the fit is recomputed server-side (§E4).
+ */
+const slipEventBody = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("slip_plan_fit_shown"),
+      setId: z.string().min(1).max(64),
+      optionId: z.string().min(1).max(64),
+      surface: z.enum(["compare_view", "anchor_question"]),
+      viewport: z.enum(["narrow", "wide"]),
+      viewId: z.string().min(1).max(64),
+    })
+    .strict(),
+]);
+
 function fail(res: any, err: unknown, what: string) {
   if (err instanceof OptionSetError) {
     return res.status(err.status).json({ code: err.code, message: err.message, ...(err.detail ?? {}) });
@@ -86,7 +106,13 @@ router.get("/api/trips/:tripId/option-sets", isAuthenticated, async (req: any, r
   try {
     const userId = getUserId(req);
     if (!(await planRole(req.params.tripId, userId, "read"))) return res.status(404).json({ code: "not_found", message: "No such plan" });
-    res.json({ sets: await listOptionSetsWithFit(req.params.tripId) });
+    // A4: the viewer's standing, SERVER-derived, so the compare view draws only the controls the
+    // rails would accept (a render rule grants nothing; each rail still refuses on its own).
+    const [canWrite, canChoose] = await Promise.all([
+      planRole(req.params.tripId, userId, "write").then(Boolean),
+      planRole(req.params.tripId, userId, "choose").then(Boolean),
+    ]);
+    res.json({ sets: await listOptionSetsWithFit(req.params.tripId), viewer: { canWrite, canChoose } });
   } catch (err) {
     fail(res, err, "list");
   }
@@ -206,6 +232,21 @@ router.post("/api/trips/:tripId/anchor/promote", isAuthenticated, async (req: an
     res.json(out);
   } catch (err) {
     fail(res, err, "promote");
+  }
+});
+
+router.post("/api/trips/:tripId/slip-events", isAuthenticated, async (req: any, res) => {
+  const parsed = slipEventBody.safeParse(req.body ?? {});
+  if (!parsed.success) return badBody(res);
+  try {
+    const { type: _type, ...event } = parsed.data;
+    await recordPlanFitShown({ tripId: req.params.tripId, userId: getUserId(req)!, ...event });
+    res.status(202).json({ accepted: true });
+  } catch (err) {
+    if (err instanceof OptionSetError) return fail(res, err, "slip-event");
+    // A view that fails to record never fails the view (§15b): logged, answered 202.
+    console.error("[option-sets] slip-event write failed:", err);
+    res.status(202).json({ accepted: true });
   }
 });
 
