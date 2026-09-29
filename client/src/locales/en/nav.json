@@ -131,5 +131,23 @@
       "slotHiddenGem": "Hidden gem",
       "slotBookOnTraveloure": "Book on Traveloure"
     }
+  },
+  "planFinish": {
+    "myself": {
+      "label": "Build it myself",
+      "meta": "free · browse and build your own slip"
+    },
+    "ai": {
+      "label": "Plan with AI",
+      "meta": "a full draft itinerary from what you just told us"
+    },
+    "local": {
+      "label": "Get a local expert",
+      "meta": "create your plan, then choose how much help you want and pick an expert"
+    },
+    "occasion": {
+      "label": "For an occasion",
+      "meta": "Plus builds a plan before every date you register"
+    }
   }
 }

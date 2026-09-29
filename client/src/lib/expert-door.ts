@@ -32,7 +32,14 @@ export const HELP_LEVEL_CHOICES: readonly LevelCopy[] = [
 export const QUESTION_LINK = "I just have a question";
 export const HELP_CARD_TITLE = "How much help do you want?";
 export const ADD_EXPERT_LABEL = "Add a local expert";
-export const EMPTY_ACTION = "Start with the free AI draft; we'll tell you when one does";
+/**
+ * The empty state's action (decision-maker, Sep 29, 2026, #1183 rulings). It says what IS done —
+ * the interest is recorded — and promises no message: nothing sends one yet (a later lane).
+ */
+export function emptyActionLabel(cityName: string | null): string {
+  const who = cityName ? `a ${cityName} expert` : "a local expert";
+  return `Start with the free AI draft. We record your interest so ${who} can pick it up.`;
+}
 
 /** The line under a choice's title: its band, or — with nobody offering it — nothing numeric. */
 export function levelBandLine(bandLabel: string | null, expertCount: number): string | null {

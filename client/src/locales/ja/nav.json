@@ -131,5 +131,23 @@
       "slotHiddenGem": "隠れた名所",
       "slotBookOnTraveloure": "Traveloureで予約"
     }
+  },
+  "planFinish": {
+    "myself": {
+      "label": "自分でつくる",
+      "meta": "無料 · 探して自分のプランを組み立てる"
+    },
+    "ai": {
+      "label": "AIでプランニング",
+      "meta": "いま教えてくれた内容から旅程の下書きをつくります"
+    },
+    "local": {
+      "label": "地元のエキスパートに頼む",
+      "meta": "プランをつくってから、どれくらい手伝ってほしいかを選び、エキスパートを選びます"
+    },
+    "occasion": {
+      "label": "記念日・イベント向け",
+      "meta": "Plusが登録した日付の前に毎回プランをつくります"
+    }
   }
 }

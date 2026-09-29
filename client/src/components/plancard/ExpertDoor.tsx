@@ -23,7 +23,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { noExpertLine, type HelpLevel } from "@shared/expert-door";
 import {
   ADD_EXPERT_LABEL,
-  EMPTY_ACTION,
+  emptyActionLabel,
   EXPERT_DOOR_QUERY,
   EXPERT_DOOR_VALUE,
   HELP_CARD_TITLE,
@@ -159,7 +159,7 @@ function ExpertPicker({
         <div className="space-y-3 rounded-lg border border-border p-4" data-testid="expert-picker-empty">
           <p className="text-sm font-medium text-foreground">{noExpertLine(city)}</p>
           <Button className="min-h-[44px] w-full whitespace-normal" onClick={() => interest.mutate()} disabled={interest.isPending} data-testid="expert-picker-interest">
-            {EMPTY_ACTION}
+            {emptyActionLabel(city)}
           </Button>
         </div>
       ) : null}

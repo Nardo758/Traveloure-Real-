@@ -261,7 +261,8 @@ outward from the hotel set".
   Dismissed, it becomes a small "Add a local expert" control in the header until an expert is attached. A choice opens
   the picker: the byline-gated Kyoto experts who list that level — name, the neighbourhoods verified for them in Kyoto,
   the offering and its price, their measured reply time — each with **Request**. With nobody offering the level:
-  "No local expert offers this in Kyoto yet" and "Start with the free AI draft; we'll tell you when one does".
+  "No local expert offers this in Kyoto yet" and "Start with the free AI draft. We record your interest so a Kyoto expert can pick it up." — the interest is
+  recorded (`expert_interest`); no message is promised, because nothing sends one yet (a later lane).
 - **Server truth:** Request is the existing storefront rail (`POST /api/expert-booking-requests` with this plan's id);
   the advisor row comes from its ONE author (LD 32) — no second attach path. The band is the min–max of published
   prices on the picker's own listings (no fee-table rate is shown as a price). No `users.id` in any response (LD 40).
