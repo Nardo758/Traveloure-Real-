@@ -106,6 +106,14 @@ import { slipAdvisorStandingLine, type SlipRailAdvisor } from "@/lib/slip-rail";
 import { SlipAddItemControl, SlipItemTools } from "./SlipItemTools";
 import { SLIP_DELEGATE_NOTE, canEditPlanItems, slipViewer } from "@/lib/slip-viewer-role";
 import {
+  SlipAnchorCompareButton,
+  SlipLodgingEntry,
+  SlipOptionSetCard,
+  SlipPromoteAnchorButton,
+  primaryAnchorItemId,
+  useOptionSets,
+} from "./SlipOptionSets";
+import {
   resolveAddDayNumber,
   slipItemTools,
   SLIP_ADD_DAY_LABEL,
@@ -302,11 +310,22 @@ function slipDayHeading(day: {
  * rail and the OWNER's alone (D16):
  *   · lodging — "Browse places to stay": the services browse pre-filtered to `accommodation` with
  *     this plan's id, so Add to plan lands on the ruling 39 rail. Comparing up to three places is
- *     A3's option sets, not built here, and this card does not pretend otherwise.
+ *     A3b's comparison ("I'm deciding — compare places") sits beside it.
  *   · fixed item — the day-1 add control, the same one the delegate's empty-plan note uses.
  * When `default_schedule` was not set, the card says the plan was treated as a plain trip (§13).
  */
-function SlipAnchorQuestion({ tripId, anchor, isOwner }: { tripId: string; anchor: TripsAnchor; isOwner: boolean }) {
+function SlipAnchorQuestion({
+  tripId,
+  anchor,
+  isOwner,
+  hasOpenLodgingSet,
+}: {
+  tripId: string;
+  anchor: TripsAnchor;
+  isOwner: boolean;
+  /** A3b: a lodging comparison is already open (its card sits above), so "I'm deciding" is not offered twice. */
+  hasOpenLodgingSet: boolean;
+}) {
   const q = tripsAnchorQuestion(anchor);
   return (
     <div className="p-4 space-y-3" data-testid="slip-anchor-question" data-anchor-kind={anchor.kind}>
@@ -319,13 +338,19 @@ function SlipAnchorQuestion({ tripId, anchor, isOwner }: { tripId: string; ancho
       ) : null}
       {isOwner ? (
         anchor.kind === "lodging" ? (
-          <Link
-            href={servicesBrowseHref("accommodation", tripId)}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted/40"
-            data-testid="slip-anchor-browse-stays"
-          >
-            Browse places to stay
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {/* A3b (ledger `2026-09-29-a3b-option-sets-slip`): "I'm deciding" opens a comparison of
+                up to three places — the golden path's Step 2 answer. Browsing stays the "I know
+                where" answer, on the ruling 39 rail. */}
+            {hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} />}
+            <Link
+              href={servicesBrowseHref("accommodation", tripId)}
+              className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted/40"
+              data-testid="slip-anchor-browse-stays"
+            >
+              Browse places to stay
+            </Link>
+          </div>
         ) : (
           <SlipAddItemControl
             tripId={tripId}
@@ -720,9 +745,12 @@ function SlipItemRow({
   dayNumber,
   dayItemIds,
   groupItemIds,
+  promotable = false,
 }: {
   tripId: string;
   activity: PlanCardActivity;
+  /** M8 (A3b): this located, dated row may become what the plan is built around — decided by the caller. */
+  promotable?: boolean;
   isOwner: boolean;
   /** LD 52 (C): the owner's item tools, shared with the delegate (`canEditPlanItems`). */
   canEditItems: boolean;
@@ -876,6 +904,12 @@ function SlipItemRow({
           <OriginBadge activity={a} />
         </div>
       </div>
+      {/* M8 (A3b): a full-width line under the row, so on a phone it never squeezes the item's name. */}
+      {promotable ? (
+        <div className="mt-1">
+          <SlipPromoteAnchorButton tripId={tripId} itemId={a.id} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1546,6 +1580,17 @@ export function SlipView({
   }, [highlightItemId, days.length]);
 
   const sortedDays = [...days].sort((a, b) => a.dayNum - b.dayNum);
+  // A3b (ledger `2026-09-29-a3b-option-sets-slip`): the plan's comparisons, with each option's
+  // plan-fit derived by the server. Write = the item-tool holders and a §12 WRITE advisor; CHOOSE is
+  // the owner's or delegate's alone (R129). Render rules only — the rails refuse on their own.
+  const optionSetsQuery = useOptionSets(tripId, true);
+  const optionSets = optionSetsQuery.data?.sets ?? [];
+  const anchorItemId = primaryAnchorItemId(optionSets);
+  const canWriteSets = canEditItems || (isExpertViewer && data.expertAssigned === true);
+  const hasOpenLodgingSet = optionSets.some((st) => st.status === "open" && st.categoryKey === "accommodation");
+  const planActivities = sortedDays.flatMap((d) => d.activities ?? []);
+  const hasStayItem = planActivities.some((act) => act.type === "accommodation");
+  const locatedStops = planActivities.filter((act) => act.type !== "accommodation" && act.lat != null && act.lng != null).length;
 
   // ── DAY → EVENT → ITEMS (migration 277; ledger `2026-09-04-slip-events`) ──────────────────
   // TWO conditions, both real, and neither is guessed:
@@ -1934,6 +1979,20 @@ export function SlipView({
           )}
         </div>
       ) : (
+      <>
+      {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
+          open set is not an item (R126): it never enters the day list, the cart or the counts. */}
+      {optionSets.some((st) => st.status === "open" || (st.status === "chosen" && (st.easierCount ?? 0) > 0)) ||
+      (tripsAnchor && !hasStayItem && !hasOpenLodgingSet && daySlots.length > 0 && canWriteSets) ? (
+        <div className="space-y-3" data-testid="slip-option-sets">
+          {optionSets.map((st) => (
+            <SlipOptionSetCard key={st.id} tripId={tripId} set={st} canWrite={canWriteSets} canChoose={canEditItems} />
+          ))}
+          {tripsAnchor && !hasStayItem && !hasOpenLodgingSet && daySlots.length > 0 ? (
+            <SlipLodgingEntry tripId={tripId} locatedStops={locatedStops} canWrite={canWriteSets} />
+          ) : null}
+        </div>
+      ) : null}
       <Card>
         <CardContent className="p-2 sm:p-3 divide-y divide-border">
           {/* §13 — "No items" is now said ONLY when there is genuinely nothing to show. A plan
@@ -1948,7 +2007,7 @@ export function SlipView({
               signal, from the hook that owns the lookup) and a neutral placeholder stands in its
               place. The placeholder states nothing; it is not an empty state and never says one. */}
           {showsSlipEmptyState(daySlots.length, occasionResolved) && tripsAnchor ? (
-            <SlipAnchorQuestion tripId={tripId} anchor={tripsAnchor} isOwner={isOwner} />
+            <SlipAnchorQuestion tripId={tripId} anchor={tripsAnchor} isOwner={isOwner} hasOpenLodgingSet={hasOpenLodgingSet} />
           ) : showsSlipEmptyState(daySlots.length, occasionResolved) ? (
             <p
               className="text-sm text-muted-foreground p-4 text-center"
@@ -2027,6 +2086,14 @@ export function SlipView({
                       dayNumber={slot.dayNum}
                       dayItemIds={dayItemIds}
                       groupItemIds={groupItemIds}
+                      promotable={
+                        canEditItems &&
+                        !data.trip?.finalizedAt &&
+                        slot.dayNum != null &&
+                        a.lat != null &&
+                        a.lng != null &&
+                        a.id !== anchorItemId
+                      }
                     />
                   ));
                   // The implicit group carries NO heading — NULL is the plan's own unnamed event,
@@ -2088,6 +2155,7 @@ export function SlipView({
           })}
         </CardContent>
       </Card>
+      </>
       )}
 
       {/* WHAT USED TO SIT HERE, AND WHERE IT WENT (ledger `2026-09-05-slip-rail-regroup`):
