@@ -33,6 +33,8 @@ import { planRole } from "../services/plan-option-sets.service";
 import { choosePickInTx, openSetHeldItemIds, recordVersionAdopted, type PickOutcome } from "../services/version-adopt.service";
 import { optionPickOf } from "@shared/version-options";
 import { versionPerOptionEnabled } from "../config/version-options.config";
+import { listRunsForTrip, recordRunOutcome } from "../services/optimizer-runs.service";
+import { optimizerRunRecordsEnabled } from "../config/optimizer-runs.config";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -238,6 +240,15 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
         pickOutcomes.push(await choosePickInTx(tx, { tripId, userId, role: chooseRole, pick, via: "version_whole" }));
       }
 
+      // A9 (§N2): what happened to the run, at the moment it happened — the whole-version adopt and
+      // each set it decided. A version with no run (flag off when it was made) records nothing.
+      if (optimizerRunRecordsEnabled()) {
+        await recordRunOutcome(tx, { variantId: variant.id, kind: "adopted_whole", actorId: userId });
+        for (const o of pickOutcomes) {
+          if (o.decided) await recordRunOutcome(tx, { variantId: variant.id, kind: "option_chosen", actorId: userId, setId: o.setId, optionId: o.optionId });
+        }
+      }
+
       await logItemTransition(tx, {
         tripId,
         itemId: null,
@@ -437,12 +448,17 @@ async function adoptVariantItemsInTx(
   const alreadyInPlan: string[] = [];
   const sets: PickOutcome[] = [];
   const decidedSets = new Set<string>();
+  const addedByVariant = new Map<string, string[]>();
   for (const variantItem of input.items) {
     const pick = input.perOption ? optionPickOf(variantItem.metadata) : null;
     if (pick) {
       if (decidedSets.has(pick.setId)) continue;
       decidedSets.add(pick.setId);
-      sets.push(await choosePickInTx(tx, { tripId, userId: input.userId, role: input.role, pick, via: "version_stop" }));
+      const outcome = await choosePickInTx(tx, { tripId, userId: input.userId, role: input.role, pick, via: "version_stop" });
+      sets.push(outcome);
+      if (outcome.decided && optimizerRunRecordsEnabled()) {
+        await recordRunOutcome(tx, { variantId: variantItem.variantId, kind: "option_chosen", actorId: input.userId, setId: outcome.setId, optionId: outcome.optionId });
+      }
       continue;
     }
     const name = String(variantItem.name ?? "").trim().toLowerCase();
@@ -471,8 +487,15 @@ async function adoptVariantItemsInTx(
       longitude: variantItem.longitude ? String(variantItem.longitude) : null,
     }).returning();
     added.push(row);
+    addedByVariant.set(variantItem.variantId, [...(addedByVariant.get(variantItem.variantId) ?? []), variantItem.id]);
     if (variantItem.providerServiceId) svcIds.add(variantItem.providerServiceId);
     if (name) titles.add(name);
+  }
+  // A9 (§N2): the stops adopted from each version, as one `adopted_part` row per version.
+  if (optimizerRunRecordsEnabled()) {
+    for (const [variantId, variantItemIds] of Array.from(addedByVariant.entries())) {
+      await recordRunOutcome(tx, { variantId, kind: "adopted_part", actorId: input.userId, variantItemIds });
+    }
   }
   return { added, alreadyInPlan, sets };
 }
@@ -528,6 +551,24 @@ router.post("/api/itinerary-comparisons/:id/adopt-stops", isAuthenticated, async
   } catch (error) {
     console.error("Error adopting stops into trip:", error);
     res.status(500).json({ error: "Failed to add stops to plan" });
+  }
+});
+
+// A9 (§N3, ledger `2026-09-30-a9-run-records`): "Your optimized plans" — this plan's runs, newest
+// first: date, what paid for it (the basis, never an amount), its versions and what was adopted. READ
+// ONLY, through the plan's READ gate (owner, delegate, §12 read-status advisor, author, audited admin);
+// runs are never shown on another traveler's plan. Behind OPTIMIZER_RUN_RECORDS_ENABLED (404 when off).
+router.get("/api/trips/:tripId/optimizer-runs", isAuthenticated, async (req, res) => {
+  try {
+    if (!optimizerRunRecordsEnabled()) return res.status(404).json({ error: "Not found" });
+    const { tripId } = req.params;
+    const userId = getUserId(req)!;
+    const denied = await authorizeTripLogistics(tripId, userId, "GET /api/trips/:tripId/optimizer-runs");
+    if (denied) return res.status(denied.status).json({ error: denied.message });
+    res.json({ runs: await listRunsForTrip(tripId) });
+  } catch (error) {
+    console.error("Error listing optimizer runs:", error);
+    res.status(500).json({ error: "Failed to list optimized plans" });
   }
 });
 
