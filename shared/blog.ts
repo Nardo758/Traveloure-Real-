@@ -23,7 +23,7 @@ export function authorshipFor(contentType: BlogContentType): BlogAuthorship {
 }
 
 /** The label a platform-authored post carries instead of a byline (ruling 5). */
-export const PLATFORM_POST_LABEL = "AI signal from public data";
+export const PLATFORM_POST_LABEL = "AI-drafted from public and licensed data sources";
 
 /**
  * Lifecycle. draft → in_review (expert posts) → signed → published → withdrawn. Platform posts go
