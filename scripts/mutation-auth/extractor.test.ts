@@ -163,12 +163,12 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 634 / 625 → 635 / 626 (ledger `2026-09-30-a7-version-per-option`, Track A step A7): POST
  * /api/itinerary-comparisons/:id/adopt-stops — the comparison owner only plus the trip's §12 WRITE
  * gate, exactly as adopt-stop, so other 215 → 216 and resource-owner 96 → 97.
- * 634 / 625 → 635 / 626 (ledger `2026-09-30-travelpulse-weekly`): POST
- * /api/admin/blog/travelpulse-weekly, the admin trigger that drafts this ISO week's platform post
- * (reads no body) — under §2's blanket /api/admin guard, so admin 159 → 160, admin-role 159 → 160.
- * 635 / 626 → 636 / 627 (ledger `2026-09-30-travelpulse-weekly-schedule`): POST
+ * 635 / 626 → 636 / 627 (ledger `2026-09-30-travelpulse-weekly`): POST
+ * /api/admin/blog/travelpulse-weekly, the admin trigger for this ISO week's platform draft (reads no
+ * body) — under §2's blanket /api/admin guard, so admin 159 → 160, admin-role 159 → 160.
+ * 636 / 627 → 637 / 628 (ledger `2026-09-30-travelpulse-weekly-schedule`): POST
  * /internal/jobs/travelpulse-weekly, machine-to-machine behind INTERNAL_JOB_SECRET (not a user
- * session) — other 215 → 216, public-or-system 39 → 40.
+ * session) — other 216 → 217, public-or-system 39 → 40.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
