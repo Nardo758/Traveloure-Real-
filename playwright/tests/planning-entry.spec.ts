@@ -19,9 +19,9 @@
  *  4. The AI branch reaches the comparison FROM THE STEPS' OWN ANSWERS: the basics
  *     are typed on step 2/3, the AI form shows them read-only (its duplicate fields
  *     were removed by ledger `2026-09-04-golf-occasion-and-housekeeping`), and with
- *     /api/ai/generate-itinerary intercepted (the response contract Phase 0 verified
- *     — a 200 always carries comparisonId) generate navigates to
- *     /itinerary-comparison/:id. Its "change" affordance re-opens THE plan modal
+ *     /api/ai/generate-itinerary intercepted, generate lands on the plan's slip
+ *     (/plans/:tripId — B3/B6: the draft creates no comparison and opens no
+ *     alternatives). Its "change" affordance re-opens THE plan modal
  *     through the one opener, never a second modal.
  *  5. TripStrip's Continue/Edit routes to the PLANNING surface for an in-planning
  *     trip and to /trip/:id only for a past trip (date-derived per ruling 2).
@@ -296,15 +296,15 @@ test.describe("Single planning entry — authed branches", () => {
     await expect(page).not.toHaveURL(/\/plans\//);
   });
 
-  test("AI branch reaches the comparison (generate → /itinerary-comparison/:id)", async ({ page }) => {
+  test("AI branch lands on the plan's slip (generate → /plans/:tripId), never the comparison", async ({ page }) => {
     await registerUser(page);
-    // Intercept the generate call with the contract Phase 0 verified: a 200 always
-    // carries comparisonId (created inside the snapshot transaction server-side).
+    // B3/B6 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the free draft is the
+    // deliverable — it creates no comparison and the form lands on the plan it was written into.
     await page.route("**/api/ai/generate-itinerary", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ comparisonId: "e2e-cmp-1", tripId: "e2e-trip-1", message: "ok" }),
+        body: JSON.stringify({ tripId: "e2e-trip-1", message: "ok" }),
       }),
     );
     await openModalFromHero(page);
@@ -333,7 +333,8 @@ test.describe("Single planning entry — authed branches", () => {
     await expect(page.getByTestId("input-start-date")).toHaveCount(0);
     await expect(page.getByTestId("input-end-date")).toHaveCount(0);
     await page.getByTestId("button-generate-itinerary").click();
-    await expect(page).toHaveURL(/\/itinerary-comparison\/e2e-cmp-1/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/plans\/e2e-trip-1/, { timeout: 15_000 });
+    await expect(page).not.toHaveURL(/\/itinerary-comparison\//);
   });
 
   test("the AI form's “change” returns to THE plan modal, not a second one", async ({ page }) => {

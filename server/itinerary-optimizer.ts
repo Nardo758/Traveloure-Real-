@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { optionPickItem, type OptionSlot } from "./services/version-options.service";
+import { buildInputSnapshot, recordOptimizerRun, type RunRecordContext } from "./services/optimizer-runs.service";
 import { db } from "./db";
 import { trackAICost } from "./services/ai-cost-tracker";
 import {
@@ -841,7 +843,19 @@ export async function generateOptimizedItineraries(
    *  route against real coordinates. When present, ALL THREE versions are built around it (they
    *  still differ by strategy); when omitted, anchors are auto-picked (one hotel / neighborhood /
    *  activity). Undefined ⇒ unchanged auto behaviour. */
-  pinnedAnchor?: AnchorScore
+  pinnedAnchor?: AnchorScore,
+  /**
+   * A7 (§M5, ledger `2026-09-30-a7-version-per-option`): the plan's open STAY comparison as three
+   * version slots — version v anchors on `openSetSlots[v]` and carries that option as its pick
+   * (§F2 (2)). Passed only when `OPTIMIZER_VERSION_PER_OPTION_ENABLED` is on and no anchor is pinned.
+   */
+  openSetSlots?: OptionSlot[],
+  /**
+   * A9 (§N2, ledger `2026-09-30-a9-run-records`): the authorized run's record context. When given,
+   * the run is recorded (insert-only) immediately before the model call and every version this call
+   * writes names it (`run_id`). Passed only when `OPTIMIZER_RUN_RECORDS_ENABLED` is on.
+   */
+  runRecord?: RunRecordContext
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let anchorConstraints: AnchorConstraint[] = [];
@@ -907,6 +921,10 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       // it (they still differ by strategy). Already resolved + scored by the route against real
       // coordinates, so it is used as-is; the route dropped it if it couldn't resolve (§13).
       chosenAnchors = [pinnedAnchor, pinnedAnchor, pinnedAnchor];
+    } else if (openSetSlots && openSetSlots.length > 0) {
+      // A7 (§M5): with an open stay comparison, each version builds around ONE of its options —
+      // real, located places the traveler put there, scored like any auto anchor (§13).
+      chosenAnchors = openSetSlots.map((slot) => slot.anchor);
     } else {
       try {
         const anchorStops = baselineItems.map((it) => {
@@ -1019,6 +1037,11 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
           providerServiceId: item.providerServiceId ?? null,
           dayNumber: item.dayNumber || 1,
           timeSlot: item.timeSlot || "morning",
+          // B9 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the baseline IS the plan, so it
+          // carries the item's own wall-clock times — the board then shows the same times the slip
+          // does. Absent stays NULL (§13), never a slot's invented hour.
+          startTime: item.startTime ?? null,
+          endTime: item.endTime ?? null,
           name: item.name,
           description: item.description,
           serviceType: item.serviceType,
@@ -1334,6 +1357,20 @@ Respond with valid JSON in this exact format:
 
 The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, in this order: "${variantA.name}", "${variantB.name}", "${variantC.name}".`;
 
+    // A9 (§N2): record the run BEFORE the model call — its prompt hash (never the text) and the
+    // model it ran on, stored per run. The baseline written above joins it; the versions below carry it.
+    let runId: string | null = null;
+    if (runRecord) {
+      runId = await recordOptimizerRun(runRecord, {
+        inputSnapshot: buildInputSnapshot({ baselineItems: baselineItems as any, openSetSlots, tripPreferences, fixedCommitments: fixedCommitments as any }),
+        modelVersion: CLAUDE_MODEL,
+        prompt,
+      });
+      if (runId) {
+        await db.update(itineraryVariants).set({ runId }).where(eq(itineraryVariants.id, baselineVariant[0].id));
+      }
+    }
+
     const content = await callAI(
       "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON. Keep descriptions and reasoning brief (under 50 words each) to fit within token limits.",
       prompt
@@ -1537,6 +1574,7 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
           description: variant.description,
           source: "ai_optimized",
           status: "generated",
+          runId: runId ?? undefined,
           totalCost: variant.metrics.totalCost.toString(),
           totalTravelTime: variant.metrics.totalTravelTime,
           averageRating: variant.metrics.averageRating.toString(),
@@ -1554,6 +1592,12 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
             chosenAnchors[v]?.medianMeters != null ? Math.round(chosenAnchors[v].medianMeters as number) : null,
         })
         .returning();
+
+      // A7 (§F2 (2)): the version's pick — the stay it was built around, marked with its option so
+      // adopting the version (or this one stop) CHOOSES that set. Absent = the set stays undecided.
+      if (openSetSlots?.[v]) {
+        await db.insert(itineraryVariantItems).values(optionPickItem(newVariant.id, openSetSlots[v]));
+      }
 
       // Batch-insert all variant items in one round-trip
       if (reorderedItems.length > 0) {
