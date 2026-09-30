@@ -54,3 +54,26 @@ export function itemFactLine(facts: readonly FactView[] | undefined, dateIso: st
   const first = used[0];
   return { text: parts.join(" · "), provenance: first.provenance, sourceUrl: first.sourceUrl };
 }
+
+export interface ItemAddressLine {
+  text: string;
+  /** The server's provenance line, present ONLY when the address is a stored Places fact. */
+  provenance: string | null;
+  sourceUrl: string | null;
+}
+
+/**
+ * The item's address line (ledger `2026-09-30-places-address`). Pure. ONE chain, in this order:
+ * the stored Places `address` fact's `formattedAddress`, then its `shortFormattedAddress` — both
+ * shown WITH the Maps attribution beside them — and only then the draft's own location text, which
+ * is the plan's words and carries no attribution (§13: an address Google did not give is never
+ * labelled as Google's). Nothing at all ⇒ null.
+ */
+export function itemAddressLine(facts: readonly FactView[] | undefined, draftText: string | null | undefined): ItemAddressLine | null {
+  const fact = facts?.find((f) => f.factType === "address");
+  const pick = (k: string) => (typeof fact?.value?.[k] === "string" ? String(fact.value[k]).trim() : "");
+  const stored = pick("formattedAddress") || pick("shortFormattedAddress");
+  if (fact && stored) return { text: stored, provenance: fact.provenance, sourceUrl: fact.sourceUrl };
+  const draft = (draftText ?? "").trim();
+  return draft ? { text: draft, provenance: null, sourceUrl: null } : null;
+}
