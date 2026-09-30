@@ -1019,6 +1019,11 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
           providerServiceId: item.providerServiceId ?? null,
           dayNumber: item.dayNumber || 1,
           timeSlot: item.timeSlot || "morning",
+          // B9 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the baseline IS the plan, so it
+          // carries the item's own wall-clock times — the board then shows the same times the slip
+          // does. Absent stays NULL (§13), never a slot's invented hour.
+          startTime: item.startTime ?? null,
+          endTime: item.endTime ?? null,
           name: item.name,
           description: item.description,
           serviceType: item.serviceType,
