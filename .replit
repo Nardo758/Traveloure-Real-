@@ -105,6 +105,7 @@ DMO_INGEST_ENABLED = "0"
 [userenv.production]
 ENVIRONMENT = "PROD"
 PLUS_SALES_ENABLED = "false"
+PLACE_FACTS_PLACES_ENABLED = "1"
 
 [postMerge]
 path = "scripts/post-merge.sh"
