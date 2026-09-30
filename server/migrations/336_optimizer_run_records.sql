@@ -1,6 +1,6 @@
 -- 336 — Optimizer run records (Track A step A9; product map §N2/§N4, RATIFIED Sep 28, 2026 with the
--- N4 amendment; ledger `2026-09-30-a9-run-records`). HELD FOR RULING by the decision-maker's
--- instruction of Sep 30, 2026 ("Each PR stays draft and held until I rule on its migration file").
+-- N4 amendment; ledger `2026-09-30-a9-run-records`, R232). APPROVED by the decision-maker on Sep 30,
+-- 2026 under the migration-336 rule stated below.
 --
 -- ADDITIVE ONLY. Two new tables, born empty, and one nullable column. NO DEFAULT, NO CHECK, NO INDEX,
 -- NO BACKFILL — the publish-trap posture (migrations 181/195/273/…); value sets are app-enforced; all
