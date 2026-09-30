@@ -16,6 +16,7 @@ import {
   buildWeeklyFacts,
   checkWeeklyDraft,
   draftTravelPulseWeekly,
+  runTravelPulseWeeklyJob,
   isoWeek,
   weeklySlug,
   type WeeklyMarketSignal,
@@ -104,4 +105,16 @@ test("W5: the prompt carries only displayed facts; the post is a platform DRAFT;
     (e: unknown) => e instanceof BlogError && e.code === "already_drafted",
   );
   assert.equal(calls, 1, "the second run spent no model call");
+});
+
+test("W6: the scheduled runner maps outcomes — thin week and already-drafted are no-ops, a refused draft fails", async () => {
+  const later = new Date("2099-03-11T09:00:00Z"); // the NEXT ISO week, so W5's row does not interfere
+  const none = async () => false;
+  assert.deepEqual(await runTravelPulseWeeklyJob({ now: later, slugExists: none, signal: async () => SIGNAL.slice(0, 2) }), { status: "not_enough_signal" });
+  assert.deepEqual(await runTravelPulseWeeklyJob({ now: NOW, signal: async () => SIGNAL }), { status: "already_drafted" });
+  const refused = await runTravelPulseWeeklyJob({
+    now: later, slugExists: none, signal: async () => SIGNAL,
+    model: async () => ({ title: "t", body: "Kyoto hotels from $120." }),
+  });
+  assert.equal(refused.status, "failed");
 });
