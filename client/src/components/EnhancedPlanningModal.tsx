@@ -29,8 +29,9 @@
  * missing count (see `travelers` below).
  *
  * Other features, unchanged: progressive disclosure of the preference groups, the neighborhood and
- * hidden-gem refinements for a resolved city, `/api/ai/generate-itinerary`, the 2-variant
- * optimization, and the redirect to the comparison page.
+ * hidden-gem refinements for a resolved city, and `/api/ai/generate-itinerary`. Since B3/B6 (ledger
+ * `2026-09-30-b3-b6-draft-is-the-deliverable`) a successful draft lands on the plan's slip — the
+ * draft no longer auto-starts an optimization or opens the comparison page.
  */
 
 import { ANCHOR_NEEDED_ERROR } from "@shared/draft-basis";
@@ -38,7 +39,6 @@ import { planSpanLabel } from "@shared/plan-dates";
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Calendar, Users, MapPin, Sparkles, ChevronDown, ChevronRight, Settings, Heart, Utensils, Accessibility, DollarSign, Target, AlertCircle, Gem, LogIn } from 'lucide-react';
 import { useLocation } from 'wouter';
-import { useToast } from "@/hooks/use-toast";
 import { useQuery } from '@tanstack/react-query';
 import { getQueryFn } from '@/lib/queryClient';
 import { readSlipHasItemsRefusal, slipHref, type AiDraftRefusal } from '@/lib/ai-draft-refusal';
@@ -156,7 +156,6 @@ export default function EnhancedPlanningModal({
   tripId,
 }: EnhancedPlanningModalProps) {
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
   const { data: authUser } = useQuery<{ id: string } | null>({
     queryKey: ["/api/auth/user"],
     queryFn: getQueryFn({ on401: "returnNull" }),
@@ -381,26 +380,15 @@ export default function EnhancedPlanningModal({
       // creates one server-side; either way the plan lists changed.
       void refreshPlanLists();
 
-      // The backend creates the comparison INSIDE the snapshot transaction
-      // (saveGeneratedItinerarySnapshot, content-query.service.ts) and the
-      // endpoint's one success exit always returns comparisonId — so the branch
-      // below is defensive only (Phase 0 of ruling 2026-08-28-single-planning-entry
-      // verified no server path returns 200 without it).
-      if (data.comparisonId) {
-        // Close modal and redirect to comparison page
-        onClose();
-        setLocation(`/itinerary-comparison/${data.comparisonId}`);
-      } else if (data.tripId) {
-        // Defensive fallback: land on the PLANNING surface for the trip, never
-        // the details card mid-flow (the slip is the canonical planning address).
-        toast({
-          title: "Itinerary saved",
-          description: "The optimized comparison isn't ready — continuing on your plan.",
-        });
+      // B3/B6 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): THE DRAFT IS THE DELIVERABLE.
+      // The free draft is saved into the plan by the server and creates no comparison, so the
+      // traveler lands on that plan's slip. Alternatives are the PAID step — the slip's Optimize,
+      // with its fee stated and charged only on confirm (LD 41 (b)/(d)) — never opened from here.
+      if (data.tripId) {
         onClose();
         setLocation(`/plans/${data.tripId}`);
       } else {
-        throw new Error('No comparison or trip ID returned from server');
+        throw new Error('No plan was returned from the server');
       }
 
     } catch (err: any) {
