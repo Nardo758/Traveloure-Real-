@@ -204,7 +204,11 @@ export async function upsertCatalogItem(partnerId: string, item: CatalogInput): 
     productId = existing.id;
     outcome = "updated";
   } else {
-    const [row] = await db.insert(affiliateProducts).values(values as any).returning();
+    // Provenance (migration 334, ledger `2026-09-30-affiliate-extract-compliant`), stamped on INSERT
+    // only: an existing row keeps whatever it carries — a pre-334 NULL is not backfilled by a re-run.
+    const [row] = await db.insert(affiliateProducts)
+      .values({ ...values, source: "travelpayouts_import" } as any)
+      .returning();
     productId = row.id;
     outcome = "created";
   }

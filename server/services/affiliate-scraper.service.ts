@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { db } from "../db";
 import { 
   affiliatePartners, 
@@ -19,8 +18,24 @@ import {
 } from "../utils/egress-guard";
 import { assertRobotsAllowed } from "../utils/robots-txt";
 import { ROBOTS_TXT_USER_AGENT, ROBOTS_TXT_USER_AGENT_TOKEN } from "../config/robots-txt.config";
+import { claudeService } from "./claude.service";
+import { pageExtractAllowed } from "@shared/affiliate-extract";
 
-const GROK_MODEL = "grok-3";
+/**
+ * Refusal: this partner's program has not been recorded as allowing page extraction (ledger
+ * `2026-09-30-affiliate-extract-compliant`). Thrown BEFORE a job row, a robots fetch or a page
+ * fetch — nothing leaves the server for a partner nobody has cleared.
+ */
+export class PageExtractNotPermittedError extends Error {
+  readonly reason = "page_extract_not_permitted";
+  constructor(partnerName: string) {
+    super(
+      `Page extraction is not permitted for ${partnerName}: an admin must record, after reading the ` +
+        "partner program's terms, that page extraction is allowed.",
+    );
+    this.name = "PageExtractNotPermittedError";
+  }
+}
 
 interface ScrapedProduct {
   externalId?: string;
@@ -51,22 +66,6 @@ interface ScrapedProduct {
 }
 
 class AffiliateScraperService {
-  private grokClient: OpenAI | null = null;
-
-  private getGrokClient(): OpenAI {
-    if (!this.grokClient) {
-      const apiKey = process.env.XAI_API_KEY;
-      if (!apiKey) {
-        throw new Error("XAI_API_KEY not configured");
-      }
-      this.grokClient = new OpenAI({
-        apiKey,
-        baseURL: "https://api.x.ai/v1",
-      });
-    }
-    return this.grokClient;
-  }
-
   async createPartner(data: {
     name: string;
     websiteUrl: string;
@@ -111,7 +110,10 @@ class AffiliateScraperService {
     scrapeConfig: any;
     isActive: boolean;
   }>): Promise<AffiliatePartner | null> {
-    const updateData: any = { ...data, updatedAt: new Date() };
+    // Second layer (§19): the page-extract terms gate has ONE writer, `setPageExtractPermission`;
+    // the general update path never carries it, whatever a caller passes.
+    const { pageExtractPermitted: _p, termsCheckedAt: _t, ...rest } = data as any;
+    const updateData: any = { ...rest, updatedAt: new Date() };
     if (data.commissionRate !== undefined) {
       updateData.commissionRate = data.commissionRate.toString();
     }
@@ -140,6 +142,20 @@ class AffiliateScraperService {
         rejectionReason: status === "rejected" ? (rejectionReason ?? null) : null,
         updatedAt: new Date(),
       })
+      .where(eq(affiliatePartners.id, id))
+      .returning();
+    return updated || null;
+  }
+
+  /**
+   * The ONE writer of the page-extract terms gate (ledger `2026-09-30-affiliate-extract-compliant`).
+   * An admin answers "does this partner program allow page extraction?" after reading its terms;
+   * the answer and the moment it was given are written together, so a flag always carries its date.
+   */
+  async setPageExtractPermission(id: string, permitted: boolean): Promise<AffiliatePartner | null> {
+    const now = new Date();
+    const [updated] = await db.update(affiliatePartners)
+      .set({ pageExtractPermitted: permitted, termsCheckedAt: now, updatedAt: now })
       .where(eq(affiliatePartners.id, id))
       .returning();
     return updated || null;
@@ -194,7 +210,7 @@ class AffiliateScraperService {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async scrapePartnerWebsite(partnerId: string): Promise<{
+  async scrapePartnerWebsite(partnerId: string, actorUserId: string | null = null): Promise<{
     jobId: string;
     productsFound: number;
     productsNew: number;
@@ -204,6 +220,11 @@ class AffiliateScraperService {
     const partner = await this.getPartnerById(partnerId);
     if (!partner) {
       throw new Error("Partner not found");
+    }
+    // The terms gate comes FIRST: no job row, no robots.txt fetch and no page fetch for a partner
+    // whose program has not been recorded as allowing page extraction (default off).
+    if (!pageExtractAllowed(partner)) {
+      throw new PageExtractNotPermittedError(partner.name);
     }
 
     const [job] = await db.insert(affiliateScrapeJobs).values({
@@ -223,7 +244,7 @@ class AffiliateScraperService {
 
       const htmlContent = await this.fetchWebPage(scrapeUrl, allowedHosts);
       
-      const products = await this.extractProductsWithAI(htmlContent, partner);
+      const products = await this.extractProductsWithAI(htmlContent, partner, actorUserId);
       
       let productsNew = 0;
       let productsUpdated = 0;
@@ -269,6 +290,9 @@ class AffiliateScraperService {
           const [inserted] = await db.insert(affiliateProducts).values({
             partnerId,
             ...product,
+            // Provenance (migration 334), stamped on INSERT. `product` is the allowlisted shape built
+            // in extractProductsWithAI, so the model's output cannot name a column this overrides.
+            source: "partner_page_extract",
             affiliateUrl,
             lastScrapedAt: new Date(),
             price: product.price?.toString(),
@@ -406,12 +430,15 @@ class AffiliateScraperService {
     }
   }
 
-  private async extractProductsWithAI(html: string, partner: AffiliatePartner): Promise<ScrapedProduct[]> {
-    const grok = this.getGrokClient();
+  private async extractProductsWithAI(
+    html: string,
+    partner: AffiliatePartner,
+    actorUserId: string | null,
+  ): Promise<ScrapedProduct[]> {
     
     const truncatedHtml = html.length > 50000 ? html.substring(0, 50000) : html;
 
-    const prompt = `You are an expert web scraper. Analyze this HTML from the website "${partner.name}" (${partner.websiteUrl}) and extract all product/service listings.
+    const prompt = `Analyze this HTML from the website "${partner.name}" (${partner.websiteUrl}) and extract all product/service listings.
 
 The partner category is: ${partner.category}
 
@@ -440,34 +467,26 @@ Extract each product with these fields:
 - availability: Availability info
 - bookingInfo: Booking instructions
 
-Return a JSON array of products. Only include products you can confidently extract.
+Return a JSON object {"products": [...]}. Only include products the page actually lists; leave a field out when the page does not state it.
 If URLs are relative, make them absolute using the base URL: ${partner.websiteUrl}
 
 HTML Content:
 ${truncatedHtml}`;
 
     try {
-      const response = await grok.chat.completions.create({
-        model: GROK_MODEL,
-        messages: [
-          {
-            role: "system",
-            content: "You are a precise web scraping assistant. Extract product data from HTML and return valid JSON arrays only. Be thorough but accurate."
-          },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.3,
-        response_format: { type: "json_object" },
+      // The general Anthropic client, cost-tracked to the admin who pressed the button (ledger
+      // `2026-09-30-affiliate-extract-compliant`; it ran on xAI's grok-3 until then).
+      const { result: parsed } = await claudeService.completeJson<Record<string, unknown>>({
+        system:
+          "You extract product and service listings from a partner's own web page. Return only what the page states; never invent a price, rating or availability.",
+        user: prompt,
+        maxTokens: 8192,
+        sourceType: "ai_affiliate_extract",
+        userId: actorUserId,
+        label: `Affiliate page extract (${partner.name})`,
       });
+      const products = (parsed as any).products || (parsed as any).items || (parsed as any).listings;
 
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error("No response from AI");
-      }
-
-      const parsed = JSON.parse(content);
-      const products = parsed.products || parsed.items || parsed.listings || parsed;
-      
       if (!Array.isArray(products)) {
         console.warn("AI response was not an array, returning empty");
         return [];

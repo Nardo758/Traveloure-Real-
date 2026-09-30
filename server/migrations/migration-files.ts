@@ -1866,4 +1866,9 @@ export const MIGRATION_FILES = [
   // tables born empty with plain indexes; NO CHECK, NO UNIQUE, NO DEFAULT on a status column; NO
   // seed (a deploy never adds a source). All declared in shared/schema.ts. §20 new-object carve-out.
   "333_content_facts.sql",
+  // Ledger `2026-09-30-affiliate-extract-compliant` (HELD FOR RULING): affiliate_products.source
+  // (which writer produced the row) + affiliate_partners.page_extract_permitted / terms_checked_at
+  // (the per-partner terms gate on page extraction). Three additive nullable columns — NO DEFAULT,
+  // NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts. §20 ADD COLUMN carve-out.
+  "334_affiliate_extract_provenance.sql",
 ] as const;

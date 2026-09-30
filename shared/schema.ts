@@ -6673,6 +6673,13 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   // 'approved' (migration 121); admin reads are ungated. Existing active partners grandfathered
   // 'approved' (no outage). draft/submitted/approved/rejected — DB CHECK in migration 121.
   approvalStatus: varchar("approval_status", { length: 20 }).default("submitted"),
+  // Migration 334 (ledger `2026-09-30-affiliate-extract-compliant`): the per-partner terms gate on
+  // page extraction. NULL = never answered ⇒ NOT permitted; extraction runs only on an explicit TRUE
+  // with `termsCheckedAt` set (`pageExtractAllowed`, shared/affiliate-extract.ts). Written ONLY by
+  // the admin page-extract rail — stripped from the general partner create/update paths. No default,
+  // no CHECK.
+  pageExtractPermitted: boolean("page_extract_permitted"),
+  termsCheckedAt: timestamp("terms_checked_at"),
   submittedAt: timestamp("submitted_at"),
   reviewedAt: timestamp("reviewed_at"),
   reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
@@ -6730,6 +6737,10 @@ export const affiliateProducts = pgTable("affiliate_products", {
   metadata: jsonb("metadata"),
   isActive: boolean("is_active").default(true),
   lastScrapedAt: timestamp("last_scraped_at"),
+  // Migration 334 (ledger `2026-09-30-affiliate-extract-compliant`): which writer produced the row —
+  // AFFILIATE_PRODUCT_SOURCES in shared/affiliate-extract.ts, app-enforced, no CHECK, no default.
+  // Stamped on INSERT by every writer. NULL = written before 334; not backfilled (§13).
+  source: varchar("source", { length: 30 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -6796,6 +6807,9 @@ export const insertAffiliatePartnerSchema = createInsertSchema(affiliatePartners
   createdAt: true,
   updatedAt: true,
   lastScrapedAt: true,
+  // §19: the page-extract terms gate has ONE writer (the admin page-extract rail).
+  pageExtractPermitted: true,
+  termsCheckedAt: true,
 });
 
 export const insertAffiliateProductSchema = createInsertSchema(affiliateProducts).omit({
@@ -6803,6 +6817,8 @@ export const insertAffiliateProductSchema = createInsertSchema(affiliateProducts
   createdAt: true,
   updatedAt: true,
   lastScrapedAt: true,
+  // §19: provenance is stamped by the writer that produced the row, never taken from a body.
+  source: true,
 });
 
 export const insertAffiliateScrapeJobSchema = createInsertSchema(affiliateScrapeJobs).omit({
