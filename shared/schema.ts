@@ -2308,8 +2308,56 @@ export const itineraryVariants = pgTable("itinerary_variants", {
   anchorLat: decimal("anchor_lat", { precision: 10, scale: 7 }),
   anchorLng: decimal("anchor_lng", { precision: 10, scale: 7 }),
   anchorMedianMeters: integer("anchor_median_meters"),
+  // A9 (product map §N2; migration 336; ledger `2026-09-30-a9-run-records`): the optimizer run this
+  // version belongs to. Nullable, NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL — NULL = a version from
+  // before the run record existed (§13), never a guessed run. NO FK CONSTRAINT: the link is
+  // app-enforced (the migration-336 rule — no FK added to an existing table).
+  runId: varchar("run_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+/**
+ * A9 — ONE ROW PER AUTHORIZED OPTIMIZER RUN, INSERT-ONLY (product map §N2/§N4; migration 336; ledger
+ * `2026-09-30-a9-run-records`). The one writer is `server/services/optimizer-runs.service.ts`, which
+ * exposes no UPDATE and no DELETE. A paid run is a money record that OUTLIVES its plan: `trip_id` and
+ * `comparison_id` are ON DELETE SET NULL (R196 / `2026-09-28-part2-n4-runs-outlive-plan`). Every column
+ * but the id is nullable with NO DB DEFAULT and NO CHECK (publish-trap posture); value sets
+ * (`authorization_basis`) are app-enforced. The prompt TEXT is never stored — only its SHA-256.
+ */
+export const optimizerRuns = pgTable("optimizer_runs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  comparisonId: varchar("comparison_id").references(() => itineraryComparisons.id, { onDelete: "set null" }),
+  authorizationBasis: varchar("authorization_basis", { length: 20 }),
+  paymentIntentId: varchar("payment_intent_id", { length: 255 }),
+  tollRunId: varchar("toll_run_id", { length: 64 }),
+  inputSnapshot: jsonb("input_snapshot"),
+  modelVersion: varchar("model_version", { length: 100 }),
+  promptSha256: varchar("prompt_sha256", { length: 64 }),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at"),
+});
+export type OptimizerRun = typeof optimizerRuns.$inferSelect;
+
+/**
+ * A9 — what happened to a run, APPEND-ONLY child rows written by the rails at the moment each happens
+ * (§N2): `adopted_whole` | `adopted_part` | `option_chosen` (`booking_created` is ruled but not yet
+ * written — an item does not record which variant item it came from). No DEFAULT, no CHECK; `kind`
+ * is app-enforced.
+ */
+export const optimizerRunOutcomes = pgTable("optimizer_run_outcomes", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  runId: varchar("run_id").references(() => optimizerRuns.id),
+  kind: varchar("kind", { length: 30 }),
+  variantId: varchar("variant_id"),
+  variantItemIds: jsonb("variant_item_ids"),
+  setId: varchar("set_id"),
+  optionId: varchar("option_id"),
+  bookingId: varchar("booking_id"),
+  actorId: varchar("actor_id"),
+  createdAt: timestamp("created_at"),
+});
+export type OptimizerRunOutcome = typeof optimizerRunOutcomes.$inferSelect;
 
 export const itineraryVariantItems = pgTable("itinerary_variant_items", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
