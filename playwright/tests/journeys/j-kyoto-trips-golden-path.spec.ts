@@ -193,6 +193,184 @@ test.describe("1 · entry and occasion", () => {
     await expect(page.getByText("Trips", { exact: true })).toHaveCount(0);
     await expect(testid(page, "slip-anchor-state")).toHaveText("Where you'll stay: not chosen yet");
   });
+
+  test("§1 B1/B2 — a new Travel plan after a Kyoto wedding inherits nothing: its own dates, name and no events", async ({ page }) => {
+    // Production smoke test Sep 30, 2026 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): with a
+    // Kyoto WEDDING plan bound (two events, Nov 24–26 of a future year), the hero's "Plan a trip"
+    // re-used that plan — re-labelled it, kept its events and dates, dropped the typed name.
+    const traveler = await signedInTraveler(page, "b1");
+    const year = new Date().getFullYear() + 1;
+    const next = testid(page, "button-planning-next");
+    const walkTo = async (id: string) => {
+      for (let i = 0; i < 8 && !(await appears(testid(page, id), 800)); i++) {
+        if (!(await appears(next, 800)) || (await next.isDisabled())) break;
+        await next.click();
+      }
+      expect(await appears(testid(page, id), 3000), `the modal reaches ${id}`).toBe(true);
+    };
+
+    // 1. The wedding: two events, Nov 24–26, minted through "Plan it myself".
+    await openModalFromHero(page);
+    await testid(page, "option-occasion-wedding").click();
+    await next.click();
+    await testid(page, "input-etp-destination").fill(KYOTO);
+    await walkTo("input-etp-start-date");
+    await testid(page, "input-etp-start-date").fill(`${year}-11-24`);
+    await testid(page, "input-etp-end-date").fill(`${year}-11-26`);
+    await walkTo("text-etp-events-intro");
+    await testid(page, "chip-etp-event-welcome-drinks").click();
+    await testid(page, "chip-etp-event-rehearsal-dinner").click();
+    await walkTo("planning-option-myself");
+    const weddingId = await clickPlanFinish(page, "myself");
+    expect(weddingId, "the wedding minted and landed on its slip").toBeTruthy();
+
+    // 2. A new Travel plan from the hero: Nov 11–15, with a name.
+    await openModalFromHero(page);
+    await expect(testid(page, "option-occasion-travel"), "a new plan asks its own occasion").toBeVisible();
+    await testid(page, "option-occasion-travel").click();
+    await next.click();
+    await expect(testid(page, "input-etp-destination"), "nothing is carried from the bound plan").toHaveValue("");
+    await testid(page, "input-etp-destination").fill(KYOTO);
+    await walkTo("input-etp-start-date");
+    await expect(testid(page, "input-etp-start-date")).toHaveValue("");
+    await testid(page, "input-etp-start-date").fill(`${year}-11-11`);
+    await testid(page, "input-etp-end-date").fill(`${year}-11-15`);
+    await walkTo("input-plan-adults");
+    await expect(testid(page, "input-plan-adults"), "no party is carried from the wedding").toHaveValue("");
+    await testid(page, "input-plan-adults").fill("3");
+    await walkTo("input-etp-title");
+    await testid(page, "input-etp-title").fill("Kyoto smoke test");
+    await walkTo("planning-option-myself");
+    let travelId: string | null = null;
+    const status = await actAndAwait(
+      page,
+      async () => {
+        travelId = await clickPlanFinish(page, "myself");
+      },
+      { method: "POST", path: /^\/api\/trips$/ },
+    );
+    expect(ok2xx(status), `the Travel setup minted its own plan (POST /api/trips answered ${status})`).toBe(true);
+    expect(travelId).toBeTruthy();
+    expect(travelId).not.toBe(weddingId);
+
+    const plans = await rows<{ id: string; title: string; s: string; e: string; confirmed: boolean; event_type: string; adults: number | null }>(
+      `SELECT id, title, start_date::text AS s, end_date::text AS e, dates_confirmed_at IS NOT NULL AS confirmed, event_type, adults
+         FROM trips WHERE user_id = $1`,
+      [traveler.id],
+    );
+    const travel = plans.find((p) => p.id === travelId)!;
+    const wedding = plans.find((p) => p.id === weddingId)!;
+    expect(plans.length, "two plans — the wedding was not re-used").toBe(2);
+    expect(travel.title, "B2: the name entered at setup is kept").toBe("Kyoto smoke test");
+    expect([travel.s, travel.e, travel.confirmed]).toEqual([`${year}-11-11`, `${year}-11-15`, true]);
+    await expect
+      .poll(async () => (await rows<{ adults: number | null }>(`SELECT adults FROM trips WHERE id = $1`, [travelId]))[0]?.adults, {
+        timeout: 10_000,
+      })
+      .toBe(3);
+    expect([wedding.s, wedding.e, wedding.event_type], "the wedding is untouched").toEqual([`${year}-11-24`, `${year}-11-26`, "wedding"]);
+    expect(
+      await rows(`SELECT id FROM user_experiences WHERE trip_id = $1`, [travelId]),
+      "the new plan carries none of the wedding's events",
+    ).toEqual([]);
+    await expect(testid(page, "slip-title")).toContainText("Kyoto smoke test", { timeout: 20_000 });
+  });
+
+  test("§1 B8 — with a Kyoto plan bound, Destinations → Kyoto → 'Plan New Trip with AI' makes a NEW plan and drafts into it", async ({ page }) => {
+    // Production smoke test Sep 30, 2026 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): this
+    // door re-opened the bound plan's setup and sent the draft at the existing plan (409 "already
+    // has items"). `city_grid` is an entry door: it mints its own plan.
+    const traveler = await signedInTraveler(page, "b8");
+    await openModalFromHero(page);
+    expect(await fillPlanModalToFinish(page, KYOTO, { occasionSlug: "travel", lenDays: 3 })).toBe(true);
+    const firstId = await clickPlanFinish(page, "myself");
+    expect(firstId, "the first plan minted and is bound").toBeTruthy();
+    await createItem(page.request, firstId!, "Fushimi Inari walk", 1);
+
+    await page.goto("/destinations");
+    const card = testid(page, "button-plan-now-kyoto").first();
+    expect(await appears(card, 20_000), "the Destinations grid offers Kyoto").toBe(true);
+    await card.click();
+    await testid(page, "button-plan-now-kyoto").last().click();
+    expect(await appears(testid(page, "plan-modal"), 10_000), "the one planning modal opens").toBe(true);
+    await expect(testid(page, "option-occasion-travel"), "a new plan asks its own occasion").toBeVisible();
+    const next = testid(page, "button-planning-next");
+    const walkTo = async (id: string) => {
+      for (let i = 0; i < 8 && !(await appears(testid(page, id), 800)); i++) {
+        if (!(await appears(next, 800)) || (await next.isDisabled())) break;
+        await next.click();
+      }
+      expect(await appears(testid(page, id), 3000), `the modal reaches ${id}`).toBe(true);
+    };
+    const year = new Date().getFullYear() + 1;
+    await testid(page, "option-occasion-travel").click();
+    await next.click();
+    await expect(testid(page, "input-etp-destination"), "the door's city is pre-filled").toHaveValue(/Kyoto/);
+    await walkTo("input-etp-start-date");
+    await expect(testid(page, "input-etp-start-date"), "no date is carried from the bound plan").toHaveValue("");
+    await testid(page, "input-etp-start-date").fill(`${year}-11-11`);
+    await testid(page, "input-etp-end-date").fill(`${year}-11-14`);
+    await walkTo("planning-option-ai");
+    const draft = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/api/ai/generate-itinerary" && r.request().method() === "POST" && r.status() !== 409,
+      { timeout: 60_000 },
+    );
+    await testid(page, "planning-option-ai").click();
+    await testid(page, "button-generate-itinerary").click();
+    const ask = testid(page, "ai-draft-without-anchor");
+    if (await appears(ask, 15_000)) await ask.click();
+    expect(ok2xx((await draft).status()), "the draft is not refused as 'already has items'").toBe(true);
+
+    const plans = await rows<{ id: string }>(`SELECT id FROM trips WHERE user_id = $1`, [traveler.id]);
+    expect(plans.length, "the door made a second plan").toBe(2);
+    const second = plans.find((p) => p.id !== firstId)!;
+    expect(
+      (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [second.id])).length,
+      "the draft landed in the new plan",
+    ).toBeGreaterThan(0);
+    expect(
+      (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [firstId])).length,
+      "the first plan is untouched",
+    ).toBe(1);
+  });
+
+  test("§1 B8 — the Trip Strip's Edit writes new dates and a name to the plan ROW; setup and plan never disagree", async ({ page }) => {
+    // Ledger `2026-09-30-b1-new-plan-inherits-nothing`: an edit wrote dates and name to the pen only,
+    // so the setup header and the saved plan showed different windows. They now ride the one
+    // re-date rail, `PATCH /api/trips/:id`, and the edit mints nothing.
+    const traveler = await signedInTraveler(page, "b8e");
+    await openModalFromHero(page);
+    expect(await fillPlanModalToFinish(page, KYOTO, { occasionSlug: "travel", lenDays: 3 })).toBe(true);
+    const tripId = await clickPlanFinish(page, "myself");
+    expect(tripId).toBeTruthy();
+    const year = new Date().getFullYear() + 1;
+    await page.goto("/pricing");
+    const edit = page.locator('[data-testid="trip-strip-edit"], [data-testid="trip-strip-edit-plan"]').first();
+    expect(await appears(edit, 20_000), "the Trip Strip offers Edit on a bound plan").toBe(true);
+    await edit.click();
+    expect(await appears(testid(page, "plan-modal"), 10_000)).toBe(true);
+    const next = testid(page, "button-planning-next");
+    for (let i = 0; i < 6 && !(await appears(testid(page, "input-etp-start-date"), 600)); i++) await next.click();
+    await testid(page, "input-etp-start-date").fill(`${year}-12-01`);
+    await testid(page, "input-etp-end-date").fill(`${year}-12-04`);
+    for (let i = 0; i < 6 && !(await appears(testid(page, "input-etp-title"), 600)); i++) await next.click();
+    await testid(page, "input-etp-title").fill("Renamed plan");
+    const patched = await actAndAwait(
+      page,
+      async () => {
+        await testid(page, "button-etp-save").click();
+      },
+      { method: "PATCH", path: new RegExp(`^/api/trips/${tripId}$`) },
+    );
+    expect(ok2xx(patched), `the edit reached the row (PATCH answered ${patched})`).toBe(true);
+    const plans = await rows<{ id: string; s: string; e: string; title: string; confirmed: boolean }>(
+      `SELECT id, start_date::text AS s, end_date::text AS e, title, dates_confirmed_at IS NOT NULL AS confirmed
+         FROM trips WHERE user_id = $1`,
+      [traveler.id],
+    );
+    expect(plans.map((p) => p.id), "an edit mints nothing").toEqual([tripId]);
+    expect([plans[0].s, plans[0].e, plans[0].title, plans[0].confirmed]).toEqual([`${year}-12-01`, `${year}-12-04`, "Renamed plan", true]);
+  });
 });
 
 // ── §2 · where are you staying ────────────────────────────────────────────────────────────────
@@ -667,6 +845,32 @@ test.describe("4 · free draft around the set", () => {
       )
       .toEqual([{ outcome: "refused_not_empty" }]);
   });
+  test("§4 B3/B4/B6 — the modal's AI finish drafts INTO the plan and lands on its slip; no alternatives run starts", async ({ page }) => {
+    // Production smoke test Sep 30, 2026 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the
+    // free draft used to start the PAID optimizer in the background and open the comparison page,
+    // which could fail in front of the draft and labelled every item "evening". The draft is the
+    // deliverable; alternatives are the slip's Optimize, charged on confirm.
+    await signedInTraveler(page, "b3");
+    await openModalFromHero(page);
+    expect(await fillPlanModalToFinish(page, KYOTO, { occasionSlug: "travel", lenDays: 4 })).toBe(true);
+    await testid(page, "planning-option-ai").click();
+    await expect(testid(page, "button-generate-itinerary")).toBeVisible({ timeout: 15_000 });
+    await testid(page, "button-generate-itinerary").click();
+    const ask = testid(page, "ai-draft-without-anchor");
+    if (await appears(ask, 15_000)) await ask.click();
+    await page.waitForURL(/\/plans\//, { timeout: 60_000 });
+    const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];
+    await expect(page).not.toHaveURL(/itinerary-comparison/);
+    expect(
+      (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [tripId])).length,
+      "the draft is saved into the plan",
+    ).toBeGreaterThan(0);
+    expect(
+      await rows(`SELECT id FROM itinerary_comparisons WHERE trip_id = $1`, [tripId]),
+      "a free draft creates no comparison and starts no optimizer run",
+    ).toEqual([]);
+  });
+
   test("§4 — a Travel plan with no stay and no set asks where you're staying; 'Draft without a hotel' drafts", async ({ page }) => {
     // A5 (§M5) on a RESOLVED Trips occasion (R215). Same stand-in as §4-today (E2E_AI_STUB).
     const tripId = await planWithOccasion(page, "s4-ask", "travel");
@@ -820,6 +1024,11 @@ test.describe("6 · paid run", () => {
     expect(feeBody.currency).toBe("USD");
     expect(feeBody.feeCents).toBeGreaterThan(0);
     await expect(testid(page, "slip-optimize-preview-fee")).toContainText(`$${(feeBody.feeCents / 100).toFixed(2)}`);
+    // B3 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the fee line states the ONE re-run
+    // rule — the same sentence the comparison board renders (LD 41 (a)).
+    await expect(testid(page, "slip-optimize-preview-fee")).toContainText(
+      "A re-run within 24 hours of a completed optimization is free.",
+    );
   });
   test.fixme("§6 today — pay in test mode; the board shows the baseline and up to three versions; adopt one stop", async () => {
     // TODAY-PASSABLE IN THE PRODUCT, NOT IN THIS JOB: needs a Stripe test key (the job runs the stub,
