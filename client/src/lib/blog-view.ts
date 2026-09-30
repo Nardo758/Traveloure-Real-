@@ -35,15 +35,23 @@ export interface PublicBlogPost {
    * An event post's "Start this plan" door, read by the server from the LIVE event row (ledger
    * `2026-09-30-blog-event-guide`). Null for every other post, and for a withdrawn or past event.
    */
-  planDoor?: {
-    title: string;
-    city: string;
-    marketKey: string | null;
-    firstDate: string;
-    lastDate: string;
-    startTime: string;
-    venue: string;
-  } | null;
+  planDoor?: BlogPlanDoor | null;
+  /**
+   * A series follow's doors, one per LIVE upcoming instance of the series, soonest first (ledger
+   * `2026-09-30-blog-series-follow`). Null for every other post, and when no instance is live.
+   */
+  seriesDoors?: BlogPlanDoor[] | null;
+}
+
+/** What a "Start this plan" door carries — exactly the events strip's "Plan around it" fields, no id. */
+export interface BlogPlanDoor {
+  title: string;
+  city: string;
+  marketKey: string | null;
+  firstDate: string;
+  lastDate: string;
+  startTime: string;
+  venue: string;
 }
 
 /**
