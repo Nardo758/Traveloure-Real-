@@ -33,6 +33,8 @@ export type PlanFit =
   | {
       scored: true;
       minutesPerDay: number;
+      /** A8 (R228): each day's own summed burden — the per-day number the Finalize legs are checked against. */
+      minutesByDay: Record<number, number>;
       basis: "matrix" | "est";
       coverage: number | null; // 0..1; null when the plan's located items sit in no known neighbourhood
       /** The two counts `coverage` is the share of (A4 renders "2 of 3 areas"); 0/0 when coverage is null. */
@@ -101,6 +103,7 @@ export function planFitFor(input: {
   return {
     scored: true,
     minutesPerDay: Math.round(weighted / weights),
+    minutesByDay: Object.fromEntries(byDay),
     basis: allMatrix ? "matrix" : "est",
     coverage: hoods.size ? reachable / hoods.size : null,
     areasNear: reachable,

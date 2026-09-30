@@ -1377,7 +1377,7 @@ export interface IStorage {
 
   getSharedItineraryByTokenAndVariant(shareToken: string, variantId: string): Promise<any | null>;
 
-  updateTransportLegMode(legId: string, data: { userSelectedMode: string; estimatedDurationMinutes: number; estimatedCostUsd: any; energyCost: number }): Promise<void>;
+  updateTransportLegMode(legId: string, data: { userSelectedMode: string; estimatedDurationMinutes: number; estimatedCostUsd: any; energyCost: number; distanceMeters?: number; distanceDisplay?: string; alternativeModes?: any[] }): Promise<void>;
 
   getUserTransportLegsWithJoin(userId: string): Promise<any[]>;
 
@@ -8761,7 +8761,7 @@ export class DatabaseStorage implements IStorage {
     return row ?? null;
   }
 
-  async updateTransportLegMode(legId: string, data: { userSelectedMode: string; estimatedDurationMinutes: number; estimatedCostUsd: any; energyCost: number }): Promise<void> {
+  async updateTransportLegMode(legId: string, data: { userSelectedMode: string; estimatedDurationMinutes: number; estimatedCostUsd: any; energyCost: number; distanceMeters?: number; distanceDisplay?: string; alternativeModes?: any[] }): Promise<void> {
     await db.update(transportLegs)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(transportLegs.id, legId));

@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { recomputeLegForMode } from "../services/trip-transport-legs.service";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
 import { authorizeTripLogistics, authorizeTripOwnerTier } from '../utils/trip-logistics-auth';
@@ -2282,7 +2283,14 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
       let newCost = leg.estimatedCostUsd;
       let newEnergy = leg.energyCost;
 
-      if (selected) {
+      // A8 (R228): behind the flag a mode switch RECOMPUTES the leg through the ONE travel-time
+      // service; with the flag off (or an unknown mode) the old alternatives read stands.
+      const recomputed = await recomputeLegForMode(leg, selectedMode);
+      if (recomputed) {
+        newDuration = recomputed.estimatedDurationMinutes;
+        newCost = null;
+        newEnergy = 0;
+      } else if (selected) {
         newDuration = selected.durationMinutes;
         newCost = selected.costUsd;
         newEnergy = selected.energyCost;
@@ -2296,6 +2304,9 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
         estimatedDurationMinutes: newDuration,
         estimatedCostUsd: newCost ?? null,
         energyCost: newEnergy ?? 0,
+        ...(recomputed
+          ? { distanceMeters: recomputed.distanceMeters, distanceDisplay: recomputed.distanceDisplay, alternativeModes: recomputed.alternativeModes }
+          : {}),
       });
 
       // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache).

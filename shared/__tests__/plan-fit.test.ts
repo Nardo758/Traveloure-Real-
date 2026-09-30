@@ -112,6 +112,7 @@ test("P8: coverage carries its two counts, and 0/0 when no area is known", () =>
 const scored = (minutesPerDay: number, basis: "matrix" | "est" = "est", coverage: number | null = 0.5): PlanFit => ({
   scored: true,
   minutesPerDay,
+  minutesByDay: {},
   basis,
   coverage,
   areasNear: 0,

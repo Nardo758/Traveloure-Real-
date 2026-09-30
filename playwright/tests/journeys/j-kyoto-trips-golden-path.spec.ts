@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { test, expect, type Page } from "@playwright/test";
+import { perDayAgreement } from "../../../shared/leg-resolution";
 import { actAndAwait, ok2xx, appears, testid } from "../../../e2e/supply-demand/lib/ui";
 import { fillPlanModalToFinish, clickPlanFinish } from "../../../e2e/supply-demand/lib/flows";
 import {
@@ -888,6 +889,53 @@ test.describe("7 · choose, finalize, checkout, book, cancel", () => {
       [tripId],
     );
     expect(trip.finalized).toBe(true);
+  });
+  test("§7 A8 — Finalize computes the plan's legs, and they agree with plan-fit per day within 25%", async ({ page }) => {
+    // R228: Finalize runs activate-transport through the ONE travel-time service, from the plan's
+    // ITEMS. The fixture sits north of every seeded Kyoto neighbourhood, so both sides read the same
+    // straight-line tier (CI has no Routes key; the matrix stand-in covers the centre) — the check is
+    // that the two per-day numbers agree, and a day that does not is NAMED. The stay is placed on a
+    // day with no stops so its own item joins neither side.
+    const tripId = await planWithOccasion(page, "a8-legs", "travel");
+    const stops: Array<[string, number, string, string]> = [
+      ["North walk", 1, "35.0935", "135.7600"],
+      ["South walk", 1, "35.0665", "135.7600"],
+      ["East garden", 2, "35.0800", "135.7765"],
+      ["West garden", 2, "35.0800", "135.7435"],
+    ];
+    for (const [title, day, latitude, longitude] of stops) await createItem(page.request, tripId, title, day, { latitude, longitude });
+    const created = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, {
+      data: { categoryKey: "accommodation", label: "Where you'll stay", anchor: true, dayNumber: 3 },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    const setId = (await created.json()).set.id as string;
+    const added = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/options`, {
+      data: { source: { kind: "custom", title: "Kitayama stay", lat: 35.08, lng: 135.76 } },
+    });
+    expect(added.status(), await added.text()).toBe(201);
+    const optionId = (await added.json()).option.id as string;
+
+    const set = await serverSet(page, tripId, setId);
+    const fit = set.options.find((o: any) => o.id === optionId).fit;
+    expect(fit.scored, "plan-fit scores the chosen stay").toBe(true);
+
+    const chose = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/choose`, { data: { optionId } });
+    expect(ok2xx(chose.status()), await chose.text()).toBe(true);
+    const fin = await page.request.post(`${BASE_URL}/api/trips/${tripId}/finalize`, { data: {} });
+    expect(ok2xx(fin.status()), await fin.text()).toBe(true);
+    expect((await fin.json()).transportLegsCreated, "Finalize wrote the plan's legs").toBeGreaterThan(0);
+
+    const legRows = await rows<{ day: number; minutes: number; reason: string | null }>(
+      `SELECT day_number AS day, estimated_duration_minutes AS minutes, alternative_modes->0->>'reason' AS reason
+         FROM transport_legs WHERE trip_id = $1 AND variant_id IS NULL`,
+      [tripId],
+    );
+    expect(legRows.length).toBe(2);
+    for (const l of legRows) expect(l.reason, "a straight-line leg carries its 'est.' label").toBe("est.");
+    const legsByDay: Record<number, number> = {};
+    for (const l of legRows) legsByDay[l.day] = (legsByDay[l.day] ?? 0) + Number(l.minutes);
+    const agreement = perDayAgreement(legsByDay, fit.minutesByDay);
+    expect(agreement.agrees, `legs vs plan-fit disagree on day(s) ${agreement.disagreeing.join(", ")}: ${JSON.stringify(agreement.days)}`).toBe(true);
   });
   test.fixme("§7 today — a staged listing shows the traveler fee on the slip, checks out, books, and cancels to a refund", async () => {
     // Waits on A0 (a3) supply: a live instant-mode Kyoto listing with a price, a future open slot and

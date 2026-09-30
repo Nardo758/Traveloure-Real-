@@ -388,3 +388,57 @@ export async function getMultipleTransitRoutes(
 
   return results;
 }
+
+/**
+ * A8 (R228): ONE Routes call per travel mode, for the ONE travel-time service's exact-leg tier.
+ * Driving keeps the traffic-aware request above; walk / bicycle / transit ask Routes for that mode.
+ * Null = Routes had no answer (no key, an error, no route) — the caller falls back to the matrix and
+ * then the labelled estimate, never a guess.
+ */
+export async function getRouteForMode(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  mode: "walk" | "cycle" | "transit" | "drive",
+): Promise<{ minutes: number; distanceMeters: number } | null> {
+  if (mode === "drive") {
+    const r = await getTrafficAwareDrivingRoute({
+      origin,
+      destination,
+      departureTime: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    });
+    return r ? { minutes: r.durationMinutes, distanceMeters: r.distanceMeters } : null;
+  }
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return null;
+  const travelMode = mode === "walk" ? "WALK" : mode === "cycle" ? "BICYCLE" : "TRANSIT";
+  try {
+    const response = await fetch(ROUTES_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "routes.duration,routes.distanceMeters",
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } },
+        destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
+        travelMode,
+        computeAlternativeRoutes: false,
+        languageCode: "en-US",
+        units: "METRIC",
+      }),
+    });
+    if (!response.ok) {
+      console.error(`[Routes] ${travelMode} route failed:`, response.status);
+      return null;
+    }
+    const data = (await response.json()) as { routes?: Array<{ duration?: string; distanceMeters?: number }> };
+    const route = data.routes?.[0];
+    const seconds = route?.duration ? parseDuration(route.duration) : 0;
+    if (!route || !Number.isFinite(route.distanceMeters) || !seconds) return null;
+    return { minutes: Math.max(1, Math.ceil(seconds / 60)), distanceMeters: route.distanceMeters! };
+  } catch (error) {
+    console.error(`[Routes] ${travelMode} route request failed:`, error);
+    return null;
+  }
+}

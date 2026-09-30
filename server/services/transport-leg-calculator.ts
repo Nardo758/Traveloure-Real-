@@ -52,7 +52,8 @@ export interface TransportLegResult {
   energyCost: number;
   linkedProductId?: string;
   linkedProductUrl?: string;
-  routeProvider: "google_routes";
+  /** A8: a leg resolved by the ONE travel-time service names its tier (R228). */
+  routeProvider: "google_routes" | "travel_time_matrix" | "straight_line_est";
   routeRetrievedAt: string;
   userSelectedMode?: string | null;
 }
@@ -356,7 +357,7 @@ function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
-function formatDistance(meters: number): string {
+export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`;
   return `${(meters / 1000).toFixed(1)} km`;
 }
