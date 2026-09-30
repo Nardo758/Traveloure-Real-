@@ -967,6 +967,7 @@ jobs:
           npx tsx --test server/__tests__/ai-draft-eligibility.test.ts
           npx tsx --test server/__tests__/ai-json-parse.test.ts
           npx tsx --test client/src/lib/__tests__/ai-draft-refusal.test.ts
+          npx tsx --test server/__tests__/ai-honest-numbers.test.ts
       # 2026-09-05-mint-market-slug-invariant (CLAUDE.md Locked Decision 42, D12 + D11-interim):
       # `market_slug` joins `timezone` as a named MINT invariant, and the intake panels stop
       # fabricating a party split. Both defects are ABSENCES that render perfectly — a plan minted
