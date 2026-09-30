@@ -54,6 +54,7 @@ import {
 } from "./occasion-switches";
 import { partyNoun } from "./plan-vocabulary";
 import type { PlanningBranch } from "@/contexts/PlanningContext";
+import type { PlanDoor } from "@shared/slip-funnel-events";
 
 /**
  * THE BRANCHES THAT NEED A PLAN ROW BEFORE THEY RUN — stated ONCE (§18 rule 1) and read by the
@@ -127,6 +128,52 @@ export function saveMintsPlan(input: {
   if (input.boundTripId) return false;
   if (!input.signedIn) return false;
   return !!input.destination?.trim() && !!input.startDate && !!input.endDate;
+}
+
+/**
+ * AN ENTRY DOOR STARTS A NEW PLAN; ONLY AN EDIT DOOR EDITS THE BOUND ONE (production smoke test
+ * Sep 30, 2026, B1/B2 — ledger `2026-09-30-b1-new-plan-inherits-nothing`).
+ *
+ * THE DEFECT. The hero's "Plan a trip" opened the modal SEEDED from the plan the context was bound
+ * to, and its finish re-used that plan whenever the city matched. A traveler whose last plan was a
+ * Kyoto wedding (two events, Nov 24–26) who started a Kyoto TRAVEL plan got no new plan at all: the
+ * wedding row was re-labelled `vacation`, kept its events and its dates, dropped the name and the
+ * dates the traveler typed, and the free draft laid five days from the wedding's start.
+ *
+ * THE RULE. A door on this list is an ENTRY into planning: opened while a MINTED plan is bound, it
+ * starts a NEW plan (`PlanningSource.newPlan`) — the form seeds nothing from the bound plan, the
+ * finish always mints its own row, and the dates, party, name and occasion are the setup's own. The
+ * Trip Strip's Edit (`trip_strip_edit`), the experience page (`experience_cta`, which works on the
+ * plan in hand) and a door naming its plan (`source.tripId`) are EDIT doors and are unchanged; a
+ * source with no door is unchanged too (nothing is assumed about a door that did not say). With no
+ * plan bound nothing changes — the unminted pen and its Resume offer keep working exactly as before.
+ * Pure — the opener hands in the source and the context's bound id.
+ */
+export const DOORS_THAT_START_A_NEW_PLAN: readonly PlanDoor[] = [
+  "hero",
+  "start_events",
+  "marketplace",
+  "moment",
+  "nav_occasion",
+  "city_grid",
+  "concierge",
+  "pricing_ladder",
+  "billboard",
+  "event_strip",
+  "events_page",
+  // A blog event guide's "Start this plan" (ledger `2026-09-30-blog-event-guide`) plans around the
+  // post's event from scratch — a reader's bound plan is not the post's.
+  "blog_post",
+];
+
+export function doorStartsNewPlan(
+  source: { door?: string; tripId?: string; newPlan?: boolean } | null | undefined,
+  boundTripId: string | null | undefined,
+): boolean {
+  if (!source) return false;
+  if (source.newPlan) return true;
+  if (source.tripId || !boundTripId) return false;
+  return !!source.door && (DOORS_THAT_START_A_NEW_PLAN as readonly string[]).includes(source.door);
 }
 
 /** The five ratified steps, in flow order. `where` is step 2 — the artboard filename hides it. */

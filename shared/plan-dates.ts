@@ -128,3 +128,29 @@ export function planDatesLabel(
     cta: isOwner ? PLAN_DATES_SET_CTA : null,
   };
 }
+
+/**
+ * HOW LONG IS THIS PLAN, IN WORDS (B5, production smoke test Sep 30, 2026 — ledger
+ * `2026-09-30-b5-dates-days-and-nights`). A window's two dates are both DAYS of the plan: Nov 11 to
+ * Nov 15 is five days and four nights. The AI form divided the difference and called the NIGHTS
+ * "days" ("4 days" for a four-night stay). ONE derivation, calendar dates only (never a clock, so a
+ * zone cannot move it): both counts, said together, because each is the number someone is looking
+ * for — a traveler counts days, a hotel counts nights (§18 rule 1).
+ *
+ * §13: an unparseable or inverted window says NOTHING (null) — never "0 days".
+ */
+export function planSpanLabel(startDate: string | null | undefined, endDate: string | null | undefined): string | null {
+  const day = (v: string | null | undefined): number | null => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((v ?? "").trim());
+    if (!m) return null;
+    const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return Number.isFinite(t) ? t / 86_400_000 : null;
+  };
+  const s = day(startDate);
+  const e = day(endDate);
+  if (s === null || e === null || e < s) return null;
+  const nights = e - s;
+  const days = nights + 1;
+  const dayWord = `${days} ${days === 1 ? "day" : "days"}`;
+  return nights === 0 ? dayWord : `${dayWord} · ${nights} ${nights === 1 ? "night" : "nights"}`;
+}

@@ -78,6 +78,7 @@ import { PlanCard } from "@/components/plancard/PlanCard";
 import type { ProposalAnchorItem, ProposalLegsSummary } from "@/components/plancard/plancard-types";
 import type { SlipData } from "@/components/plancard/SlipView";
 import { ProposalComparisonMap } from "@/components/plancard/ProposalComparisonMap";
+import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
 import {
   sumLegMinutes,
   parseTotal,
@@ -624,7 +625,10 @@ function ProposalColumnContainer({
         items: variant.items.map((it) => ({
           id: it.id,
           dayNumber: it.dayNumber,
-          startTime: it.startTime || it.timeSlot || null,
+          // B9 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the "Your plan" column shows the
+          // plan's own times only — a baseline slot is derived, and the slip shows no time for an
+          // untimed item, so neither does this column (§13). A proposal's slot is the model's answer.
+          startTime: isBaselineColumn ? it.startTime || null : it.startTime || it.timeSlot || null,
           name: it.name,
           price: it.price ?? null,
            isNew: it.isReplacement,
@@ -1806,6 +1810,29 @@ export default function ItineraryComparisonPage() {
                   ]}
                 />
 
+                {/* B6 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): while a run is in progress
+                    the original plan is still the plan — say so and let the traveler leave with it.
+                    Leaving applies nothing; a run already under way finishes on its own and its
+                    proposals stay on this board to revisit. */}
+                {isGenerating && (
+                  <div
+                    className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-3 text-sm"
+                    data-testid="running-keep-original"
+                  >
+                    <span className="text-muted-foreground">
+                      Proposals are still being built. Your plan is untouched and stays as it is unless you adopt one.
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setLocation(backExit.to)}
+                      data-testid="button-keep-original-running"
+                    >
+                      Keep my original plan
+                    </Button>
+                  </div>
+                )}
+
                 <div
                   className="grid grid-cols-1 min-[561px]:grid-cols-2 min-[1001px]:grid-cols-4 gap-4 mb-4"
                   data-testid="review-proposal-grid"
@@ -1823,6 +1850,12 @@ export default function ItineraryComparisonPage() {
                       isBaselineColumn={variant.source === "user"}
                       boardId={variant.source === "user" ? "baseline" : `v${aiVariants.findIndex((v) => v.id === variant.id) + 1}`}
                       onApply={() => {
+                        // B6 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the original is
+                        // never "adopted" — it is already the plan. "Keep this plan" returns to it.
+                        if (variant.source === "user") {
+                          setLocation(backExit.to);
+                          return;
+                        }
                         setPendingApplyVariant(variant);
                       }}
                       onAdoptStop={(variantItemId) => {
@@ -2514,9 +2547,9 @@ export default function ItineraryComparisonPage() {
                   <div>
                     <h3 className="font-semibold text-sm">Not happy with these plans?</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Tell the optimizer what to fix and re-run it — free within 24 hours of your
-                      optimization — or hand the plan to a human expert. Your original plan stays
-                      untouched unless you apply a variant.
+                      Tell the optimizer what to fix and re-run it, or hand the plan to a human
+                      expert. <span data-testid="text-rerun-rule">{OPTIMIZE_RERUN_RULE}</span> Your
+                      original plan stays untouched unless you apply a variant.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
