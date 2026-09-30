@@ -65,3 +65,48 @@ worktree state of the pack session. **Delete them after the founder has reviewed
 
 A8's travel-time service goes first, then A7 and A9. All three are built behind flags. A6 stays held, and R211 still
 applies: nothing user-visible goes past the A1 gate until the census passes.
+
+---
+
+## Addendum — the pack session's own record (items d, e, h of the close-out ruling)
+
+Written by the retiring pack session. It adds only what the section above does not already carry; where the two overlap, the section above governs.
+
+### d. Lanes still open
+
+| Lane | State | Blocked on / owner |
+|---|---|---|
+| **TravelPulse PR 2** (crowd band) and **PR 3** (weekly generator) | Not started | The BestTime / PredictHQ error text that `trend_source_config` records on the first daily ingestion after the post-#1189 deploy (PR 1, #1185, made each adapter record it). |
+| **A6** — registry admin surface, coverage report, `TavilyExtractAdapter` | **ON HOLD** | The content-sourcing brief's four §11 decisions (decision-maker). |
+| **Occasion draft party size** (found, not fixed) | For the **Content session** | `server/services/occasion-drafts.service.ts` `buildDraftSlip` sends `travelers: 2` to the model. It must read the party size from the plan (`trips.adults`/`kids`, LD 33), and say nothing when none is stated (RC-12) — never an invented 2. |
+| **AI-stats "time saved"** (found, not fixed) | For the **Content session** | `GET /api/expert/ai-stats` (`server/routes.ts`) computes `timeSaved` as an assumed 10 minutes per completed task; `client/src/pages/expert/ai-assistant.tsx` shows it as fact. Hide the row, or label it "est.", until a real measure exists (§13). |
+| **A8 implementation** | Design only | The A8 row + "A8 — the travel-time service" section in `docs/planning/track-a-rollout.md`. Sequencing: see "Next for Track A" above. |
+
+### e. Content index
+
+Committed under `docs/planning/briefs/content-sources/` (on `main`):
+
+- `README.md` — what the three data files are; **no code reads them**; every row is `active = no`.
+- `content_sources.seed.csv` — 34 candidate sources (incl. `google_routes`, added Sep 30).
+- `provider_recruiting_sources.seed.csv` — 17 provider/expert recruiting sources.
+- `traveloure-content-source-index.xlsx` — the workbook the CSVs came from.
+
+**No A6 code exists on any branch.** Checked at close: every remote branch pushed in the last 20 days, diffed
+against `main`, carries no file matching tavily / coverage-report / content-source / gap-dismiss / registry.
+`TavilyExtractAdapter` appears only as a comment in `server/services/content-facts/source-adapter.ts` on `main`
+("A6 builds …").
+
+### h. Merge rules as they stand
+
+- **§20 deploy rule** (CLAUDE.md §20): publish-time SQL is declined by default; the only approvable prompt is
+  `ADD COLUMN` / `CREATE TABLE` / `CREATE INDEX` `IF NOT EXISTS` matching a registered, declared, not-yet-stamped
+  migration (a UNIQUE index only on a table the same prompt creates, or after a duplicates check). Production's
+  migration state is read, never inferred.
+- **R-number at merge** (ledger `2026-09-29-r-number-at-merge`): authors write `R?`. Last step before merge,
+  after main is in: `node scripts/assign-r-numbers.cjs --write`, then
+  `node scripts/check-decision-guards.cjs --require-assigned`, commit, let CI re-run.
+- **`kyoto-slice` is a required check** (R203): every PR merges only with it green on the head.
+- **One session per file area**: a file area is owned by one session at a time; a second session touching it
+  waits or coordinates through the decision-maker.
+- Standing: merge method `merge` with `expectedHeadSha`, every check green on the head, `origin/main` unmoved;
+  never commit on `main`; a PR carrying a migration, money or Stripe change waits for an explicit ruling.
