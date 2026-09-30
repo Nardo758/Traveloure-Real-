@@ -38,7 +38,7 @@ import {
   type PlanOption,
   type PlanOptionSet,
 } from "@shared/schema";
-import { OPTION_SET_CAP, nextOptionPosition, pinPrecision, type AnchorRole } from "@shared/plan-options";
+import { CHOSEN_VIA, OPTION_SET_CAP, nextOptionPosition, pinPrecision, type AnchorRole } from "@shared/plan-options";
 import { experienceGroupFor, resolvedTripsAnchor, tripsAnchorFor } from "@shared/experience-group";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
@@ -342,12 +342,26 @@ export async function removeOption(input: { tripId: string; setId: string; optio
 export async function chooseOption(input: { tripId: string; setId: string; optionId: string; userId: string }): Promise<{ set: PlanOptionSet; itemId: string }> {
   const role = await planRole(input.tripId, input.userId, "choose");
   if (!role) throw notFound();
-  return db.transaction(async (tx) => {
+  return db.transaction((tx) => chooseOptionTx(tx, { ...input, via: "choose" }, role));
+}
+
+/**
+ * The choose write itself, inside the CALLER's transaction — the one body `chooseOption` and the A7
+ * adopt paths (`version_whole` / `version_stop`, ledger `2026-09-30-a7-version-per-option`) share, so
+ * a version choosing its set is the same claim + item write as a tap on "Choose" (§18 rule 1). The
+ * caller has already resolved the actor's R129 choose role.
+ */
+export async function chooseOptionTx(
+  tx: any,
+  input: { tripId: string; setId: string; optionId: string; userId: string; via: (typeof CHOSEN_VIA)[number] },
+  role: string,
+): Promise<{ set: PlanOptionSet; itemId: string }> {
+  {
     const [opt] = await tx.select().from(planOptions).where(and(eq(planOptions.id, input.optionId), eq(planOptions.setId, input.setId))).limit(1);
     if (!opt) throw notFound();
     const [claimed] = await tx
       .update(planOptionSets)
-      .set({ status: "chosen", chosenOptionId: opt.id, chosenAt: new Date(), chosenBy: input.userId, chosenVia: "choose" })
+      .set({ status: "chosen", chosenOptionId: opt.id, chosenAt: new Date(), chosenBy: input.userId, chosenVia: input.via })
       .where(and(eq(planOptionSets.id, input.setId), eq(planOptionSets.tripId, input.tripId), eq(planOptionSets.status, "open")))
       .returning();
     if (!claimed) {
@@ -392,7 +406,7 @@ export async function chooseOption(input: { tripId: string; setId: string; optio
       .returning({ id: itineraryItems.id });
     if (!rewritten.length) throw new OptionSetError(409, "item_not_in_planning", "The place on your plan is already being booked");
     return { set: claimed, itemId: claimed.itineraryItemId };
-  });
+  }
 }
 
 export async function closeOptionSet(input: { tripId: string; setId: string; userId: string }): Promise<PlanOptionSet> {
