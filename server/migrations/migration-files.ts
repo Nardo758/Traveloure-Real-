@@ -1871,4 +1871,7 @@ export const MIGRATION_FILES = [
   // (the per-partner terms gate on page extraction). Three additive nullable columns — NO DEFAULT,
   // NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts. §20 ADD COLUMN carve-out.
   "334_affiliate_extract_provenance.sql",
+  // city_events vertical + series_key (ledger `2026-09-30-city-events-vertical-series`). TWO additive
+  // nullable columns, NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts.
+  "335_city_events_vertical_series.sql",
 ] as const;

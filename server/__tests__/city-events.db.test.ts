@@ -13,6 +13,9 @@
  * C4 the reader returns only renderable events in the next 180 days, soonest first, never a
  *    withdrawn one, and reports `total` for the strip threshold.
  * C5 an empty seed is a no-op.
+ * C6 migration 335: a stated vertical/series key lands; unknown/malformed is refused; absent is NULL.
+ * C7 the ONE ruled rewrite: an existing MANUAL row gets vertical/series_key filled where it stores
+ *    NULL — never a stated value replaced, never any other column, never a non-manual row.
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -137,5 +140,54 @@ test("C4 the reader returns renderable events in the window, soonest first, neve
 });
 
 test("C5 an empty seed is a no-op", async () => {
-  assert.deepEqual(await seedCityEvents([]), { inserted: 0, skipped: 0, refused: [] });
+  assert.deepEqual(await seedCityEvents([]), { inserted: 0, skipped: 0, filled: 0, refused: [] });
+});
+
+test("C6 migration 335: a stated vertical and series key land; an unknown vertical or a malformed key is refused; absent stays NULL", async () => {
+  const base = { source: "manual" as const, title: "T", city: CITY, venue: "Hall", startsAt: inDays(12) };
+  assert.deepEqual(buildCityEventRow({ ...base, sourceId: sid("vert"), vertical: "sports" }, [], []), { refused: "unknown_vertical" });
+  assert.deepEqual(buildCityEventRow({ ...base, sourceId: sid("key"), seriesKey: "Kyoto Jazz" }, [], []), { refused: "bad_series_key" });
+  await seedCityEvents([
+    { ...base, sourceId: sid("gp"), vertical: "motorsport", seriesKey: "japanese-grand-prix" },
+    { ...base, sourceId: sid("plain") },
+  ]);
+  const rows = await db.execute(sql`SELECT source_id, vertical, series_key FROM city_events WHERE source_id IN (${sid("gp")}, ${sid("plain")}) ORDER BY source_id`);
+  const byId = new Map((rows.rows as any[]).map((r) => [r.source_id, r]));
+  assert.equal(byId.get(sid("gp")).vertical, "motorsport");
+  assert.equal(byId.get(sid("gp")).series_key, "japanese-grand-prix");
+  assert.equal(byId.get(sid("plain")).vertical, null, "not stated ⇒ NULL, never guessed");
+  assert.equal(byId.get(sid("plain")).series_key, null);
+});
+
+test("C7 the seeder fills a manual row's NULL vertical/series_key and rewrites nothing else", async () => {
+  const base = { title: "First", city: CITY, venue: "Hall", startsAt: inDays(14) };
+  await seedCityEvents([
+    { ...base, source: "manual", sourceId: sid("fill") },
+    { ...base, source: "manual", sourceId: sid("keep"), vertical: "music" },
+    { ...base, source: "ticketmaster", sourceId: sid("tm") },
+  ]);
+  const again = await seedCityEvents([
+    { ...base, source: "manual", sourceId: sid("fill"), title: "Renamed", venue: "Other hall", vertical: "fashion", seriesKey: "kyoto-fashion-week" },
+    { ...base, source: "manual", sourceId: sid("keep"), vertical: "motorsport", seriesKey: "kyoto-jazz" },
+    { ...base, source: "ticketmaster", sourceId: sid("tm"), vertical: "music", seriesKey: "tm-series" },
+  ]);
+  assert.equal(again.inserted, 0);
+  assert.equal(again.filled, 2, "fill + keep's NULL series_key; never the ticketmaster row");
+  const rows = await db.execute(sql`SELECT source_id, title, venue, vertical, series_key FROM city_events WHERE source_id IN (${sid("fill")}, ${sid("keep")}, ${sid("tm")})`);
+  const byId = new Map((rows.rows as any[]).map((r) => [r.source_id, r]));
+  const fill = byId.get(sid("fill"));
+  assert.equal(fill.vertical, "fashion");
+  assert.equal(fill.series_key, "kyoto-fashion-week");
+  assert.equal(fill.title, "First", "no other column is rewritten");
+  assert.equal(fill.venue, "Hall");
+  const keep = byId.get(sid("keep"));
+  assert.equal(keep.vertical, "music", "a stated value is never replaced");
+  assert.equal(keep.series_key, "kyoto-jazz", "its NULL key is filled");
+  const tm = byId.get(sid("tm"));
+  assert.equal(tm.vertical, null, "a non-manual row is never rewritten");
+  assert.equal(tm.series_key, null);
+  // A third run is a no-op: nothing is NULL any more on the manual rows.
+  assert.equal((await seedCityEvents([
+    { ...base, source: "manual", sourceId: sid("fill"), vertical: "other", seriesKey: "x" },
+  ])).filled, 0);
 });

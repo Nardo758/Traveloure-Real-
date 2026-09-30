@@ -25,6 +25,16 @@ import { isOnPartnerHost } from "./partner-hosts";
 
 /** Where a row came from. `ticketmaster` is reserved: nothing writes it yet (probe script only). */
 export const CITY_EVENT_SOURCES = ["manual", "ticketmaster"] as const;
+
+/** Migration 335: what kind of event a row is. NULL on the row = not stated (§13), never guessed. */
+export const CITY_EVENT_VERTICALS = ["music", "fashion", "motorsport", "other"] as const;
+export type CityEventVertical = (typeof CITY_EVENT_VERTICALS)[number];
+export function isCityEventVertical(v: unknown): v is CityEventVertical {
+  return typeof v === "string" && (CITY_EVENT_VERTICALS as readonly string[]).includes(v);
+}
+
+/** Migration 335: a series key is lower-case kebab, e.g. "kyoto-jazz-festival", "japanese-grand-prix". */
+export const CITY_EVENT_SERIES_KEY_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export type CityEventSource = (typeof CITY_EVENT_SOURCES)[number];
 
 /** The window the strip and the /events block read, in days from now. */
