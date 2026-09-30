@@ -1,14 +1,14 @@
 import { db } from "../db";
 import { aiUsageLogs, type InsertAiUsageLog, type AiUsageLog } from "@shared/schema";
 import { eq, sql, desc, and, gte, lte } from "drizzle-orm";
-import { GrokUsageStats } from "./grok.service";
+import { AiUsageStats } from "./ai-generation.service";
 
 export interface AIUsageLogInput {
   provider: 'grok' | 'anthropic' | 'openai';
   model: string;
   operation: string;
   userId?: string;
-  usage: GrokUsageStats;
+  usage: AiUsageStats;
   responseTimeMs?: number;
   success?: boolean;
   errorMessage?: string;

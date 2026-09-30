@@ -344,7 +344,7 @@ export default function AdminAICosts() {
           <TabsList className="grid w-full grid-cols-2 max-w-md">
             <TabsTrigger value="ai" data-testid="tab-ai">
               <Cpu className="w-4 h-4 mr-2" />
-              AI APIs (Grok, Claude)
+              AI APIs (Claude)
             </TabsTrigger>
             <TabsTrigger value="external" data-testid="tab-external">
               <Globe className="w-4 h-4 mr-2" />

@@ -18,7 +18,7 @@ name: Kyoto Slice Gate (Trips golden path — Track A acceptance)
 # Stripe and model keys, so nothing that needs a real PaymentIntent or a real generation runs here:
 # §6's paid run and §7's checkout/cancel are fixmes that say so. §4-today's free draft runs against
 # the ONE explicit model stand-in, E2E_AI_STUB=1 (set below, on the server only — never a fallback;
-# grok.service.ts refuses it where ENVIRONMENT=PROD), so the draft's STRUCTURE and its funnel row
+# ai-generation.service.ts refuses it where ENVIRONMENT=PROD), so the draft's STRUCTURE and its funnel row
 # are proven here and what a real model writes is not (ledger `2026-09-28-kyoto-s4-draft-ci`).
 # §3 A4's matrix test runs against the ONE Routes stand-in (scripts/ci/seed-kyoto-matrix-standin.ts,
 # ledger `2026-09-29-matrix-daily`): a Kyoto refresh completed through the REAL writer with a

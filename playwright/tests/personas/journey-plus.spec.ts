@@ -156,7 +156,7 @@ test.describe("journey-plus — Plus member occasion draft delivery", () => {
     if (!draftRow?.trip_id || !draftRow?.generated_at) {
       // FAIL LOUDLY — do NOT swallow this as an "honest negative" (the prior behaviour, which
       // green-passed whether or not the positive path ran, so the delivery proof could rot
-      // unnoticed). The occasion draft's generation is served by grokService.generateAutonomousItinerary,
+      // unnoticed). The occasion draft's generation is served by aiGenerationService.generateAutonomousItinerary,
       // which returns a deterministic canned itinerary when E2E_AI_STUB=1. Production-mode staging
       // also needs ALLOW_TEST_ACCOUNTS=1; the server refuses the stub for ENVIRONMENT=PROD. The
       // draft-run fires SERVER-SIDE via POST /internal/run-occasion-drafts, so E2E_AI_STUB=1 must be
@@ -170,7 +170,7 @@ test.describe("journey-plus — Plus member occasion draft delivery", () => {
         verdict: "FAIL",
         note:
           "Occasion draft produced no items — is E2E_AI_STUB=1 set in the STAGING env the draft-run " +
-          "targets? Without it, grokService.generateAutonomousItinerary makes a real LLM call that fails " +
+          "targets? Without it, aiGenerationService.generateAutonomousItinerary makes a real LLM call that fails " +
           "in staging, the CLAIM stays un-promoted, and the positive delivery path is never exercised.",
       });
       report.write();

@@ -1758,7 +1758,7 @@ export default function ExperienceTemplatePage() {
   };
   
   const openAiItineraryBuilder = () => {
-    // Open the AI Itinerary Builder dialog (powered by Grok)
+    // Open the AI Itinerary Builder dialog
     setAiItineraryDialogOpen(true);
   };
 
@@ -3633,14 +3633,14 @@ export default function ExperienceTemplatePage() {
           </DialogContent>
         </Dialog>
         
-        {/* AI Itinerary Builder Dialog - Powered by Grok */}
+        {/* AI Itinerary Builder Dialog */}
         <Dialog open={aiItineraryDialogOpen} onOpenChange={setAiItineraryDialogOpen}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Wand2 className="w-5 h-5 text-primary" />
                 AI Itinerary Builder
-                <Badge variant="secondary" className="text-[10px] ml-2">Powered by Grok</Badge>
+                <Badge variant="secondary" className="text-[10px] ml-2">AI draft</Badge>
               </DialogTitle>
               <DialogDescription>
                 Let AI create a personalized day-by-day itinerary for your {experienceType?.name || "travel"} to {destination || "your destination"}

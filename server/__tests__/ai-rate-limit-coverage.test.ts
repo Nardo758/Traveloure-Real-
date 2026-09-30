@@ -21,6 +21,11 @@
  * under a new prefix is invisible to it, exactly as `/api/claude/*` was invisible to the `/api/ai`
  * prefix mount.
  *
+ * XAI RETIREMENT (ledger `2026-09-30-retire-xai`): five of the nine — `/api/grok/content/generate`,
+ * `/api/grok/intelligence`, `/api/grok/itinerary/generate`, `/api/grok/chat` — plus the monolith's
+ * `/api/trips/:tripId/itinerary/recommendations` had no client caller and were DELETED rather than
+ * migrated. The remaining pins stay; A5 pins the deletions so an unlimited copy cannot quietly return.
+ *
  * Run: npx tsx --test server/__tests__/ai-rate-limit-coverage.test.ts
  */
 import assert from "node:assert/strict";
@@ -32,17 +37,23 @@ const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const CONTENT_ROUTES = path.join(ROOT, "server", "routes", "content.routes.ts");
 const source = fs.readFileSync(CONTENT_ROUTES, "utf8");
 
-/** The nine endpoints audit finding 9 names, by their registration path. */
+/** The audit-finding-9 endpoints that still exist, by their registration path. */
 const NINE_LLM_ENDPOINTS = [
   "/api/claude/optimize-itinerary",
   "/api/claude/transportation-analysis",
   "/api/claude/full-itinerary-graph",
   "/api/claude/recommendations",
   "/api/grok/match-experts",
+];
+
+/** Deleted with the xAI retirement — pinned ABSENT (A5). */
+const RETIRED_LLM_ENDPOINTS = [
   "/api/grok/content/generate",
   "/api/grok/intelligence",
   "/api/grok/itinerary/generate",
   "/api/grok/chat",
+  "/api/grok/health",
+  "/api/destination-intelligence",
 ];
 
 /**
@@ -58,7 +69,7 @@ function middlewareChainFor(routePath: string): string | null {
   return match ? match[1] : null;
 }
 
-test("A1: all nine LLM endpoints carry the shared aiRateLimiter", () => {
+test("A1: every remaining audit-finding-9 LLM endpoint carries the shared aiRateLimiter", () => {
   const missing: string[] = [];
   for (const routePath of NINE_LLM_ENDPOINTS) {
     const chain = middlewareChainFor(routePath);
@@ -76,7 +87,7 @@ test("A1: all nine LLM endpoints carry the shared aiRateLimiter", () => {
   );
 });
 
-test("A2: the limiter each of the nine names is the ONE shared limiter, not a local re-definition", () => {
+test("A2: the limiter each of them names is the ONE shared limiter, not a local re-definition", () => {
   // The import must come from the single shared module (§18 rule 1 — one implementation).
   assert.match(
     source,
@@ -115,7 +126,7 @@ test("A3: the AI limiter is defined once, in the shared infrastructure module", 
   );
 });
 
-test("A4: the five endpoints that were already covered are still covered (no limits changed)", () => {
+test("A4: the four endpoints that were already covered (the fifth, itinerary recommendations, was deleted — A5) are still covered (no limits changed)", () => {
   const alreadyCovered: Array<[string, string]> = [
     ["server/routes/advisor.routes.ts", "/api/trips/:tripId/advisor/narration"],
     ["server/routes/demand.routes.ts", "/api/me/business-advisor"],
@@ -136,11 +147,22 @@ test("A4: the five endpoints that were already covered are still covered (no lim
       `${routePath} lost its AI rate limit`,
     );
   }
-  // The fifth lives in the routes.ts monolith and uses the `aiRateLimit` alias.
-  const monolith = fs.readFileSync(path.join(ROOT, "server", "routes.ts"), "utf8");
-  assert.match(
-    monolith,
-    /app\.get\(\s*"\/api\/trips\/:tripId\/itinerary\/recommendations",\s*aiRateLimit\b/,
-    "the itinerary-recommendations route lost its AI rate limit",
-  );
+});
+
+test("A5: the routes deleted with the xAI retirement stay deleted", () => {
+  for (const routePath of RETIRED_LLM_ENDPOINTS) {
+    assert.equal(
+      middlewareChainFor(routePath),
+      null,
+      `${routePath} is registered again — it was deleted (no client caller) by ledger 2026-09-30-retire-xai`,
+    );
+  }
+  for (const file of ["server/routes.ts", "server/routes/trips.routes.ts"]) {
+    const text = fs.readFileSync(path.join(ROOT, file), "utf8");
+    assert.equal(
+      /\.get\(\s*"\/api\/trips\/:tripId\/itinerary\/recommendations"/.test(text),
+      false,
+      `${file} registers the deleted itinerary-recommendations route again`,
+    );
+  }
 });

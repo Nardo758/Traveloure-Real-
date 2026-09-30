@@ -33,9 +33,10 @@ name: Spec Coverage Gate
 #      auth states are never written and auth-form-validation dies on ENOENT.
 #   3. A readiness probe that can actually reach 200 — with PW_AUTH_SETUP set, global-setup
 #      probes /api/ready and THROWS in CI mode on anything less, which fails every spec in the run
-#      before a single test executes. /api/ready grades a missing XAI_API_KEY or
-#      STRIPE_WEBHOOK_SECRET as `fail` (not `warn`), so both stubs below are load-bearing — the
-#      body says "ready":true the whole time while the HTTP status is 503.
+#      before a single test executes. /api/ready grades a missing STRIPE_WEBHOOK_SECRET as
+#      `fail` (not `warn`), so that stub below is load-bearing — the body says "ready":true the
+#      whole time while the HTTP status is 503. (The XAI_API_KEY stub is inert since the xAI
+#      retirement removed the `ai_xai` check, ledger `2026-09-30-retire-xai`.)
 #   4. Seeded CI users       — ci-db-setup with seed-ci-users, since global-setup logs in as them.
 #
 # ANTI-VACUITY: `npx playwright test <name>` exits 0 when the name matches nothing, so every spec

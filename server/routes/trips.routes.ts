@@ -154,7 +154,6 @@ import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
-import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
@@ -950,7 +949,7 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
         accommodationSuggestions: result.accommodationSuggestions || [],
         packingList: result.packingList || [],
         travelTips: result.travelTips || [],
-        provider: "grok",
+        provider: "claude",
         status: "generated",
       });
 
@@ -970,15 +969,6 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
     }
   });
 
-  // AI Chat endpoint - General purpose chat
-  const chatSchema = z.object({
-    messages: z.array(z.object({
-      role: z.enum(["user", "assistant", "system"]),
-      content: z.string(),
-    })),
-    systemContext: z.string().optional(),
-    preferProvider: z.enum(["grok", "claude", "auto"]).optional(),
-  });
 
 
 router.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(async (req, res) => {
@@ -1490,15 +1480,6 @@ router.get("/api/trips/:tripId/itinerary/analyze", isAuthenticated, async (req, 
   });
 
 
-router.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, async (req, res) => {
-    try {
-      const destination = req.query.destination as string || "destination";
-      const recommendations = await itineraryIntelligenceService.getAIRecommendations(req.params.tripId, destination);
-      res.json(recommendations);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get recommendations" });
-    }
-  });
 
 
 

@@ -26,8 +26,8 @@ name: Unwired Spec Gate
 #      written by that setup and by nothing else.
 #   3. An HTTP-200 readiness probe — global-setup THROWS in CI mode on anything
 #      less, wiping the whole run before a test executes. /api/ready grades a
-#      missing XAI_API_KEY or STRIPE_WEBHOOK_SECRET as `fail`, so both stubs are
-#      load-bearing.
+#      missing STRIPE_WEBHOOK_SECRET as `fail`, so that stub is load-bearing (the
+#      XAI_API_KEY stub is inert since ledger `2026-09-30-retire-xai`).
 #   4. Seeded CI users — global-setup logs in as them.
 #
 # --timeout=120000 is deliberate and is NOT a flake allowance: the Vite dev

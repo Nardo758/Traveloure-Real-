@@ -202,7 +202,7 @@ export default function HiddenGemsPage() {
           </div>
           {discoverMutation.isPending && (
             <p className="text-sm text-muted-foreground mt-2">
-              Grok is researching local secrets... This may take a moment.
+              Researching local secrets... This may take a moment.
             </p>
           )}
         </CardContent>

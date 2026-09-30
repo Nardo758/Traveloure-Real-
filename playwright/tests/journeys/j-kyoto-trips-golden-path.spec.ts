@@ -592,7 +592,7 @@ test.describe("3 · the compare view (A4)", () => {
 test.describe("4 · free draft around the set", () => {
   test("§4 today — Draft it with AI on an empty slip writes origin='ai' items and an 'AI draft' chip", async ({ page }) => {
     // Ledger `2026-09-28-kyoto-s4-draft-ci`: the job's server runs with E2E_AI_STUB=1, the ONE
-    // explicit stand-in for the draft model (grok.service.ts; refused where ENVIRONMENT=PROD, and it
+    // explicit stand-in for the draft model (ai-generation.service.ts; refused where ENVIRONMENT=PROD, and it
     // names itself `e2e-ai-stub` on every cost row). Everything after the model call is real code.
     // Assertions are STRUCTURAL — never the stand-in's prose.
     await signedInTraveler(page, "s4");

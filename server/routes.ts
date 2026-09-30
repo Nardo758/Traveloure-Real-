@@ -27,7 +27,7 @@ import { broadcastToUser } from "./websocket";
 import { validateImageDataUrl } from "./utils/imageValidation";
 import { strictRateLimiter } from "./infrastructure/rate-limiter";
 import type { Server } from "http";
-import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
+import { adminRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
 import { extractServiceLocation, ServiceLocationError } from "./utils/service-location";
 import { deriveCityPatch } from "./utils/service-city";
@@ -160,7 +160,7 @@ import { liveListingTermsRefusal } from "@shared/live-availability";
 import bookingComponentsRoutes from "./routes/booking-components.routes";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
-import { grokService } from "./services/grok.service";
+import { aiGenerationService } from "./services/ai-generation.service";
 import { draftServiceTranslation, isContentLocale, effectiveSourceLocale, CONTENT_LOCALES } from "./services/service-translation.service";
 import { resolveCoverageGaps, resolveDemandBuckets, MIN_DEMAND_SIGNAL } from "./services/market-insights.service";
 import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
@@ -11918,7 +11918,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         accommodationSuggestions: result.accommodationSuggestions || [],
         packingList: result.packingList || [],
         travelTips: result.travelTips || [],
-        provider: "grok",
+        provider: "claude",
         status: "generated",
       }).returning();
 
@@ -11967,15 +11967,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // AI Chat endpoint - General purpose chat
-  const chatSchema = z.object({
-    messages: z.array(z.object({
-      role: z.enum(["user", "assistant", "system"]),
-      content: z.string(),
-    })),
-    systemContext: z.string().optional(),
-    preferProvider: z.enum(["grok", "claude", "auto"]).optional(),
-  });
 
   // === EXPERT AI TASKS ROUTES ===
   
@@ -12037,7 +12028,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           : taskType === "content_draft" ? "bio"
           : "welcome_message";
 
-        const { result, usage } = await grokService.generateContent({
+        const { result, usage } = await aiGenerationService.generateContent({
+          userId,
           type: contentType,
           context: {
             taskType,
@@ -12070,7 +12062,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // Log AI interaction
         await db.insert(aiInteractions).values({
           taskType: "content_generation",
-          provider: "grok",
+          provider: "claude",
           promptTokens: usage.promptTokens,
           completionTokens: usage.completionTokens,
           totalTokens: usage.totalTokens,
@@ -12202,10 +12194,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         : task.taskType === "content_draft" ? "bio"
         : "welcome_message";
 
-      let result: Awaited<ReturnType<typeof grokService.generateContent>>["result"];
-      let usage: Awaited<ReturnType<typeof grokService.generateContent>>["usage"];
+      let result: Awaited<ReturnType<typeof aiGenerationService.generateContent>>["result"];
+      let usage: Awaited<ReturnType<typeof aiGenerationService.generateContent>>["usage"];
       try {
-        ({ result, usage } = await grokService.generateContent({
+        ({ result, usage } = await aiGenerationService.generateContent({
+          userId,
           type: contentType,
           context: {
             taskType: task.taskType,
@@ -12248,7 +12241,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Log AI interaction
       await db.insert(aiInteractions).values({
         taskType: "content_generation",
-        provider: "grok",
+        provider: "claude",
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
         totalTokens: usage.totalTokens,
@@ -12890,26 +12883,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // `aiRateLimit` (the existing shared AI limiter, applied limiter-before-auth exactly as
-  // `heavyReadRateLimit` is on /api/itinerary-comparisons): this handler is the only one of the
-  // three that makes a REAL outbound LLM call (itinerary-intelligence.service.ts
-  // getAIRecommendations), and it was behind no limiter at all — an authorized caller could
-  // burn tokens in a loop. `schedules`/`analyze` are pure DB reads and are deliberately NOT
-  // added to the shared `ai:<ip>` bucket, so they cannot starve it.
-  app.get("/api/trips/:tripId/itinerary/recommendations", aiRateLimit, isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const denied = await authorizeTripLogistics(
-        req.params.tripId, userId, "GET /api/trips/:tripId/itinerary/recommendations",
-      );
-      if (denied) return res.status(denied.status).json({ message: denied.message });
-      const destination = req.query.destination as string || "destination";
-      const recommendations = await itineraryIntelligenceService.getAIRecommendations(req.params.tripId, destination);
-      res.json(recommendations);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to get recommendations" });
-    }
-  });
+  // GET /api/trips/:tripId/itinerary/recommendations was DELETED with the xAI retirement (ledger
+  // `2026-09-30-retire-xai`): its one model call was xAI's grok-3-mini and no client called it.
 
   // Authoritative POST: requires trip ownership or expert assignment; validates via Zod schema
   app.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {

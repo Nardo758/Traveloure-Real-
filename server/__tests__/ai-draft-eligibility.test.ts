@@ -191,7 +191,7 @@ describe("LD 41 — the writers are covered", () => {
   });
 
   it("S3 the free draft reads the env-configurable tier; the paid optimizer does not", () => {
-    for (const file of ["server/routes.ts", "server/services/grok.service.ts"]) {
+    for (const file of ["server/routes.ts", "server/services/ai-generation.service.ts"]) {
       assert.ok(
         read(file).includes("resolveAiDraftModel()"),
         `${file} must choose the draft's model through the one cost-decision constant`,

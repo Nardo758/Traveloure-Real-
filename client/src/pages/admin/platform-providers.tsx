@@ -51,17 +51,6 @@ const PROVIDER_META: ProviderMeta[] = [
     aiProviderKey: "anthropic",
   },
   {
-    id: "xai",
-    name: "Grok (xAI)",
-    category: "AI",
-    description: "Expert matching, real-time intelligence, and hidden gem discovery.",
-    icon: "⚡",
-    type: "API",
-    docsUrl: "https://x.ai/api",
-    source: "ai-usage",
-    aiProviderKey: "grok",
-  },
-  {
     id: "viator",
     name: "Viator",
     category: "Booking",
