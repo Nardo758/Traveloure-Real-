@@ -1,4 +1,8 @@
 import type { Express, RequestHandler } from "express";
+import { decorateComparison, openSetSlotsForRun } from "./services/version-options.service";
+import { type RunRecordContext } from "./services/optimizer-runs.service";
+import { optimizerRunRecordsEnabled } from "./config/optimizer-runs.config";
+import { versionPerOptionEnabled } from "./config/version-options.config";
 import { activateTripTransport, getTripTransportLegs } from "./services/trip-transport-legs.service";
 import { travelTimeServiceEnabled } from "./config/travel-time.config";
 import { zodErrorBody } from "./utils/zod-error-body";
@@ -642,12 +646,15 @@ async function resolveOptimizationFeeForTarget(target: {
 async function recordOptimizerRunTollFor(
   runAuth: Extract<OptimizerRunAuthorization, { authorized: true }>,
   ctx: { comparisonId: string; tripId?: string | null; userExperienceId?: string | null; actor: string },
-): Promise<void> {
+): Promise<{ tollRunId: string | null }> {
+  // A9 (§N2): the toll's run id is returned so the run record can name it (`toll_run_id`); a paid
+  // run's toll is keyed on its PaymentIntent, which the record carries separately. NULL = no toll row.
+  let tollRunId: string | null = null;
   try {
     const plan = optimizerRunTollPlan(runAuth, randomUUID);
-    if (!plan) return;
+    if (!plan) return { tollRunId };
     const fee = await resolveOptimizationFeeForTarget(ctx);
-    if (!fee || fee.isDisabled) return;
+    if (!fee || fee.isDisabled) return { tollRunId };
     await recordOptimizerRunToll({
       comparisonId: ctx.comparisonId,
       tripId: ctx.tripId ?? null,
@@ -658,9 +665,31 @@ async function recordOptimizerRunTollFor(
       actor: ctx.actor,
       ...plan,
     });
+    if ("runId" in plan) tollRunId = plan.runId;
   } catch (err: any) {
     console.error("[optimizer-toll] toll record failed (non-fatal):", err?.message);
   }
+  return { tollRunId };
+}
+
+/**
+ * A9 (§N2, ledger `2026-09-30-a9-run-records`): the record context the generator stamps on the run it
+ * is about to make — the authorization basis from the ONE run predicate, the PaymentIntent only for a
+ * paid run, the toll's run id. Undefined with the flag off or an unauthorized run (nothing recorded).
+ */
+function runRecordFor(
+  runAuth: OptimizerRunAuthorization,
+  ctx: { tripId: string | null; comparisonId: string; createdBy: string; tollRunId: string | null },
+): RunRecordContext | undefined {
+  if (!optimizerRunRecordsEnabled() || !runAuth.authorized) return undefined;
+  return {
+    tripId: ctx.tripId,
+    comparisonId: ctx.comparisonId,
+    basis: runAuth.basis,
+    paymentIntentId: runAuth.basis === "paid" ? runAuth.optimizationPaymentId : null,
+    tollRunId: ctx.tollRunId,
+    createdBy: ctx.createdBy,
+  };
 }
 
 /**
@@ -10057,8 +10086,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // The toll (ruling `2026-09-25-planning-tolls`). A PAID run is recorded whenever it was
       // authorized — the charge happened. A covered run is recorded only when the optimizer
       // actually starts below: a waiver for a run that never ran would record a toll nobody took.
+      let createToll: { tollRunId: string | null } = { tollRunId: null };
       if (runAuth.authorized && (runAuth.basis === "paid" || baselineItems.length > 0)) {
-        await recordOptimizerRunTollFor(runAuth, {
+        createToll = await recordOptimizerRunTollFor(runAuth, {
           comparisonId: comparison.id,
           tripId,
           userExperienceId,
@@ -10126,6 +10156,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           tripPreferencesForCreate,
           fixedCommitments,
           resolvedPinnedAnchor,
+          await openSetSlotsForRun(tripId, baselineItems, resolvedPinnedAnchor),
+          runRecordFor(runAuth, { tripId: tripId ?? null, comparisonId: comparison.id, createdBy: userId, tollRunId: createToll.tollRunId }),
         ).catch((err) => console.error("Background optimization error:", err));
       }
 
@@ -10224,6 +10256,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       if (result.comparison.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // A7 (§M5 / §F2 / R128, ledger `2026-09-30-a7-version-per-option`): behind the flag, each
+      // version names the option it anchors on and carries only the badges its metrics EARN; the
+      // open set's options no version names are listed "not run". Derived here, never stored.
+      if (versionPerOptionEnabled()) {
+        const deco = await decorateComparison(result.comparison.tripId ?? null, result.variants as any);
+        return res.json({
+          ...result,
+          variants: result.variants.map((v) => ({ ...v, ...deco.byVariant[v.id] })),
+          notRunOptionIds: deco.notRunOptionIds,
+        });
       }
 
       res.json(result);
@@ -10430,7 +10474,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       logOptimizerRunBasis(runAuth.basis, { tripId: comparison.tripId, comparisonId });
       // The toll (ruling `2026-09-25-planning-tolls`) — the same one implementation create uses.
-      await recordOptimizerRunTollFor(runAuth, {
+      const genToll = await recordOptimizerRunTollFor(runAuth, {
         comparisonId,
         tripId: comparison.tripId,
         userExperienceId: comparison.userExperienceId,
@@ -10485,7 +10529,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         undefined,
         tripPreferencesForGen,
         fixedCommitments,
-        resolvedPinnedAnchor
+        resolvedPinnedAnchor,
+        await openSetSlotsForRun(comparison.tripId, baselineItems, resolvedPinnedAnchor),
+        runRecordFor(runAuth, { tripId: comparison.tripId ?? null, comparisonId, createdBy: userId, tollRunId: genToll.tollRunId }),
       ).catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {

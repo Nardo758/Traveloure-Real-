@@ -145,8 +145,10 @@ describe("POST /api/itinerary-comparisons — pinned anchor", () => {
     );
     assert.match(
       handler,
-      /tripPreferencesForCreate,\s*fixedCommitments,\s*resolvedPinnedAnchor,\s*\)/,
-      "the resolved pin must be the optimizer's final argument",
+      // A7 (ledger `2026-09-30-a7-version-per-option`) appends the open-set slots AFTER the pin; the
+      // pin's own slot — straight after fixedCommitments — is what this proves, not that it is last.
+      /tripPreferencesForCreate,\s*fixedCommitments,\s*resolvedPinnedAnchor,/,
+      "the resolved pin must reach the optimizer in its pinnedAnchor slot (right after fixedCommitments)",
     );
   });
 });
