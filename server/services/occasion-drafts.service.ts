@@ -305,10 +305,15 @@ async function buildDraftSlip(input: {
     console.warn(`${TAG} city intelligence unavailable for ${input.homeCity}:`, err);
   }
 
+  // The member registered an OCCASION, not a party: the draft mints the plan, so there is no plan
+  // party to read yet. Only an occasion that itself names its party (the couple templates) passes a
+  // count; every other draft says "not stated" to the model and stores no count (§13) — never the
+  // fixed 2 this used to send for a birthday or a celebration.
+  const partySize = template.partySize ?? null;
   const { result } = await aiGenerationService.generateAutonomousItinerary({
     destination: input.homeCity,
     dates: { start, end },
-    travelers: 2,
+    travelers: partySize ?? undefined,
     eventType: template.eventType,
     interests: template.interests,
     pacePreference: "moderate",
@@ -327,7 +332,7 @@ async function buildDraftSlip(input: {
       destination: input.homeCity,
       startDate: start,
       endDate: end,
-      numberOfTravelers: 2,
+      numberOfTravelers: partySize,
       status: "draft",
       eventType: template.eventType,
       specialRequests: template.specialRequests,
@@ -362,7 +367,7 @@ async function buildDraftSlip(input: {
       startDate: start,
       endDate: end,
       budget: normalizeGeneratedEstimatedCost(undefined),
-      travelers: 2,
+      travelers: partySize,
       status: "generating",
     },
   });

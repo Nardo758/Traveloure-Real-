@@ -12281,14 +12281,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const edited = tasks.filter(t => t.wasEdited).length;
       const totalTokens = tasks.reduce((sum, t) => sum + (t.tokensUsed || 0), 0);
 
-      // Estimate time saved (assume 10 min per task)
-      const timeSavedMinutes = completed * 10;
 
       res.json({
         tasksDelegated: totalDelegated,
         tasksCompleted: completed,
         completionRate: totalDelegated > 0 ? Math.round((completed / totalDelegated) * 100) : 0,
-        timeSaved: Math.round(timeSavedMinutes / 60),
+        // No time measurement exists: the old figure was "completed × 10 minutes", an assumption
+        // shown as a fact. null until measured, and the surface omits the row (§13).
+        timeSaved: null,
         // No quality measure exists (see withoutUnmeasuredScores): null, never "0.0" and never an
         // average of the random values older rows still carry (§13).
         avgQualityScore: null,

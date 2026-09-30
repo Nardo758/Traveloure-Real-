@@ -115,6 +115,16 @@ export interface EnrichItem {
 }
 
 /**
+ * ONE info line per successful lookup (decision-maker, Sep 30, 2026 — the spine logged failures
+ * only): the place id, cache hit or miss, and latency. No query text and no plan id, so the log
+ * carries no traveler content. A lookup that found no place logs `place_id=none`.
+ */
+function logLookup(drafts: readonly FactDraft[], cache: "hit" | "miss", startedMs: number): void {
+  const placeId = drafts.find((d) => d.placeRefKind === "place_id")?.placeRef ?? "none";
+  console.info(`[place-facts] lookup ok place_id=${placeId} cache=${cache} latency_ms=${Date.now() - startedMs}`);
+}
+
+/**
  * After a free draft commits: look up each drafted stop's facts (hours, dining basics, coordinates)
  * — cache first, then the Places spine, capped per draft. NEVER throws and never blocks the draft
  * (§15b): a failed lookup is logged and that item simply has no facts.
@@ -136,15 +146,18 @@ export async function enrichPlanItems(input: {
       if (!adapters.length) continue;
       const query = [item.title, input.city].filter(Boolean).join(", ").slice(0, 300);
       try {
+        const started = Date.now();
         const cached = await cachedForQuery(query);
         if (cached) {
           summary.cached += 1;
           summary.recorded += await recordFacts(cached, { planId: input.tripId, itemId: item.id });
+          logLookup(cached, "hit", started);
           continue;
         }
         summary.looked += 1;
         const drafts = await adapters[0].fetch({ need, market: input.market, query: { text: item.title, city: input.city }, budgetCents: 0 });
         summary.recorded += await recordFacts(drafts, { planId: input.tripId, itemId: item.id });
+        logLookup(drafts, "miss", started);
       } catch (err) {
         console.error("[place-facts] lookup failed for an item:", (err as Error)?.message ?? err);
       }
