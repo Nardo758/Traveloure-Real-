@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { optionPickItem, type OptionSlot } from "./services/version-options.service";
 import { db } from "./db";
 import { trackAICost } from "./services/ai-cost-tracker";
 import {
@@ -841,7 +842,13 @@ export async function generateOptimizedItineraries(
    *  route against real coordinates. When present, ALL THREE versions are built around it (they
    *  still differ by strategy); when omitted, anchors are auto-picked (one hotel / neighborhood /
    *  activity). Undefined ⇒ unchanged auto behaviour. */
-  pinnedAnchor?: AnchorScore
+  pinnedAnchor?: AnchorScore,
+  /**
+   * A7 (§M5, ledger `2026-09-30-a7-version-per-option`): the plan's open STAY comparison as three
+   * version slots — version v anchors on `openSetSlots[v]` and carries that option as its pick
+   * (§F2 (2)). Passed only when `OPTIMIZER_VERSION_PER_OPTION_ENABLED` is on and no anchor is pinned.
+   */
+  openSetSlots?: OptionSlot[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let anchorConstraints: AnchorConstraint[] = [];
@@ -907,6 +914,10 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       // it (they still differ by strategy). Already resolved + scored by the route against real
       // coordinates, so it is used as-is; the route dropped it if it couldn't resolve (§13).
       chosenAnchors = [pinnedAnchor, pinnedAnchor, pinnedAnchor];
+    } else if (openSetSlots && openSetSlots.length > 0) {
+      // A7 (§M5): with an open stay comparison, each version builds around ONE of its options —
+      // real, located places the traveler put there, scored like any auto anchor (§13).
+      chosenAnchors = openSetSlots.map((slot) => slot.anchor);
     } else {
       try {
         const anchorStops = baselineItems.map((it) => {
@@ -1554,6 +1565,12 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
             chosenAnchors[v]?.medianMeters != null ? Math.round(chosenAnchors[v].medianMeters as number) : null,
         })
         .returning();
+
+      // A7 (§F2 (2)): the version's pick — the stay it was built around, marked with its option so
+      // adopting the version (or this one stop) CHOOSES that set. Absent = the set stays undecided.
+      if (openSetSlots?.[v]) {
+        await db.insert(itineraryVariantItems).values(optionPickItem(newVariant.id, openSetSlots[v]));
+      }
 
       // Batch-insert all variant items in one round-trip
       if (reorderedItems.length > 0) {
