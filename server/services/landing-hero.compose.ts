@@ -33,10 +33,10 @@ export interface HeroOfferingType {
  * selection or missing matching TravelPulse row is honest null, not a forced default city.
  */
 export function pickBillboardEligibleTravelPulseCity(
-  cities: ReadonlyArray<{ cityName: string; country?: string | null; trendingScore?: number | null; crowdLevel?: string | null }>,
+  cities: ReadonlyArray<{ cityName: string; country?: string | null; trendingScore?: number | null; crowdBand?: string | null }>,
   selection: BillboardMarketSelection | null | undefined,
   observedMarketCity?: { cityName: string; country?: string | null } | null,
-): { cityName: string; country?: string | null; trendingScore?: number | null; crowdLevel?: string | null } | null {
+): { cityName: string; country?: string | null; trendingScore?: number | null; crowdBand?: string | null } | null {
   const market = selection?.market;
   if (!market || !selection.slots.some((slot) => slot.slot === 1 && slot.marketKey === market.key)) return null;
   const matchingTrend = cities.find((city) => city.cityName.trim().toLowerCase() === market.cityName.toLowerCase());
@@ -100,7 +100,7 @@ export function deriveWantedSlots(
 
 /** Assemble the payload from already-resolved legs. Absent legs stay null — no defaults. */
 export function composeLandingHero(input: {
-  topCity: { cityName: string; trendingScore?: number | null; crowdLevel?: string | null } | null;
+  topCity: { cityName: string; trendingScore?: number | null; crowdBand?: string | null } | null;
   anchorExpert: {
     name: string;
     handle: string | null;
@@ -124,9 +124,10 @@ export function composeLandingHero(input: {
   const payload: LandingHeroPayload = {
     city: topCity?.cityName ?? null,
     trend: topCity?.trendingScore == null ? null : Number(topCity.trendingScore),
-    // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): NO crowd claim until PR 2 computes
-    // it — the legacy `travel_pulse_cities.crowd_level` was a month-old guess (trend-engine audit §3).
-    crowd: null,
+    // TravelPulse PR 2 (ledger `2026-09-30-travelpulse-crowd-band`): the resolver's band, already
+    // passed through `displayCrowdBand` by `getTrendingCities`; absent ⇒ null. The legacy
+    // `travel_pulse_cities.crowd_level` is never read here (PR 1).
+    crowd: topCity?.crowdBand ?? null,
     anchorExpert: input.anchorExpert,
     gem: gemRow
       ? { name: String(gemRow.placeName), score: Number.isFinite(gemScore) ? gemScore : null }

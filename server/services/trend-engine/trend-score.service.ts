@@ -26,10 +26,13 @@ import {
   trendSourceConfig,
   trendScores,
   marketSeasonCalendars,
+  crowdBandConfig,
 } from "@shared/schema";
 import { eq, and, gte, isNull } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { OPERATING_MARKETS } from "./operating-markets";
+import { computeCrowdBand, type CrowdCutoff } from "./crowd-band";
+import { crowdMinBaselinePoints, crowdSignalMaxAgeDays } from "../../config/trend-display.config";
 
 // ─── Config constants (L6 — these are the only place these values live) ────────
 
@@ -239,6 +242,21 @@ export class TrendScoreService {
       })
       .from(marketSeasonCalendars);
 
+    // TravelPulse PR 2 (ledger `2026-09-30-travelpulse-crowd-band`): the market band cutoffs, read
+    // once per run from the admin-editable config — never a literal here.
+    const crowdCutoffs: CrowdCutoff[] = (
+      await db
+        .select({ band: crowdBandConfig.band, lowerBoundVsBaseline: crowdBandConfig.lowerBoundVsBaseline })
+        .from(crowdBandConfig)
+        .where(eq(crowdBandConfig.entityType, "market"))
+    ).map(r => ({ band: r.band, lowerBoundVsBaseline: parseFloat(r.lowerBoundVsBaseline) }));
+    const sourceWeights = new Map(sourceConfigs.map(c => [c.source, c.weight]));
+    const crowdOpts = {
+      baselineWindowDays: BASELINE_WINDOW_DAYS,
+      maxSignalAgeDays: crowdSignalMaxAgeDays(),
+      minBaselinePoints: crowdMinBaselinePoints(),
+    };
+
     // Fetch market entities
     const marketEntities = await db
       .select()
@@ -281,6 +299,7 @@ export class TrendScoreService {
 
         const seasonalExpected = getSeasonalMultiplier(entity.internalId, allSeasons, todayMD);
         const result = computeScore(signals, sourceConfigs, seasonalExpected);
+        const crowd = computeCrowdBand(signals, sourceWeights, crowdCutoffs, { ...crowdOpts, now: new Date() });
 
         // Upsert trend_scores (one row per entity, rewritten each run)
         await db
@@ -289,11 +308,11 @@ export class TrendScoreService {
             trendEntityId: entity.id,
             trendScore: result.trendScore != null ? String(result.trendScore) : null,
             trendConfidence: String(result.trendConfidence),
-            crowdBand: null,  // Phase 4 crowd bands — not v0 scope
-            crowdConfidence: null,
+            crowdBand: crowd.band,
+            crowdConfidence: crowd.confidence != null ? String(crowd.confidence) : null,
             contributingSources: result.contributingSources,
             whyText: result.whyText,
-            crowdWhy: null,
+            crowdWhy: crowd.why,
             seasonalExpected: String(result.seasonalExpected),
             scoringRunId,
           })
@@ -302,11 +321,11 @@ export class TrendScoreService {
             set: {
               trendScore: result.trendScore != null ? String(result.trendScore) : null,
               trendConfidence: String(result.trendConfidence),
-              crowdBand: null,
-              crowdConfidence: null,
+              crowdBand: crowd.band,
+              crowdConfidence: crowd.confidence != null ? String(crowd.confidence) : null,
               contributingSources: result.contributingSources,
               whyText: result.whyText,
-              crowdWhy: null,
+              crowdWhy: crowd.why,
               seasonalExpected: String(result.seasonalExpected),
               computedAt: sql`NOW()`,
               scoringRunId,
@@ -317,7 +336,7 @@ export class TrendScoreService {
         else unranked++;
 
         console.log(
-          `[TrendScore] ${entity.internalId}: score=${result.trendScore ?? "unranked"} conf=${result.trendConfidence.toFixed(3)} seasonal=${result.seasonalExpected} sources=${result.contributingSources.length}`,
+          `[TrendScore] ${entity.internalId}: score=${result.trendScore ?? "unranked"} conf=${result.trendConfidence.toFixed(3)} seasonal=${result.seasonalExpected} sources=${result.contributingSources.length} crowd=${crowd.band ?? `none (${crowd.missing})`}`,
         );
       } catch (err: any) {
         errors.push(`${entity.internalId}: ${err.message}`);
