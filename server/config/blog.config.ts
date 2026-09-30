@@ -21,3 +21,10 @@ export const BLOG_RESEARCH_MAX_SOURCES = positiveInt(process.env.BLOG_RESEARCH_M
  * reaction count taken over too few readers to mean anything (§13).
  */
 export const BLOG_RANK_MIN_IMPRESSIONS = positiveInt(process.env.BLOG_RANK_MIN_IMPRESSIONS, 50);
+
+/**
+ * Race weekend (blog type 3, ledger `2026-09-30-blog-race-weekend`): the travel-time budget a
+ * motorsport venue must sit within from its launch market. It is used to ADMIT the event only.
+ * The minutes are never printed (ruling `2026-09-30-public-content-facts-rank-only`).
+ */
+export const RACE_WEEKEND_LEG_BUDGET_MINUTES = positiveInt(process.env.RACE_WEEKEND_LEG_BUDGET_MINUTES, 180);
