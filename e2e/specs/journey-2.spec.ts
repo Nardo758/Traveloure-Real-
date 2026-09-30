@@ -120,7 +120,7 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
     // stays green rather than burning 60 s and then failing.
     let generateResponse: Awaited<typeof generateResponsePromise> | null = null;
     try {
-      await page.waitForURL(/\/itinerary-comparison\/|\/trip\//, { timeout: 60_000 });
+      await page.waitForURL(/\/plans\/|\/trip\//, { timeout: 60_000 });
       generateResponse = await generateResponsePromise;
     } catch {
       const isErrorPage = await page
@@ -139,7 +139,9 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
     // Catches regressions in the /api/ai/generate-itinerary route (missing fields,
     // wrong status) independently of whatever the UI renders after the redirect.
     // The route returns 200 with the AutonomousItineraryResult spread onto the body:
-    //   { success, tripId, comparisonId, status:'generated', dailyItinerary:[{day,activities}], ... }
+    //   { success, tripId, status:'generated', dailyItinerary:[{day,activities}], ... }
+    // B3/B6 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): no comparisonId — a free draft
+    // creates no comparison and starts no optimizer run; the redirect target is the plan.
     // NOTE: this is the Grok shape (dailyItinerary), NOT the deleted stub's
     // { itinerary:{ itineraryData:{ days } } } — asserting the wrong shape is how a
     // rerouted gate silently stops firing (see the matcher fix above).
@@ -149,7 +151,7 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
     const body = await generateResponse!.json();
     expect(body, 'response body is an object').toBeTruthy();
     expect(body.tripId, 'tripId is present').toBeTruthy();
-    expect(body.comparisonId, 'comparisonId is present (redirect target)').toBeTruthy();
+    expect(body.comparisonId, 'a free draft creates no comparison').toBeUndefined();
     expect(body.status, 'status field').toBe('generated');
     expect(Array.isArray(body.dailyItinerary), 'dailyItinerary is an array').toBe(true);
     expect(body.dailyItinerary.length, 'at least one day returned').toBeGreaterThan(0);

@@ -69,6 +69,7 @@ import { expertDoorHref } from "@/lib/expert-door";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 import { PlanModal, type CommittedPlan, type PlanMintOutcome } from "@/components/trip/plan-modal";
 import { addPendingGemToTrip } from "@/lib/billboard-gem-planning";
+import { doorStartsNewPlan } from "@/lib/plan-steps";
 import { normalizePendingPlanItems, type PendingPlanItem } from "@shared/pending-plan-items";
 
 export type PlanningBranch = "myself" | "ai" | "local" | "occasion";
@@ -334,7 +335,12 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       setModalOpen(true);
       return;
     }
-    const next = src ?? null;
+    // B1/B2 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): an ENTRY door opened while a minted
+    // plan is bound starts a NEW plan — it never edits, re-labels or inherits from the bound one.
+    // The rule is `doorStartsNewPlan` (`@/lib/plan-steps`), never restated here.
+    const next = src && !src.newPlan && doorStartsNewPlan(src, getTripContext().tripId)
+      ? { ...src, newPlan: true }
+      : src ?? null;
     setSource(next);
     setCommitted(null);
     // The door already named the occasion — record it on the planning context so every
