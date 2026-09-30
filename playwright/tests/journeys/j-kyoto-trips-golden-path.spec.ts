@@ -193,6 +193,80 @@ test.describe("1 · entry and occasion", () => {
     await expect(page.getByText("Trips", { exact: true })).toHaveCount(0);
     await expect(testid(page, "slip-anchor-state")).toHaveText("Where you'll stay: not chosen yet");
   });
+
+  test("§1 B1/B2 — a new Travel plan after a Kyoto wedding inherits nothing: its own dates, name and no events", async ({ page }) => {
+    // Production smoke test Sep 30, 2026 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): with a
+    // Kyoto WEDDING plan bound (two events, Nov 24–26 of a future year), the hero's "Plan a trip"
+    // re-used that plan — re-labelled it, kept its events and dates, dropped the typed name.
+    const traveler = await signedInTraveler(page, "b1");
+    const year = new Date().getFullYear() + 1;
+    const next = testid(page, "button-planning-next");
+    const walkTo = async (id: string) => {
+      for (let i = 0; i < 8 && !(await appears(testid(page, id), 800)); i++) {
+        if (!(await appears(next, 800)) || (await next.isDisabled())) break;
+        await next.click();
+      }
+      expect(await appears(testid(page, id), 3000), `the modal reaches ${id}`).toBe(true);
+    };
+
+    // 1. The wedding: two events, Nov 24–26, minted through "Plan it myself".
+    await openModalFromHero(page);
+    await testid(page, "option-occasion-wedding").click();
+    await next.click();
+    await testid(page, "input-etp-destination").fill(KYOTO);
+    await walkTo("input-etp-start-date");
+    await testid(page, "input-etp-start-date").fill(`${year}-11-24`);
+    await testid(page, "input-etp-end-date").fill(`${year}-11-26`);
+    await walkTo("text-etp-events-intro");
+    await testid(page, "chip-etp-event-welcome-drinks").click();
+    await testid(page, "chip-etp-event-rehearsal-dinner").click();
+    await walkTo("planning-option-myself");
+    const weddingId = await clickPlanFinish(page, "myself");
+    expect(weddingId, "the wedding minted and landed on its slip").toBeTruthy();
+
+    // 2. A new Travel plan from the hero: Nov 11–15, with a name.
+    await openModalFromHero(page);
+    await expect(testid(page, "option-occasion-travel"), "a new plan asks its own occasion").toBeVisible();
+    await testid(page, "option-occasion-travel").click();
+    await next.click();
+    await expect(testid(page, "input-etp-destination"), "nothing is carried from the bound plan").toHaveValue("");
+    await testid(page, "input-etp-destination").fill(KYOTO);
+    await walkTo("input-etp-start-date");
+    await expect(testid(page, "input-etp-start-date")).toHaveValue("");
+    await testid(page, "input-etp-start-date").fill(`${year}-11-11`);
+    await testid(page, "input-etp-end-date").fill(`${year}-11-15`);
+    await walkTo("input-etp-title");
+    await testid(page, "input-etp-title").fill("Kyoto smoke test");
+    await walkTo("planning-option-myself");
+    let travelId: string | null = null;
+    const status = await actAndAwait(
+      page,
+      async () => {
+        travelId = await clickPlanFinish(page, "myself");
+      },
+      { method: "POST", path: /^\/api\/trips$/ },
+    );
+    expect(ok2xx(status), `the Travel setup minted its own plan (POST /api/trips answered ${status})`).toBe(true);
+    expect(travelId).toBeTruthy();
+    expect(travelId).not.toBe(weddingId);
+
+    const plans = await rows<{ id: string; title: string; s: string; e: string; confirmed: boolean; event_type: string }>(
+      `SELECT id, title, start_date::text AS s, end_date::text AS e, dates_confirmed_at IS NOT NULL AS confirmed, event_type
+         FROM trips WHERE user_id = $1`,
+      [traveler.id],
+    );
+    const travel = plans.find((p) => p.id === travelId)!;
+    const wedding = plans.find((p) => p.id === weddingId)!;
+    expect(plans.length, "two plans — the wedding was not re-used").toBe(2);
+    expect(travel.title, "B2: the name entered at setup is kept").toBe("Kyoto smoke test");
+    expect([travel.s, travel.e, travel.confirmed]).toEqual([`${year}-11-11`, `${year}-11-15`, true]);
+    expect([wedding.s, wedding.e, wedding.event_type], "the wedding is untouched").toEqual([`${year}-11-24`, `${year}-11-26`, "wedding"]);
+    expect(
+      await rows(`SELECT id FROM user_experiences WHERE trip_id = $1`, [travelId]),
+      "the new plan carries none of the wedding's events",
+    ).toEqual([]);
+    await expect(testid(page, "slip-title")).toContainText("Kyoto smoke test", { timeout: 20_000 });
+  });
 });
 
 // ── §2 · where are you staying ────────────────────────────────────────────────────────────────

@@ -601,8 +601,9 @@ export function PlanModal({
     const keys = [
       source?.experienceSlug,
       source?.experienceType,
-      ctx.experienceSlug,
-      ctx.experienceType,
+      // B1 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): a NEW plan answers its own occasion —
+      // the bound plan's occasion is never a pre-filled answer for it.
+      ...(source?.newPlan ? [] : [ctx.experienceSlug, ctx.experienceType]),
     ];
     for (const key of keys) {
       const row = findOccasionByKey(occasions, key);
@@ -620,7 +621,7 @@ export function PlanModal({
     const { startStep } = resolvePlanSteps(
       source,
       doorOccasion,
-      { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
+      source?.newPlan ? {} : { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
     );
     openedAtOccasionStep.current = startStep === "occasion";
     setStep(startStep);
@@ -772,7 +773,7 @@ export function PlanModal({
       resolvePlanSteps(
         source,
         selectedOccasion,
-        { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
+        source?.newPlan ? {} : { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
       ),
     [source, selectedOccasion, ctx.experienceSlug, ctx.experienceType],
   );
