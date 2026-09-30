@@ -163,19 +163,19 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 634 / 625 → 635 / 626 (ledger `2026-09-30-a7-version-per-option`, Track A step A7): POST
  * /api/itinerary-comparisons/:id/adopt-stops — the comparison owner only plus the trip's §12 WRITE
  * gate, exactly as adopt-stop, so other 215 → 216 and resource-owner 96 → 97.
- * 634 / 625 → 635 / 626 (ledger `2026-09-30-travelpulse-weekly`): POST
+ * 635 / 626 → 636 / 627 (ledger `2026-09-30-travelpulse-weekly`): POST
  * /api/admin/blog/travelpulse-weekly, the admin trigger that drafts this ISO week's platform post
  * (reads no body) — under §2's blanket /api/admin guard, so admin 159 → 160, admin-role 159 → 160.
- * 635 / 626 → 636 / 627 (ledger `2026-09-30-travelpulse-weekly-schedule`): POST
+ * 636 / 627 → 637 / 628 (ledger `2026-09-30-travelpulse-weekly-schedule`): POST
  * /internal/jobs/travelpulse-weekly, machine-to-machine behind INTERNAL_JOB_SECRET (not a user
- * session) — other 215 → 216, public-or-system 39 → 40.
- * 636 / 627 → 637 / 628 (ledger `2026-09-30-blog-event-guide`): POST /api/admin/blog/event-guides,
+ * session) — other 216 → 217, public-or-system 39 → 40.
+ * 637 / 628 → 638 / 629 (ledger `2026-09-30-blog-event-guide`): POST /api/admin/blog/event-guides,
  * the admin trigger for one event's weekend guide ({ eventId }, .strict()) — under §2's blanket
  * /api/admin guard, so admin 160 → 161, admin-role 160 → 161.
- * 637 / 628 → 638 / 629 (ledger `2026-09-30-blog-series-follow`): POST /api/admin/blog/series-follows,
+ * 638 / 629 → 639 / 630 (ledger `2026-09-30-blog-series-follow`): POST /api/admin/blog/series-follows,
  * the admin trigger for one series' follow ({ seriesKey }, .strict()) — under §2's blanket
  * /api/admin guard, so admin 161 → 162, admin-role 161 → 162.
- * 638 / 629 → 639 / 630 (ledger `2026-09-30-blog-race-weekend`): POST /api/admin/blog/race-weekends,
+ * 639 / 630 → 640 / 631 (ledger `2026-09-30-blog-race-weekend`): POST /api/admin/blog/race-weekends,
  * the admin trigger for one race weekend ({ eventId, fromMarket? }, .strict()) — under §2's blanket
  * /api/admin guard, so admin 162 → 163, admin-role 162 → 163.
  *
