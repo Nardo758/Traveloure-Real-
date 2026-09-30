@@ -66,7 +66,6 @@ import {
   storefrontOfferingActionLabel,
   offeringActionIsMessageOnly,
   formatNextAvailable,
-  offeringShowsNextAvailable,
   buildStorefrontActionHref,
   storefrontActionCharges,
 } from "@/lib/storefront-offering-action";
@@ -1195,7 +1194,7 @@ export default function StorefrontPage() {
                   // The resolver offers NO booking verb (not live / provider hid the CTA): the
                   // card offers Message about this listing, and no buy button at all.
                   const messageOnly = !away && offeringActionIsMessageOnly(s.buyAction);
-                  const nextAvailableText = offeringShowsNextAvailable(s.buyAction) ? formatNextAvailable(s.nextAvailable) : null;
+                  const nextAvailableText = formatNextAvailable(s.nextAvailable);
                   return (
                     <StorefrontOfferingCard
                       key={s.id}
