@@ -5,6 +5,7 @@
  *     GET  /api/admin/blog/posts[?status=]          list
  *     POST /api/admin/blog/posts                    create a draft (.strict pick — §19)
  *     POST /api/admin/blog/drafts                   research + AI draft → a draft post (C.2)
+ *     POST /api/admin/blog/travelpulse-weekly       this ISO week's platform draft from the displayed signal (PR 3)
  *     PATCH /api/admin/blog/posts/:id               edit — clears any signature (ruling 3)
  *     POST /api/admin/blog/posts/:id/submit         draft → in_review (byline gate)
  *     POST /api/admin/blog/posts/:id/publish        only when signed for THIS content
@@ -43,6 +44,7 @@ import {
   withdrawPost,
 } from "../services/blog-posts.service";
 import { draftPostFromResearch } from "../services/blog-draft.service";
+import { draftTravelPulseWeekly } from "../services/travelpulse-weekly.service";
 
 const router = Router();
 
@@ -110,6 +112,13 @@ router.post("/api/admin/blog/drafts", async (req, res) => {
   const parsed = draftBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
   try { res.status(201).json({ post: await draftPostFromResearch(parsed.data, getUserId(req)!) }); } catch (e) { fail(res, e); }
+});
+
+// TravelPulse PR 3 (ledger `2026-09-30-travelpulse-weekly`): draft this ISO week's platform post
+// from the displayed signal. Admin-only by the §2 prefix guard; no body is read (the week, the facts
+// and the author are all server-derived). Never publishes — the publish rail below does that.
+router.post("/api/admin/blog/travelpulse-weekly", async (req, res) => {
+  try { res.status(201).json({ post: await draftTravelPulseWeekly(getUserId(req)!) }); } catch (e) { fail(res, e); }
 });
 
 router.patch("/api/admin/blog/posts/:id", async (req, res) => {

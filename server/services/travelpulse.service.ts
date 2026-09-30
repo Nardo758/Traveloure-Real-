@@ -238,6 +238,33 @@ export class TravelPulseService {
     return out;
   }
 
+  /**
+   * What a PUBLIC surface may say about each operating market this run: the displayed Trend number
+   * and crowd band through the ONE pair of display rules, and the resolver's contributing source
+   * keys. Null where nothing may be shown. Read by the TravelPulse weekly generator (ledger
+   * `2026-09-30-travelpulse-weekly`), which must never see a raw signal value.
+   */
+  async displayedSignalByMarket(): Promise<Array<{
+    marketKey: string;
+    cityName: string;
+    trend: number | null;
+    crowd: DisplayCrowdBand | null;
+    computedAt: Date | null;
+  }>> {
+    const scores = await this.loadResolverScores();
+    const opts = { confidenceFloor: CONFIDENCE_FLOOR, maxAgeHours: trendScoreMaxAgeHours() };
+    return OPERATING_MARKETS.map(m => {
+      const rd = scores.get(m.marketKey) ?? null;
+      return {
+        marketKey: m.marketKey,
+        cityName: m.cityName,
+        trend: displayTrendScore(rd, opts),
+        crowd: displayCrowdBand(rd ? { band: rd.crowdBand, confidence: rd.crowdConfidence, computedAt: rd.computedAt } : null, opts),
+        computedAt: rd?.computedAt ?? null,
+      };
+    });
+  }
+
   async getTrendingCities(limit: number = 20): Promise<PublicTrendingCity[]> {
     // Phase E rewire: rank by the v0 resolver trend_score (trend_scores table),
     // restricted to the 8 operating markets. Below-floor markets (trendConfidence <
