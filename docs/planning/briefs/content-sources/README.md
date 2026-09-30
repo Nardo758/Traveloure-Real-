@@ -6,6 +6,7 @@ Companion data to `../content-sourcing-brief.md`.
 |---|---|
 | `content_sources.seed.csv` | 34 candidate sources (API, affiliate feed, official and editorial pages) across the markets, with covers / does-not-cover, license class and key status. `google_routes` (added Sep 30, 2026) records the Routes API behind the travel-time matrix: live, first Kyoto refresh recorded, covers `transport.local` durations and legs, never fares, passes or last-service rules; its 30-day cache limit is why the refresh is monthly. |
 | `provider_recruiting_sources.seed.csv` | 17 places to recruit providers and experts by market and `roles_needed` key, with outreach etiquette. Supply outreach, not content. |
+| `a6-design.md` | How each of the brief's four pending decisions (§11) would change the A6 build. A6 is on hold; this builds nothing. |
 | `traveloure-content-source-index.xlsx` | The workbook these came from: Legend, Needs, Sources, Coverage (Kyoto), Providers (recruiting). |
 
 **No code reads these files.** The brief (§5) rules that a source is added by an admin through a surface and a
