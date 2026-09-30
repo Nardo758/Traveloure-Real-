@@ -29,7 +29,7 @@ import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-jo
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
-import { sweepExpiredCheckoutClaims, sweepStaleAuthorizedClaims } from "../services/checkout-claim.service";
+import { sweepExpiredCheckoutClaims } from "../services/checkout-claim.service";
 import { materializeAllServicesWithPatterns } from "../services/availability-materializer.service";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
@@ -230,11 +230,7 @@ router.post("/internal/jobs/stripe-reconciliation", requireInternalSecret, async
 // voids a row whose PaymentIntent may exist (§15b). Idempotent. In-process timer stays 5-min PRIMARY;
 // this is the 15-min cold-instance backstop.
 router.post("/internal/jobs/checkout-sweep", requireInternalSecret, async (_req, res) => {
-  // R164 (G2): the same job also reclaims STAMPED claims left unpaid (sweepStaleAuthorizedClaims).
-  const { status, body } = await runJob("checkout-sweep", async () => ({
-    unauthorized: await sweepExpiredCheckoutClaims(),
-    authorized: await sweepStaleAuthorizedClaims(),
-  }));
+  const { status, body } = await runJob("checkout-sweep", () => sweepExpiredCheckoutClaims());
   res.status(status).json(body);
 });
 

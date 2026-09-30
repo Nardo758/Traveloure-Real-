@@ -21,7 +21,6 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 import type { ReconciliationRail } from "@shared/reconciliation-kinds";
-import { ExceptionRefundCard } from "@/components/admin/ExceptionRefundCard";
 
 interface Mismatch {
   type: string;
@@ -1168,9 +1167,6 @@ export default function AdminReconciliation() {
             )}
           </CardContent>
         </Card>
-
-        {/* Lane 4 (ledger 2026-09-27-admin-exception-refund): refund outside the policy, once, with a reason. */}
-        <ExceptionRefundCard />
 
         {/* How it works */}
         <Card className="border-dashed">

@@ -347,14 +347,8 @@ test("L12: every ledger-first refund entry point checks before it reverses the l
   const uphold = admin.indexOf('router.post("/api/admin/disputes/:bookingId/uphold"');
   before(admin, "checkServiceBookingRefundPreflight", "storage.reverseEarningsForBooking(bookingId)", uphold);
   assert.match(admin, /const lostChargebackReconcileBody = z\.object\(\{ note: z\.string\(\)\.trim\(\)\.min\(10\)\.max\(2000\) \}\)\.strict\(\);/);
-  // `POST /api/bookings/refund` and the admin exception refund share ONE ledger-first refund
-  // (ledger `2026-09-27-admin-exception-refund`); the check is pinned where the ledger moves.
   const bookings = read("server/routes/bookings.ts");
-  assert.match(bookings, /refundServiceBookingWithLedger\(bookingId,/);
-  const shared = read("server/services/service-booking-refund.service.ts");
-  before(shared, "checkServiceBookingRefundPreflight(bookingId", "storage.reverseEarningsForBooking(bookingId)");
-  const exception = read("server/services/admin-exception-refund.service.ts");
-  assert.match(exception, /refundServiceBookingWithLedger\(input\.bookingId,/);
+  before(bookings, "checkServiceBookingRefundPreflight", "storage.reverseEarningsForBooking(bookingId)");
   const routes = read("server/routes.ts");
   before(routes, "checkServiceBookingRefundPreflight", "await storage.reverseEarningsForBooking(req.params.id);\n        }");
   const artifact = read("server/services/artifact-rejection-refund.service.ts");

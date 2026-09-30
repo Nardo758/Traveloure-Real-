@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { getAllHrefs, getAllFooterHrefs } from '../../client/src/lib/nav-config';
+import { getAllHrefs } from '../../client/src/lib/nav-config';
 
 /**
  * Footer link smoke test — guards against broken or missing routes.
@@ -36,13 +36,6 @@ const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
 // gates always test the same complete set of protected links.
 const FOOTER_HREFS: string[] = getAllHrefs();
 
-// The footer's OWN hrefs are shown to every visitor, so for these the gate asks one more
-// question: a GUEST is not bounced. `ProtectedRoute` answers an anonymous visit by opening
-// the sign-in modal and navigating to "/" — not a 404, so the check above cannot see it.
-// (Nav hrefs are exempt: the navbar legitimately carries signed-in destinations.)
-// Static twin: client/src/lib/__tests__/footer-guest-routes.test.ts.
-const GUEST_FOOTER_HREFS = new Set<string>(getAllFooterHrefs());
-
 // ── 404 fingerprint ────────────────────────────────────────────────────────────
 // The NotFound component renders an <h1> with this exact text.
 // See client/src/pages/not-found.tsx.
@@ -65,11 +58,6 @@ test.describe('Footer link smoke — no broken routes', () => {
       // Assert the 404 heading is NOT present anywhere on the page.
       const notFoundHeading = page.getByRole('heading', { name: NOT_FOUND_HEADING, exact: true });
       await expect(notFoundHeading, `Expected ${href} NOT to render the 404 page`).not.toBeVisible({ timeout: 1_000 });
-
-      if (GUEST_FOOTER_HREFS.has(href) && href !== '/') {
-        const landedOn = new URL(page.url()).pathname;
-        expect(landedOn, `Footer link ${href} bounced a guest to "/" (a protected route)`).not.toBe('/');
-      }
 
       console.log(`[footer-links] PASS ${href}`);
     });

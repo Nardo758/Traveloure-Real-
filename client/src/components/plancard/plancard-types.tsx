@@ -303,17 +303,6 @@ export interface PlanCardActivity {
    */
   booking?: TripPlanBooking;
   /**
-   * R145 (ledger `2026-09-27-refunded-item-status`): the booking this item WAS bought through, when
-   * it has since CLOSED (`cancelled` / `refunded`). Mutually exclusive with `booking`; never the
-   * booked state. Read through `client/src/lib/item-booking-state.ts`, never directly.
-   * R154 (ledger `2026-09-27-booking-status-vocabulary`): also `payment_pending` / `failed` /
-   * `expired` — any linked booking the shared vocabulary says is not booked. A `disputed` booking is
-   * `booking` (real, paid) and reads "Under review", never "Booked".
-   */
-  endedBooking?: TripPlanBooking;
-  /** R157: see `TripPlanActivity.retryOpensCheckout` (shared/trip-plan.ts). */
-  retryOpensCheckout?: boolean;
-  /**
    * Item 2 Phase 2 (ledger 2026-08-23-item2-affiliate): present ONLY when the build-time slip
    * resolver grounded this item to an affiliate product bookable via the agent rail (§16). Carries
    * an opaque server-minted `bookingToken` — never the affiliate URL. Presence-guarded like the
@@ -504,13 +493,6 @@ export interface OptimizationDelta {
 
 export interface PlanCardData {
   tripRole?: PlanCardRole;
-  /**
-   * Ledger `2026-09-26-send-to-expert-needs-expert` (audit G2): an advisor in a §12 WRITE status
-   * (accepted/assigned) is on this plan — the SAME predicate the routing rail refuses "Send to
-   * expert" on. `false` ⇒ no "Send to expert" and no "with your expert" label. Absent on an older
-   * response ⇒ treated as not assigned (the server refuses the edge either way).
-   */
-  expertAssigned?: boolean;
   days: PlanCardDay[];
   changeLog: PlanCardChange[];
   metrics: PlanCardMetrics;
@@ -576,9 +558,7 @@ export interface PlanCardTrip {
   eventType?: string;
 }
 
-// `payer` (LD 42 D9, ledger `2026-09-27-payer-reads-plancard`): a `payer`-role trip participant.
-// It reads the plan and is rendered as a VIEWER — no owner or expert controls (render rule only).
-export type PlanCardRole = "owner" | "expert" | "friend" | "viewer" | "payer";
+export type PlanCardRole = "owner" | "expert" | "friend" | "viewer";
 /** `proposal` — Spec C variant-comparison column (SLIP_EXPERIENCE_DISPATCH §4): a compact,
  *  day-ordered, read-only rendering of ONE optimizer variant, with the trip's purchased items
  *  rendered from CANONICAL trip rows (identical across columns by construction). */
@@ -691,15 +671,6 @@ export interface PlanCardProps {
    * mobile bottom bar so the card has ONE share path when the page owns one.
    */
   onShare?: () => void;
-  /**
-   * The TRIP CARD is a read-out, not a planning surface (Locked Decision 42 D8; ledger
-   * `2026-09-26-card-routing-read-only`; audit G1). When true, no routing action renders on any
-   * item row — the badges still do — and the card reads the plan's FROZEN FINAL
-   * (`/plancard?surface=card`); every other mount reads the live plan, the default (ledger
-   * `2026-09-26-slip-renders-live`). Routing a plan's items happens on the slip; the server refuses
-   * the planning transitions on a finalized plan regardless of what any client draws.
-   */
-  routingReadOnly?: boolean;
 }
 
 export interface PlanCardScore {

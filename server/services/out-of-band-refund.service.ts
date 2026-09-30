@@ -15,9 +15,7 @@
  *   3. an admin alert names the bookings, once, on first detection.
  *
  * It moves no money and changes no booking status: it does not reverse earnings, refund, cancel or
- * decide who the refund was for. R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`) makes
- * the stamp VISIBLE: where it covers a booking's whole share (`outOfBandFullyRefundedBookingIds`
- * below) the traveler's surfaces read "Refunded" — a label, still no status write. A human resolves the booking through the existing refund/cancel
+ * decide who the refund was for. A human resolves the booking through the existing refund/cancel
  * rails. Idempotent: a redelivery rewrites the same stamp (the first `detectedAt` is kept), re-applies
  * the same hold, and raises no second alert.
  *
@@ -35,13 +33,10 @@ import {
   OUT_OF_BAND_REFUND_CLEARED_KEY,
   OUT_OF_BAND_REFUND_KEY,
   clearedOutOfBandRefundIds,
-  mergeRefundSnapshots,
   outOfBandRefundOf,
   outOfBandRefunds,
   type StripeRefundLike,
 } from "../../shared/out-of-band-refund";
-import { bookingChargeShare, outOfBandRefundCoversShare, type PaymentIntentShareRow } from "./booking-charge-share";
-import { REFUND_RECORD_KEY, refundSummaryFor, type RefundSummary } from "../../shared/booking-refund-record";
 
 export interface RecordOutOfBandRefundResult {
   /** The refunds on the charge that our code did not issue. Empty ⇒ nothing was written. */
@@ -57,8 +52,6 @@ export interface RecordOutOfBandRefundResult {
 export async function recordOutOfBandRefund(input: {
   paymentIntentId: string | null | undefined;
   chargeId: string | null | undefined;
-  /** The charge's own `amount` in cents, recorded on the stamp so a surface can say "$X of $Y". */
-  chargeAmountCents?: number | null;
   refunds: readonly StripeRefundLike[];
   now?: Date;
 }): Promise<RecordOutOfBandRefundResult> {
@@ -86,12 +79,8 @@ export async function recordOutOfBandRefund(input: {
       const cleared = clearedOutOfBandRefundIds(r.booking_details);
       const pending = foreign.filter((f) => !cleared.has(f.id));
       if (pending.length === 0) continue;
-      // R163 amendment: merged BY REFUND ID with what the stamp already holds, so the amount is
-      // cumulative and out-of-order snapshots cannot lower it (`mergeRefundSnapshots`).
-      const priorMarker = outOfBandRefundOf(r.booking_details);
-      const merged = mergeRefundSnapshots(priorMarker?.refunds ?? null, pending);
-      const refundIds = merged.refundIds.filter((id) => !cleared.has(id));
-      const amountCents = merged.amountCents;
+      const refundIds = pending.map((f) => f.id);
+      const amountCents = pending.reduce((sum, f) => sum + (Number.isFinite(f.amount) ? f.amount : 0), 0);
       await tx.execute(sql`
         UPDATE service_bookings
            SET booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(
@@ -101,9 +90,7 @@ export async function recordOutOfBandRefund(input: {
                    'paymentIntentId', ${input.paymentIntentId}::text,
                    'chargeId', ${input.chargeId ?? null}::text,
                    'refundIds', ${JSON.stringify(refundIds)}::jsonb,
-                   'refunds', ${JSON.stringify(merged.refunds)}::jsonb,
-                   'chargeAmountCents', ${input.chargeAmountCents ?? null}::bigint,
-                   'amountCents', ${amountCents}::bigint
+                   'amountCents', ${amountCents}::int
                  )),
                updated_at = NOW()
          WHERE id = ${r.id}
@@ -217,116 +204,4 @@ export async function listOutOfBandRefundBookings(limit = 200) {
      LIMIT ${limit}
   `);
   return r.rows ?? [];
-}
-
-/**
- * R163, the traveler-action half. A booking whose share a refund we did not issue covered IN FULL
- * reads "Refunded", so the traveler's cancel and dispute rails refuse it with this ONE 409 body —
- * BEFORE any ledger reversal or Stripe call, so no second refund is ever attempted (§14: the button
- * being hidden is not the guard). Same rule as the label (`outOfBandFullyRefundedBookingIds`).
- */
-export const REFUNDED_OUT_OF_BAND_REFUSAL = {
-  error: "refunded_out_of_band",
-  message:
-    "This booking has already been refunded in full, so there is nothing left to cancel or dispute. " +
-    "Nothing was changed and no further refund was attempted.",
-} as const;
-
-export async function isFullyRefundedOutOfBand(bookingId: string): Promise<boolean> {
-  return (await outOfBandFullyRefundedBookingIds([bookingId])).has(bookingId);
-}
-
-/**
- * R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`; supersedes #1288's leave-for-human
- * reading for the LABEL only). Which of these bookings a refund we did not issue has refunded IN
- * FULL, by the ONE rule `outOfBandRefundCoversShare` (server/services/booking-charge-share.ts): the
- * booking's own stamp — Stripe's cumulative cents — against every still-live share on the same
- * PaymentIntent. A partial dashboard refund answers no.
- *
- * READ-ONLY: this answers a status LABEL. It writes nothing, moves no money and changes no
- * `service_bookings.status`; the stamp, the mint refusal, the earnings hold and the admin clear are
- * exactly as #1288 left them. Only stamped rows cost a second query, and an empty input costs none.
- */
-export async function outOfBandFullyRefundedBookingIds(bookingIds: readonly (string | null | undefined)[]): Promise<Set<string>> {
-  const out = new Set<string>();
-  const ids = Array.from(new Set(bookingIds.filter((id): id is string => typeof id === "string" && id.length > 0)));
-  if (ids.length === 0) return out;
-  const stamped = await db.execute(sql`
-    SELECT id, stripe_payment_intent_id,
-           (booking_details #>> ${`{${OUT_OF_BAND_REFUND_KEY},amountCents}`}::text[]) AS foreign_cents
-      FROM service_bookings
-     WHERE id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
-       AND (COALESCE(booking_details, '{}'::jsonb) -> ${OUT_OF_BAND_REFUND_KEY}::text) IS NOT NULL
-       AND stripe_payment_intent_id IS NOT NULL
-  `);
-  const targets = (stamped.rows ?? []) as Array<{ id: string; stripe_payment_intent_id: string; foreign_cents: string | null }>;
-  if (targets.length === 0) return out;
-  const intents = Array.from(new Set(targets.map((t) => t.stripe_payment_intent_id)));
-  const siblings = await db.execute(sql`
-    SELECT id, status, stripe_payment_intent_id, total_amount, platform_fee,
-           booking_details->'travelerCharge'->>'conciergeFee' AS concierge_fee,
-           booking_details->'travelerServiceFee'->>'charged' AS traveler_fee_charged
-      FROM service_bookings
-     WHERE stripe_payment_intent_id IN (${sql.join(intents.map((pi) => sql`${pi}`), sql`, `)})
-  `);
-  const byIntent = new Map<string, PaymentIntentShareRow[]>();
-  for (const r of (siblings.rows ?? []) as any[]) {
-    const list = byIntent.get(r.stripe_payment_intent_id) ?? [];
-    list.push({
-      id: String(r.id),
-      status: r.status ?? null,
-      share: bookingChargeShare({
-        totalAmount: r.total_amount,
-        platformFee: r.platform_fee,
-        conciergeFeeSnapshot: r.concierge_fee,
-        travelerFeeCharged: r.traveler_fee_charged,
-      }),
-    });
-    byIntent.set(r.stripe_payment_intent_id, list);
-  }
-  for (const t of targets) {
-    const covered = outOfBandRefundCoversShare({
-      bookingId: t.id,
-      foreignRefundedCents: t.foreign_cents == null ? null : Number(t.foreign_cents),
-      rowsOnPaymentIntent: byIntent.get(t.stripe_payment_intent_id) ?? [],
-    });
-    if (covered) out.add(t.id);
-  }
-  return out;
-}
-
-/**
- * R163 amendment (decision-maker Sep 27, 2026): the refund a traveler surface may STATE for each
- * booking — the ONE pure `refundSummaryFor` (shared/booking-refund-record.ts) over the booking's own
- * refund record or its #1288 stamp, plus how many bookings share its payment (so a partial refund on
- * a shared payment is never attributed to one booking, §13). Read-only; one query, and only for the
- * rows that carry a refund at all.
- */
-export async function refundSummariesFor(
-  rows: ReadonlyArray<{ id: string; bookingDetails?: unknown; stripePaymentIntentId?: string | null }>,
-): Promise<Map<string, RefundSummary>> {
-  const out = new Map<string, RefundSummary>();
-  const withRefund = rows.filter((r) => {
-    const bd = (r.bookingDetails ?? {}) as Record<string, unknown>;
-    return bd && typeof bd === "object" && (bd[REFUND_RECORD_KEY] != null || bd[OUT_OF_BAND_REFUND_KEY] != null);
-  });
-  if (withRefund.length === 0) return out;
-  const intents = Array.from(new Set(withRefund.map((r) => r.stripePaymentIntentId).filter((pi): pi is string => !!pi)));
-  const counts = new Map<string, number>();
-  if (intents.length > 0) {
-    const r = await db.execute(sql`
-      SELECT stripe_payment_intent_id AS pi, count(*)::int AS n FROM service_bookings
-       WHERE stripe_payment_intent_id IN (${sql.join(intents.map((pi) => sql`${pi}`), sql`, `)})
-       GROUP BY 1
-    `);
-    for (const row of (r.rows ?? []) as Array<{ pi: string; n: number }>) counts.set(row.pi, row.n);
-  }
-  for (const r of withRefund) {
-    const summary = refundSummaryFor({
-      bookingDetails: r.bookingDetails,
-      bookingsOnPayment: r.stripePaymentIntentId ? counts.get(r.stripePaymentIntentId) ?? 1 : 1,
-    });
-    if (summary) out.set(r.id, summary);
-  }
-  return out;
 }

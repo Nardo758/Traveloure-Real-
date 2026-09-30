@@ -19,8 +19,6 @@
  *  routing endpoint's own projection sync (W2).
  */
 
-import { readRouteRefusal } from "./route-refusal";
-
 /** Structural subset of PlanCardActivity these helpers read (kept import-free for tests). */
 export interface RoutableItemLike {
   id: string;
@@ -87,9 +85,6 @@ export interface BulkRouteFailure {
   id: string;
   /** Humanized server reason (see humanizeRouteError) — real message, never invented. */
   message: string;
-  /** The server's refusal `code` (e.g. `not_in_final`), when it sent one — read by
-   *  `bulkOffersReopen` (client/src/lib/route-refusal.ts). */
-  code?: string | null;
 }
 
 export interface BulkRouteResult {
@@ -151,7 +146,7 @@ export async function runBulkRouteToCheckout(opts: RunBulkRouteOptions): Promise
         await opts.postRoute(item.id);
         result.succeeded++;
       } catch (err) {
-        result.failed.push({ id: item.id, message: humanizeRouteError(err), code: readRouteRefusal(err).code });
+        result.failed.push({ id: item.id, message: humanizeRouteError(err) });
       }
     }
   }

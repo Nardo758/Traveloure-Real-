@@ -396,19 +396,12 @@ export function replaceTripContextPlanAnswers(answers: {
   adults?: number | null;
   kids?: number | null;
   experienceSlug?: string | null;
-  /** The plan's own coarse event type. A PREVIOUS plan's is never carried (ledger
-   *  `2026-09-26-occasion-read-only`: a wedding plan opened after a vacation one stored "vacation"). */
-  eventType?: string | null;
 }): TripContext {
   const current = getTripContext();
   const next: Record<string, unknown> = { ...current };
   delete next.adults;
   delete next.kids;
   delete next.experienceSlug;
-  delete next.eventType;
-  if (typeof answers.eventType === "string" && answers.eventType.trim().length > 0) {
-    next.eventType = answers.eventType.trim();
-  }
   if (typeof answers.adults === "number" && Number.isFinite(answers.adults) && answers.adults > 0) {
     next.adults = answers.adults;
   }
@@ -846,8 +839,6 @@ function pushClear(tripId?: string): void {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      // A trip-scoped row keeps the plan's own occasion through a clear: the bulk push never writes
-      // occasion (ledger `2026-09-26-occasion-read-only`), and the plan itself still exists.
       body: JSON.stringify({ context: {} }),
     }).catch(() => {
       /* offline / guest — best-effort */

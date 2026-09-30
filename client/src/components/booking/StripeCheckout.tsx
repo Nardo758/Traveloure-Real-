@@ -37,32 +37,19 @@ interface CheckoutFormProps {
   bookingIds: string[];
   onSuccess: (paymentIntentId: string) => void;
   onError: (error: string) => void;
-  singleAttempt?: boolean;
 }
 
-/**
- * R162 (ledger `2026-09-27-failed-is-final`): the message a single-attempt form shows once the card was
- * declined. The platform marks that booking `failed`, and `failed` is final — so this PaymentIntent is
- * never confirmed again from this form. A new attempt is a NEW checkout ("Try again" on the plan),
- * which cancels this intent in Stripe before it opens.
- */
-export const SINGLE_ATTEMPT_CLOSED_MESSAGE =
-  "Your payment didn’t go through, so this payment attempt is closed and nothing was charged. " +
-  "Use “Try again” on your plan to start a new payment.";
-
-function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError, singleAttempt }: CheckoutFormProps) {
+function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isReady, setIsReady] = useState(false);
-  // R162: once a real attempt was declined, a single-attempt form never re-confirms this intent.
-  const [closed, setClosed] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!stripe || !elements || !isReady || closed) {
+    if (!stripe || !elements || !isReady) {
       return;
     }
 
@@ -80,14 +67,7 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError, si
       });
 
       if (error) {
-        // A `validation_error` never reached Stripe (an incomplete card field) — the form stays usable.
-        // Anything else is a real attempt on this PaymentIntent; a single-attempt form closes on it.
-        if (singleAttempt && error.type !== 'validation_error') {
-          setClosed(true);
-          setErrorMessage(`${error.message || 'Payment failed'} ${SINGLE_ATTEMPT_CLOSED_MESSAGE}`);
-        } else {
-          setErrorMessage(error.message || 'Payment failed');
-        }
+        setErrorMessage(error.message || 'Payment failed');
         onError(error.message || 'Payment failed');
       } else if (paymentIntent) {
         if (paymentIntent.status === 'succeeded') {
@@ -154,11 +134,10 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError, si
       <div className="shrink-0 border-t border-gray-200 bg-white pt-4">
         <button
           type="submit"
-          disabled={!stripe || !isReady || isProcessing || closed}
-          data-testid="button-stripe-pay"
+          disabled={!stripe || !isReady || isProcessing}
           className={`
             w-full py-4 rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2
-            ${!stripe || !isReady || isProcessing || closed
+            ${!stripe || !isReady || isProcessing
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
               : 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg hover:shadow-xl'
             }
@@ -195,12 +174,6 @@ interface StripeCheckoutProps {
   onSuccess: (paymentIntentId: string) => void;
   onError: (error: string) => void;
   onCancel: () => void;
-  /**
-   * R162: close the form after a declined attempt instead of letting the traveler re-confirm the SAME
-   * PaymentIntent. Set by the cart checkout, whose booking is marked `failed` (final) on a decline.
-   * Other flows (Trip Pass, optimizer, …) keep same-intent retries.
-   */
-  singleAttempt?: boolean;
 }
 
 export default function StripeCheckout({
@@ -209,7 +182,6 @@ export default function StripeCheckout({
   onSuccess,
   onError,
   onCancel,
-  singleAttempt,
 }: StripeCheckoutProps) {
   const [stripe, setStripe] = useState<Stripe | null>(null);
 
@@ -263,7 +235,6 @@ export default function StripeCheckout({
               bookingIds={bookingIds}
               onSuccess={onSuccess}
               onError={onError}
-              singleAttempt={singleAttempt}
             />
           </Elements>
         </div>

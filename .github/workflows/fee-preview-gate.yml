@@ -120,20 +120,6 @@ jobs:
           NODE_ENV: test
           JOURNEY_DB_WRITES_OK: '1'
 
-      # R148 (ledger `2026-09-27-trip-pass-waiver-per-line`): the checkout's Trip Pass fee waiver is
-      # decided PER LINE from the line's own plan, owner-verified; the body tripId grants nothing.
-      # T1 is the §14 security regression (a foreign Trip-Pass trip named in the body waived the fee).
-      - name: Checkout Trip-Pass waiver per line, owner-verified (T1–T5)
-        run: npx tsx --test --test-force-exit server/__tests__/checkout-trip-pass-per-line.http.test.ts
-        timeout-minutes: 15
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-          JOURNEY_BASE_URL: http://127.0.0.1:5000
-          SESSION_SECRET: ci-test-secret-not-for-production
-          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
-          NODE_ENV: test
-          JOURNEY_DB_WRITES_OK: '1'
-
       - name: Traveler-fee ledger netting (+X / −X, $0-no-row, idempotency)
         run: npx tsx --test --test-force-exit server/__tests__/traveler-fee-ledger.db.test.ts
         timeout-minutes: 15

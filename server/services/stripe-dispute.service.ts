@@ -3,12 +3,6 @@ import { db } from "../db";
 import { adminNotifications, bookings, serviceBookings } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import {
-  STRIPE_DISPUTE_NEVER_FLIPPED_STATUSES,
-  STRIPE_DISPUTE_WON_RESTORE_FROM_STATUSES,
-} from "../utils/booking-from-states";
-
-const inList = (xs: readonly string[]) => sql.join(xs.map((x) => sql`${x}`), sql`, `);
 
 /**
  * Shared dispute implementation for the platform and Connect webhook rails.
@@ -61,41 +55,7 @@ export async function handleStripeDispute(
 
   if (ids.length) {
     for (const id of ids) {
-      // R165 (G3): the status write is an atomic conditional on the row's CURRENT status (§18b).
-      // A refunded / cancelled / expired / failed / unpaid row is never flipped (a chargeback does
-      // not change what we did), a `dispute_lost` row is not reopened by a later open event, and a
-      // won dispute restores ONLY a row it flipped itself — so an admin refund made while the
-      // dispute was open is never undone by the win.
-      const flipped = won
-        ? await conn.execute(sql`
-            UPDATE service_bookings SET status = ${priorStatuses[id] ?? "confirmed"}, updated_at = NOW()
-            WHERE id = ${id} AND status IN (${inList(STRIPE_DISPUTE_WON_RESTORE_FROM_STATUSES)})
-            RETURNING id`)
-        : await conn.execute(sql`
-            UPDATE service_bookings SET status = ${status}, updated_at = NOW()
-            WHERE id = ${id}
-              AND status NOT IN (${inList(STRIPE_DISPUTE_NEVER_FLIPPED_STATUSES)})
-              ${status === "disputed" ? sql`AND status <> 'dispute_lost'` : sql``}
-            RETURNING id`);
-      if (!won && flipped.rows.length === 0) {
-        const cur = (await conn.execute(sql`SELECT status FROM service_bookings WHERE id = ${id}`)).rows[0] as any;
-        if (cur && STRIPE_DISPUTE_NEVER_FLIPPED_STATUSES.includes(String(cur.status))) {
-          await conn.execute(sql`
-            INSERT INTO admin_notifications (type, message, reason, metadata)
-            SELECT 'dispute_on_settled_booking',
-              ${`Dispute ${dispute.id} (${dispute.status}) arrived for booking ${id}, which is already ${cur.status}. The booking was NOT changed.${cur.status === "refunded" ? " The traveler may be refunded twice (our refund + the chargeback): respond to the dispute in Stripe with the refund as evidence." : " Review the dispute in Stripe."}`},
-              'dispute_on_settled_booking',
-              ${JSON.stringify({ disputeId: dispute.id, bookingId: id, bookingStatus: cur.status, chargeId, paymentIntentId: paymentIntent ?? null, eventId: options.eventId, phase: options.closed ? "closed" : "open" })}::jsonb
-            WHERE NOT EXISTS (
-              SELECT 1 FROM admin_notifications
-              WHERE type = 'dispute_on_settled_booking'
-                AND metadata->>'disputeId' = ${dispute.id}
-                AND metadata->>'bookingId' = ${id}
-                AND metadata->>'phase' = ${options.closed ? "closed" : "open"}
-            )
-          `);
-        }
-      }
+      await conn.update(serviceBookings).set({ status: won ? (priorStatuses[id] ?? "confirmed") : status }).where(eq(serviceBookings.id, id));
       if (manualReview) {
         // Records the lost chargeback on the booking, keyed by dispute id (idempotent on redelivery).
         // The refund guard (lost-chargeback-guard.service.ts) reads it so no refund path can send the
@@ -205,25 +165,6 @@ export async function handleStripeDispute(
         updated_at = NOW()
     WHERE dispute_id = ${dispute.id}
   `);
-
-  // R165 (G3): a dispute that matches NO booking — no `service_bookings` row on its PaymentIntent and
-  // no legacy `bookingId` — used to be recorded in the lifecycle table and nothing else. Trip Pass,
-  // ready-made, optimizer, AI-task and coordination-fee charges all land here. Ops is told, naming the
-  // charge and the PaymentIntent, once when it opens and once when it closes.
-  if (!ids.length && !legacyId) {
-    const phase = options.closed ? "closed" : "open";
-    await conn.execute(sql`
-      INSERT INTO admin_notifications (type, message, reason, metadata)
-      SELECT 'dispute_unmatched',
-        ${`Dispute ${dispute.id} (${dispute.status}${dispute.amount != null ? `, ${(dispute.amount / 100).toFixed(2)} ${String(dispute.currency ?? "").toUpperCase()}` : ""}) on charge ${chargeId}${paymentIntent ? ` / PaymentIntent ${paymentIntent}` : ""} matches no booking${charge.metadata?.type ? ` (charge type: ${charge.metadata.type})` : ""}. Nothing was held automatically — review it in Stripe.`},
-        ${dispute.reason ?? dispute.status},
-        ${JSON.stringify({ disputeId: dispute.id, chargeId, paymentIntentId: paymentIntent ?? null, chargeType: charge.metadata?.type ?? null, amountCents: dispute.amount ?? null, eventId: options.eventId, phase, action: "manual_review" })}::jsonb
-      WHERE NOT EXISTS (
-        SELECT 1 FROM admin_notifications
-        WHERE type = 'dispute_unmatched' AND metadata->>'disputeId' = ${dispute.id} AND metadata->>'phase' = ${phase}
-      )
-    `);
-  }
 
   // Preserve the legacy rail and its historical notifications.
   if (legacyId) {

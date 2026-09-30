@@ -1,9 +1,3 @@
-> **SUPERSEDED 2026-09-27 (ledger `2026-09-27-required-checks-promotion`, R153).** `BRANCH_PROTECTION_PAT`
-> was added on 2026-09-22 and every enforcer run since has succeeded; the live branch API showed the 14
-> declared contexts applied. The finding below was true when written and is kept as the record. What
-> remained true afterwards was that the declared set was too THIN — #1109 merged with 40 jobs still
-> queued because none of them was required — which R153 addresses.
-
 # The branch-protection enforcer has failed every run since at least 2026-08-30
 
 **Found 2026-09-22 while working board #713 / #786 / #787 / #790 (the "require the gates" cluster).**

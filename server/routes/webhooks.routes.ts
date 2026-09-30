@@ -18,7 +18,6 @@ import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents,
 import { eq, sql } from "drizzle-orm";
 import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key";
 import { handleStripeDispute } from "../services/stripe-dispute.service";
-import { markCheckoutPaymentFailed } from "../services/checkout-claim.service";
 
 const router = Router();
 
@@ -388,15 +387,61 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       case "payment_intent.payment_failed": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
 
-        // ONE failure flip, TWO callers (ledger `2026-09-27-platform-payment-failed`, R161): the
-        // PLATFORM endpoint's stripePaymentService.handlePaymentFailed calls the same function. It
-        // moves this PI's `service_bookings` rows payment_pending -> failed (atomic conditional,
-        // never a demotion), emails only the rows it flipped, and updates the payment_intents ledger
-        // row. Do not reintroduce an inline UPDATE here.
+        // Flip any service_bookings still at payment_pending to "failed" so they
+        // stop accumulating in the stuck-pending admin report and the customer
+        // can safely retry without hitting the idempotency guard.
         try {
-          await markCheckoutPaymentFailed({ paymentIntentId: paymentIntent.id, actor: "connect_webhook" });
+          const failed = await db.execute(sql`
+            UPDATE service_bookings
+            SET status     = 'failed',
+                updated_at = NOW()
+            WHERE stripe_payment_intent_id = ${paymentIntent.id}
+              AND status = 'payment_pending'
+            RETURNING id, traveler_id, service_id
+          `);
+          if (failed.rows.length > 0) {
+            const ids = (failed.rows as any[]).map((r: any) => r.id).join(', ');
+            console.info(`[payment_intent.payment_failed] Marked ${failed.rows.length} service_booking(s) as failed [${ids}] for PI ${paymentIntent.id}`);
+
+            // Fire-and-forget payment-failed email to each affected traveler so
+            // they know the booking wasn't confirmed and can retry. Non-blocking.
+            for (const r of failed.rows as any[]) {
+              if (!r.traveler_id) continue;
+              try {
+                const detail = await db.execute(sql`
+                  SELECT u.email, u.first_name, u.last_name, ps.service_name AS title
+                  FROM users u
+                  LEFT JOIN provider_services ps ON ps.id = ${r.service_id}
+                  WHERE u.id = ${r.traveler_id}
+                  LIMIT 1
+                `);
+                const row = detail.rows?.[0] as any;
+                if (row?.email) {
+                  const { sendPaymentFailedEmail } = await import("../services/email.service");
+                  sendPaymentFailedEmail({
+                    toEmail: row.email,
+                    userName: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
+                    bookingTitle: row.title ?? null,
+                  }).catch((e: any) => console.error(`[email] payment-failed send error for booking ${r.id}:`, e?.message));
+                }
+              } catch (mailErr: any) {
+                console.error(`[payment_intent.payment_failed] email resolve error for booking ${r.id}:`, mailErr.message);
+              }
+            }
+          }
         } catch (failErr: any) {
           console.error("payment_intent.payment_failed: service_booking update error:", failErr.message);
+        }
+
+        // Also update the payment_intents ledger row if one exists
+        try {
+          await db.execute(sql`
+            UPDATE payment_intents
+            SET status = 'failed'
+            WHERE stripe_payment_intent_id = ${paymentIntent.id}
+          `);
+        } catch (_) {
+          // payment_intents row may not exist for all PI flows — non-fatal
         }
 
         console.info(`Stripe payment_intent.payment_failed: pi=${paymentIntent.id} last_error=${(paymentIntent as any).last_payment_error?.message ?? 'unknown'}`);

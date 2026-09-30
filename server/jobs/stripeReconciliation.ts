@@ -111,7 +111,7 @@ import { db } from "../db";
 import { bookings, adminNotifications } from "@shared/schema";
 import type { ReconciliationExceptionKind } from "@shared/schema";
 import type { ReconciliationRail } from "@shared/reconciliation-kinds";
-import { LATE_SUCCESS_REFUND_KEY, promotePaidCheckout } from "../services/checkout-claim.service";
+import { promotePaidCheckout } from "../services/checkout-claim.service";
 // Ledger `2026-09-21-membership-reconciliation`: §17's narrow exception, THIRD instance. The job
 // hands a drifted subscription to the ONE writer of `plan_memberships` and writes that table
 // through nothing of its own — and it IMPORTS the status mapping rather than re-deriving it, so the
@@ -125,7 +125,7 @@ import {
 // writes `ready_made_purchases.notified_at` through nothing of its own, ever.
 import { notifyBuyerOfReadyMadeDelivery } from "../services/ready-made-notifications.service";
 import { READY_MADE_ANNOUNCE_GRACE_MS, READY_MADE_ANNOUNCE_GRACE_MINUTES } from "../config/ready-made-announce.config";
-import { bookingChargeShare, chargeShareTolerance } from "../services/booking-charge-share";
+import { travelerChargeForRow } from "../services/traveler-charge";
 import {
   readNoItemReason,
   NO_ITEM_BOOKING_CLASSES,
@@ -165,11 +165,15 @@ const READY_MADE_SCAN_LIMIT = 1000;
 const READY_MADE_FULFILMENT_GRACE_MS = 15 * 60 * 1000;
 
 /**
- * Money comparison tolerance, in DOLLARS — `chargeShareTolerance` (server/services/booking-charge-share.ts),
- * moved there unchanged by R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`) so the refund
- * label and this job read ONE rounding bound (§18 rule 1).
+ * Money comparison tolerance, in DOLLARS. NOT a fee, a rate or a margin (§8) — it is the exact
+ * accumulated rounding error of the checkout arithmetic. Each booking row persists two
+ * `.toFixed(2)` values (`total_amount`, `platform_fee`), each ≤ half a cent from the unrounded
+ * float the Stripe total was composed from, and Stripe's own `Math.round` to cents adds one more.
+ * So the honest bound is one cent per row plus one.
  */
-const amountTolerance = chargeShareTolerance;
+function amountTolerance(rowCount: number): number {
+  return 0.01 * rowCount + 0.01;
+}
 
 /** Stripe statuses that mean the money actually moved. */
 const PI_SUCCEEDED = "succeeded";
@@ -369,20 +373,18 @@ interface CartBookingRow {
    *  value still exempts nothing, because the predicate below asks `readNoItemReason` and that
    *  refuses anything outside the ratified set (§13 — an unknown string is not a class). */
   noItemReason: string | null;
-  /** R162: `booking_details.lateSuccessRefund.refundId` is present — the webhook refunded a late
-   *  success on this `failed` row. Read only; the job never refunds (§17). */
-  lateSuccessRefunded: boolean;
 }
 
-/** The expected Stripe amount for ONE row — `bookingChargeShare` (server/services/booking-charge-share.ts),
- *  moved there unchanged by R163 so the refund label and this job read ONE per-booking share. */
+/** The expected Stripe amount for ONE row: the traveler's charge (ONE derivation, §18 rule 1)
+ *  plus the traveler service fee, which is held in booking_details rather than in a column. */
 function expectedChargeForRow(r: CartBookingRow): number {
-  return bookingChargeShare({
-    totalAmount: r.totalAmount,
-    platformFee: r.platformFee,
-    conciergeFeeSnapshot: r.travelerChargeConciergeFee,
-    travelerFeeCharged: r.travelerFeeCharged,
-  });
+  return (
+    travelerChargeForRow({
+      totalAmount: r.totalAmount,
+      platformFee: r.platformFee,
+      conciergeFeeSnapshot: r.travelerChargeConciergeFee,
+    }).amount + parseFloat(r.travelerFeeCharged || "0")
+  );
 }
 
 function mapCartRow(r: any): CartBookingRow {
@@ -403,7 +405,6 @@ function mapCartRow(r: any): CartBookingRow {
     tripId: r.trip_id ?? null,
     hasLinkedItem: Boolean(r.has_linked_item),
     noItemReason: r.no_item_reason == null ? null : String(r.no_item_reason),
-    lateSuccessRefunded: Boolean(r.late_success_refunded),
   };
 }
 
@@ -419,8 +420,6 @@ const CART_COLUMNS = sql`
      load-bearing — jsonb ->> unknown is ambiguous between the text and the integer operator, so an
      uncast bind parameter cannot be resolved at plan time. */
   booking_details->>${NO_ITEM_REASON_KEY}::text AS no_item_reason,
-  /* R162: whether the WEBHOOK has recorded a late-success refund on this row (the job only reads it). */
-  (COALESCE(booking_details -> ${LATE_SUCCESS_REFUND_KEY}::text, '{}'::jsonb) ? 'refundId') AS late_success_refunded,
   EXISTS (
     SELECT 1 FROM itinerary_items ii WHERE ii.booking_id = service_bookings.id
   ) AS has_linked_item
@@ -864,36 +863,8 @@ async function scanCartRail(args: {
     }
 
     // A3 — a succeeded PI whose booking is VOIDED/terminal. Ruling 39: never resurrect.
-    //
-    // R162 (ledger `2026-09-27-failed-is-final`): a succeeded PI whose booking is `failed` is refunded by
-    // the `payment_intent.succeeded` WEBHOOK only. §17 is NOT amended — the decision-maker refused that
-    // (Sep 27, 2026): this job DETECTS a late success the webhook did not refund and repairs nothing.
     for (const r of linked) {
       if (!TERMINAL_STATUSES.includes(r.status ?? "")) continue;
-      if (r.status === "failed") {
-        // The webhook refunded it: nothing drifted. Otherwise it is money taken and not returned.
-        if (r.lateSuccessRefunded) continue;
-        exceptions.push({
-          rail: "cart",
-          kind: "late_success_not_refunded",
-          severity: "critical",
-          dedupeKey: `cart:late_success_not_refunded:${pi.id}:${r.id}`,
-          bookingId: r.id,
-          paymentIntentId: pi.id,
-          actualAmount: centsToDollars(pi.amount_received || pi.amount),
-          currency: pi.currency ?? null,
-          details: {
-            bookingStatus: r.status,
-            alreadyFlaggedOnRow: r.hasReconciliationException,
-            note:
-              "A PaymentIntent SUCCEEDED after its booking was marked failed (R162: failed is final) and no " +
-              "late-success refund is recorded. The refund lives on the payment_intent.succeeded webhook only; " +
-              "this job detects and repairs nothing (§17). Re-deliver the event from the Stripe dashboard or " +
-              "refund manually.",
-          },
-        });
-        continue;
-      }
       exceptions.push({
         rail: "cart",
         kind: r.status === "refunded" ? "refund_not_reversed" : "pi_succeeded_booking_voided",
@@ -1763,11 +1734,6 @@ async function loadKnownRefundIds(stripeRefundIds: string[]): Promise<Set<string
   const rows = await db.execute(sql`
     SELECT stripe_refund_id FROM refunds
     WHERE stripe_refund_id IN (${sql.join(stripeRefundIds.map((v) => sql`${v}`), sql`, `)})
-      -- R163 amendment: the charge.refunded webhook now writes an audit row per refund id for
-      -- EVERY refund on the charge, dashboard refunds included, and never names a booking. "Known"
-      -- keeps its meaning — an app path recorded this refund against a booking — so a refund we did
-      -- not issue still surfaces as refund_not_reversed (#1288's backstop is unchanged).
-      AND booking_id IS NOT NULL
   `);
   return new Set((rows.rows as any[]).map((r) => String(r.stripe_refund_id)));
 }

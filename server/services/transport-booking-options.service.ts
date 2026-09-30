@@ -595,12 +595,6 @@ async function findAffiliateTransportOptions(
 // Used by GET /api/transport-options for the standalone Transfers tab.
 // ============================================================================
 
-/**
- * What the CLIENT receives (§16, ledger `2026-09-26-transfer-link-tracked`): the partner URL is
- * NEVER shipped. `hasPartnerLink` says one exists; following it goes through the tracked
- * `POST /api/transport-options/click`, which rebuilds the option server-side, records the click and
- * only then returns the URL — the same strip the hub/leg DTOs already apply (`hasBookingLink`).
- */
 export interface DestinationTransportOption {
   id: string;
   source: string;
@@ -611,55 +605,24 @@ export interface DestinationTransportOption {
   priceDisplay: string;
   priceCentsLow: number | null;
   currency: string;
-  hasPartnerLink: boolean;
+  externalUrl?: string;
   isExternal: boolean;
 }
 
-/** Server-internal: the same option WITH its partner URL. Never serialized to a client. */
-export interface DestinationTransportOptionWithUrl extends Omit<DestinationTransportOption, "hasPartnerLink"> {
-  externalUrl?: string;
-}
-
-/** Public list — every option with its partner URL stripped (§16). */
+/**
+ * Returns curated transport options for a destination without needing a trip
+ * leg. Includes affiliate deep-links (12Go, Omio, DiscoverCars) and any
+ * platform providers registered for that destination.
+ */
 export async function getDestinationTransportOptions(
   destination: string,
   travelers: number = 1,
   startDate?: string,
 ): Promise<DestinationTransportOption[]> {
-  const options = await buildDestinationTransportOptions(destination, travelers, startDate);
-  return options.map(({ externalUrl, ...rest }) => ({ ...rest, hasPartnerLink: !!externalUrl }));
-}
-
-/**
- * Resolve ONE option's partner URL for the tracked click. Rebuilt from the same builder the list
- * uses (§18 rule 1 — one derivation), keyed by the option id the list published; `null` when the
- * option is unknown or carries no partner link. The client never supplies a URL.
- */
-export async function resolveDestinationTransportOptionLink(
-  destination: string,
-  optionId: string,
-  startDate?: string,
-  travelers: number = 1,
-): Promise<{ url: string; source: string } | null> {
-  const options = await buildDestinationTransportOptions(destination, travelers, startDate);
-  const hit = options.find((o) => o.id === optionId);
-  return hit?.externalUrl ? { url: hit.externalUrl, source: hit.source } : null;
-}
-
-/**
- * Builds curated transport options for a destination without needing a trip
- * leg. Includes affiliate deep-links (12Go, Omio, DiscoverCars) and any
- * platform providers registered for that destination. SERVER-INTERNAL: carries URLs.
- */
-async function buildDestinationTransportOptions(
-  destination: string,
-  travelers: number = 1,
-  startDate?: string,
-): Promise<DestinationTransportOptionWithUrl[]> {
   // Use the public affiliate marker (partner ID) — never the secret API token —
   // for any URL that will be returned to the client.
   const marker = getTravelpayoutsMarker();
-  const results: DestinationTransportOptionWithUrl[] = [];
+  const results: DestinationTransportOption[] = [];
 
   // 1. Platform providers tagged for transport in this destination
   try {
@@ -777,8 +740,7 @@ async function buildDestinationTransportOptions(
         id: `partnerize-${row.id}`,
         source: "partnerize",
         title: String(row.name),
-        // §16: this is a tracked pricing link, not a booking the platform takes — say so.
-        description: `See ${row.name}'s transfer pricing on their site`,
+        description: `Book ${row.name} — completed on their site`,
         modeType: "car",
         icon: "🚗",
         priceDisplay: "View pricing",

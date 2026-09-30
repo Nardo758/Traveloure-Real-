@@ -49,9 +49,6 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { bookingDisplayStatus } from "@/lib/booking-display-status";
-import { refundedBadgeLabel, refundSummaryLine, type RefundSummary } from "@shared/booking-refund-record";
-import { expiredBookingNextStep } from "@/lib/expired-booking";
 import { isBookingCancellable } from "@shared/booking-cancellation"; // §18 rule 1 — the cancel route's OWN from-state list, never a second copy
 // Ledger `2026-09-17-surfaces-acceptance-completion` (LD 46 / LD 47). The acceptance and
 // declared-window read-out and its four controls. `/api/my-bookings` now carries the SERVER's own
@@ -63,7 +60,6 @@ import { CancelBookingDialog } from "@/components/booking/CancelBookingDialog";
 // rails without. The quotes panel reads `/api/me/quotes` and calls the existing accept/decline
 // rails; the components panel reads the one new read and calls the existing traveler-cancel rail.
 import { TravelerQuotesPanel } from "@/components/quotes/TravelerQuotesPanel";
-import { myBookingsDefaultTab, myBookingsShowsEmptyState } from "@/lib/my-bookings-view";
 import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
 import { QaSessionPanel } from "@/components/live/QaSessionPanel";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -122,7 +118,6 @@ interface Booking {
     scheduledDate?: string;
     notes?: string;
     quantity?: number;
-    itineraryItemId?: string;
   };
   bookingMetadata?: VisaBookingMetadata;
   status: string;
@@ -135,11 +130,6 @@ interface Booking {
   cancellationReason: string | null;
   createdAt: string;
   confirmationCode: string | null;
-  /** R163: the server's answer — a Stripe-dashboard refund covered this booking's whole share.
-   *  Present only when true; `status` stays the row's own. */
-  refundedOutOfBand?: true;
-  /** R163 amendment: what went back, stated by the SERVER (omitted when nothing was refunded). */
-  refundSummary?: RefundSummary;
   hasReview?: boolean;
 }
 
@@ -157,11 +147,6 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   disputed: { label: "Disputed", variant: "destructive", icon: AlertTriangle },
   cancelled: { label: "Cancelled", variant: "destructive", icon: XCircle },
   refunded: { label: "Refunded", variant: "outline", icon: DollarSign },
-  // R165 (G3): two statuses the server writes that rendered as raw words and sat in no tab.
-  // `expired` — a checkout that was never paid and was released (R164); `dispute_lost` — the bank
-  // decided a chargeback for the traveler, so the money went back to them (decision-maker's wording).
-  expired: { label: "Not completed", variant: "outline", icon: XCircle },
-  dispute_lost: { label: "Dispute closed – refunded to you", variant: "outline", icon: DollarSign },
 };
 
 // L3: a status the server writes that isn't (yet) in statusConfig above must never
@@ -176,16 +161,13 @@ function getStatusDisplay(status: string): { label: string; variant: "default" |
   return { label, variant: "outline", icon: AlertCircle };
 }
 
-/** R163: the badge, the tabs and the card's actions all read ONE status (`bookingDisplayStatus`). */
-const displayStatusOf = bookingDisplayStatus;
-
 // L3: the three status tabs (Pending/Active/Completed) must partition every real
 // status the same way getStatusDisplay's badges do, so "All (N)" always equals the
 // sum of the tabs — an unmapped-but-real status previously counted in "All" while
 // matching none of the tab filters (visible nowhere but the All list).
 const PENDING_STATUSES = ["pending", "payment_pending"];
 const ACTIVE_STATUSES = ["confirmed", "in_progress"];
-const COMPLETED_STATUSES = ["completed", "disputed", "cancelled", "refunded", "failed", "expired", "dispute_lost"];
+const COMPLETED_STATUSES = ["completed", "disputed", "cancelled", "refunded", "failed"];
 
 const VISA_STATUS_STEPS: Array<{
   key: VisaBookingMetadata["visaApplicationStatus"];
@@ -371,18 +353,6 @@ export default function MyBookingsPage() {
   }> }>({ queryKey: ["/api/ready-made/purchases/mine"], enabled: !!user });
   const rmPurchases = rmPurchasesData?.purchases ?? [];
 
-  // The SAME query key TravelerQuotesPanel reads, so this is one request and one cache entry.
-  // Only the count is read here: a quote keeps the tab block (and its Quotes tab) on screen.
-  const { data: quotesData, isLoading: quotesLoading } = useQuery<{ quotes: unknown[] }>({
-    queryKey: ["/api/me/quotes"],
-    enabled: !!user,
-  });
-  const viewCounts = {
-    bookingCount: bookings?.length ?? 0,
-    purchaseCount: rmPurchases.length,
-    quoteCount: quotesData?.quotes?.length ?? 0,
-  };
-
   const [concernFor, setConcernFor] = useState<{ id: string; title: string } | null>(null);
   const [concernReason, setConcernReason] = useState("");
   const rmConcern = useMutation({
@@ -426,14 +396,14 @@ export default function MyBookingsPage() {
     );
   }
 
-  const pendingBookings = bookings?.filter(b => PENDING_STATUSES.includes(displayStatusOf(b))) || [];
-  const activeBookings = bookings?.filter(b => ACTIVE_STATUSES.includes(displayStatusOf(b))) || [];
+  const pendingBookings = bookings?.filter(b => PENDING_STATUSES.includes(b.status)) || [];
+  const activeBookings = bookings?.filter(b => ACTIVE_STATUSES.includes(b.status)) || [];
   // L3: everything not caught by Pending/Active lands here — including any real-but-
   // not-yet-enumerated status (a resolved/terminal default) rather than falling through
   // every tab filter while still counting toward "All". The exact "All (2) / Pending (0)"
   // divergence this fix closes.
   const completedBookings = bookings?.filter(
-    b => !PENDING_STATUSES.includes(displayStatusOf(b)) && !ACTIVE_STATUSES.includes(displayStatusOf(b))
+    b => !PENDING_STATUSES.includes(b.status) && !ACTIVE_STATUSES.includes(b.status)
   ) || [];
 
   const openReviewDialog = (booking: Booking) => {
@@ -446,12 +416,12 @@ export default function MyBookingsPage() {
       <div className="container py-8 max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold mb-6" data-testid="text-page-title">My Bookings</h1>
 
-        {isLoading || quotesLoading ? (
+        {isLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : myBookingsShowsEmptyState(viewCounts) ? (
+        ) : (!bookings || bookings.length === 0) && rmPurchases.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
               <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
@@ -464,7 +434,11 @@ export default function MyBookingsPage() {
           </Card>
         ) : (
           <Tabs
-            defaultValue={myBookingsDefaultTab(viewCounts)}
+            defaultValue={
+              (bookings?.length ?? 0) === 0 && rmPurchases.length > 0
+                ? "packages"
+                : "all"
+            }
             className="space-y-4"
           >
             <TabsList data-testid="tabs-booking-status">
@@ -787,14 +761,9 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
   const [cancelOpen, setCancelOpen] = useState(false);
-  // R163: every action on this card is gated on the SAME status the badge reads. A booking whose
-  // share a Stripe-dashboard refund covered reads `refunded`, so it offers no Cancel, Dispute,
-  // Confirm or Review — exactly what a `refunded` row offers today. The server refuses the same
-  // cancel and dispute on its own (409 `refunded_out_of_band`); this only stops drawing the button.
-  const actionStatus = displayStatusOf(booking);
-  const status = getStatusDisplay(actionStatus);
+  const status = getStatusDisplay(booking.status);
   const StatusIcon = status.icon;
-  const canReview = actionStatus === "completed" && !booking.hasReview;
+  const canReview = booking.status === "completed" && !booking.hasReview;
   // Escrow Phase 3: once the provider marks the booking completed, the traveler can either confirm
   // completion (early-releases the provider's held earnings) or dispute (blocks release for admin
   // review). Both act on this service booking by id.
@@ -807,15 +776,15 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   const deliveryRefMs = booking.bookingDetails?.scheduledDate
     ? new Date(booking.bookingDetails.scheduledDate).getTime()
     : new Date(booking.confirmedAt ?? booking.createdAt).getTime();
-  const confirmedAndDelivered = actionStatus === "confirmed" && Date.now() >= deliveryRefMs + 24 * 60 * 60 * 1000;
-  const canConfirmOrDispute = actionStatus === "completed" || confirmedAndDelivered;
+  const confirmedAndDelivered = booking.status === "confirmed" && Date.now() >= deliveryRefMs + 24 * 60 * 60 * 1000;
+  const canConfirmOrDispute = booking.status === "completed" || confirmedAndDelivered;
   // The SAME list `POST /api/bookings/:id/cancel` accepts a booking in, and the SAME list its
   // §18b atomic conditional guards on — so this button can never be offered for a state the
   // server refuses (§18 rule 1).
-  const canCancel = isBookingCancellable(actionStatus);
-  const isDisputed = actionStatus === "disputed";
+  const canCancel = isBookingCancellable(booking.status);
+  const isDisputed = booking.status === "disputed";
   const showVisaTimeline = isVisaBooking(booking) && booking.bookingMetadata;
-  const isConfirmedOrBeyond = ["confirmed", "in_progress", "completed"].includes(actionStatus);
+  const isConfirmedOrBeyond = ["confirmed", "in_progress", "completed"].includes(booking.status);
   // L12: the provider's public name, as projected by the server. A blank display name means the
   // account row is gone (§13) — the card says so rather than rendering an empty "with ".
   const providerName = booking.provider?.displayName?.trim() || null;
@@ -861,7 +830,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
         return null;
       }
     },
-    enabled: actionStatus === "confirmed",
+    enabled: booking.status === "confirmed",
     staleTime: 5 * 60 * 1000,
   });
 
@@ -894,7 +863,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   // every BookingCard on this page reads one cached fetch, not one request per card.
   const { data: bookingsWithLinks } = useQuery<any[]>({
     queryKey: ["/api/service-bookings"],
-    enabled: actionStatus === "confirmed",
+    enabled: booking.status === "confirmed",
     staleTime: 60 * 1000,
   });
   const bookingService = bookingsWithLinks?.find((b) => b.id === booking.id)?.service ?? null;
@@ -911,7 +880,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   // than snapshotted (a moved meeting point should update) — the per-booking snapshot the audit
   // filed governs price/deliverable, not these.
   const goodToKnow: { key: string; label: string; value: string }[] = [];
-  if (bookingService && actionStatus === "confirmed") {
+  if (bookingService && booking.status === "confirmed") {
     const push = (key: string, label: string, value: string | null | undefined) => {
       if (value) goodToKnow.push({ key, label, value });
     };
@@ -1002,7 +971,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Badge variant={status.variant} data-testid={`badge-status-${booking.id}`}>
                 <StatusIcon className="w-3 h-3 mr-1" />
-                {actionStatus === "refunded" ? refundedBadgeLabel(status.label, booking.refundSummary) : status.label}
+                {status.label}
               </Badge>
               {showVisaTimeline && (
                 <Badge variant="outline" className="text-primary border-primary/30" data-testid={`badge-visa-${booking.id}`}>
@@ -1075,7 +1044,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 because the same component renders on surfaces where it is not. §13: the panel draws
                 NOTHING for a booking whose listing takes no acceptance and was never declared. */}
             <BookingAcceptancePanel
-              booking={{ ...booking, status: actionStatus } as any}
+              booking={booking as any}
               audience="owner"
               invalidateKeys={[["/api/my-bookings"], [`/api/service-bookings/${booking.id}/deliverable/meta`]]}
             />
@@ -1177,13 +1146,6 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
             <p className="font-bold text-lg" data-testid={`text-amount-${booking.id}`}>
               ${parseFloat(booking.totalAmount).toFixed(2)}
             </p>
-            {refundSummaryLine(booking.refundSummary) && (
-              // R163 amendment: the server's own sentence about what went back — "$40.00 of $80.00
-              // refunded", or a shared-payment refund that is never attributed to this one booking.
-              <p className="text-xs text-muted-foreground mt-1" data-testid={`text-refund-summary-${booking.id}`}>
-                {refundSummaryLine(booking.refundSummary)}
-              </p>
-            )}
             <div className="flex gap-2 mt-2 flex-wrap justify-end">
               {canCancel && (
                 <Button
@@ -1238,22 +1200,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                   Review
                 </Button>
               )}
-              {(() => {
-                // R164/R165 follow-up: an expired row says what happened next and where to go —
-                // never a dead row (the checkout was released; the item went back to the plan).
-                const next = expiredBookingNextStep({ ...booking, status: actionStatus });
-                return next ? (
-                  <>
-                    <span className="text-xs text-muted-foreground self-center" data-testid={`text-expired-next-${booking.id}`}>
-                      {next.line}
-                    </span>
-                    <Button variant="default" size="sm" asChild data-testid={`button-expired-next-${booking.id}`}>
-                      <Link href={next.href}>{next.cta}</Link>
-                    </Button>
-                  </>
-                ) : null;
-              })()}
-              {booking.tripId && actionStatus !== "expired" && (
+              {booking.tripId && (
                 <Button variant="outline" size="sm" asChild data-testid={`button-view-itinerary-${booking.id}`}>
                   <Link href={`/my-itinerary/${booking.tripId}`}>
                     <Package className="w-4 h-4 mr-1" />

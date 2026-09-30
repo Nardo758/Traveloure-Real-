@@ -31,10 +31,8 @@
  * `../db` through a DYNAMIC import so a pure test can import this module without a DATABASE_URL.
  *
  * ONE HELPER, ONE CALLER. `POST /api/bookings/:id/pay-balance` (server/routes/payments.routes.ts)
- * is the only caller of `canPayBalance`. The plancard READ gate (LD 42 D9) reads the same role test
- * through `isTripPayer`, below — one comparison, two questions. A second copy of this predicate
- * anywhere is the derivation-drift class CLAUDE.md §18 rule 1 names — on a string that decides who
- * may move money.
+ * is the only caller. A second copy of this predicate anywhere is the derivation-drift class
+ * CLAUDE.md §18 rule 1 names — on a string that decides who may move money.
  */
 import { TRIP_PARTICIPANT_ROLE_PAYER } from "@shared/schema";
 
@@ -99,42 +97,20 @@ export function canPayBalance(
   const tripId = typeof booking.tripId === "string" ? booking.tripId.trim() : "";
   if (!tripId) return { allowed: false, reason: "not_owner_and_no_payer_role" };
 
-  const named = isPayerParticipantOnTrip(tripId, actor, tripParticipantRows);
-
-  return named
-    ? { allowed: true, payerKind: "participant_payer" }
-    : { allowed: false, reason: "not_owner_and_no_payer_role" };
-}
-
-/**
- * THE ONE ROLE TEST: does a `trip_participants` row on EXACTLY this trip name EXACTLY this user with
- * EXACTLY the `payer` role? Both callers read it — `canPayBalance`'s arm (b) above (money: may this
- * user settle a balance) and `isTripPayer` below (read: may this user see the plan the balance
- * belongs to, Locked Decision 42 D9, ledger `2026-09-27-payer-reads-plancard`). A second copy of
- * this comparison anywhere is the derivation-drift class §18 rule 1 names.
- *
- * Pure and fail-closed: a blank trip or actor, a row with no `user_id` (a non-registered guest —
- * no account to authorize), a row on a different trip and any role that is not the one shared
- * spelling all answer `false`. Every row is re-checked, never trusted to the query's scoping.
- */
-export function isPayerParticipantOnTrip(
-  tripId: string | null | undefined,
-  sessionUserId: string | null | undefined,
-  tripParticipantRows: readonly BalancePayerParticipant[] = [],
-): boolean {
-  const trip = typeof tripId === "string" ? tripId.trim() : "";
-  const actor = typeof sessionUserId === "string" ? sessionUserId.trim() : "";
-  if (!trip || !actor) return false;
-  return tripParticipantRows.some((row) => {
+  const named = tripParticipantRows.some((row) => {
     if (!row) return false;
     // A participant with no `user_id` is a non-registered guest: there is no account this could
     // be, so it can never match an authenticated actor.
     if (typeof row.userId !== "string" || row.userId.trim() === "" || row.userId !== actor) return false;
-    if (typeof row.tripId !== "string" || row.tripId !== trip) return false;
+    if (typeof row.tripId !== "string" || row.tripId !== tripId) return false;
     // EXACTLY `payer`. No trimming, no case-folding: a role that does not match the one shared
     // spelling is not the role, and widening the comparison here is how a money grant leaks.
     return row.role === TRIP_PARTICIPANT_ROLE_PAYER;
   });
+
+  return named
+    ? { allowed: true, payerKind: "participant_payer" }
+    : { allowed: false, reason: "not_owner_and_no_payer_role" };
 }
 
 /**
@@ -193,18 +169,4 @@ export async function loadBalancePayerParticipants(
     .from(tripParticipants)
     .where(and(eq(tripParticipants.tripId, tripId), eq(tripParticipants.userId, sessionUserId)));
   return rows;
-}
-
-/**
- * IS THIS SESSION USER A `payer` PARTICIPANT ON THIS TRIP? (Locked Decision 42 D9; ledger
- * `2026-09-27-payer-reads-plancard`.) The trip-scoped reading of the SAME role test
- * `canPayBalance` uses — the one DB read above plus `isPayerParticipantOnTrip`, never a re-typed
- * comparison. It answers a READ question only (the plancard gate): it grants no write rail, no
- * owner-tier read (guest roster / participant PII) and no money movement of its own; paying a
- * balance still goes through `canPayBalance` at the balance route.
- */
-export async function isTripPayer(tripId: string, sessionUserId: string): Promise<boolean> {
-  if (!tripId || !sessionUserId) return false;
-  const rows = await loadBalancePayerParticipants(tripId, sessionUserId);
-  return isPayerParticipantOnTrip(tripId, sessionUserId, rows);
 }

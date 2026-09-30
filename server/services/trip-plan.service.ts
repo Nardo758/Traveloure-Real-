@@ -44,8 +44,6 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { contentOriginFor } from "@shared/content-origin";
 import { plancardPartyCount } from "@shared/plan-vocabulary";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
-import { itemBookingLabelStatus, itemBookingStatusEntry } from "@shared/booking-visibility";
-import { outOfBandFullyRefundedBookingIds } from "./out-of-band-refund.service";
 import {
   TRIP_PLAN_VERSION,
   isChauffeuredMode,
@@ -73,7 +71,6 @@ import {
 } from "@shared/trip-plan";
 import { geocodeAddress } from "../utils/geocode";
 import { getTripTransportLegs } from "./trip-transport-legs.service";
-import { checkoutProjectionRefusals } from "./buy-action-payload";
 import { getRecentTripTransitions, getTripTransitionCount } from "./item-transition-log.service";
 import { getLatestTripFinal } from "./trip-finalize.service";
 
@@ -131,15 +128,6 @@ export interface AssembleTripPlanOptions {
   viewerId?: string | null;
   /** Role already resolved by the caller's gate; passed through so auth is not duplicated here. */
   tripRole?: string | null;
-  /**
-   * WHICH PLAN RENDERS once a final exists (ledger `2026-09-26-slip-renders-live`; audit
-   * `docs/planning/trip-slip-ui-audit.md` G3). **LIVE IS THE DEFAULT**: a caller that says nothing
-   * gets the live `itinerary_items`, so no planning surface can be handed a frozen plan by omission
-   * (a reopened plan's adds and edits must be visible where they are made). `"final"` is asked for
-   * EXPLICITLY by the Trip Card alone, and renders the latest `trip_finals` snapshot with live
-   * booking status overlaid. `finalVersion` is emitted either way.
-   */
-  render?: "final" | "live";
 }
 
 // ── Display mappings (moved verbatim from plancard.routes.ts — the existing contract) ──────────
@@ -528,41 +516,13 @@ async function resolveTripBookings(tripId: string): Promise<TripPlanBooking[]> {
     .where(eq(serviceBookings.tripId, tripId))
     .orderBy(desc(serviceBookings.createdAt));
 
-  // R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`): a refund issued from the Stripe
-  // dashboard changes no status; the ONE refund reconciliation rule decides whether it covered the
-  // booking's whole share, and only then does the DTO carry `refundedOutOfBand` (§13 — present only
-  // when true; `status` is left exactly as the row holds it).
-  const refundedOutOfBand = await outOfBandFullyRefundedBookingIds(rows.map((r) => r.id));
   return rows.map((r) => ({
     id: r.id,
     serviceId: r.serviceId ?? null,
     status: r.status ?? null,
     serviceName: r.serviceName ?? null,
     totalAmount: r.totalAmount != null ? String(r.totalAmount) : null,
-    ...(refundedOutOfBand.has(r.id) ? { refundedOutOfBand: true as const } : {}),
   }));
-}
-
-/**
- * R145 (ledger `2026-09-27-refunded-item-status`) — the ONE place an item's linked booking is
- * turned into its booked-or-not presentation (§18 rule 1). A booking that COUNTS AS BOOKED is
- * `booking` (the booked state every surface reads); any other is `endedBooking`, so the item says
- * what happened instead of reading "Booked". No booking ⇒ neither key. Read-side only: no row is
- * written and no money path moves.
- *
- * R154 (ledger `2026-09-27-booking-status-vocabulary`): "counts as booked" is no longer "not CLOSED"
- * but the ONE shared vocabulary `itemBookingStatusEntry` (shared/booking-visibility.ts). So
- * `payment_pending`, `failed` and `expired` ride `endedBooking` beside `cancelled` / `refunded` —
- * the key now means "a linked booking that is not the booked state", and NO new DTO key was added —
- * while `disputed` stays `booking` (it is a real, paid booking) and the client reads its status to
- * say "Under review", never "Booked".
- */
-export function linkedBookingFields(
-  b: TripPlanBooking | undefined,
-): { booking?: TripPlanBooking; endedBooking?: TripPlanBooking } {
-  if (!b) return {};
-  // R163: the status a label reads — a dashboard refund that covered the whole share reads `refunded`.
-  return itemBookingStatusEntry(itemBookingLabelStatus(b)).countsAsBooked ? { booking: b } : { endedBooking: b };
 }
 
 /** Meeting points for items linked to a platform service. Bulk-read once per assembly. */
@@ -684,10 +644,9 @@ export async function assembleTripPlan(
   // tools first, then leaving the notice-only page) — it is deliberately NOT done here to avoid a
   // half-stripped page. Do not treat this live-render branch as final behavior.
   const latestFinal = await getLatestTripFinal(tripId);
-  // Only an explicit `render: "final"` (the Trip Card) gets the snapshot; the default is live.
-  const renderingSnapshot = latestFinal != null && options.render === "final";
-  if (renderingSnapshot) {
-    items = overlayLiveBookingStatus(((latestFinal!.snapshot as any)?.items ?? []) as any[], items);
+  const renderingSnapshot = latestFinal != null;
+  if (latestFinal) {
+    items = overlayLiveBookingStatus(((latestFinal.snapshot as any)?.items ?? []) as any[], items);
   }
 
   // Resolve-on-write: fill + persist any missing pin coordinates via the single server geocode
@@ -809,34 +768,6 @@ export async function assembleTripPlan(
   const tripBookings = await resolveTripBookings(tripId);
   const bookingById = new Map<string, TripPlanBooking>(tripBookings.map((b) => [b.id, b]));
 
-  // R157 (ledger `2026-09-27-retry-failed-payment`): for an item whose linked booking FAILED payment,
-  // can "Try again" actually open a checkout that holds it? Not when the listing publishes no price or
-  // the seller must accept first — the cart projection holds no line for those. Answered by the SAME
-  // predicate the projection refuses on (`checkoutProjectionRefusals`, §18 rule 1), read only for the
-  // few rows that offer the retry. Absent for every other item (§13: present-only-when-real).
-  const retryItems = items.filter(
-    (i: any) =>
-      i.bookingId && itemBookingStatusEntry(itemBookingLabelStatus(bookingById.get(i.bookingId))).action === "retry_checkout",
-  );
-  const retryListingIds = Array.from(
-    new Set(retryItems.map((i: any) => i.providerServiceId).filter((id: unknown): id is string => typeof id === "string")),
-  );
-  let retryRefusedListingIds = new Set<string>();
-  if (retryListingIds.length > 0) {
-    const listingRows = await db
-      .select({
-        id: providerServices.id,
-        userId: providerServices.userId,
-        price: providerServices.price,
-        priceType: providerServices.priceType,
-        bookingMode: providerServices.bookingMode,
-      })
-      .from(providerServices)
-      .where(inArray(providerServices.id, retryListingIds));
-    retryRefusedListingIds = new Set((await checkoutProjectionRefusals(listingRows)).keys());
-  }
-  const retryItemIds = new Set(retryItems.map((i: any) => i.id as string));
-
   const dayNumbers = Array.from(new Set(items.map((i) => i.dayNumber))).sort((a, b) => a - b);
 
   const buildLeg = (leg: any): TripPlanLeg => buildTripPlanLegCore(leg, legBookingMap[leg.id]);
@@ -883,16 +814,12 @@ export async function assembleTripPlan(
         .slice(0, 1)
         .map((c) => ({ who: c.who, what: c.action, when: formatTimeAgo(c.createdAt) })),
 
-      // W4 (H2): the booked state, and ONLY when a real, still-live booking row backs it.
-      // `booking_id` (migration 159) is stamped by checkout atomically with the `→ purchased`
-      // flip; the refund path reverts the flip but deliberately KEEPS `booking_id` as history.
-      // R145 (ledger `2026-09-27-refunded-item-status`): a CLOSED booking (`cancelled` /
-      // `refunded`) is therefore disclosed as `endedBooking`, never as `booking` — every surface
-      // reads `booking`'s presence as "Booked". Present-only-when-real: an unbooked item carries
-      // neither key, so every pre-existing consumer of this activity shape is untouched (§13).
-      ...linkedBookingFields(item.bookingId ? bookingById.get(item.bookingId) : undefined),
-      ...(retryItemIds.has(item.id)
-        ? { retryOpensCheckout: !(item.providerServiceId && retryRefusedListingIds.has(item.providerServiceId)) }
+      // W4 (H2): the booked state, and ONLY when a real booking row backs it. `booking_id`
+      // (migration 159) is stamped by checkout atomically with the `→ purchased` flip and cleared
+      // of that flip by the refund path. Present-only-when-real: an unbooked item carries no key
+      // at all, so every pre-existing consumer of this activity shape is untouched (§13).
+      ...(item.bookingId && bookingById.has(item.bookingId)
+        ? { booking: bookingById.get(item.bookingId)! }
         : {}),
 
       // Phase 1d (W7): the item's own routing state, straight off the row — this producer is the

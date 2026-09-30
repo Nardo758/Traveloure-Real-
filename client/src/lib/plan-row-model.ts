@@ -1,4 +1,3 @@
-import { effectiveRoutingStatus } from "./item-booking-state";
 import { parseTripDate } from "@/lib/calendar-date";
 
 /**
@@ -27,7 +26,7 @@ export interface PlanRowCounts {
 /** Structural minimum of the plancard DTO the counts derive from (SlipData.days[].activities[]). */
 export interface PlancardLike {
   days?: Array<{
-    activities?: Array<{ booking?: unknown; endedBooking?: { status?: string | null } | null; routingStatus?: string | null }> | null;
+    activities?: Array<{ booking?: unknown; routingStatus?: string | null }> | null;
   }> | null;
 }
 
@@ -68,13 +67,12 @@ export function routingCountsFromPlancard(data: PlancardLike | null | undefined)
   const counts: PlanRowCounts = { in_planning: 0, with_expert: 0, ready_for_checkout: 0, purchased: 0 };
   for (const day of data?.days ?? []) {
     for (const a of day.activities ?? []) {
-      // R145/R154: the ONE reading of the linked booking (`effectiveRoutingStatus`). A booked row —
-      // `disputed` included, it is a real booking — is purchased; a failed payment is back to
-      // ready_for_checkout; a not-booked linked booking whose item still says `purchased` (a
-      // non-refundable cancel, a payment still processing) counts as nothing (§13).
-      const rs = effectiveRoutingStatus(a);
-      if (rs != null && (ROUTING_STATUSES as string[]).includes(rs)) {
-        counts[rs as PlanRowRoutingStatus]++;
+      if (a.booking || a.routingStatus === "purchased") counts.purchased++;
+      else if (
+        a.routingStatus != null &&
+        (ROUTING_STATUSES as string[]).includes(a.routingStatus)
+      ) {
+        counts[a.routingStatus as PlanRowRoutingStatus]++;
       }
     }
   }

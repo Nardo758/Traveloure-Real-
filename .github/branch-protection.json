@@ -17,31 +17,7 @@
       "earn-page-smoke (Playwright DOM gate)",
       "ci-db-setup-lint (no inline migration steps)",
       "relevance-dominance (pure unit)",
-      "suite-mutation-auth (server/__tests__/mutation-auth — live authorization probes, DB + app)",
-      "unit-suite-shared (shared/__tests__ — whole directory)",
-      "unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine — whole dirs)",
-      "unit-suite-client-lib (client/src/lib/__tests__ — whole directory)",
-      "unit-suite-client-components (client component __tests__ — whole directories)",
-      "migration-chain-integrity (DECISIONS.md rulings 19, 27)",
-      "lockfile-purity (no replit.local)",
-      "guard-batch (26 grep/logic guards — each a named step)",
-      "suite-server-services (server/services/__tests__ — DB-backed)",
-      "suite-server-routes-migrations (server/routes/__tests__ + server/migrations/__tests__ — DB-backed)",
-      "traveler-charge-composition (docs/ROADMAP.md §A A3 — the commission is never billed to the buyer)",
-      "concierge-fee-split (Locked Decision 51; ledger 2026-09-18-concierge-fee-cap-split)",
-      "one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)",
-      "slip-card-integrity (slip is live, finalized plan is not re-routed, expert must exist)",
-      "booking-birth-provenance (rulings 41/46; ledger 2026-09-12-booking-birth-holes)",
-      "slot-units (V-26; ledger 2026-09-15-v26-slot-units)",
-      "from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)",
-      "reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)",
-      "legacy-rail-traveler-charge (2026-09-08-legacy-rail-fee — the same fix on the legacy rail)",
-      "transport-payment-intent (punchlist R-1; ledger 2026-09-14-transport-confirm-stamps-pi)",
-      "acceptance-rails (D-24..D-27, D-32..D-40; four ledgers, see comment)",
-      "plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)",
-      "quote-born-charge (LD 49's charge lane; ledger 2026-09-18-quote-born-charge)",
-      "leads-door-and-trip-read-gate (V-32, V-33; ledger 2026-09-15-v32-v33-leads-door-item-read-gate)",
-      "supply-demand-e2e"
+      "suite-mutation-auth (server/__tests__/mutation-auth — live authorization probes, DB + app)"
     ]
   }
 }

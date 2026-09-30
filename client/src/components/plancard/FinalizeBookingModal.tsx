@@ -32,9 +32,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   runBulkRouteToCheckout,
   selectBulkCheckoutItems,
+  summarizeBulkRoute,
 } from "@/lib/slip-plan-actions";
 import type { PlanCardActivity } from "./plancard-types";
-import { useRouteRefusalToast } from "./use-route-refusal-toast";
 import { ShoppingCart, UserCheck, Sparkles, Handshake, Check } from "lucide-react";
 
 type FinalizeTrip = { id: string; destination: string | null; travelers: number | null };
@@ -57,7 +57,6 @@ export function FinalizeBookingModal({
   activities: PlanCardActivity[];
 }) {
   const { toast } = useToast();
-  const { showBulkResult } = useRouteRefusalToast(trip.id);
   const [, setLocation] = useLocation();
   const [lane, setLane] = useState<Lane>("myself");
   const [submitting, setSubmitting] = useState(false);
@@ -85,13 +84,10 @@ export function FinalizeBookingModal({
           },
         });
         onOpenChange(false);
-        // Ledger `2026-09-26-finalized-checkout-messages`: the server's named refusals read as
-        // themselves, with "Reopen plan" when an item is not in the finalized version.
-        showBulkResult(result);
+        toast(summarizeBulkRoute(result));
         // Ledger 2026-09-24-cart-two-paths: a finalized plan is done PLANNING — land on the
-        // payment step (a buying cart), not the optimize-first cart view. Nothing staged ⇒ stay
-        // here with the message rather than land on a cart that holds none of it.
-        if (result.succeeded > 0 || result.attempted === 0) setLocation(BUY_NOW_CART_PATH);
+        // payment step (a buying cart), not the optimize-first cart view.
+        setLocation(BUY_NOW_CART_PATH);
       } else if (lane === "agent") {
         // §16: one request per partner stop, by opaque bookingToken — never a URL, never a price.
         let ok = 0;

@@ -314,15 +314,11 @@ test("B4 — ONE policy resolver: the whole-row quote and the component-cancel r
 
   // The AMOUNT is the percent of what the traveler was CHARGED — price + concierge + traveler fee
   // (105.00 + 10.00 under A3), server-derived through the ONE composition. 50% of 115.00.
-  // R166 (ledger `2026-09-27-cancel-preview-equals-refund`): the quote is the WHOLE refund. The booking
-  // share is `travelerChargeForRow`'s composition — price + concierge (105.00) — at the tier's 50%, and
-  // the traveler SERVICE FEE (10.00) refunds at the SAME tier % (R156). This test used to pin 105 / 52.50
-  // and say the fee "is not in this number" — that was the defect: the preview said $52.50 and the
-  // traveler was refunded $57.50.
-  assert.equal(whole.totalAmount, 115);
-  assert.equal(whole.bookingRefundAmount, 52.5);
-  assert.equal(whole.feeRefundAmount, 5);
-  assert.equal(whole.refundAmount, 57.5);
+  // The quote's basis is `travelerChargeForRow`'s composition — price + concierge (105.00). The traveler
+  // SERVICE FEE rides the refund separately, at the same tier %, in `refundServiceBooking` (ruling
+  // `2026-09-02-traveler-fee-refundability`), which is why it is not in this number.
+  assert.equal(whole.totalAmount, 105);
+  assert.equal(whole.refundAmount, 52.5);
 
   // §18 rule 1: exactly ONE structural read of the snapshot's policy in the module, and the whole-row
   // resolver delegates to it (pinned comments-stripped, so a second parse cannot appear quietly).

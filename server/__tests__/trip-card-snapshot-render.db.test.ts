@@ -1,8 +1,7 @@
 /**
  * TRIP-CARD SNAPSHOT RENDER — Phase 2 proof (ledger 2026-08-31-two-surfaces-one-handoff).
  *
- * Once a trip has a latest final, `assembleTripPlan(tripId, "full", { render: "final" })` — the Trip
- * Card's EXPLICIT request; live is the default (ledger `2026-09-26-slip-renders-live`) — renders the FROZEN plan (the
+ * Once a trip has a latest final, `assembleTripPlan(tripId, "full")` renders the FROZEN plan (the
  * final's items) joined to LIVE booking status — never the live item set, never a stale blob. A
  * trip with no final renders its live plan (the not-final state). Accepting a suggestion on a
  * finalized trip auto-advances the version (reFinalizeIfCurrentlyFinal).
@@ -77,12 +76,12 @@ async function addItem(tripId: string, opts: { title: string; dayNumber?: number
 }
 
 async function assembledTitles(tripId: string): Promise<string[]> {
-  const plan: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId, render: "final" /* the Trip Card asks explicitly; live is the default */ });
+  const plan: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId });
   const acts = (plan.days ?? []).flatMap((d: any) => d.activities ?? []);
   return acts.map((a: any) => a.title as string);
 }
 async function assembledPlan(tripId: string): Promise<any> {
-  return assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId, render: "final" /* the Trip Card asks explicitly; live is the default */ });
+  return assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId });
 }
 
 before(async () => {

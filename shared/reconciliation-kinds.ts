@@ -60,11 +60,6 @@ export const RECONCILIATION_EXCEPTION_KINDS = [
   /** A PaymentIntent succeeded and its booking is VOIDED/terminal (ruling 39's late-signal
    *  reconciliation-exception state). Never resurrected — a human decides refund vs. re-book. */
   "pi_succeeded_booking_voided",
-  /** R162 — a PaymentIntent SUCCEEDED after its booking was marked `failed` (failed is final), and NO
-   *  late-success refund is recorded on the booking. The refund lives on the `payment_intent.succeeded`
-   *  WEBHOOK only; this job DETECTS the case the webhook missed and repairs nothing (§17). A human
-   *  refunds, or re-delivers the webhook from the Stripe dashboard. */
-  "late_success_not_refunded",
   /** A booking is `confirmed` (or otherwise paid-equivalent) with NO PaymentIntent stamped. */
   "booking_confirmed_no_pi",
   /** A booking is `confirmed` but its PaymentIntent is not in a succeeded state at Stripe. */
@@ -194,7 +189,6 @@ export const RECONCILIATION_KIND_LABELS: Record<ReconciliationExceptionKind, str
   pi_succeeded_no_booking: "Payment succeeded — NO booking exists",
   pi_succeeded_claim_provisional: "Payment succeeded — booking still an unpromoted claim",
   pi_succeeded_booking_voided: "Payment succeeded — booking is voided/terminal",
-  late_success_not_refunded: "Payment succeeded after the booking failed — NOT refunded",
   booking_confirmed_no_pi: "Booking says paid — no PaymentIntent at all",
   booking_confirmed_pi_not_succeeded: "Booking says paid — PaymentIntent not succeeded",
   amount_mismatch: "Charged amount ≠ server-derived total",

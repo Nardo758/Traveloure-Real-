@@ -3,10 +3,9 @@
  * (ruling 2026-09-02-traveler-fee-applies-everywhere; was Lane 4 small-filed rider 3b's informational
  * contract, now flipped by the ruling).
  *
- * GET /api/cart/fee-preview reports a Trip Pass waiver for each line whose OWN `cart_items.trip_id`
- * is the caller's plan holding an active Trip Pass — the SAME per-line basis
- * (`resolveTripPassCoveredTripIds`, R148 / ledger `2026-09-27-trip-pass-waiver-per-line`) the charge
- * path calls. The optional `?tripId=` is still ownership-checked but is no longer the waiver source. The traveler service fee is now a term of the quoted total
+ * GET /api/cart/fee-preview accepts an optional `?tripId=` and, when the trip holds an active Trip
+ * Pass, reports a Trip Pass waiver via the SAME `coversAction(tripId, "traveler_service_fee")` the
+ * charge path calls (payments.routes.ts). The traveler service fee is now a term of the quoted total
  * (a `travelerFee` line), computed by the SAME `resolveTravelerServiceFee` the charge loop uses, so
  * preview == charge:
  *
@@ -105,10 +104,8 @@ before(async () => {
   // counterfactual regardless of owner role.
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role)
     VALUES (${providerId}, ${`feeprev-${RUN}-prov@t.test`}, 'Prov', 'Fixture', 'service_provider')`);
-  // Declared `instant` (ledger `2026-09-25-checkout-request-mode`): an unset mode on a form-less
-  // owner resolves `request`, which a cart never holds and the preview never quotes.
-  await db.execute(sql`INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, delivery_method, booking_mode)
-    VALUES (${serviceId}, ${providerId}, ${`Fee preview svc ${RUN}`}, 'fixture', '100.00', 'active', 'approved', 'in_person', 'instant')`);
+  await db.execute(sql`INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, delivery_method)
+    VALUES (${serviceId}, ${providerId}, ${`Fee preview svc ${RUN}`}, 'fixture', '100.00', 'active', 'approved', 'in_person')`);
 
   // Two buyer-owned trips: one without a pass, one that will get one.
   for (const tid of [tripNoPassId, tripPassId]) {
@@ -121,10 +118,6 @@ before(async () => {
   if (!(add.status >= 200 && add.status < 300)) {
     assert.fail(`add-to-cart failed (${add.status}): ${await add.text().catch(() => "")}`);
   }
-  // R148 (ledger `2026-09-27-trip-pass-waiver-per-line`): the waiver is decided PER LINE from the
-  // line's OWN `cart_items.trip_id`, owner-verified — the `?tripId=` query no longer grants it. So
-  // the carted line sits on the buyer's own soon-to-be-passed plan, the shape a plan's cart has.
-  await db.execute(sql`UPDATE cart_items SET trip_id = ${tripPassId} WHERE user_id = ${buyerId} AND service_id = ${serviceId}`);
 });
 
 after(async () => {
@@ -168,14 +161,6 @@ test("C: a tripId WITH an active pass REDUCES the total by the waived fee — th
   assert.equal(created, true, "grantTripPass must create an active pass");
 
   const covered = await feePreview(`?tripId=${tripPassId}`);
-  // R148: the query string is not the waiver source — the line's own plan is. The same cart read
-  // with NO tripId reports the same waiver, because the charge will waive it the same way.
-  const coveredNoQuery = await feePreview();
-  assert.deepEqual(
-    coveredNoQuery.tripPassFeeWaiver,
-    covered.tripPassFeeWaiver,
-    "the waiver follows the line's own plan, not the ?tripId= query (R148)",
-  );
   const w = covered.tripPassFeeWaiver;
   assert.ok(w, "an active pass must surface a tripPassFeeWaiver");
   assert.equal(w.waived, true, "waived flag");

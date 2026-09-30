@@ -10,12 +10,6 @@ interface SEOHeadProps {
   author?: string;
   publishedTime?: string;
   modifiedTime?: string;
-  /**
-   * Ask crawlers not to index this page (`<meta name="robots" content="noindex, follow">`).
-   * For honest empty states only. The tag is removed on unmount, because the SPA keeps one
-   * <head> across navigations and a leftover noindex would silently deindex the next page.
-   */
-  noindex?: boolean;
 }
 
 const DEFAULT_TITLE = "Traveloure - Your AI-Powered Travel Planning Platform";
@@ -34,7 +28,6 @@ export function SEOHead({
   author,
   publishedTime,
   modifiedTime,
-  noindex = false,
 }: SEOHeadProps) {
   const fullTitle = title ? `${title} | ${SITE_NAME}` : DEFAULT_TITLE;
   const fullUrl = url ? `https://traveloure.com${url}` : "https://traveloure.com";
@@ -101,23 +94,6 @@ export function SEOHead({
     }
     canonical.href = fullUrl;
   }, [fullTitle, description, allKeywords, imageUrl, fullUrl, type, author, publishedTime, modifiedTime]);
-
-  useEffect(() => {
-    if (!noindex) return;
-    let robots = document.querySelector('meta[name="robots"]');
-    const created = !robots;
-    const previous = robots?.getAttribute("content") ?? null;
-    if (!robots) {
-      robots = document.createElement("meta");
-      robots.setAttribute("name", "robots");
-      document.head.appendChild(robots);
-    }
-    robots.setAttribute("content", "noindex, follow");
-    return () => {
-      if (created) robots?.remove();
-      else if (previous !== null) robots?.setAttribute("content", previous);
-    };
-  }, [noindex]);
 
   return null;
 }

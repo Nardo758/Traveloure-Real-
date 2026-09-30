@@ -46,10 +46,6 @@
  *   G10 STATIC PIN over the file SET (comments stripped): the cart→item materializer is DEFINED
  *       once — in the projection module — and has exactly ONE caller. Its negative space is stated
  *       in the proof itself.
- *   G17 A PARTNER PICK'S OWN COORDINATE PAIR (ledger `2026-09-26-partner-picks-map-coords`) is
- *       admitted by `POST /api/cart` only as a valid pair (a half pair drops both), carried onto
- *       the plan item by the ONE value builder, and kept on the row by the round trip; an
- *       unlocated line yields an unlocated item (§13).
  *
  * D-41 — ruling 2026-09-15, ledger `2026-09-15-d41-item-quantity`, migration 298. The LAST of
  * G7's original four refusals to fall, and for the same reason as D-16 (b)/(c): the plan had no
@@ -136,18 +132,13 @@ function api(path: string, cookie: string | undefined, method = "GET", body?: un
   });
 }
 
-// Locked Decision 56 (ledger `2026-09-25-price-basis`): the fixtures are PER-PERSON place services,
-// which is the seat shape this file was written against — G7's multi-unit round trip needs a
-// listing whose unit count is a real answer. A never-stated basis now reads per booking (one unit).
 async function makeService(id: string, price: string | null, name: string): Promise<void> {
   await db.execute(sql`
     INSERT INTO provider_services (id, user_id, service_name, short_description, description, price,
-                                   status, approval_status, delivery_method, location, price_basis, booking_mode)
+                                   status, approval_status, delivery_method, location)
     VALUES (${id}, ${ids.provider}, ${name}, 'fixture blurb', 'fixture', ${price},
-            'active', 'approved', 'in_person', 'Kyoto', 'per_person', 'instant')
+            'active', 'approved', 'in_person', 'Kyoto')
   `);
-  // ^ `instant` declared (ledger `2026-09-25-checkout-request-mode`): an unset mode on a form-less
-  //   owner resolves `request`, and the LD 39 projection never holds a request-mode line.
 }
 
 /** Reset the traveler's whole cart + every plan this suite minted, so each proof starts clean. */
@@ -945,59 +936,4 @@ test("G16: static pin — ONE cart→item value builder, and the convert route c
   // longer writes items inline. It does NOT prove that no other rail inserts an item — the AI,
   // expert and ready-made rails all legitimately do, and a grep over `insert(itineraryItems)`
   // would flag every one of them and prove nothing.
-});
-
-// ── G17 ───────────────────────────────────────────────────────────────────────────────────────
-// Ledger `2026-09-26-partner-picks-map-coords`. A partner pick's OWN coordinate pair rides its
-// content line as display-only strings (`@shared/cart-content-line`), is admitted ONLY as a valid
-// pair by `POST /api/cart`, and is carried onto the plan item by the ONE value builder. A half pair
-// is dropped whole, and an unlocated line yields an unlocated item — never a guessed pin (§13).
-test("G17: a content line's own coordinate pair is admitted as a pair and carried onto the item", async () => {
-  await resetTravelerState();
-
-  // THE ADMISSION (the real route): a valid pair is kept, normalized; a half pair drops both.
-  const located = await api("/api/cart", travelerCookie, "POST", {
-    contentType: "hotel",
-    contentId: `hotel-${RUN}-located`,
-    contentMeta: { name: `Located Inn ${RUN}`, city: "Kyoto", lat: 35.01160, lng: "135.7681", price: "99" },
-    quantity: 1,
-  });
-  assert.equal(located.status, 201);
-  const half = await api("/api/cart", travelerCookie, "POST", {
-    contentType: "activity",
-    contentId: `activity-${RUN}-half`,
-    contentMeta: { name: `Half Tour ${RUN}`, city: "Kyoto", lat: 35.01 },
-    quantity: 1,
-  });
-  assert.equal(half.status, 201);
-  const rows = await cartRows();
-  const byId = new Map(rows.map((r) => [r.content_id, (r.content_meta ?? {}) as Record<string, unknown>]));
-  assert.deepEqual(byId.get(`hotel-${RUN}-located`), {
-    name: `Located Inn ${RUN}`,
-    city: "Kyoto",
-    lat: "35.0116",
-    lng: "135.7681",
-  }, "a valid pair is kept as normalized strings, and no price is admitted (§14)");
-  assert.deepEqual(byId.get(`activity-${RUN}-half`), { name: `Half Tour ${RUN}`, city: "Kyoto" },
-    "a HALF pair drops BOTH halves (LD 34's half-coordinate refusal posture)");
-
-  // THE COPY-DOWN: the located line becomes a located item; the unlocated one stays unlocated.
-  const resolved = await resolveTrip({ destination: "Kyoto" });
-  assert.equal(resolved.planItems?.created, 2);
-  const items = await itemsOn(resolved.tripId!);
-  const hotel = items.find((i) => i.content_id === `hotel-${RUN}-located`);
-  const tour = items.find((i) => i.content_id === `activity-${RUN}-half`);
-  assert.ok(hotel && tour);
-  assert.equal(Number(hotel.latitude), 35.0116);
-  assert.equal(Number(hotel.longitude), 135.7681);
-  assert.equal(tour.latitude, null, "§13: no pair ⇒ no pin — never a city centre");
-  assert.equal(tour.longitude, null);
-
-  // THE ROUND TRIP keeps the pair on the row it came from.
-  const sync = await cartProjection.syncItemProjection(hotel.id);
-  assert.equal(sync.action, "upserted");
-  const after = (await cartRows()).find((r) => r.content_id === `hotel-${RUN}-located`);
-  const meta = (after?.content_meta ?? {}) as Record<string, unknown>;
-  assert.equal(meta.lat, "35.0116");
-  assert.equal(meta.lng, "135.7681");
 });

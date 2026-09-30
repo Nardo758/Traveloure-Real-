@@ -539,15 +539,9 @@ test("S6 — webhook redelivery: `charge.refunded` promotes a claimed-unpromoted
       object: {
         id: `ch_${RUN}`,
         payment_intent: b.stripe_payment_intent_id,
-        // R163 amendment: the webhook refuses a charge whose cents it cannot trust, so the fixture is
-        // a real charge shape — its amount, its complete refund list (has_more:false), each refund's cents.
-        amount: 12000,
         amount_refunded: 2300,
         currency: "usd",
-        refunds: {
-          has_more: false,
-          data: [{ id: refundId, amount: 2300, status: "succeeded", metadata: { source: BUNDLE_SETTLEMENT_REFUND_SOURCE, bookingId: id } }],
-        },
+        refunds: { data: [{ id: refundId, metadata: { source: BUNDLE_SETTLEMENT_REFUND_SOURCE, bookingId: id } }] },
       },
     },
   } as any;
@@ -577,7 +571,7 @@ test("S6 — webhook redelivery: `charge.refunded` promotes a claimed-unpromoted
   const other = await bornBundleBooking();
   await stripePaymentService.handleWebhook({
     type: "charge.refunded",
-    data: { object: { id: `ch_${RUN}_2`, payment_intent: "pi_x", amount: 100, amount_refunded: 1, currency: "usd", refunds: { has_more: false, data: [{ id: "re_x", amount: 1, status: "succeeded", metadata: { source: "service_booking", bookingId: other } }] } } },
+    data: { object: { id: `ch_${RUN}_2`, payment_intent: "pi_x", amount_refunded: 1, currency: "usd", refunds: { data: [{ id: "re_x", metadata: { source: "service_booking", bookingId: other } }] } } },
   } as any);
   assert.equal((await settlementRows(other)).length, 0);
 });

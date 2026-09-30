@@ -117,21 +117,6 @@ export const SERVER_AUTHORED_BOOKING_DETAIL_KEYS = [
   // stamp, written only by the start rail's atomic conditional. A body that could plant it would
   // start (or pre-end) a paid session nobody pressed Start on.
   "qaSession",
-  // #1288 / R163: the stamp of a refund we did not issue. Readers: the completion writer and the
-  // mint (both refuse a stamped row) and R163's "Refunded" label. A body that could plant it would
-  // block its own seller's payout and make its booking read refunded.
-  "outOfBandRefund",
-  // R162 (ledger `2026-09-27-failed-is-final`): the late-success refund claim. A planted `refundId`
-  // would make the webhook answer "already refunded" and skip a real refund.
-  "lateSuccessRefund",
-  // R163 amendment (merged design): the app refund's NON-FINAL claim — planting it would block every
-  // real refund of the booking — and the record written beside `status='refunded'` that the
-  // "Refunded (50%)" label and the amount line read.
-  "serviceBookingRefundAttempt",
-  "serviceBookingRefund",
-  // R164 (G2): the expired-claim notice claim. A body that could plant it would suppress the one
-  // email telling the traveler their unpaid booking was released.
-  "expiredClaimNotice",
 ] as const;
 
 export type ServerAuthoredBookingDetailKey = (typeof SERVER_AUTHORED_BOOKING_DETAIL_KEYS)[number];

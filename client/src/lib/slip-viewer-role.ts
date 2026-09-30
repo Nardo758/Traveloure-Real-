@@ -8,30 +8,15 @@
  * money between people or hiring (LD 42 D19: a helper never pays). It is never shown as
  * "your expert". Like D16 this is a RENDER rule and grants nothing: every server rail keeps its
  * own gate.
- *
- * A fifth value, `payer` (Locked Decision 42 D9, ledger `2026-09-27-payer-reads-plancard`), is a
- * `payer`-role `trip_participants` row: half of the bookings section's audience, so it READS the
- * plan the balance belongs to. It is READ-ONLY here — no item tools, no owner controls — because
- * the server admits it to the plancard read and to nothing else.
  */
-export type SlipViewer = "owner" | "expert" | "delegate" | "payer" | "other";
+export type SlipViewer = "owner" | "expert" | "delegate" | "other";
 
 export function slipViewer(tripRole: string | null | undefined): SlipViewer {
-  if (
-    tripRole === "owner" ||
-    tripRole === "expert" ||
-    tripRole === "delegate" ||
-    tripRole === "payer"
-  ) {
-    return tripRole;
-  }
+  if (tripRole === "owner" || tripRole === "expert" || tripRole === "delegate") return tripRole;
   return "other";
 }
 
-/**
- * Item add / edit / reorder / remove on the slip (D16's owner tools, shared with the delegate).
- * A `payer` never gets them: reading the plan to pay its balance is not a grant to change it.
- */
+/** Item add / edit / reorder / remove on the slip (D16's owner tools, shared with the delegate). */
 export function canEditPlanItems(viewer: SlipViewer): boolean {
   return viewer === "owner" || viewer === "delegate";
 }

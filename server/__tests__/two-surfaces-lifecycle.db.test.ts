@@ -108,7 +108,7 @@ test("S1 Make final → both read surfaces agree: finalVersion=1 and the frozen 
   assert.equal(await finalVersionFromList(), 1, "My Plans list reports finalVersion=1");
 
   // Read surface 2 — the Trip Card render (assembleTripPlan on a finalized trip renders the snapshot).
-  const plan: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId, render: "final" /* the Trip Card asks explicitly; live is the default */ });
+  const plan: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId });
   assert.ok(snapshotTitles(plan).has(ORIGINAL), "the frozen v1 snapshot renders the original stop");
 });
 
@@ -122,7 +122,7 @@ test("S2 a NEW service bought mid-trip forks v2 and shows in BOTH the snapshot A
   // The seam: the version bump is visible on BOTH surfaces from the SAME purchase.
   assert.equal(await finalVersionFromList(), 2, "My Plans list advances to finalVersion=2");
 
-  const plan: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId, render: "final" /* the Trip Card asks explicitly; live is the default */ });
+  const plan: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId });
   const titles = snapshotTitles(plan);
   assert.ok(titles.has(BOUGHT), "the v2 snapshot the Trip Card renders includes the bought item");
   assert.ok(titles.has(ORIGINAL), "the original stop is still in the v2 snapshot");
@@ -143,6 +143,6 @@ test("S3 a booking-status change on an existing item forks NO version — status
   assert.equal(finalsCount[0].n, 2, "still exactly two final versions (v1, v2 — no v3)");
 
   // The live status overlays onto the frozen snapshot item (render still shows the original stop).
-  const plan: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId, render: "final" /* the Trip Card asks explicitly; live is the default */ });
+  const plan: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId });
   assert.ok(snapshotTitles(plan).has(ORIGINAL), "the frozen snapshot item still renders (with live status overlaid)");
 });

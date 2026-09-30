@@ -97,7 +97,7 @@ import { getExtractedPlacesCounts, isConcludedEmptyMarker } from "../services/dm
 import { getLatestDmoExtractionRun } from "../services/dmo-extraction-runs.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoExtractedPlaces } from "@shared/schema";
 import { messageReports, userBlocks } from "@shared/schema";
-import { countItemKindsForTrip } from "../services/item-kind-counts.service";
+import { itemKind } from "@shared/item-kind";
 import { emailOutbox } from "@shared/schema";
 import { drainOutbox } from "../services/email-outbox.service";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
@@ -670,101 +670,6 @@ router.post("/api/admin/bookings/:bookingId/out-of-band-refund/clear", isAuthent
 });
 
 /**
- * LANE 4 — THE ADMIN EXCEPTION REFUND (decision-maker ruled Sep 27, 2026; ledger
- * `2026-09-27-admin-exception-refund`). A refund outside the cancellation policy, full or a partial
- * amount the admin names, with a required reason. It runs the ONE app refund path
- * (`admin-exception-refund.service.ts` → `refundServiceBookingWithLedger`), at most once per booking,
- * and refuses payment_pending, failed and disputed (and anything already refunded or never paid) by
- * name before anything moves. Under §2's blanket `/api/admin` guard as well as the in-handler check.
- *
- * §14: the admin's amount is a DECISION, not a price — bounded server-side by what the traveler was
- * charged (both shares server-derived), refused (never clamped) above it, and never the source of the
- * booking's own price or rate. The body is a `.strict()` allowlist (§19).
- */
-router.get("/api/admin/bookings/:bookingId/exception-refund", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser(getUserId(req)!);
-  if (!user || user.role !== "admin") {
-    return res.status(403).json({ message: "Admin access required" });
-  }
-  try {
-    const { quoteExceptionRefund } = await import("../services/admin-exception-refund.service");
-    const quote = await quoteExceptionRefund(req.params.bookingId);
-    if (quote.refusal === "not_found") return res.status(404).json({ message: quote.refusalMessage });
-    res.json(quote);
-  } catch (err: any) {
-    console.error("Admin exception refund quote error:", err);
-    res.status(500).json({ message: "Failed to load the booking's refund details" });
-  }
-});
-
-const exceptionRefundBody = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("full"), reason: z.string().trim().min(10).max(2000) }).strict(),
-  z
-    .object({
-      mode: z.literal("partial"),
-      amountCents: z.number().int().positive(), // money-derive-ok: an admin's refund decision, capped server-side at the charge
-      reason: z.string().trim().min(10).max(2000),
-    })
-    .strict(),
-]);
-router.post("/api/admin/bookings/:bookingId/exception-refund", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser(getUserId(req)!);
-  if (!user || user.role !== "admin") {
-    return res.status(403).json({ message: "Admin access required" });
-  }
-  const parsed = exceptionRefundBody.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    return res.status(400).json({
-      message: "Choose full or partial (partial needs an amount in cents), and say why (reason, at least 10 characters).",
-      issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
-    });
-  }
-  const { bookingId } = req.params;
-  try {
-    const { issueExceptionRefund } = await import("../services/admin-exception-refund.service");
-    const request = parsed.data.mode === "full" ? { mode: "full" as const } : { mode: "partial" as const, amountCents: parsed.data.amountCents };
-    const outcome = await issueExceptionRefund({ bookingId, adminId: user.id, reason: parsed.data.reason, request });
-    if (!outcome.ok) {
-      if (outcome.refusal === "not_found") return res.status(404).json({ message: outcome.message });
-      const status = outcome.refusal === "invalid_amount" ? 400 : 409;
-      return res.status(status).json({ refused: outcome.refusal, message: outcome.message, ...(outcome.body ? { detail: outcome.body } : {}) });
-    }
-    const auditWarning = outcome.alreadyRefunded
-      ? undefined
-      : await recordAdminAudit({
-          actorId: user.id,
-          actorRole: user.role,
-          action: "exception_refund_issued",
-          resourceType: "service_booking",
-          resourceId: bookingId,
-          metadata: {
-            reason: parsed.data.reason,
-            mode: parsed.data.mode,
-            refundId: outcome.refundId,
-            refundedCents: outcome.refundedCents,
-            bookingRefundCents: outcome.bookingRefundCents,
-            feeRefundCents: outcome.feeRefundCents,
-            reversedEarnings: outcome.reversedEarnings,
-            skippedPaidOut: outcome.skippedPaidOut,
-          },
-          ipAddress: req.ip ?? null,
-          userAgent: req.get("user-agent") ?? null,
-        });
-    res.json({ ...outcome, ...(auditWarning ? { auditWarning } : {}) });
-  } catch (err: any) {
-    if (err?.name === "ServiceBookingRefundRefusedError") {
-      return res.status(409).json({ refused: err.bookingStatus, message: err.message });
-    }
-    if (err?.name === "LostChargebackRefundBlockedError") {
-      const { lostChargebackRefusalBody } = await import("../services/lost-chargeback-guard.service");
-      return res.status(409).json({ refused: "lost_chargeback", ...lostChargebackRefusalBody(err.result) });
-    }
-    console.error("Admin exception refund error:", err);
-    res.status(500).json({ message: "The refund failed. Nothing was recorded as refunded; it can be retried." });
-  }
-});
-
-/**
  * PR #1066 (decision-maker, Sep 24, 2026): the LEDGER-ONLY way to close a lost chargeback. The bank
  * already returned the money, so this sends nothing: it reverses the platform revenue in the share the
  * bank took back, reverses the seller's in-escrow earnings when that share is the whole payment, and
@@ -1279,11 +1184,19 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
     // Counted here rather than at read time because `insideCounts` is the approval-time SNAPSHOT
     // of the build — the same reason `byType` is computed here (§13: it describes the plan as
     // approved, not as it drifts afterwards).
-    // R151 (ledger `2026-09-27-admin-kind-reflects-refunds`): each item is read WITH its booking's
-    // status, and a CLOSED booking (`CLOSED_BOOKING_STATUSES` — cancelled/refunded) is not a booking
-    // the item holds, so it is never counted `included`. The refund path keeps `booking_id` on the
-    // row as history, which is why the raw column alone over-counted.
-    const byKind = await countItemKindsForTrip(listing.sourceTripId);
+    const kindRows = await db
+      .select({
+        bookingId: itineraryItems.bookingId,
+        providerServiceId: itineraryItems.providerServiceId,
+        affiliateProductId: itineraryItems.affiliateProductId,
+      })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, listing.sourceTripId));
+    const byKind: Record<string, number> = {};
+    for (const row of kindRows) {
+      const kind = itemKind(row);
+      byKind[kind] = (byKind[kind] ?? 0) + 1;
+    }
     const insideCounts = {
       days: dayRows.length,
       items: typeRows.reduce((sum, r) => sum + r.count, 0),
@@ -1738,9 +1651,6 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // the full-refund default).
     const refund = await stripePaymentService.refundServiceBooking(bookingId, reason || "dispute_upheld", {
       feeRefundPercent: 100, // fee-literal-ok: 100 = full make-whole refund %, not a fee_bands rate
-      // R163 amendment: this route IS the dispute path, the one caller that may refund a
-      // `disputed` booking (it refused above while a chargeback is still open).
-      allowDisputed: true,
     });
 
     // 4: Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its
@@ -1783,9 +1693,6 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     if (err?.name === "LostChargebackRefundBlockedError") {
       const { lostChargebackRefusalBody } = await import("../services/lost-chargeback-guard.service");
       return res.status(409).json(lostChargebackRefusalBody(err.result));
-    }
-    if (err?.name === "ServiceBookingRefundRefusedError") {
-      return res.status(409).json({ error: "refund_refused_status", status: err.bookingStatus, message: err.message });
     }
     res.status(500).json({ message: `Failed to uphold dispute: ${err.message}` });
   }

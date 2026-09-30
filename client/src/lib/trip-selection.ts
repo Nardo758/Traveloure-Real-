@@ -58,7 +58,6 @@ export function syncActiveTripToContext(trip: TripIdentitySource): TripContext {
     adults: trip.adults,
     kids: trip.kids,
     experienceSlug: trip.experienceSlug,
-    eventType: trip.eventType,
   });
 }
 

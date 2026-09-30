@@ -8,8 +8,8 @@ import { users } from "@shared/models/auth";
 import { localExpertForms, serviceProviderForms, expertRequests, trips } from "@shared/schema";
 import { sanitizeText } from "../../utils/text-sanitizer";
 
-// The recorded version is the one the Terms page displays — one constant both read.
-import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
+const CURRENT_TERMS_VERSION = "1.0";
+const CURRENT_PRIVACY_VERSION = "1.0";
 
 // Sanitize user object to remove sensitive fields before sending to client
 function sanitizeUser(user: any) {

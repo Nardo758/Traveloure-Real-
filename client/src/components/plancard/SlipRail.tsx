@@ -104,7 +104,6 @@ import {
 // S6/S7 — the Plan card's "Stops & timezone" row composes the header's OWN two lines; it derives
 // neither (§18 rule 1). Both arrive as props from `SlipView`, which resolves them once.
 import { slipPlanMetaLine } from "@/lib/slip-meta";
-import { travelerFeePreviewDisplay, type TravelerFeePreviewBlock } from "@/lib/traveler-fee-preview";
 // The row is a DOOR of the ONE planning modal (Locked Decision 33's opener), whose step 2 IS the
 // ordered stop-list editor (Locked Decision 34's one client writer) — never a second stop editor.
 import { usePlanning } from "@/contexts/PlanningContext";
@@ -1137,18 +1136,6 @@ function FinishCard({
   const reopenMutation = useReopenMutation(trip.id);
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   const checkoutReady = countCheckoutReadyItems(activities);
-  // R144 (ledger `2026-09-27-service-fee-before-checkout`): the traveler service fee for THIS plan's
-  // staged lines, shown where the slip's checkout path starts. The amount is the server's
-  // (`GET /api/cart` → `travelerFeePreview.byTrip[tripId]`, the charge's own resolver); the ONE
-  // wording rule decides whether a line is drawn. Owner only — the cart is the session user's own.
-  // This line moves into the slip's bookings section when that section lands (map step 4).
-  // `staleTime: 0`: staging a row re-projects the cart server-side without touching this cache.
-  const cartForFee = useQuery<{ travelerFeePreview?: TravelerFeePreviewBlock }>({
-    queryKey: ["/api/cart"],
-    enabled: isOwner && !isPrimary && checkoutReady > 0,
-    staleTime: 0,
-  });
-  const slipFeeDisplay = travelerFeePreviewDisplay(cartForFee.data?.travelerFeePreview?.byTrip?.[trip.id]);
 
   const forcedByDateAlone = tripCardForcedPrimaryByDateAlone({
     startDate: trip.startDate,
@@ -1240,17 +1227,6 @@ function FinishCard({
           href="/cart"
           testId="slip-action-go-to-checkout"
         />
-      )}
-      {checkoutReady > 0 && slipFeeDisplay && (
-        <RailNote testId="slip-traveler-fee-preview">
-          {slipFeeDisplay.label}:{" "}
-          {slipFeeDisplay.kind === "charged" ? (
-            <span className="font-medium text-foreground">${slipFeeDisplay.amount.toFixed(2)}</span>
-          ) : (
-            <span className="line-through">${slipFeeDisplay.wouldHaveBeen.toFixed(2)}</span>
-          )}{" "}
-          {slipFeeDisplay.note}
-        </RailNote>
       )}
       {chooser}
     </RailCard>

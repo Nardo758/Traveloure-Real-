@@ -579,8 +579,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // drawn as a sign-in CTA (§13 — an unresolved answer is not a negative answer).
   const { user, isLoading: isAuthLoading, logout } = useAuth();
   const { openSignInModal } = useSignInModal();
-  // The footer's "Start a plan" opens the SAME planning modal the landing hero opens.
-  const { open: openPlanning } = usePlanning();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // QA F6 — see DesktopDropdown: the navbar, not each trigger, knows which menu is open.
@@ -1028,7 +1026,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           white is reserved for cards, the page sits on ground, a hairline separates. */}
       <footer className="border-t border-[color:var(--earn-border)] py-16" style={{ background: "var(--earn-card)" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-8 lg:gap-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
             {/* Brand Column */}
             <div className="lg:col-span-2">
               <div className="flex items-center mb-4" aria-hidden="true">
@@ -1082,31 +1080,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   {tr(section.i18nKey, section.title)}
                 </h3>
                 <ul className="space-y-3 text-sm text-[color:var(--earn-muted)]">
-                  {section.links.map((link) =>
-                    link.href ? (
-                      <li key={link.href}>
-                        <Link
-                          href={link.href}
-                          className={cn("transition-colors hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2", FOCUS_RING)}
-                          data-testid={`link-footer-${link.href.replace(/^\//, '').replace(/[/?=]/g, '-')}`}
-                        >
-                          {tr(link.i18nKey, link.label)}
-                        </Link>
-                      </li>
-                    ) : (
-                      <li key={`action-${link.action}`}>
-                        {/* No source ⇒ the modal opens on step 1 (Occasion), exactly as the hero does. */}
-                        <button
-                          type="button"
-                          onClick={() => openPlanning()}
-                          className={cn("text-left transition-colors hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2", FOCUS_RING)}
-                          data-testid="button-footer-start-plan"
-                        >
-                          {tr(link.i18nKey, link.label)}
-                        </button>
-                      </li>
-                    ),
-                  )}
+                  {section.links.map((link) => (
+                    <li key={link.href}>
+                      <Link
+                        href={link.href}
+                        className={cn("transition-colors hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2", FOCUS_RING)}
+                        data-testid={`link-footer-${link.href.replace(/^\//, '').replace(/\//g, '-')}`}
+                      >
+                        {tr(link.i18nKey, link.label)}
+                      </Link>
+                    </li>
+                  ))}
                 </ul>
               </div>
             ))}

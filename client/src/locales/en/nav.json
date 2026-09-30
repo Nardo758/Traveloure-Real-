@@ -78,40 +78,33 @@
     "todaysDeals": "Today's Deals"
   },
   "footer": {
-    "tagline": "Any experience, anywhere, planned with someone who lives there.",
+    "tagline": "Experience personalized travel planning with insider knowledge from local experts and trip planners, powered by advanced AI technology.",
     "rights": "© {{year}} Traveloure. All rights reserved.",
     "sections": {
-      "plan": "Plan",
-      "locals": "Locals",
+      "product": "Product",
       "company": "Company",
       "support": "Support"
     },
     "links": {
-      "startAPlan": "Start a plan",
-      "occasions": "Occasions",
-      "destinations": "Destinations",
-      "howItWorks": "How it works",
+      "planAnExperience": "Plan an Experience",
+      "marketplace": "Marketplace",
+      "talkToExperts": "Talk to Experts",
+      "howItWorks": "How It Works",
       "pricing": "Pricing",
-      "meetTheLocals": "Meet the locals",
-      "localBusinesses": "Local businesses",
-      "becomeALocalExpert": "Become a local expert",
-      "tripPlanners": "Trip planners",
-      "eventPlanners": "Event planners",
-      "serviceProviders": "Service providers",
-      "about": "About",
-      "press": "Press",
+      "features": "Features",
+      "globalCalendar": "Events",
+      "executiveAssistant": "Executive Assistant",
+      "aboutUs": "About Us",
+      "waysToEarn": "Ways to Earn",
       "careers": "Careers",
-      "helpCenter": "Help center",
-      "faq": "FAQ",
-      "contact": "Contact",
-      "visaHelp": "Visa help",
-      "privacy": "Privacy",
-      "terms": "Terms"
+      "blog": "Blog",
+      "press": "Press",
+      "helpCenter": "Help Center",
+      "contactUs": "Contact Us",
+      "visaHelp": "Visa Help",
+      "privacyPolicy": "Privacy Policy",
+      "termsOfService": "Terms of Service",
+      "faq": "FAQ"
     }
-  },
-  "closing": {
-    "startMyPlan": "Start my plan",
-    "meetTheLocals": "Meet the locals",
-    "seePricing": "See pricing"
   }
 }

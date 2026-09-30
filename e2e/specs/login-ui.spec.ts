@@ -23,9 +23,8 @@ test.use({ storageState: { cookies: [], origins: [] } });
 async function openSignInModal(page: import('@playwright/test').Page) {
   await page.waitForSelector('[data-testid="link-logo"]', { timeout: 120_000 });
 
-  // `isVisible()` does not wait: wait briefly for the desktop trigger before choosing the mobile path.
   const desktopTrigger = page.getByTestId('button-sign-in');
-  if (await desktopTrigger.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false)) {
+  if (await desktopTrigger.isVisible().catch(() => false)) {
     await desktopTrigger.click();
     return;
   }

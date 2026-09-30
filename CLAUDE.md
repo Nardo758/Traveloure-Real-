@@ -1905,17 +1905,6 @@ This document captures architectural decisions to maintain consistency across co
     price-required publish gate (`server/routes.ts`, both create/update rails) refused every
     `custom_quote` listing unconditionally; `listingPriceGate` exempts it (price authority is the
     quote, never the listing), and `ServiceForm.tsx` can now select the priceType at all.
-    **A LISTING THE SELLER MUST ACCEPT IS NEVER A LIST-PRICE CART LINE (decision-maker approved Sep 25,
-    2026 — ledger `2026-09-25-checkout-request-mode`; no schema).** A `custom_quote` listing, or one whose
-    mode `resolveBookingMode` resolves to `request` (or `hidden`), is refused at both cart add rails
-    (400), projected into nothing by the LD 39 projection, named and quoted at nothing by the two cart
-    reads, and refused by `POST /api/checkout` (409 `listing_requires_request`) BEFORE any claim, slot or
-    Stripe call (§15b). ONE predicate, `listingRequiresRequest` (`server/services/buy-action-payload.ts`),
-    which calls `resolveBookingMode` and restates nothing (§18 rule 1). Its accepted path is the quote
-    rail above — never a cart line — and adding the listing to the PLAN is unchanged. Consequence, said
-    out loud (§13): an unset mode on an owner with no instant flag — every expert listing, and all of
-    production's catalog as measured by `2026-09-11-oc-a1-ratified` — is bought through the quote rail
-    until the seller declares instant.
 
 50. **A PARTIALLY FULFILLED BUNDLE SETTLES ONCE BY ITS PURCHASE-TIME COMPONENT ALLOCATION (decision-maker
     ruling, Sep 16, 2026 — ledger `2026-09-16-bundle-partial-settlement`; build lane dispatched the same
@@ -2020,11 +2009,8 @@ This document captures architectural decisions to maintain consistency across co
     caller passes. **§13, and it is the load-bearing half: A CANCELLED PARENT MINTS NOTHING** — the
     retained remainder of a late strict traveler-cancel is recorded on the immutable settlement row
     and is deliberately NOT minted, because minting on a cancelled parent is a new money event
-    nobody has ratified. **Left, named, not built:** no notification for the parent cancel.
-    **The plan item IS reverted (ledger `2026-09-27-bundle-all-undelivered-reverts-item`, R152):**
-    `settleBundleAllUndelivered` calls the ONE `revertPurchasedItemsForBooking` after the parent
-    flip and on its recovery arm, idempotent by the revert's own atomic conditional, never failing
-    the cancel (§15b); `booking_id` stays on the item as history.
+    nobody has ratified. **Left, named, not built:** no notification for the parent cancel, and
+    `revertPurchasedItemsForBooking` is not called on this path.
 
 51. **THE BOOKING CONCIERGE FEE IS CAPPED, AND ITS EXPERT SHARE IS SPLIT AT COMPLETION — ALL
     PLATFORM-SET, NEVER EXPERT-SETTABLE (decision-maker ratified Sep 18, 2026 — ledger
@@ -2189,31 +2175,6 @@ This document captures architectural decisions to maintain consistency across co
     slip and the share (§18 rule 1). **No CSV export** (ruled out). Save controls now also sit on
     Discover's stay/activity detail sheets and on partner search results (source-prefixed ids;
     transfers and safety notices are not places and offer no Save).
-
-56. **A LISTING SAYS WHETHER ITS PRICE IS PER PERSON OR PER BOOKING, AND AN IN-PERSON LISTING DEFAULTS
-    TO PER BOOKING (decision-maker, Sep 25, 2026: "go with all your recommendations" — ledger
-    `2026-09-25-price-basis`; migration 325).** D-14's seat rule gave EVERY `in_person`/`hybrid`
-    listing `unitsFollowParty`, so a fixed-price photographer, florist, venue or chef booked for a party
-    of four was charged `rate × 4`. **`provider_services.price_basis`** (`per_person` | `per_booking`) is
-    additive NULLABLE, **NO DEFAULT, NO DB CHECK, NO BACKFILL**, declared in `shared/schema.ts`; the value
-    set lives ONCE in `shared/price-basis.ts`, whose ONE reading `effectivePriceBasis` answers: an
-    explicit basis; else `price_type = 'per_person'` reads per person (the listing already said so);
-    else **NULL = PER BOOKING** (§13). **The rule:** `archetypeAsks` returns `seats` only for a
-    per-person place service and a new `booking` rule otherwise — ONE unit, the party still asked and
-    recorded (ruling 83), never a multiplier, a multi-unit body refused never clamped. Stays, bundles,
-    per-day (54 c) and artifacts are decided first and are unchanged. **ONE COUNT (§18 rule 1):**
-    `cartLineUnitCount` is what `resolveItemUnitCount` returns, so the charge, the fee preview, the
-    booking row's `quantity`, the V-26 slot claim, the cart's order review and the cart→item copy-down
-    read the same number; a line admitted under the old rule (quantity = party) on a per-booking listing
-    is charged ONE unit and no row is rewritten. **A per-booking line claims ONE unit of its slot** — its
-    capacity counts bookings, and the claim still equals the charge multiplier (§15). **Writes (§19):**
-    `insertProviderServiceSchema` omits the column; the `.strict()` pick
-    `providerServicePriceBasisSchema`, read by ONE `admitPriceBasis` on both `/api/provider/services`
-    rails, is the only admission (invalid ⇒ 400, absent ⇒ untouched, `null` ⇒ never stated), and storage
-    refuses a value outside the set. A pricing setting ⇒ a SAFE edit under 23. Traveler surfaces say
-    "per person" only for a per-person price. **Out of scope, named:** `price_type = 'hourly'` has no
-    hours input, so an hourly place listing bills one unit per booking (per person if it says so) — never
-    hours × rate; a real hourly model is its own decision.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

@@ -93,8 +93,6 @@ describe("Footer link route coverage", () => {
 
     for (const section of footerSectionsConfig) {
       for (const link of section.links) {
-        // An action entry (the planning modal) has no URL and so no route to cover.
-        if (!link.href) continue;
         const path = bareHref(link.href);
         if (!isMatchedByRoute(path, routePaths)) {
           missing.push(

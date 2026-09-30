@@ -596,45 +596,6 @@ test("N20h: a refund the `refunds` table already records is NOT drift", async ()
   );
 });
 
-test("N20h2: a DASHBOARD refund whose audit row the webhook wrote (no booking) is STILL refund_not_reversed — R163 amendment pin", async () => {
-  // The `charge.refunded` webhook now writes ONE audit row per Stripe refund id for EVERY refund on
-  // the charge — including one the platform did not issue — through the shared writer, and it never
-  // names a booking. If "known" meant "a row with this refund id exists", that row would silence this
-  // exception for exactly the refunds the job exists to catch. "Known" means an APP PATH recorded the
-  // refund against a booking (`booking_id IS NOT NULL`, the N20h case above). A tidy-up that drops
-  // the booking condition fails here.
-  const piId = `pi_${RUN}_n20h2`;
-  const bookingId = await makeBooking({ paymentIntentId: piId, status: "confirmed" });
-  const refundId = `re_${RUN}_n20h2`;
-  createdRefundIds.push(refundId);
-  const { recordRefundAuditRow } = await import("../services/stripe-payment.service");
-  await recordRefundAuditRow({
-    refundId,
-    chargeId: `ch_${piId}`,
-    paymentIntentId: piId,
-    amountDollars: 125,
-    currency: "usd",
-    status: "succeeded",
-  });
-  const audit = await db.execute(sql`SELECT booking_id FROM refunds WHERE stripe_refund_id = ${refundId}`);
-  assert.equal(audit.rows.length, 1, "fixture: the webhook's audit row exists");
-  assert.equal((audit.rows[0] as any).booking_id, null, "fixture: the webhook names no booking");
-  const intent = pi({ id: piId, bookingIds: [bookingId] });
-
-  const result = await scan(
-    {
-      paymentIntents: [intent],
-      refunds: [{ id: refundId, payment_intent: piId, charge: `ch_${piId}`, amount: 12500, currency: "usd" }],
-    },
-    [bookingId],
-  );
-
-  const rows = await exceptionsForRun(result.runId!);
-  const hit = rows.find((r) => r.kind === "refund_not_reversed");
-  assert.ok(hit, "DB FACT: a refund with only a webhook audit row is still drift — the job is not blinded by the audit row");
-  assert.equal(hit.details.stripeRefundId, refundId);
-});
-
 test("N20i: ONE JOB, BOTH RAILS — a legacy charge with no booking is still classified, and a legacy PaymentIntent is not indicted by the cart rail", async () => {
   // The legacy `bookings` rail is still live (CLAUDE.md §15c:
   // POST /api/bookings/process-cart — D-12 dated its no-new-writes switch and retired its two

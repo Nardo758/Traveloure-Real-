@@ -100,10 +100,7 @@ export default function TripDetails() {
     isError: itineraryError,
     refetch: refetchItinerary,
   } = useQuery<PlanCardData>({
-    // The Trip Card is the ONE reader of the frozen final; it asks for it explicitly (the plancard
-    // is live by default — ledger `2026-09-26-slip-renders-live`). Own cache key; every mutation's
-    // `[/api/trips/:id/plancard]` invalidation still prefix-matches it.
-    queryKey: [`/api/trips/${id}/plancard`, { surface: "card" }],
+    queryKey: [`/api/trips/${id}/plancard`],
     enabled: !!id,
   });
   // T1-1: gates the regenerate confirmation dialog — true only once there's a plan with actual
@@ -435,9 +432,6 @@ export default function TripDetails() {
                     initialSelectedDay={initialDayIndex >= 0 ? initialDayIndex : 0}
                     // The rail owns "Suggestion from your expert" on this page — one mount.
                     suggestionsHome="rail"
-                    // The Trip Card is a read-out (Locked Decision 42 D8): routing happens on the
-                    // slip, never here (ledger `2026-09-26-card-routing-read-only`).
-                    routingReadOnly
                     // The token share rail (S10) is the card's Share control on this page.
                     onShare={() => shareMutation.mutate(trip.id)}
                   />

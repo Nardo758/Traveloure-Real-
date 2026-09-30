@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { isBookedActivity } from "@/lib/item-booking-state";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import VariantActionButtons, { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
@@ -775,10 +774,6 @@ function SegmentationRecommendationBanner({ proposal }: { proposal: Segmentation
   );
 }
 
-// R131: comparison apply-to-cart is OFF by default server-side and hidden here unconditionally.
-// Retirement of the rail and this button is the Trip Slip product map's step 7 (LD 39).
-const COMPARISON_APPLY_TO_CART_SHOWN = false;
-
 export default function ItineraryComparisonPage() {
   const { id } = useParams<{ id: string }>();
   const { user, isLoading: authLoading } = useAuth();
@@ -910,7 +905,7 @@ export default function ItineraryComparisonPage() {
     d.activities.map((a) => ({ a, dayNum: d.dayNum })),
   );
   const anchoredItems: ProposalAnchorItem[] = canonicalRows
-    .filter(({ a }) => isBookedActivity(a))
+    .filter(({ a }) => !!a.booking || a.routingStatus === "purchased")
     .map(({ a, dayNum }) => ({ id: a.id, dayNum, time: a.time || "", name: a.name }));
   const withExpertRows = canonicalRows.filter(({ a }) => a.routingStatus === "with_expert");
   const remainingCount = canonicalRows.filter(
@@ -2479,12 +2474,6 @@ export default function ItineraryComparisonPage() {
                         </p>
                       </div>
                     </div>
-                    {/* R131 (ledger `2026-09-26-apply-to-cart-flag-off`): the server rail is OFF by
-                        default (410 `apply_to_cart_disabled`), and no public-flags read reaches this
-                        board, so the button is hidden UNCONDITIONALLY rather than drawn over a rail
-                        that refuses (§13). Full retirement — this mutation included — is the Trip
-                        Slip product map's step 7 (it bypasses the plan-item projection, LD 39). */}
-                    {COMPARISON_APPLY_TO_CART_SHOWN && (
                     <Button
                       onClick={() => applyToCartMutation.mutate()}
                       disabled={applyToCartMutation.isPending}
@@ -2497,7 +2486,6 @@ export default function ItineraryComparisonPage() {
                       )}
                       Apply to Cart & Checkout
                     </Button>
-                    )}
                   </div>
                 </CardContent>
               </Card>

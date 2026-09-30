@@ -3,8 +3,6 @@
  *   V1 the server's three named roles pass through; anything else is "other", never the owner.
  *   V2 only the owner and the delegate get item tools; an expert viewer keeps its Workstation.
  *   V3 the delegate note never implies the assistant pays.
- *   V4 a `payer` participant (LD 42 D9, ledger `2026-09-27-payer-reads-plancard`) is its own
- *      read-only viewer — never the owner, never item tools.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -24,11 +22,6 @@ describe("slip viewer role", () => {
     assert.equal(canEditPlanItems("delegate"), true);
     assert.equal(canEditPlanItems("expert"), false);
     assert.equal(canEditPlanItems("other"), false);
-  });
-  it("V4: a payer reads the plan and draws no edit tools", () => {
-    assert.equal(slipViewer("payer"), "payer");
-    assert.equal(canEditPlanItems(slipViewer("payer")), false);
-    assert.notEqual(slipViewer("payer"), "owner");
   });
   it("V3: the note says who pays", () => {
     assert.match(SLIP_DELEGATE_NOTE, /they approve, book and pay/);

@@ -185,14 +185,6 @@ export interface TripPlanBooking {
   serviceName: string | null;
   /** RAW `service_bookings.total_amount` as stored (decimal string). */
   totalAmount: string | null;
-  /**
-   * R163 (ledger `2026-09-27-dashboard-refund-reads-refunded`). PRESENT ONLY WHEN TRUE: a refund
-   * our code did not issue (the Stripe dashboard) covered this booking's WHOLE share, by the
-   * server's refund reconciliation rule. `status` is left as the row holds it; a label reads
-   * `itemBookingLabelStatus` (shared/booking-visibility.ts), which reads this as `refunded`. A
-   * partial dashboard refund never sets it.
-   */
-  refundedOutOfBand?: true;
 }
 
 export interface TripPlanActivityChange {
@@ -282,40 +274,8 @@ export interface TripPlanActivity {
    *
    * PRESENCE IS THE BOOKED STATE. There is no separate boolean to disagree with it, and it is never
    * inferred from `routing_status` alone: an item reads as bought only when a booking row backs it.
-   *
-   * R145 (ledger `2026-09-27-refunded-item-status`): a booking in a CLOSED status
-   * (`CLOSED_BOOKING_STATUSES` — `cancelled` / `refunded`, shared/booking-visibility.ts) is NOT
-   * attached here, because every surface reads this key's presence as "Booked". The refund path keeps
-   * `itinerary_items.booking_id` on the row as honest history, so the ended booking is disclosed in
-   * `endedBooking` below instead — never dropped (§13).
    */
   booking?: TripPlanBooking;
-
-  /**
-   * ADDITIVE (R145, ledger `2026-09-27-refunded-item-status`) — the booking this item WAS bought
-   * through when that booking has since CLOSED (`cancelled` or `refunded`, the ONE list
-   * `CLOSED_BOOKING_STATUSES`). PRESENT ONLY WHEN SUCH A ROW BACKS THE ITEM, and mutually exclusive
-   * with `booking`: an item carries at most one of the two. It exists so a surface can say what
-   * happened ("Refunded" / "Cancelled") rather than either "Booked" (false) or nothing (hides it).
-   * It is never the booked state and never a basis for the item-kind `included` rule.
-   *
-   * R154 (ledger `2026-09-27-booking-status-vocabulary`): WIDENED, not joined by a new key. It now
-   * carries ANY linked booking that does not count as booked under the ONE shared vocabulary
-   * (`ITEM_BOOKING_STATUS_VOCABULARY`, shared/booking-visibility.ts) — `payment_pending`, `failed`
-   * and `expired` as well as `cancelled` / `refunded`. `disputed` is the one it deliberately does
-   * NOT carry: a disputed booking is real and paid, so it stays `booking` and the client reads its
-   * status to say "Under review", never "Booked".
-   */
-  endedBooking?: TripPlanBooking;
-
-  /**
-   * R157 (ledger `2026-09-27-retry-failed-payment`). PRESENT ONLY on an item whose linked booking
-   * FAILED payment (the row offering "Try again"). `true` ⇒ the listing can be checked out, so the
-   * retry re-projects the item and opens checkout; `false` ⇒ the listing publishes no price or the
-   * seller must accept first, so no cart line can exist and the action reads "Back to plan" instead.
-   * Server-derived by the cart projection's own predicate; absent everywhere else (§13).
-   */
-  retryOpensCheckout?: boolean;
 
   /**
    * ADDITIVE (Trip-Canon Lane 1, Phase 1d / W7) — `itinerary_items.routing_status` (migration 159:

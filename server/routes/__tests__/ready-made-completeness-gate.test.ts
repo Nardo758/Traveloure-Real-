@@ -26,7 +26,7 @@ const LISTING_ID = "listing-1";
 function makeChain(rows: unknown): any {
   const chain: any = {};
   const promise = Promise.resolve(rows);
-  for (const method of ["from", "leftJoin", "where", "limit", "groupBy", "orderBy", "set"]) {
+  for (const method of ["from", "where", "limit", "groupBy", "orderBy", "set"]) {
     chain[method] = () => chain;
   }
   chain.then = promise.then.bind(promise);
