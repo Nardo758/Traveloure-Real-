@@ -898,9 +898,7 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
       if (cityIntelligence) {
         const city = cityIntelligence.city;
         travelPulseContext = {
-          pulseScore: city.pulseScore,
           trendingScore: city.trendingScore,
-          crowdLevel: city.crowdLevel,
           aiBudgetEstimate: city.aiBudgetEstimate,
           aiTravelTips: city.aiTravelTips,
           aiLocalInsights: city.aiLocalInsights,
@@ -960,7 +958,6 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
         ...result,
         id: saved.id,
         cityIntelligence: cityIntelligence ? {
-          pulseScore: cityIntelligence.city?.pulseScore,
           trendingScore: cityIntelligence.city?.trendingScore,
           hiddenGemsCount: cityIntelligence.hiddenGems?.length || 0,
           happeningNowCount: cityIntelligence.happeningNow?.length || 0,

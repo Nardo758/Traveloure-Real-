@@ -284,9 +284,7 @@ async function buildDraftSlip(input: {
     if (cityIntelligence) {
       const city = cityIntelligence.city;
       travelPulseContext = {
-        pulseScore: city?.pulseScore,
         trendingScore: city?.trendingScore,
-        crowdLevel: city?.crowdLevel,
         aiLocalInsights: city?.aiLocalInsights,
         aiMustSeeAttractions: city?.aiMustSeeAttractions,
         hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({

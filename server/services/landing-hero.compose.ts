@@ -124,7 +124,9 @@ export function composeLandingHero(input: {
   const payload: LandingHeroPayload = {
     city: topCity?.cityName ?? null,
     trend: topCity?.trendingScore == null ? null : Number(topCity.trendingScore),
-    crowd: topCity?.crowdLevel ?? null,
+    // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): NO crowd claim until PR 2 computes
+    // it — the legacy `travel_pulse_cities.crowd_level` was a month-old guess (trend-engine audit §3).
+    crowd: null,
     anchorExpert: input.anchorExpert,
     gem: gemRow
       ? { name: String(gemRow.placeName), score: Number.isFinite(gemScore) ? gemScore : null }

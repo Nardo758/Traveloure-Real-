@@ -11845,9 +11845,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (cityIntelligence) {
         const city = cityIntelligence.city;
         travelPulseContext = {
-          pulseScore: city.pulseScore,
           trendingScore: city.trendingScore,
-          crowdLevel: city.crowdLevel,
           aiBudgetEstimate: city.aiBudgetEstimate,
           aiTravelTips: city.aiTravelTips,
           aiLocalInsights: city.aiLocalInsights,
@@ -11957,7 +11955,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         tripId: quickTrip.id,
         itinerary: { items: qsInsertedItems },
         cityIntelligence: cityIntelligence ? {
-          pulseScore: cityIntelligence.city?.pulseScore,
           trendingScore: cityIntelligence.city?.trendingScore,
           hiddenGemsCount: cityIntelligence.hiddenGems?.length || 0,
           happeningNowCount: cityIntelligence.happeningNow?.length || 0,
