@@ -12,7 +12,7 @@
 --
 -- optimizer_runs — one row per authorized run, INSERT-ONLY (its one writer exposes no UPDATE/DELETE).
 --   trip_id / comparison_id ON DELETE SET NULL: a paid run is a money record and outlives its plan
---   (R196, `2026-09-28-part2-n4-runs-outlive-plan`). The prompt text is never stored, only its hash.
+--   (R188, `2026-09-28-part2-n4-runs-outlive-plan`). The prompt text is never stored, only its hash.
 -- optimizer_run_outcomes — append-only child rows (adopted_whole | adopted_part | option_chosen |
 --   booking_created), written at the moment each happens, never reconstructed.
 -- itinerary_variants.run_id — the run each version belongs to; NULL = a version from before this
