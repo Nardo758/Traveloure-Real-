@@ -667,6 +667,32 @@ test.describe("4 · free draft around the set", () => {
       )
       .toEqual([{ outcome: "refused_not_empty" }]);
   });
+  test("§4 B3/B4/B6 — the modal's AI finish drafts INTO the plan and lands on its slip; no alternatives run starts", async ({ page }) => {
+    // Production smoke test Sep 30, 2026 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the
+    // free draft used to start the PAID optimizer in the background and open the comparison page,
+    // which could fail in front of the draft and labelled every item "evening". The draft is the
+    // deliverable; alternatives are the slip's Optimize, charged on confirm.
+    await signedInTraveler(page, "b3");
+    await openModalFromHero(page);
+    expect(await fillPlanModalToFinish(page, KYOTO, { occasionSlug: "travel", lenDays: 4 })).toBe(true);
+    await testid(page, "planning-option-ai").click();
+    await expect(testid(page, "button-generate-itinerary")).toBeVisible({ timeout: 15_000 });
+    await testid(page, "button-generate-itinerary").click();
+    const ask = testid(page, "ai-draft-without-anchor");
+    if (await appears(ask, 15_000)) await ask.click();
+    await page.waitForURL(/\/plans\//, { timeout: 60_000 });
+    const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];
+    await expect(page).not.toHaveURL(/itinerary-comparison/);
+    expect(
+      (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [tripId])).length,
+      "the draft is saved into the plan",
+    ).toBeGreaterThan(0);
+    expect(
+      await rows(`SELECT id FROM itinerary_comparisons WHERE trip_id = $1`, [tripId]),
+      "a free draft creates no comparison and starts no optimizer run",
+    ).toEqual([]);
+  });
+
   test("§4 — a Travel plan with no stay and no set asks where you're staying; 'Draft without a hotel' drafts", async ({ page }) => {
     // A5 (§M5) on a RESOLVED Trips occasion (R215). Same stand-in as §4-today (E2E_AI_STUB).
     const tripId = await planWithOccasion(page, "s4-ask", "travel");
@@ -820,6 +846,11 @@ test.describe("6 · paid run", () => {
     expect(feeBody.currency).toBe("USD");
     expect(feeBody.feeCents).toBeGreaterThan(0);
     await expect(testid(page, "slip-optimize-preview-fee")).toContainText(`$${(feeBody.feeCents / 100).toFixed(2)}`);
+    // B3 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the fee line states the ONE re-run
+    // rule — the same sentence the comparison board renders (LD 41 (a)).
+    await expect(testid(page, "slip-optimize-preview-fee")).toContainText(
+      "A re-run within 24 hours of a completed optimization is free.",
+    );
   });
   test.fixme("§6 today — pay in test mode; the board shows the baseline and up to three versions; adopt one stop", async () => {
     // TODAY-PASSABLE IN THE PRODUCT, NOT IN THIS JOB: needs a Stripe test key (the job runs the stub,

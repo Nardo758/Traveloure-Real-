@@ -152,6 +152,17 @@ export function formatMoneyCents(cents: number, currency: string): string {
 }
 
 /**
+ * THE ONE RE-RUN RULE, in words (B3, production smoke test Sep 30, 2026 — ledger
+ * `2026-09-30-b3-b6-draft-is-the-deliverable`). The server's rule is Locked Decision 41 (a), ledger
+ * `2026-09-05-trip-pass-run-gate` (`resolveOptimizerRunAuthorization`): a run is covered by a Trip
+ * Pass on its plan, else FREE when the traveler completed an optimization in the last 24 hours
+ * (`OPTIMIZATION_FREE_RERUN_MS`), else charged. The slip's fee line and the comparison board both
+ * render THIS sentence — two surfaces wording the rule separately is how they came to disagree
+ * ("free within 24 hours" on one, "$5.99 charged on confirm" on the other) (§18 rule 1).
+ */
+export const OPTIMIZE_RERUN_RULE = "A re-run within 24 hours of a completed optimization is free.";
+
+/**
  * What the fee chip says, or `null` when there is no price to state. Three server-decided
  * cases, in order:
  *   - `aiDisabled`  → NOTHING. The run cannot be bought for this plan, so no price is honest.
@@ -165,5 +176,5 @@ export function formatOptimizationFeeLabel(
   if (fee.aiDisabled) return null;
   if (fee.coveredByTripPass) return TRIP_PASS_COVERED_LABEL;
   if (!Number.isFinite(fee.feeCents) || fee.feeCents <= 0) return null;
-  return `${formatMoneyCents(fee.feeCents, fee.currency)} to run · charged only when you confirm`;
+  return `${formatMoneyCents(fee.feeCents, fee.currency)} to run · charged only when you confirm · ${OPTIMIZE_RERUN_RULE}`;
 }

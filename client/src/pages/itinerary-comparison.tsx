@@ -78,6 +78,7 @@ import { PlanCard } from "@/components/plancard/PlanCard";
 import type { ProposalAnchorItem, ProposalLegsSummary } from "@/components/plancard/plancard-types";
 import type { SlipData } from "@/components/plancard/SlipView";
 import { ProposalComparisonMap } from "@/components/plancard/ProposalComparisonMap";
+import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
 import {
   sumLegMinutes,
   parseTotal,
@@ -2514,9 +2515,9 @@ export default function ItineraryComparisonPage() {
                   <div>
                     <h3 className="font-semibold text-sm">Not happy with these plans?</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Tell the optimizer what to fix and re-run it — free within 24 hours of your
-                      optimization — or hand the plan to a human expert. Your original plan stays
-                      untouched unless you apply a variant.
+                      Tell the optimizer what to fix and re-run it, or hand the plan to a human
+                      expert. <span data-testid="text-rerun-rule">{OPTIMIZE_RERUN_RULE}</span> Your
+                      original plan stays untouched unless you apply a variant.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
