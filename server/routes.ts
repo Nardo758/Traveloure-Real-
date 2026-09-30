@@ -1,4 +1,6 @@
 import type { Express, RequestHandler } from "express";
+import { decorateComparison, openSetSlotsForRun } from "./services/version-options.service";
+import { versionPerOptionEnabled } from "./config/version-options.config";
 import { zodErrorBody } from "./utils/zod-error-body";
 import express from "express";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -10124,6 +10126,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           tripPreferencesForCreate,
           fixedCommitments,
           resolvedPinnedAnchor,
+          await openSetSlotsForRun(tripId, baselineItems, resolvedPinnedAnchor),
         ).catch((err) => console.error("Background optimization error:", err));
       }
 
@@ -10222,6 +10225,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       if (result.comparison.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // A7 (§M5 / §F2 / R128, ledger `2026-09-30-a7-version-per-option`): behind the flag, each
+      // version names the option it anchors on and carries only the badges its metrics EARN; the
+      // open set's options no version names are listed "not run". Derived here, never stored.
+      if (versionPerOptionEnabled()) {
+        const deco = await decorateComparison(result.comparison.tripId ?? null, result.variants as any);
+        return res.json({
+          ...result,
+          variants: result.variants.map((v) => ({ ...v, ...deco.byVariant[v.id] })),
+          notRunOptionIds: deco.notRunOptionIds,
+        });
       }
 
       res.json(result);
@@ -10483,7 +10498,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         undefined,
         tripPreferencesForGen,
         fixedCommitments,
-        resolvedPinnedAnchor
+        resolvedPinnedAnchor,
+        await openSetSlotsForRun(comparison.tripId, baselineItems, resolvedPinnedAnchor),
       ).catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {
