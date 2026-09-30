@@ -314,7 +314,7 @@ async function buildDraftSlip(input: {
     pacePreference: "moderate",
     specialRequests: template.specialRequests,
     travelPulseContext,
-  });
+  }, { sourceType: "ai_occasion_draft", userId: input.userId });
 
   const normalized = normalizeGeneratedItineraryPayload(result as any, template.dayCount);
   const title = input.label?.trim() || normalized.title || `${template.defaultLabel} in ${input.homeCity}`;

@@ -19,7 +19,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { resolveAiDraftModel } from "./ai-draft-model";
 import { parseAiJsonObjectOrThrow } from "../utils/ai-json";
 import { claudeService } from "./claude.service";
-import { calculateAnthropicCost } from "./ai-cost-tracker";
+import { calculateAnthropicCost, trackAnthropicResponse } from "./ai-cost-tracker";
 import { formatGeneratedItinerarySpecialRequests } from "../utils/generated-itinerary";
 
 // Lazy Anthropic client for the itinerary draft (it runs its own configurable draft tier)
@@ -411,7 +411,16 @@ ${JSON.stringify(request.context, null, 2)}`;
    * writes `ai_cost_tracking`, and a cost row that names the wrong model — or names none while
    * pretending to — is worse than no row (§13); the caller does not choose the tier, so this function says.
    */
-  async generateAutonomousItinerary(request: AutonomousItineraryRequest): Promise<{ result: AutonomousItineraryResult; usage: AiUsageStats; model: string }> {
+  /**
+   * `attribution` is REQUIRED (ledger `2026-09-30-ai-task-honest-numbers`): this is the one place the
+   * draft model is called, so it is the one place its `ai_cost_tracking` row is written — through
+   * the same `trackAnthropicResponse` every other Anthropic call uses. Occasion drafts and trip
+   * optimization wrote no row at all before; the free-draft route wrote its own, which is now gone.
+   */
+  async generateAutonomousItinerary(
+    request: AutonomousItineraryRequest,
+    attribution: { sourceType: string; userId: string | null },
+  ): Promise<{ result: AutonomousItineraryResult; usage: AiUsageStats; model: string }> {
     // E2E stub: CI and the explicitly provisioned staging deployment run the
     // itinerary-generation journey without a live LLM call, so the real AI call
     // would throw and the flow would never reach the comparison/redirect the test
@@ -585,6 +594,9 @@ Create a detailed, actionable itinerary that incorporates the real-time destinat
         system: systemPrompt + "\n\nIMPORTANT: Respond with valid JSON only — no markdown, no explanation.",
         messages: [{ role: "user", content: userPrompt }],
       });
+      // The spend happened whether or not the answer parses, so the row is written first. Awaited
+      // (it never rejects — the writer logs its own failure), so the row exists before we return.
+      await trackAnthropicResponse(anthropicResponse, attribution);
 
       const block = anthropicResponse.content.find((b) => b.type === "text");
       const content = block && block.type === "text" ? block.text : null;
