@@ -258,9 +258,54 @@ after(async () => {
   await db.execute(sql`DELETE FROM refunds WHERE stripe_payment_intent_id LIKE ${`pi_${RUN}_%`}`).catch(() => {});
 });
 
+/**
+ * Give a booking the traveler-fee snapshot checkout stamps at claim time and the `+traveler_service_fee`
+ * ledger row authorization writes — through the PRODUCTION resolver and writer, never a hand-built row.
+ */
+async function withTravelerFee(bookingId: string, price = 100): Promise<number> {
+  const { resolveTravelerServiceFee } = await import("../services/fee-resolution.service");
+  const { recordTravelerServiceFeeLedger } = await import("../services/fee-ledger.service");
+  const resolved = await resolveTravelerServiceFee(price);
+  const snapshot = {
+    charged: resolved.amount, wouldHaveBeen: resolved.amount, rate: resolved.rate, bandId: resolved.bandId,
+    bandKey: resolved.bandKey, capApplied: resolved.capApplied, waived: false, waiverBasis: null,
+  };
+  await db.execute(sql`
+    UPDATE service_bookings SET booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object('travelerServiceFee', ${JSON.stringify(snapshot)}::jsonb)
+    WHERE id = ${bookingId}
+  `);
+  await recordTravelerServiceFeeLedger({ bookingIds: [bookingId], actor: "test" });
+  return resolved.amount;
+}
+
+async function feeLedger(bookingId: string): Promise<{ net: number; reversals: number; fees: number }> {
+  const r = await db.execute(sql`
+    SELECT COALESCE(SUM(amount), 0)::numeric AS net,
+           COUNT(*) FILTER (WHERE fee_type = 'reversal')::int AS reversals,
+           COUNT(*) FILTER (WHERE fee_type = 'traveler_service_fee')::int AS fees
+    FROM fee_ledger WHERE booking_id = ${bookingId}
+      AND fee_type IN ('traveler_service_fee', 'reversal')
+  `);
+  const row = r.rows[0] as any;
+  return { net: Number(row.net), reversals: row.reversals, fees: row.fees };
+}
+
+async function refundNotices(): Promise<number> {
+  const r = await db.execute(sql`SELECT count(*)::int AS n FROM notifications WHERE user_id = ${ids.user} AND type = 'payment_refunded'`);
+  return (r.rows[0] as any).n;
+}
+
+after(async () => {
+  await db.execute(sql`DELETE FROM notifications WHERE user_id = ${ids.user}`).catch(() => {});
+  for (const id of createdBookingIds) await db.execute(sql`DELETE FROM fee_ledger WHERE booking_id = ${id}`).catch(() => {});
+});
+
 test("PF7: a late success on a FAILED booking stays failed, is an exception, and is refunded exactly once", async () => {
   const pi = `pi_${RUN}_pf7`;
   const a = await makeBooking(pi);
+  const fee = await withTravelerFee(a);
+  assert.ok(fee > 0, "fixture: the traveler service fee band charges a fee");
+  assert.deepEqual(await feeLedger(a), { net: fee, reversals: 0, fees: 1 }, "authorization recorded the fee");
   const { markCheckoutPaymentFailed, promotePaidCheckout, refundLateSuccessOnFailedIntent } = await import(
     "../services/checkout-claim.service"
   );
@@ -295,6 +340,25 @@ test("PF7: a late success on a FAILED booking stays failed, is an exception, and
   const d = await db.execute(sql`SELECT booking_details->'lateSuccessRefund' AS l, booking_details->'reconciliationException' AS e FROM service_bookings WHERE id = ${a}`);
   assert.equal((d.rows[0] as any).l.refundId, rows[0].stripe_refund_id, "DB FACT: the claim records the refund id");
   assert.equal((d.rows[0] as any).e.reason, "not_promotable", "DB FACT: the reconciliation exception is recorded");
+
+  // The fee record: reversed through the shared writer, exactly once — it nets to zero.
+  assert.deepEqual(await feeLedger(a), { net: 0, reversals: 1, fees: 1 }, "DB FACT: the traveler fee is reversed once and nets to 0");
+  // The traveler is told, exactly once, in honest words.
+  assert.equal(await refundNotices(), 1, "DB FACT: ONE refund notice");
+  const n = await db.execute(sql`SELECT title, message FROM notifications WHERE user_id = ${ids.user} AND type = 'payment_refunded'`);
+  const msg = String((n.rows[0] as any).message);
+  assert.match(msg, /didn't go through/);
+  assert.match(msg, /refunded/);
+  assert.match(msg, /nothing was booked/);
+  assert.match(msg, /not a new charge/);
+
+  // Yet more redeliveries: still one reversal, still one notice.
+  await withFakeStripe({ [pi]: { status: "succeeded", amount_received: 12500, amount_refunded: 12500 } }, async () => {
+    await promotePaidCheckout({ paymentIntentId: pi, actor: "client", actorId: ids.user, bookingIds: [a] });
+    await refundLateSuccessOnFailedIntent({ paymentIntentId: pi, actor: "reconciliation" });
+  });
+  assert.deepEqual(await feeLedger(a), { net: 0, reversals: 1, fees: 1 });
+  assert.equal(await refundNotices(), 1);
 });
 
 test("PF8: no refund when Stripe says the intent did not succeed; no refund for a booking that is not failed", async () => {
