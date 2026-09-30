@@ -42,10 +42,13 @@ function formatDay(date: string): string {
  * Which surface a "Plan around it" press came from — the funnel door (slip-funnel-events.md §3.1,
  * amended 2026-09-28): the landing strip is `event_strip`, the /events block is `events_page`.
  */
-export type CityEventDoor = Extract<PlanDoor, "event_strip" | "events_page">;
+export type CityEventDoor = Extract<PlanDoor, "event_strip" | "events_page" | "blog_post">;
 
 /** The PlanningSource "Plan around it" opens — the event row's own facts only, plus the door. */
-export function planAroundSource(event: CityEventCard, door: CityEventDoor): PlanningSource {
+export function planAroundSource(
+  event: Pick<CityEventCard, "series" | "title" | "city" | "marketKey" | "firstDate" | "lastDate" | "startTime" | "venue">,
+  door: CityEventDoor,
+): PlanningSource {
   const market = OPERATING_MARKETS.find((m) => m.marketKey === event.marketKey);
   return {
     door,

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-manifest.ts",
   "entrypoint": "server/routes.ts",
-  "mutationCount": 636,
-  "rawRegistrationCount": 636,
-  "uniqueMethodNormalizedPathCount": 627,
-  "distinctMethodPathCount": 627,
+  "mutationCount": 637,
+  "rawRegistrationCount": 637,
+  "uniqueMethodNormalizedPathCount": 628,
+  "distinctMethodPathCount": 628,
   "duplicateRegistrations": [
     {
       "methodPath": "POST /api/chats",
@@ -145,12 +145,12 @@
   ],
   "categoryTotals": {
     "payments": 31,
-    "admin": 160,
+    "admin": 161,
     "user-data": 220,
     "other": 216
   },
   "boundaryTotals": {
-    "admin-role": 160,
+    "admin-role": 161,
     "session-self": 325,
     "resource-owner": 96,
     "signature": 6,
@@ -159,7 +159,7 @@
   },
   "historicalComparison": {
     "count": 546,
-    "delta": 90,
+    "delta": 91,
     "note": "The historical count is a comparison-only baseline; generation reads only the current source mount graph."
   },
   "diagnostics": [],
@@ -322,7 +322,26 @@
       "path": "/api/admin/blog/drafts",
       "effectivePath": "/api/admin/blog/drafts",
       "source": "server/routes/blog.routes.ts",
-      "line": 111,
+      "line": 113,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": []
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/admin/blog/event-guides",
+      "path": "/api/admin/blog/event-guides",
+      "effectivePath": "/api/admin/blog/event-guides",
+      "source": "server/routes/blog.routes.ts",
+      "line": 130,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -341,7 +360,7 @@
       "path": "/api/admin/blog/posts",
       "effectivePath": "/api/admin/blog/posts",
       "source": "server/routes/blog.routes.ts",
-      "line": 96,
+      "line": 98,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -360,7 +379,7 @@
       "path": "/api/admin/blog/posts/:id",
       "effectivePath": "/api/admin/blog/posts/:id",
       "source": "server/routes/blog.routes.ts",
-      "line": 124,
+      "line": 136,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -379,7 +398,7 @@
       "path": "/api/admin/blog/posts/:id/publish",
       "effectivePath": "/api/admin/blog/posts/:id/publish",
       "source": "server/routes/blog.routes.ts",
-      "line": 134,
+      "line": 146,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -398,7 +417,7 @@
       "path": "/api/admin/blog/posts/:id/submit",
       "effectivePath": "/api/admin/blog/posts/:id/submit",
       "source": "server/routes/blog.routes.ts",
-      "line": 130,
+      "line": 142,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -417,7 +436,7 @@
       "path": "/api/admin/blog/posts/:id/withdraw",
       "effectivePath": "/api/admin/blog/posts/:id/withdraw",
       "source": "server/routes/blog.routes.ts",
-      "line": 138,
+      "line": 150,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -436,7 +455,7 @@
       "path": "/api/admin/blog/travelpulse-weekly",
       "effectivePath": "/api/admin/blog/travelpulse-weekly",
       "source": "server/routes/blog.routes.ts",
-      "line": 120,
+      "line": 122,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3169,7 +3188,7 @@
       "path": "/api/blog/posts/:slug/reactions",
       "effectivePath": "/api/blog/posts/:slug/reactions",
       "source": "server/routes/blog.routes.ts",
-      "line": 177,
+      "line": 189,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -3186,7 +3205,7 @@
       "path": "/api/blog/posts/:slug/reactions/:kind",
       "effectivePath": "/api/blog/posts/:slug/reactions/:kind",
       "source": "server/routes/blog.routes.ts",
-      "line": 183,
+      "line": 195,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -5518,7 +5537,7 @@
       "path": "/api/expert/blog/posts/:id/sign",
       "effectivePath": "/api/expert/blog/posts/:id/sign",
       "source": "server/routes/blog.routes.ts",
-      "line": 150,
+      "line": 162,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],

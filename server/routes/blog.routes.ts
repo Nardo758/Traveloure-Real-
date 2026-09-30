@@ -6,6 +6,7 @@
  *     POST /api/admin/blog/posts                    create a draft (.strict pick — §19)
  *     POST /api/admin/blog/drafts                   research + AI draft → a draft post (C.2)
  *     POST /api/admin/blog/travelpulse-weekly       this ISO week's platform draft from the displayed signal (PR 3)
+ *     POST /api/admin/blog/event-guides             { eventId } — a weekend guide to one city event (type 1)
  *     PATCH /api/admin/blog/posts/:id               edit — clears any signature (ruling 3)
  *     POST /api/admin/blog/posts/:id/submit         draft → in_review (byline gate)
  *     POST /api/admin/blog/posts/:id/publish        only when signed for THIS content
@@ -45,6 +46,7 @@ import {
 } from "../services/blog-posts.service";
 import { draftPostFromResearch } from "../services/blog-draft.service";
 import { draftTravelPulseWeekly } from "../services/travelpulse-weekly.service";
+import { draftEventWeekendGuide } from "../services/blog-event-guide.service";
 
 const router = Router();
 
@@ -119,6 +121,16 @@ router.post("/api/admin/blog/drafts", async (req, res) => {
 // and the author are all server-derived). Never publishes — the publish rail below does that.
 router.post("/api/admin/blog/travelpulse-weekly", async (req, res) => {
   try { res.status(201).json({ post: await draftTravelPulseWeekly(getUserId(req)!) }); } catch (e) { fail(res, e); }
+});
+
+// Blog generator lane, type 1 (ledger `2026-09-30-blog-event-guide`): draft the weekend guide for ONE
+// city event. Admin-only by the §2 prefix guard; `.strict()` body of exactly the event id (§19). The
+// facts, the author and the slug are server-derived; never publishes.
+const eventGuideBody = z.object({ eventId: z.string().min(1).max(64) }).strict();
+router.post("/api/admin/blog/event-guides", async (req, res) => {
+  const parsed = eventGuideBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
+  try { res.status(201).json({ post: await draftEventWeekendGuide(parsed.data.eventId, getUserId(req)!) }); } catch (e) { fail(res, e); }
 });
 
 router.patch("/api/admin/blog/posts/:id", async (req, res) => {

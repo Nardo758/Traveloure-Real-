@@ -124,7 +124,7 @@ describe("E1 — trip_created carries the door the traveler came through", () =>
     assert.doesNotMatch(handler, /api\.trips\.create\.input\.parse\(req\.body\)/);
     assert.match(handler, /eventData: tripCreatedEventData\(/);
     // The closed list is the doc's thirteen doors (ten, plus the 2026-09-28 amendment's three), stated once.
-    assert.equal(PLAN_DOORS.length, 13);
+    assert.equal(PLAN_DOORS.length, 14);
     for (const d of ["billboard", "event_strip", "events_page"]) assert.ok((PLAN_DOORS as readonly string[]).includes(d), d);
   });
 

@@ -25,6 +25,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { blogPosts } from "@shared/schema";
 import { claudeService } from "./claude.service";
+import { firstInventedNumber, numbersInFacts } from "@shared/draft-facts-check";
 import { BlogError, createPost, type BlogDeps } from "./blog-posts.service";
 import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
 
@@ -99,10 +100,10 @@ export function checkWeeklyDraft(
   if (!title || !body) return { error: "weekly_draft_malformed" };
   const text = `${title}\n${summary}\n${body}`;
   const { year, week } = isoWeek(now);
-  const allowed = new Set<string>([...facts.map((f) => String(f.trend)), String(year), String(week), "0", "50", "100"]);
-  for (const m of Array.from(text.matchAll(/\d+(?:\.\d+)?/g), (x) => x[0])) {
-    if (!allowed.has(m)) return { error: "weekly_draft_unknown_number" };
-  }
+  // The ONE number rule (shared/draft-facts-check.ts, §18 rule 1): the facts' Trend numbers, the ISO
+  // week and year, and the 0/50/100 scale the system prompt states.
+  const allowed = numbersInFacts(facts.map((f) => f.trend), [year, week, 0, 50, 100]);
+  if (firstInventedNumber(text, allowed) !== null) return { error: "weekly_draft_unknown_number" };
   const inFacts = new Set(facts.map((f) => f.cityName.toLowerCase()));
   for (const m of OPERATING_MARKETS) {
     if (!inFacts.has(m.cityName.toLowerCase()) && new RegExp(`\\b${m.cityName}\\b`, "i").test(text)) {

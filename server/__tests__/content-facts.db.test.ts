@@ -186,6 +186,10 @@ test("C5: no Places fact reaches a public route", async () => {
     "server/services/plan-option-sets.service.ts", // plan-fit (owner/advisor/delegate option-set rails)
     "server/routes/plancard.routes.ts", // GET /api/trips/:tripId/plancard, behind its owner/advisor gate
     "server/routes/content.routes.ts", // the free draft's enrichment WRITE (authenticated, owner-checked)
+    // The blog generator lane's fact builder (ledger `2026-09-30-blog-event-guide`): NOT behind a plan
+    // gate, because its output is a public post — so it keeps ONLY what `isPublishable` allows
+    // (platform-owned or expert-verified; never Places, crawled or partner), pinned by blog-event-guide E3.
+    "server/services/blog-event-facts.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];

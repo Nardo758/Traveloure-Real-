@@ -21,9 +21,9 @@
  *    quote misquotes); a source on a partner's domain is REFUSED (ruling 4).
  */
 import crypto from "node:crypto";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { blogPosts, blogPostSources, blogPostReactions } from "@shared/schema";
+import { blogPosts, blogPostSources, blogPostReactions, cityEvents } from "@shared/schema";
 import {
   BLOG_IMPRESSION_CONTENT_TYPE,
   BLOG_SLUG_RE,
@@ -35,6 +35,7 @@ import {
 } from "@shared/blog";
 import { BLOG_QUOTE_MAX_CHARS, BLOG_RANK_MIN_IMPRESSIONS } from "../config/blog.config";
 import { rankBlogPosts } from "./blog-ranking";
+import { toCityEventCard } from "./city-events.service";
 import { checkBylineEligibility, type BylineDecision } from "./blog-byline-gate.service";
 import { loadPartnerHosts } from "./partner-hosts.service";
 import { isOnPartnerHost, partnerHostOf } from "@shared/partner-hosts";
@@ -117,7 +118,16 @@ export interface CreatePostInput {
   occasionSlug?: string | null;
   bylineExpertId?: string | null;
   sources?: BlogSourceInput[];
+  /**
+   * The city event an event-guide post is about (migration 335). SERVER COMPOSERS ONLY: the admin
+   * create rail's `.strict()` body never admits it, and an event type without it is refused, so an
+   * event guide can only be born from the generators' fact check (ledger `2026-09-30-blog-event-guide`).
+   */
+  cityEventId?: string | null;
 }
+
+/** Event types are generator-born only (they need a city event and the fact check). */
+const EVENT_TYPES: ReadonlySet<string> = new Set(["event_weekend_guide", "series_follow", "race_weekend"]);
 
 export async function createPost(input: CreatePostInput, actorId: string | null, deps: BlogDeps = {}) {
   if (!isBlogContentType(input.contentType)) throw new BlogError("unknown_content_type", 400);
@@ -128,6 +138,7 @@ export async function createPost(input: CreatePostInput, actorId: string | null,
   if (authorship === "expert" && !bylineExpertId) throw new BlogError("byline_required", 400);
   if (authorship === "platform" && bylineExpertId) throw new BlogError("platform_post_has_no_byline", 400);
   if (authorship === "expert" && !input.marketSlug) throw new BlogError("market_required", 400);
+  if (EVENT_TYPES.has(contentType) && !input.cityEventId) throw new BlogError("event_guide_requires_generator", 400);
   const sources = input.sources ?? [];
   await admitSources(sources, deps);
   const summary = input.summary ?? null;
@@ -148,6 +159,7 @@ export async function createPost(input: CreatePostInput, actorId: string | null,
       body: input.body,
       contentSha256: hash,
       bylineExpertId,
+      cityEventId: input.cityEventId ?? null,
       createdBy: actorId,
     }).returning();
     if (sources.length) {
@@ -346,6 +358,31 @@ export async function toPublicPost(row: any) {
     byline,
     platformLabel: row.authorship === "platform" ? PLATFORM_POST_LABEL : null,
     sources: await sourcesFor(row.id),
+    planDoor: row.city_event_id ? await planDoorFor(row.city_event_id) : null,
+  };
+}
+
+/**
+ * The "Start this plan" door of an event post (ledger `2026-09-30-blog-event-guide`), read from the
+ * LIVE `city_events` row every time, never stored on the post: a withdrawn, deleted or past event has
+ * no door (null), so a post never offers to plan around something that is not happening. It carries
+ * the same fields the events strip's "Plan around it" sends (the event is the plan's fixed anchor,
+ * M7), and no id.
+ */
+async function planDoorFor(cityEventId: string) {
+  const [ev] = await db.select().from(cityEvents).where(and(eq(cityEvents.id, cityEventId), isNull(cityEvents.withdrawnAt))).limit(1);
+  if (!ev) return null;
+  const now = new Date();
+  if (new Date(ev.endsAt ?? ev.startsAt).getTime() < now.getTime()) return null;
+  const card = toCityEventCard(ev, null, now);
+  return {
+    title: card.series ?? card.title,
+    city: card.city,
+    marketKey: card.marketKey,
+    firstDate: card.firstDate,
+    lastDate: card.lastDate,
+    startTime: card.startTime,
+    venue: card.venue,
   };
 }
 

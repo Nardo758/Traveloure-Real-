@@ -123,6 +123,10 @@ or cookie value).
   `billboard` (a landing billboard tile's "Start this plan"), `event_strip` (the landing "Coming up in our cities"
   strip's "Plan around it") and `events_page` (the `/events` "Coming up" block's "Plan around it"). The list stays
   closed and stated once in `shared/slip-funnel-events.ts`; a door still off it sends nothing.
+- **Amendment 2026-09-30 (ledger `2026-09-30-blog-event-guide`; decision-maker dispatch "blog generator lane").**
+  One door joins the list: `blog_post` (an event post's "Start this plan", with the event as the plan's fixed
+  anchor, M7). The anchor is the same one `event_strip`/`events_page` send, built by the same
+  `planAroundSource`, from the post's LIVE event row.
 - **Amendment 2026-09-29 (ledger `2026-09-29-expert-door`; decision-maker dispatch "expert door").** The dispatch
   asked for a door value `modal_expert`. A door names where the traveler ENTERED the modal; "Get a local expert" is a
   way to build chosen at its END, so it is recorded as a separate property rather than a door (a plan that entered by
