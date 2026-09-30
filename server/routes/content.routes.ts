@@ -130,7 +130,6 @@ import {
   insertContentImpression, getDemandCountsForCity,
   filterOutAwayOwners,
 } from "../services/content-query.service";
-import { trackAICost } from "../services/ai-cost-tracker";
 import {
   resolveAiDraftEligibility,
   aiDraftRefusalBody,
@@ -4774,7 +4773,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
               mobilityConsiderations: mobilityConsiderations || [],
               specialRequests: promptSpecialRequests,
               immovableConstraints: anchorBlock,
-            })
+            }, { sourceType: "ai_itinerary", userId })
           )
         ));
       } catch (aiError: any) {
@@ -4888,28 +4887,12 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       }
       const comparison = snapshot.comparison;
 
-      // LD 41 (c) / ledger `2026-09-05-draft-cost-tracking-and-tier`: THE PRIMARY GENERATE PATH
-      // WRITES `ai_cost_tracking`. This is the surface every draft door funnels through
-      // (EnhancedPlanningModal, PlanningWithBooking), and it wrote `ai_interactions` only — so the
-      // admin cost breakdown, which reads `ai_cost_tracking`, could not see the platform's single
-      // largest free-AI spend at all. Same writer and same shape as the trip-context extractor
-      // (`trackAICost`, `server/services/ai-cost-tracker.ts`); the model is the one the generator
-      // says it used, never assumed. `estimatedCost` is the generator's own figure, so no pricing
-      // table is restated here (§18 rule 1). A tracking failure NEVER fails the generation —
-      // `trackAICost` swallows its own errors and the `.catch` below covers the call itself
-      // (§15b: an ancillary effect may not break the operation that authorizes it).
-      const draftTokensIn = usage.promptTokens ?? 0;
-      const draftTokensOut = usage.completionTokens ?? 0;
-      if (draftTokensIn > 0 || draftTokensOut > 0) {
-        trackAICost({
-          sourceType: "ai_itinerary",
-          modelUsed: draftModelUsed,
-          userId,
-          costUsd: usage.estimatedCost ?? 0,
-          tokensIn: draftTokensIn,
-          tokensOut: draftTokensOut,
-        }).catch((err) => console.error("[cost-tracker] ai_itinerary:", err));
-      }
+      // LD 41 (c): THE PRIMARY GENERATE PATH WRITES `ai_cost_tracking` — now inside the generator
+      // itself (`aiGenerationService.generateAutonomousItinerary`, ledger
+      // `2026-09-30-ai-task-honest-numbers`), through the same `trackAnthropicResponse` every other
+      // Anthropic call uses, attributed to this user as `ai_itinerary`. Writing it here as well would
+      // count the same call twice. One consequence, stated: a deduplicated request (a concurrent
+      // identical draft sharing one call) is ONE row, attributed to the caller that made the call.
 
       // Analytics is deliberately outside the snapshot transaction. It remains
       // best-effort and cannot roll back (or partially commit) itinerary state.
@@ -5120,7 +5103,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
           mustSeeAttractions: mustSeeAttractions || [],
           dietaryRestrictions: dietaryRestrictions || [],
           mobilityConsiderations: mobilityConsiderations || []
-        });
+        }, userId);
       } catch (aiError: any) {
         console.error("AI optimized-itinerary generation failed:", aiError);
         return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));

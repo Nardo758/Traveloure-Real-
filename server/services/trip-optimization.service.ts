@@ -53,8 +53,12 @@ export interface TripOptimizationResult {
 
 class TripOptimizationService {
   async generateOptimizedItineraries(
-    request: TripOptimizationRequest
+    request: TripOptimizationRequest,
+    // Every generation below writes its own `ai_cost_tracking` row, attributed to this user
+    // (ledger `2026-09-30-ai-task-honest-numbers`).
+    actorUserId: string | null,
   ): Promise<TripOptimizationResult> {
+    const attribution = { sourceType: "ai_trip_optimization", userId: actorUserId };
     let travelPulseContext: TravelPulseContext | undefined = undefined;
     
     // Real-time intelligence (weather/events/safety/deals) came from a Grok "live search" call that
@@ -113,7 +117,7 @@ class TripOptimizationService {
       dietaryRestrictions: request.dietaryRestrictions,
       mobilityConsiderations: request.mobilityConsiderations,
       travelPulseContext,
-    });
+    }, attribution);
 
     const cartItemsInsight = cartItemNames.length > 0 
       ? `Includes ${cartItemNames.length} selected ${cartItemNames.length === 1 ? 'activity' : 'activities'}`
@@ -143,7 +147,7 @@ class TripOptimizationService {
       ...request,
       pacePreference: request.pacePreference === "packed" ? "moderate" : "packed",
       travelPulseContext,
-    });
+    }, attribution);
     
     variations.push({
       ...alternativeResult.result,
@@ -168,7 +172,7 @@ class TripOptimizationService {
       ...request,
       pacePreference: "relaxed",
       travelPulseContext,
-    });
+    }, attribution);
     
     variations.push({
       ...relaxedResult.result,

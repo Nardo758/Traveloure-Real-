@@ -155,7 +155,10 @@ class AIOrchestrator {
     const provider = "claude";
     
     try {
-      const { result, usage } = await aiGenerationService.generateAutonomousItinerary(request);
+      const { result, usage } = await aiGenerationService.generateAutonomousItinerary(request, {
+        sourceType: "ai_itinerary",
+        userId: options?.userId ?? null,
+      });
 
       await this.logInteraction({
         taskType: "autonomous_itinerary",

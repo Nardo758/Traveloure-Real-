@@ -47,7 +47,8 @@ interface AiStats {
   tasksCompleted: number;
   completionRate: number;
   timeSaved: number;
-  avgQualityScore: string;
+  /** Null: no quality measure exists yet, so the row is not shown (never "0.0/10"). */
+  avgQualityScore: string | null;
   editRate: number;
   tokensUsed: number;
 }
@@ -435,10 +436,12 @@ export default function ExpertAIAssistant() {
                   <span className="text-gray-600 dark:text-gray-400">Time Saved</span>
                   <span className="font-medium">{aiStats?.timeSaved ?? 0} hours</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">Avg Quality Score</span>
-                  <span className="font-medium">{aiStats?.avgQualityScore ?? "0.0"}/10</span>
-                </div>
+                {aiStats?.avgQualityScore != null && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">Avg Quality Score</span>
+                    <span className="font-medium">{aiStats.avgQualityScore}/10</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400">Your Edit Rate</span>
                   <span className="font-medium text-green-600">{aiStats?.editRate ?? 0}% (Lower = AI is learning!)</span>
