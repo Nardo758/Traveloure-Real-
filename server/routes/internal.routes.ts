@@ -178,6 +178,9 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   // jobs-cron.yml — daily, 0 9 * * *
   { job: "stripe-reconciliation", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   { job: "availability-materialization", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // Track A A2 (R216) follow-up, ledger `2026-09-29-matrix-daily`: posted daily; a no-op
+  // (`skipped: not_due`) while the matrix is fresh, a real refresh when due or the centroids move.
+  { job: "travel-matrix-refresh", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // occasion-drafts-daily.yml — its own workflow, daily
   { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
 ];
@@ -305,8 +308,9 @@ router.post("/internal/jobs/score-neighborhood-claims", requireInternalSecret, a
 });
 
 // travel-matrix-refresh — Track A step A2 (ledger `2026-09-29-a2-travel-time-matrix`). The ONLY
-// way the launch-city travel-time matrix is refreshed: the operator's signal (first run), then a
-// monthly external cron. Runs only where GOOGLE_MAPS_API_KEY is set; with none it answers a skip
+// way the launch-city travel-time matrix is refreshed: the operator's signal (first run — confirmed
+// Sep 29, 2026), then the DAILY bucket of the jobs cron (ledger `2026-09-29-matrix-daily`), whose
+// empty body means kyoto, not forced — a no-op (`skipped: not_due`) until the matrix is due. Runs only where GOOGLE_MAPS_API_KEY is set; with none it answers a skip
 // and bills nothing. `{ market, force }` in a .strict() body — `market` must be an operating market
 // key (default kyoto); `force` runs even when the matrix is fresh. A run over the configured
 // ceiling is refused before any Routes call.

@@ -20,6 +20,10 @@ name: Kyoto Slice Gate (Trips golden path — Track A acceptance)
 # the ONE explicit model stand-in, E2E_AI_STUB=1 (set below, on the server only — never a fallback;
 # grok.service.ts refuses it where ENVIRONMENT=PROD), so the draft's STRUCTURE and its funnel row
 # are proven here and what a real model writes is not (ledger `2026-09-28-kyoto-s4-draft-ci`).
+# §3 A4's matrix test runs against the ONE Routes stand-in (scripts/ci/seed-kyoto-matrix-standin.ts,
+# ledger `2026-09-29-matrix-daily`): a Kyoto refresh completed through the REAL writer with a
+# deterministic straight-line fetch, so the view is proven to READ the matrix; Google's minutes are
+# not. The script refuses any non-local database.
 #
 # REQUIRED (decision-maker, Sep 28, 2026 — ledger `2026-09-28-kyoto-slice-required`). Status context:
 #   * kyoto-slice (Trips golden path — Appendix A) — listed in .github/branch-protection.json and applied
@@ -136,6 +140,11 @@ jobs:
           echo "::error::Server did not become ready within 5 minutes"
           pgrep -a node || true
           exit 1
+
+      - name: Seed the Kyoto matrix stand-in (§3 A4 — the view reads the matrix)
+        run: npx tsx scripts/ci/seed-kyoto-matrix-standin.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
 
       - name: Verify build identity (artifact == this commit)
         run: |
