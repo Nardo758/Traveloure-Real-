@@ -35,6 +35,7 @@
  */
 
 import { ANCHOR_NEEDED_ERROR } from "@shared/draft-basis";
+import { planSpanLabel } from "@shared/plan-dates";
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Calendar, Users, MapPin, Sparkles, ChevronDown, ChevronRight, Settings, Heart, Utensils, Accessibility, DollarSign, Target, AlertCircle, Gem, LogIn } from 'lucide-react';
 import { useLocation } from 'wouter';
@@ -274,13 +275,9 @@ export default function EnhancedPlanningModal({
   };
 
   // Calculate trip length
-  const getSuggestedDays = () => {
-    if (!startDate || !endDate) return '';
-    const days = Math.ceil(
-      (new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)
-    );
-    return days > 0 ? `${days} days` : '';
-  };
+  // B5 (ledger `2026-09-30-b5-dates-days-and-nights`): the ONE span derivation — both dates are
+  // days of the plan, so Nov 11–15 is "5 days · 4 nights", never the nights called "4 days".
+  const getSuggestedDays = () => planSpanLabel(startDate, endDate) ?? '';
 
   // ── The read-only summary's four labels ──────────────────────────────────────────────────────
   // Each says what it was GIVEN and says so plainly when it was given nothing (§13). None of them
