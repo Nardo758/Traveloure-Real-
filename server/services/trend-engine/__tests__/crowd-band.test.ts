@@ -76,3 +76,16 @@ test("C7: deterministic — identical inputs give identical outputs", () => {
   const s = [...series("predicthq", "phq_attendance_forecast", 1000, 1500), ...series("besttime", "foot_traffic_live", 20, 22)];
   assert.deepEqual(computeCrowdBand(s, WEIGHTS, CUTOFFS, OPTS), computeCrowdBand([...s].reverse(), WEIGHTS, CUTOFFS, OPTS));
 });
+
+test("C8: a disabled or failing crowd source yields NO band — never the last stale one (production, Sep 30, 2026)", () => {
+  // BestTime 409 quota_exhausted and PredictHQ 401: both to be DISABLED, so neither is in the
+  // enabled-source weight map the resolver passes. Their old rows remain in the window.
+  const oldRows = [
+    ...series("besttime", "foot_traffic_forecast_mean", 40, 100, 30, 20),
+    ...series("predicthq", "phq_attendance_forecast", 1000, 3000, 30, 32),
+  ];
+  const enabledOnly = new Map([["x", 1], ["wikimedia_pageviews", 1], ["gdelt", 1]]);
+  assert.equal(computeCrowdBand(oldRows, enabledOnly, CUTOFFS, OPTS).band, null, "disabled ⇒ no band");
+  // Still enabled but failing: no fresh row since the failures began, so nothing new to compare.
+  assert.equal(computeCrowdBand(oldRows, WEIGHTS, CUTOFFS, OPTS).band, null, "failing ⇒ no band");
+});
