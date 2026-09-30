@@ -1093,6 +1093,31 @@ export function PlanModal({
       }
     }
 
+    /**
+     * B8 (production smoke test Sep 30, 2026 — ledger `2026-09-30-b1-new-plan-inherits-nothing`):
+     * ONE SOURCE OF TRUTH FOR A PLAN'S DATES AND NAME. An edit of a bound plan wrote its dates and
+     * name to the pen only, so the setup header (the pen) read Nov 11–15 while the slip (the row)
+     * read Nov 24–26. They now reach the ROW through the ONE re-date rail, the owner-gated
+     * `PATCH /api/trips/:id` (LD 30 amendment — it stamps `dates_confirmed_at`). Only on an EDIT:
+     * a plan this save just minted already carries them from its mint body. A name is sent only
+     * when one is stated (never cleared to empty); a refusal (a non-owner) is logged and the pen
+     * write above stands, exactly as the occasion PATCH behaves.
+     */
+    if (tripId && tripId !== boundTripId) {
+      const rowPatch: Record<string, string> = {};
+      if (start && end) {
+        rowPatch.startDate = start;
+        rowPatch.endDate = end;
+      }
+      if (title.trim()) rowPatch.title = title.trim();
+      if (Object.keys(rowPatch).length > 0) {
+        await apiRequest("PATCH", `/api/trips/${tripId}`, rowPatch).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn("[plan-modal] plan dates/name not persisted to the trip row:", err?.message);
+        });
+      }
+    }
+
     // ── The two switch-driven writes. Both need a trip row; both hold honestly without one. ─────
     // The moment's DATE is the single date for a day-shaped occasion and its own answer for a
     // range-shaped one (the ratified Step3When card). Neither is invented: with no date and no

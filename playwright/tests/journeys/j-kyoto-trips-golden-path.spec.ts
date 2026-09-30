@@ -267,6 +267,102 @@ test.describe("1 · entry and occasion", () => {
     ).toEqual([]);
     await expect(testid(page, "slip-title")).toContainText("Kyoto smoke test", { timeout: 20_000 });
   });
+
+  test("§1 B8 — with a Kyoto plan bound, Destinations → Kyoto → 'Plan New Trip with AI' makes a NEW plan and drafts into it", async ({ page }) => {
+    // Production smoke test Sep 30, 2026 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): this
+    // door re-opened the bound plan's setup and sent the draft at the existing plan (409 "already
+    // has items"). `city_grid` is an entry door: it mints its own plan.
+    const traveler = await signedInTraveler(page, "b8");
+    await openModalFromHero(page);
+    expect(await fillPlanModalToFinish(page, KYOTO, { occasionSlug: "travel", lenDays: 3 })).toBe(true);
+    const firstId = await clickPlanFinish(page, "myself");
+    expect(firstId, "the first plan minted and is bound").toBeTruthy();
+    await createItem(page.request, firstId!, "Fushimi Inari walk", 1);
+
+    await page.goto("/destinations");
+    const card = testid(page, "button-plan-now-kyoto").first();
+    expect(await appears(card, 20_000), "the Destinations grid offers Kyoto").toBe(true);
+    await card.click();
+    await testid(page, "button-plan-now-kyoto").last().click();
+    expect(await appears(testid(page, "plan-modal"), 10_000), "the one planning modal opens").toBe(true);
+    await expect(testid(page, "option-occasion-travel"), "a new plan asks its own occasion").toBeVisible();
+    const next = testid(page, "button-planning-next");
+    const walkTo = async (id: string) => {
+      for (let i = 0; i < 8 && !(await appears(testid(page, id), 800)); i++) {
+        if (!(await appears(next, 800)) || (await next.isDisabled())) break;
+        await next.click();
+      }
+      expect(await appears(testid(page, id), 3000), `the modal reaches ${id}`).toBe(true);
+    };
+    const year = new Date().getFullYear() + 1;
+    await testid(page, "option-occasion-travel").click();
+    await next.click();
+    await expect(testid(page, "input-etp-destination"), "the door's city is pre-filled").toHaveValue(/Kyoto/);
+    await walkTo("input-etp-start-date");
+    await expect(testid(page, "input-etp-start-date"), "no date is carried from the bound plan").toHaveValue("");
+    await testid(page, "input-etp-start-date").fill(`${year}-11-11`);
+    await testid(page, "input-etp-end-date").fill(`${year}-11-14`);
+    await walkTo("planning-option-ai");
+    const draft = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/api/ai/generate-itinerary" && r.request().method() === "POST" && r.status() !== 409,
+      { timeout: 60_000 },
+    );
+    await testid(page, "planning-option-ai").click();
+    await testid(page, "button-generate-itinerary").click();
+    const ask = testid(page, "ai-draft-without-anchor");
+    if (await appears(ask, 15_000)) await ask.click();
+    expect(ok2xx((await draft).status()), "the draft is not refused as 'already has items'").toBe(true);
+
+    const plans = await rows<{ id: string }>(`SELECT id FROM trips WHERE user_id = $1`, [traveler.id]);
+    expect(plans.length, "the door made a second plan").toBe(2);
+    const second = plans.find((p) => p.id !== firstId)!;
+    expect(
+      (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [second.id])).length,
+      "the draft landed in the new plan",
+    ).toBeGreaterThan(0);
+    expect(
+      (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [firstId])).length,
+      "the first plan is untouched",
+    ).toBe(1);
+  });
+
+  test("§1 B8 — the Trip Strip's Edit writes new dates and a name to the plan ROW; setup and plan never disagree", async ({ page }) => {
+    // Ledger `2026-09-30-b1-new-plan-inherits-nothing`: an edit wrote dates and name to the pen only,
+    // so the setup header and the saved plan showed different windows. They now ride the one
+    // re-date rail, `PATCH /api/trips/:id`, and the edit mints nothing.
+    const traveler = await signedInTraveler(page, "b8e");
+    await openModalFromHero(page);
+    expect(await fillPlanModalToFinish(page, KYOTO, { occasionSlug: "travel", lenDays: 3 })).toBe(true);
+    const tripId = await clickPlanFinish(page, "myself");
+    expect(tripId).toBeTruthy();
+    const year = new Date().getFullYear() + 1;
+    await page.goto("/pricing");
+    const edit = page.locator('[data-testid="trip-strip-edit"], [data-testid="trip-strip-edit-plan"]').first();
+    expect(await appears(edit, 20_000), "the Trip Strip offers Edit on a bound plan").toBe(true);
+    await edit.click();
+    expect(await appears(testid(page, "plan-modal"), 10_000)).toBe(true);
+    const next = testid(page, "button-planning-next");
+    for (let i = 0; i < 6 && !(await appears(testid(page, "input-etp-start-date"), 600)); i++) await next.click();
+    await testid(page, "input-etp-start-date").fill(`${year}-12-01`);
+    await testid(page, "input-etp-end-date").fill(`${year}-12-04`);
+    for (let i = 0; i < 6 && !(await appears(testid(page, "input-etp-title"), 600)); i++) await next.click();
+    await testid(page, "input-etp-title").fill("Renamed plan");
+    const patched = await actAndAwait(
+      page,
+      async () => {
+        await testid(page, "button-etp-save").click();
+      },
+      { method: "PATCH", path: new RegExp(`^/api/trips/${tripId}$`) },
+    );
+    expect(ok2xx(patched), `the edit reached the row (PATCH answered ${patched})`).toBe(true);
+    const plans = await rows<{ id: string; s: string; e: string; title: string; confirmed: boolean }>(
+      `SELECT id, start_date::text AS s, end_date::text AS e, title, dates_confirmed_at IS NOT NULL AS confirmed
+         FROM trips WHERE user_id = $1`,
+      [traveler.id],
+    );
+    expect(plans.map((p) => p.id), "an edit mints nothing").toEqual([tripId]);
+    expect([plans[0].s, plans[0].e, plans[0].title, plans[0].confirmed]).toEqual([`${year}-12-01`, `${year}-12-04`, "Renamed plan", true]);
+  });
 });
 
 // ── §2 · where are you staying ────────────────────────────────────────────────────────────────
