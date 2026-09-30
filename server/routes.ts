@@ -11969,6 +11969,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
 
   // === EXPERT AI TASKS ROUTES ===
+  //
+  // `confidence` / `quality_score` (ledger `2026-09-30-ai-task-honest-numbers`): no measure of either
+  // exists, and the two writers that filled them stamped Math.random() — 85–94% and 8.5–9.5/10 on
+  // every task. The writers are deleted, so a new task carries NULL; every value already on a row
+  // was invented by those writers, so every read projects both as null rather than showing them
+  // (§13 — no backfill, the rows are untouched; a real measure gets its own writer and ruling).
+  const withoutUnmeasuredScores = <T extends { confidence?: unknown; qualityScore?: unknown }>(task: T): T =>
+    task ? { ...task, confidence: null, qualityScore: null } : task;
   
   // Get expert's AI tasks
   app.get("/api/expert/ai-tasks", isAuthenticated, async (req, res) => {
@@ -11985,7 +11993,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         .orderBy(sql`${expertAiTasks.createdAt} DESC`)
         .limit(50);
       
-      res.json(tasks);
+      res.json(tasks.map(withoutUnmeasuredScores));
     } catch (error: any) {
       console.error("Error fetching expert AI tasks:", error);
       res.status(500).json({ message: error.message || "Failed to fetch tasks" });
@@ -12042,16 +12050,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
 
         const durationMs = Date.now() - startTime;
-        const confidence = Math.floor(85 + Math.random() * 10);
-        const qualityScore = (8.5 + Math.random() * 1.0).toFixed(1);
 
         // Update task with result
         const [updatedTask] = await db.update(expertAiTasks)
           .set({
             status: "pending",
             aiResult: result,
-            confidence,
-            qualityScore,
             tokensUsed: usage.totalTokens,
             costEstimate: usage.estimatedCost.toFixed(6),
             updatedAt: new Date(),
@@ -12073,7 +12077,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           metadata: { expertTaskId: task.id, taskType },
         });
 
-        res.json(updatedTask);
+        res.json(withoutUnmeasuredScores(updatedTask));
       } catch (aiError: any) {
         // T6-4: never persist the raw provider error (it can carry infra text
         // like "403 Host not in allowlist: api.x.ai. Add this host to your
@@ -12125,7 +12129,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         .where(eq(expertAiTasks.id, taskId))
         .returning();
 
-      res.json(updatedTask);
+      res.json(withoutUnmeasuredScores(updatedTask));
     } catch (error: any) {
       console.error("Error approving task:", error);
       res.status(500).json({ message: error.message || "Failed to approve task" });
@@ -12155,7 +12159,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         .where(eq(expertAiTasks.id, taskId))
         .returning();
 
-      res.json(updatedTask);
+      res.json(withoutUnmeasuredScores(updatedTask));
     } catch (error: any) {
       console.error("Error rejecting task:", error);
       res.status(500).json({ message: error.message || "Failed to reject task" });
@@ -12222,15 +12226,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       const durationMs = Date.now() - startTime;
-      const confidence = Math.floor(85 + Math.random() * 10);
-      const qualityScore = (8.5 + Math.random() * 1.0).toFixed(1);
 
       const [updatedTask] = await db.update(expertAiTasks)
         .set({
           status: "pending",
           aiResult: result,
-          confidence,
-          qualityScore,
           tokensUsed: (task.tokensUsed || 0) + usage.totalTokens,
           costEstimate: (parseFloat(task.costEstimate?.toString() || "0") + usage.estimatedCost).toFixed(6),
           updatedAt: new Date(),
@@ -12252,7 +12252,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         metadata: { expertTaskId: task.id, taskType: task.taskType, regeneration: true },
       });
 
-      res.json(updatedTask);
+      res.json(withoutUnmeasuredScores(updatedTask));
     } catch (error: any) {
       console.error("Error regenerating task:", error);
       res.status(500).json({ message: "Failed to regenerate task. Please try again." });
@@ -12278,9 +12278,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const completed = tasks.filter(t => t.status === "completed").length;
       const edited = tasks.filter(t => t.wasEdited).length;
       const totalTokens = tasks.reduce((sum, t) => sum + (t.tokensUsed || 0), 0);
-      const avgQuality = tasks.filter(t => t.qualityScore).reduce((sum, t, _, arr) => 
-        sum + parseFloat(t.qualityScore?.toString() || "0") / arr.length, 0
-      );
 
       // Estimate time saved (assume 10 min per task)
       const timeSavedMinutes = completed * 10;
@@ -12290,7 +12287,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         tasksCompleted: completed,
         completionRate: totalDelegated > 0 ? Math.round((completed / totalDelegated) * 100) : 0,
         timeSaved: Math.round(timeSavedMinutes / 60),
-        avgQualityScore: avgQuality.toFixed(1),
+        // No quality measure exists (see withoutUnmeasuredScores): null, never "0.0" and never an
+        // average of the random values older rows still carry (§13).
+        avgQualityScore: null,
         editRate: completed > 0 ? Math.round((edited / completed) * 100) : 0,
         tokensUsed: totalTokens,
       });
