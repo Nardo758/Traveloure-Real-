@@ -6,9 +6,11 @@ import {
   insertItineraryChangeSchema,
   itineraryItems,
   itineraryComparisons,
+  itineraryVariants,
+  itineraryVariantItems,
 } from "@shared/schema";
 import { db } from "../db";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, inArray, notInArray } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole } from "../utils/trip-role";
@@ -27,6 +29,12 @@ import { isUntouchedAiDraft } from "../services/ai-draft-eligibility";
 import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
 import { isTripPayer } from "../services/balance-payer.service";
 import { tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
+import { planRole } from "../services/plan-option-sets.service";
+import { choosePickInTx, openSetHeldItemIds, recordVersionAdopted, type PickOutcome } from "../services/version-adopt.service";
+import { optionPickOf } from "@shared/version-options";
+import { versionPerOptionEnabled } from "../config/version-options.config";
+import { listRunsForTrip, recordRunOutcome } from "../services/optimizer-runs.service";
+import { optimizerRunRecordsEnabled } from "../config/optimizer-runs.config";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -126,6 +134,15 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
 
     const tripId = comparison.tripId;
 
+    // A7 (§F2 (3), ledger `2026-09-30-a7-version-per-option`): behind the flag, the version's pick
+    // is not inserted as a stop — it CHOOSES its set in this same transaction, and an item a still-
+    // open set holds is not deleted by the replace. Flag off: exactly the apply below, unchanged.
+    const perOption = versionPerOptionEnabled();
+    const chooseRole = perOption ? await planRole(tripId, userId, "choose") : null;
+    const picks = perOption
+      ? variantItems.map((it: any) => optionPickOf(it.metadata)).filter((p): p is NonNullable<typeof p> => !!p)
+      : [];
+
     // ── Lane 6 residue R2: apply is ONE atomic action ─────────────────────────────────────────
     // Before this transaction the four writes below ran as independent autocommit statements, and
     // the insert was a per-row loop — a mid-loop failure left the trip with its `in_planning` rows
@@ -146,13 +163,16 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       // diary row); a plan rebuild is not a removal, so no per-row `item_removed` (§13, R15).
       // rebuild-guard-exempt: in_planning-only AND not-expert-work — ready_for_checkout/purchased/booked rows preserved by construction (D-1); expert work by the D3 clause ANDed into the WHERE.
       // item-removed:replace — apply-to-trip replaces the in_planning set with the chosen variant.
-      await tx
+      const heldBySets = perOption ? await openSetHeldItemIds(tx, tripId) : [];
+      const deleted = await tx
         .delete(itineraryItems)
         .where(and(
           eq(itineraryItems.tripId, tripId),
           eq(itineraryItems.routingStatus, "in_planning"),
           itineraryItemNotExpertWork(),
-        ));
+          ...(heldBySets.length > 0 ? [notInArray(itineraryItems.id, heldBySets)] : []),
+        ))
+        .returning({ id: itineraryItems.id });
       const [remaining] = await tx
         .select({ n: count() })
         .from(itineraryItems)
@@ -177,6 +197,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
         survivingItems.map((s: any) => String(s.title ?? "").trim().toLowerCase()).filter(Boolean),
       );
       const applicableVariantItems = variantItems.filter((item: any) => {
+        if (perOption && optionPickOf(item.metadata)) return false; // the pick chooses its set below
         if (item.providerServiceId && survivingServiceIds.has(item.providerServiceId)) return false;
         const name = String(item.name ?? "").trim().toLowerCase();
         if (name && survivingTitles.has(name)) return false;
@@ -214,6 +235,20 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       // apply that rolled back. `itinerary_changes` STOPS writing this event in the same change —
       // one truth per event type; it keeps content-change display semantics only. (Deriving the
       // traveler-facing feed from this log is the named follow-up, not this lane.)
+      const pickOutcomes = [];
+      for (const pick of picks) {
+        pickOutcomes.push(await choosePickInTx(tx, { tripId, userId, role: chooseRole, pick, via: "version_whole" }));
+      }
+
+      // A9 (§N2): what happened to the run, at the moment it happened — the whole-version adopt and
+      // each set it decided. A version with no run (flag off when it was made) records nothing.
+      if (optimizerRunRecordsEnabled()) {
+        await recordRunOutcome(tx, { variantId: variant.id, kind: "adopted_whole", actorId: userId });
+        for (const o of pickOutcomes) {
+          if (o.decided) await recordRunOutcome(tx, { variantId: variant.id, kind: "option_chosen", actorId: userId, setId: o.setId, optionId: o.optionId });
+        }
+      }
+
       await logItemTransition(tx, {
         tripId,
         itemId: null,
@@ -242,7 +277,14 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       // a ledger write must never be able to roll back a real apply, nor fail one).
       const unmatchedItems = applicableVariantItems.filter((item: any) => !item.providerServiceId);
 
-      return { preservedRoutedItems, dedupedAgainstRoutedItems, unmatchedItems };
+      return {
+        preservedRoutedItems,
+        dedupedAgainstRoutedItems,
+        unmatchedItems,
+        insertedCount: applicableVariantItems.length,
+        deletedCount: deleted.length,
+        pickOutcomes,
+      };
     });
 
     // Auto-v+1 (adopt-finalize-conform D-1a, same posture as adopt-stop below): adopting a whole
@@ -262,7 +304,21 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // place, how many proposed items were dropped because the plan already held them, and how
     // many losing variants were discarded. Existing consumers read `tripId`/`delta` and are
     // unaffected; no UI is built on these yet.
-    const { unmatchedItems, ...appliedSummary } = applied;
+    const { unmatchedItems, insertedCount, deletedCount, pickOutcomes, ...appliedSummary } = applied;
+
+    if (perOption) {
+      await recordVersionAdopted({
+        userId,
+        tripId,
+        comparisonId,
+        variantId: variant.id,
+        adoptMode: "whole",
+        itemsAdded: insertedCount,
+        itemsReplaced: deletedCount,
+        protectedKept: appliedSummary.preservedRoutedItems,
+        setsDecided: pickOutcomes.filter((o) => o.decided).length,
+      });
+    }
 
     // ── WP-B gap-fill ledger hook (single try/catch'd call — §15b: best-effort, NEVER fails Apply) ──
     try {
@@ -279,7 +335,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       console.warn("[plancard] gap-fill ledger hook failed (non-fatal):", ledgerErr?.message || ledgerErr);
     }
 
-    res.json({ tripId, delta, ...appliedSummary });
+    res.json({ tripId, delta, ...appliedSummary, ...(perOption ? { sets: pickOutcomes } : {}) });
   } catch (error) {
     console.error("Error applying variant to trip:", error);
     res.status(500).json({ error: "Failed to apply variant to trip" });
@@ -330,51 +386,28 @@ router.post("/api/itinerary-comparisons/:id/adopt-stop", isAuthenticated, async 
 
     const tripId = comparison.tripId;
 
-    const result = await db.transaction(async (tx) => {
-      // Dedup against the whole plan — never a second copy of something already on it
-      // (providerServiceId first, then exact case-insensitive title — the apply-to-trip predicate).
-      const existing = await tx.select().from(itineraryItems).where(eq(itineraryItems.tripId, tripId));
-      const svcIds = new Set(
-        existing.map((s: any) => s.providerServiceId).filter((v: any): v is string => !!v),
-      );
-      const titles = new Set(
-        existing.map((s: any) => String(s.title ?? "").trim().toLowerCase()).filter(Boolean),
-      );
-      const name = String(variantItem.name ?? "").trim().toLowerCase();
-      if (
-        (variantItem.providerServiceId && svcIds.has(variantItem.providerServiceId)) ||
-        (name && titles.has(name))
-      ) {
-        return { adopted: false, reason: "already-in-plan" as const };
-      }
-
-      // Append ONE item. Every field is read from the server-side variant row — NEVER req.body:
-      //   - providerServiceId preserved (linkage guard §H5 / check-linkage-preservation.cjs),
-      //   - estimatedCost from the variant row's price (§14 — no client-supplied amount),
-      //   - origin server-stamped 'ai' (§12), consistent with apply-to-trip: the CONTENT was
-      //     authored by the optimizer even though the traveler chose to pull this one in.
-      //   - routingStatus takes the migration-159 default ('in_planning') — not written here.
-      const [row] = await tx.insert(itineraryItems).values({
-        tripId,
-        providerServiceId: variantItem.providerServiceId ?? null,
-        title: variantItem.name,
-        description: variantItem.description || "",
-        itemType: variantItem.serviceType || "activity",
-        status: "planned",
-        dayNumber: variantItem.dayNumber,
-        startTime: variantItem.startTime || "",
-        durationMinutes: variantItem.duration ?? null,
-        locationName: variantItem.location || "",
-        estimatedCost: variantItem.price ? String(variantItem.price) : null,
-        currency: "USD",
-        sortOrder: variantItem.sortOrder ?? 0,
-        suggestedBy: "AI Optimizer",
-        origin: "ai",
-        latitude: variantItem.latitude ? String(variantItem.latitude) : null,
-        longitude: variantItem.longitude ? String(variantItem.longitude) : null,
-      }).returning();
-      return { adopted: true, item: row };
-    });
+    // A7 (§F2 (3)): behind the flag, a stop that carries a version's pick CHOOSES its set instead
+    // of appending — through the same helper adopt-stops uses. Flag off: the append below, unchanged.
+    const perOption = versionPerOptionEnabled();
+    const chooseRole = perOption ? await planRole(tripId, userId, "choose") : null;
+    const outcome = await db.transaction((tx) =>
+      adoptVariantItemsInTx(tx, { tripId, userId, role: chooseRole, perOption, items: [variantItem] }),
+    );
+    const pickOutcome = outcome.sets[0];
+    const result = pickOutcome
+      ? pickOutcome.decided
+        ? { adopted: true as const, chose: { setId: pickOutcome.setId, optionId: pickOutcome.optionId }, itemId: pickOutcome.itemId }
+        : { adopted: false as const, reason: pickOutcome.reason }
+      : outcome.added.length > 0
+        ? { adopted: true as const, item: outcome.added[0] }
+        : { adopted: false as const, reason: "already-in-plan" as const };
+    if (perOption && result.adopted) {
+      await recordVersionAdopted({
+        userId, tripId, comparisonId, variantId: variantItem.variantId, adoptMode: "stop",
+        itemsAdded: outcome.added.length, itemsReplaced: 0, protectedKept: 0,
+        setsDecided: outcome.sets.filter((o) => o.decided).length,
+      });
+    }
 
     // Phase 2 auto-v+1 (ledger 2026-08-31-two-surfaces-one-handoff): adopting a stop is accepting an
     // optimizer suggestion. If the trip is CURRENTLY finalized, capture it as a new final version so
@@ -392,6 +425,150 @@ router.post("/api/itinerary-comparisons/:id/adopt-stop", isAuthenticated, async 
   } catch (error) {
     console.error("Error adopting stop into trip:", error);
     res.status(500).json({ error: "Failed to add stop to plan" });
+  }
+});
+
+/**
+ * Adopt variant stops into the plan, inside the caller's transaction — the ONE body adopt-stop and
+ * adopt-stops share (§18 rule 1). A stop already on the plan (providerServiceId first, then exact
+ * case-insensitive title — the apply-to-trip predicate) or already added earlier in the same batch
+ * is skipped, so a re-press is a no-op. Behind the A7 flag a stop carrying a version's pick chooses
+ * its set (version_stop) rather than appending. Every field is read from the server-side variant
+ * row — NEVER req.body (§14); providerServiceId is preserved (§H5); origin is server-stamped 'ai'.
+ */
+async function adoptVariantItemsInTx(
+  tx: any,
+  input: { tripId: string; userId: string; role: Awaited<ReturnType<typeof planRole>>; perOption: boolean; items: any[] },
+): Promise<{ added: any[]; alreadyInPlan: string[]; sets: PickOutcome[] }> {
+  const { tripId } = input;
+  const existing = await tx.select().from(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+  const svcIds = new Set<string>(existing.map((s: any) => s.providerServiceId).filter((v: any): v is string => !!v));
+  const titles = new Set<string>(existing.map((s: any) => String(s.title ?? "").trim().toLowerCase()).filter(Boolean));
+  const added: any[] = [];
+  const alreadyInPlan: string[] = [];
+  const sets: PickOutcome[] = [];
+  const decidedSets = new Set<string>();
+  const addedByVariant = new Map<string, string[]>();
+  for (const variantItem of input.items) {
+    const pick = input.perOption ? optionPickOf(variantItem.metadata) : null;
+    if (pick) {
+      if (decidedSets.has(pick.setId)) continue;
+      decidedSets.add(pick.setId);
+      const outcome = await choosePickInTx(tx, { tripId, userId: input.userId, role: input.role, pick, via: "version_stop" });
+      sets.push(outcome);
+      if (outcome.decided && optimizerRunRecordsEnabled()) {
+        await recordRunOutcome(tx, { variantId: variantItem.variantId, kind: "option_chosen", actorId: input.userId, setId: outcome.setId, optionId: outcome.optionId });
+      }
+      continue;
+    }
+    const name = String(variantItem.name ?? "").trim().toLowerCase();
+    if ((variantItem.providerServiceId && svcIds.has(variantItem.providerServiceId)) || (name && titles.has(name))) {
+      alreadyInPlan.push(variantItem.id);
+      continue;
+    }
+    // routingStatus takes the migration-159 default ('in_planning') — not written here.
+    const [row] = await tx.insert(itineraryItems).values({
+      tripId,
+      providerServiceId: variantItem.providerServiceId ?? null,
+      title: variantItem.name,
+      description: variantItem.description || "",
+      itemType: variantItem.serviceType || "activity",
+      status: "planned",
+      dayNumber: variantItem.dayNumber,
+      startTime: variantItem.startTime || "",
+      durationMinutes: variantItem.duration ?? null,
+      locationName: variantItem.location || "",
+      estimatedCost: variantItem.price ? String(variantItem.price) : null,
+      currency: "USD",
+      sortOrder: variantItem.sortOrder ?? 0,
+      suggestedBy: "AI Optimizer",
+      origin: "ai",
+      latitude: variantItem.latitude ? String(variantItem.latitude) : null,
+      longitude: variantItem.longitude ? String(variantItem.longitude) : null,
+    }).returning();
+    added.push(row);
+    addedByVariant.set(variantItem.variantId, [...(addedByVariant.get(variantItem.variantId) ?? []), variantItem.id]);
+    if (variantItem.providerServiceId) svcIds.add(variantItem.providerServiceId);
+    if (name) titles.add(name);
+  }
+  // A9 (§N2): the stops adopted from each version, as one `adopted_part` row per version.
+  if (optimizerRunRecordsEnabled()) {
+    for (const [variantId, variantItemIds] of Array.from(addedByVariant.entries())) {
+      await recordRunOutcome(tx, { variantId, kind: "adopted_part", actorId: input.userId, variantItemIds });
+    }
+  }
+  return { added, alreadyInPlan, sets };
+}
+
+// A7 (§F2 (3), ledger `2026-09-30-a7-version-per-option`): adopt SEVERAL stops in one press — one
+// transaction, the adopt-stop dedupe, the §12 WRITE gate, a re-press a no-op; stops carrying a
+// version's pick choose their sets. Behind OPTIMIZER_VERSION_PER_OPTION_ENABLED (404 when off).
+router.post("/api/itinerary-comparisons/:id/adopt-stops", isAuthenticated, async (req, res) => {
+  try {
+    if (!versionPerOptionEnabled()) return res.status(404).json({ error: "Not found" });
+    const { id: comparisonId } = req.params;
+    const userId = getUserId(req)!;
+    const parsed = z.object({ variantItemIds: z.array(z.string().min(1).max(64)).min(1).max(50) }).strict().safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: "variantItemIds is required (1–50 ids)" });
+    const ids = Array.from(new Set(parsed.data.variantItemIds));
+
+    // The comparison's owner only (as adopt-stop), AND the trip's §12 WRITE gate — both before any write.
+    const comparison = await storage.getItineraryComparison(comparisonId);
+    if (!comparison || comparison.userId !== userId) return res.status(404).json({ error: "Comparison not found" });
+    if (!comparison.tripId) return res.status(400).json({ error: "Comparison has no associated trip" });
+    const denied = await authorizeTripLogistics(comparison.tripId, userId, "POST /api/itinerary-comparisons/:id/adopt-stops", { requireWriteAccess: true });
+    if (denied) return res.status(denied.status).json({ error: denied.message });
+
+    // Every stop must belong to a variant UNDER THIS comparison; one that does not is the same 404.
+    const rows = await db
+      .select({ item: itineraryVariantItems, comparisonId: itineraryVariants.comparisonId })
+      .from(itineraryVariantItems)
+      .innerJoin(itineraryVariants, eq(itineraryVariants.id, itineraryVariantItems.variantId))
+      .where(inArray(itineraryVariantItems.id, ids));
+    if (rows.length !== ids.length || rows.some((r) => r.comparisonId !== comparisonId)) {
+      return res.status(404).json({ error: "Stop not found" });
+    }
+    const order = new Map(ids.map((id, i) => [id, i]));
+    const items = rows.map((r) => r.item).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+
+    const tripId = comparison.tripId;
+    const chooseRole = await planRole(tripId, userId, "choose");
+    const outcome = await db.transaction((tx) => adoptVariantItemsInTx(tx, { tripId, userId, role: chooseRole, perOption: true, items }));
+    const setsDecided = outcome.sets.filter((o) => o.decided).length;
+    if (outcome.added.length > 0 || setsDecided > 0) {
+      try {
+        await reFinalizeIfCurrentlyFinal(tripId, userId);
+      } catch (err) {
+        console.error("[adopt-stops] auto re-finalize failed (non-fatal):", (err as any)?.message);
+      }
+    }
+    const variantIds = Array.from(new Set(items.map((i) => i.variantId)));
+    await recordVersionAdopted({
+      userId, tripId, comparisonId, variantId: variantIds.length === 1 ? variantIds[0] : null, adoptMode: "stops",
+      itemsAdded: outcome.added.length, itemsReplaced: 0, protectedKept: 0, setsDecided,
+    });
+    res.json({ added: outcome.added.length, items: outcome.added, alreadyInPlan: outcome.alreadyInPlan, sets: outcome.sets });
+  } catch (error) {
+    console.error("Error adopting stops into trip:", error);
+    res.status(500).json({ error: "Failed to add stops to plan" });
+  }
+});
+
+// A9 (§N3, ledger `2026-09-30-a9-run-records`): "Your optimized plans" — this plan's runs, newest
+// first: date, what paid for it (the basis, never an amount), its versions and what was adopted. READ
+// ONLY, through the plan's READ gate (owner, delegate, §12 read-status advisor, author, audited admin);
+// runs are never shown on another traveler's plan. Behind OPTIMIZER_RUN_RECORDS_ENABLED (404 when off).
+router.get("/api/trips/:tripId/optimizer-runs", isAuthenticated, async (req, res) => {
+  try {
+    if (!optimizerRunRecordsEnabled()) return res.status(404).json({ error: "Not found" });
+    const { tripId } = req.params;
+    const userId = getUserId(req)!;
+    const denied = await authorizeTripLogistics(tripId, userId, "GET /api/trips/:tripId/optimizer-runs");
+    if (denied) return res.status(denied.status).json({ error: denied.message });
+    res.json({ runs: await listRunsForTrip(tripId) });
+  } catch (error) {
+    console.error("Error listing optimizer runs:", error);
+    res.status(500).json({ error: "Failed to list optimized plans" });
   }
 });
 

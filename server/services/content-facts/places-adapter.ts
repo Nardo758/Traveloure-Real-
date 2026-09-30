@@ -33,6 +33,9 @@ const FIELD_MASK = [
   "places.googleMapsUri",
   "places.reservable",
   "places.servesVegetarianFood",
+  // Ledger `2026-09-30-places-address`: the two address fields, and nothing else added.
+  "places.formattedAddress",
+  "places.shortFormattedAddress",
 ].join(",");
 
 const COVERS: ReadonlySet<ContentNeed> = new Set<ContentNeed>(["stop.hours", "dining", "neighbourhood"]);
@@ -116,6 +119,16 @@ export class PlacesAdapter implements SourceAdapter {
       if (typeof p.reservable === "boolean") v.reservable = p.reservable;
       if (typeof p.servesVegetarianFood === "boolean") v.servesVegetarianFood = p.servesVegetarianFood;
       push({ need: "dining", factType: "dining_basics", value: v, expiresAt: expiry(fetchedAt, factTtlDays("dining_basics")) });
+    }
+    // Ledger `2026-09-30-places-address`: the address as Google gave it, both forms kept verbatim; the
+    // reader picks formatted → short → the draft's own text. Neither present ⇒ no address fact (§13).
+    const formatted = typeof p.formattedAddress === "string" ? p.formattedAddress.trim() : "";
+    const short = typeof p.shortFormattedAddress === "string" ? p.shortFormattedAddress.trim() : "";
+    if (formatted || short) {
+      const v: Record<string, unknown> = { query: text };
+      if (formatted) v.formattedAddress = formatted;
+      if (short) v.shortFormattedAddress = short;
+      push({ need: req.need, factType: "address", value: v, expiresAt: expiry(fetchedAt, factTtlDays("address")) });
     }
     // A located place with nothing else still cost a call — record it on a location row; a place
     // with no coordinates and no facts records nothing (there is nothing true to keep).
