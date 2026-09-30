@@ -601,8 +601,9 @@ export function PlanModal({
     const keys = [
       source?.experienceSlug,
       source?.experienceType,
-      ctx.experienceSlug,
-      ctx.experienceType,
+      // B1 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): a NEW plan answers its own occasion —
+      // the bound plan's occasion is never a pre-filled answer for it.
+      ...(source?.newPlan ? [] : [ctx.experienceSlug, ctx.experienceType]),
     ];
     for (const key of keys) {
       const row = findOccasionByKey(occasions, key);
@@ -620,7 +621,7 @@ export function PlanModal({
     const { startStep } = resolvePlanSteps(
       source,
       doorOccasion,
-      { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
+      source?.newPlan ? {} : { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
     );
     openedAtOccasionStep.current = startStep === "occasion";
     setStep(startStep);
@@ -772,7 +773,7 @@ export function PlanModal({
       resolvePlanSteps(
         source,
         selectedOccasion,
-        { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
+        source?.newPlan ? {} : { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
       ),
     [source, selectedOccasion, ctx.experienceSlug, ctx.experienceType],
   );
@@ -1088,6 +1089,31 @@ export function PlanModal({
         void apiRequest("PATCH", `/api/trips/${tripId}/occasion`, body).catch((err) => {
           // eslint-disable-next-line no-console
           console.warn("[plan-modal] plan details not persisted to the trip row:", err?.message);
+        });
+      }
+    }
+
+    /**
+     * B8 (production smoke test Sep 30, 2026 — ledger `2026-09-30-b1-new-plan-inherits-nothing`):
+     * ONE SOURCE OF TRUTH FOR A PLAN'S DATES AND NAME. An edit of a bound plan wrote its dates and
+     * name to the pen only, so the setup header (the pen) read Nov 11–15 while the slip (the row)
+     * read Nov 24–26. They now reach the ROW through the ONE re-date rail, the owner-gated
+     * `PATCH /api/trips/:id` (LD 30 amendment — it stamps `dates_confirmed_at`). Only on an EDIT:
+     * a plan this save just minted already carries them from its mint body. A name is sent only
+     * when one is stated (never cleared to empty); a refusal (a non-owner) is logged and the pen
+     * write above stands, exactly as the occasion PATCH behaves.
+     */
+    if (tripId && tripId !== boundTripId) {
+      const rowPatch: Record<string, string> = {};
+      if (start && end) {
+        rowPatch.startDate = start;
+        rowPatch.endDate = end;
+      }
+      if (title.trim()) rowPatch.title = title.trim();
+      if (Object.keys(rowPatch).length > 0) {
+        await apiRequest("PATCH", `/api/trips/${tripId}`, rowPatch).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn("[plan-modal] plan dates/name not persisted to the trip row:", err?.message);
         });
       }
     }
@@ -1659,7 +1685,9 @@ export function PlanModal({
     when:
       shape === "day"
         ? "Occasions that last a day ask for a date and a time, never a range."
-        : "A travel-class plan asks only for the two days.",
+        // B5 (ledger `2026-09-30-b5-dates-days-and-nights`): plain words, not class vocabulary —
+        // "travel-class" is wedding-flow copy and the class is presentation only (LD 28).
+        : "Pick your first and last day; every day in between is part of the plan.",
     /**
      * STEP 4's NOTE BRANCHES BY THE PARTY NOUN (re-audit A5), the same derived value its TITLE and
      * its steppers already branch on — never a per-occasion literal. The `attendees` line is the
@@ -2714,7 +2742,7 @@ export function PlanModal({
           className="flex flex-wrap items-center justify-between gap-2 border-t pt-3"
           style={{ borderColor: "var(--earn-border)" }}
         >
-          <span className="text-[11px]" style={{ fontFamily: MONO, color: "var(--earn-faint)" }}>
+          <span className="text-[11px]" style={{ fontFamily: MONO, color: "var(--earn-faint)" }} data-testid="text-plan-step-note">
             {/* The CTA-side note names what the finish will actually do. The event count shows
                 only when the occasion HAS a schedule step — a count for a step that is not on
                 screen would be describing work nobody asked for. */}
