@@ -2310,8 +2310,9 @@ export const itineraryVariants = pgTable("itinerary_variants", {
   anchorMedianMeters: integer("anchor_median_meters"),
   // A9 (product map §N2; migration 336; ledger `2026-09-30-a9-run-records`): the optimizer run this
   // version belongs to. Nullable, NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL — NULL = a version from
-  // before the run record existed (§13), never a guessed run.
-  runId: varchar("run_id").references(() => optimizerRuns.id, { onDelete: "set null" }),
+  // before the run record existed (§13), never a guessed run. NO FK CONSTRAINT: the link is
+  // app-enforced (the migration-336 rule — no FK added to an existing table).
+  runId: varchar("run_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
