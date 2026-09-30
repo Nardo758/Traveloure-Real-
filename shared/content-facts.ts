@@ -30,7 +30,9 @@ export type ContentNeed = (typeof CONTENT_NEEDS)[number];
 /**
  * Brief §3's eight fact types, plus TWO the brief's own adapters produce and §3 does not name:
  * `location` (§6/§10: Places supplies "coordinates") and `dining_basics` (§6: "dining basics" —
- * reservable, vegetarian). Stated additions, not renames.
+ * reservable, vegetarian). Stated additions, not renames. A THIRD, `address` (ledger
+ * `2026-09-30-places-address`): the Places answer's `formattedAddress` / `shortFormattedAddress`,
+ * shown beside the item with the Maps attribution — a display fact, never written onto the item row.
  */
 export const FACT_TYPES = [
   "hours",
@@ -43,6 +45,7 @@ export const FACT_TYPES = [
   "tip",
   "location",
   "dining_basics",
+  "address",
 ] as const;
 export type FactType = (typeof FACT_TYPES)[number];
 
