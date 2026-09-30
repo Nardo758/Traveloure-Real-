@@ -4848,15 +4848,9 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           status: "generated",
         },
         canonicalItems: normalizedResult.canonicalItems,
-        comparison: {
-          title: `${destination} Trip`,
-          destination,
-          startDate: dates.start,
-          endDate: dates.end,
-          budget: normalizeGeneratedEstimatedCost(budget),
-          travelers: travelersStated ?? 1, // RC-12: the comparison row's own pricing default (column DEFAULT 1) — never written to the plan
-          status: "generating",
-        },
+        // B3/B6 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the free draft creates NO
+        // comparison. The draft IS the deliverable; alternatives are the PAID step (Optimize, LD 41
+        // (b)/(d)), reached from the slip and charged on confirm — never auto-started from here.
       });
       resolvedTripId = snapshot.trip.id;
       const savedItinerary = snapshot.savedItinerary;
@@ -4885,8 +4879,6 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           items: insertedItems.map((it: any) => ({ id: it.id, title: it.title, type: it.type ?? null, dayNumber: it.dayNumber ?? null, locationName: it.location ?? it.locationName ?? null })),
         });
       }
-      const comparison = snapshot.comparison;
-
       // LD 41 (c): THE PRIMARY GENERATE PATH WRITES `ai_cost_tracking` — now inside the generator
       // itself (`aiGenerationService.generateAutonomousItinerary`, ledger
       // `2026-09-30-ai-task-honest-numbers`), through the same `trackAnthropicResponse` every other
@@ -4910,57 +4902,12 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         metadata: { destination, dates, travelers: travelersStated ?? null, interests, itineraryId: savedItinerary.id },
       });
 
-      // Convert generated itinerary to baseline items using the DB-inserted IDs
-      const baselineItems = insertedItems.map((activity: any) => ({
-        id: activity.id,
-        name: activity.name || activity.title || 'Activity',
-        description: activity.description || '',
-        serviceType: activity.type || 'activities',
-        price: activity.estimatedCost || 0,
-        rating: 4.5,
-        location: activity.location || destination,
-        duration: activity.durationMinutes,
-        dayNumber: activity.dayNumber,
-        timeSlot: activity.time?.includes('morning') ? 'morning'
-                : activity.time?.includes('afternoon') ? 'afternoon'
-                : 'evening',
-      }));
-
-      // Get available services for optimization (reduced to 30 for faster AI processing)
-      const availableServices = await getActiveProviderServices(30);
-
-      // Import optimizer
-      const { generateOptimizedItineraries } = await import('../itinerary-optimizer');
-
-      // Only optimize single-destination trips (multi-city is too complex)
-      const isMultiCity = destination.includes(';') || destination.includes(',') && destination.split(',').length > 2;
-      
-      if (!isMultiCity) {
-        // Trigger optimization in background for single-destination trips
-        generateOptimizedItineraries(
-          comparison.id,
-          userId,
-          baselineItems,
-          availableServices,
-          destination,
-          dates.start,
-          dates.end,
-          budget,
-          travelersStated,
-          resolvedTripId
-          // Transport leg calculation is handled inside generateOptimizedItineraries
-          // for each variant after metrics are finalized
-        ).then(async (_optimResult) => {
-          // Optimization complete — transport legs already calculated inside optimizer
-        }).catch(err => {
-          console.error('Optimization error:', err);
-          updateItineraryComparisonStatus(comparison.id, 'failed').catch(console.error);
-        });
-      } else {
-        console.log('Skipping optimization for multi-city trip:', destination);
-        // Mark comparison as complete (no optimization for multi-city)
-        await updateItineraryComparisonStatus(comparison.id, 'complete');
-      }
+      // B3/B6 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): this handler used to start
+      // `generateOptimizedItineraries` in the background on every draft — the PAID optimizer, run
+      // free and unasked, whose failure then sat between the traveler and their draft ("Generation
+      // failed"), and whose completion stamped `optimized_at`, which the run gate reads as a paid
+      // run inside the 24h free re-run window. Deleted, not gated (§18c): the draft is saved by the
+      // snapshot above, and a run is the traveler's own Optimize on the slip.
 
       // Post-generation anchor validation (Lane 2a): warn, never block. Only
       // meaningful when the (owned) target trip carries anchors/boundaries — a
@@ -4990,21 +4937,20 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         console.error("anchor validation failed (non-blocking):", vErr);
       }
 
-      // Return comparison ID immediately.
+      // The draft is saved; the response names the plan it was written into (no comparison, B3/B6).
       // Also include tripId and itinerary.items with DB-assigned IDs so the
       // PlanningWithBooking cart conversion can look up prices via booking.service.ts.
       res.json({
         success: true,
         id: savedItinerary.id,
         tripId: resolvedTripId,
-        comparisonId: comparison.id,
         itineraryId: savedItinerary.id,
         itinerary: { items: insertedItems },
         anchorValidation,
         // A5 (§M5 "says which"): what the draft was built around, in the server's own words. Present
         // only when this lane decided a basis; absent otherwise (§13).
         ...(draftBasisKey(draftBasis) ? { draftBasis: { kind: draftBasisKey(draftBasis), line: draftBasisLine(draftBasis) } } : {}),
-        message: 'Itinerary generated! Creating optimized variants...',
+        message: 'Itinerary generated.',
         title: normalizedResult.title,
         summary: normalizedResult.summary,
         totalEstimatedCost: normalizedResult.totalEstimatedCost === null

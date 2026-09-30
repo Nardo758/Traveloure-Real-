@@ -130,7 +130,10 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
 
   const handlePlanNow = () => {
     setDialogOpen(false);
-    openPlanning({ door: "city_grid", city: city.cityName, country: city.country });
+    // B8 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): "Plan New Trip with AI" is a NEW plan —
+    // always, bound plan or not. It starts from empty context and mints its own row; continuing an
+    // existing plan is the Trip Strip's explicit Edit/Continue, never this button.
+    openPlanning({ door: "city_grid", city: city.cityName, country: city.country, newPlan: true });
   };
 
   // #805: this navigated to `/trip/:id?addCity=…`, which nothing read — the city was silently
