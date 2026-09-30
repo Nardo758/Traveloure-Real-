@@ -23,6 +23,7 @@ import {
 const fit = (over: Partial<Extract<PlanFit, { scored: true }>> = {}): PlanFit => ({
   scored: true,
   minutesPerDay: 31,
+  minutesByDay: {},
   basis: "est",
   coverage: 2 / 3,
   areasNear: 2,

@@ -49,6 +49,8 @@ import { resolveOccasionForPlan } from "@shared/occasions";
 import type { DraftOpenSet } from "@shared/draft-basis";
 import { trackFunnelEvent } from "../utils/funnelTracker";
 import { loadMarketCentroids, loadMatrixReader } from "./travel-time-matrix.service";
+import { planTravelFrom } from "./travel-time.service";
+import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { WITHIN_WALK_METERS } from "./anchor-scoring";
 import {
   PLAN_FIT_VERSION,
@@ -517,7 +519,10 @@ async function planScorer(tripId: string) {
   const [trip] = await db.select({ marketSlug: trips.marketSlug }).from(trips).where(eq(trips.id, tripId)).limit(1);
   const market = trip?.marketSlug ?? null;
   const centroids = market ? await loadMarketCentroids(market) : [];
-  const travel = await loadMatrixReader(market ?? "", async () => centroids);
+  const matrix = await loadMatrixReader(market ?? "", async () => centroids);
+  // A8 (R228): behind the flag, plan-fit reads the ONE travel-time rule — the matrix, else the
+  // straight line at the MODE's configured speed — so it agrees with the Finalize legs.
+  const travel = travelTimeServiceEnabled() ? planTravelFrom(matrix) : matrix;
   const items = await fitItems(tripId);
   const score = (lat: unknown, lng: unknown): PlanFit =>
     planFitFor({ option: toPoint(lat, lng), items, travel, centroids, walkThresholdMeters: WITHIN_WALK_METERS });
