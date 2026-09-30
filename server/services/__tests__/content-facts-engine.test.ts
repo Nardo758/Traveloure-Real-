@@ -6,6 +6,9 @@
  *       publishable
  *   P3  PlacesAdapter switched off, or no key ⇒ no call and no facts
  *   P4  a non-ok answer throws (the caller logs it; nothing is guessed)
+ *   P5  the address (ledger `2026-09-30-places-address`): the field mask is the A5 eight plus exactly
+ *       `formattedAddress` and `shortFormattedAddress`; an `address` fact keeps whichever forms Google
+ *       gave, verbatim; neither ⇒ no address fact
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -90,4 +93,34 @@ test("P3: switched off, or no key ⇒ nothing is called", async () => {
 test("P4: a non-ok answer throws", async () => {
   const a = new PlacesAdapter(async () => ({ ok: false, status: 403, json: async () => ({}) }), () => "k", () => true);
   await assert.rejects(a.fetch({ need: "dining", market: null, query: { text: "x", city: null }, budgetCents: 0 }), /403/);
+});
+
+test("P5: the address — two fields added to the mask, both forms kept, neither ⇒ none", async () => {
+  const masks: string[] = [];
+  const answer = (extra: Record<string, unknown>) =>
+    new PlacesAdapter(
+      async (_url, init) => {
+        masks.push(init.headers["X-Goog-FieldMask"]);
+        return { ok: true, status: 200, json: async () => ({ places: [{ id: "ChIJ-a", location: { latitude: 35, longitude: 135.7 }, ...extra }] }) };
+      },
+      () => "k",
+      () => true,
+    );
+  const req = { need: "stop.hours" as const, market: "kyoto", query: { text: "Kinkaku-ji", city: "Kyoto, Japan" }, budgetCents: 0 };
+  const both = await answer({ formattedAddress: " 1 Kinkakujicho, Kita Ward, Kyoto, 603-8361, Japan ", shortFormattedAddress: "1 Kinkakujicho, Kita Ward" }).fetch(req);
+  assert.deepEqual(masks[0].split(","), [
+    "places.id", "places.displayName", "places.location", "places.regularOpeningHours.weekdayDescriptions",
+    "places.priceLevel", "places.googleMapsUri", "places.reservable", "places.servesVegetarianFood",
+    "places.formattedAddress", "places.shortFormattedAddress",
+  ]);
+  const addr = both.find((f) => f.factType === "address")!;
+  assert.deepEqual(addr.value, { query: "Kinkaku-ji, Kyoto, Japan", formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto, 603-8361, Japan", shortFormattedAddress: "1 Kinkakujicho, Kita Ward" });
+  assert.equal(addr.origin, "places_api");
+  assert.equal(isPublishable(addr), false);
+  assert.ok(addr.expiresAt!.getTime() - addr.fetchedAt.getTime() <= 30 * 86_400_000);
+  assert.equal(both.filter((f) => f.costCents > 0).length, 1, "still one call's cost");
+  const shortOnly = await answer({ shortFormattedAddress: "Kita Ward" }).fetch(req);
+  assert.deepEqual(shortOnly.find((f) => f.factType === "address")!.value, { query: "Kinkaku-ji, Kyoto, Japan", shortFormattedAddress: "Kita Ward" });
+  const none = await answer({ formattedAddress: "  " }).fetch(req);
+  assert.equal(none.some((f) => f.factType === "address"), false);
 });

@@ -25,6 +25,7 @@ const TTL_DAYS: Record<FactType, number | null> = {
   tip: null,
   location: 30,
   dining_basics: 30,
+  address: 30,
 };
 
 export function factTtlDays(type: FactType): number | null {

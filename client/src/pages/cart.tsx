@@ -1,5 +1,6 @@
 import { helpArticlePath } from "@shared/help-article-slugs";
 import { useState, useEffect, useRef, type ReactNode } from "react";
+import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
 import { canRemoveBeforePayment, readCartIntentParam, resolveCartIntent } from "@/lib/cart-intent";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -2663,7 +2664,7 @@ export default function CartPage() {
                         </li>
                         <li className="flex items-start gap-2">
                           <CheckCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
-                          Free re-run within 24 hours
+                          {OPTIMIZE_RERUN_RULE}
                         </li>
                       </ul>
 
