@@ -2054,9 +2054,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
-   * Ensure a city exists in travel_pulse_cities so the daily AI scheduler generates
-   * content for it. A fresh row has `aiGeneratedAt = NULL`, which `getCitiesNeedingRefresh`
-   * treats as stale → the next scheduler cycle runs `updateCityWithAI` and fills it in.
+   * Ensure a city exists in travel_pulse_cities. (Its AI enrichment — the daily
+   * `updateCityWithAI` pass — was deleted by TravelPulse PR 1, ledger
+   * `2026-09-29-travelpulse-hygiene`; a fresh row now stays un-enriched until a non-LLM writer exists.)
    * Idempotent (case-insensitive existence check plus DB conflict handling). Returns true
    * only when a NEW row was created.
    */

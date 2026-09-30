@@ -143,6 +143,8 @@ import { hasExistingConversation, isBlockedBetween } from "../services/messages.
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
 import { broadcastToUser } from "../websocket";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
+import { trendScoreAgeReport } from "@shared/trend-display";
+import { trendScoreMaxAgeHours } from "../config/trend-display.config";
 // NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -364,7 +366,15 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
         // from `schema_migrations` in registry order (§20 — read, never inferred). A failed read
         // is `null`, never "current" (§13), and never fails the health answer itself.
         const migrations = await readMigrationState(db).catch(() => null);
-        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, migrations });
+        // Ledger `2026-09-29-travelpulse-hygiene`: how old the newest trend score is, so a
+        // stopped ingestion is visible from the probe rather than from a stale rail. A failed
+        // read reports no age (§13) and never fails the health answer.
+        const newestScore = await db
+          .execute(sql`SELECT MAX(computed_at) AS newest FROM trend_scores`)
+          .then((r: any) => (r.rows ?? r)[0]?.newest ?? null)
+          .catch(() => null);
+        const trendScores = trendScoreAgeReport(newestScore, trendScoreMaxAgeHours());
+        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, migrations, trendScores });
       } else {
         res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build });
       }
@@ -6123,6 +6133,7 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
 
       // Get all cities with their seasonal data for the given month
       const cities = await travelPulseService.getAllCities();
+      const resolverTrends = await travelPulseService.resolverTrendsByCity();
 
       // Get seasonal data for all cities for this month
       const { destinationSeasons, destinationEvents, expertNeighborhoods } = await import("@shared/schema");
@@ -6232,11 +6243,11 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
             country: city.country,
             countryCode: city.countryCode,
             heroImage: city.imageUrl,
-            pulseScore: city.pulseScore,
-            trendingScore: city.trendingScore,
+            // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): ONE Trend number, the
+            // resolver's (null ⇒ none shown); no legacy pulse score and no crowd claim until PR 2.
+            trendingScore: resolverTrends.get(city.cityName.toLowerCase()) ?? null,
             vibeTags: city.vibeTags as string[] || [],
             weatherScore: city.weatherScore,
-            crowdLevel: city.crowdLevel,
             currentHighlight: city.currentHighlight,
             highlightEmoji: city.highlightEmoji,
             // Seasonal data for this month (null when the city is events-only)
@@ -6244,7 +6255,6 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
             weatherDescription: season?.weatherDescription || null,
             averageTemp: season?.averageTemp || null,
             rainfall: season?.rainfall || null,
-            seasonCrowdLevel: season?.crowdLevel || null,
             priceLevel: season?.priceLevel || null,
             highlights: season?.highlights || [],
             // Events this month
@@ -6291,8 +6301,10 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
         const aRating = a.seasonalRating ? ratingOrder[a.seasonalRating] ?? 2 : 2;
         const bRating = b.seasonalRating ? ratingOrder[b.seasonalRating] ?? 2 : 2;
         if (aRating !== bRating) return aRating - bRating;
-        // Secondary sort by pulse score
-        return (b.pulseScore || 0) - (a.pulseScore || 0);
+        // Secondary sort by the resolver's Trend number (PR 1: the legacy pulse score is gone;
+        // an unshown Trend sorts last, then by name so the order is stable).
+        const d = (b.trendingScore ?? -1) - (a.trendingScore ?? -1);
+        return d !== 0 ? d : a.cityName.localeCompare(b.cityName);
       });
       
       // Group by rating for easier display
@@ -7148,7 +7160,7 @@ router.get("/api/travelpulse/fever-events/:cityName", async (req, res) => {
             specificDate: event.dates.startDate?.split('T')[0],
             startMonth: currentMonth,
             endMonth: currentMonth,
-            crowdLevel: 'moderate',
+            // TravelPulse PR 1: no hard-coded crowd claim (a constant 'moderate' was never measured).
             pricing: event.pricing,
             bookingUrl: event.affiliateUrl || event.bookingUrl,
             imageUrl: event.imageUrl,

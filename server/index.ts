@@ -820,23 +820,9 @@ if (process.env.NODE_ENV === "production") {
     // DMO ingestion scheduler — OFF unless DMO_INGEST_ENABLED=1 AND TAVILY_API_KEY set (D3).
     dmoIngestScheduler.start();
 
-    // TravelPulse AI refresh scheduler — previously the ONLY refresh paths were the admin
-    // manual endpoints, so trending/city intelligence (and the happening-now surface derived
-    // from it) went permanently stale once seeded. Daily pass, first run delayed 2h to clear
-    // startup and stay behind the reconciliation job. refreshStaleAICities() only touches
-    // cities whose expiresAt has lapsed and increments ai_refresh_error_count on failure, so
-    // running it while the xAI account is out of credits is safe (errors are counted, not thrown).
-    setTimeout(() => {
-      void (async () => {
-        const { travelPulseService } = await import("./services/travelpulse.service");
-        const run = () =>
-          runBackgroundJob("travelpulse-daily-refresh", () => travelPulseService.refreshStaleAICities())
-            .then((r) => logger.info(r, "[travelpulse] daily AI refresh pass"))
-            .catch((err) => logger.error({ err }, "[travelpulse] daily AI refresh failed"));
-        await run();
-        setInterval(run, 24 * 60 * 60 * 1000);
-      })();
-    }, jitteredStartupDelay(2 * 60 * 60 * 1000));
+    // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): the `travelpulse-daily-refresh`
+    // job is GONE. It ran Grok (`updateCityWithAI`) over stale cities daily and wrote the legacy
+    // pulse/trend/crowd fields the audit found failing on xAI credits. Trend comes from the resolver.
 
     setTimeout(() => {
       const run = () =>

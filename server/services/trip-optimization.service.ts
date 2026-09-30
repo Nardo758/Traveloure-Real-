@@ -76,9 +76,7 @@ class TripOptimizationService {
       if (cityIntelligence?.city) {
         const city = cityIntelligence.city;
         travelPulseContext = {
-          pulseScore: typeof city.pulseScore === 'number' ? city.pulseScore : undefined,
           trendingScore: typeof city.trendingScore === 'number' ? city.trendingScore : undefined,
-          crowdLevel: typeof city.crowdLevel === 'string' ? city.crowdLevel : undefined,
           aiBudgetEstimate: typeof city.aiBudgetEstimate === 'string' ? city.aiBudgetEstimate : undefined,
           aiTravelTips: typeof city.aiTravelTips === 'string' ? city.aiTravelTips : undefined,
           aiLocalInsights: typeof city.aiLocalInsights === 'string' ? city.aiLocalInsights : undefined,
