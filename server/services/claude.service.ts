@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { trackAnthropicResponse } from './ai-cost-tracker';
+import { parseAiJsonObjectOrThrow } from '../utils/ai-json';
 
 // claude-sonnet-4-5 is the latest model
 const DEFAULT_MODEL = "claude-sonnet-4-5";
@@ -395,6 +396,37 @@ Return JSON:
       console.error('Claude full itinerary graph analysis error:', error);
       throw error;
     }
+  }
+
+  /**
+   * ONE generic JSON call for the callers that moved off xAI (ledger `2026-09-30-retire-xai`):
+   * expert match scoring, expert content generation and the admin gem-discovery scan. Same client,
+   * same `DEFAULT_MODEL`, and every call writes `ai_cost_tracking` through
+   * `trackAnthropicResponse` under the caller's `sourceType` (and acting user, when there is one).
+   * The answer is parsed by the ONE fence-tolerant parser (`parseAiJsonObjectOrThrow`), which never
+   * repairs a truncated answer into an object the model did not produce (§13).
+   */
+  async completeJson<T = Record<string, unknown>>(opts: {
+    system: string;
+    user: string;
+    maxTokens: number;
+    sourceType: string;
+    userId?: string | null;
+    label: string;
+  }): Promise<{ result: T; model: string; usage: { input_tokens: number; output_tokens: number } }> {
+    const message = await anthropic.messages.create({
+      model: DEFAULT_MODEL,
+      max_tokens: opts.maxTokens,
+      system: `${opts.system}\n\nRespond with valid JSON only — no markdown, no explanation.`,
+      messages: [{ role: 'user', content: opts.user }],
+    });
+    await trackAnthropicResponse(message, { sourceType: opts.sourceType, userId: opts.userId ?? null });
+    const block = message.content.find((b) => b.type === 'text');
+    const text = block && block.type === 'text' ? block.text : '';
+    if (!text.trim()) throw new Error(`${opts.label}: the model returned no text`);
+    if (message.stop_reason === 'max_tokens') throw new Error(`${opts.label}: the answer was cut off at max_tokens`);
+    const result = parseAiJsonObjectOrThrow<T>(text, opts.label);
+    return { result, model: message.model ?? DEFAULT_MODEL, usage: message.usage };
   }
 }
 

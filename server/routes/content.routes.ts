@@ -198,7 +198,6 @@ import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
-import { grokService } from "../services/grok.service";
 import { buildAnchorPromptBlock, validateAnchorConflicts } from "../services/smart-sequencing.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
@@ -3978,7 +3977,7 @@ router.post("/api/cache/checkout-verify", isAuthenticated, async (req, res) => {
   // Optimize itinerary using Claude
   //
   // AI RATE LIMIT (audit finding 9, ledger 2026-09-03-security-9-11-13): every /api/claude/* and
-  // /api/grok/* handler below carries the SHARED `aiRateLimiter` (infrastructure/rate-limiter,
+  // /api/grok/* handler below (today only /api/grok/match-experts) carries the SHARED `aiRateLimiter` (infrastructure/rate-limiter,
   // 10/min/IP) as its FIRST middleware — the same limiter and the same limiter-before-auth
   // placement the five already-covered AI routes use (advisor.routes.ts, demand.routes.ts,
   // trip-context.routes.ts, /api/transport-packages/generate below, routes.ts's itinerary
@@ -3986,7 +3985,9 @@ router.post("/api/cache/checkout-verify", isAuthenticated, async (req, res) => {
   // These paths are NOT under the /api/ai prefix, so `app.use("/api/ai", aiRateLimiter)` in
   // server/index.ts never matched them and only the general 100/min IP limiter applied — which
   // made POST /api/grok/chat (arbitrary `messages` + `systemContext` forwarded to the model) an
-  // open LLM proxy on the platform's keys for anyone with an account.
+  // open LLM proxy on the platform's keys for anyone with an account. (That route and its four
+  // client-less siblings were deleted with the xAI retirement, ledger `2026-09-30-retire-xai`;
+  // /api/grok/match-experts keeps its path because a client calls it, and runs on Anthropic.)
   // Pinned by server/__tests__/ai-rate-limit-coverage.test.ts.
 
 router.post("/api/claude/optimize-itinerary", aiRateLimiter, isAuthenticated, async (req, res) => {
@@ -4452,7 +4453,7 @@ router.post("/api/grok/match-experts", aiRateLimiter, isAuthenticated, async (re
         };
       });
 
-      // Simplified profiles for Grok AI matching
+      // Simplified profiles for AI matching
       const grokProfiles = expertObjs.map(e => ({
         id: e.id,
         name: `${e.firstName} ${e.lastName}`.trim() || "Expert",
@@ -4521,8 +4522,8 @@ router.post("/api/grok/match-experts", aiRateLimiter, isAuthenticated, async (re
           }).catch(err => console.error("Failed to store match analytics:", err));
         }
       } catch (_grokErr) {
-        // Fallback: return DB experts with default scores when Grok is unavailable
-        console.warn("Grok matching unavailable, using DB fallback:", (_grokErr as any)?.message);
+        // Fallback: return DB experts with default scores when the AI match is unavailable
+        console.warn("AI matching unavailable, using DB fallback:", (_grokErr as any)?.message);
         shapedMatches = expertObjs.map((e, i) => ({
           expert: e,
           score: 90 - i * 5,
@@ -4540,275 +4541,10 @@ router.post("/api/grok/match-experts", aiRateLimiter, isAuthenticated, async (re
 
       res.json({ matches: shapedMatches });
     } catch (error: any) {
-      console.error("Grok expert matching error:", error);
+      console.error("AI expert matching error:", error);
       res.status(500).json({ message: error.message || "Expert matching failed" });
     }
   });
-
-  // Content Generation - Generate bio, descriptions, responses
-  const contentGenerationSchema = z.object({
-    type: z.enum(["bio", "service_description", "inquiry_response", "welcome_message"]),
-    context: z.record(z.any()),
-    tone: z.enum(["professional", "friendly", "casual"]).optional(),
-    length: z.enum(["short", "medium", "long"]).optional(),
-  });
-
-
-router.post("/api/grok/content/generate", aiRateLimiter, isAuthenticated, async (req, res) => {
-    try {
-      const parsed = contentGenerationSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
-      }
-
-      const userId = getUserId(req)!;
-      const result = await aiOrchestrator.generateContent(parsed.data, { userId });
-      res.json(result);
-    } catch (error: any) {
-      console.error("Grok content generation error:", error);
-      res.status(500).json({ message: error.message || "Content generation failed" });
-    }
-  });
-
-  // Real-Time Intelligence - Get current events, weather, trends for destination
-  const intelligenceSchema = z.object({
-    destination: z.string(),
-    dates: z.object({
-      start: z.string(),
-      end: z.string(),
-    }).optional(),
-    topics: z.array(z.enum(["events", "weather", "safety", "trending", "deals"])).optional(),
-  });
-
-
-router.post("/api/grok/intelligence", aiRateLimiter, isAuthenticated, async (req, res) => {
-    try {
-      const parsed = intelligenceSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
-      }
-
-      const userId = getUserId(req)!;
-      const { destination, dates, topics } = parsed.data;
-
-      // Check cache first
-      const cachedIntel = await getCachedDestinationIntelligence(destination);
-
-      if (cachedIntel) {
-        return res.json(cachedIntel.intelligenceData);
-      }
-
-      const result = await aiOrchestrator.getRealTimeIntelligence(
-        { destination, dates, topics },
-        { userId }
-      );
-
-      // Cache result
-      await insertDestinationIntelligence({
-        destination: destination.toLowerCase(),
-        intelligenceData: result,
-        events: result.events || [],
-        weatherForecast: result.weatherForecast || {},
-        safetyAlerts: result.safetyAlerts || [],
-        trendingExperiences: result.trendingExperiences || [],
-        deals: result.deals || [],
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
-      });
-
-      res.json(result);
-    } catch (error: any) {
-      console.error("Grok real-time intelligence error:", error);
-      res.status(500).json({ message: error.message || "Intelligence gathering failed" });
-    }
-  });
-
-  // Autonomous Itinerary Generation - Full AI trip planning
-  const autonomousItinerarySchema = z.object({
-    destination: z.string(),
-    dates: z.object({
-      start: z.string(),
-      end: z.string(),
-    }),
-    travelers: z.number(),
-    budget: z.number().optional(),
-    eventType: z.string().optional(),
-    interests: z.array(z.string()),
-    pacePreference: z.enum(["relaxed", "moderate", "packed"]).optional(),
-    mustSeeAttractions: z.array(z.string()).optional(),
-    dietaryRestrictions: z.array(z.string()).optional(),
-    mobilityConsiderations: z.array(z.string()).optional(),
-    tripId: z.string().optional(),
-  });
-
-
-router.post("/api/grok/itinerary/generate", aiRateLimiter, isAuthenticated, async (req, res) => {
-    try {
-      const parsed = autonomousItinerarySchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
-      }
-
-      const userId = getUserId(req)!;
-      const { tripId, ...itineraryRequest } = parsed.data;
-
-      const result = await aiOrchestrator.generateAutonomousItinerary(itineraryRequest, {
-        userId,
-        tripId,
-      });
-
-      // Store generated itinerary
-      const saved = await insertAiGeneratedItinerary({
-        userId,
-        tripId,
-        destination: itineraryRequest.destination,
-        startDate: itineraryRequest.dates.start,
-        endDate: itineraryRequest.dates.end,
-        title: result.title,
-        summary: result.summary,
-        totalEstimatedCost: normalizeGeneratedEstimatedCost(result.totalEstimatedCost),
-        itineraryData: result.dailyItinerary,
-        accommodationSuggestions: result.accommodationSuggestions || [],
-        packingList: result.packingList || [],
-        travelTips: result.travelTips || [],
-        provider: "grok",
-        status: "generated",
-      });
-
-      res.json({ ...result, id: saved.id });
-    } catch (error: any) {
-      console.error("Grok autonomous itinerary error:", error);
-      res.status(500).json({ message: error.message || "Itinerary generation failed" });
-    }
-  });
-
-  // AI Quick Start Itinerary - Fetches city intelligence and generates itinerary
-  const quickStartItinerarySchema = z.object({
-    destination: z.string().min(1),
-    country: z.string().optional(),
-    dates: z.object({
-      start: z.string(),
-      end: z.string(),
-    }).optional(),
-    travelers: z.number().min(1).default(2),
-    interests: z.array(z.string()).default([]),
-    pacePreference: z.enum(["relaxed", "moderate", "packed"]).default("moderate"),
-  });
-
-  const chatSchema = z.object({
-    messages: z.array(z.object({
-      role: z.enum(["user", "assistant", "system"]),
-      content: z.string(),
-    })),
-    systemContext: z.string().optional(),
-    preferProvider: z.enum(["grok", "claude", "auto"]).optional(),
-  });
-
-router.post("/api/grok/chat", aiRateLimiter, isAuthenticated, async (req, res) => {
-    try {
-      const parsed = chatSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
-      }
-
-      const userId = getUserId(req)!;
-      const { messages, systemContext, preferProvider } = parsed.data;
-
-      const { response, provider } = await aiOrchestrator.chat(messages, {
-        userId,
-        systemContext,
-        preferProvider: preferProvider as any,
-      });
-
-      res.json({ response, provider });
-    } catch (error: any) {
-      console.error("Grok chat error:", error);
-      res.status(500).json({ message: error.message || "Chat failed" });
-    }
-  });
-
-  // AI Health check
-
-router.get("/api/grok/health", async (req, res) => {
-    try {
-      const health = await aiOrchestrator.healthCheck();
-      res.json({ status: "ok", providers: health });
-    } catch (error: any) {
-      res.status(500).json({ status: "error", message: error.message });
-    }
-  });
-
-  // === EXPERT AI TASKS ROUTES ===
-  
-  // Get expert's AI tasks
-
-router.get("/api/destination-intelligence", isAuthenticated, async (req, res) => {
-    try {
-      const { destination, startDate, endDate } = req.query;
-      const userId = getUserId(req)!;
-      
-      if (!destination || typeof destination !== "string") {
-        return res.status(400).json({ message: "Destination is required" });
-      }
-
-      const dates = startDate && endDate ? {
-        start: startDate as string,
-        end: endDate as string
-      } : undefined;
-
-      // Check for cached intelligence (not expired)
-      const cached = await getCachedDestinationIntelligenceWithDates(destination, dates);
-
-      if (cached && cached.intelligenceData) {
-        return res.json(cached.intelligenceData);
-      }
-
-      // Fetch fresh intelligence using Grok
-      const { grokService: grokSvc } = await import("../services/grok.service");
-      const { result, usage } = await grokSvc.getRealTimeIntelligence({
-        destination,
-        dates,
-        topics: ["events", "weather", "safety", "trending", "deals"]
-      });
-
-      // Cache the result with proper destination and date fields
-      await insertDestinationIntelligenceStrict({
-        destination,
-        startDate: dates?.start || null,
-        endDate: dates?.end || null,
-        intelligenceData: result,
-        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
-      });
-
-      // Log AI interaction for usage tracking
-      await insertAiInteraction({
-        taskType: "real_time_intelligence",
-        provider: "grok",
-        promptTokens: usage.promptTokens,
-        completionTokens: usage.completionTokens,
-        totalTokens: usage.promptTokens + usage.completionTokens,
-        estimatedCost: usage.estimatedCost.toFixed(6),
-        durationMs: 0,
-        success: true,
-        userId,
-        metadata: { destination, dates },
-      });
-
-      res.json(result);
-    } catch (error: any) {
-      console.error("Error fetching destination intelligence:", error);
-      res.status(500).json({ 
-        message: error.message || "Failed to fetch destination intelligence",
-        destination: req.query.destination,
-        timestamp: new Date().toISOString(),
-        events: [],
-        safetyAlerts: [],
-        trendingExperiences: [],
-        deals: []
-      });
-    }
-  });
-
-  // Phase 5: Autonomous AI Itinerary Generation
 
 router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
     try {
@@ -4923,7 +4659,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         : ["sightseeing", "local culture", "food"];
 
       // Anchor-aware generation (Lane 2a): if this request targets an existing
-      // trip, steer Grok around that trip's immovable temporal commitments.
+      // trip, steer the model around that trip's immovable temporal commitments.
       // No trip / no anchors → anchorBlock is "" and the prompt is unchanged.
       let tripAnchors: Awaited<ReturnType<typeof storage.getTemporalAnchors>> = [];
       let tripBoundaries: Awaited<ReturnType<typeof storage.getDayBoundaries>> = [];
@@ -4942,7 +4678,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         // `saveGeneratedItinerarySnapshot`, whose rebuild delete replaces the trip's items — a
         // free re-optimize of a plan the traveler already built. A slip holding ANY item is
         // refused with a 409 the client routes to Optimize. ONE predicate, one place (§18 rule 1).
-        // Placed BEFORE the Grok call so a refused request costs zero AI tokens; the snapshot
+        // Placed BEFORE the model call so a refused request costs zero AI tokens; the snapshot
         // itself carries the second, in-transaction copy of the same check.
         const draftEligibility = await resolveAiDraftEligibility(tripIdParam);
         if (!draftEligibility.eligible) {
@@ -4984,15 +4720,15 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       const anchorBlock =
         buildAnchorPromptBlock(tripAnchors, tripBoundaries, dates.start) + draftBasisPromptBlock(draftBasis, heldSlots);
 
-      // Generate itinerary using Grok — deduplicated + circuit-broken.
+      // Generate itinerary (Anthropic draft tier) — deduplicated + circuit-broken.
       //
       // Dedup key: all params that affect AI output so concurrent requests for
-      // the same trip params share a single Grok call instead of N identical calls.
+      // the same trip params share a single model call instead of N identical calls.
       // personalisation fields (dietary, mobility, mustSee) are included so users
       // with different needs still get their own AI call. The anchor block is folded
       // in so trips with different fixed commitments don't share a cached generation.
       const dedupKey = [
-        "itinerary:grok",
+        "itinerary:draft",
         destination,
         dates?.start,
         dates?.end,
@@ -5008,7 +4744,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         anchorBlock,
       ].join(":");
 
-      const { grokService } = await import("../services/grok.service");
+      const { aiGenerationService } = await import("../services/ai-generation.service");
       // T6-2: EVERY provider failure returns the sanitized 503 shape, not just
       // the ones that happen after the circuit breaker has tripped. The breaker
       // still decides retryAfterSeconds (via retryAfterSecondsFromError, which
@@ -5017,15 +4753,15 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // first failure after a breaker reset indistinguishable from a post-trip
       // failure apart from that number, closing the leak window the breaker's
       // FAILURE_THRESHOLD used to leave open.
-      let result: Awaited<ReturnType<typeof grokService.generateAutonomousItinerary>>["result"];
-      let usage: Awaited<ReturnType<typeof grokService.generateAutonomousItinerary>>["usage"];
-      // LD 41 (c): which model actually produced the draft (Grok, or the Anthropic draft-tier
-      // fallback) — reported by the generator, never guessed here, because the cost row names it.
+      let result: Awaited<ReturnType<typeof aiGenerationService.generateAutonomousItinerary>>["result"];
+      let usage: Awaited<ReturnType<typeof aiGenerationService.generateAutonomousItinerary>>["usage"];
+      // LD 41 (c): which model actually produced the draft (the Anthropic draft tier) — reported
+      // by the generator, never guessed here, because the cost row names it.
       let draftModelUsed: string;
       try {
         ({ result, usage, model: draftModelUsed } = await dedupedRequest(dedupKey, () =>
           callWithCircuitBreaker(() =>
-            grokService.generateAutonomousItinerary({
+            aiGenerationService.generateAutonomousItinerary({
               destination,
               dates,
               travelers: travelersStated,
@@ -5109,7 +4845,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           accommodationSuggestions: normalizedResult.accommodationSuggestions,
           packingList: normalizedResult.packingList,
           travelTips: normalizedResult.travelTips,
-          provider: "grok",
+          provider: "claude",
           status: "generated",
         },
         canonicalItems: normalizedResult.canonicalItems,
@@ -5179,7 +4915,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // best-effort and cannot roll back (or partially commit) itinerary state.
       await insertAiInteraction({
         taskType: "autonomous_itinerary",
-        provider: "grok",
+        provider: "claude",
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
         totalTokens: usage.promptTokens + usage.completionTokens,
@@ -5246,7 +4982,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // Post-generation anchor validation (Lane 2a): warn, never block. Only
       // meaningful when the (owned) target trip carries anchors/boundaries — a
       // no-op { hasConstraints:false } otherwise. Returned on the plan payload so
-      // Lane 4 can render conflicts. (Grok's dailyItinerary is a bare array, so it
+      // Lane 4 can render conflicts. (The generator's dailyItinerary is a bare array, so it
       // is surfaced on the response rather than nested inside itineraryData.)
       let anchorValidation: ReturnType<typeof validateAnchorConflicts> | undefined;
       try {
@@ -5366,9 +5102,8 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
       // stub used by POST /api/trips/:id/generate-itinerary produces a single
       // day-by-day itinerary shape, not the 3-variation
       // {variationType, variationLabel, optimizationInsights, ...} shape this
-      // endpoint's callers expect — so on provider failure (Grok, then its
-      // internal Anthropic fallback inside grokService.generateAutonomousItinerary)
-      // return the sanitized 503 rather than fabricate a mismatched result.
+      // endpoint's callers expect — so on provider failure (the Anthropic generator
+      // inside aiGenerationService.generateAutonomousItinerary) return the sanitized 503 rather than fabricate a mismatched result.
       // The real error (which used to reach the client verbatim, e.g. a raw
       // Anthropic "invalid x-api-key" / request_id string) is logged server-side only.
       let result: Awaited<ReturnType<typeof tripOptimizationService.generateOptimizedItineraries>>;
@@ -5409,7 +5144,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
           accommodationSuggestions: variation.accommodationSuggestions,
           packingList: variation.packingList,
           travelTips: variation.travelTips,
-          provider: "grok",
+          provider: "claude",
           status: "generated",
         });
         variationIds.push(savedRow.id);
@@ -5417,7 +5152,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
 
       await insertAiInteraction({
         taskType: "trip_optimization",
-        provider: "grok",
+        provider: "claude",
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
@@ -8658,11 +8393,11 @@ export async function seedDatabase() {
 
 // ============================================
 // AI DISCOVERY (HIDDEN GEMS) ROUTES
-// Grok-powered discovery of local secrets
+// AI-powered (Anthropic) discovery of local secrets
 // ============================================
 
 export async function registerDiscoveryRoutes() {
-  const { grokDiscoveryService } = await import("../services/grok-discovery.service");
+  const { gemDiscoveryService } = await import("../services/gem-discovery.service");
 
   // Local admin guard (mirrors the one in registerRoutes)
   const requireAdmin = async (req: any, res: any, next: any) => {
@@ -8692,9 +8427,10 @@ router.post("/api/discovery/scan", isAuthenticated, requireAdmin, async (req, re
          "sunset_spots", "historic_gems", "nature_escapes", "nightlife_secrets"].includes(c)
       );
 
-      const result = await grokDiscoveryService.discoverGemsForDestination(
+      const result = await gemDiscoveryService.discoverGemsForDestination(
         destination,
-        validCategories?.length > 0 ? validCategories : undefined
+        validCategories?.length > 0 ? validCategories : undefined,
+        { actorUserId: getUserId(req) ?? null },
       );
 
       res.json({
@@ -8713,8 +8449,8 @@ router.post("/api/discovery/scan", isAuthenticated, requireAdmin, async (req, re
 
 router.get("/api/discovery/categories", async (_req, res) => {
     try {
-      const { grokDiscoveryService } = await import("../services/grok-discovery.service");
-      const categories = await grokDiscoveryService.getAvailableCategories();
+      const { gemDiscoveryService } = await import("../services/gem-discovery.service");
+      const categories = await gemDiscoveryService.getAvailableCategories();
       res.json({ categories });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get categories", error: error.message });
@@ -8730,7 +8466,7 @@ router.get("/api/discovery/gems", async (req, res) => {
       if (destination) {
         const result = await withQueryTimer(
           "hidden-gems-by-destination",
-          () => grokDiscoveryService.getGemsForDestination(
+          () => gemDiscoveryService.getGemsForDestination(
             destination as string,
             {
               category: category as any,
@@ -8745,7 +8481,7 @@ router.get("/api/discovery/gems", async (req, res) => {
 
       const result = await withQueryTimer(
         "hidden-gems-all",
-        () => grokDiscoveryService.getAllGems({
+        () => gemDiscoveryService.getAllGems({
           category: category as any,
           limit: limit ? parseInt(limit as string) : undefined,
           offset: offset ? parseInt(offset as string) : undefined
@@ -8773,7 +8509,7 @@ router.get("/api/discovery/gems/:id", async (req, res) => {
         return res.status(404).json({ message: "Gem not found" });
       }
 
-      await grokDiscoveryService.incrementViewCount(id);
+      await gemDiscoveryService.incrementViewCount(id);
 
       res.json({ gem });
     } catch (error: any) {
@@ -8786,7 +8522,7 @@ router.get("/api/discovery/gems/:id", async (req, res) => {
 
 router.get("/api/discovery/destinations", async (_req, res) => {
     try {
-      const destinations = await grokDiscoveryService.getDestinationsWithGems();
+      const destinations = await gemDiscoveryService.getDestinationsWithGems();
       res.json({ destinations });
     } catch (error: any) {
       console.error("Get destinations error:", error);
@@ -8799,7 +8535,7 @@ router.get("/api/discovery/destinations", async (_req, res) => {
 router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
     try {
       const { limit } = req.query;
-      const jobs = await grokDiscoveryService.getDiscoveryJobs(
+      const jobs = await gemDiscoveryService.getDiscoveryJobs(
         limit ? parseInt(limit as string) : undefined
       );
       res.json({ jobs });

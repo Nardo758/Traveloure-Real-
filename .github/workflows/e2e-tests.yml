@@ -158,7 +158,7 @@ jobs:
 
       - name: Verify service readiness (fast-fail on missing secrets)
         # Hits /api/ready which reports service-key presence.  Any "fail" check
-        # (ai_xai, stripe, webhook) returns HTTP 503 so CI stops here with a
+        # (stripe, webhook) returns HTTP 503 so CI stops here with a
         # clear diagnostic instead of burning time inside the test suite.
         # WARN-only checks (ai_claude, email) do not block the gate.
         run: |

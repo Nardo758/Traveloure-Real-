@@ -615,7 +615,7 @@ function Router() {
       <Route path="/spontaneous">
         <Redirect to="/destinations" />
       </Route>
-      {/* /hidden-gems kept: unique Grok-powered discovery of authentic local experiences with
+      {/* /hidden-gems kept: unique AI-powered discovery of authentic local experiences with
           category-based filtering (local food secrets, hidden viewpoints, etc.) — not present
           inside /discover. */}
       <Route path="/hidden-gems">

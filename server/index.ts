@@ -31,7 +31,7 @@ import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-acco
 import { seedLocationCache } from "./seeds/location-cache.seed";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./seeds/lib/demo-seed-gate";
 import { storage } from "./storage";
-import { grokDiscoveryService } from "./services/grok-discovery.service";
+import { gemDiscoveryService } from "./services/gem-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { getSession } from "./replit_integrations/auth";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
@@ -189,20 +189,14 @@ app.get("/api/ready", (_req: Request, res: Response) => {
   type CheckResult = { status: "ok" | "warn" | "fail"; message: string };
   const checks: Record<string, CheckResult> = {};
 
-  const xaiPresent = Boolean(process.env.XAI_API_KEY);
-  checks.ai_xai = {
-    status: xaiPresent ? "ok" : "fail",
-    message: xaiPresent
-      ? "XAI_API_KEY present"
-      : "XAI_API_KEY missing — AI generation will fail. Set in GitHub Secrets → Actions.",
-  };
-
+  // No `ai_xai` check: xAI has no caller since ledger `2026-09-30-retire-xai`, and a readiness
+  // gate on an unused key would fail a deploy that has correctly stopped carrying it.
   const claudePresent = Boolean(process.env.ANTHROPIC_API_KEY);
   checks.ai_claude = {
     status: claudePresent ? "ok" : "warn",
     message: claudePresent
       ? "ANTHROPIC_API_KEY present"
-      : "ANTHROPIC_API_KEY missing — chat/optimization will degrade",
+      : "ANTHROPIC_API_KEY missing — AI drafts, optimization and chat will fail",
   };
 
   const stripePresent = Boolean(getStripeSecretKey());
@@ -977,7 +971,7 @@ if (process.env.NODE_ENV === "production") {
 
     runDatabaseSeeding()
       .then(() => {
-        grokDiscoveryService.backfillGemPhotos()
+        gemDiscoveryService.backfillGemPhotos()
           .then(({ processed, updated, failed }) => {
             if (processed > 0) {
               logger.info({ processed, updated, failed }, "Gem photo backfill complete");

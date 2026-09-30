@@ -171,7 +171,6 @@ import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
-import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";

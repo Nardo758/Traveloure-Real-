@@ -40,7 +40,7 @@ const sections: DiagramSection[] = [
       {
         icon: Brain,
         label: "AI Itinerary Builder",
-        description: "Autonomous trip planning using Grok AI with city intelligence data",
+        description: "Autonomous trip planning using Anthropic Claude with city intelligence data",
         color: "text-rose-500",
         children: ["Auto-fetches TravelPulse data", "Day-by-day activities, meals, transport", "Customize or send to expert"],
       },
@@ -61,7 +61,7 @@ const sections: DiagramSection[] = [
       {
         icon: Eye,
         label: "Hidden Gems Discovery",
-        description: "12-category local secrets finder powered by Grok AI",
+        description: "12-category local secrets finder powered by Anthropic Claude",
         color: "text-rose-500",
         children: ["Off-the-beaten-path experiences", "Authentic local recommendations", "Category-based filtering"],
       },
@@ -216,28 +216,22 @@ const sections: DiagramSection[] = [
   },
   {
     id: "ai-system",
-    title: "Dual AI System",
-    subtitle: "Grok (xAI) + Anthropic Claude with intelligent routing",
+    title: "AI System",
+    subtitle: "Anthropic Claude, cost-tracked per call",
     icon: Bot,
     gradient: "from-cyan-500/10 to-blue-500/10",
     borderColor: "border-cyan-500/30",
     features: [
       {
-        icon: Zap,
-        label: "Grok (xAI)",
-        description: "Expert matching, city intelligence, content generation, hidden gems discovery",
-        color: "text-cyan-500",
-      },
-      {
         icon: Brain,
         label: "Anthropic Claude",
-        description: "Empathetic chat, itinerary optimization, transport analysis, travel advice",
+        description: "Itinerary drafts and optimization, expert matching, content generation, hidden gems discovery, chat",
         color: "text-cyan-500",
       },
       {
         icon: RefreshCw,
         label: "AI Orchestrator",
-        description: "Intelligent routing between AI providers with fallback logic",
+        description: "One entry point that logs every AI interaction",
         color: "text-cyan-500",
       },
       {
@@ -515,7 +509,7 @@ export default function ArchitectureDiagram() {
               <div>
                 <p className="text-xs font-medium mb-2 text-muted-foreground uppercase tracking-wider">AI</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {["Grok (xAI)", "Claude (Anthropic)", "AI Orchestrator", "TravelPulse"].map(t => (
+                  {["Claude (Anthropic)", "AI Orchestrator", "TravelPulse"].map(t => (
                     <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
                   ))}
                 </div>

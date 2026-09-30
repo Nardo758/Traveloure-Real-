@@ -76,7 +76,7 @@ export function AIMatchedExpertsSection({
 
   const matchExpertsMutation = useMutation({
     mutationFn: async (): Promise<MatchedExpert[]> => {
-      // First try the Grok-powered endpoint with an 8 s hard timeout so the
+      // First try the AI-scored endpoint with an 8 s hard timeout so the
       // fallback always runs within the E2E test window even on slow CI runners.
       try {
         const controller = new AbortController();
@@ -175,7 +175,7 @@ export function AIMatchedExpertsSection({
             </div>
             <span>AI-Matched Experts</span>
             <Badge variant="secondary" className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[10px]">
-              Powered by Grok
+              AI-scored
             </Badge>
           </CardTitle>
           {matchedExperts.length === 0 && !matchExpertsMutation.isPending && (

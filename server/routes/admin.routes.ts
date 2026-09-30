@@ -84,7 +84,6 @@ import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
-import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { ingestKyotoHeritage, ingestKyotoContentGaps, isDmoIngestReady } from "../services/dmo-ingestion.service";
@@ -300,8 +299,8 @@ const requireAdminLocal = async (req: any, res: any, next: any) => {
 
 router.post("/api/admin/gems/backfill-photos", isAuthenticated, requireAdminLocal, async (req, res) => {
   try {
-    const { grokDiscoveryService } = await import("../services/grok-discovery.service");
-    const result = await grokDiscoveryService.backfillGemPhotos();
+    const { gemDiscoveryService } = await import("../services/gem-discovery.service");
+    const result = await gemDiscoveryService.backfillGemPhotos();
     res.json({
       message: `Backfill complete: ${result.processed} gem(s) processed, ${result.updated} updated, ${result.failed} failed.`,
       ...result,
@@ -2430,8 +2429,6 @@ router.get("/api/admin/integration-status", isAuthenticated, async (req, res) =>
     const providers: Record<string, { configured: boolean }> = {
       // server/services/ai/* — Anthropic client gate
       anthropic: { configured: !!env.ANTHROPIC_API_KEY },
-      // Grok client gate
-      xai: { configured: !!env.XAI_API_KEY },
       // server/services/viator.service.ts: `!!VIATOR_API_KEY`
       viator: { configured: !!env.VIATOR_API_KEY },
       // server/services/booking-com.service.ts: `!!AFFILIATE_ID`
@@ -4843,15 +4840,6 @@ router.get("/api/admin/ai-usage/pricing", isAuthenticated, async (req, res) => {
 
       res.json({
         providers: {
-          grok: {
-            models: {
-              'grok-2': { input: 200, output: 1000 },
-              'grok-2-vision': { input: 200, output: 1000 },
-              'grok-4': { input: 300, output: 1500 },
-              'grok-4.1-fast': { input: 20, output: 50 },
-            },
-            note: "Prices in cents per 1M tokens"
-          },
           anthropic: {
             models: {
               'claude-3-sonnet': { input: 300, output: 1500 },

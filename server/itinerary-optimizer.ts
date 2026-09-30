@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { trackAICost } from "./services/ai-cost-tracker";
@@ -56,16 +55,13 @@ import {
   resolveOptimizerActivityCoordinates,
 } from "./services/optimizer-activity-geocoder.service";
 
-// grok-2-1212 was deprecated at x.ai (every call 404s → fallback → paid optimizes failed).
-// grok-3 is the model the other Grok services (grok.service.ts, grok-discovery.service.ts)
-// already run against the same account.
-const GROK_MODEL = "grok-3";
+// Anthropic is the optimizer's ONE provider (ledger `2026-09-30-retire-xai`): the Grok primary it
+// used to try first is gone, so a failure here is the real failure, reported as one.
 const CLAUDE_MODEL = "claude-sonnet-4-5";
 
 // The 2-variant response JSON runs ~120-150 tokens per item; a 7-day trip with empty-day
 // fill can exceed 10k output tokens. 5120 truncated mid-JSON, which surfaced as
-// "Failed to parse AI response" on the fallback path.
-const GROK_MAX_TOKENS = 8192; // the max grok.service.ts has proven against this account
+// "Failed to parse AI response".
 const CLAUDE_MAX_TOKENS = 16384;
 
 // Anthropic pricing per token (as of 2026-06)
@@ -78,15 +74,6 @@ function calculateAnthropicCost(inputTokens: number, outputTokens: number): numb
   return (inputTokens * ANTHROPIC_PRICING.input) + (outputTokens * ANTHROPIC_PRICING.output);
 }
 
-function getGrokClient(): OpenAI | null {
-  const apiKey = process.env.XAI_API_KEY;
-  if (!apiKey) return null;
-  return new OpenAI({
-    baseURL: "https://api.x.ai/v1",
-    apiKey,
-  });
-}
-
 function getAnthropicClient(): Anthropic | null {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
@@ -94,32 +81,6 @@ function getAnthropicClient(): Anthropic | null {
 }
 
 async function callAI(systemPrompt: string, userPrompt: string): Promise<string> {
-  const grok = getGrokClient();
-  if (grok) {
-    try {
-      const response = await grok.chat.completions.create({
-        model: GROK_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.7,
-        max_tokens: GROK_MAX_TOKENS,
-        response_format: { type: "json_object" },
-      });
-      const choice = response.choices[0];
-      const content = choice?.message?.content;
-      // A length-truncated response is unparseable JSON — treat it as a Grok
-      // failure and let the Anthropic path (with a larger budget) take over.
-      if (content && choice?.finish_reason !== "length") return content;
-      if (choice?.finish_reason === "length") {
-        console.warn("Grok response truncated at max_tokens, falling back to Anthropic");
-      }
-    } catch (grokError: any) {
-      console.warn("Grok API failed, falling back to Anthropic:", grokError.message);
-    }
-  }
-
   const anthropic = getAnthropicClient();
   if (anthropic) {
     const response = await anthropic.messages.create({
@@ -152,7 +113,7 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
     if (textBlock && textBlock.type === "text") return textBlock.text;
   }
 
-  throw new Error("No AI provider available. Configure XAI_API_KEY or ANTHROPIC_API_KEY.");
+  throw new Error("No AI provider available. Configure ANTHROPIC_API_KEY.");
 }
 
 // Helper to extract JSON from markdown code blocks or raw text

@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { db } from "../db";
 import { 
   aiDiscoveredGems, 
@@ -11,24 +10,12 @@ import { eq, and, desc, sql, isNull } from "drizzle-orm";
 import { logger } from "../infrastructure/logger";
 import { unsplashService } from "./unsplash.service";
 import { pexelsService } from "./pexels.service";
+import { claudeService } from "./claude.service";
 
-const GROK_MODEL = "grok-3";
-
-let _grokClient: OpenAI | null = null;
-
-function getGrokClient(): OpenAI {
-  if (!_grokClient) {
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) {
-      throw new Error("XAI_API_KEY is not configured");
-    }
-    _grokClient = new OpenAI({
-      baseURL: "https://api.x.ai/v1",
-      apiKey,
-    });
-  }
-  return _grokClient;
-}
+// The scan runs on the platform's general Anthropic client through `claudeService.completeJson`
+// (cost-tracked to `ai_cost_tracking`, sourceType `ai_gem_discovery`). It ran on xAI's Grok until
+// that key's callers were retired (ledger `2026-09-30-retire-xai`); a gem stamped before then keeps
+// `source_model = 'grok'` — no backfill, because that is the model that wrote it (§13).
 
 const CATEGORY_PROMPTS: Record<DiscoveryCategory, string> = {
   local_food_secrets: "hidden local restaurants, street food stalls, family-run eateries, and authentic food experiences that tourists rarely find",
@@ -82,13 +69,13 @@ interface DiscoveryResult {
   confidenceScore: number;
 }
 
-class GrokDiscoveryService {
-  private discoveryLogger = logger.child({ service: "grok-discovery" });
+class GemDiscoveryService {
+  private discoveryLogger = logger.child({ service: "gem-discovery" });
 
   async discoverGemsForDestination(
     destination: string,
     categories: DiscoveryCategory[] = [...discoveryCategories],
-    options?: { maxGemsPerCategory?: number }
+    options?: { maxGemsPerCategory?: number; actorUserId?: string | null }
   ): Promise<{ jobId: string; totalGems: number }> {
     const maxGems = options?.maxGemsPerCategory || 5;
     
@@ -106,7 +93,7 @@ class GrokDiscoveryService {
     try {
       for (const category of categories) {
         try {
-          const result = await this.discoverCategoryGems(destination, category, maxGems);
+          const result = await this.discoverCategoryGems(destination, category, maxGems, options?.actorUserId ?? null);
           
           for (const gem of result.gems) {
             const existingRows = await db
@@ -146,8 +133,9 @@ class GrokDiscoveryService {
               imageUrl: imageUrl ?? undefined,
               imageSearchTerms: gem.imageSearchTerms,
               relatedExperiences: [],
-              sourceModel: "grok",
-              confidenceScore: result.confidenceScore.toString(),
+              sourceModel: result.model,
+              // The model's own self-rating; absent ⇒ not recorded, never a default (§13).
+              confidenceScore: typeof result.confidenceScore === "number" ? result.confidenceScore.toString() : undefined,
             });
             totalGems++;
           }
@@ -195,9 +183,9 @@ class GrokDiscoveryService {
   private async discoverCategoryGems(
     destination: string,
     category: DiscoveryCategory,
-    maxGems: number
-  ): Promise<DiscoveryResult> {
-    const client = getGrokClient();
+    maxGems: number,
+    actorUserId: string | null,
+  ): Promise<DiscoveryResult & { model: string }> {
     const categoryDescription = CATEGORY_PROMPTS[category];
     const categoryLabel = CATEGORY_LABELS[category];
 
@@ -250,37 +238,20 @@ Return the following JSON structure:
 
 Focus on authenticity and specificity. Avoid generic tourist attractions.`;
 
-    const response = await client.chat.completions.create({
-      model: GROK_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.8,
-      max_tokens: 4000,
+    const { result, model } = await claudeService.completeJson<DiscoveryResult>({
+      system: systemPrompt,
+      user: userPrompt,
+      maxTokens: 4000,
+      sourceType: "ai_gem_discovery",
+      userId: actorUserId,
+      label: `Gem discovery (${category})`,
     });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error("Empty response from Grok");
+    if (!Array.isArray(result.gems)) {
+      this.discoveryLogger.error({ category }, "Discovery response carried no gems array");
+      throw new Error("Discovery response carried no gems array");
     }
-
-    const cleanedContent = content
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim();
-
-    try {
-      const result = JSON.parse(cleanedContent) as DiscoveryResult;
-      result.category = category;
-      return result;
-    } catch (parseError) {
-      this.discoveryLogger.error({ 
-        category, 
-        content: cleanedContent.substring(0, 500) 
-      }, "Failed to parse Grok response");
-      throw new Error(`Failed to parse discovery response: ${parseError}`);
-    }
+    result.category = category;
+    return { ...result, model };
   }
 
   /**
@@ -475,4 +446,4 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
   }
 }
 
-export const grokDiscoveryService = new GrokDiscoveryService();
+export const gemDiscoveryService = new GemDiscoveryService();

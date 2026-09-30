@@ -7,7 +7,7 @@
  * occasion_drafts ledger row. It reuses the existing generation rail end-to-end — no new
  * generator, no new artifact type:
  *
- *   grokService.generateAutonomousItinerary   (generation; travelPulseContext = home-city gems)
+ *   aiGenerationService.generateAutonomousItinerary   (generation; travelPulseContext = home-city gems)
  *     → normalizeGeneratedItineraryPayload      (shared normalizer)
  *     → saveGeneratedItinerarySnapshot          (writes a trips row + itinerary_items stamped
  *                                                 origin:'ai', routing_status defaulting to
@@ -33,7 +33,7 @@ import {
   type Occasion,
   type OccasionDraft,
 } from "@shared/schema";
-import { grokService } from "./grok.service";
+import { aiGenerationService } from "./ai-generation.service";
 import { travelPulseService } from "./travelpulse.service";
 import { saveGeneratedItinerarySnapshot } from "./content-query.service";
 import {
@@ -305,7 +305,7 @@ async function buildDraftSlip(input: {
     console.warn(`${TAG} city intelligence unavailable for ${input.homeCity}:`, err);
   }
 
-  const { result } = await grokService.generateAutonomousItinerary({
+  const { result } = await aiGenerationService.generateAutonomousItinerary({
     destination: input.homeCity,
     dates: { start, end },
     travelers: 2,
@@ -352,7 +352,7 @@ async function buildDraftSlip(input: {
       accommodationSuggestions: normalized.accommodationSuggestions,
       packingList: normalized.packingList,
       travelTips: normalized.travelTips,
-      provider: "grok",
+      provider: "claude",
       status: "generated",
     },
     canonicalItems: normalized.canonicalItems,

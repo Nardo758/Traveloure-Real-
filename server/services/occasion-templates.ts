@@ -14,7 +14,7 @@
 export interface OccasionTemplate {
   key: string;
   defaultLabel: string;
-  /** eventType handed to grokService.generateAutonomousItinerary (steers tone/shape). */
+  /** eventType handed to aiGenerationService.generateAutonomousItinerary (steers tone/shape). */
   eventType: string;
   interests: string[];
   specialRequests: string;

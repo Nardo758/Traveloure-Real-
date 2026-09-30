@@ -202,7 +202,7 @@ export default function ExpertAIAssistant() {
             <p className="text-gray-600 dark:text-gray-400">Your productivity partner - delegate tasks and review AI work</p>
           </div>
           <Badge className="bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400" data-testid="badge-ai-status">
-            <Sparkles className="w-4 h-4 mr-1" /> Grok Active
+            <Sparkles className="w-4 h-4 mr-1" /> AI Assistant
           </Badge>
         </div>
 

@@ -159,10 +159,6 @@ export function createHealthRouter(): Router {
     try {
       // Service-key presence checks (synchronous — no network calls)
       const serviceChecks: Record<string, HealthCheck> = {
-        ai_xai: {
-          status: process.env.XAI_API_KEY ? "healthy" : "degraded",
-          message: process.env.XAI_API_KEY ? "XAI_API_KEY present" : "XAI_API_KEY missing",
-        },
         ai_claude: {
           status: process.env.ANTHROPIC_API_KEY ? "healthy" : "degraded",
           message: process.env.ANTHROPIC_API_KEY ? "ANTHROPIC_API_KEY present" : "ANTHROPIC_API_KEY missing",

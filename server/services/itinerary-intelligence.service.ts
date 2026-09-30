@@ -5,17 +5,11 @@ import {
   type InsertItineraryItem
 } from "@shared/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
-import OpenAI from "openai";
 import {
   createCircuitBreaker,
-  withCircuitBreaker,
-  retryWithBackoff,
   aiLogger,
-  aiRequestDuration,
-  aiTokensUsed,
   databaseQueryDuration
 } from "../infrastructure";
-import type { ChatCompletion } from "openai/resources/chat/completions";
 
 // Meal timing realism constants
 export const MEAL_GAP_MINUTES = {
@@ -95,39 +89,10 @@ const ENERGY_WEIGHTS = {
 
 
 export class ItineraryIntelligenceService {
-  private openai: OpenAI | null = null;
+  // The xAI "AI recommendations" call (grok-3-mini) and its route had no client caller and were
+  // deleted with the xAI retirement (ledger `2026-09-30-retire-xai`). What remains is DB reads and
+  // pure arithmetic — no model call lives in this service.
   private logger = aiLogger;
-  private aiRecommend: ((prompt: string, maxTokens: number) => Promise<ChatCompletion>) | null = null;
-
-  constructor() {
-    if (process.env.XAI_API_KEY) {
-      this.openai = new OpenAI({
-        apiKey: process.env.XAI_API_KEY,
-        baseURL: "https://api.x.ai/v1",
-      });
-      
-      this.aiRecommend = withCircuitBreaker<[string, number], ChatCompletion>(
-        "itinerary-ai",
-        async (prompt: string, maxTokens: number) => {
-          return this.openai!.chat.completions.create({
-            model: "grok-3-mini",
-            messages: [{ role: "user", content: prompt }],
-            max_tokens: maxTokens,
-          });
-        },
-        { choices: [], id: "", model: "", object: "chat.completion", created: 0 } as ChatCompletion,
-        {
-          timeout: 30000,
-          errorThresholdPercentage: 50,
-          resetTimeout: 60000,
-        }
-      );
-      
-      this.logger.info("Itinerary Intelligence AI initialized with xAI and circuit breaker");
-    } else {
-      this.logger.warn("XAI_API_KEY not set - AI recommendations will use fallback");
-    }
-  }
 
   async getItems(tripId: string): Promise<ItineraryItem[]> {
     return db.select().from(itineraryItems)
@@ -498,77 +463,6 @@ export class ItineraryIntelligenceService {
   private parseTimeToMinutes(timeStr: string): number {
     const [hours, minutes] = timeStr.split(':').map(Number);
     return hours * 60 + (minutes || 0);
-  }
-
-  async getAIRecommendations(tripId: string, destination: string): Promise<string[]> {
-    if (!this.openai) {
-      this.logger.debug({ tripId, destination }, "Using fallback recommendations (no API key)");
-      return [
-        "Consider visiting local markets in the morning when they're freshest",
-        "Plan outdoor activities for mid-morning before peak heat",
-        "Reserve popular restaurants at least 24 hours in advance",
-        "Leave buffer time between activities for unexpected discoveries",
-      ];
-    }
-
-    const startTime = Date.now();
-    
-    try {
-      const items = await this.getItems(tripId);
-      const analysis = await this.analyzeItinerary(tripId);
-
-      const prompt = `Analyze this travel itinerary for ${destination} and provide 3-5 specific recommendations to improve it.
-
-Itinerary:
-${items.map(i => `- Day ${i.dayNumber}: ${i.title} (${i.itemType}, ${i.startTime || "flexible"}, ${i.energyLevel || "medium"} energy)`).join("\n")}
-
-Current Issues:
-${analysis.issues.map(i => `- ${i.message}`).join("\n") || "None identified"}
-
-Provide specific, actionable recommendations in a JSON array of strings.`;
-
-      this.logger.debug({ tripId, destination, itemCount: items.length }, "Requesting AI recommendations");
-
-      const response = await retryWithBackoff(
-        async () => this.aiRecommend!(prompt, 500),
-        2,
-        1000
-      );
-
-      const duration = (Date.now() - startTime) / 1000;
-      aiRequestDuration.labels("itinerary-recommendations", "grok").observe(duration);
-      
-      const tokensUsed = response.usage?.total_tokens || 0;
-      if (tokensUsed > 0) {
-        aiTokensUsed.labels("itinerary-recommendations", "grok").inc(tokensUsed);
-      }
-
-      const content = response.choices[0]?.message?.content || "[]";
-      const match = content.match(/\[[\s\S]*\]/);
-      
-      this.logger.info({ 
-        tripId, 
-        destination, 
-        duration,
-        tokensUsed,
-        recommendationCount: match ? JSON.parse(match[0]).length : 1
-      }, "AI recommendations generated successfully");
-      
-      if (match) {
-        return JSON.parse(match[0]);
-      }
-      return [content];
-    } catch (error) {
-      const duration = (Date.now() - startTime) / 1000;
-      this.logger.error({ 
-        err: error, 
-        tripId, 
-        destination, 
-        duration 
-      }, "AI recommendation error");
-      
-      return ["Unable to generate AI recommendations at this time"];
-    }
   }
 
   async setBackupPlan(itemId: string, backupItemId: string): Promise<ItineraryItem | undefined> {
