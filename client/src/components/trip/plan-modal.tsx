@@ -1659,7 +1659,9 @@ export function PlanModal({
     when:
       shape === "day"
         ? "Occasions that last a day ask for a date and a time, never a range."
-        : "A travel-class plan asks only for the two days.",
+        // B5 (ledger `2026-09-30-b5-dates-days-and-nights`): plain words, not class vocabulary —
+        // "travel-class" is wedding-flow copy and the class is presentation only (LD 28).
+        : "Pick your first and last day; every day in between is part of the plan.",
     /**
      * STEP 4's NOTE BRANCHES BY THE PARTY NOUN (re-audit A5), the same derived value its TITLE and
      * its steppers already branch on — never a per-occasion literal. The `attendees` line is the
@@ -2714,7 +2716,7 @@ export function PlanModal({
           className="flex flex-wrap items-center justify-between gap-2 border-t pt-3"
           style={{ borderColor: "var(--earn-border)" }}
         >
-          <span className="text-[11px]" style={{ fontFamily: MONO, color: "var(--earn-faint)" }}>
+          <span className="text-[11px]" style={{ fontFamily: MONO, color: "var(--earn-faint)" }} data-testid="text-plan-step-note">
             {/* The CTA-side note names what the finish will actually do. The event count shows
                 only when the occasion HAS a schedule step — a count for a step that is not on
                 screen would be describing work nobody asked for. */}

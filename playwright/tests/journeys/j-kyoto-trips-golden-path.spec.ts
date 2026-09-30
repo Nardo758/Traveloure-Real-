@@ -193,6 +193,25 @@ test.describe("1 · entry and occasion", () => {
     await expect(page.getByText("Trips", { exact: true })).toHaveCount(0);
     await expect(testid(page, "slip-anchor-state")).toHaveText("Where you'll stay: not chosen yet");
   });
+
+  test("§1 B5 — the Travel date step speaks plainly and a four-night window reads '5 days · 4 nights'", async ({ page }) => {
+    // Production smoke test Sep 30, 2026 (ledger `2026-09-30-b5-dates-days-and-nights`).
+    await signedInTraveler(page, "b5");
+    await openModalFromHero(page);
+    await testid(page, "option-occasion-travel").click();
+    const next = testid(page, "button-planning-next");
+    await next.click();
+    await testid(page, "input-etp-destination").fill(KYOTO);
+    for (let i = 0; i < 6 && !(await appears(testid(page, "input-etp-start-date"), 600)); i++) await next.click();
+    await expect(testid(page, "text-plan-step-note")).not.toContainText("travel-class");
+    await expect(testid(page, "text-plan-step-note")).toContainText("first and last day");
+    const year = new Date().getFullYear() + 1;
+    await testid(page, "input-etp-start-date").fill(`${year}-11-11`);
+    await testid(page, "input-etp-end-date").fill(`${year}-11-15`);
+    for (let i = 0; i < 6 && !(await appears(testid(page, "planning-option-ai"), 600)); i++) await next.click();
+    await testid(page, "planning-option-ai").click();
+    await expect(testid(page, "text-basics-dates")).toContainText("5 days · 4 nights", { timeout: 15_000 });
+  });
 });
 
 // ── §2 · where are you staying ────────────────────────────────────────────────────────────────
