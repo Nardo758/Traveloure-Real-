@@ -158,7 +158,7 @@ export function formatMoneyCents(cents: number, currency: string): string {
  * Pass on its plan, else FREE when the traveler completed an optimization in the last 24 hours
  * (`OPTIMIZATION_FREE_RERUN_MS`), else charged. The slip's fee line and the comparison board both
  * render THIS sentence — two surfaces wording the rule separately is how they came to disagree
- * ("free within 24 hours" on one, "$5.99 charged on confirm" on the other) (§18 rule 1).
+ * ("free within 24 hours" on one, "charged on confirm" on the other) (§18 rule 1).
  */
 export const OPTIMIZE_RERUN_RULE = "A re-run within 24 hours of a completed optimization is free.";
 
