@@ -16,7 +16,7 @@ export interface MarketRunError {
 /** Pure. One entry per error, market split from the adapter's "<market>: <message>" shape, each capped. */
 export function perMarketErrors(errors: readonly string[]): MarketRunError[] {
   return errors.map((e) => {
-    const m = /^([a-z0-9_-]+):\s*(.*)$/s.exec(e);
+    const m = /^([a-z0-9_-]+):\s*([\s\S]*)$/.exec(e);
     return m
       ? { market: m[1], error: m[2].slice(0, LAST_RUN_ERROR_MAX) }
       : { market: null, error: e.slice(0, LAST_RUN_ERROR_MAX) };
