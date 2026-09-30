@@ -2287,6 +2287,13 @@ This document captures architectural decisions to maintain consistency across co
     otherwise every located option named equally — and SAYS which; with no stay and no open set it
     **asks** (`409 anchor_needed`, E6 `anchor_asked`) and "Draft without a hotel" is the traveler's own
     answer (`withoutAnchor`, E6 `draftBasis: none_asked`), never sent on their behalf.
+    **A PLACES LOOKUP NEEDS A NAMED PLACE, AND THE CAP IS SPENT ACROSS DAYS (ledger
+    `2026-09-30-places-named-gate`; production smoke test 3).** An item whose title and location name no
+    specific place (`namedPlaceTokens`, `shared/place-name-gate.ts`) is never looked up, and a Places
+    answer is attached only when its matched name is in the item (`matchNamesItem`) — a generic "Dinner
+    at Local Izakaya" gets no fact rather than some izakaya's hours. `PLACES_LOOKUPS_PER_DRAFT` stays a
+    COST cap on BILLED lookups (a cache reuse no longer spends it), spent round-robin across the plan's
+    days (`lookupOrder`) instead of in plan order.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —

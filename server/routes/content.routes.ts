@@ -4882,7 +4882,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           tripId: resolvedTripId,
           market: snapshot.trip.marketSlug ?? null,
           city: destination,
-          items: insertedItems.map((it: any) => ({ id: it.id, title: it.title, type: it.type ?? null })),
+          items: insertedItems.map((it: any) => ({ id: it.id, title: it.title, type: it.type ?? null, dayNumber: it.dayNumber ?? null, locationName: it.location ?? it.locationName ?? null })),
         });
       }
       const comparison = snapshot.comparison;
