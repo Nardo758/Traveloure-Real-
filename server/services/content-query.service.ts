@@ -347,7 +347,11 @@ export interface SaveGeneratedItinerarySnapshotInput {
   };
   generatedPlan: Record<string, any>;
   canonicalItems: NormalizedGeneratedCanonicalItem[];
-  comparison: Record<string, any>;
+  /**
+   * Optional. The free draft passes none (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): a
+   * draft is not an optimizer run, so no comparison row is created and `comparison` comes back null.
+   */
+  comparison?: Record<string, any>;
 }
 
 /**
@@ -490,11 +494,13 @@ export async function saveGeneratedItinerarySnapshot(
       id: insertedRows[index].id,
     }));
 
-    const [comparison] = await tx.insert(itineraryComparisons).values({
-      ...input.comparison,
-      userId: input.userId,
-      tripId,
-    } as any).returning();
+    const [comparison] = input.comparison
+      ? await tx.insert(itineraryComparisons).values({
+          ...input.comparison,
+          userId: input.userId,
+          tripId,
+        } as any).returning()
+      : [null];
 
     return { trip, savedItinerary, insertedItems, comparison, mintedTrip: !input.tripId };
   });

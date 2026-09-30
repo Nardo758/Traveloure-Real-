@@ -14,6 +14,8 @@
  *   Requires authentication.
  */
 
+import { openSetSlotsForRun } from "../services/version-options.service";
+import { versionPerOptionEnabled } from "../config/version-options.config";
 import { Router } from "express";
 import { coversAction } from "../services/trip-entitlement.service";
 import { getUserId } from "../utils/auth";
@@ -238,6 +240,11 @@ router.get("/api/optimization-preview", isAuthenticated, async (req, res) => {
       // Items the run would treat as fixed points — purchased rows AND D3 expert work, counted
       // from the same read-set's actual constraint list, never assumed (§13).
       fixedCount: inputs.fixedCommitments.length,
+      // A7 (§F2 (4)): how many open comparisons a run would decide — never WHICH option wins. The
+      // run decides only the stay comparison it builds its versions around, so this is 0 or 1.
+      ...(versionPerOptionEnabled()
+        ? { openComparisons: (await openSetSlotsForRun(tripId, inputs.baselineItems as any, null))?.length ? 1 : 0 }
+        : {}),
     });
   } catch (err: any) {
     console.error("[optimization-preview:trip] error:", err);
