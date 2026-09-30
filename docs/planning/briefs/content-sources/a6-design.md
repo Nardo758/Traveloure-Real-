@@ -25,7 +25,7 @@ the expert "confirm this fact" tap. The table below shows which parts each decis
 **What exists now.** `CONTENT_NEEDS` has 11 flat keys. Migration 333 stores `covers` and `does_not_cover` as
 `text[]` with no CHECK, so the vocabulary is app-enforced only.
 
-**What the seed data already assumes.** 7 of the 34 rows in `content_sources.seed.csv` use values that are not
+**What the seed data already assumes.** 15 of the 34 rows in `content_sources.seed.csv` used values that were not
 in `CONTENT_NEEDS`:
 - dotted sub-needs: `transport.intercity.rail` (google_routes, klook, 12go, jr_west), `.bus` and `.ferry` (12go),
   and `transport.intercity.rail (Japan JR)` (12go);
@@ -34,7 +34,7 @@ in `CONTENT_NEEDS`:
 - a fact type used as a need: `tip` (kyoto_editorial_1).
 
 The brief's own 12Go example (`does_not_cover: [transport.intercity.rail_jp, transport.cruise]`) also depends on
-sub-needs. **Whichever option is chosen, the CSV needs normalising before anything is registered from it.**
+sub-needs. **Normalised (Sep 30, 2026):** every row now uses the 11 flat needs; each dotted qualifier moved into the row's `notes` as "Need scope: …", so option B can restore it as a sub-need without losing information.
 
 | Option | Build consequence |
 |---|---|
