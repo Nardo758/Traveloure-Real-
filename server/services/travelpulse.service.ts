@@ -1,4 +1,5 @@
-import OpenAI from "openai";
+import { displayTrendScore } from "@shared/trend-display";
+import { trendScoreMaxAgeHours } from "../config/trend-display.config";
 import { db } from "../db";
 import {
   travelPulseTrending,
@@ -31,38 +32,20 @@ import { trendEntities, trendScores } from "@shared/schema";
 import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
 import { CONFIDENCE_FLOOR } from "./trend-engine/trend-score.service";
 import crypto from "crypto";
-import { grokService, CityIntelligenceResult, CityProxySignals } from "./grok.service";
 
-const GROK_MODEL = "grok-3";
 
-function getGrokClient(): OpenAI | null {
-  const apiKey = process.env.XAI_API_KEY;
-  if (!apiKey) {
-    console.warn("XAI_API_KEY not configured - TravelPulse AI features will be disabled");
-    return null;
-  }
-  return new OpenAI({
-    apiKey,
-    baseURL: "https://api.x.ai/v1",
-  });
-}
-
-function extractJSON(content: string): any {
-  let jsonStr = content.trim();
-  const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    jsonStr = codeBlockMatch[1].trim();
-  }
-  return JSON.parse(jsonStr);
-}
+/**
+ * A city as the PUBLIC rail sees it (TravelPulse PR 1, ledger `2026-09-29-travelpulse-hygiene`): the
+ * legacy `crowd_level` / `pulse_score` are not on it, and `trendingScore` is the resolver's (0 = not
+ * shown — the rail's suppression path).
+ */
+export type PublicTrendingCity = Omit<TravelPulseCity, "crowdLevel" | "pulseScore"> & {
+  trendingScore: number;
+  _resolverScore: number | null;
+  _isRanked: boolean;
+};
 
 export class TravelPulseService {
-  private grok: OpenAI | null;
-
-  constructor() {
-    this.grok = getGrokClient();
-  }
-
   async getTrendingDestinations(city: string, limit: number = 10): Promise<TravelPulseTrending[]> {
     const cached = await db
       .select()
@@ -80,133 +63,13 @@ export class TravelPulseService {
       return cached;
     }
 
-    // Return cached data if Grok is not available
-    if (!this.grok) {
-      return cached || [];
-    }
-
-    return this.fetchAndCacheTrendingDestinations(city, limit);
+    // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): CACHE READ ONLY. The Grok fill on
+    // a miss and its `travel_pulse_trending` writer are deleted; an empty cache is an honest [] .
+    return cached;
   }
 
-  private async fetchAndCacheTrendingDestinations(city: string, limit: number): Promise<TravelPulseTrending[]> {
-    // Return empty if Grok is not available
-    if (!this.grok) {
-      return [];
-    }
 
-    const prompt = `You are a travel intelligence analyst. Analyze what's currently trending in ${city} based on social media signals, travel blogs, and recent news.
-
-Return a JSON array of ${limit} trending destinations/experiences in ${city}. For each, provide comprehensive intelligence:
-
-{
-  "destinations": [
-    {
-      "destinationName": "Name of place/experience",
-      "destinationType": "restaurant|attraction|hotel|tour|neighborhood|activity",
-      "trendScore": 0-1000 (velocity of trending),
-      "growthPercent": percentage increase in mentions over the past 7 days,
-      "mentionCount": estimated mentions in the past 7 days,
-      "trendStatus": "emerging|viral|mainstream|declining",
-      "triggerEvent": "What caused the trend (influencer post, news, seasonal, etc.)",
-      
-      "liveScore": 1.0-5.0 (current rating based on sentiment),
-      "liveScoreChange": -2.0 to +2.0 (change from baseline),
-      "sentimentScore": -1.0 to +1.0,
-      "sentimentTrend": "up|down|stable",
-      
-      "worthItPercent": 0-100,
-      "mehPercent": 0-100,
-      "avoidPercent": 0-100,
-      "overallVerdict": "highly_recommended|recommended|mixed|skip",
-      "realityScore": 1-10 (photo vs reality gap),
-      
-      "topHighlights": ["positive aspect 1", "positive aspect 2"],
-      "topWarnings": ["concern 1", "concern 2"],
-      "crowdsourcedTips": [{"tip": "Visit early morning", "mentionCount": 15}],
-      
-      "bestTimeToVisit": "6-8am for photos, 5-7pm for atmosphere",
-      "worstTimeToVisit": "11am-2pm extremely crowded",
-      "crowdForecast": [
-        {"hour": 6, "level": "quiet", "percent": 15},
-        {"hour": 12, "level": "packed", "percent": 95}
-      ],
-      
-      "latitude": number or null,
-      "longitude": number or null
-    }
-  ]
-}
-
-Focus on authentic traveler sentiment, not promotional content. Include hidden gems that are emerging, not just famous landmarks.`;
-
-    try {
-      const response = await this.grok.chat.completions.create({
-        model: GROK_MODEL,
-        messages: [
-          { role: "system", content: "You are a travel intelligence analyst. Always respond with valid JSON only." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7,
-      });
-
-      const content = response.choices[0]?.message?.content || "{}";
-      const data = extractJSON(content);
-      const destinations = data.destinations || [];
-
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
-
-      const results: TravelPulseTrending[] = [];
-
-      for (const dest of destinations) {
-        const record = {
-          city: city.toLowerCase(),
-          country: dest.country || null,
-          destinationName: dest.destinationName,
-          destinationType: dest.destinationType,
-          trendScore: dest.trendScore || 0,
-          growthPercent: dest.growthPercent || 0,
-          mentionCount: dest.mentionCount || 0,
-          trendStatus: dest.trendStatus || "emerging",
-          triggerEvent: dest.triggerEvent,
-          liveScore: String(dest.liveScore || 4.0),
-          liveScoreChange: String(dest.liveScoreChange || 0),
-          sentimentScore: String(dest.sentimentScore || 0),
-          sentimentTrend: dest.sentimentTrend || "stable",
-          worthItPercent: dest.worthItPercent,
-          mehPercent: dest.mehPercent,
-          avoidPercent: dest.avoidPercent,
-          overallVerdict: dest.overallVerdict,
-          realityScore: dest.realityScore,
-          topHighlights: dest.topHighlights || [],
-          topWarnings: dest.topWarnings || [],
-          crowdsourcedTips: dest.crowdsourcedTips || [],
-          bestTimeToVisit: dest.bestTimeToVisit,
-          worstTimeToVisit: dest.worstTimeToVisit,
-          crowdForecast: dest.crowdForecast || [],
-          latitude: dest.latitude ? String(dest.latitude) : null,
-          longitude: dest.longitude ? String(dest.longitude) : null,
-          expiresAt,
-        };
-
-        const [inserted] = await db
-          .insert(travelPulseTrending)
-          .values(record)
-          .onConflictDoNothing()
-          .returning();
-
-        if (inserted) {
-          results.push(inserted);
-        }
-      }
-
-      return results;
-    } catch (error) {
-      console.error("Error fetching trending destinations:", error);
-      throw error;
-    }
-  }
-
-  async getTruthCheck(query: string, city?: string): Promise<TravelPulseTruthCheck> {
+  async getTruthCheck(query: string, city?: string): Promise<TravelPulseTruthCheck | null> {
     const normalized = query.toLowerCase().trim().replace(/[^\w\s]/g, "").replace(/\s+/g, " ");
     const queryHash = crypto.createHash("md5").update(normalized).digest("hex");
 
@@ -232,111 +95,12 @@ Focus on authentic traveler sentiment, not promotional content. Include hidden g
       return cached[0];
     }
 
-    return this.performTruthCheck(query, city, normalized, queryHash);
+    // TravelPulse PR 1: no Grok "verdict" on a miss, and no invented 50/25/25 default either —
+    // nothing stored ⇒ null (§13). The routes answer "no traveler data yet".
+    void city;
+    return null;
   }
 
-  private async performTruthCheck(
-    query: string,
-    city: string | undefined,
-    normalized: string,
-    queryHash: string
-  ): Promise<TravelPulseTruthCheck> {
-    // Return default if Grok is not available
-    if (!this.grok) {
-      return {
-        id: queryHash,
-        queryHash,
-        query,
-        city: city || null,
-        subjectName: null,
-        subjectType: "claim",
-        postsAnalyzed: 0,
-        worthItPercent: "50",
-        mehPercent: "25",
-        avoidPercent: "25",
-        overallVerdict: "mixed",
-        positiveMentions: JSON.stringify([]),
-        negativeMentions: JSON.stringify([]),
-        crowdsourcedTips: JSON.stringify([]),
-        realityScore: "5",
-        expectationGap: "0",
-        hitCount: 1,
-        lastAccessedAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-    }
-
-    const cityContext = city ? ` in ${city}` : "";
-
-    const prompt = `Analyze this travel question based on real traveler sentiment and experiences: "${query}"${cityContext}
-
-Search your knowledge of recent traveler experiences, reviews, and social media discussions to provide a truth check.
-
-Return JSON:
-{
-  "subjectName": "Name of place/experience being asked about",
-  "subjectType": "place|experience|claim",
-  "city": "City name or null",
-  "postsAnalyzed": estimated number of data points,
-  
-  "worthItPercent": 0-100 (percent who say worth it),
-  "mehPercent": 0-100 (percent who say it's okay),
-  "avoidPercent": 0-100 (percent who say avoid),
-  "overallVerdict": "highly_recommended|recommended|mixed|skip",
-  
-  "positiveMentions": [{"text": "specific praise", "count": 5}],
-  "negativeMentions": [{"text": "specific complaint", "count": 2}],
-  "crowdsourcedTips": [{"tip": "Visit at 6am", "mentions": 23, "context": "avoid crowds"}],
-  
-  "realityScore": 1-10 (how well photos match reality),
-  "expectationGap": -5 to +5 (negative = worse than expected, positive = better)
-}`;
-
-    try {
-      const response = await this.grok.chat.completions.create({
-        model: GROK_MODEL,
-        messages: [
-          { role: "system", content: "You are a travel truth verification assistant. Respond with valid JSON only." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7,
-      });
-
-      const content = response.choices[0]?.message?.content || "{}";
-      const data = extractJSON(content);
-
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-
-      const [result] = await db
-        .insert(travelPulseTruthChecks)
-        .values({
-          queryText: query,
-          queryHash,
-          subjectName: data.subjectName,
-          subjectType: data.subjectType,
-          city: data.city || city,
-          postsAnalyzed: data.postsAnalyzed || 0,
-          worthItPercent: data.worthItPercent,
-          mehPercent: data.mehPercent,
-          avoidPercent: data.avoidPercent,
-          overallVerdict: data.overallVerdict,
-          positiveMentions: data.positiveMentions || [],
-          negativeMentions: data.negativeMentions || [],
-          crowdsourcedTips: data.crowdsourcedTips || [],
-          realityScore: data.realityScore,
-          expectationGap: data.expectationGap,
-          expiresAt,
-        })
-        .returning();
-
-      return result;
-    } catch (error) {
-      console.error("Error performing truth check:", error);
-      throw error;
-    }
-  }
 
   async getCalendarEvents(
     city: string,
@@ -359,83 +123,10 @@ Return JSON:
       return cached;
     }
 
-    return this.fetchCalendarEvents(city, startDate, endDate);
+    // TravelPulse PR 1: no Grok-invented events on a miss — the stored rows or none.
+    return cached;
   }
 
-  private async fetchCalendarEvents(
-    city: string,
-    startDate: Date,
-    endDate: Date
-  ): Promise<TravelPulseCalendarEvent[]> {
-    const startStr = startDate.toISOString().split("T")[0];
-    const endStr = endDate.toISOString().split("T")[0];
-
-    const prompt = `List major events, festivals, holidays, and travel-relevant occasions in ${city} between ${startStr} and ${endStr}.
-
-Return JSON:
-{
-  "events": [
-    {
-      "eventName": "Event name",
-      "eventType": "festival|holiday|conference|sporting|cultural|religious",
-      "startDate": "YYYY-MM-DD",
-      "endDate": "YYYY-MM-DD or null",
-      "crowdImpact": "low|moderate|high|extreme",
-      "priceImpact": "lower|normal|higher|surge",
-      "crowdImpactPercent": estimated % increase in crowds,
-      "description": "Brief description",
-      "affectedAreas": ["list of affected neighborhoods/attractions"],
-      "tips": ["Advice for travelers during this event"]
-    }
-  ]
-}`;
-
-    try {
-      const response = await this.grok.chat.completions.create({
-        model: GROK_MODEL,
-        messages: [
-          { role: "system", content: "You are a travel calendar assistant. Respond with valid JSON only." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7,
-      });
-
-      const content = response.choices[0]?.message?.content || "{}";
-      const data = extractJSON(content);
-      const events = data.events || [];
-
-      const results: TravelPulseCalendarEvent[] = [];
-
-      for (const event of events) {
-        const [inserted] = await db
-          .insert(travelPulseCalendarEvents)
-          .values({
-            eventName: event.eventName,
-            eventType: event.eventType,
-            city: city.toLowerCase(),
-            startDate: event.startDate,
-            endDate: event.endDate,
-            crowdImpact: event.crowdImpact,
-            priceImpact: event.priceImpact,
-            crowdImpactPercent: event.crowdImpactPercent,
-            description: event.description,
-            affectedAreas: event.affectedAreas || [],
-            tips: event.tips || [],
-            source: "grok",
-          })
-          .returning();
-
-        if (inserted) {
-          results.push(inserted);
-        }
-      }
-
-      return results;
-    } catch (error) {
-      console.error("Error fetching calendar events:", error);
-      throw error;
-    }
-  }
 
   async getDestinationIntelligence(destinationName: string, city: string) {
     const trending = await db
@@ -453,33 +144,9 @@ Return JSON:
       return trending[0];
     }
 
-    const prompt = `Provide comprehensive travel intelligence for "${destinationName}" in ${city}.
-
-Return JSON with the same structure as trending destinations, including LiveScore, Truth Check, crowd forecasts, tips, and warnings.`;
-
-    try {
-      const response = await this.grok.chat.completions.create({
-        model: GROK_MODEL,
-        messages: [
-          { role: "system", content: "You are a travel intelligence analyst. Respond with valid JSON only." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7,
-      });
-
-      const content = response.choices[0]?.message?.content || "{}";
-      const data = extractJSON(content);
-
-      return {
-        destinationName,
-        city,
-        ...data,
-        source: "on-demand",
-      };
-    } catch (error) {
-      console.error("Error getting destination intelligence:", error);
-      throw error;
-    }
+    // TravelPulse PR 1: no on-demand Grok call on a cache miss (the audit found this public route
+    // calling xAI per request). Nothing stored ⇒ nothing claimed (§13); the route answers 404.
+    return null;
   }
 
   async getLiveScore(entityName: string, city: string) {
@@ -499,78 +166,66 @@ Return JSON with the same structure as trending destinations, including LiveScor
       return cached[0];
     }
 
-    const prompt = `Calculate a real-time LiveScore for "${entityName}" in ${city} based on recent traveler sentiment.
-
-Return JSON:
-{
-  "entityName": "${entityName}",
-  "entityType": "restaurant|hotel|attraction|tour",
-  "mentionCount": estimated recent mentions,
-  "uniqueUsersCount": estimated unique reviewers,
-  "avgSentiment": -1.0 to 1.0,
-  "positiveCount": number,
-  "neutralCount": number,
-  "negativeCount": number,
-  "sentimentTrend": "up|down|stable",
-  "liveScore": 1.0-5.0,
-  "scoreChange24h": -2.0 to 2.0,
-  "isTrending": boolean,
-  "trendVelocity": 0-1000,
-  "topPositiveKeywords": ["keyword1", "keyword2"],
-  "topNegativeKeywords": ["keyword1", "keyword2"]
-}`;
-
-    try {
-      const response = await this.grok.chat.completions.create({
-        model: GROK_MODEL,
-        messages: [
-          { role: "system", content: "You are a sentiment analysis expert. Respond with valid JSON only." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7,
-      });
-
-      const content = response.choices[0]?.message?.content || "{}";
-      const data = extractJSON(content);
-
-      const validUntil = new Date(Date.now() + 15 * 60 * 1000);
-
-      const [result] = await db
-        .insert(travelPulseLiveScores)
-        .values({
-          entityName: data.entityName || entityName,
-          entityType: data.entityType,
-          city: city.toLowerCase(),
-          windowPeriod: "24h",
-          mentionCount: data.mentionCount || 0,
-          uniqueUsersCount: data.uniqueUsersCount || 0,
-          avgSentiment: String(data.avgSentiment || 0),
-          positiveCount: data.positiveCount || 0,
-          neutralCount: data.neutralCount || 0,
-          negativeCount: data.negativeCount || 0,
-          sentimentTrend: data.sentimentTrend || "stable",
-          liveScore: String(data.liveScore || 4.0),
-          scoreChange24h: String(data.scoreChange24h || 0),
-          isTrending: data.isTrending || false,
-          trendVelocity: data.trendVelocity || 0,
-          topPositiveKeywords: data.topPositiveKeywords || [],
-          topNegativeKeywords: data.topNegativeKeywords || [],
-          validUntil,
-        })
-        .returning();
-
-      return result;
-    } catch (error) {
-      console.error("Error calculating LiveScore:", error);
-      throw error;
-    }
+    // TravelPulse PR 1: no on-demand Grok sentiment "score" on a cache miss — it was a model's
+    // guess presented as live data. Nothing stored ⇒ null; the route answers 404.
+    return null;
   }
 
   // ============================================
   // CITY-LEVEL INTELLIGENCE METHODS
   // ============================================
 
-  async getTrendingCities(limit: number = 20): Promise<TravelPulseCity[]> {
+  /** The resolver's newest score per market key (`trend_scores` joined to its market entity). */
+  private async loadResolverScores(): Promise<Map<string, { score: number | null; confidence: number; computedAt: Date | null; whyText: string | null }>> {
+    const resolverRows = await db
+      .select({
+        internalId: trendEntities.internalId,
+        trendScore: trendScores.trendScore,
+        trendConfidence: trendScores.trendConfidence,
+        computedAt: trendScores.computedAt,
+        whyText: trendScores.whyText,
+      })
+      .from(trendEntities)
+      .leftJoin(trendScores, eq(trendScores.trendEntityId, trendEntities.id))
+      .where(eq(trendEntities.entityType, "market"));
+    return new Map(
+      resolverRows.map(r => [
+        r.internalId,
+        {
+          score: r.trendScore != null ? parseFloat(r.trendScore) : null,
+          confidence: r.trendConfidence != null ? parseFloat(r.trendConfidence) : 0,
+          computedAt: r.computedAt ?? null,
+          whyText: r.whyText ?? null,
+        },
+      ]),
+    );
+  }
+
+  /**
+   * The Trend number a PUBLIC surface may show for one city — the resolver's, through the ONE
+   * display rule (ranked, above the floor, fresh). `null` = show nothing, never 0 (TravelPulse PR 1).
+   */
+  async resolverTrendForCity(cityName: string): Promise<number | null> {
+    const market = OPERATING_MARKETS.find(m => m.cityName.toLowerCase() === cityName.toLowerCase());
+    if (!market) return null;
+    const rd = (await this.loadResolverScores()).get(market.marketKey) ?? null;
+    return displayTrendScore(rd, { confidenceFloor: CONFIDENCE_FLOOR, maxAgeHours: trendScoreMaxAgeHours() });
+  }
+
+  /** The displayed Trend number for every operating market, keyed by lower-cased city name. */
+  async resolverTrendsByCity(): Promise<Map<string, number | null>> {
+    const scores = await this.loadResolverScores();
+    const out = new Map<string, number | null>();
+    for (const m of OPERATING_MARKETS) {
+      out.set(
+        m.cityName.toLowerCase(),
+        displayTrendScore(scores.get(m.marketKey) ?? null, { confidenceFloor: CONFIDENCE_FLOOR, maxAgeHours: trendScoreMaxAgeHours() }),
+      );
+    }
+    return out;
+  }
+
+  async getTrendingCities(limit: number = 20): Promise<PublicTrendingCity[]> {
     // Phase E rewire: rank by the v0 resolver trend_score (trend_scores table),
     // restricted to the 8 operating markets. Below-floor markets (trendConfidence <
     // CONFIDENCE_FLOOR) sort last and receive trendingScore = 0 (no "hot" badge).
@@ -578,29 +233,7 @@ Return JSON:
 
     const operatingCityNames = OPERATING_MARKETS.map(m => m.cityName);
 
-    // Fetch resolver scores keyed by marketKey
-    const resolverRows = await db
-      .select({
-        internalId: trendEntities.internalId,
-        trendScore: trendScores.trendScore,
-        trendConfidence: trendScores.trendConfidence,
-        whyText: trendScores.whyText,
-        contributingSources: trendScores.contributingSources,
-      })
-      .from(trendEntities)
-      .leftJoin(trendScores, eq(trendScores.trendEntityId, trendEntities.id))
-      .where(eq(trendEntities.entityType, "market"));
-
-    const resolverMap = new Map(
-      resolverRows.map(r => [
-        r.internalId,
-        {
-          score: r.trendScore != null ? parseFloat(r.trendScore) : null,
-          confidence: r.trendConfidence != null ? parseFloat(r.trendConfidence) : 0,
-          whyText: r.whyText,
-        },
-      ]),
-    );
+    const resolverMap = await this.loadResolverScores();
 
     // Fetch travelPulseCities rows for operating markets
     const rows = await db
@@ -614,17 +247,18 @@ Return JSON:
         m => m.cityName.toLowerCase() === city.cityName.toLowerCase(),
       );
       const rd = market ? resolverMap.get(market.marketKey) : null;
-      const isRanked =
-        rd != null && rd.score != null && rd.confidence >= CONFIDENCE_FLOOR;
+      // ONE derivation for every Trend number (shared/trend-display.ts): ranked, above the floor
+      // AND fresh (TravelPulse PR 1 — a score older than the max age shows nothing). Unshown ⇒ 0
+      // here, the path the rail already suppresses; the destination page reads the null itself.
+      const shown = displayTrendScore(rd ?? null, { confidenceFloor: CONFIDENCE_FLOOR, maxAgeHours: trendScoreMaxAgeHours() });
+      const isRanked = shown !== null;
+      const trendingScore = shown ?? 0;
 
-      // Map resolver score to 0–100:  1.0 (at baseline) → 50,  2.0 → 100,  0 → 0
-      // trendingScore = 0 for below-floor (no hot badge).
-      const trendingScore = isRanked
-        ? Math.min(100, Math.max(0, Math.round((rd!.score!) * 50)))
-        : 0;
-
+      // PR 1: the legacy crowd label and pulse score are NOT spread onto a public row — Crowd
+      // returns when PR 2 computes it from `crowd_band_config`; the Trend number has one source.
+      const { crowdLevel: _legacyCrowd, pulseScore: _legacyPulse, ...publicCity } = city;
       return {
-        ...city,
+        ...publicCity,
         trendingScore,
         _resolverScore: rd?.score ?? null,
         _isRanked: isRanked,
@@ -636,10 +270,10 @@ Return JSON:
       if (a._isRanked && b._isRanked) return (b._resolverScore ?? 0) - (a._resolverScore ?? 0);
       if (a._isRanked) return -1;
       if (b._isRanked) return 1;
-      return (b.pulseScore ?? 0) - (a.pulseScore ?? 0);
+      return a.cityName.localeCompare(b.cityName);
     });
 
-    return withScores.slice(0, limit) as TravelPulseCity[];
+    return withScores.slice(0, limit);
   }
 
   async getCityByName(cityName: string): Promise<TravelPulseCity | null> {
@@ -674,11 +308,17 @@ Return JSON:
       this.getLiveActivity(cityName),
     ]);
 
+    // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): the public city projection carries
+    // the RESOLVER's Trend number (null ⇒ none shown) and never the legacy, Grok- or seed-written
+    // `pulse_score` / `trending_score` / `crowd_level` (trend-engine audit §3). Crowd returns in PR 2.
+    const { crowdLevel: _legacyCrowd, pulseScore: _legacyPulse, trendingScore: _legacyTrend, ...publicCity } = city;
+    const trendingScore = await this.resolverTrendForCity(city.cityName);
     return {
-      city,
+      city: { ...publicCity, trendingScore },
       hiddenGems,
       alerts,
-      happeningNow,
+      // No legacy crowd claim on a happening-now row either (PR 1; returns with PR 2).
+      happeningNow: happeningNow.map(({ crowdLevel: _legacyCrowd, ...h }) => h),
       liveActivity,
     };
   }
@@ -1283,403 +923,11 @@ Return JSON:
   }
 
   // ============================================
-  // AI INTELLIGENCE UPDATE METHODS
+  // AI INTELLIGENCE UPDATE METHODS — DELETED by TravelPulse PR 1 (ledger
+  // `2026-09-29-travelpulse-hygiene`): `updateCityWithAI`, its two merge writers, the proxy-signal
+  // gatherer and `refreshStaleAICities` (the `travelpulse-daily-refresh` job's only work). Grok no
+  // longer writes `travel_pulse_cities` scores or crowd levels; nothing here calls xAI.
   // ============================================
-
-  // Update a city with AI-generated intelligence from Grok
-  /**
-   * Gather real "proxy" measurements for a city so Grok's daily estimates are grounded
-   * in observed data instead of pure model knowledge. Every signal is best-effort and
-   * optional — a failure in any single source just omits that signal.
-   * Sources: our own trips table (travelers now / upcoming).
-   * R4 hotfix: trend-score history and previous traveler-count are NOT passed to Grok —
-   * a score's own history must never be a scoring input.
-   * R5 ruling: SerpAPI/Google Trends dropped; Wikimedia Pageviews is the Phase 2 replacement.
-   */
-  async gatherProxySignals(cityName: string, country: string): Promise<CityProxySignals> {
-    const signals: CityProxySignals = {};
-
-    // "Today" in the city's own timezone (falls back to UTC when the city row has no
-    // timezone) — trips columns are DATE, so an off-by-one around midnight miscounts.
-    let cityTz: string | undefined;
-    try {
-      const [tzRow] = await db
-        .select({ tz: travelPulseCities.timezone })
-        .from(travelPulseCities)
-        .where(and(eq(travelPulseCities.cityName, cityName), eq(travelPulseCities.country, country)))
-        .limit(1);
-      cityTz = tzRow?.tz ?? undefined;
-    } catch { /* fall back to UTC */ }
-    const localDate = (offsetDays = 0) => {
-      const d = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
-      try {
-        return new Intl.DateTimeFormat("en-CA", { timeZone: cityTz || "UTC" }).format(d); // YYYY-MM-DD
-      } catch {
-        return d.toISOString().slice(0, 10);
-      }
-    };
-    const today = localDate(0);
-    const in30d = localDate(30);
-
-    // Platform trips: destination is free text, so use a case-insensitive whole-word
-    // regex match on the city name (regex-escaped) — plain substring matching would
-    // count "London, Ontario" for London UK or "New York" for York.
-    const cityPattern = "\\m" + cityName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\M";
-    const destMatch = sql`${trips.destination} ~* ${cityPattern}`;
-    try {
-      const [nowRow] = await db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(trips)
-        .where(and(
-          destMatch,
-          lte(trips.startDate, today),
-          gte(trips.endDate, today),
-        ));
-      const [upcomingRow] = await db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(trips)
-        .where(and(
-          destMatch,
-          gte(trips.startDate, today),
-          lte(trips.startDate, in30d),
-        ));
-      signals.platformTravelersNow = nowRow?.n ?? 0;
-      signals.platformUpcomingTrips30d = upcomingRow?.n ?? 0;
-    } catch (err: any) {
-      console.warn(`[TravelPulse] trips signal failed for ${cityName}: ${err?.message}`);
-    }
-
-    // R4 HOTFIX: recentTrendScores and previousActiveTravelers removed — score history
-    // must never feed back into scoring (L8). Phase 2.3 will repoint the trip-count
-    // gatherers to write trend_signals rows instead.
-    // R5 RULING: SerpAPI/Google Trends dropped. Wikimedia Pageviews replaces it in Phase 2.
-
-    return signals;
-  }
-
-  async updateCityWithAI(cityName: string, country: string): Promise<{ success: boolean; city?: TravelPulseCity; error?: string }> {
-    try {
-      console.log(`[TravelPulse] Generating AI intelligence for ${cityName}, ${country}...`);
-
-      // Gather observed proxy signals so Grok grounds its estimates in real measurements.
-      // Best-effort: any gathering failure degrades to a plain (signal-free) generation.
-      const signals = await this.gatherProxySignals(cityName, country).catch((err) => {
-        console.warn(`[TravelPulse] Proxy-signal gathering failed for ${cityName}: ${err?.message}`);
-        return undefined;
-      });
-
-      // Get AI intelligence from Grok
-      const { result, usage } = await grokService.generateCityIntelligence(cityName, country, signals);
-      
-      console.log(`[TravelPulse] AI intelligence generated. Tokens used: ${usage.totalTokens}`);
-
-      // Find existing city or create new one
-      const [existingCity] = await db
-        .select()
-        .from(travelPulseCities)
-        .where(and(
-          eq(travelPulseCities.cityName, cityName),
-          eq(travelPulseCities.country, country)
-        ))
-        .limit(1);
-
-      const cityUpdate = {
-        // Core identity
-        cityName: result.cityName,
-        country: result.country,
-        
-        // Pulse metrics from AI
-        pulseScore: result.pulseMetrics.pulseScore,
-        trendingScore: result.pulseMetrics.trendingScore,
-        crowdLevel: result.pulseMetrics.crowdLevel,
-        weatherScore: result.pulseMetrics.weatherScore,
-        // Grok's seasonal estimate of tourists currently visiting. Only overwrite when the
-        // model returned a sane bounded integer — otherwise keep the existing value rather
-        // than zeroing the card or failing the row update (column is PG integer). Capped at
-        // 5M: no city hosts more concurrent tourists; a larger value is a model hallucination.
-        ...((() => {
-          const raw = result.pulseMetrics.estimatedActiveTravelers;
-          const v = typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : NaN;
-          return Number.isSafeInteger(v) && v > 0 && v <= 5_000_000
-            ? { activeTravelers: v }
-            : {};
-        })()),
-        
-        // Vibe from AI
-        vibeTags: result.currentVibe.vibeTags,
-        currentHighlight: result.currentVibe.currentHighlight,
-        
-        // Price intelligence from AI
-        avgHotelPrice: String(result.priceIntelligence.avgHotelPriceUsd),
-        priceChange: String(result.priceIntelligence.priceChangePercent),
-        priceTrend: result.priceIntelligence.priceTrend,
-        dealAlert: result.priceIntelligence.dealAlert,
-        
-        // AI-specific fields
-        aiGeneratedAt: new Date(),
-        aiSourceModel: "grok-3", // provenance label — must match grok.service.ts GROK_MODEL
-        aiBestTimeToVisit: result.seasonalInsights.bestTimeToVisit,
-        aiSeasonalHighlights: result.seasonalInsights.monthlyHighlights,
-        aiUpcomingEvents: result.seasonalInsights.upcomingEvents,
-        aiTravelTips: result.travelRecommendations.localTips,
-        aiLocalInsights: result.travelRecommendations.culturalInsights,
-        aiSafetyNotes: result.travelRecommendations.safetyNotes,
-        aiOptimalDuration: result.travelRecommendations.optimalDuration,
-        aiBudgetEstimate: result.travelRecommendations.budgetEstimate,
-        aiMustSeeAttractions: result.travelRecommendations.mustSeeAttractions,
-        aiAvoidDates: result.avoidDates,
-        
-        lastUpdated: new Date(),
-      };
-
-      let updatedCity: TravelPulseCity;
-
-      if (existingCity) {
-        // Update existing city
-        const [updated] = await db
-          .update(travelPulseCities)
-          .set(cityUpdate)
-          .where(eq(travelPulseCities.id, existingCity.id))
-          .returning();
-        updatedCity = updated;
-      } else {
-        // Insert new city
-        const [inserted] = await db
-          .insert(travelPulseCities)
-          .values(cityUpdate)
-          .onConflictDoNothing()
-          .returning();
-        if (inserted) {
-          updatedCity = inserted;
-        } else {
-          const [concurrentCity] = await db
-            .select()
-            .from(travelPulseCities)
-            .where(
-              and(
-                eq(travelPulseCities.cityName, cityName),
-                eq(travelPulseCities.country, country),
-              ),
-            )
-            .limit(1);
-          if (!concurrentCity) {
-            throw new Error(`City insert conflicted but canonical row was not found: ${cityName}/${country}`);
-          }
-          updatedCity = concurrentCity;
-        }
-      }
-
-      // Record metrics history for time-series trend analysis
-      const destination = `${cityName}, ${country}`;
-      const metricsToTrack = [
-        { metricType: "trend_score", metricValue: String(result.pulseMetrics.trendingScore || 0) },
-        { metricType: "pulse_score", metricValue: String(result.pulseMetrics.pulseScore || 0) },
-        { metricType: "crowd_level", metricValue: String((({ quiet: 25, moderate: 50, busy: 75, packed: 100 } as Record<string, number>)[result.pulseMetrics.crowdLevel as string] ?? (Number(result.pulseMetrics.crowdLevel) || 0))) },
-        { metricType: "weather_score", metricValue: String(result.pulseMetrics.weatherScore || 0) },
-        { metricType: "avg_hotel_price", metricValue: String(result.priceIntelligence.avgHotelPriceUsd || 0) },
-      ];
-      for (const metric of metricsToTrack) {
-        await db.insert(destinationMetricsHistory).values({
-          destination,
-          city: cityName,
-          country,
-          metricType: metric.metricType,
-          metricValue: metric.metricValue,
-          recordedAt: new Date(),
-        }).catch(err => console.error(`[TravelPulse] Failed to record metric ${metric.metricType}:`, err.message));
-      }
-
-      // Set expiresAt for stale data protection (48 hours from refresh)
-      await db.update(travelPulseCities)
-        .set({
-          expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
-          lastRefreshStatus: "success",
-          aiRefreshErrorCount: 0,
-        })
-        .where(eq(travelPulseCities.id, updatedCity.id))
-        .catch(err => console.error("[TravelPulse] Failed to set expiresAt:", err.message));
-
-      // Merge AI data into destination calendar tables
-      await this.mergeAIToCalendar(result, cityName, country);
-
-      // Create/update hidden gems from AI recommendations
-      await this.mergeAIHiddenGems(result.travelRecommendations.hiddenGems, cityName, country);
-
-      // Fetch and cache media from Unsplash, Pexels, and Google Places
-      try {
-        const { mediaAggregatorService } = await import("./media-aggregator.service");
-        await mediaAggregatorService.fetchAndCacheMedia({
-          cityId: updatedCity.id,
-          cityName,
-          country,
-          attractions: result.travelRecommendations.mustSeeAttractions,
-          hiddenGems: result.travelRecommendations.hiddenGems.map(gem => gem.name),
-        });
-      } catch (mediaError: any) {
-        console.error(`[TravelPulse] Media fetch error for ${cityName}:`, mediaError.message);
-        // Continue even if media fetch fails
-      }
-
-      console.log(`[TravelPulse] City ${cityName} updated with AI intelligence`);
-      
-      return { success: true, city: updatedCity };
-    } catch (error: any) {
-      console.error(`[TravelPulse] Error updating ${cityName} with AI:`, error.message);
-      // Track refresh failure in the city record
-      await db.update(travelPulseCities)
-        .set({
-          lastRefreshStatus: "failed",
-          aiRefreshErrorCount: sql`COALESCE(ai_refresh_error_count, 0) + 1`,
-        })
-        .where(and(
-          eq(travelPulseCities.cityName, cityName),
-          eq(travelPulseCities.country, country)
-        ))
-        .catch(err => console.error("[TravelPulse] Failed to track refresh error:", err.message));
-      return { success: false, error: error.message };
-    }
-  }
-
-  // Merge AI seasonal insights into destinationSeasons table
-  private async mergeAIToCalendar(result: CityIntelligenceResult, city: string, country: string): Promise<void> {
-    // Merge monthly highlights into destinationSeasons
-    for (const monthData of result.seasonalInsights.monthlyHighlights) {
-      const existing = await db
-        .select()
-        .from(destinationSeasons)
-        .where(and(
-          eq(destinationSeasons.city, city),
-          eq(destinationSeasons.country, country),
-          eq(destinationSeasons.month, monthData.month)
-        ))
-        .limit(1);
-
-      const seasonData = {
-        city,
-        country,
-        month: monthData.month,
-        rating: monthData.rating,
-        weatherDescription: monthData.weatherDesc,
-        highlights: [monthData.highlight],
-        sourceType: "ai" as const,
-        updatedAt: new Date(),
-      };
-
-      if (existing.length > 0) {
-        // Only update if it was AI-generated (don't overwrite user contributions)
-        if (existing[0].sourceType === "ai" || existing[0].sourceType === "system") {
-          await db
-            .update(destinationSeasons)
-            .set(seasonData)
-            .where(eq(destinationSeasons.id, existing[0].id));
-        }
-      } else {
-        await db.insert(destinationSeasons).values(seasonData);
-      }
-    }
-
-    // Merge upcoming events into destinationEvents
-    for (const event of result.seasonalInsights.upcomingEvents) {
-      // Check if similar event already exists
-      const existing = await db
-        .select()
-        .from(destinationEvents)
-        .where(and(
-          eq(destinationEvents.city, city),
-          eq(destinationEvents.country, country),
-          eq(destinationEvents.title, event.name)
-        ))
-        .limit(1);
-
-      if (existing.length === 0) {
-        await db.insert(destinationEvents).values({
-          city,
-          country,
-          title: event.name,
-          description: `${event.type} event: ${event.dateRange}`,
-          eventType: event.type,
-          seasonRating: event.significance,
-          sourceType: "ai",
-          // Born PENDING → admin review queue, NOT auto-published (D1a lesson applied to
-          // machine content: AI can hallucinate events, so it doesn't self-approve onto the
-          // public calendar). getPendingDestinationEvents() surfaces these; the public
-          // By-Date calendar shows only status='approved'. Existing approved rows grandfathered.
-          status: "pending",
-        });
-      }
-    }
-  }
-
-  // Merge AI hidden gems into travelPulseHiddenGems
-  private async mergeAIHiddenGems(gems: CityIntelligenceResult["travelRecommendations"]["hiddenGems"], city: string, country: string): Promise<void> {
-    for (const gem of gems) {
-      const existing = await db
-        .select()
-        .from(travelPulseHiddenGems)
-        .where(and(
-          eq(travelPulseHiddenGems.city, city),
-          eq(travelPulseHiddenGems.placeName, gem.name)
-        ))
-        .limit(1);
-
-      const gemData = {
-        city,
-        country,
-        placeName: gem.name,
-        placeType: gem.type,
-        description: gem.whySpecial,
-        whyLocalsLoveIt: gem.whySpecial,
-        priceRange: gem.priceRange,
-        gemScore: 85, // AI-recommended gems get high default score
-        discoveryStatus: "hidden" as const,
-        aiGenerated: true,
-        aiGeneratedAt: new Date(),
-        lastUpdated: new Date(),
-      };
-
-      if (existing.length === 0) {
-        await db.insert(travelPulseHiddenGems).values(gemData);
-      } else if (existing[0].aiGenerated) {
-        // Update only if it was AI-generated
-        await db
-          .update(travelPulseHiddenGems)
-          .set(gemData)
-          .where(eq(travelPulseHiddenGems.id, existing[0].id));
-      }
-    }
-  }
-
-  // Refresh all cities that need AI update (stale data > 24 hours)
-  async refreshStaleAICities(): Promise<{ refreshed: number; errors: number }> {
-    const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
-    
-    // Get cities with stale or missing AI data
-    const staleCities = await db
-      .select()
-      .from(travelPulseCities)
-      .where(
-        sql`${travelPulseCities.aiGeneratedAt} IS NULL OR ${travelPulseCities.aiGeneratedAt} < ${staleThreshold}`
-      )
-      .limit(10); // Process max 10 cities per run to control API costs
-
-    let refreshed = 0;
-    let errors = 0;
-
-    for (const city of staleCities) {
-      const result = await this.updateCityWithAI(city.cityName, city.country);
-      if (result.success) {
-        refreshed++;
-      } else {
-        errors++;
-      }
-      
-      // Rate limit: wait 2 seconds between API calls
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-
-    console.log(`[TravelPulse] Daily refresh complete: ${refreshed} updated, ${errors} errors`);
-    return { refreshed, errors };
-  }
 
   // Get cities that need AI refresh
   async getCitiesNeedingRefresh(): Promise<TravelPulseCity[]> {

@@ -13,6 +13,7 @@ import { db } from "../../db";
 import { trendSourceConfig } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { AdapterRunResult } from "./adapters/base.adapter";
+import { runHealthFor } from "./run-health";
 import { wikimediaPageviewsAdapter } from "./adapters/wikimedia-pageviews.adapter";
 import { gdeltAdapter } from "./adapters/gdelt.adapter";
 import { nagerDateAdapter } from "./adapters/nager-date.adapter";
@@ -78,19 +79,39 @@ export class TrendEngineIngestionRunner {
         console.log(
           `[IngestionRunner] ${adapter.source}: inserted=${adapterResult.rowsInserted} skipped=${adapterResult.rowsSkipped} halted=${adapterResult.haltedByCeiling} errors=${adapterResult.errors.length}`,
         );
-        // Health update: success resets consecutive_failures → healthy
+        // Every per-market error is logged by name — a count alone hid WHY a source produced
+        // nothing (trend-engine audit, Sep 29 2026).
+        for (const e of adapterResult.errors) {
+          console.warn(`[IngestionRunner] ${adapter.source} error: ${e}`);
+        }
         if (!adapterResult.haltedByCeiling) {
-          await db.update(trendSourceConfig)
-            .set({
-              healthStatus: "healthy",
-              lastRunAt: new Date(),
-              lastRunStatus: "success",
-              lastRunError: null,
-              lastRunInsertedRows: adapterResult.rowsInserted,
-              consecutiveFailures: 0,
-              updatedAt: new Date(),
-            })
-            .where(eq(trendSourceConfig.source, adapter.source));
+          const health = runHealthFor(adapterResult);
+          if (health.status === "success") {
+            // A clean run resets consecutive_failures → healthy.
+            await db.update(trendSourceConfig)
+              .set({
+                healthStatus: "healthy",
+                lastRunAt: new Date(),
+                lastRunStatus: "success",
+                lastRunError: null,
+                lastRunInsertedRows: adapterResult.rowsInserted,
+                consecutiveFailures: 0,
+                updatedAt: new Date(),
+              })
+              .where(eq(trendSourceConfig.source, adapter.source));
+          } else {
+            // A run that returned per-market errors is PARTIAL, never "success" (§13): the
+            // messages are kept, and health is not claimed healthy.
+            await db.update(trendSourceConfig)
+              .set({
+                lastRunAt: new Date(),
+                lastRunStatus: "partial",
+                lastRunError: health.error,
+                lastRunInsertedRows: adapterResult.rowsInserted,
+                updatedAt: new Date(),
+              })
+              .where(eq(trendSourceConfig.source, adapter.source));
+          }
         }
       } catch (err: any) {
         result.errors[adapter.source] = [err.message];

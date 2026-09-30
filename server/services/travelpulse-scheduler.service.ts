@@ -1,4 +1,3 @@
-import { travelPulseService } from "./travelpulse.service";
 import { serviceRecommendationEngine } from "./recommendation.service";
 import { refreshDestinationTrends } from "./destination-trends.service";
 import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
@@ -109,8 +108,8 @@ export class TravelPulseScheduler {
 
     try {
       // Phase 2.3 — iterate over the 8 configured operating markets only.
-      // Grok/LLM scoring is NOT called here (R2, R7). crowdLevel and pulse/trend scores
-      // remain static from last write until the Phase 4 resolver replaces them.
+      // Grok/LLM is NOT called here, directly or through a cache prime (R2, R7; PR 1). The legacy
+      // `travel_pulse_cities` crowdLevel/pulseScore are no longer served publicly (PR 1).
       // Demand signals are refreshed each cycle; no AI dependency.
       console.log(
         `[TravelPulse Scheduler] Phase 2.3 demand-signal cycle: ${OPERATING_MARKETS.length} markets (Grok removed)`,
@@ -119,16 +118,11 @@ export class TravelPulseScheduler {
       for (const market of OPERATING_MARKETS) {
         const cityStartedAt = Date.now();
 
-        // Un-starve the demand-signal generator: prime the trending cache before
-        // calling refreshDemandSignalsForCity (same logic as before, AI-free).
-        try {
-          await travelPulseService.getTrendingDestinations(market.cityName, 20);
-        } catch (err: any) {
-          console.error(
-            `[TravelPulse Scheduler] Trending prime failed for ${market.cityName} (continuing):`,
-            err?.message ?? err,
-          );
-        }
+        // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): the legacy trending-cache
+        // prime is GONE. It called Grok on every cache miss (the "AI-free" note it carried was
+        // false) and wrote `travel_pulse_trending`; the audit found it failing on xAI credits
+        // every run. The demand-signal generator now reads that cache without a prime — its
+        // rows stop at Sep 2 and expire, so the trending input is honestly absent (§13).
 
         try {
           const generated = await serviceRecommendationEngine.refreshDemandSignalsForCity(
@@ -201,8 +195,6 @@ export class TravelPulseScheduler {
 
   // Manual trigger for testing or admin use.
   // Phase 2.3: Grok AI refresh removed — only demand signals are refreshed.
-  // Admin wanting to manually run Grok for a city should call
-  // travelPulseService.updateCityWithAI() directly from an admin endpoint.
   async triggerManualRefresh(
     cityName?: string,
     _country?: string,
@@ -211,9 +203,6 @@ export class TravelPulseScheduler {
       // Demand-signal refresh for a specific city (Phase 2.3: no AI call)
       console.log(`[TravelPulse Scheduler] Manual demand-signal refresh for ${cityName}`);
       let demandSignalsGenerated = 0;
-      try {
-        await travelPulseService.getTrendingDestinations(cityName, 20);
-      } catch (_err) { /* best-effort trending prime */ }
       try {
         demandSignalsGenerated = await serviceRecommendationEngine.refreshDemandSignalsForCity(cityName);
       } catch (err: any) {

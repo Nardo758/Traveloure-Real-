@@ -63,5 +63,8 @@ test("M6: /api/health carries the state on its ok branch and a failed read is nu
   const src = fs.readFileSync(path.join(process.cwd(), "server/routes/content.routes.ts"), "utf8");
   const block = src.slice(src.indexOf('router.get("/api/health"'), src.indexOf('router.get("/api/status"'));
   assert.match(block, /readMigrationState\(db\)\.catch\(\(\) => null\)/);
-  assert.match(block, /status: "ok", db: true, timestamp: new Date\(\)\.toISOString\(\), build, migrations \}/);
+  // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`) added the trend-score age beside the
+  // migration state on the same ok branch; its read is caught too, so it can never fail the probe.
+  assert.match(block, /status: "ok", db: true, timestamp: new Date\(\)\.toISOString\(\), build, migrations, trendScores \}/);
+  assert.match(block, /FROM trend_scores`\)[\s\S]*?\.catch\(\(\) => null\)/);
 });
