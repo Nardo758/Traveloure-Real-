@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { displayTrendScore, isFreshScore, trendScoreAgeReport } from "../trend-display";
+import { displayCrowdBand, displayTrendScore, isFreshScore, trendScoreAgeReport } from "../trend-display";
 
 const NOW = new Date("2026-09-29T22:00:00Z");
 const H = 3_600_000;
@@ -41,4 +41,14 @@ test("D5: the health age block — no row ⇒ no age and no freshness claim", ()
   assert.equal(r.ageHours, 50);
   assert.equal(r.fresh, false);
   assert.equal(trendScoreAgeReport(new Date(NOW.getTime() - 2 * H).toISOString(), 48, NOW).fresh, true);
+});
+
+test("D6: a crowd band shows only when it is a real band, confident and fresh (TravelPulse PR 2)", () => {
+  assert.equal(displayCrowdBand({ band: "high", confidence: 0.7, computedAt: NOW }, opts), "high");
+  assert.equal(displayCrowdBand({ band: null, confidence: 0.7, computedAt: NOW }, opts), null);
+  assert.equal(displayCrowdBand({ band: "packed", confidence: 0.7, computedAt: NOW }, opts), null, "a legacy word is not a band");
+  assert.equal(displayCrowdBand({ band: "high", confidence: 0.2, computedAt: NOW }, opts), null);
+  assert.equal(displayCrowdBand({ band: "high", confidence: null, computedAt: NOW }, opts), null);
+  assert.equal(displayCrowdBand({ band: "high", confidence: 0.7, computedAt: new Date(NOW.getTime() - 49 * H) }, opts), null);
+  assert.equal(displayCrowdBand(null, opts), null);
 });

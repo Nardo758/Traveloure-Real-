@@ -24,7 +24,8 @@ interface PulseCity {
   cityName: string;
   country: string;
   trendingScore?: number | null;
-  crowdLevel?: string | null;
+  /** TravelPulse PR 2: the resolver's crowd band (low|moderate|high|peak), or null = no label. */
+  crowdBand?: string | null;
   imageUrl?: string | null;
 }
 
@@ -74,7 +75,7 @@ export function CitiesRail() {
             {[
               c.cityName,
               c.trendingScore && c.trendingScore > 0 ? `trend ${c.trendingScore}` : null,
-              c.crowdLevel ?? null,
+              c.crowdBand ? `crowd ${c.crowdBand}` : null,
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -99,7 +100,7 @@ export function CitiesRail() {
               country={c.country}
               imageUrl={c.imageUrl ?? null}
               score={c.trendingScore ?? null}
-              crowdLevel={c.crowdLevel ?? null}
+              crowdLevel={c.crowdBand ?? null}
               primaryLabel="View"
               onCardClick={() => navigate(getCityDiscoverHref(c.cityName))}
               testId={`city-compact-${c.cityName.toLowerCase()}`}

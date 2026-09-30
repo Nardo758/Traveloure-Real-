@@ -49,3 +49,23 @@ export function trendScoreAgeReport(
   const ageHours = Math.round(((now.getTime() - t) / 3_600_000) * 10) / 10;
   return { newestComputedAt: new Date(t).toISOString(), ageHours, maxAgeHours, fresh: isFreshScore(new Date(t), maxAgeHours, now) };
 }
+
+/**
+ * THE crowd band a public surface may show for a market (TravelPulse PR 2, ledger
+ * `2026-09-30-travelpulse-crowd-band`) — ONE derivation beside the Trend number's (§18 rule 1).
+ * Shown only when the resolver wrote one of the four band words, its crowd confidence clears the
+ * floor, and the row is as fresh as a Trend number must be. Anything else is `null`: no label,
+ * never a guessed "moderate" (§13). The band is the only thing shown; no crowd value ever is.
+ */
+export const DISPLAY_CROWD_BANDS = ["low", "moderate", "high", "peak"] as const;
+export type DisplayCrowdBand = (typeof DISPLAY_CROWD_BANDS)[number];
+
+export function displayCrowdBand(
+  r: { band: string | null; confidence: number | null; computedAt: Date | string | null } | null | undefined,
+  opts: { confidenceFloor: number; maxAgeHours: number; now?: Date },
+): DisplayCrowdBand | null {
+  if (!r || r.band == null || !(DISPLAY_CROWD_BANDS as readonly string[]).includes(r.band)) return null;
+  if (r.confidence == null || !(r.confidence >= opts.confidenceFloor)) return null;
+  if (!isFreshScore(r.computedAt, opts.maxAgeHours, opts.now)) return null;
+  return r.band as DisplayCrowdBand;
+}
